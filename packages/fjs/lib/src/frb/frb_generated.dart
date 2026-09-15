@@ -432,7 +432,7 @@ abstract class LibFjsApi extends BaseApi {
   Future<JsValue> crateApiEngineEvalBridgeRequestGlobal(
       {required BigInt id, required String source});
 
-  Future<List<HtmlJobOutcome>> crateApiHtmlHtmlAnalyze(
+  List<HtmlJobOutcome> crateApiHtmlHtmlAnalyze(
       {required String html, required List<HtmlRuleJob> jobs});
 
   Future<void> crateApiInitApp();
@@ -3649,15 +3649,14 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
       );
 
   @override
-  Future<List<HtmlJobOutcome>> crateApiHtmlHtmlAnalyze(
+  List<HtmlJobOutcome> crateApiHtmlHtmlAnalyze(
       {required String html, required List<HtmlRuleJob> jobs}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(html, serializer);
         sse_encode_list_html_rule_job(jobs, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 113, port: port_);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 113)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_html_job_outcome,

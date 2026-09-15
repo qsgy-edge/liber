@@ -9,6 +9,7 @@
 //! jsoup 1.16.2's selector engine and Legado's rule layer (`AnalyzeByJSoup.kt`)
 //! behind this boundary.
 
+use flutter_rust_bridge::frb;
 use liber_html::{JobOutput, JobSpec};
 
 /// What one rule job returns.
@@ -59,6 +60,13 @@ pub struct HtmlJobOutcome {
 }
 
 /// Evaluates every job of one stage against one document.
+///
+/// The call is synchronous: the Dart side already parsed and selected on the UI
+/// isolate before this adapter existed, the work is a few milliseconds per page,
+/// and a synchronous boundary keeps the pipeline - and its widget tests - free of
+/// a second asynchronous hop. Moving it to a worker thread stays open if
+/// profiling shows it.
+#[frb(sync)]
 pub fn html_analyze(html: String, jobs: Vec<HtmlRuleJob>) -> Vec<HtmlJobOutcome> {
     let specs: Vec<JobSpec> = jobs
         .into_iter()

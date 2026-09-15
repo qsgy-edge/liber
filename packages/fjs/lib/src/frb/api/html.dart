@@ -9,7 +9,13 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Evaluates every job of one stage against one document.
-Future<List<HtmlJobOutcome>> htmlAnalyze(
+///
+/// The call is synchronous: the Dart side already parsed and selected on the UI
+/// isolate before this adapter existed, the work is a few milliseconds per page,
+/// and a synchronous boundary keeps the pipeline - and its widget tests - free of
+/// a second asynchronous hop. Moving it to a worker thread stays open if
+/// profiling shows it.
+List<HtmlJobOutcome> htmlAnalyze(
         {required String html, required List<HtmlRuleJob> jobs}) =>
     LibFjs.instance.api.crateApiHtmlHtmlAnalyze(html: html, jobs: jobs);
 
@@ -17,6 +23,8 @@ Future<List<HtmlJobOutcome>> htmlAnalyze(
 class HtmlJobFailure {
   /// `unsupported`, `parse` or `runtime`.
   final String kind;
+
+  /// The rule family message shown to the reader.
   final String message;
 
   const HtmlJobFailure({
@@ -36,7 +44,9 @@ class HtmlJobFailure {
           message == other.message;
 }
 
+/// The result of one rule job.
 class HtmlJobOutcome {
+  /// The job id this outcome answers.
   final String id;
 
   /// Number of elements an `Elements` job matched.
@@ -44,6 +54,8 @@ class HtmlJobOutcome {
 
   /// One value per context element for `Text` jobs.
   final List<String> values;
+
+  /// Set when the rule could not be evaluated; the values are then empty.
   final HtmlJobFailure? failure;
 
   const HtmlJobOutcome({
@@ -91,6 +103,8 @@ class HtmlRuleJob {
   /// An earlier `Elements` job id whose matches are this job's contexts.
   /// `None` means the document itself.
   final String? parent;
+
+  /// Whether the job returns element count or extracted strings.
   final HtmlJobOutput output;
 
   const HtmlRuleJob({

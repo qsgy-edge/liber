@@ -5731,16 +5731,15 @@ fn wire__crate__api__engine__eval_bridge_request_global_impl(
     )
 }
 fn wire__crate__api__html__html_analyze_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "html_analyze",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
         },
         move || {
             let message = unsafe {
@@ -5755,13 +5754,11 @@ fn wire__crate__api__html__html_analyze_impl(
             let api_html = <String>::sse_decode(&mut deserializer);
             let api_jobs = <Vec<crate::api::html::HtmlRuleJob>>::sse_decode(&mut deserializer);
             deserializer.end();
-            move |context| {
-                transform_result_sse::<_, ()>((move || {
-                    let output_ok =
-                        Result::<_, ()>::Ok(crate::api::html::html_analyze(api_html, api_jobs))?;
-                    Ok(output_ok)
-                })())
-            }
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::html::html_analyze(api_html, api_jobs))?;
+                Ok(output_ok)
+            })())
         },
     )
 }
@@ -8534,7 +8531,6 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        113 => wire__crate__api__html__html_analyze_impl(port, ptr, rust_vec_len, data_len),
         114 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
         116 => wire__crate__api__source__js_builtin_options_default_impl(
             port,
@@ -8728,6 +8724,7 @@ fn pde_ffi_dispatcher_sync_impl(
         108 => {
             wire__crate__api__runtime__MemoryUsage_total_memory_impl(ptr, rust_vec_len, data_len)
         }
+        113 => wire__crate__api__html__html_analyze_impl(ptr, rust_vec_len, data_len),
         115 => wire__crate__api__source__js_builtin_options_all_impl(ptr, rust_vec_len, data_len),
         117 => {
             wire__crate__api__source__js_builtin_options_essential_impl(ptr, rust_vec_len, data_len)

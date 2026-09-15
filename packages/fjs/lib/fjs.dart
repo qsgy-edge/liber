@@ -83,6 +83,9 @@ library;
 export 'src/frb/api/bytecode.dart';
 export 'src/frb/api/engine.dart';
 
+// HTML rule adapter (Liber)
+export 'src/frb/api/html.dart';
+
 // Error handling
 export 'src/frb/api/error.dart';
 
