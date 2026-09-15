@@ -52,7 +52,7 @@ Not covered yet, and deliberately visible rather than implied:
 | `tool/` | Gate runners, oracle comparison scripts, frozen oracle evidence, and live-source helpers |
 | `test/`, `integration_test/` | Dart and Flutter tests |
 | `docs/compatibility/` | The compatibility baseline, the differential contract, the migration contract, the capability inventory, and the runtime-component survey |
-| `docs/agents/`, `docs/adr/` | Agent configuration for this repo and (later) decision records |
+| `docs/agents/`, `docs/adr/` | Agent configuration for this repo and the architecture decision records |
 | `book_sources/` | Delivery notes for the Windows slice and sample source definitions |
 
 The private `liber-archive` repository keeps the earlier history of this project,
