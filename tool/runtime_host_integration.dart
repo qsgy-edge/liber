@@ -29,6 +29,11 @@ Future<void> main(List<String> args) async {
       'sourceHeader': request.headers.value('x-source'),
       'optionHeader': request.headers.value('x-option'),
       'contentType': request.headers.value('content-type'),
+      'userAgent': request.headers.value('user-agent'),
+      'keepAlive': request.headers.value('keep-alive'),
+      'cacheControl': request.headers.value('cache-control'),
+      'authorization': request.headers.value('authorization'),
+      'cookie': request.headers.value('cookie'),
       'body': body,
     });
     if (request.uri.path == '/set') {
@@ -37,6 +42,14 @@ Future<void> main(List<String> args) async {
     } else if (request.uri.path == '/echo') {
       request.response.write(request.headers.value('cookie') ?? '');
     } else if (request.uri.path == '/search') {
+      request.response.write(list);
+    } else if (request.uri.path == '/redirect302' ||
+        request.uri.path == '/redirect307') {
+      request.response.statusCode =
+          request.uri.path == '/redirect302' ? 302 : 307;
+      request.response.headers.set('Location', '/after');
+      request.response.write('redirect');
+    } else if (request.uri.path == '/after') {
       request.response.write(list);
     } else if (request.uri.path == '/retry') {
       retryHits++;
@@ -184,9 +197,87 @@ Future<void> main(List<String> args) async {
     checks['jsonStructuredBody'] =
         jsonSearch['method'] == 'POST' &&
         jsonSearch['contentType'] == 'application/json; charset=UTF-8' &&
-        jsonSearch['body'] == '{"key":"%E7%94%B2"}';
+        jsonSearch['body'] == '{"key":"甲"}';
     checks['jsonPipelineCompleted'] =
         output.title == '标题' && output.content == '正文';
+
+    // Request defaults: the frozen client's user agent and connection headers.
+    const frozenUserAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+    checks['defaultUserAgentOnWire'] = search['userAgent'] == frozenUserAgent;
+    checks['defaultConnectionHeadersOnWire'] =
+        search['keepAlive'] == '300' && search['cacheControl'] == 'no-cache';
+
+    final declaredAgent = <String, dynamic>{
+      'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+      'header': '{"User-Agent":"Liber gate/1.0"}',
+      'searchUrl': '/search',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        'name': '@CSS:h3 a@text',
+        'bookUrl': '@CSS:h3 a@href',
+      },
+    };
+    await HtmlSourcePipeline(
+      declaredAgent,
+      HttpSourceTransport(),
+    ).search('甲');
+    checks['declaredUserAgentWins'] =
+        wire.lastWhere((entry) => entry['path'] == '/search')['userAgent'] ==
+        'Liber gate/1.0';
+
+    // Redirect semantics: 302 turns a POST into a bodyless GET, 307 keeps it.
+    Future<void> redirect(String path) async {
+      await HtmlSourcePipeline(
+        <String, dynamic>{
+          'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+          'searchUrl':
+              '/$path,{"method":"POST","body":"key={{key}}",'
+              '"headers":{"Content-Type":"application/x-www-form-urlencoded"}}',
+          'ruleSearch': {
+            'bookList': '@CSS:.item',
+            'name': '@CSS:h3 a@text',
+            'bookUrl': '@CSS:h3 a@href',
+          },
+        },
+        HttpSourceTransport(),
+      ).search('甲');
+    }
+
+    await redirect('redirect302');
+    final getAfter302 = wire.lastWhere((entry) => entry['path'] == '/after');
+    checks['redirect302DowngradesPostToGet'] =
+        getAfter302['method'] == 'GET' &&
+        getAfter302['body'] == '' &&
+        getAfter302['contentType'] == null;
+
+    await redirect('redirect307');
+    final postAfter307 = wire.lastWhere((entry) => entry['path'] == '/after');
+    checks['redirect307KeepsMethodAndBody'] =
+        postAfter307['method'] == 'POST' &&
+        postAfter307['body'] == 'key=甲';
+
+    // Keyword substitution is raw and the query is re-encoded exactly once,
+    // with the frozen page list picking the entry for the requested page.
+    final pagedSource = <String, dynamic>{
+      'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+      'searchUrl': '/search?q={{key}}&page=<1,2,3>',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        'name': '@CSS:h3 a@text',
+        'bookUrl': '@CSS:h3 a@href',
+      },
+    };
+    final paged = HtmlSourcePipeline(pagedSource, HttpSourceTransport());
+    await paged.search('我 的');
+    checks['rawKeyEncodedOnce'] =
+        wire.lastWhere((entry) => entry['path'] == '/search')['query'] ==
+        'q=%E6%88%91%20%E7%9A%84&page=1';
+    await paged.search('我 的', page: 2);
+    checks['pageListPicksRequestedPage'] =
+        wire.lastWhere((entry) => entry['path'] == '/search')['query'] ==
+        'q=%E6%88%91%20%E7%9A%84&page=2';
 
     final pass = checks.values.every((value) => value);
     stdout.writeln(

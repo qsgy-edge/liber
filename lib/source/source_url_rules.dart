@@ -241,11 +241,17 @@ int _jsonObjectEnd(String text, int start) {
   return -1;
 }
 
-/// The frozen URL order: `@js`/`<js>`, then `{{ }}`. Each call gets fresh bindings.
+/// The frozen URL order: `@js`/`<js>`, then `{{ }}`, then the `<a,b,c>` page
+/// list. Each call gets fresh bindings.
+///
+/// [page] is the `AnalyzeUrl` page: `1..n` for a search, and `null` for the
+/// stages the frozen runtime builds without one. The page list is only
+/// substituted when a page exists.
 Future<String> expandSourceUrl(
   String template,
-  UrlScriptEvaluator evaluate,
-) async {
+  UrlScriptEvaluator evaluate, {
+  int? page,
+}) async {
   var result = template;
   var end = 0;
   final blocks = RegExp(
@@ -274,5 +280,89 @@ Future<String> expandSourceUrl(
   }
   output.write(result.substring(end));
   final expanded = output.toString();
-  return expanded.isEmpty ? result : expanded;
+  return substituteSourcePageList(expanded.isEmpty ? result : expanded, page);
+}
+
+/// Characters the frozen `NetworkUtils.encodedQuery` accepts inside a query in
+/// addition to letters and digits.
+const _sourceQueryMask = r'!$&()*+,-./:;=?@[\]^_`{|}~';
+
+/// Characters the frozen query encoder leaves alone in addition to letters,
+/// digits and `-._~`.
+const _sourceQueryEncoderMask = r'!$%&()*+,/:;=?@[\]^`{|}';
+
+bool _isAsciiLetterOrDigit(int unit) =>
+    (unit >= 0x30 && unit <= 0x39) ||
+    (unit >= 0x41 && unit <= 0x5A) ||
+    (unit >= 0x61 && unit <= 0x7A);
+
+bool _isHexDigit(int unit) =>
+    (unit >= 0x30 && unit <= 0x39) ||
+    (unit >= 0x41 && unit <= 0x46) ||
+    (unit >= 0x61 && unit <= 0x66);
+
+/// Frozen `NetworkUtils.encodedQuery`: true when every character of [query] is
+/// either legal in a query or part of a `%XX` escape.
+bool sourceQueryLooksEncoded(String query) {
+  for (var i = 0; i < query.length; i++) {
+    final unit = query.codeUnitAt(i);
+    if (_isAsciiLetterOrDigit(unit) ||
+        _sourceQueryMask.contains(String.fromCharCode(unit))) {
+      continue;
+    }
+    if (unit == 0x25 && i + 2 < query.length) {
+      if (_isHexDigit(query.codeUnitAt(i + 1)) &&
+          _isHexDigit(query.codeUnitAt(i + 2))) {
+        i += 2;
+        continue;
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
+/// Frozen `AnalyzeUrl.analyzeQuery` plus the `HttpUrl.encodedQuery` rebuild:
+/// everything after the first `?` is the query, and it is percent-encoded once
+/// unless it already looks encoded (an existing escape is never re-encoded).
+String encodeSourceQuery(String url) {
+  final start = url.indexOf('?');
+  if (start < 0) return url;
+  final query = url.substring(start + 1);
+  if (sourceQueryLooksEncoded(query)) return url;
+  return '${url.substring(0, start)}?${_encodeSourceQueryValue(query)}';
+}
+
+String _encodeSourceQueryValue(String query) {
+  final output = StringBuffer();
+  for (final rune in query.runes) {
+    final character = rune < 0x80 ? String.fromCharCode(rune) : null;
+    if (character != null &&
+        (_isAsciiLetterOrDigit(rune) ||
+            character == '-' ||
+            character == '.' ||
+            character == '_' ||
+            character == '~' ||
+            _sourceQueryEncoderMask.contains(character))) {
+      output.write(character);
+      continue;
+    }
+    for (final byte in utf8.encode(String.fromCharCode(rune))) {
+      output.write('%${byte.toRadixString(16).toUpperCase().padLeft(2, '0')}');
+    }
+  }
+  return output.toString();
+}
+
+/// Frozen `replaceKeyPageJs` page-list step: each `<a,b,c>` becomes the page-th
+/// entry, or the last entry once the page is past the end.
+String substituteSourcePageList(String url, int? page) {
+  if (page == null || !url.contains('<')) return url;
+  var result = url;
+  for (final match in RegExp(r'<(.*?)>').allMatches(url)) {
+    final pages = match.group(1)!.split(',');
+    final index = page.clamp(1, pages.length) - 1;
+    result = result.replaceAll(match.group(0)!, pages[index].trim());
+  }
+  return result;
 }

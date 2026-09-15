@@ -61,8 +61,12 @@ void main() {
       expect(output.chapters.map((chapter) => chapter.name), ['首章', '次章']);
       expect(output.content, '正文包含中文和 emoji 😀');
       expect(paths.skip(1), ['/details/73', '/chapters/95', '/text/108']);
+      // The frozen runtime substitutes `{{key}}` raw and only then re-encodes
+      // the query, so a keyword `&` splits the query exactly as it does there:
+      // the literal first pair, then an empty pair from the ` A` remainder.
       expect(Uri.parse(paths.first).queryParameters, {
-        'key': '书 & A',
+        'key': '书 ',
+        ' A': '',
         'page': '1',
       });
       expect(output.trace, hasLength(4));

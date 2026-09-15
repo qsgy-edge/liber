@@ -60,4 +60,59 @@ void main() {
       );
     },
   );
+
+  test('page lists pick an entry and fall back to the last one', () {
+    expect(
+      substituteSourcePageList('http://a/b?p=<1,2,3>', 2),
+      'http://a/b?p=2',
+    );
+    expect(
+      substituteSourcePageList('http://a/b?p=<1,2,3>', 9),
+      'http://a/b?p=3',
+    );
+    expect(
+      substituteSourcePageList('http://a/<x>/b/<1, 2>', 2),
+      'http://a/x/b/2',
+    );
+    // No page at all (a stage the frozen runtime builds without one) and no
+    // list both leave the text alone.
+    expect(
+      substituteSourcePageList('http://a/b?p=<1,2,3>', null),
+      'http://a/b?p=<1,2,3>',
+    );
+    expect(substituteSourcePageList('http://a/b', 3), 'http://a/b');
+  });
+
+  test('query encoding follows the frozen encoder and its skip rule', () {
+    // A legal query is never re-encoded, escapes included.
+    expect(
+      encodeSourceQuery('http://a/b?q=%E4%B9%A6&p=2'),
+      'http://a/b?q=%E4%B9%A6&p=2',
+    );
+    expect(encodeSourceQuery('http://a/b'), 'http://a/b');
+    // A raw query is encoded once: UTF-8, uppercase hex, and the frozen
+    // character set keeps `!$&()*+,/:;=?@[\]^`{|}` as it is.
+    expect(
+      encodeSourceQuery('http://a/b?q=我的 书'),
+      'http://a/b?q=%E6%88%91%E7%9A%84%20%E4%B9%A6',
+    );
+    expect(
+      encodeSourceQuery('http://a/b?j={"k":1}&e=[1]&s=a|b'),
+      'http://a/b?j={%22k%22:1}&e=[1]&s=a|b',
+    );
+    // Everything from the first `?` is the query, a `#` included, and the
+    // apostrophe is the one the frozen encoder escapes while Dart keeps it.
+    expect(
+      encodeSourceQuery("http://a/b?q=it's#top"),
+      'http://a/b?q=it%27s%23top',
+    );
+  });
+
+  test('query skip rule accepts a trailing escape but not a broken one', () {
+    expect(sourceQueryLooksEncoded(r'a=%2B'), isTrue);
+    expect(sourceQueryLooksEncoded(r'a=%2'), isFalse);
+    expect(sourceQueryLooksEncoded(r'a=%zz'), isFalse);
+    expect(sourceQueryLooksEncoded('a=~b!c'), isTrue);
+    expect(sourceQueryLooksEncoded('a=书'), isFalse);
+  });
 }

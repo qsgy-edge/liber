@@ -38,15 +38,15 @@ Runtime observation: `tool/source_triage.dart` runs each source of one exported 
 
 ## Sample weighting
 
-Five user-exported Book Sources were used to weight the gaps. The export itself is **not** stored in this repository (one source carries an authorization header); only names and feature hits are recorded here. Rule bodies, headers, and tokens are not reproduced.
+Five user-exported Book Sources were used to weight the gaps. The export itself is **not** stored in this repository (one source carries an authorization header); only names and feature hits are recorded here. Rule bodies, headers, and tokens are not reproduced. The last column is the state after the request-semantics slice (issue #9, re-measured 2026-09-15 with `tool/source_triage.dart`).
 
 | Source | Pipeline | Four-stage triage | First failure |
 |---|---|---|---|
-| 书趣阁 | HTML | ❌ | `@CSS` extension `:nth-child(n+1)` rejected before any request |
-| 沧元图小说 | HTML | ❌ | rule JavaScript: `searchUrl` uses `{{cookie.removeCookie(source.key)}}`; no `cookie` binding |
-| 猫眼看书 | JSON | ❌ | rule JavaScript: `,{"js":"java.toast(...)"}`; no `java.toast` |
+| 书趣阁 | HTML | ❌ | `@CSS` extension `:nth-child(n+1)` rejected before any request (selector family, slice 4) |
+| 沧元图小说 | HTML | ❌ | rule JavaScript: `searchUrl` uses `{{cookie.removeCookie(source.key)}}`; no `cookie` binding (host surface, slice 2) |
+| 猫眼看书 | JSON | ❌ | rule JavaScript: `,{"js":"java.toast(...)"}`; no `java.toast` (host surface, slice 2) |
 | 就爱文学 | HTML | ✅ (search, info, toc, content) | — |
-| 无限小说网 | HTML | ❌ | search response parsed to zero results |
+| 无限小说网 | HTML | ⏳ search now passes | its search previously parsed to zero results; the request-semantics slice fixed that stage, and `content` extraction is the next blocker (slice 4) |
 
 Feature hits across the sample (counts of sources containing the token):
 
@@ -123,11 +123,12 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Capability | Frozen | Status |
 |---|---|---|
 | URL options (`method`, `headers`, `body`, `js`, `retry`, `origin`) | `AnalyzeUrl.kt:208-248` | ✅ (`origin` parsed and ignored, as frozen does on the HTTP path) |
-| Parameter encoding (`charset`, `escape`, already-encoded detection) | `AnalyzeUrl.kt:279-334` | 🟡 single percent-encoding rule; response decoding is UTF-8 only |
-| `{{key}}` substitution | `AnalyzeUrl.kt:184-200` | 🟡 percent-encoded at substitution time instead of query re-encoding |
-| `{{page}}` substitution and multi-page search | same | ❌ fixed at `1` |
-| Default request headers (`User-Agent`, `Keep-Alive`, `Connection`, `Cache-Control`) | `HttpHelper.kt:72-82` | ❌ |
-| Redirect semantics (301/302/303 → GET without body; 307/308 keep method and body) | OkHttp 4.12 via `HttpHelper.kt:67` | ❌ current transport re-sends the original method on 302 and drops the body |
+| Parameter encoding (`charset`, `escape`, already-encoded detection) | `AnalyzeUrl.kt:279-334` | 🟡 the default path (already-encoded skip plus the frozen query encoder) is implemented; `charset`/`escape` options are still rejected, and response decoding is UTF-8 only |
+| Query re-encoding (nothing else) | `NetworkUtils.encodedQuery`, `AnalyzeUrl.kt:265-278` | 🟡 reproduced, with one platform seam: Dart's HTTP client percent-encodes `{`, `}`, `\|`, `^`, `` ` ``, `\` inside a query where the frozen client sends them raw, and keeps `'` raw where the frozen encoder escapes it |
+| `{{key}}` substitution | `AnalyzeUrl.kt:184-200` | ✅ raw substitution as a JavaScript binding; escaping happens once in the query or body encoder |
+| `{{page}}` substitution, page lists (`<1,2,3>`) and multi-page search | same | 🟡 the pipeline substitutes the requested page and repeats the last list entry; the reader UI still requests page 1 only |
+| Default request headers (`User-Agent`, `Keep-Alive`, `Connection`, `Cache-Control`) | `HttpHelper.kt:72-82` | ✅ injected with the frozen append rule; a source that declares `User-Agent: null` keeps a platform default instead of the baseline's Dalvik agent |
+| Redirect semantics (300/301/302/303 → GET without body; 307/308 keep method and body; 20 follow-ups) | OkHttp 4.12 `RetryAndFollowUpInterceptor` | ✅ including the cross-origin `Authorization` drop; a declared `Cookie` is *not* forwarded to another origin here, a deliberate divergence: the frozen client forwards it |
 | Non-2xx retry from the `retry` option | `OkHttpUtils.kt:29-43` | ✅ |
 | Connection retry, 60 s read/call budgets | `HttpHelper.kt:56-62` | 🟡 30 s request budget, no separate connection-retry parity |
 | Per-source concurrency limit (`ConcurrentRateLimiter`, `concurrentRate`) | `AnalyzeUrl.kt:479`, `JsExtensions.kt:371` | ❌ |
@@ -168,7 +169,7 @@ TTS/reading aloud, image and audio Book Sources, review UI, cloud synchronizatio
 
 Ordered by blocking impact on running real sources, then by sample frequency. Each slice is independently verifiable and should keep its own evidence.
 
-1. **Request defaults and redirect semantics.** Default `User-Agent`/connection headers, OkHttp-style 301/302/303 → GET without body and 307/308 preserving method and body, `{{page}}` substitution, and keyword substitution matching the frozen rule. Blocks every source whose search depends on a browser-like request or a redirected POST result page.
+1. ~~**Request defaults and redirect semantics.**~~ *Implemented (issue #9, 2026-09-15): the rows above are closed except the platform encoding seam and the reader's page-1-only UI.* Default `User-Agent`/connection headers, OkHttp-style 301/302/303 → GET without body and 307/308 preserving method and body, `{{page}}` substitution, and keyword substitution matching the frozen rule. Blocks every source whose search depends on a browser-like request or a redirected POST result page.
 2. **JavaScript host surface.** `cookie.*`, `java.get`/`put`, `java.toast`/`log`, `cache.*`, the common utility family (`base64*`, `hex*`, `encodeURI`, `t2s`), and the `source.*` accessors. Four of five sample sources call `java.*`; two fail before any request for exactly this reason.
 3. **Rule-level JavaScript and templates.** `@js:`/`<js>`/`{{js}}` inside rule fields, `@get:`, inline put parameters, `{{baseUrl}}`/`{{book.*}}`/`{{title}}`, and `###` replaceFirst. Also removes the JSON adapter's silent ` @js:` truncation.
 4. **Extraction and selector family.** Extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`@tag.`, and the Jsoup CSS extensions, behind the ticket 12 adapter.

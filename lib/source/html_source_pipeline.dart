@@ -67,6 +67,10 @@ class HtmlSourcePipeline {
       );
   final trace = <BookSourceTraceEntry>[];
   int tocPages = 0;
+
+  /// The frozen `AnalyzeUrl` page: a search carries one, every other stage is
+  /// built without a page, so `{{page}}` and `<a,b>` stay empty there.
+  int? _page;
   final _bookOptions = <Uri, SourceUrlOptions>{};
   bool get cancelled => _cancellation.isCancelled;
   void cancel() => _cancellation.cancel();
@@ -124,7 +128,7 @@ class HtmlSourcePipeline {
         input: {
           'sourceKey': source['bookSourceUrl'],
           'key': keyword,
-          'page': 1,
+          'page': _page,
           'result': result,
           'baseUrl': source['bookSourceUrl'],
           'headers': const <String, String>{},
@@ -133,18 +137,20 @@ class HtmlSourcePipeline {
         cancellation: _cancellation,
       );
 
-  Future<String> _expand(
-    String template,
-    String keyword, {
-    bool inUrl = false,
-  }) async {
-    return expandSourceUrl(template, (expression, result) async {
-      if (expression.trim() == 'key') {
-        return inUrl ? Uri.encodeComponent(keyword) : keyword;
-      }
-      if (expression.trim() == 'page') return 1;
-      return _evalJs(expression, keyword, result);
-    });
+  Future<String> _expand(String template, String keyword) async {
+    return expandSourceUrl(
+      template,
+      (expression, result) {
+        // The frozen runtime evaluates `{{key}}` and `{{page}}` as JavaScript
+        // bindings; a bare `key` or `page` therefore substitutes the raw value
+        // and the request's query/body encoder does any escaping later.
+        final trimmed = expression.trim();
+        if (trimmed == 'key') return Future<Object?>.value(keyword);
+        if (trimmed == 'page') return Future<Object?>.value(_page);
+        return _evalJs(expression, keyword, result);
+      },
+      page: _page,
+    );
   }
 
   /// Expands one rule, splits its URL options, and applies the `js` option.
@@ -153,14 +159,15 @@ class HtmlSourcePipeline {
     String template,
     String keyword,
   ) async {
-    final split = splitSourceUrlOptions(
-      await _expand(template, keyword, inUrl: true),
-    );
-    var url = _resolve(base, split.path);
+    final split = splitSourceUrlOptions(await _expand(template, keyword));
+    var url = _resolve(base, split.path, keepFragment: true);
     final script = split.options.js;
     if (script != null) {
       final value = await _evalJs(script, keyword, '$url');
-      url = _resolve(base, '$value');
+      url = _resolve(base, '$value', keepFragment: true);
+    }
+    if (!split.options.isPost) {
+      url = _resolve(base, encodeSourceQuery('$url'));
     }
     return (url, split.options);
   }
@@ -168,7 +175,11 @@ class HtmlSourcePipeline {
   /// Resolves an already-extracted rule value that may carry URL options.
   (Uri, SourceUrlOptions) _extracted(Uri base, String value) {
     final split = splitSourceUrlOptions(value);
-    return (_resolve(base, split.path), split.options);
+    var url = _resolve(base, split.path, keepFragment: true);
+    if (!split.options.isPost) {
+      url = _resolve(base, encodeSourceQuery('$url'));
+    }
+    return (url, split.options);
   }
 
   String _rule(String group, String key, {bool optional = false}) {
@@ -192,8 +203,13 @@ class HtmlSourcePipeline {
     return value;
   }
 
-  Uri _resolve(Uri base, String path) {
-    final uri = base.resolve(path).removeFragment();
+  /// Resolves a rule value against [base]. A URL that is about to be fetched
+  /// keeps its fragment, because the frozen `analyzeQuery` folds everything
+  /// after the first `?` (a `#` included) into the query before the request is
+  /// built; every other use drops it as before.
+  Uri _resolve(Uri base, String path, {bool keepFragment = false}) {
+    final resolved = base.resolve(path);
+    final uri = keepFragment ? resolved : resolved.removeFragment();
     if (!['http', 'https'].contains(uri.scheme) ||
         uri.host.isEmpty ||
         uri.userInfo.isNotEmpty) {
@@ -241,8 +257,9 @@ class HtmlSourcePipeline {
     return (html.parse(text), finalUrl);
   }
 
-  Future<List<HtmlBook>> search(String keyword) async {
+  Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
     _validate();
+    _page = page;
     final base = SourceHttpUri.parse(source['bookSourceUrl'] as String);
     final (url, options) = await _request(
       base,
@@ -272,6 +289,7 @@ class HtmlSourcePipeline {
   }
 
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    _page = null;
     final (doc, infoUrl) = await _fetch(
       hit.url,
       BookSourceStage.bookInfo,
@@ -339,6 +357,7 @@ class HtmlSourcePipeline {
   }
 
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+    _page = null;
     var url = chapter.url;
     final visited = <Uri>{};
     final parts = <String>[];

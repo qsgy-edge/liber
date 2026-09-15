@@ -112,7 +112,9 @@ void main() {
     expect(request.method, 'POST');
     expect(request.url.toString(), 'http://source.test/search');
     expect(request.retry, 1);
-    expect(request.body, 'key=%E4%B9%A6%20%26%20A&n=1');
+    // Frozen `analyzeFields`: `{{key}}` substitutes the raw keyword, so the
+    // `&` inside it splits the form and spaces become `+`.
+    expect(request.body, 'key=%E4%B9%A6+&+A&n=1');
     expect(request.headers, {
       'X-Source': '1',
       'X-Option': '2',
@@ -154,10 +156,9 @@ void main() {
       'X-Token': '42',
       'Content-Type': 'application/json; charset=UTF-8',
     });
-    // Keyword substitution is percent-encoded by this runtime; the frozen
-    // baseline substitutes the raw key and relies on the body writer. The
-    // encoding fidelity gap is recorded, not silently normalized here.
-    expect(request.body, '{"key":"%E4%B9%A6"}');
+    // A structured body is not form-encoded: the frozen baseline substitutes
+    // the raw key and keeps the JSON text as it is.
+    expect(request.body, '{"key":"书"}');
   });
 
   test('directory page options reach the following request', () async {

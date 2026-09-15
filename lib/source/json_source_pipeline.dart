@@ -18,10 +18,14 @@ class JsonSourcePipeline {
   Future<SourceReadingResult> run(
     Map<String, dynamic> source,
     String keyword,
-    void Function(BookSourceRunState) onStage,
-  ) async {
+    void Function(BookSourceRunState) onStage, {
+    int page = 1,
+  }) async {
     final trace = <BookSourceTraceEntry>[];
     var stage = BookSourceStage.search;
+    // The frozen search URL carries an `AnalyzeUrl` page; every later stage is
+    // built without one, so `{{page}}` and `<a,b>` stay empty there.
+    int? activePage = page;
     try {
       final search = _rules(source, 'ruleSearch', [
         'bookList',
@@ -54,7 +58,7 @@ class JsonSourcePipeline {
       Map<String, Object?> scriptInput(Object? result) => {
         'sourceKey': '$base',
         'key': keyword,
-        'page': 1,
+        'page': activePage,
         'baseUrl': '$base',
         'result': result,
         'headers': _activeHeaders,
@@ -65,14 +69,19 @@ class JsonSourcePipeline {
             input: scriptInput(result),
             timeout: const Duration(seconds: 30),
           );
-      Future<String> expand(String value) =>
-          expandSourceUrl(value, (script, result) {
-            if (script.trim() == 'key') {
-              return Future.value(Uri.encodeComponent(keyword));
-            }
-            if (script.trim() == 'page') return Future.value(1);
-            return evaluate(script, result);
-          });
+      Future<String> expand(String value) => expandSourceUrl(
+        value,
+        (script, result) {
+          // `{{key}}`/`{{page}}` are JavaScript bindings in the frozen runtime,
+          // so a bare expression substitutes the raw value; the request's
+          // query or body encoder escapes it later.
+          final trimmed = script.trim();
+          if (trimmed == 'key') return Future<Object?>.value(keyword);
+          if (trimmed == 'page') return Future<Object?>.value(activePage);
+          return evaluate(script, result);
+        },
+        page: activePage,
+      );
       // Frozen `BaseSource.getHeaderMap`: static JSON, `@js:` or `<js>`.
       Future<Map<String, String>> sourceHeaders() async {
         if (rawHeader == null) return const {};
@@ -111,6 +120,9 @@ class JsonSourcePipeline {
         if (script != null) {
           url = _url(root, '${await evaluate(script, '$url')}');
         }
+        if (!split.options.isPost) {
+          url = _url(root, encodeSourceQuery('$url'));
+        }
         pending = split.options;
         return url;
       }
@@ -130,6 +142,7 @@ class JsonSourcePipeline {
       options = pending;
 
       stage = BookSourceStage.bookInfo;
+      activePage = null;
       onStage(BookSourceRunState(stage: stage, message: '读取 $searchTitle'));
       document = await _fetch(stage, url, trace, options: options);
       if (source['ruleBookInfo'] is Map &&
