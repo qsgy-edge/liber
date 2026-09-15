@@ -44,6 +44,8 @@ def main():
                                     golden + 'state-expanded-golden.json', str(output / 'state.json')]),
             ('nested-differential', [dart, 'run', 'tool/nested_oracle_compare.dart', str(library),
                                      golden + 'golden.json', str(output / 'nested.json')]),
+            ('html-adapter', [dart, 'run', 'tool/html_adapter_gate.dart', str(library), '-',
+                              str(output / 'html-adapter.json')]),
         ]
     manifest = {'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                 'platform': platform, 'target': target,

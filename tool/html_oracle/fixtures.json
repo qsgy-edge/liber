@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "AnalyzeRule.getString",
+  "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit. The frozen APK run that turns these rows into device goldens is not-run; see README.md.",
+  "documents": {
+    "chapter": "<div class=\"info\"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div><script>var ad = 1;</script><style>.ad{}</style><a href=\"/2\">下一页</a><div id=\"meta\" data-id=\"42\">作者：忘语</div>",
+    "toc": "<div id=\"list\"><li><a href=\"/ad\">忽略</a></li><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
+    "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>"
+  },
+  "cases": [
+    {
+      "id": "ordered-indices",
+      "document": "chapter",
+      "rule": ".info span.1:3:0@text",
+      "expected": "B\nD\nA"
+    },
+    {
+      "id": "exclusion-chain",
+      "document": "toc",
+      "rule": "#list li!0@a@href",
+      "expected": "/1\n/2"
+    },
+    {
+      "id": "negative-index",
+      "document": "chapter",
+      "rule": ".info span.-1@text",
+      "expected": "D"
+    },
+    {
+      "id": "slice-range",
+      "document": "toc",
+      "rule": "#list li[0,2]@a@href",
+      "expected": "/ad\n/2"
+    },
+    {
+      "id": "extraction-text",
+      "document": "chapter",
+      "rule": ".chapter_content@text",
+      "expected": "第一段 第二段嵌套广告 第三段"
+    },
+    {
+      "id": "extraction-textNodes",
+      "document": "chapter",
+      "rule": ".chapter_content@textNodes",
+      "expected": "第一段\n第二段\n第三段"
+    },
+    {
+      "id": "extraction-ownText",
+      "document": "chapter",
+      "rule": ".chapter_content@ownText",
+      "expected": "第一段 第二段 第三段"
+    },
+    {
+      "id": "extraction-html",
+      "document": "chapter",
+      "rule": ".chapter_content@html",
+      "expected": "<div class=\"chapter_content\">\n 第一段\n <br>\n 第二段<span>嵌套广告</span>\n <br>\n 第三段\n</div>"
+    },
+    {
+      "id": "extraction-all",
+      "document": "toc",
+      "rule": "#pages@all",
+      "expected": "<div id=\"pages\">\n <a class=\"gr\" href=\"/toc/2\">下一页</a>\n</div>"
+    },
+    {
+      "id": "extraction-attribute-name",
+      "document": "chapter",
+      "rule": "#meta@data-id",
+      "expected": "42"
+    },
+    {
+      "id": "extraction-href",
+      "document": "toc",
+      "rule": "#pages a@href",
+      "expected": "/toc/2"
+    },
+    {
+      "id": "merge-and",
+      "document": "chapter",
+      "rule": ".info span@text&&#meta@data-id",
+      "expected": "A\nB\nC\nD\n42"
+    },
+    {
+      "id": "merge-or",
+      "document": "chapter",
+      "rule": "#missing@text||#meta@text",
+      "expected": "作者：忘语"
+    },
+    {
+      "id": "merge-interleave",
+      "document": "chapter",
+      "rule": ".info span.0:1@text%%#meta@data-id",
+      "expected": "A\n42\nB"
+    },
+    {
+      "id": "legacy-text-sub-syntax",
+      "document": "chapter",
+      "rule": "text.下一页@href",
+      "expected": "/2"
+    },
+    {
+      "id": "legacy-class-sub-syntax",
+      "document": "search",
+      "rule": "class.itemtxt@text",
+      "expected": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "legacy-tag-sub-syntax",
+      "document": "chapter",
+      "rule": "tag.span@text",
+      "expected": "A\nB\nC\nD\n嵌套广告"
+    },
+    {
+      "id": "replacement-two-fields",
+      "document": "chapter",
+      "rule": "#meta@text##^作者：##",
+      "expected": "忘语"
+    },
+    {
+      "id": "replacement-first-match",
+      "document": "chapter",
+      "rule": "#meta@text##忘语##忘语先生##",
+      "expected": "忘语先生"
+    },
+    {
+      "id": "css-prefix",
+      "document": "search",
+      "rule": "@CSS:.itemtxt h3 a@href",
+      "expected": "/book/1\n/book/2"
+    },
+    {
+      "id": "css-nth-child",
+      "document": "toc",
+      "rule": "@CSS:#list li:nth-child(2n+1)@text",
+      "expected": "忽略\n第二章"
+    },
+    {
+      "id": "css-eq",
+      "document": "toc",
+      "rule": "@CSS:#list li:eq(2) a@href",
+      "expected": "/2"
+    },
+    {
+      "id": "css-lt",
+      "document": "toc",
+      "rule": "@CSS:#list li:lt(2)@text",
+      "expected": "忽略\n第一章"
+    },
+    {
+      "id": "css-contains",
+      "document": "toc",
+      "rule": "@CSS:#list li:contains(第二章) a@href",
+      "expected": "/2"
+    },
+    {
+      "id": "css-has",
+      "document": "search",
+      "rule": "@CSS:div.itemtxt:has(.author)@text",
+      "expected": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "css-matches-own",
+      "document": "toc",
+      "rule": "@CSS:#pages a:matchesOwn(^下一页$)@href",
+      "expected": "/toc/2"
+    },
+    {
+      "id": "css-attribute-operator",
+      "document": "search",
+      "rule": "@CSS:.itemtxt a[href^=/book/]@text",
+      "expected": "书一\n书二"
+    },
+    {
+      "id": "css-not-pseudo",
+      "document": "toc",
+      "rule": "@CSS:#list li:not(:first-child)@text",
+      "expected": "第一章\n第二章"
+    }
+  ]
+}

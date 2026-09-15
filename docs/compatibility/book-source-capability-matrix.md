@@ -8,9 +8,9 @@ Survey date: 2026-09-15 UTC
 ## Verdict
 
 - **CONFIRMED** — The frozen Book Source execution surface has six axes: source fields, rule grammar, JavaScript host surface, request/URL semantics, pipeline features, and product-side reading features. This document inventories the first five; the sixth is listed only as declared non-goals.
-- **CONFIRMED** — The current product implements a bounded slice of all five axes: legacy and `@CSS:` HTML selectors with four extraction operations, a `$.`/`$..`-style JSON adapter, the `java.*` request methods plus the rule-state, cookie, cache, logging and encoding members, the frozen request defaults and redirect rules, and four pipeline stages with page-chaining.
+- **CONFIRMED** — The current product implements a bounded slice of all five axes: the Rust HTML rule adapter (jsoup selectors, the Legado rule layer, and the extraction operations), a `$.`/`$..`-style JSON adapter, the `java.*` request methods plus the rule-state, cookie, cache, logging and encoding members, the frozen request defaults and redirect rules, and four pipeline stages with page-chaining.
 - **CONFIRMED** — Several current behaviors are *divergent* rather than absent: the query characters Dart's client escapes that the frozen one sends raw, cookie keys that are the exact host instead of the effective domain, a declared `Cookie` that is not forwarded across origins, a source debug console that records instead of showing messages, `t2s`/`s2t` and Chinese-numeral `toNumChapter` gaps, and JSON rules that silently drop a ` @js:` suffix instead of executing or rejecting it.
-- **UNVERIFIED** — Every status below is a source-level comparison against the frozen commit above. Only the five-source live triage in [Sample weighting](#sample-weighting) is runtime evidence, and it is an observation, not a golden. No per-capability runtime row exists.
+- **UNVERIFIED** — Every status below is a source-level comparison against the frozen commit above. Only the five-source live triage in [Sample weighting](#sample-weighting) is runtime evidence, and it is an observation, not a golden. No per-capability runtime row exists: the extraction and selector rows added by #12 are source-derived values checked by `tool/html_adapter_gate.dart` on Windows, and their frozen-device rows are `not-run` (`tool/html_oracle/README.md`).
 - **UNVERIFIED** — The sample sources hit 18 of the sampled capability tokens and hit none of `@CSS:`-style rules, `@XPath:`, `@Json:` element rules, `&&`/`%%` merges, `@get:`, cache bindings, or the login fields. Priority in [Proposed slice order](#proposed-slice-order) is ordered by blocking impact, then by sample frequency; it is not a compatibility claim.
 
 ## Boundary
@@ -82,21 +82,21 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 
 | Capability | Frozen | Status |
 |---|---|---|
-| Mode prefixes | `AnalyzeRule.kt:526-560` | 🟡 `@CSS:` subset; ✅ legacy bare subset; ❌ `@Json:` element rules, `@XPath:`, leading `/`, `@@` literal |
-| Merge operators `&&`, `\|\|`, `%%` | `RuleAnalyzer.kt:165`, `AnalyzeByJSoup.kt:131-192` | ❌ |
-| `@` chain, `.N`, `!N`, `N:M` | `AnalyzeByJSoup.kt:159-190`, `303-460` | ✅ |
-| `$1` regex captures in rules | `AnalyzeRule.kt:600-616` | ❌ |
-| Extraction `text`, `textNodes` | `AnalyzeByJSoup.kt:232-252` | ✅ |
-| Extraction by attribute name (`@content`, `@data-*`) | `AnalyzeByJSoup.kt:272` | ❌ whitelist is `text`/`textNodes`/`href`/`src` (`html_source_rules.dart:114`) |
-| Extraction `ownText`, `html`, `all`, `attr(x)` | `AnalyzeByJSoup.kt:253-272` | ❌ |
+| Mode prefixes | `AnalyzeRule.kt:526-560` | ✅ `@CSS:` and legacy bare, `@@` literal; ⛔ `@Json:` element rules, `@XPath:` and a leading `/` rejected with an explicit error |
+| Merge operators `&&`, `\|\|`, `%%` | `RuleAnalyzer.kt:165`, `AnalyzeByJSoup.kt:131-192` | ✅ ported, including the frozen quirk that the first separator found is the only one that splits |
+| `@` chain, `.N`, `!N`, `N:M` | `AnalyzeByJSoup.kt:159-190`, `303-460` | ✅ also the `[i, a:b:c]` list form with negative indices and steps |
+| `$1` regex captures in rules | `AnalyzeRule.kt:600-616` | ⛔ rejected by the adapter; the rule-JavaScript family is #3 |
+| Extraction `text`, `textNodes` | `AnalyzeByJSoup.kt:232-252` | ✅ (`textNodes` keeps the frozen raw-trim, not a whitespace-collapsed value) |
+| Extraction by attribute name (`@content`, `@data-*`) | `AnalyzeByJSoup.kt:272` | ✅ every attribute name; the baseline has no `attr(x)` form, so that row was a plan error |
+| Extraction `ownText`, `html`, `all` | `AnalyzeByJSoup.kt:253-272` | ✅ jsoup serialization with its pretty printing, and `html` dropping `script`/`style` |
 | Replacement `##regex` and `##regex##replacement` | `AnalyzeRule.kt:421-430`, `650-665` | ✅ |
-| Replacement fourth field (`replaceFirst`) | `AnalyzeRule.kt:663-665` | ❌ |
-| Rule-level templates `{{js}}`, `@get:key`, inline `{json}` put parameters | `AnalyzeRule.kt:404-416`, `575-620` | ❌ |
+| Replacement fourth field (`replaceFirst`) | `AnalyzeRule.kt:663-665` | ✅ |
+| Rule-level templates `{{js}}`, `@get:key`, inline `{json}` put parameters | `AnalyzeRule.kt:404-416`, `575-620` | ⛔ rejected by the adapter; templates are #3 |
 | `{{baseUrl}}`, `{{book.*}}`, `{{title}}` inside rule fields | `AnalyzeRule.kt:538-620` | ❌ (URL rules only) |
 | JSONPath adapter | `AnalyzeByJSonPath.kt` | 🟡 `$.`, `$..`, `[*]`, numeric index; ❌ filters/slices |
 | Legacy sub-syntax `text.x@href` | `AnalyzeByJSoup.kt:319` | ✅ |
-| Legacy sub-syntax `class.x`, `@tag.x` | `AnalyzeByJSoup.kt:434+` | ❌ |
-| Jsoup CSS extensions (`:nth-child`, `:eq`, `:contains`, `:has`, …) | `AnalyzeByJSoup.kt:144` (real Jsoup `select`) | ❌ only `:matchesOwn(^x$)` and `[attr^=v]` (`html_source_rules.dart:20-29`) |
+| Legacy sub-syntax `class.x`, `@tag.x` | `AnalyzeByJSoup.kt:434+` | ✅ `class.x`, `tag.x`, `id.x`, `children.x`, `text.x` |
+| Jsoup CSS extensions (`:nth-child`, `:eq`, `:contains`, `:has`, …) | `AnalyzeByJSoup.kt:144` (real Jsoup `select`) | ✅ ported from jsoup 1.16.2 (`:lt`/`:gt`/`:eq`, the `nth-*` family, `:contains`/`:matches` variants, `:has`/`:not`, attribute operators, `:empty`/`:root`, `*|tag`); ⛔ `:matchText` rejected because it rewrites the tree |
 
 ### C. JavaScript host surface
 
@@ -172,14 +172,14 @@ Ordered by blocking impact on running real sources, then by sample frequency. Ea
 1. ~~**Request defaults and redirect semantics.**~~ *Implemented (issue #9, 2026-09-15): the rows above are closed except the platform encoding seam and the reader's page-1-only UI.* Default `User-Agent`/connection headers, OkHttp-style 301/302/303 → GET without body and 307/308 preserving method and body, `{{page}}` substitution, and keyword substitution matching the frozen rule. Blocks every source whose search depends on a browser-like request or a redirected POST result page.
 2. ~~**JavaScript host surface.**~~ *Implemented (issue #10, 2026-09-15): `cookie.*`, `java.get`/`put`, `java.toast`/`longToast`/`log`/`logType`, `cache.*`, the `source.*` accessors, and the encoding family except `t2s`/`s2t` and `androidId`; the file and WebView members are deferred to the untrusted-source boundary and the WebView lane. Both sample sources that previously failed before any request now reach the network.* The slice covered `cookie.*`, `java.get`/`put`, `java.toast`/`log`, `cache.*`, the common utility family (`base64*`, `hex*`, `encodeURI`, `t2s`), and the `source.*` accessors.
 3. **Rule-level JavaScript and templates.** `@js:`/`<js>`/`{{js}}` inside rule fields, `@get:`, inline put parameters, `{{baseUrl}}`/`{{book.*}}`/`{{title}}`, and `###` replaceFirst. Also removes the JSON adapter's silent ` @js:` truncation.
-4. **Extraction and selector family.** Extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`@tag.`, and the Jsoup CSS extensions, behind the ticket 12 adapter.
+4. ~~**Extraction and selector family.**~~ *Implemented (issue #12, 2026-09-15): extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`tag.`/`text.`, the index list form and the Jsoup CSS extensions now run through the Rust adapter (`packages/fjs/liber_html`), behind one whole-document bridge call per stage. The 28 corpus rows in `tool/html_oracle/fixtures.json` are checked on Windows against values read from the frozen source; the frozen-device golden is `not-run`.*
 5. **Pipeline features.** Login, explore, source variables, remote `jsLib`, table-of-contents formatting, volume/VIP markers, cover decoding.
 6. **Peripheral.** Multi-URL page results, `sourceRegex`, downloads, reviews, image/audio sources, reading aloud.
 
 ## Open questions
 
 - Which JSONPath subset the frozen `AnalyzeByJSonPath` actually accepts for the corpus, and how much of it must be emulated rather than approximated.
-- How the ticket 12 adapter should reproduce Jsoup-specific CSS and XPath behavior without vendoring Jsoup semantics.
+- ~~How the ticket 12 adapter should reproduce Jsoup-specific CSS and XPath behavior without vendoring Jsoup semantics.~~ *Answered for HTML/CSS by #12: the adapter is a Rust port of jsoup 1.16.2's selector engine and Legado's rule layer (ADR 0008). The XPath row is still open and needs its own decision.*
 - Whether the login flow is needed for the Windows target or stays deferred with the security boundary (ticket 05).
 - What the per-source concurrency limit should be, since the frozen contract compares concurrent batches and the product currently issues one request at a time.
 - Whether `{{key}}` encoding parity is a compatibility requirement or an accepted divergence; the frozen rule changes the wire bytes for non-ASCII keywords.

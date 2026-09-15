@@ -88,6 +88,9 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$toolchain/sysroot --target=aarch64-linux-android26" >> "$GITHUB_ENV"
       - name: Build native runtime
         run: cargo build --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
+      - name: HTML adapter tests
+        if: matrix.platform != 'android' && matrix.platform != 'ios'
+        run: cargo test --locked --manifest-path packages/fjs/liber_html/Cargo.toml
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         with:

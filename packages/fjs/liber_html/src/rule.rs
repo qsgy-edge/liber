@@ -336,7 +336,9 @@ struct IndexSpec {
 #[allow(unused_assignments)]
 fn find_indexes(rule: &str) -> Result<IndexSpec, RuleError> {
     let rus: Vec<char> = rule.trim().chars().collect();
-    let mut split = ' ';
+    // The frozen `ElementsSingle.split` defaults to the selecting '.', and only
+    // a rule with no index at all falls through to the no-filter ' ' case.
+    let mut split = '.';
     let mut before_rule = String::new();
     let mut index_default: Vec<i64> = Vec::new();
     let mut indexes: Vec<IndexItem> = Vec::new();
@@ -785,6 +787,8 @@ mod tests {
     fn legacy_ordered_indices_and_chains() {
         assert_eq!(text(".info span.1:3:0@text"), "B\nD\nA");
         assert_eq!(list(".chapters li!0@a@href"), vec!["/1"]);
+        assert_eq!(list(".chapters li[0]@a@href"), vec!["/ad"]);
+        assert_eq!(list(".chapters li[1,0]@a@href"), vec!["/1", "/ad"]);
         assert_eq!(text(".info span.-1@text"), "D");
         assert_eq!(text(".info span@textNodes"), "A\nB\nC\nD");
         assert_eq!(list("text.下一页@href"), vec!["/2"]);

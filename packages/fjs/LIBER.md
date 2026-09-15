@@ -42,6 +42,19 @@ remaining AnalyzeUrl options are not implemented. No full shared-scope or
 frozen-oracle compatibility claim follows from the Windows regression tests.
 Android/iOS/macOS/Linux remain not-run for this revision.
 
+`liber_html/` is a Liber crate inside the same native build: the frozen HTML rule
+adapter (a port of jsoup 1.16.2's selector engine over `html5ever`, plus Legado's
+rule layer, ADR 0008). `libfjs` depends on it by path and exposes `html_analyze`
+through `libfjs/src/api/html.rs`; the Dart API is
+`lib/src/frb/api/html.dart`, re-exported from `lib/fjs.dart`. Its own tests are
+independent of the JavaScript runtime:
+`cargo test --manifest-path packages/fjs/liber_html/Cargo.toml`.
+Re-running the pinned `flutter_rust_bridge_codegen generate` to add that API also
+re-emitted the vendored generated files in the tool's current layout; apart from
+the new html API the exposed surface is unchanged. The `tool/check_frb_*` scripts
+that `libfjs/cargokit.yaml` lists as hash inputs are not vendored in this
+repository, so regeneration is the only consistency check here.
+
 Build through the package's existing cargokit integration when building Flutter.
 For a native diagnostic build, use `cargo build --release --locked` from
 `libfjs/`, keeping the tested target directory and loaded DLL provenance explicit.

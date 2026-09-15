@@ -275,3 +275,58 @@ fn is_boolean_attribute(key: &str) -> bool {
 fn whitespace_tail(accum: &str) -> bool {
     last_char_is_whitespace(accum)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Dom;
+
+    fn html_of(source: &str, selector: &str) -> String {
+        let dom = Dom::parse(source);
+        let ids = crate::selector::select(&dom, 0, selector).expect("selector parses");
+        elements_outer_html(&dom, &ids, false)
+    }
+
+    /// Traced from jsoup 1.16.2: `Element.outerHtmlHead`/`Tail` plus
+    /// `TextNode.outerHtmlHead` with the default output settings, where the
+    /// first text of a format-as-block parent is indented and a text after a
+    /// `br` is indented again.
+    #[test]
+    fn pretty_print_matches_jsoup_for_block_content() {
+        let source = "<div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div>";
+        assert_eq!(
+            html_of(source, ".chapter_content"),
+            "<div class=\"chapter_content\">
+ 第一段
+ <br>
+ 第二段<span>嵌套广告</span>
+ <br>
+ 第三段
+</div>"
+        );
+    }
+
+    #[test]
+    fn pretty_print_matches_jsoup_for_inline_first_child() {
+        let source = "<div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>";
+        assert_eq!(
+            html_of(source, "#pages"),
+            "<div id=\"pages\">
+ <a class=\"gr\" href=\"/toc/2\">下一页</a>
+</div>"
+        );
+    }
+
+    #[test]
+    fn html_extraction_drops_script_and_style() {
+        let source = "<div class=\"con\"><script>var a=1;</script><p>正文</p><style>.a{}</style></div>";
+        let dom = Dom::parse(source);
+        let ids = crate::selector::select(&dom, 0, ".con").expect("selector parses");
+        assert_eq!(
+            elements_outer_html(&dom, &ids, true),
+            "<div class=\"con\">
+ <p>正文</p>
+</div>"
+        );
+    }
+}
