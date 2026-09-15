@@ -140,6 +140,7 @@ Future<void> main(List<String> args) async {
   } else {
     stdout.writeln(encoded);
   }
+  NativeLibrary.dispose();
   stdout.writeln(
     'adapter corpus: ${failed ? 'fail' : 'pass'} '
     '(${cases.length} cases, frozen golden ${golden == null ? 'not-run' : 'compared'})',

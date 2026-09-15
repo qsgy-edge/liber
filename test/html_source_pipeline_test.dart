@@ -26,6 +26,7 @@ class SitePages implements BookSourceTransport {
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
 
   test(
     'source JSON drives all directory pages and only same-chapter content pages',

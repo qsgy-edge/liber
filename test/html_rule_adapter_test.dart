@@ -9,6 +9,7 @@ import 'native_library.dart';
 /// crate's own tests; these rows prove the shipped path.
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
 
   const document =
       '<div class="info"><span>A</span><span>B</span><span>C</span><span>D</span></div>'

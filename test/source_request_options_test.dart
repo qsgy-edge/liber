@@ -10,6 +10,7 @@ import 'native_library.dart';
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
 
   test('URL options follow the frozen split and validation rules', () {
     final plain = splitSourceUrlOptions('/search?key=x');

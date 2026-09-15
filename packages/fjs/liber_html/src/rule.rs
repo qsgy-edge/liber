@@ -199,23 +199,67 @@ fn java_replacement(replacement: &str) -> String {
 /// Frozen `AnalyzeRule.replaceRegex`.
 pub fn apply_replace(value: &str, replace: &Replace) -> String {
     let compiled = Regex::new(&replace.regex).ok();
+    // Java throws on a reference to a group that does not exist and the frozen
+    // `runCatching` swallows it, falling back to a literal replacement (or to
+    // the raw replacement string in the `replaceFirst` branch).
+    let usable = compiled
+        .as_ref()
+        .map(|regex| references_exist(&replace.replacement, regex.captures_len()))
+        .unwrap_or(false);
     let replacement = java_replacement(&replace.replacement);
     if replace.replace_first {
-        return match compiled {
-            Some(regex) => match regex.find(value) {
-                Ok(Some(found)) => {
-                    let text = found.as_str().to_string();
-                    regex.replace_all(&text, replacement.as_str()).into_owned()
-                }
-                _ => String::new(),
-            },
-            None => value.replacen(&replace.regex, &replace.replacement, 1),
+        if !usable {
+            return replace.replacement.clone();
+        }
+        let regex = compiled.expect("usable implies a compiled pattern");
+        return match regex.find(value) {
+            Ok(Some(found)) => {
+                let text = found.as_str().to_string();
+                regex.replace_all(&text, replacement.as_str()).into_owned()
+            }
+            _ => String::new(),
         };
     }
-    match compiled {
+    match usable.then_some(compiled).flatten() {
         Some(regex) => regex.replace_all(value, replacement.as_str()).into_owned(),
         None => value.replace(&replace.regex, &replace.replacement),
     }
+}
+
+/// True when every `$n`/`${n}` reference in a Java replacement names a group the
+/// pattern has. Java's `Matcher` throws for one that does not.
+fn references_exist(replacement: &str, groups: usize) -> bool {
+    let chars: Vec<char> = replacement.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '\\' {
+            index += 2;
+            continue;
+        }
+        if chars[index] == '$' {
+            let mut look = index + 1;
+            let mut digits = String::new();
+            let explicit = chars.get(look) == Some(&'{');
+            if explicit {
+                look += 1;
+            }
+            while look < chars.len() && chars[look].is_ascii_digit() {
+                digits.push(chars[look]);
+                look += 1;
+            }
+            if !digits.is_empty() {
+                if let Ok(group) = digits.parse::<usize>() {
+                    if group >= groups {
+                        return false;
+                    }
+                }
+            }
+            index = look.max(index + 1);
+            continue;
+        }
+        index += 1;
+    }
+    true
 }
 
 /// Frozen `RuleAnalyzer.trim`: drop leading `@`s and whitespace.
@@ -897,6 +941,10 @@ mod tests {
         // Java capture references survive a Chinese suffix.
         assert_eq!(text("#meta@text##(作者)：##$1是###"), "作者是");
         assert_eq!(text("#meta@text##(作者)：##$1是##"), "作者是忘语");
+        // An unknown group reference is Java's exception path: the frozen
+        // `runCatching` falls back to replacing the pattern text literally.
+        assert_eq!(text("#meta@text##忘语##$9##"), "作者：$9");
+        assert_eq!(text("#meta@text##忘语##$9###"), "$9");
     }
 
     #[test]

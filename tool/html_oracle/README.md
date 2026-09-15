@@ -1,8 +1,9 @@
 # HTML rule oracle corpus
 
 `fixtures.json` is the extraction/selector row set the ticket 12 adapter is
-measured against: one document per shape (chapter, table of contents, search
-result) and one case per capability - the ordered and bracket index syntax, the
+measured against: five documents (chapter, table of contents, search result, one
+with script/style nodes, one with a double-encoded entity) and one case per
+capability - the ordered and bracket index syntax, the
 `&&`/`||`/`%%` merges, the legacy `class.`/`tag.`/`text.` sub-syntax, every
 extraction operation, and the Jsoup CSS extensions.
 

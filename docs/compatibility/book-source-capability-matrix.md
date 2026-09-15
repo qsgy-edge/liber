@@ -23,7 +23,7 @@ Out of scope: UI reproduction, bookshelf/sync semantics, migration format, diffe
 
 | Mark | Meaning |
 |---|---|
-| ✅ | Implemented and covered by an automated test or gate on Windows |
+| ✅ | Implemented and covered by an automated test or gate on a destination platform |
 | 🟡 | Implemented partially, or implemented with a known behavioral divergence from the frozen baseline |
 | ❌ | Not implemented; the capability is currently unreachable |
 | ⛔ | Deliberately rejected with an explicit error, or reserved for a security decision |
@@ -81,7 +81,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 ### B. Rule grammar and selectors
 
 The rows below include the #12 adapter rows. `✅` there means implemented and covered by the
-crate's tests plus the gate corpus (`tool/html_adapter_gate.dart`, run for every destination platform in CI); their frozen-device
+crate's tests plus the gate corpus (`tool/html_adapter_gate.dart`, run for the desktop destinations in CI - Windows, Linux and macOS; the Android and iOS jobs cross-build the native library only); their frozen-device
 rows are `not-run` (`tool/html_oracle/README.md`), so nothing in this section is a
 device-confirmed compatibility claim.
 
@@ -93,7 +93,7 @@ device-confirmed compatibility claim.
 | `$1` regex captures in rules | `AnalyzeRule.kt:600-616` | ⛔ rejected by the adapter; the rule-JavaScript family is #3 |
 | Extraction `text`, `textNodes` | `AnalyzeByJSoup.kt:232-252` | ✅ (`textNodes` keeps the frozen raw-trim, not a whitespace-collapsed value) |
 | Extraction by attribute name (`@content`, `@data-*`) | `AnalyzeByJSoup.kt:272` | ✅ every attribute name; the baseline has no `attr(x)` form, so that row was a plan error |
-| Extraction `ownText`, `html`, `all` | `AnalyzeByJSoup.kt:253-272` | ✅ jsoup serialization with its pretty printing; `html` drops `script`/`style` and `all` keeps them, as frozen. The frozen `AnalyzeRule.getString` entity unescape runs over the result; the table used is HTML5's, a superset of Java's HTML 4 one |
+| Extraction `ownText`, `html`, `all` | `AnalyzeByJSoup.kt:253-272` | ✅ jsoup serialization with its pretty printing; `html` drops `script`/`style` and `all` keeps them, as frozen. The frozen `AnalyzeRule.getString` entity unescape runs over the result; the named table is HTML5's (a superset of Java's HTML 4 one) and a numeric reference is decoded whenever it is a valid scalar, where Java keeps its invalid-reference placeholders |
 | Replacement `##regex` and `##regex##replacement` | `AnalyzeRule.kt:421-430`, `650-665` | ✅ |
 | Replacement fourth field (`replaceFirst`) | `AnalyzeRule.kt:663-665` | ✅ |
 | Rule-level templates `{{js}}`, `@get:key`, inline `{json}` put parameters | `AnalyzeRule.kt:404-416`, `575-620` | ⛔ rejected by the adapter; templates are #3 |

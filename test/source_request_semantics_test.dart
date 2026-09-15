@@ -74,6 +74,7 @@ class _WireServer {
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
 
   test('default headers follow the frozen interceptor rules', () async {
     final server = _WireServer((_) => ok('ok'));
