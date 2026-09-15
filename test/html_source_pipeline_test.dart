@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
 
 class SitePages implements BookSourceTransport {
   SitePages(this.pages);
@@ -21,6 +25,8 @@ class SitePages implements BookSourceTransport {
 }
 
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+
   test(
     'source JSON drives all directory pages and only same-chapter content pages',
     () async {

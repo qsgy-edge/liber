@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
 
 /// One recorded request: the request line and lowercased headers.
 class _WireRequest {
@@ -70,6 +73,8 @@ class _WireServer {
 }
 
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+
   test('default headers follow the frozen interceptor rules', () async {
     final server = _WireServer((_) => ok('ok'));
     await server.start();

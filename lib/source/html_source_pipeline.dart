@@ -1,11 +1,8 @@
 import 'dart:convert';
 
-import 'package:html/dom.dart';
-import 'package:html/parser.dart' as html;
-
 import '../domain/contracts.dart';
 import 'book_source_service.dart';
-import 'html_source_rules.dart';
+import 'html_rule_adapter.dart';
 import 'js_source_runtime.dart';
 import 'source_host_dispatcher.dart';
 import 'source_http_uri.dart';
@@ -50,6 +47,11 @@ class HtmlChapterBody {
   final int pages;
 }
 
+/// The frozen four-stage HTML pipeline over the Rust rule adapter.
+///
+/// Every stage parses its page once and hands the whole document plus that
+/// stage's rules to [HtmlRuleBatch], which is the frozen `AnalyzeByJSoup`
+/// shape: one tree, many rules, one bridge call.
 class HtmlSourcePipeline {
   HtmlSourcePipeline(this.source, this.transport, {this._scriptRuntime});
   final Map<String, dynamic> source;
@@ -208,17 +210,17 @@ class HtmlSourcePipeline {
     throw FormatException('缺少 $group.$key');
   }
 
-  String _value(
-    Node context,
-    String group,
-    String key, {
-    bool optional = false,
-  }) {
-    final rule = _rule(group, key, optional: optional);
-    if (rule.isEmpty) return '';
-    final value = HtmlSourceRules.text(context, rule);
-    if (!optional && value.isEmpty) throw FormatException('$group.$key 未匹配到内容');
+  /// A required extraction of one matched element.
+  String _required(HtmlStringList values, int index, String label) {
+    final value = values.values[index];
+    if (value.isEmpty) throw FormatException('$label 未匹配到内容');
     return value;
+  }
+
+  /// A required extraction of the document.
+  String _requiredValue(HtmlString value, String label) {
+    if (value.isEmpty) throw FormatException('$label 未匹配到内容');
+    return value.value;
   }
 
   /// Resolves a rule value against [base]. A URL that is about to be fetched
@@ -236,7 +238,7 @@ class HtmlSourcePipeline {
     return uri;
   }
 
-  Future<(Document, Uri)> _fetch(
+  Future<(String, Uri)> _fetch(
     Uri url,
     BookSourceStage stage, {
     SourceUrlOptions options = const SourceUrlOptions(),
@@ -272,7 +274,7 @@ class HtmlSourcePipeline {
     }
     _cancellation.throwIfCancelled();
     trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
-    return (html.parse(text), finalUrl);
+    return (text, finalUrl);
   }
 
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
@@ -284,49 +286,98 @@ class HtmlSourcePipeline {
       source['searchUrl'] as String,
       keyword,
     );
-    final (doc, finalUrl) = await _fetch(
+    final (html, finalUrl) = await _fetch(
       url,
       BookSourceStage.search,
       options: options,
     );
-    return HtmlSourceRules.elements(doc, _rule('ruleSearch', 'bookList')).map((
-      item,
-    ) {
+    final batch = HtmlRuleBatch(html);
+    final items = batch.elements('items', _rule('ruleSearch', 'bookList'));
+    final names = batch.elementsText(
+      'name',
+      _rule('ruleSearch', 'name'),
+      items,
+    );
+    final urls = batch.elementsText(
+      'url',
+      _rule('ruleSearch', 'bookUrl'),
+      items,
+    );
+    final authors = batch.elementsText(
+      'author',
+      _rule('ruleSearch', 'author', optional: true),
+      items,
+    );
+    final kinds = batch.elementsText(
+      'kind',
+      _rule('ruleSearch', 'kind', optional: true),
+      items,
+    );
+    await batch.run();
+
+    final books = <HtmlBook>[];
+    for (var index = 0; index < items.length; index++) {
       final (bookUrl, bookOptions) = _extracted(
         finalUrl,
-        _value(item, 'ruleSearch', 'bookUrl'),
+        _required(urls, index, 'ruleSearch.bookUrl'),
       );
       _bookOptions[bookUrl] = bookOptions;
-      return HtmlBook(
-        url: bookUrl,
-        title: _value(item, 'ruleSearch', 'name'),
-        author: _value(item, 'ruleSearch', 'author', optional: true),
-        kind: _value(item, 'ruleSearch', 'kind', optional: true),
+      books.add(
+        HtmlBook(
+          url: bookUrl,
+          title: _required(names, index, 'ruleSearch.name'),
+          author: authors.values[index],
+          kind: kinds.values[index],
+        ),
       );
-    }).toList();
+    }
+    return books;
   }
 
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
     _page = null;
-    final (doc, infoUrl) = await _fetch(
+    final (html, infoUrl) = await _fetch(
       hit.url,
       BookSourceStage.bookInfo,
       options: _bookOptions.remove(hit.url) ?? const SourceUrlOptions(),
     );
-    final cover = _value(doc, 'ruleBookInfo', 'coverUrl', optional: true);
+    final batch = HtmlRuleBatch(html);
+    final name = batch.documentText('name', _rule('ruleBookInfo', 'name'));
+    final author = batch.documentText(
+      'author',
+      _rule('ruleBookInfo', 'author', optional: true),
+    );
+    final intro = batch.documentText(
+      'intro',
+      _rule('ruleBookInfo', 'intro', optional: true),
+    );
+    final cover = batch.documentText(
+      'cover',
+      _rule('ruleBookInfo', 'coverUrl', optional: true),
+    );
+    final kind = batch.documentText(
+      'kind',
+      _rule('ruleBookInfo', 'kind', optional: true),
+    );
+    final lastChapter = batch.documentText(
+      'lastChapter',
+      _rule('ruleBookInfo', 'lastChapter', optional: true),
+    );
+    final tocUrl = batch.documentText('tocUrl', _rule('ruleBookInfo', 'tocUrl'));
+    await batch.run();
+
     final book = HtmlBook(
       url: hit.url,
-      title: _value(doc, 'ruleBookInfo', 'name'),
-      author: _value(doc, 'ruleBookInfo', 'author', optional: true),
-      intro: _value(doc, 'ruleBookInfo', 'intro', optional: true),
-      cover: cover.isEmpty ? '' : '${_resolve(infoUrl, cover)}',
-      kind: _value(doc, 'ruleBookInfo', 'kind', optional: true),
-      lastChapter: _value(doc, 'ruleBookInfo', 'lastChapter', optional: true),
+      title: _requiredValue(name, 'ruleBookInfo.name'),
+      author: author.value,
+      intro: intro.value,
+      cover: cover.isEmpty ? '' : '${_resolve(infoUrl, cover.value)}',
+      kind: kind.value,
+      lastChapter: lastChapter.value,
     );
-    var url = _resolve(infoUrl, _value(doc, 'ruleBookInfo', 'tocUrl'));
-    var tocOptions = _extracted(infoUrl, _value(doc, 'ruleBookInfo', 'tocUrl'));
-    url = tocOptions.$1;
-    var options = tocOptions.$2;
+    final (tocTarget, tocOptions) = _extracted(infoUrl, tocUrl.value);
+    var url = tocTarget;
+    var options = tocOptions;
     final visited = <Uri>{};
     final chapterUrls = <Uri>{};
     final chapters = <SourceChapter>[];
@@ -341,15 +392,28 @@ class HtmlSourcePipeline {
         options: options,
       );
       tocPages++;
-      final items = HtmlSourceRules.elements(
-        page,
-        _rule('ruleToc', 'chapterList'),
+      final batch = HtmlRuleBatch(page);
+      final items = batch.elements('items', _rule('ruleToc', 'chapterList'));
+      final names = batch.elementsText(
+        'name',
+        _rule('ruleToc', 'chapterName'),
+        items,
       );
+      final urls = batch.elementsText(
+        'url',
+        _rule('ruleToc', 'chapterUrl'),
+        items,
+      );
+      final next = batch.documentText(
+        'next',
+        _rule('ruleToc', 'nextTocUrl', optional: true),
+      );
+      await batch.run();
       if (items.isEmpty) throw StateError('目录页为空');
-      for (final item in items) {
+      for (var index = 0; index < items.length; index++) {
         final (chapterUrl, chapterOptions) = _extracted(
           pageUrl,
-          _value(item, 'ruleToc', 'chapterUrl'),
+          _required(urls, index, 'ruleToc.chapterUrl'),
         );
         if (chapterOptions.isPost ||
             chapterOptions.body != null ||
@@ -362,20 +426,45 @@ class HtmlSourcePipeline {
           throw StateError('目录含重复章节：$chapterUrl');
         }
         chapters.add(
-          SourceChapter(_value(item, 'ruleToc', 'chapterName'), chapterUrl),
+          SourceChapter(
+            _required(names, index, 'ruleToc.chapterName'),
+            chapterUrl,
+          ),
         );
       }
-      final next = _value(page, 'ruleToc', 'nextTocUrl', optional: true);
       if (next.isEmpty) break;
-      final (nextUrl, nextOptions) = _extracted(pageUrl, next);
+      final (nextUrl, nextOptions) = _extracted(pageUrl, next.value);
       url = nextUrl;
       options = nextOptions;
     }
     return (book, chapters);
   }
 
+  /// `ruleContent.content` with the source's `replaceRegex` field appended.
+  ///
+  /// The frozen content rule carries the replacement as its own field and the
+  /// `##` machinery applies it to the extracted text; appending it keeps that
+  /// behaviour inside the adapter instead of re-implementing it here.
+  String _contentRule(SourceChapter chapter) {
+    final content = _rule('ruleContent', 'content');
+    final replacement = _rule(
+      'ruleContent',
+      'replaceRegex',
+      optional: true,
+    ).replaceAll('{{chapter.title}}', chapter.name);
+    if (replacement.contains('{{')) {
+      throw UnsupportedError('暂不支持该正文替换表达式');
+    }
+    if (replacement.isEmpty) return content;
+    if (content.contains('##')) {
+      throw UnsupportedError('暂不支持同时使用正文替换和规则内替换');
+    }
+    return '$content$replacement';
+  }
+
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
     _page = null;
+    final contentRule = _contentRule(chapter);
     var url = chapter.url;
     final visited = <Uri>{};
     final parts = <String>[];
@@ -384,25 +473,24 @@ class HtmlSourcePipeline {
       if (!visited.add(url) || visited.length > 20) {
         throw StateError('正文分页循环或超出 20 页');
       }
-      final (doc, pageUrl) = await _fetch(
+      final (html, pageUrl) = await _fetch(
         url,
         BookSourceStage.content,
         options: SourceUrlOptions(retry: retry),
       );
-      var text = _value(doc, 'ruleContent', 'content');
-      final replacement = _rule(
-        'ruleContent',
-        'replaceRegex',
-        optional: true,
-      ).replaceAll('{{chapter.title}}', chapter.name);
-      if (replacement.contains('{{')) throw UnsupportedError('暂不支持该正文替换表达式');
-      if (replacement.isNotEmpty) {
-        text = HtmlSourceRules.replace(text, replacement);
+      final batch = HtmlRuleBatch(html);
+      final content = batch.documentText('content', contentRule);
+      final next = batch.documentText(
+        'next',
+        _rule('ruleContent', 'nextContentUrl', optional: true),
+      );
+      await batch.run();
+      if (content.isEmpty) {
+        throw const FormatException('ruleContent.content 未匹配到内容');
       }
-      parts.add(text);
-      final next = _value(doc, 'ruleContent', 'nextContentUrl', optional: true);
+      parts.add(content.value);
       if (next.isEmpty) break;
-      final (nextUrl, nextOptions) = _extracted(pageUrl, next);
+      final (nextUrl, nextOptions) = _extracted(pageUrl, next.value);
       if (nextOptions.isPost ||
           nextOptions.body != null ||
           nextOptions.headers.isNotEmpty ||

@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
-import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/html_source_browser.dart';
+import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/source/online_reading_store.dart';
@@ -19,27 +20,38 @@ class MemoryStore extends OnlineReadingStore {
   }
 }
 
-class Pages implements BookSourceTransport {
+/// The reader only needs chapter text. Driving the real rule adapter here would
+/// load the native library into a widget test, where the binding cannot settle
+/// pending bridge work; the rule semantics have their own coverage in
+/// `html_rule_adapter_test.dart` and in the HTML pipeline test.
+class ScriptedPipeline extends HtmlSourcePipeline {
+  ScriptedPipeline({this.gate})
+    : super(const {'bookSourceUrl': 'https://example.test'}, _UnusedTransport());
+
+  /// Holds the second chapter response so the loading header can be observed.
+  final Completer<void>? gate;
+  int calls = 0;
+
   @override
-  Future<String> request({
-    required BookSourceStage stage,
-    required String path,
-  }) async =>
-      '<div class="con">${List.generate(60, (i) => '<p>$path 第$i段 中文内容。</p>').join()}</div>';
+  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+    if (gate != null && calls++ > 0) await gate!.future;
+    return HtmlChapterBody(
+      List.generate(
+        60,
+        (i) => '${chapter.url} 第$i段 中文内容。',
+      ).join('\n'),
+      1,
+    );
+  }
 }
 
-/// Holds the second chapter response so the loading header can be observed.
-class GatedPages implements BookSourceTransport {
-  final gate = Completer<void>();
-  int calls = 0;
+class _UnusedTransport implements BookSourceTransport {
+  const _UnusedTransport();
   @override
   Future<String> request({
     required BookSourceStage stage,
     required String path,
-  }) async {
-    if (calls++ > 0) await gate.future;
-    return '<div class="con"><p>$path 中文内容。</p></div>';
-  }
+  }) => throw StateError('该测试不经过传输层');
 }
 
 void main() {
@@ -50,7 +62,7 @@ void main() {
         'bookSourceUrl': 'https://example.test',
         'ruleContent': {'content': '@CSS:.con p@text'},
       };
-      final pipeline = HtmlSourcePipeline(source, Pages());
+      final pipeline = ScriptedPipeline();
       final store = MemoryStore();
       await tester.pumpWidget(
         MaterialApp(
@@ -93,9 +105,7 @@ void main() {
     'reader saves visible paragraph, restores it, and switches chapters',
     (tester) async {
       final store = MemoryStore();
-      final pipeline = HtmlSourcePipeline({
-        'ruleContent': {'content': '@CSS:.con p@text'},
-      }, Pages());
+      final pipeline = ScriptedPipeline();
       final chapters = [
         SourceChapter('第一章', Uri.parse('https://example.test/1')),
         SourceChapter('第二章', Uri.parse('https://example.test/2')),
@@ -140,10 +150,7 @@ void main() {
     tester,
   ) async {
     final store = MemoryStore();
-    final pages = GatedPages();
-    final pipeline = HtmlSourcePipeline({
-      'ruleContent': {'content': '@CSS:.con p@text'},
-    }, pages);
+    final pipeline = ScriptedPipeline(gate: Completer<void>());
     final chapters = [
       SourceChapter('第一章', Uri.parse('https://example.test/1')),
       SourceChapter('第二章', Uri.parse('https://example.test/2')),
@@ -169,7 +176,7 @@ void main() {
     expect(find.text('第一章'), findsNothing);
     expect(find.text('第二章'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    pages.gate.complete();
+    pipeline.gate!.complete();
     await tester.pumpAndSettle();
     expect(find.text('第二章'), findsOneWidget);
     expect(store.value!['chapterUrl'], 'https://example.test/2');

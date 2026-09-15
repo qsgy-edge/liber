@@ -3,9 +3,14 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_url_rules.dart';
 
+import 'native_library.dart';
+
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+
   test('URL options follow the frozen split and validation rules', () {
     final plain = splitSourceUrlOptions('/search?key=x');
     expect(plain.path, '/search?key=x');

@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fjs/fjs.dart';
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 import '../domain/contracts.dart';
+import 'native_library.dart';
 import 'source_host_dispatcher.dart';
 import 'source_http_uri.dart';
 import 'source_url_rules.dart';
@@ -75,11 +75,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   static Future<void>? _init;
   static int _active = 0;
   static Future<void> initialize({String? libraryPath}) =>
-      _init ??= LibFjs.init(
-        externalLibrary: libraryPath == null
-            ? null
-            : ExternalLibrary.open(libraryPath),
-      );
+      NativeLibrary.initialize(libraryPath: libraryPath);
   static final _sessions = <(String, int), Future<_ScriptSession>>{};
   static Future<_ScriptSession> _shared(String library, int limit) {
     final key = (library, limit);
