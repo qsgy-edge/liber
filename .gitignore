@@ -1,0 +1,13 @@
+.codegraph
+
+.dart_tool/
+build/
+.idea/
+*.iml
+.flutter-plugins-dependencies
+
+# Native build caches and local build diagnostics.
+target/
+/build-webview.log
+/build-webview-verbose.log
+/.ci-results/
