@@ -24,3 +24,14 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - After each runnable migration slice passes its automated checks, launch the Windows app for visual/manual review before starting the next slice.
 
 <!-- agents-md-author:end wayfinder-migration -->
+
+<!-- agents-md-author:begin branch-and-worktree-lifecycle -->
+
+## Branch and worktree lifecycle
+
+- `master` is the only long-lived branch. `archive-master` is the local pointer to the pre-split history and is never pushed; the private `liber-archive` repository holds that history plus every retired branch, as `archived/<branch>`.
+- Investigation work happens on a short-lived branch named after its ticket (`prototype/<ticket>`, `wayfinder/<ticket>`), usually in a task worktree beside the checkout (`../liber-<ticket>`).
+- When a ticket closes: record its findings in the ticket, an ADR, or a contract document first; push any commit that exists nowhere else to `liber-archive`; then remove the worktree (`git worktree remove`) and delete the local branch. A closed ticket leaves no branch or worktree behind.
+- Keep retired evidence reachable: `git log --oneline archive-master` and `git grep archive-master -- <path>` read the pre-split tree, and `git ls-remote --heads archive` lists what the archive kept.
+
+<!-- agents-md-author:end branch-and-worktree-lifecycle -->
