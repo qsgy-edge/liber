@@ -72,7 +72,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
 
   /// Frozen `CacheManager` storage, for this process only.
   static final Map<String, (Object?, int)> _cache = {};
-  static Future<void>? _init;
   static int _active = 0;
   static Future<void> initialize({String? libraryPath}) =>
       NativeLibrary.initialize(libraryPath: libraryPath);
@@ -100,9 +99,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       await (await session).engine.closeGracefully();
     }
     _sessions.clear();
-    if (_init == null) return;
-    LibFjs.dispose();
-    _init = null;
+    NativeLibrary.dispose();
   }
 
   @override

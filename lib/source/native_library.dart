@@ -22,4 +22,16 @@ class NativeLibrary {
       );
 
   static Future<void> get ready => initialize();
+
+  /// Closes the process-wide bridge.
+  ///
+  /// Every consumer shares one initialization, so it also shares the one
+  /// disposal: `LibFjs.dispose()` must not run while another consumer is still
+  /// using the library, and leaving it out leaves the bridge's pending work
+  /// alive, which keeps a Dart process (and a widget test) from settling.
+  static void dispose() {
+    if (_init == null) return;
+    LibFjs.dispose();
+    _init = null;
+  }
 }
