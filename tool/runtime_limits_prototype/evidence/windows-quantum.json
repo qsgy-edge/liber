@@ -7,54 +7,54 @@
         "tightLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.03,
+          "fastestMs": 100.02,
           "medianMs": 100.03,
-          "slowestMs": 100.04,
-          "worstOvershootMs": 0.04,
+          "slowestMs": 100.1,
+          "worstOvershootMs": 0.1,
           "interruptedInEverySample": true
         },
         "heavyLoopBody": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 558.75,
-          "medianMs": 564.18,
-          "slowestMs": 608.53,
-          "worstOvershootMs": 508.53,
+          "fastestMs": 849.56,
+          "medianMs": 956.5,
+          "slowestMs": 996.69,
+          "worstOvershootMs": 896.69,
           "interruptedInEverySample": true
         },
         "allocationLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 164.61,
-          "medianMs": 166.27,
-          "slowestMs": 209.67,
-          "worstOvershootMs": 109.67,
+          "fastestMs": 138.81,
+          "medianMs": 142.36,
+          "slowestMs": 180.56,
+          "worstOvershootMs": 80.56,
           "interruptedInEverySample": true
         },
         "regexpBacktracking": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.05,
-          "medianMs": 100.08,
-          "slowestMs": 100.1,
-          "worstOvershootMs": 0.1,
+          "fastestMs": 100.13,
+          "medianMs": 100.18,
+          "slowestMs": 103.93,
+          "worstOvershootMs": 3.93,
           "interruptedInEverySample": true
         },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 1493.48,
-          "medianMs": 1772.36,
-          "slowestMs": 2165.02,
-          "worstOvershootMs": 1865.02,
+          "fastestMs": 2483.88,
+          "medianMs": 2538.45,
+          "slowestMs": 3666.24,
+          "worstOvershootMs": 3366.24,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 1042.21,
-          "medianMs": 1094.04,
-          "slowestMs": 1137.97,
+          "fastestMs": 1589.51,
+          "medianMs": 1910.82,
+          "slowestMs": 2054.71,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -62,9 +62,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 1011.75,
-        "medianMs": 1039.0,
-        "slowestMs": 1083.09,
+        "fastestMs": 1706.99,
+        "medianMs": 1798.95,
+        "slowestMs": 2020.59,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },
@@ -107,52 +107,52 @@
           "repeats": 3,
           "fastestMs": 100.03,
           "medianMs": 100.04,
-          "slowestMs": 100.07,
-          "worstOvershootMs": 0.07,
+          "slowestMs": 100.06,
+          "worstOvershootMs": 0.06,
           "interruptedInEverySample": true
         },
         "heavyLoopBody": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 101.88,
-          "medianMs": 190.96,
-          "slowestMs": 191.26,
-          "worstOvershootMs": 91.26,
+          "fastestMs": 107.2,
+          "medianMs": 108.9,
+          "slowestMs": 112.74,
+          "worstOvershootMs": 12.74,
           "interruptedInEverySample": true
         },
         "allocationLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 123.85,
-          "medianMs": 124.18,
-          "slowestMs": 129.09,
-          "worstOvershootMs": 29.09,
+          "fastestMs": 119.89,
+          "medianMs": 120.49,
+          "slowestMs": 125.94,
+          "worstOvershootMs": 25.94,
           "interruptedInEverySample": true
         },
         "regexpBacktracking": {
           "deadlineMs": 100,
           "repeats": 3,
           "fastestMs": 100.06,
-          "medianMs": 100.06,
-          "slowestMs": 100.07,
-          "worstOvershootMs": 0.07,
+          "medianMs": 100.09,
+          "slowestMs": 100.09,
+          "worstOvershootMs": 0.09,
           "interruptedInEverySample": true
         },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 491.74,
-          "medianMs": 548.75,
-          "slowestMs": 574.41,
-          "worstOvershootMs": 274.41,
+          "fastestMs": 606.66,
+          "medianMs": 607.82,
+          "slowestMs": 707.04,
+          "worstOvershootMs": 407.04,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 2438.38,
-          "medianMs": 2497.17,
-          "slowestMs": 2632.75,
+          "fastestMs": 2323.33,
+          "medianMs": 2509.31,
+          "slowestMs": 3284.04,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -160,9 +160,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 2437.89,
-        "medianMs": 2634.42,
-        "slowestMs": 2740.03,
+        "fastestMs": 1513.24,
+        "medianMs": 2240.86,
+        "slowestMs": 2842.27,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },
@@ -203,54 +203,54 @@
         "tightLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.02,
-          "medianMs": 100.02,
-          "slowestMs": 100.03,
-          "worstOvershootMs": 0.03,
-          "interruptedInEverySample": true
-        },
-        "heavyLoopBody": {
-          "deadlineMs": 100,
-          "repeats": 3,
-          "fastestMs": 110.48,
-          "medianMs": 111.29,
-          "slowestMs": 112.93,
-          "worstOvershootMs": 12.93,
-          "interruptedInEverySample": true
-        },
-        "allocationLoop": {
-          "deadlineMs": 100,
-          "repeats": 3,
-          "fastestMs": 110.91,
-          "medianMs": 111.24,
-          "slowestMs": 120.44,
-          "worstOvershootMs": 20.44,
-          "interruptedInEverySample": true
-        },
-        "regexpBacktracking": {
-          "deadlineMs": 100,
-          "repeats": 3,
           "fastestMs": 100.03,
           "medianMs": 100.03,
           "slowestMs": 100.04,
           "worstOvershootMs": 0.04,
           "interruptedInEverySample": true
         },
+        "heavyLoopBody": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 105.44,
+          "medianMs": 113.32,
+          "slowestMs": 118.59,
+          "worstOvershootMs": 18.59,
+          "interruptedInEverySample": true
+        },
+        "allocationLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 109.33,
+          "medianMs": 111.1,
+          "slowestMs": 113.93,
+          "worstOvershootMs": 13.93,
+          "interruptedInEverySample": true
+        },
+        "regexpBacktracking": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.05,
+          "medianMs": 100.05,
+          "slowestMs": 100.06,
+          "worstOvershootMs": 0.06,
+          "interruptedInEverySample": true
+        },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 315.98,
-          "medianMs": 356.45,
-          "slowestMs": 376.02,
-          "worstOvershootMs": 76.02,
+          "fastestMs": 313.61,
+          "medianMs": 332.72,
+          "slowestMs": 389.23,
+          "worstOvershootMs": 89.23,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 1018.38,
-          "medianMs": 1035.85,
-          "slowestMs": 1105.07,
+          "fastestMs": 1482.72,
+          "medianMs": 1605.98,
+          "slowestMs": 2263.55,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -258,9 +258,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 1014.83,
-        "medianMs": 1050.04,
-        "slowestMs": 1110.22,
+        "fastestMs": 1514.76,
+        "medianMs": 1593.79,
+        "slowestMs": 1766.42,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },

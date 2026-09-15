@@ -23,10 +23,10 @@ resolved. The vendored QuickJS enforces its heap limit (catchable
 `InternalError: out of memory` at an 8 MiB budget, reusable runtime, bounded
 RSS) and it does interrupt running JavaScript from a native deadline; but the
 interrupt is polled, so a single long C call or a native-heavy loop overshoots
-without limit (product-measured 1.19 s past a 200 ms deadline, 27.5 s in the
-engine at the heap limit). A hard bound still needs OS-level isolation.
-Evidence: `tool/runtime_limits_prototype/` — Windows row only; the other four
-platforms remain `not-run`.
+without limit (product-measured 1.77 s total for a 200 ms deadline, 52.5 s of
+overshoot in the engine at the heap limit). A hard bound still needs OS-level
+isolation. Evidence: `tool/runtime_limits_prototype/` — Windows row only; the
+other four platforms remain `not-run`.
 
 ## Confirmed Component Matrix
 

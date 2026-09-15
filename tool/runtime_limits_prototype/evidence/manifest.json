@@ -1,12 +1,17 @@
 {
   "status": "pass",
   "scope": "Windows only; Android, iOS, macOS and Linux remain not-run",
-  "recordedAt": "2026-09-16T04:00:12+0800",
-  "repositoryHead": "d503d8ae36d793e21b4e82bf7a3045b204a3759a",
+  "recordedAt": "2026-09-16T04:25:41+0800",
+  "repositoryHead": "1c8aed01e85447f476d772425bda7b3711113e8b",
   "repositoryBranch": "wayfinder/3",
   "uncommittedChanges": [
-    "?? explore_candidates.dart",
-    "?? tool/runtime_limits_prototype/"
+    "D tool/runtime_limits_prototype/evidence/manifest.json",
+    " M tool/runtime_limits_prototype/evidence/windows-native.json",
+    " M tool/runtime_limits_prototype/evidence/windows-product.json",
+    " M tool/runtime_limits_prototype/evidence/windows-quantum.json",
+    " M tool/runtime_limits_prototype/native_probe.c",
+    " M tool/runtime_limits_prototype/product_probe.dart",
+    " M tool/runtime_limits_prototype/verify.py"
   ],
   "library": {
     "path": "D:\\GithubRepositories\\Flutter\\liber-3\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
@@ -16,18 +21,19 @@
   },
   "nativeProbe": {
     "path": "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-runtime-limits-prototype\\native_probe.exe",
-    "sha256": "faecb4e6558dc8972c1a3d8c981c4c3ca5026814cc1d49bb8e08bc39908627e1"
+    "sha256": "eec9f222d91c2c5f1fd827ef9d996d076de997cd3982b79b19d061301b1eea91"
   },
   "engines": {
     "quickjs": "QuickJS 0.15.1 (pinned vendored sources)",
     "rquickjsRevision": "04e27345bd12e1d9b1eb68d76865805126313998",
     "quickjsRevision": "fd0a0210b7be00957751871e7e01b8291268fc29",
+    "revisionSource": "packages/fjs/libfjs/vendor/rquickjs-sys/LIBER.md",
     "compiler": "gcc.EXE (x86_64-win32-seh-rev0, Built by MinGW-Builds project) 14.2.0"
   },
   "sourceHashes": [
     {
       "path": "tool/runtime_limits_prototype/native_probe.c",
-      "sha256": "699ac376231fd97140d5b20d963a5bd00b58ddd33fefa3537d5173560589bc40"
+      "sha256": "6f488ff282d525261eb0faede59e255818f9504097f7ebff92a1008f1049ea1d"
     },
     {
       "path": "tool/runtime_limits_prototype/quantum_probe.c",
@@ -39,11 +45,11 @@
     },
     {
       "path": "tool/runtime_limits_prototype/product_probe.dart",
-      "sha256": "68d531410417a0c5d6e6f1c5bb1be72906e0f8f6343e50ad677f3ff7e599e12b"
+      "sha256": "60aa9811991c14788f9d027e6729f24a6ff71fef10d10dad37b093ea94ca0440"
     },
     {
       "path": "tool/runtime_limits_prototype/verify.py",
-      "sha256": "371f994ac79d0396049f454564f63b348ba9c4292dd02792b43411deaaecdb2b"
+      "sha256": "2811a3bcc1dac89ff8190f2277c03ea9f0a3e207ab5c9298f7c519d1193c329f"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.c",
@@ -121,15 +127,15 @@
   "evidenceHashes": [
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-native.json",
-      "sha256": "63d2d93e8383f26cb59df969a53b34c6bec2a5c1a9dc1b7a3f93facf7c730092"
+      "sha256": "eceb142ead42083c065f6dbd10881215a15b753d6651e7627bb514049fb226c9"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-product.json",
-      "sha256": "dae1ffdfc7d3ca95a684a78bf70803232188f6f0d412b8857b2b3059240ae800"
+      "sha256": "f7774b4e68644dc93697740c25cf14804bed1bb3c763191c913c99c1c4b4ca98"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-quantum.json",
-      "sha256": "33a17466d45da3d3ea1768a0b57e23e8034f648f532aec599598563c0c48ebc1"
+      "sha256": "2f9d65e363ab68f1af3f36f952eae4c0daf62077b5bf595745318d4d58555d64"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/gates.log",
@@ -140,58 +146,58 @@
     "runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.409
+      "seconds": 4.605
     },
     "fiber_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.25
+      "seconds": 6.478
     }
   },
   "findings": {
     "heapLimitEnforced": true,
     "deadlineInterruptsInterpreterWork": true,
     "deadlineIsHardBound": false,
-    "deadlineHeavyLoopBodyOvershootMs": 422.5,
-    "deadlineOomRetryOvershootMs": 27179.4,
-    "deadlineSingleNativeCallMeasuredMs": 230.5,
+    "deadlineHeavyLoopBodyOvershootMs": 776.6,
+    "deadlineOomRetryOvershootMs": 52537.2,
+    "deadlineSingleNativeCallMeasuredMs": 438.3,
     "deadlineSingleNativeCallInterrupted": false,
     "quantumSensitivity": {
       "10000": {
-        "heavyLoopWorstOvershootMs": 508.53,
-        "allocationLoopWorstOvershootMs": 109.67,
-        "oomRetryWorstOvershootMs": 1865.02,
-        "throughputLoopFastestMs": 1042.21,
-        "throughputOnlyFastestMs": 1011.75
+        "heavyLoopWorstOvershootMs": 896.69,
+        "allocationLoopWorstOvershootMs": 80.56,
+        "oomRetryWorstOvershootMs": 3366.24,
+        "throughputLoopFastestMs": 1589.51,
+        "throughputOnlyFastestMs": 1706.99
       },
       "1000": {
-        "heavyLoopWorstOvershootMs": 91.26,
-        "allocationLoopWorstOvershootMs": 29.09,
-        "oomRetryWorstOvershootMs": 274.41,
-        "throughputLoopFastestMs": 2438.38,
-        "throughputOnlyFastestMs": 2437.89
+        "heavyLoopWorstOvershootMs": 12.74,
+        "allocationLoopWorstOvershootMs": 25.94,
+        "oomRetryWorstOvershootMs": 407.04,
+        "throughputLoopFastestMs": 2323.33,
+        "throughputOnlyFastestMs": 1513.24
       },
       "256": {
-        "heavyLoopWorstOvershootMs": 12.93,
-        "allocationLoopWorstOvershootMs": 20.44,
-        "oomRetryWorstOvershootMs": 76.02,
-        "throughputLoopFastestMs": 1018.38,
-        "throughputOnlyFastestMs": 1014.83
+        "heavyLoopWorstOvershootMs": 18.59,
+        "allocationLoopWorstOvershootMs": 13.93,
+        "oomRetryWorstOvershootMs": 89.23,
+        "throughputLoopFastestMs": 1482.72,
+        "throughputOnlyFastestMs": 1514.76
       }
     }
   },
   "measured": {
     "productDeadlineBasicOvershootMs": [
-      16.254999999999995,
-      7.453000000000003,
-      5.791999999999973
+      15.269999999999996,
+      6.85499999999999,
+      14.073999999999955
     ],
-    "productHeavyLoopOvershootMs": 948.4259999999999,
-    "productSingleNativeCallMeasuredMs": 1186.461,
-    "productOomRetryOvershootMs": 918.683,
-    "productHostCallOvershootMs": 22.480999999999995,
-    "productIsolateBlockedMeasuredMs": 448.113,
-    "productRssGrowthOverHeapLimitBytes": 5738496
+    "productHeavyLoopOvershootMs": 1942.089,
+    "productSingleNativeCallMeasuredMs": 1766.789,
+    "productOomRetryOvershootMs": 1367.214,
+    "productHostCallOvershootMs": 35.18199999999999,
+    "productIsolateBlockedMeasuredMs": 443.066,
+    "productRssGrowthOverHeapLimitBytes": 3035136
   },
   "failures": []
 }

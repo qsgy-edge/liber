@@ -1,4 +1,4 @@
-"""Run the runtime-limit probes and record the executed evidence.
+"""THROWAWAY: run the runtime-limit probes and record the executed evidence.
 
 Usage: python tool/runtime_limits_prototype/verify.py [fjs-library.dll]
 
@@ -50,8 +50,20 @@ QUANTUM_PATCHES = {
 }
 
 
+VENDOR_NOTES = ROOT / 'packages/fjs/libfjs/vendor/rquickjs-sys/LIBER.md'
+
+
 def sha256(path):
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+
+
+def vendored_revision(label):
+    """Read a pinned revision out of the vendor record instead of restating it."""
+    notes = VENDOR_NOTES.read_text(encoding='utf-8')
+    match = re.search(rf'{label}\s+commit\s*`?\s*([0-9a-f]{{40}})', notes) or         re.search(rf'{label}\s+submodule\s*`?\s*([0-9a-f]{{40}})', notes)
+    if match is None:
+        raise SystemExit(f'no {label} revision in {VENDOR_NOTES}')
+    return match.group(1)
 
 
 def run(command, timeout, cwd=ROOT):
@@ -238,8 +250,9 @@ def main():
         'nativeProbe': {'path': str(SCRATCH / 'native_probe.exe'),
                         'sha256': sha256(SCRATCH / 'native_probe.exe')},
         'engines': {'quickjs': native['engine'],
-                    'rquickjsRevision': '04e27345bd12e1d9b1eb68d76865805126313998',
-                    'quickjsRevision': 'fd0a0210b7be00957751871e7e01b8291268fc29',
+                    'rquickjsRevision': vendored_revision('rquickjs'),
+                    'quickjsRevision': vendored_revision('QuickJS'),
+                    'revisionSource': str(VENDOR_NOTES.relative_to(ROOT)).replace(os.sep, '/'),
                     'compiler': compiler_version()},
         'sourceHashes': [
             {'path': str(path.relative_to(ROOT)).replace('\\', '/'), 'sha256': sha256(path)}

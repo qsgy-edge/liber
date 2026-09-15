@@ -277,8 +277,10 @@ Future<void> main(List<String> args) async {
           'rssAfterSecond': afterSecond,
           'rssGrowthBytes': afterSecond - baseline,
         };
+        // 'js' is the product's JavaScript-error class; 'timeout' or
+        // 'cancelled' would not mean the heap limit fired.
         checks['heapLimitReported'] =
-            first.category != 'success' && second.category != 'success';
+            first.category == 'js' && second.category == 'js';
         checks['bothRunsSameCategory'] = first.category == second.category;
         checks['sharedEngineStillUsable'] =
             followUp.category == 'success' && followUp.milliseconds < 2000;
@@ -305,7 +307,7 @@ Future<void> main(List<String> args) async {
           'measuredMs': outcome.milliseconds,
           'rssGrowthBytes': ProcessInfo.currentRss - baseline,
         };
-        checks['hugeAllocationRejected'] = outcome.category != 'success';
+        checks['hugeAllocationRejected'] = outcome.category == 'js';
         checks['hugeAllocationReturnedFast'] = outcome.milliseconds < 5000;
         final followUp =
             await run(runtime, '3 + 4', timeout: const Duration(seconds: 5));
@@ -326,7 +328,7 @@ Future<void> main(List<String> args) async {
           'category': outcome.category,
           'measuredMs': outcome.milliseconds,
         };
-        checks['stackOverflowReturned'] = outcome.category != 'success';
+        checks['stackOverflowReturned'] = outcome.category == 'js';
         final followUp =
             await run(runtime, '9 + 1', timeout: const Duration(seconds: 5));
         checks['followUpWorks'] = followUp.category == 'success';

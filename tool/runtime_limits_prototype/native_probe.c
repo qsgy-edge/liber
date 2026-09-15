@@ -95,10 +95,10 @@ static void print_json_string(const char *text) {
 /* Runs one script with the deadline and heap budget under test. */
 static Observation observe(JSRuntime *rt, JSContext *ctx, Interrupt *interrupt,
                            const char *source, double deadline_ms,
-                           size_t memory_limit, bool gc_before) {
+                           size_t memory_limit) {
   Observation result;
   memset(&result, 0, sizeof(result));
-  if (gc_before) JS_RunGC(rt);
+  JS_RunGC(rt);
   JS_SetMemoryLimit(rt, memory_limit);
   interrupt->deadline_ms = deadline_ms;
   interrupt->start_ms = now_ms();
@@ -229,14 +229,14 @@ int main(void) {
   printf("  \"cases\": [\n");
 
   /* 1. Wall-clock deadline against a tight interpreter loop. */
-  double overshoot[5] = {0};
+  double overshoot[4] = {0};
   {
     const double deadlines[] = {1, 10, 100, 500};
     const char *source = "while(true) { }";
     for (int index = 0; index < 4; index++) {
       const double deadline = deadlines[index];
       Observation observation =
-          observe(rt, ctx, &interrupt, source, deadline, 0, true);
+          observe(rt, ctx, &interrupt, source, deadline, 0);
       overshoot[index] = observation.ms - deadline;
       case_boundary();
       emit_case("cpuLoopDeadline", source, deadline, 0, &observation,
@@ -256,7 +256,7 @@ int main(void) {
         "var caught = 0; try { while(true) caught++; } catch (e) { caught = "
         "99; } caught";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 50, 0, true);
+        observe(rt, ctx, &interrupt, source, 50, 0);
     case_boundary();
     emit_case("deadlineUncatchable", source, 50, 0, &observation,
               "the try/catch block cannot swallow the deadline error",
@@ -268,7 +268,7 @@ int main(void) {
   {
     const char *source =
         "var sum = 0; for (var i = 0; i < 5000000; i++) sum += i; sum > 0";
-    Observation observation = observe(rt, ctx, &interrupt, source, 0, 0, true);
+    Observation observation = observe(rt, ctx, &interrupt, source, 0, 0);
     case_boundary();
     emit_case("noDeadlineControl", source, 0, 0, &observation,
               "no deadline means no interruption",
@@ -281,7 +281,7 @@ int main(void) {
   {
     const char *source = "/(a+)+$/.test('a'.repeat(64) + '!')";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 200, 0, true);
+        observe(rt, ctx, &interrupt, source, 200, 0);
     case_boundary();
     emit_case("regexBacktrackingDeadline", source, 200, 0, &observation,
               "libregexp polls the same handler",
@@ -296,7 +296,7 @@ int main(void) {
         "(function() { var blocks = []; while(true) { blocks.push(new "
         "Array(1024).fill(7)); } })()";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 100, 0, true);
+        observe(rt, ctx, &interrupt, source, 100, 0);
     case_boundary();
     emit_case("allocationLoopDeadline", source, 100, 0, &observation,
               "allocation-heavy execution reaches the deadline eventually",
@@ -308,7 +308,7 @@ int main(void) {
         "(function() { var text = ''; while(true) { text += 'abcdefghij'; } "
         "})()";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 100, 0, true);
+        observe(rt, ctx, &interrupt, source, 100, 0);
     case_boundary();
     emit_case("stringBuilderDeadline", source, 100, 0, &observation,
               "string building reaches the deadline",
@@ -323,7 +323,7 @@ int main(void) {
   {
     const char *source = "while(true) { 'x'.repeat(50000); }";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 100, 0, true);
+        observe(rt, ctx, &interrupt, source, 100, 0);
     heavy_overshoot = observation.ms - 100;
     case_boundary();
     emit_case("heavyLoopBodyDeadline", source, 100, 0, &observation,
@@ -337,7 +337,7 @@ int main(void) {
   double single_call_ms = 0;
   {
     const char *source = "'y'.repeat(104857600).length";
-    Observation observation = observe(rt, ctx, &interrupt, source, 100, 0, true);
+    Observation observation = observe(rt, ctx, &interrupt, source, 100, 0);
     single_call_ms = observation.ms;
     case_boundary();
     emit_case("singleNativeCallDeadline", source, 100, 0, &observation,
@@ -379,7 +379,7 @@ int main(void) {
         "blocks.push(new Array(4096).fill(7)); } catch (e) { text = e.name + "
         "': ' + e.message; } return text; })()";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 0, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 0, heap_limit);
     case_boundary();
     emit_case("heapLimitCatchable", source, 0, heap_limit, &observation,
               "the heap limit surfaces as a catchable out-of-memory error",
@@ -392,7 +392,7 @@ int main(void) {
   {
     const char *source = "6 * 7";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 0, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 0, heap_limit);
     case_boundary();
     emit_case("runtimeUsableAfterHeapLimit", source, 0, heap_limit, &observation,
               "the same runtime evaluates again after an out-of-memory error",
@@ -406,7 +406,7 @@ int main(void) {
   {
     const char *source = "true";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 0, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 0, heap_limit);
     case_boundary();
     emit_case("heapReclaimedAfterGc", source, 0, heap_limit, &observation,
               "the retained blocks are reclaimed once the script drops them",
@@ -423,7 +423,7 @@ int main(void) {
         "(function() { var retries = 0; var last = null; for (;;) { try { "
         "last = new Array(200000).fill(0); } catch (e) { retries++; } } })()";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 300, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 300, heap_limit);
     oom_retry_ms = observation.ms;
     case_boundary();
     emit_case("heapLimitUnescapable", source, 300, heap_limit, &observation,
@@ -437,7 +437,7 @@ int main(void) {
   {
     const char *source = "'x'.repeat(268435456)";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 0, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 0, heap_limit);
     case_boundary();
     emit_case("hugeStringOverLimit", source, 0, heap_limit, &observation,
               "one oversized string fails with a JS error, not an abort",
@@ -450,7 +450,7 @@ int main(void) {
   {
     const char *source = "new Uint8Array(67108864)";
     Observation observation =
-        observe(rt, ctx, &interrupt, source, 0, heap_limit, true);
+        observe(rt, ctx, &interrupt, source, 0, heap_limit);
     case_boundary();
     emit_case("hugeTypedArrayOverLimit", source, 0, heap_limit, &observation,
               "one oversized typed array fails with a JS error",
@@ -466,7 +466,7 @@ int main(void) {
     const char *source =
         "(function() { var blocks = []; for (var i = 0; i < 4000; i++) "
         "blocks.push(new Array(1024).fill(i)); return blocks.length; })()";
-    Observation observation = observe(rt, ctx, &interrupt, source, 0, 0, true);
+    Observation observation = observe(rt, ctx, &interrupt, source, 0, 0);
     case_boundary();
     emit_case("unlimitedHeapControl", source, 0, 0, &observation,
               "without a limit the same work completes",
