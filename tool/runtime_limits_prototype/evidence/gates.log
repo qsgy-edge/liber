@@ -1,0 +1,8 @@
+===== runtime_gate (exit 0) =====
+{"status":"pass","checks":{"syncEcho":true,"unknownMethodRefused":true,"unknownMethodNoIo":true,"hostErrorSettles":true,"forgedCancellationIsJs":true,"completeInputCapped":true,"hostInputCapped":true,"hostOutputCapped":true,"outputCapped":true,"infiniteLoopTimeout":true,"realHttpCancelled":true,"serverDisconnected":true,"nextExecutionWorks":true}}
+
+
+===== fiber_runtime_gate (exit 0) =====
+{"status":"pass","checks":{"firstNativeExceptionStack":true,"secondNativeExceptionStack":true,"cyclicAllocationPressureCompletes":true,"suspendedRustAndJsValuesSurvive":true,"heapLimitEnforced":true,"afterGcUsable":true,"closeUnwindsBothStacks":true,"lateCompletionRejected":true},"traceA":"    at alpha (eval_script:1:26)\n    at <eval> (eval_script:1:61)\n","traceB":"    at beta (eval_script:1:25)\n    at <eval> (eval_script:1:60)\n"}
+
+

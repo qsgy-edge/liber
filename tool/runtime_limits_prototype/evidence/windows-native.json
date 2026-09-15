@@ -1,0 +1,54 @@
+{
+  "engine": "QuickJS 0.15.1 (pinned vendored sources)",
+  "cases": [
+    {"name": "cpuLoopDeadline", "source": "while(true) { }", "deadlineMs": 1.0, "memoryLimitBytes": 0, "measuredMs": 1.0, "overshootMs": 0.0, "interruptPolls": 43, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104088, "mallocLimit": 0, "memoryUsedSize": 95445, "objCount": 185, "expectation": "uncatchable InternalError: interrupted at the deadline", "passed": true}
+,
+    {"name": "cpuLoopDeadline", "source": "while(true) { }", "deadlineMs": 10.0, "memoryLimitBytes": 0, "measuredMs": 10.0, "overshootMs": 0.0, "interruptPolls": 472, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104088, "mallocLimit": 0, "memoryUsedSize": 95445, "objCount": 185, "expectation": "uncatchable InternalError: interrupted at the deadline", "passed": true}
+,
+    {"name": "cpuLoopDeadline", "source": "while(true) { }", "deadlineMs": 100.0, "memoryLimitBytes": 0, "measuredMs": 100.0, "overshootMs": 0.0, "interruptPolls": 4768, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104088, "mallocLimit": 0, "memoryUsedSize": 95445, "objCount": 185, "expectation": "uncatchable InternalError: interrupted at the deadline", "passed": true}
+,
+    {"name": "cpuLoopDeadline", "source": "while(true) { }", "deadlineMs": 500.0, "memoryLimitBytes": 0, "measuredMs": 500.0, "overshootMs": 0.0, "interruptPolls": 24774, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104088, "mallocLimit": 0, "memoryUsedSize": 95445, "objCount": 185, "expectation": "uncatchable InternalError: interrupted at the deadline", "passed": true}
+,
+    {"name": "deadlineUncatchable", "source": "var caught = 0; try { while(true) caught++; } catch (e) { caught = 99; } caught", "deadlineMs": 50.0, "memoryLimitBytes": 0, "measuredMs": 50.0, "overshootMs": 0.0, "interruptPolls": 161, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104143, "mallocLimit": 0, "memoryUsedSize": 95492, "objCount": 185, "expectation": "the try/catch block cannot swallow the deadline error", "passed": true}
+,
+    {"name": "noDeadlineControl", "source": "var sum = 0; for (var i = 0; i < 5000000; i++) sum += i; sum > 0", "deadlineMs": 0.0, "memoryLimitBytes": 0, "measuredMs": 545.4, "overshootMs": 0.0, "interruptPolls": 1000, "interruptFired": false, "threw": false, "exception": "", "value": "true", "mallocSize": 104153, "mallocLimit": 0, "memoryUsedSize": 95578, "objCount": 185, "expectation": "no deadline means no interruption", "passed": true}
+,
+    {"name": "regexBacktrackingDeadline", "source": "/(a+)+$/.test('a'.repeat(64) + '!')", "deadlineMs": 200.0, "memoryLimitBytes": 0, "measuredMs": 200.0, "overshootMs": 0.0, "interruptPolls": 1835, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104672, "mallocLimit": 0, "memoryUsedSize": 95914, "objCount": 188, "expectation": "libregexp polls the same handler", "passed": true}
+,
+    {"name": "allocationLoopDeadline", "source": "(function() { var blocks = []; while(true) { blocks.push(new Array(1024).fill(7)); } })()", "deadlineMs": 100.0, "memoryLimitBytes": 0, "measuredMs": 156.4, "overshootMs": 56.4, "interruptPolls": 1, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104934, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "allocation-heavy execution reaches the deadline eventually", "passed": true}
+,
+    {"name": "stringBuilderDeadline", "source": "(function() { var text = ''; while(true) { text += 'abcdefghij'; } })()", "deadlineMs": 100.0, "memoryLimitBytes": 0, "measuredMs": 102.7, "overshootMs": 2.7, "interruptPolls": 26, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104934, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "string building reaches the deadline", "passed": true}
+,
+    {"name": "heavyLoopBodyDeadline", "source": "while(true) { 'x'.repeat(50000); }", "deadlineMs": 100.0, "memoryLimitBytes": 0, "measuredMs": 522.5, "overshootMs": 422.5, "interruptPolls": 1, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104886, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "measure the overshoot with a native-heavy loop body", "passed": true}
+,
+    {"name": "singleNativeCallDeadline", "source": "'y'.repeat(104857600).length", "deadlineMs": 100.0, "memoryLimitBytes": 0, "measuredMs": 230.5, "overshootMs": 130.5, "interruptPolls": 0, "interruptFired": false, "threw": false, "exception": "", "value": "104857600", "mallocSize": 104793, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "measure whether one long C-level call can pass the deadline", "passed": true}
+,
+    {"name": "heapLimitBaseline", "source": "(GC only)", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 0.0, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": false, "exception": "", "value": "", "mallocSize": 104793, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "the allocator is below the limit before the limit is tested", "passed": true}
+,
+    {"name": "heapLimitCatchable", "source": "(function() { var blocks = []; var text = null; try { while(true) blocks.push(new Array(4096).fill(7)); } catch (e) { text = e.name + ': ' + e.message; } return text; })()", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 16.3, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": false, "exception": "", "value": "InternalError: out of memory", "mallocSize": 104793, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "the heap limit surfaces as a catchable out-of-memory error", "passed": true}
+,
+    {"name": "runtimeUsableAfterHeapLimit", "source": "6 * 7", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 0.0, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": false, "exception": "", "value": "42", "mallocSize": 104793, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "the same runtime evaluates again after an out-of-memory error", "passed": true}
+,
+    {"name": "heapReclaimedAfterGc", "source": "true", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 0.0, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": false, "exception": "", "value": "true", "mallocSize": 104793, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "the retained blocks are reclaimed once the script drops them", "passed": true}
+,
+    {"name": "heapLimitUnescapable", "source": "(function() { var retries = 0; var last = null; for (;;) { try { last = new Array(200000).fill(0); } catch (e) { retries++; } } })()", "deadlineMs": 300.0, "memoryLimitBytes": 8388608, "measuredMs": 27479.4, "overshootMs": 27179.4, "interruptPolls": 1, "interruptFired": true, "threw": true, "exception": "InternalError: interrupted", "value": "", "mallocSize": 104935, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "the retry loop cannot exceed the budget, and stops at the deadline", "passed": true}
+,
+    {"name": "hugeStringOverLimit", "source": "'x'.repeat(268435456)", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 0.0, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": true, "exception": "InternalError: out of memory", "value": "", "mallocSize": 104885, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "one oversized string fails with a JS error, not an abort", "passed": true}
+,
+    {"name": "hugeTypedArrayOverLimit", "source": "new Uint8Array(67108864)", "deadlineMs": 0.0, "memoryLimitBytes": 8388608, "measuredMs": 0.0, "overshootMs": 0.0, "interruptPolls": 0, "interruptFired": false, "threw": true, "exception": "InternalError: out of memory", "value": "", "mallocSize": 104885, "mallocLimit": 8388608, "memoryUsedSize": 96138, "objCount": 190, "expectation": "one oversized typed array fails with a JS error", "passed": true}
+,
+    {"name": "unlimitedHeapControl", "source": "(function() { var blocks = []; for (var i = 0; i < 4000; i++) blocks.push(new Array(1024).fill(i)); return blocks.length; })()", "deadlineMs": 0.0, "memoryLimitBytes": 0, "measuredMs": 182.4, "overshootMs": 0.0, "interruptPolls": 2, "interruptFired": false, "threw": false, "exception": "", "value": "4000", "mallocSize": 104793, "mallocLimit": 0, "memoryUsedSize": 96138, "objCount": 190, "expectation": "without a limit the same work completes", "passed": true}
+
+  ],
+  "findings": {
+    "heapLimitEnforced": true,
+    "deadlineInterruptsInterpreterWork": true,
+    "deadlineIsHardBound": false,
+    "deadlineHeavyLoopBodyOvershootMs": 422.5,
+    "deadlineOomRetryOvershootMs": 27179.4,
+    "deadlineSingleNativeCallMeasuredMs": 230.5,
+    "deadlineSingleNativeCallInterrupted": false
+  },
+  "checks": {"cpuLoopInterruptedAt1Ms": true, "cpuLoopOvershootAt1MsUnder2Ms": true, "cpuLoopInterruptedAt10Ms": true, "cpuLoopOvershootAt10MsUnder2Ms": true, "cpuLoopInterruptedAt100Ms": true, "cpuLoopOvershootAt100MsUnder2Ms": true, "cpuLoopInterruptedAt500Ms": true, "cpuLoopOvershootAt500MsUnder2Ms": true, "deadlineUncatchable": true, "noDeadlineControl": true, "regexBacktrackingInterrupted": true, "regexBacktrackingOvershootUnder2Ms": true, "allocationLoopInterrupted": true, "stringBuilderInterrupted": true, "heavyLoopBodyInterrupted": true, "heavyLoopBodyOvershootExceedsDeadline": true, "singleNativeCallCompletedWithoutInterrupt": true, "singleNativeCallPassedDeadlineWithoutPolls": true, "heapLimitStartsBelowLimit": true, "heapLimitCatchable": true, "runtimeUsableAfterHeapLimit": true, "allocatorStayedInsideLimit": true, "heapReclaimedAfterGc": true, "heapLimitUnescapable": true, "hugeStringOverLimit": true, "hugeTypedArrayOverLimit": true, "unlimitedHeapControl": true},
+  "status": "pass"
+}

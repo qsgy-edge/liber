@@ -1,0 +1,197 @@
+{
+  "status": "pass",
+  "scope": "Windows only; Android, iOS, macOS and Linux remain not-run",
+  "recordedAt": "2026-09-16T04:00:12+0800",
+  "repositoryHead": "d503d8ae36d793e21b4e82bf7a3045b204a3759a",
+  "repositoryBranch": "wayfinder/3",
+  "uncommittedChanges": [
+    "?? explore_candidates.dart",
+    "?? tool/runtime_limits_prototype/"
+  ],
+  "library": {
+    "path": "D:\\GithubRepositories\\Flutter\\liber-3\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
+    "sha256": "4cf50254402ec7e90adf7383f64572185a872e105df3328d1589739ef4a33ad0",
+    "bytes": 43011072,
+    "mtime": "2026-09-16T03:30:51"
+  },
+  "nativeProbe": {
+    "path": "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-runtime-limits-prototype\\native_probe.exe",
+    "sha256": "faecb4e6558dc8972c1a3d8c981c4c3ca5026814cc1d49bb8e08bc39908627e1"
+  },
+  "engines": {
+    "quickjs": "QuickJS 0.15.1 (pinned vendored sources)",
+    "rquickjsRevision": "04e27345bd12e1d9b1eb68d76865805126313998",
+    "quickjsRevision": "fd0a0210b7be00957751871e7e01b8291268fc29",
+    "compiler": "gcc.EXE (x86_64-win32-seh-rev0, Built by MinGW-Builds project) 14.2.0"
+  },
+  "sourceHashes": [
+    {
+      "path": "tool/runtime_limits_prototype/native_probe.c",
+      "sha256": "699ac376231fd97140d5b20d963a5bd00b58ddd33fefa3537d5173560589bc40"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/quantum_probe.c",
+      "sha256": "20c3d0c5d2c906b358d015c0b7bd05acf475e81900d336b54f9ac06acc205aa4"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/build.ps1",
+      "sha256": "14d81df7329315511ea11f3103fc0c73005e9b03240f6c593d43f0123ac31f71"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/product_probe.dart",
+      "sha256": "68d531410417a0c5d6e6f1c5bb1be72906e0f8f6343e50ad677f3ff7e599e12b"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/verify.py",
+      "sha256": "371f994ac79d0396049f454564f63b348ba9c4292dd02792b43411deaaecdb2b"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.c",
+      "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.c",
+      "sha256": "0e36603ef85787abbdc2a659ff177e27666770131ff17d14c836cab801e7235e"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.c",
+      "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c",
+      "sha256": "52cdce6397574396624f6ab4bdb5eb19c228614d8f3b96688928da476ca0a9cb"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-array-fromasync.h",
+      "sha256": "8cde76ef2cd41c2e405d2124f0acd5f9b4afe0e9f06f3ae1ab1c2c3af557056d"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip-keyed.h",
+      "sha256": "7e3b04746f3a6e2fe795914f0a586222143e1f71348b419115b6a7f82812553c"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip.h",
+      "sha256": "84b6f7ee40d3444158f5ae1188d5879cd134de8bc550c2c2b9ba87c8539b2700"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/cutils.h",
+      "sha256": "5e774b902bab848498b1d62cff1a2a5928d96f61e1927617f934319a146161e5"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.h",
+      "sha256": "ae28bfa866c399886ab092624f7f70edee7336e030a67f30139661416465c7bc"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp-opcode.h",
+      "sha256": "85cf61681e3ed4008f7e34990d5e0eda5bc030419920c4a57f2d4090a154b3c1"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.h",
+      "sha256": "6baa9353bf3b73091e725bfdf82718e659d731b67facde7e485e3dd2fb67d96f"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode-table.h",
+      "sha256": "35a8d6647ae3959c6075ebdc874544d0c6d270701d0c83239141aba99c6e0ac9"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.h",
+      "sha256": "0848ba7cd1a6ef17a04bebf44e3b1d461bcdcc7570ea18d157a5970620ea394b"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/list.h",
+      "sha256": "f3a1ff3c435342de26c5f55c10b95fce32a7072e4e2955239ff335857b00fead"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-atom.h",
+      "sha256": "5c29549f2b25ae8ef9f35d1f3fb3031b1e5133da1a62c8becaac9daa67dd1b7d"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-c-atomics.h",
+      "sha256": "9e01ec23bd13086b950b7bf0481b6f50bcdc99d4527e740c35de8eb8d852aedc"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-opcode.h",
+      "sha256": "7a0c83c43dff3d3732f0aeac21d23cbe63acf5a77cda73e0b97d848be88f1ec9"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.h",
+      "sha256": "665b36f22e3658ff16f8a45c12c95ea27e912dcad98df127b6af9af1117281ba"
+    }
+  ],
+  "evidenceHashes": [
+    {
+      "path": "tool/runtime_limits_prototype/evidence/windows-native.json",
+      "sha256": "63d2d93e8383f26cb59df969a53b34c6bec2a5c1a9dc1b7a3f93facf7c730092"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/evidence/windows-product.json",
+      "sha256": "dae1ffdfc7d3ca95a684a78bf70803232188f6f0d412b8857b2b3059240ae800"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/evidence/windows-quantum.json",
+      "sha256": "33a17466d45da3d3ea1768a0b57e23e8034f648f532aec599598563c0c48ebc1"
+    },
+    {
+      "path": "tool/runtime_limits_prototype/evidence/gates.log",
+      "sha256": "040d4a364d257a4e7fb3fe7a6fa18d8e990fd736d2d8eb52585f6f21f0917c47"
+    }
+  ],
+  "gates": {
+    "runtime_gate": {
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 3.409
+    },
+    "fiber_runtime_gate": {
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 4.25
+    }
+  },
+  "findings": {
+    "heapLimitEnforced": true,
+    "deadlineInterruptsInterpreterWork": true,
+    "deadlineIsHardBound": false,
+    "deadlineHeavyLoopBodyOvershootMs": 422.5,
+    "deadlineOomRetryOvershootMs": 27179.4,
+    "deadlineSingleNativeCallMeasuredMs": 230.5,
+    "deadlineSingleNativeCallInterrupted": false,
+    "quantumSensitivity": {
+      "10000": {
+        "heavyLoopWorstOvershootMs": 508.53,
+        "allocationLoopWorstOvershootMs": 109.67,
+        "oomRetryWorstOvershootMs": 1865.02,
+        "throughputLoopFastestMs": 1042.21,
+        "throughputOnlyFastestMs": 1011.75
+      },
+      "1000": {
+        "heavyLoopWorstOvershootMs": 91.26,
+        "allocationLoopWorstOvershootMs": 29.09,
+        "oomRetryWorstOvershootMs": 274.41,
+        "throughputLoopFastestMs": 2438.38,
+        "throughputOnlyFastestMs": 2437.89
+      },
+      "256": {
+        "heavyLoopWorstOvershootMs": 12.93,
+        "allocationLoopWorstOvershootMs": 20.44,
+        "oomRetryWorstOvershootMs": 76.02,
+        "throughputLoopFastestMs": 1018.38,
+        "throughputOnlyFastestMs": 1014.83
+      }
+    }
+  },
+  "measured": {
+    "productDeadlineBasicOvershootMs": [
+      16.254999999999995,
+      7.453000000000003,
+      5.791999999999973
+    ],
+    "productHeavyLoopOvershootMs": 948.4259999999999,
+    "productSingleNativeCallMeasuredMs": 1186.461,
+    "productOomRetryOvershootMs": 918.683,
+    "productHostCallOvershootMs": 22.480999999999995,
+    "productIsolateBlockedMeasuredMs": 448.113,
+    "productRssGrowthOverHeapLimitBytes": 5738496
+  },
+  "failures": []
+}

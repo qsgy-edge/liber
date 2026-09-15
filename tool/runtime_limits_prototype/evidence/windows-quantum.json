@@ -1,0 +1,299 @@
+{
+  "note": "Patched copies of the frozen vendored sources; the vendored files themselves are unchanged.",
+  "rows": [
+    {
+      "quantum": 10000,
+      "cases": {
+        "tightLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.03,
+          "medianMs": 100.03,
+          "slowestMs": 100.04,
+          "worstOvershootMs": 0.04,
+          "interruptedInEverySample": true
+        },
+        "heavyLoopBody": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 558.75,
+          "medianMs": 564.18,
+          "slowestMs": 608.53,
+          "worstOvershootMs": 508.53,
+          "interruptedInEverySample": true
+        },
+        "allocationLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 164.61,
+          "medianMs": 166.27,
+          "slowestMs": 209.67,
+          "worstOvershootMs": 109.67,
+          "interruptedInEverySample": true
+        },
+        "regexpBacktracking": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.05,
+          "medianMs": 100.08,
+          "slowestMs": 100.1,
+          "worstOvershootMs": 0.1,
+          "interruptedInEverySample": true
+        },
+        "oomRetryLoop": {
+          "deadlineMs": 300,
+          "repeats": 3,
+          "fastestMs": 1493.48,
+          "medianMs": 1772.36,
+          "slowestMs": 2165.02,
+          "worstOvershootMs": 1865.02,
+          "interruptedInEverySample": true
+        },
+        "throughputLoop": {
+          "deadlineMs": 0,
+          "repeats": 9,
+          "fastestMs": 1042.21,
+          "medianMs": 1094.04,
+          "slowestMs": 1137.97,
+          "worstOvershootMs": 0.0,
+          "interruptedInEverySample": false
+        }
+      },
+      "throughputOnly": {
+        "deadlineMs": 0,
+        "repeats": 9,
+        "fastestMs": 1011.75,
+        "medianMs": 1039.0,
+        "slowestMs": 1083.09,
+        "worstOvershootMs": 0.0,
+        "interruptedInEverySample": false
+      },
+      "patches": [
+        {
+          "file": "quickjs.c",
+          "pattern": "#define JS_INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define JS_INTERRUPT_COUNTER_INIT 10000"
+        },
+        {
+          "file": "libregexp.c",
+          "pattern": "#define INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define INTERRUPT_COUNTER_INIT 10000"
+        }
+      ],
+      "patchedSourceHashes": [
+        {
+          "path": "quickjs.c",
+          "sha256": "ce9a95d3c011f255c1facb7d4361c71209e71ba58d84acd3281a755d0686a285"
+        },
+        {
+          "path": "libregexp.c",
+          "sha256": "d1e7c4280e1948a25310aaa80aedc273b6fe12322964965f9025ba1800f2c14d"
+        },
+        {
+          "path": "libunicode.c",
+          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+        },
+        {
+          "path": "dtoa.c",
+          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+        }
+      ]
+    },
+    {
+      "quantum": 1000,
+      "cases": {
+        "tightLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.03,
+          "medianMs": 100.04,
+          "slowestMs": 100.07,
+          "worstOvershootMs": 0.07,
+          "interruptedInEverySample": true
+        },
+        "heavyLoopBody": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 101.88,
+          "medianMs": 190.96,
+          "slowestMs": 191.26,
+          "worstOvershootMs": 91.26,
+          "interruptedInEverySample": true
+        },
+        "allocationLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 123.85,
+          "medianMs": 124.18,
+          "slowestMs": 129.09,
+          "worstOvershootMs": 29.09,
+          "interruptedInEverySample": true
+        },
+        "regexpBacktracking": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.06,
+          "medianMs": 100.06,
+          "slowestMs": 100.07,
+          "worstOvershootMs": 0.07,
+          "interruptedInEverySample": true
+        },
+        "oomRetryLoop": {
+          "deadlineMs": 300,
+          "repeats": 3,
+          "fastestMs": 491.74,
+          "medianMs": 548.75,
+          "slowestMs": 574.41,
+          "worstOvershootMs": 274.41,
+          "interruptedInEverySample": true
+        },
+        "throughputLoop": {
+          "deadlineMs": 0,
+          "repeats": 9,
+          "fastestMs": 2438.38,
+          "medianMs": 2497.17,
+          "slowestMs": 2632.75,
+          "worstOvershootMs": 0.0,
+          "interruptedInEverySample": false
+        }
+      },
+      "throughputOnly": {
+        "deadlineMs": 0,
+        "repeats": 9,
+        "fastestMs": 2437.89,
+        "medianMs": 2634.42,
+        "slowestMs": 2740.03,
+        "worstOvershootMs": 0.0,
+        "interruptedInEverySample": false
+      },
+      "patches": [
+        {
+          "file": "quickjs.c",
+          "pattern": "#define JS_INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define JS_INTERRUPT_COUNTER_INIT 1000"
+        },
+        {
+          "file": "libregexp.c",
+          "pattern": "#define INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define INTERRUPT_COUNTER_INIT 1000"
+        }
+      ],
+      "patchedSourceHashes": [
+        {
+          "path": "quickjs.c",
+          "sha256": "500067e3f47c356a102eb3ef6172b86ba3cb5157395de1eb360b5a17359f8098"
+        },
+        {
+          "path": "libregexp.c",
+          "sha256": "1c4bb264b6782df1f50e5ac01f5dd2b7f91da54b7f565a16001d9bfe6f99f7a3"
+        },
+        {
+          "path": "libunicode.c",
+          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+        },
+        {
+          "path": "dtoa.c",
+          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+        }
+      ]
+    },
+    {
+      "quantum": 256,
+      "cases": {
+        "tightLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.02,
+          "medianMs": 100.02,
+          "slowestMs": 100.03,
+          "worstOvershootMs": 0.03,
+          "interruptedInEverySample": true
+        },
+        "heavyLoopBody": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 110.48,
+          "medianMs": 111.29,
+          "slowestMs": 112.93,
+          "worstOvershootMs": 12.93,
+          "interruptedInEverySample": true
+        },
+        "allocationLoop": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 110.91,
+          "medianMs": 111.24,
+          "slowestMs": 120.44,
+          "worstOvershootMs": 20.44,
+          "interruptedInEverySample": true
+        },
+        "regexpBacktracking": {
+          "deadlineMs": 100,
+          "repeats": 3,
+          "fastestMs": 100.03,
+          "medianMs": 100.03,
+          "slowestMs": 100.04,
+          "worstOvershootMs": 0.04,
+          "interruptedInEverySample": true
+        },
+        "oomRetryLoop": {
+          "deadlineMs": 300,
+          "repeats": 3,
+          "fastestMs": 315.98,
+          "medianMs": 356.45,
+          "slowestMs": 376.02,
+          "worstOvershootMs": 76.02,
+          "interruptedInEverySample": true
+        },
+        "throughputLoop": {
+          "deadlineMs": 0,
+          "repeats": 9,
+          "fastestMs": 1018.38,
+          "medianMs": 1035.85,
+          "slowestMs": 1105.07,
+          "worstOvershootMs": 0.0,
+          "interruptedInEverySample": false
+        }
+      },
+      "throughputOnly": {
+        "deadlineMs": 0,
+        "repeats": 9,
+        "fastestMs": 1014.83,
+        "medianMs": 1050.04,
+        "slowestMs": 1110.22,
+        "worstOvershootMs": 0.0,
+        "interruptedInEverySample": false
+      },
+      "patches": [
+        {
+          "file": "quickjs.c",
+          "pattern": "#define JS_INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define JS_INTERRUPT_COUNTER_INIT 256"
+        },
+        {
+          "file": "libregexp.c",
+          "pattern": "#define INTERRUPT_COUNTER_INIT \\d+",
+          "replacement": "#define INTERRUPT_COUNTER_INIT 256"
+        }
+      ],
+      "patchedSourceHashes": [
+        {
+          "path": "quickjs.c",
+          "sha256": "2ee32282ed2d3d22b809d0a3386ce4ea90bf0265c68610c3c1103bd76351fd1b"
+        },
+        {
+          "path": "libregexp.c",
+          "sha256": "23fce3187def9d7004c316978d2168254643eb5d9e1c7d851e4275a28e642089"
+        },
+        {
+          "path": "libunicode.c",
+          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+        },
+        {
+          "path": "dtoa.c",
+          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+        }
+      ]
+    }
+  ]
+}
