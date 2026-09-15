@@ -145,6 +145,11 @@ class LegacyImport {
         );
       }
     }
+    // Nothing to record when there is nothing to import: a later installation of
+    // the files still has to be imported.
+    if (!await hasLegacyStores()) {
+      return const LegacyImportReport(imported: false, importedAt: '');
+    }
 
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final losses = <String>[];

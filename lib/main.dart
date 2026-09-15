@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -9,13 +10,20 @@ import 'migration/migration_service.dart';
 import 'source/book_source_service.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
+import 'store/legacy_import.dart';
+import 'store/workspace.dart';
 
 void main() {
   runApp(const LiberApp());
 }
 
 class LiberApp extends StatelessWidget {
-  const LiberApp({super.key});
+  const LiberApp({super.key, this.workspaceRoot});
+
+  /// The installation directory (`manifest.json` and `spaces\`), the default
+  /// `%APPDATA%\Liber` when null. Tests point it at a directory of their own so
+  /// a test run never touches the user's library.
+  final Directory? workspaceRoot;
 
   @override
   Widget build(BuildContext context) {
@@ -25,13 +33,15 @@ class LiberApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
         useMaterial3: true,
       ),
-      home: const LiberHomePage(),
+      home: LiberHomePage(workspaceRoot: workspaceRoot),
     );
   }
 }
 
 class LiberHomePage extends StatefulWidget {
-  const LiberHomePage({super.key});
+  const LiberHomePage({super.key, this.workspaceRoot});
+
+  final Directory? workspaceRoot;
 
   @override
   State<LiberHomePage> createState() => _LiberHomePageState();
@@ -51,12 +61,45 @@ class _LiberHomePageState extends State<LiberHomePage> {
   MigrationImportRecord? _migrationResult;
   String? _libraryMessage;
   String? _migrationMessage;
+  LegacyImportReport? _spaceImport;
+  String? _spaceStorePath;
+  String? _spaceMessage;
   List<BookSourceTraceEntry> _trace = const <BookSourceTraceEntry>[];
 
   @override
   void initState() {
     super.initState();
     _loadLibrary();
+    _importLegacyStores();
+  }
+
+  /// Opens the space store and imports the JSON stores this product wrote
+  /// before it, once.
+  ///
+  /// The shelf still reads those JSON files in this build, so the originals are
+  /// left in place: the import records itself in the space, which is what makes
+  /// a second launch a no-op.
+  Future<void> _importLegacyStores() async {
+    Workspace? workspace;
+    try {
+      workspace = await Workspace.open(root: widget.workspaceRoot);
+      final store = await workspace.openSpace();
+      final report = await LegacyImport(home: workspace.root).run(store);
+      final path = File(
+        '${workspace.spaceDirectory(store.spaceId).path}'
+        '${Platform.pathSeparator}${Workspace.databaseFileName}',
+      ).path;
+      if (mounted) {
+        setState(() {
+          _spaceImport = report;
+          _spaceStorePath = path;
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) setState(() => _spaceMessage = '空间存储不可用：$error');
+    } finally {
+      await workspace?.close();
+    }
   }
 
   Future<void> _loadLibrary() async {
@@ -151,6 +194,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
         result: _migrationResult,
         sources: _migrationService.sources,
         message: _migrationMessage,
+        spaceImport: _spaceImport,
+        spaceStorePath: _spaceStorePath,
+        spaceMessage: _spaceMessage,
         onImport: (jsonText) async {
           try {
             final result = await _migrationService.importJson(jsonText);
@@ -617,13 +663,71 @@ class _MigrationPage extends StatelessWidget {
     required this.result,
     required this.sources,
     required this.message,
+    required this.spaceImport,
+    required this.spaceStorePath,
+    required this.spaceMessage,
     required this.onImport,
   });
 
   final MigrationImportRecord? result;
   final List<ImportedBookSource> sources;
   final String? message;
+  final LegacyImportReport? spaceImport;
+  final String? spaceStorePath;
+  final String? spaceMessage;
   final ValueChanged<String> onImport;
+
+  /// What the one-time import of this installation's own JSON stores did. It
+  /// runs by itself on the first launch, so it reports here instead of behind a
+  /// button.
+  Widget _spaceCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final report = spaceImport;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('空间存储', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              spaceStorePath ?? '尚未创建',
+              key: const ValueKey('space-store-path'),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            if (spaceMessage != null)
+              Text(
+                spaceMessage!,
+                key: const ValueKey('space-store-status'),
+              )
+            else if (report == null)
+              const Text('正在打开…')
+            else if (report.imported)
+              Text(
+                '本次导入旧数据（${report.importedAt}）：${report.summary()}',
+                key: const ValueKey('space-store-status'),
+              )
+            else if (report.importedAt.isEmpty)
+              const Text(
+                '没有可导入的旧数据',
+                key: ValueKey('space-store-status'),
+              )
+            else
+              Text(
+                '已在 ${report.importedAt} 导入过：${report.summary()}，本次未重复导入',
+                key: const ValueKey('space-store-status'),
+              ),
+            if (report != null && report.losses.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              for (final loss in report.losses) Text('• $loss'),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -635,6 +739,8 @@ class _MigrationPage extends StatelessWidget {
           Text('迁移', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 8),
           const Text('选择 JSON 备份文件，先做导入预览并报告无法迁移的数据。'),
+          const SizedBox(height: 20),
+          _spaceCard(context),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: () async {

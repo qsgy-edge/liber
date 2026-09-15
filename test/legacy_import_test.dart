@@ -289,6 +289,23 @@ void main() {
     await workspace.close();
   });
 
+  test('没有旧文件时不写导入记录，旧文件出现了仍然会导入', () async {
+    final legacy = LegacyImport(home: home);
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+
+    final empty = await legacy.run(store);
+    expect(empty.imported, isFalse);
+    expect(empty.importedAt, isEmpty);
+
+    final legacyHome = await LegacyHome.create(home);
+    await legacyHome.writeOnlineReading();
+    final report = await legacy.run(store);
+    expect(report.imported, isTrue, reason: '后来出现的旧文件仍然要导入');
+    expect(report.books, 2);
+    await workspace.close();
+  });
+
   test('原文件移到 legacy/ 而不是删除', () async {
     final (legacy, workspace) = await workspaceWithStores();
     final store = await workspace.openSpace();
