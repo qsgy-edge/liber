@@ -1,0 +1,81 @@
+{
+  "platform": "windows",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "golden": "tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json",
+  "status": "fail",
+  "observations": [
+    {
+      "id": "nested-shared",
+      "value": "\"1\""
+    },
+    {
+      "id": "subsequent-shared",
+      "value": "2"
+    },
+    {
+      "id": "cross-source-shared",
+      "value": "3"
+    },
+    {
+      "id": "outer-bindings",
+      "value": "[\"outer-key\",7,null,null]"
+    },
+    {
+      "id": "nested-fresh-bindings",
+      "value": "\"[null,null,null,null]\""
+    },
+    {
+      "id": "lexical-isolation",
+      "value": "\"undefined\""
+    },
+    {
+      "id": "fresh-eval-bindings",
+      "value": "\"undefined\""
+    },
+    {
+      "id": "library-binding-isolation",
+      "value": "\"undefined\""
+    },
+    {
+      "id": "shadow-library",
+      "value": "900"
+    },
+    {
+      "id": "shared-after-shadow",
+      "value": "3"
+    },
+    {
+      "id": "nested-caught-error",
+      "value": "[true,3]"
+    },
+    {
+      "id": "two-level-host",
+      "value": "\"inner\""
+    },
+    {
+      "id": "xml-js",
+      "value": "\"4\""
+    },
+    {
+      "id": "at-js",
+      "value": "\"5\""
+    },
+    {
+      "id": "connect",
+      "value": "\"6\""
+    }
+  ],
+  "requests": [
+    "GET /value/1",
+    "GET /value/%5Bnull,null,null,null%5D",
+    "GET /value/undefined",
+    "GET /value/inner",
+    "GET /value/inner",
+    "GET /value/4",
+    "GET /value/5",
+    "GET /value/6"
+  ],
+  "countMatches": true,
+  "requestsMatch": false,
+  "mismatches": []
+}

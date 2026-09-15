@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.liber.oracle.nested">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+  <application android:label="Liber frozen oracle harness" android:debuggable="true" />
+  <instrumentation android:name="io.liber.oracle.nested.NestedOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado nested JS oracle" />
+  <instrumentation android:name="io.liber.oracle.nested.StateOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado state oracle" />
+</manifest>

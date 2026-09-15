@@ -1,0 +1,1 @@
+{"case":"same-runtime-nested","pass":true,"staleRequestRefused":true,"sequentialSharedClosure":true,"nestedCompletedBeforeClose":true,"outerBeforeClose":42,"nestedAfterClose":42,"outerAfterClose":42,"lateCompletionRejected":false,"callbackFinished":true,"cancelCalls":0,"cleanup":true}

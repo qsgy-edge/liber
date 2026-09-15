@@ -1,0 +1,4 @@
+{"case":"init-close-64","pass":true,"initSucceeded":9,"initCancelled":0,"initRejected":55}
+{"case":"forged-cancel","pass":true}
+{"case":"unrelated-background-error-retained","pass":true}
+{"case":"native-heap-limit","pass":true,"resultType":"JsError_MemoryLimit"}

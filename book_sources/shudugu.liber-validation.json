@@ -1,0 +1,77 @@
+{
+  "time": "2026-09-09T17:56:05.865695",
+  "engine": "Liber HtmlSourcePipeline / html 0.15.6",
+  "title": "凡人修仙传",
+  "author": "忘语",
+  "tocPages": 3,
+  "chapters": 2512,
+  "checkedChapters": [
+    {
+      "name": "第1章 山边小村",
+      "url": "https://www.shudugu.org/128/10643.html",
+      "pages": 4,
+      "characters": 2481
+    },
+    {
+      "name": "第2章 青牛镇",
+      "url": "https://www.shudugu.org/128/10817.html",
+      "pages": 4,
+      "characters": 1994
+    }
+  ],
+  "requests": [
+    {
+      "stage": "search",
+      "url": "https://www.shudugu.org/i/sor.aspx?key=%E5%87%A1%E4%BA%BA%E4%BF%AE%E4%BB%99%E4%BC%A0"
+    },
+    {
+      "stage": "bookInfo",
+      "url": "https://www.shudugu.org/128/"
+    },
+    {
+      "stage": "tableOfContents",
+      "url": "https://www.shudugu.org/128/"
+    },
+    {
+      "stage": "tableOfContents",
+      "url": "https://www.shudugu.org/128/p-2.html"
+    },
+    {
+      "stage": "tableOfContents",
+      "url": "https://www.shudugu.org/128/p-3.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10643.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10643-2.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10643-3.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10643-4.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10817.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10817-2.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10817-3.html"
+    },
+    {
+      "stage": "content",
+      "url": "https://www.shudugu.org/128/10817-4.html"
+    }
+  ],
+  "verdict": "pass"
+}

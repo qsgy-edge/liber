@@ -1,0 +1,87 @@
+{
+  "recordedAt": "2026-09-14T13:48:04.0832922+08:00",
+  "verdict": "fail",
+  "scope": "Controlled same-jsLib overlap, cancellation after observed HTTP marker, 16-entry LRU",
+  "baseline": {
+    "webview": "com.google.android.webview 154.0.8037.0",
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.25.XPMCNXM:user/release-keys",
+    "sourceDiff": [],
+    "installedApkPulledAndVerified": true,
+    "productionRebuilt": false,
+    "repeatedGoldenByteIdentical": true,
+    "apkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6"
+  },
+  "harness": {
+    "apkPath": "C:/Users/17945/.cache/wayfinder/state-oracle-20260914-v1/nested-oracle.apk",
+    "lruGcIsolation": "Strong refs from SharedJsScope.getScope retained by harness; no reflection changes to cache implementation",
+    "apkSha256": "3c7060ac71d5014e355ed5a0ac4071fa2c6c97bdb700d04ab7ef61d7b9b8ba79",
+    "installedApkPulledAndVerified": true,
+    "command": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.StateOracle",
+    "processReset": "am force-stop io.legado.app.debug before each run",
+    "cancel": "Real kotlinx.coroutines.Job cancelled after server marker observed; awaited evaluation result before reading same jsLib with fresh context"
+  },
+  "windows": {
+    "exitCode": 1,
+    "productCodeChangedThisRound": false,
+    "numericNormalization": "Seven explicitly numeric state fields compare by numeric value; Rhino Java Number string 22.0 equals QuickJS 22; arbitrary strings not normalized",
+    "repeatedResultsEqual": true,
+    "observations": 9,
+    "uncommitted": true,
+    "requestSequenceMatches": true,
+    "mismatches": 3,
+    "analysis": "No issues found",
+    "command": "fvm dart run tool/state_oracle_compare.dart <DLL> tool/nested_oracle/evidence/android-17-os4.0.0.25/state-golden.json tool/nested_oracle/evidence/windows-state-final.json",
+    "branch": "master",
+    "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c"
+  },
+  "limitations": [
+    "Deterministic one held-HTTP interleaving, not exhaustive concurrent/racy initialization coverage",
+    "Weak-reference GC collection not tested; deliberate strong pin isolates LRU",
+    "Cancellation after observed state write and HTTP response, not assertion of exact loop instruction at cancellation",
+    "Active-entry eviction, nested-child cancellation and queued-cancellation isolation not yet covered",
+    "Other destination platforms not-run; no aggregate compatibility promotion"
+  ],
+  "hashes": [
+    {
+      "sha256": "461d752af7e9546e5029f797fdcf7ca517dfac66b4d473451884f691842d25fb",
+      "path": "tool/nested_oracle/StateOracle.java"
+    },
+    {
+      "sha256": "b90d975e8aa5693b1683e40f181ad1c55fd48b15ee1a5efc4eff9d89928bbd6f",
+      "path": "tool/nested_oracle/state-fixtures.json"
+    },
+    {
+      "sha256": "0c7d1b971690fb06850c2aed75a7282ba2d004ec82ab83ac74dd22154e172b51",
+      "path": "tool/nested_oracle/AndroidManifest.xml"
+    },
+    {
+      "sha256": "991fefdf4d9152a42213e9a03d97a21a4b70cf38fd0b7a4c5b4e91beba098044",
+      "path": "tool/nested_oracle/build.ps1"
+    },
+    {
+      "sha256": "b2d017c9991192f41fe3fd321f2c9c725ddd045339d3c42fb8bd1b6aad1dc85a",
+      "path": "tool/state_oracle_compare.dart"
+    },
+    {
+      "sha256": "963712dc9b634536e77e80d86c891968b80ba67443135740f1ddc915f27cc023",
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/state-golden.json"
+    },
+    {
+      "sha256": "846db8322e404839dcabfbad1787c2c7f589fb3e5f8438417e6a36c5ac9d39a4",
+      "path": "tool/nested_oracle/evidence/windows-state-final.json"
+    },
+    {
+      "sha256": "646b761fc17f063610de558e64b7a9e0d63b40ff314d58da428650ba0aaef0f0",
+      "path": "lib/source/js_source_runtime.dart"
+    },
+    {
+      "sha256": "c65ef45295dd68521fb003ff329127ff389c46326b54b09f0bdbbbfa29585195",
+      "path": "packages/fjs/libfjs/src/api/engine.rs"
+    },
+    {
+      "sha256": "2300a358c08260833642131c663ade0005e8146aac7a2a78044500ab93314562",
+      "path": "build/windows/x64/runner/Debug/fjs.dll"
+    }
+  ]
+}

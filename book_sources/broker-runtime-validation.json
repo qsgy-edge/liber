@@ -1,0 +1,100 @@
+{
+  "recordedAt": "2026-09-14T00:07:03.2406854+08:00",
+  "scope": "Windows broker verification; uncommitted working-tree candidate",
+  "verdict": "fail: same-runtime host-to-JS nesting does not complete before close",
+  "root": "D:/GithubRepositories/Flutter/liber",
+  "branch": "master",
+  "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "dartVersion": "3.12.2 windows_x64",
+  "dll": {
+    "path": "build/windows/x64/runner/Debug/fjs.dll",
+    "sha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+    "comparisonManifest": "book_sources/jiuai-runtime-validation.json",
+    "nativeSourceEntriesCompared": 119,
+    "nativeSourceHashMismatches": 0,
+    "buildNote": "MCP launch succeeded using existing cargokit Windows Debug artifact; no native source edits or manual DLL copy in this session. Matching historical hashes is not an independent reproducible-build proof."
+  },
+  "cli": {
+    "dllArgument": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll",
+    "commands": [
+      {
+        "command": "fvm dart run tool/broker_lifecycle_regression.dart <dllArgument>",
+        "exitCode": 0,
+        "checks": {
+          "init-close-64": true,
+          "forged-cancel": true,
+          "unrelated-background-error-retained": true,
+          "native-heap-limit": true
+        },
+        "initOutcomes": {"succeeded": 6, "cancelled": 0, "engineError": 58},
+        "initCloseAssertions": ["initialization result observed", "closed and not running", "late eval refused with engine error", "reinitialization refused with engine error", "repeated close succeeds", "no host starts"],
+        "limitation": "64 scheduled interleavings are not exhaustive race or callback-leak proof."
+      },
+      {
+        "command": "fvm dart run tool/broker_gate_regression.dart <dllArgument> <mode>",
+        "modes": [
+          {"mode": "queued-close", "exitCode": 0, "pass": true},
+          {"mode": "throw-start", "exitCode": 0, "pass": true},
+          {"mode": "throw-cancel", "exitCode": 0, "pass": true},
+          {"mode": "same-runtime-queued-release", "exitCode": 0, "pass": true, "outerValue": 41, "nestedValue": 42, "cancelCalls": 0},
+          {"mode": "same-runtime-nested", "exitCode": 1, "pass": false, "sequentialSharedClosure": true, "outerBeforeClose": "pending after 1 second", "nestedAfterClose": "JsError_Cancelled", "outerAfterClose": "JsError_Cancelled", "lateCompletionRejected": true, "callbackFinished": true, "cancelCalls": 1, "cleanup": true}
+        ],
+        "diagnostics": [
+          "Deliberate starter/cancel exceptions print caught FRB Rust panic-hook diagnostics; they are not clean stderr runs.",
+          "Nested cancellation and throw-cancel runs printed dart_fn_handle_output send diagnostics after the native starter waiter was aborted. Both processes returned their recorded exit codes; no absence-of-diagnostics or callback-leak claim is made."
+        ],
+        "controlLimitation": "Returning the host result before awaiting nested work proves queued work can proceed. It does not implement synchronous nested return semantics."
+      },
+      {
+        "command": "fvm dart run tool/runtime_gate.dart <dllArgument>",
+        "exitCode": 0,
+        "checksPassed": 13,
+        "coverage": "synchronous return, host method/input/output limits, output cap, forged cancellation, infinite loop timeout, real HTTP cancellation/server disconnect, next execution"
+      },
+      {
+        "command": "fvm dart run tool/broker_loader_regression.dart <dllArgument>",
+        "exitCode": 0,
+        "case": "ambient-file-import",
+        "pass": true,
+        "readControlledMarker": false,
+        "errorType": "JsError_Reference"
+      }
+    ]
+  },
+  "mcp": {
+    "server": "dart-mcp-server",
+    "root": "file:///D:/GithubRepositories/Flutter/liber",
+    "dart_format": {"paths": ["tool/broker_gate_regression.dart", "tool/broker_lifecycle_regression.dart"], "result": "2 files formatted"},
+    "analyze_files": {"paths": ["tool/broker_gate_regression.dart", "tool/broker_lifecycle_regression.dart"], "result": "No errors"},
+    "run_tests": {"paths": ["test"], "result": "28 tests passed"},
+    "launch_app": {"target": "tool/cat_eye_driver.dart", "device": "windows", "pid": 56220, "result": "success"},
+    "dtd": "connected to returned DTD URI",
+    "flutter_driver_command": [
+      {"command": "get_health", "method": "ext.flutter.driver", "status": "ok"},
+      {"command": "tap", "finderType": "ByType", "type": "TextField", "isError": false},
+      {"command": "enter_text", "text": "猫眼", "isError": false},
+      {"command": "tap", "finderType": "ByText", "text": "搜索", "isError": false},
+      {"command": "waitFor", "finderType": "ByText", "text": "猫眼回放", "isError": false},
+      {"command": "get_text", "text": "猫眼正文", "isError": false},
+      {"command": "get_text", "text": "1 章 · 第一章", "isError": false}
+    ],
+    "get_runtime_errors": "No runtime errors found",
+    "uiLimit": "Synthetic local JSON replay; does not exercise nested broker calls and does not establish Book Source compatibility."
+  },
+  "evidenceClassification": {
+    "confirmed": "Sequential calls preserve a closure in one engine. Nested callback eval remains pending within the 1-second observation window. Closing settles both evals, finishes the Dart callback, and rejects its late completion. Returning the outer host result first permits queued eval to produce 42.",
+    "inferred": "A circular wait occurs because broker bridge_call waits for completion inside the current context execution while callback eval re-enters context.async_with. Evidence: engine.rs:1753 and runtime.rs:1332 plus the controlled release run.",
+    "unverified": "A reentrant command channel, full shared jsLib product semantics, exhaustive lifecycle races, callback memory reclamation, hostile-code isolation, other platforms and frozen oracle."
+  },
+  "platforms": {"WindowsNestedGate": "fail", "Android": "not-run", "iOS": "not-run", "macOS": "not-run", "Linux": "not-run", "frozenOracle": "not-run"},
+  "noStatusPromotion": true,
+  "sources": [
+    {"path": "tool/broker_gate_regression.dart", "sha256": "8509250eb7989a8e36146b92edcb3d3a1a99b02f574829265f4f891d9f17c1e7"},
+    {"path": "tool/broker_lifecycle_regression.dart", "sha256": "cb5f3a21b4f8327a8cd76c1e48c878314fa5340dc187c177f54c1f0421b68a77"},
+    {"path": "tool/broker_loader_regression.dart", "sha256": "9ed196c2925bb1d03e0c520fbfe465e682ac0b1af5ea3a409d904da8f4f04eb6"},
+    {"path": "tool/runtime_gate.dart", "sha256": "8321ad3eb440675e2c579209f7750dd23d3cb058174e2d5c4c3de8996fb158f1"},
+    {"path": "tool/cat_eye_driver.dart", "sha256": "8ff3915d888df67e4497450a251c27c81511c2baa375e6c559bcdd14e7d3e4ae"},
+    {"path": "packages/fjs/libfjs/src/api/engine.rs", "sha256": "83b844598b66c2713a3673ae5c6209ec7f34ac195a5384669429eea953a65d23"},
+    {"path": "packages/fjs/libfjs/src/api/runtime.rs", "sha256": "c3377f173c8f4b2eeab41ec4383da9f2c18f5f8148c461019f4c8bee11841acc"}
+  ]
+}

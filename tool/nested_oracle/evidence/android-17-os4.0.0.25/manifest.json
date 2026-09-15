@@ -1,0 +1,117 @@
+{
+  "recordedAt": "2026-09-14T12:10:22.7331691+08:00",
+  "kind": "frozen-legado-AnalyzeUrl-nested-js-differential",
+  "baseline": {
+    "application": {
+      "productionRebuilt": false,
+      "package": "io.legado.app.debug",
+      "installedBytesPulledAndVerified": true,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6"
+    },
+    "productionSourceDiff": [],
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af"
+  },
+  "harness": {
+    "installedBytesPulledAndVerified": true,
+    "buildCommand": "./tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome <jdk17>",
+    "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.NestedOracle",
+    "package": "io.liber.oracle.nested",
+    "repeatedGoldenByteIdentical": true,
+    "apkSha256": "73667a7232d65897ed1e39e554c83c4c45f8d5c17ba5282bacdc3defd9d639b0",
+    "androidBuildTools": "35.0.1",
+    "jdk": "Temurin 17.0.20+8",
+    "calls": "Installed AnalyzeUrl constructor and evalJS via reflection; real frozen source/jsLib/HTTP implementation",
+    "androidCompilePlatform": "35"
+  },
+  "device": {
+    "webViewVersion": "154.0.8037.0",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.25.XPMCNXM:user/release-keys",
+    "webViewPackage": "com.google.android.webview"
+  },
+  "destination": {
+    "verdict": "fail",
+    "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+    "analyze": "No errors",
+    "requestSequenceMatches": false,
+    "rawRequestDifference": {
+      "frozen": "GET /value/[null,null,null,null]",
+      "windows": "GET /value/%5Bnull,null,null,null%5D"
+    },
+    "jsObservationsTotal": 15,
+    "jsObservationsMatch": 15,
+    "branch": "master",
+    "command": "fvm dart run tool/nested_oracle_compare.dart <fjs.dll> tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json <new-result.json>",
+    "platform": "Windows",
+    "exitCode": 1,
+    "uncommitted": true
+  },
+  "coverage": {
+    "entryPoint": "AnalyzeUrl.evalJS",
+    "boundedSerialCasesOnly": true,
+    "gaps": [
+      "AnalyzeRule.ajax book propagation",
+      "Cache eviction/weak-reference lifetime",
+      "Concurrent cross-source execution parity",
+      "Cancellation-state parity",
+      "Request bodies/headers/redirects outside this GET-only corpus",
+      "Complete Book Source four-stage compatibility",
+      "Android/iOS/macOS/Linux destination rows"
+    ]
+  },
+  "nextBoundary": "Raw URL information is already canonicalized into Dart Uri before HttpClient. Matching frozen request bytes requires a URL/HTTP transport design change, not normalization in the comparator.",
+  "noAggregateStatusPromotion": true,
+  "hashes": [
+    {
+      "path": "tool/nested_oracle/fixtures.json",
+      "sha256": "06ad9917da19fe40330ca324242efb57a38666d59a1b414b231404beda014566"
+    },
+    {
+      "path": "tool/nested_oracle/NestedOracle.java",
+      "sha256": "3e64adba936cc6971025c91832c07ba5ffb38994f56dcadac9bc5bbb6fc4ad71"
+    },
+    {
+      "path": "tool/nested_oracle/AndroidManifest.xml",
+      "sha256": "64ce7e52d55df6f965c9df38af5e28d3e80b07cb9fbad0948227f9d27a371176"
+    },
+    {
+      "path": "tool/nested_oracle/build.ps1",
+      "sha256": "6d0ee40a37e85cac6824291bf216b4e74e08343aeab35a5fe1ea80033bca8dd9"
+    },
+    {
+      "path": "tool/nested_oracle_compare.dart",
+      "sha256": "bb9faf944a461d4a5436581442bf33d49fbf9337904513a62311640cbca8a980"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json",
+      "sha256": "30bf09eab6883a1dc3e60d7f3b2d735aeacbcd0ab0916058169f6c2197f207ab"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/run.log",
+      "sha256": "5519ba4e0ad256ff7cd89e8501f93a94c69ca4bae6d988295338eb6d123dbe85"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/windows-first.json",
+      "sha256": "09579a43f548c404a93987f3b283508ec81861bc4e9c6f96f1bd3696a09ef38a"
+    },
+    {
+      "path": "lib/source/js_source_runtime.dart",
+      "sha256": "646b761fc17f063610de558e64b7a9e0d63b40ff314d58da428650ba0aaef0f0"
+    },
+    {
+      "path": "lib/source/http_source_transport.dart",
+      "sha256": "0e749d0d190b6923e6160df609ae1fb0fd429f8165b869722ad93b48767350b7"
+    },
+    {
+      "path": "lib/source/source_url_rules.dart",
+      "sha256": "218eed2063b6b45c19bfb9eb42ab9fe02734399247e42c892b3a6e9097100220"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/engine.rs",
+      "sha256": "c65ef45295dd68521fb003ff329127ff389c46326b54b09f0bdbbbfa29585195"
+    },
+    {
+      "path": "build/windows/x64/runner/Debug/fjs.dll",
+      "sha256": "2300a358c08260833642131c663ade0005e8146aac7a2a78044500ab93314562"
+    }
+  ]
+}

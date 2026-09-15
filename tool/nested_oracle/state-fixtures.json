@@ -1,0 +1,14 @@
+{
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "library": "var state={n:0}; // lifecycle differential ",
+  "warm": "state.n",
+  "first": "state.n=11;java.ajax('$ORIGIN/hold');state.n",
+  "second": "state.n=22;state.n",
+  "cancel": "state.n=41;java.ajax('$ORIGIN/entered');while(true);",
+  "early": "java.ajax('$ORIGIN/early');state.n",
+  "late": "java.ajax('$ORIGIN/late');state.n",
+  "read": "state.n",
+  "seed": "state.n=99;state.n",
+  "barrierWaitMilliseconds": 2000,
+  "operationTimeoutMilliseconds": 15000
+}

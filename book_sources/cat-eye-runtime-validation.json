@@ -1,0 +1,52 @@
+{
+  "source": "猫眼看书",
+  "windowsLive": {
+    "oracle": "not-run",
+    "chapters": 514,
+    "contentChars": 3004,
+    "status": "pass",
+    "stages": [
+      "search",
+      "bookInfo",
+      "tableOfContents",
+      "content"
+    ]
+  },
+  "localReplay": {
+    "crypto": "pass",
+    "requests": 4,
+    "status": "pass",
+    "stages": 4
+  },
+  "tests": {
+    "status": "pass",
+    "count": 28
+  },
+  "analyze": "pass",
+  "windowsApp": {
+    "status": "running",
+    "pid": 52848,
+    "launchCall": "pass",
+    "processObserved": true,
+    "runtimeErrors": 0
+  },
+  "windowsDriver": {
+    "status": "pass",
+    "entrypoint": "tool/cat_eye_driver.dart",
+    "health": "ok",
+    "actions": [
+      "focus TextField",
+      "enter 猫眼",
+      "tap 搜索",
+      "wait 猫眼回放",
+      "read 猫眼正文",
+      "read 1 章 · 第一章"
+    ],
+    "runtimeErrors": 0
+  },
+  "limitations": [
+    "冻结oracle未运行",
+    "其他平台未运行",
+    "完整Legado JS/共享jsLib未支持"
+  ]
+}

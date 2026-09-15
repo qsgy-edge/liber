@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-09-14T17:54:17.3224749+08:00",
+  "status": "fail",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "branch": "master",
+  "uncommitted": true,
+  "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.25.XPMCNXM:user/release-keys",
+  "productionRebuilt": false,
+  "installedProductionSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+  "installedHarnessSha256": "eac1b3b83a51bf30ba8fbad0803ad93b34b5f3962a8b38b275f4721df4a2e9ed",
+  "bothInstalledApksPulledAndVerified": true,
+  "repeatedGoldenByteIdentical": true,
+  "observations": 10,
+  "matched": 9,
+  "requestSequenceMatched": true,
+  "failure": "firstCompletesWhileSecondHeld",
+  "diagnosis": {
+    "engineLocations": [
+      "packages/fjs/libfjs/src/api/engine.rs:238",
+      "packages/fjs/libfjs/src/api/engine.rs:1948",
+      "packages/fjs/libfjs/src/api/engine.rs:1971"
+    ],
+    "nextOption": "Prototype independently suspendable execution stacks while retaining fjs and shared runtime",
+    "unproven": "Safety/feasibility of switching QuickJS internal execution state across independent stacks, GC, exceptions, cancellation and other platforms",
+    "confirmed": "Root executions are recursively pumped from the synchronous host call; a suspended older call cannot return until the newer JS call unwinds"
+  },
+  "productChangesThisTurn": false,
+  "hashes": [
+    {
+      "sha256": "157f04f8e31e28ce9b751636761871e40786e7f4a55c179fc112133e5e26b147",
+      "path": "tool/nested_oracle/StateOracle.java"
+    },
+    {
+      "sha256": "bdafd6e253cd15e76a54862c7211bcce288d503dcf45c579ed708714159e9c08",
+      "path": "tool/nested_oracle/state-fixtures.json"
+    },
+    {
+      "sha256": "5d4af019981aecf8f4e16e10783accfee18dbf1e848cb2fc48a0c23a746202cd",
+      "path": "tool/state_oracle_compare.dart"
+    },
+    {
+      "sha256": "60c92a2ddca8693075f23ec44369c3004d7517f71ae3975d2230ea9cdd6740c7",
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json"
+    },
+    {
+      "sha256": "69e0dfd2078fec0780175156706e5335d68750db01248b48ef99764c13a5b0e2",
+      "path": "tool/nested_oracle/evidence/windows-state-expanded.json"
+    },
+    {
+      "sha256": "05914fad92a0e5571e06a8e47ab1912558330ba579f33e4074c07f120e654c69",
+      "path": "lib/source/js_source_runtime.dart"
+    },
+    {
+      "sha256": "c0e59e1fb2ddcccc80614089c42654d58795cb7971aa752e69607b3d968316e8",
+      "path": "packages/fjs/libfjs/src/api/engine.rs"
+    },
+    {
+      "sha256": "a9d96172ffaecf627b26c46f58b175c848150cdbfc34410be0ca977deaedf87d",
+      "path": "packages/fjs/libfjs/src/api/runtime.rs"
+    },
+    {
+      "sha256": "39abc60c2e68bd03e4ac928973116138e41272c3c99b63ed60254bbbe64dac84",
+      "path": "build/windows/x64/runner/Debug/fjs.dll"
+    }
+  ]
+}

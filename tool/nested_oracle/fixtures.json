@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "AnalyzeUrl.evalJS",
+  "jsLib": "var state={n:0}; function inc(){return ++state.n;} function libraryKey(){return typeof key;}",
+  "steps": [
+    {"id":"nested-shared","script":"JSON.stringify(java.ajax('$ORIGIN/value/{{inc()}}'))"},
+    {"id":"subsequent-shared","script":"JSON.stringify(inc())"},
+    {"id":"cross-source-shared","sourceKey":"second","script":"JSON.stringify(inc())"},
+    {"id":"outer-bindings","script":"JSON.stringify([key,page,book,result])"},
+    {"id":"nested-fresh-bindings","script":"JSON.stringify(java.ajax('$ORIGIN/value/{{JSON.stringify([key,page,book,result])}}'))"},
+    {"id":"lexical-isolation","script":"var privateLocal=42; JSON.stringify(java.ajax('$ORIGIN/value/{{typeof privateLocal}}'))"},
+    {"id":"fresh-eval-bindings","script":"JSON.stringify(typeof privateLocal)"},
+    {"id":"library-binding-isolation","script":"JSON.stringify(libraryKey())"},
+    {"id":"shadow-library","script":"state={n:900}; JSON.stringify(state.n)"},
+    {"id":"shared-after-shadow","script":"JSON.stringify(state.n)"},
+    {"id":"nested-caught-error","script":"var caught=false; try {java.ajax('$ORIGIN/value/{{throw new Error(\"nested\")}}');} catch(e){caught=true;} JSON.stringify([caught,state.n])"},
+    {"id":"two-level-host","script":"JSON.stringify(java.ajax('$ORIGIN/value/{{java.ajax(\"$ORIGIN/value/inner\")}}'))"},
+    {"id":"xml-js","script":"JSON.stringify(java.ajax('<js>\"$ORIGIN/value/\"+inc()</js>'))"},
+    {"id":"at-js","script":"JSON.stringify(java.ajax('@js:\"$ORIGIN/value/\"+inc()'))"},
+    {"id":"connect","script":"JSON.stringify(java.connect('$ORIGIN/value/{{inc()}}').body())"}
+  ]
+}

@@ -1,0 +1,1218 @@
+{
+  "recordedAt": "2026-09-12T16:20:34.3207542+08:00",
+  "scope": "Windows uncommitted product slice; synthetic replay is not an oracle golden",
+  "branch": "master",
+  "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "upstreamFjs": "8195d78bc0335045fd62bcf4835c3e889b54c77b",
+  "frbVersion": "2.12.0",
+  "nativeBuild": "Original cargokit Windows Debug build; no manual DLL copy",
+  "debugDllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+  "ordinaryTests": {
+    "success": true,
+    "passed": 26,
+    "reportSha256": "94fe909aa217b3d0f4304317b1d5aa9c2a2acbb945336ecd270f9bf4e145ffc3"
+  },
+  "nativeUi": {
+    "status": "pass",
+    "searchHits": 2,
+    "selectedBook": "回放之书",
+    "firstChapterPages": 2,
+    "savedChapter": "第二章",
+    "runtimeErrors": 0,
+    "oracle": "not-run"
+  },
+  "nativeUiSourceAtRun": {
+    "path": "integration_test/jiuai_reader_test.dart",
+    "sha256": "b0ca5254a62d3083d093df316124c9528d182a8c9679fdc22095c1a24eb97c18",
+    "evidence": "jiuai-native-ui.json"
+  },
+  "nativeUiSourceSubsequentChange": "dart format only",
+  "originalRuleComparison": [
+    {
+      "field": "searchUrl",
+      "unchanged": true,
+      "sha256": "fb96d72e954ba40d0869100d13647aba0e15cd33da697589a2e492ea292ccb1f"
+    },
+    {
+      "field": "ruleSearch",
+      "unchanged": true,
+      "sha256": "cd79cd4c5a3a08abc762a8a0a4b824c91544abdd1bc67fa93a6e9d5db27c85c2"
+    },
+    {
+      "field": "ruleBookInfo",
+      "unchanged": true,
+      "sha256": "57935d595f9be2ee6bf370e387d805b1fc89268b6b6c5b07a377caf9c124a637"
+    },
+    {
+      "field": "ruleToc",
+      "unchanged": true,
+      "sha256": "5719fac39b5a4a1657e3ef3a4787b35a57fdb6659952ebf194451b8139b11273"
+    },
+    {
+      "field": "ruleContent",
+      "unchanged": true,
+      "sha256": "15a1aa6fb5e2dccb3d8966943f9ac3012e1b19962407df1808b41ef7a2289f89"
+    }
+  ],
+  "limitations": [
+    "Frozen Legado oracle not-run",
+    "Android/iOS/macOS/Linux not-run",
+    "Same-runtime host-to-JS nesting and shared jsLib unsupported",
+    "Full Cookie/AnalyzeUrl/response semantics unproven",
+    "Live Jiuai GET/POST returned HTTP 502 with empty bodies under the default 30-second budget; later stages not-run; origin versus gateway responsibility unconfirmed",
+    "Native UI executed via launch_app; integration_test plugin result-upload warning remains",
+    "Independent gate review preceded the repairs; no claim of independent final review of all changes"
+  ],
+  "runs": [
+    {
+      "label": "gate-fixed2-queued-close",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 2154,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "86ba56d299c3a2027948255ff5314ec6fb0955e767d715e78dd211ecfd2e2b7d",
+      "stdoutSha256": "8a5c1e223ec57033ceb0e321899d0a0b4f132d2036b2d57e022c3dfceac668f5",
+      "observations": [
+        {
+          "case": "queued-close",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "gate-fixed2-throw-start",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1148,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "86ba56d299c3a2027948255ff5314ec6fb0955e767d715e78dd211ecfd2e2b7d",
+      "stdoutSha256": "c743a1379b940ac9a51301b45f17364f4e921a3d8f10ed2b3cf2fc432a581584",
+      "observations": [
+        {
+          "case": "throw-start",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "gate-fixed2-throw-cancel",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1017,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "86ba56d299c3a2027948255ff5314ec6fb0955e767d715e78dd211ecfd2e2b7d",
+      "stdoutSha256": "2a3c8992f129570808d919a69c0606d59ead8eeadcfd00c0541f50e52a5fc358",
+      "observations": [
+        {
+          "case": "throw-cancel",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "gate-fixed2-local-module",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1080,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "05309644a1fe415ce04f74bdcc7e676233e8f54f7723a7210c9b17ea0742ba1e",
+      "stdoutSha256": "5f688928ea0a45deaff4b507033e2d2c8b3825f7c1a3c34c283542c2a6b645b7",
+      "observations": [
+        {
+          "case": "ambient-file-import",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "gate-fixed2-causal",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1775,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "957befa7b5165cf5da2b0d27032f73b6262ea655f71ca57ceb5824cd78be3b2c",
+      "stdoutSha256": "3938f0471af97532c48633dcf2bf1db1585b2c424fc5c3ac39ddf0de332aaac2",
+      "observations": [
+        {
+          "case": "single",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "engine-method",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-3",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-6",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-7",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-1",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-5",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-4",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-2",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "parallel-0",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "exactValue": true,
+            "oneRequest": true,
+            "uniqueIds": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "concurrency",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "eightHostsOverlapped": true,
+            "noHostError": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "cancel-real-timer",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "cancelInvokedOnce": true,
+            "activeTimerActuallyCancelled": true,
+            "noDelayedSideEffect": true,
+            "evaluationFailed": true,
+            "closeOk": true,
+            "settledWithinOneSecond": true,
+            "lateCompletionRejected": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "sync-loopback-http",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "requestReachedServer": true,
+            "exactValue": true,
+            "bodyCompleted": true,
+            "noHostError": true,
+            "noCancelAfterCompletion": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "cancel-loopback-http",
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "requestReachedServer": true,
+            "cancelInvokedOnce": true,
+            "hostAbortedBeforeBody": true,
+            "serverObservedSocketClose": true,
+            "evaluationFailed": true,
+            "lateCompletionRejected": true,
+            "closeOk": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": null,
+          "status": null,
+          "pass": null,
+          "checks": null,
+          "verdict": "pass",
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "product-native-lifecycle-heap",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 3097,
+      "dllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+      "probeSha256AtRun": "c68d595411085174d155bb06b571b25998018fbdb304561aa85c1c357a48795d",
+      "stdoutSha256": "4c1d3e9e1a8855f3f5f0a27a27cd814867e3d286340ac388775aab7559bb7e94",
+      "observations": [
+        {
+          "case": "init-close-64",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "forged-cancel",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "unrelated-background-error-retained",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        },
+        {
+          "case": "native-heap-limit",
+          "status": null,
+          "pass": true,
+          "checks": null,
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "product-runtime-windows-build",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1770,
+      "dllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+      "probeSha256AtRun": "caa6e033f073898aae1c1fa25e1181b6cafcf37e3f25452eaae98967af7a89d1",
+      "stdoutSha256": "91ea91ebdceb9bebc5ef7bafc9029d51bd7bc13e76cdab82d97ba4e1f0651ca9",
+      "observations": [
+        {
+          "case": null,
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "syncEcho": true,
+            "unknownMethodRefused": true,
+            "unknownMethodNoIo": true,
+            "hostErrorSettles": true,
+            "forgedCancellationIsJs": true,
+            "completeInputCapped": true,
+            "hostInputCapped": true,
+            "hostOutputCapped": true,
+            "outputCapped": true,
+            "infiniteLoopTimeout": true,
+            "realHttpCancelled": true,
+            "serverDisconnected": true,
+            "nextExecutionWorks": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "product-runtime-session",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 1430,
+      "dllSha256": "12c1fb19a62333355640aa17ae8d7db7b7ede4314048e10a194e675338a682bb",
+      "probeSha256AtRun": "75aec6481bea6fefefdf7df90f68cc9a0c51145fcca2608f96d334d74eb6a779",
+      "stdoutSha256": "c5952c5889d726b30b74255addc44590519ff2faed6c404707a6e83552045d6a",
+      "observations": [
+        {
+          "case": null,
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "firstBody": true,
+            "cookieOnWire": true,
+            "echoBody": true,
+            "httpErrorStatus": true,
+            "httpErrorBody": true,
+            "multiValueHeaders": true,
+            "exactRequests": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": null
+        }
+      ]
+    },
+    {
+      "label": "jiuai-product-replay-metadata",
+      "exitCode": 0,
+      "timedOut": false,
+      "elapsedMs": 3582,
+      "dllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+      "probeSha256AtRun": "e88da3fdcb47f01f00c814bd578087335462c1bc29aadde18f772e091bde1a4e",
+      "stdoutSha256": "d324d59c67cbaf7b1fb081993831c58216d15ca772fda42d2d10bca3b586397b",
+      "observations": [
+        {
+          "case": null,
+          "status": "pass",
+          "pass": null,
+          "checks": {
+            "twoSearchHits": true,
+            "searchAuthor": true,
+            "sourceMetadata": true,
+            "bookInfo": true,
+            "tocOrderAndExclusion": true,
+            "twoContentPages": true,
+            "exactTextNodesAndReplacement": true,
+            "allFourStages": true,
+            "exactRequestOrder": true,
+            "exactFormBody": true,
+            "formContentType": true,
+            "sourceHeaderOnEveryRequest": true
+          },
+          "verdict": null,
+          "stages": null,
+          "failedStage": null,
+          "category": null,
+          "oracle": "not-run"
+        }
+      ]
+    },
+    {
+      "label": "jiuai-original-live",
+      "exitCode": 1,
+      "timedOut": false,
+      "elapsedMs": 13070,
+      "dllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+      "probeSha256AtRun": "114b3e8619ad5c5064ae13a221a9a1dc611247eeb724f9cd64251a9a7ccd283d",
+      "stdoutSha256": "2865196f4526c63a6c286e0f4540083b2c4523d133231cbf6e1da04f31f01230",
+      "observations": [
+        {
+          "case": null,
+          "status": "fail",
+          "pass": null,
+          "checks": null,
+          "verdict": null,
+          "stages": [],
+          "failedStage": "search",
+          "category": "timeout",
+          "oracle": "not-run"
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "path": "analysis_options.yaml",
+      "sha256": "e7919889083b3799d0c99df6a720e75675af2877cc916c33d90c74c55b1b6fa6"
+    },
+    {
+      "path": "integration_test/jiuai_reader_test.dart",
+      "sha256": "5e4100676208d228f83e29c64316d61f6a62b7412efbb8a1d74b5f833177c50c"
+    },
+    {
+      "path": "lib/domain/contracts.dart",
+      "sha256": "13a76ce1b907e01af6015aa9ba18ebc4e2c0385f20e0825d2d078be22bd118ab"
+    },
+    {
+      "path": "lib/source/html_source_pipeline.dart",
+      "sha256": "b0c233e7e0ca0ba4d4df7601f6577883141c8700e1fbd8b50315026ee5346386"
+    },
+    {
+      "path": "lib/source/html_source_rules.dart",
+      "sha256": "e7b3fd322072be04ade1057b9110411d854060a7065148b746b778b16ac7d1ae"
+    },
+    {
+      "path": "lib/source/http_source_transport.dart",
+      "sha256": "cec17b07a1b16bf64b02318752e0008d8a1cc94c409a10449837477948f61f9a"
+    },
+    {
+      "path": "lib/source/js_source_runtime.dart",
+      "sha256": "33b92298f8c9c606d268d2d98d46ea0e1d18bed5d6966b9fe0814f9a73076f86"
+    },
+    {
+      "path": "lib/source/source_host_dispatcher.dart",
+      "sha256": "18bb963b6958b8154ebe0540591e91c878526111bff0bf1f39d3a9100eab7cb6"
+    },
+    {
+      "path": "lib/source/source_trial_page.dart",
+      "sha256": "cbbdc8d3e7f6eec568ea9cbc37dc135f3e9f8bca700dfaa7eeae7d67b19e4b2c"
+    },
+    {
+      "path": "packages/fjs/.cargo/audit.toml",
+      "sha256": "0a357fc1061d2a6b21b23ea70718cb077e537cac7826a465d227de50137f6892"
+    },
+    {
+      "path": "packages/fjs/android/.gitignore",
+      "sha256": "3b7babb57a80a7e4705b1f38fcc7adc734ff4176e16dd9713ba1a7408987ab34"
+    },
+    {
+      "path": "packages/fjs/android/build.gradle",
+      "sha256": "75d185f0a1c859339ee67c553c8eb0bb20de6b22b56760b43f6e2014251256ce"
+    },
+    {
+      "path": "packages/fjs/android/settings.gradle",
+      "sha256": "f92fe11586012189925979ee95e95bb1e7185083b79947d71d62876d5665fe16"
+    },
+    {
+      "path": "packages/fjs/android/src/main/AndroidManifest.xml",
+      "sha256": "8a28972ac05b9dc4b1ca4141d0b6d50e561c4456f59ce00863af483986145d17"
+    },
+    {
+      "path": "packages/fjs/build.yaml",
+      "sha256": "d572a690e04f9c954e396cf65c9f085f3da16c196b1595d6871431f480208c16"
+    },
+    {
+      "path": "packages/fjs/cargokit/.gitignore",
+      "sha256": "44edc274b06ba2ce76ec4443d461c1d04d2a48ed8d763eae688f19e72e42eb44"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_pod.sh",
+      "sha256": "6d083f2d34d9ac7137e2e05feb30e76cddf1d2eacd7a54f206d1a1ecba91d464"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/analysis_options.yaml",
+      "sha256": "4db61b2cef57464be8cc7820705f2cc2d034e138e546da3bf92c8232578baa67"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/bin/build_tool.dart",
+      "sha256": "84828b212456f03faab3ace9fd9a1c04e1e03216b66cc1d62e26783af8605353"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/build_tool.dart",
+      "sha256": "f14f76ef01a8d589b50244f50ce97b068e8124b6236309d4724e2cf5a435d9b8"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/android_environment.dart",
+      "sha256": "a937bdfe37879be59e3bd8a0cf30f7e28746d941a5507b49b30d3f77ce567cd8"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/artifacts_provider.dart",
+      "sha256": "a588c0bacac4d9e7f2bca05b7ece7a55fbe8bf991a4aa6f0e4208159bfcee49b"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/build_cmake.dart",
+      "sha256": "ba7c532b1f2c009ac7087701ab2db5500a7f29d835be27f07d11539fcb61c9a3"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/build_gradle.dart",
+      "sha256": "4f3b8a16d9eb5cb96a2b4e8b1cccc760ad9866c7036023786ec498a2bc357372"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/build_pod.dart",
+      "sha256": "7454ce64d8b077628efde60b05d8e3180c641e5767c9e7413256c680ed78fb6f"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/build_tool.dart",
+      "sha256": "4baa36b515d28100aeebfc4109165d45f216cf6e0339bdbd6450f78f0e2731cd"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/builder.dart",
+      "sha256": "c420273e00a5e16a53e1b4621f20436f38b62200e3377d91e3b97a33f7650b91"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/cargo.dart",
+      "sha256": "91b090373bb8a73be99b350b29a02da1f9f67197214a030a63674503d0291856"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/composite_artifacts.dart",
+      "sha256": "02587f8568c2362e1b3b90390f7f13be327b92fa568e00495f148c746d11cccd"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/crate_hash.dart",
+      "sha256": "63c19605e3c9beb0497be515b78135ae35bace1c0a34d00a3559d4d2f3cc80a1"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/darwin_environment.dart",
+      "sha256": "1d12a0a0bff8aae91dd199a6304a3cfba0fc9240c8176c616a7dc960c90e3cab"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/environment.dart",
+      "sha256": "55216d087438d78d630fcc4aa86a8b39eb62c9e6eaacd9da78430d99942cbb1d"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/logging.dart",
+      "sha256": "fd089ccb29c2f104b8f81beac141883aa1c6290e156cbf91f557094dda18cb1e"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/options.dart",
+      "sha256": "7b5e5d100b7bffcc217f7c502421c7b6723b945a6289f82063a7b82157225ae8"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/precompile_binaries.dart",
+      "sha256": "54e54ef1fbb5f29394cc8cc69331d49e8903eb4411867559c1b172b10cde21f7"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/precompiled_asset_store.dart",
+      "sha256": "09cdc025e87eb2e22a0d84ed6ed5adb7bbac90f550816a38036b87970d03e721"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/precompiled_generation.dart",
+      "sha256": "75989bbad841f82f7a5b7e0583a91f839401b485826357bb328cc1a3960176a3"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/rustup.dart",
+      "sha256": "659e2c71433f7dbf722f9d91684d625c7f120660024a94bc414b216da43645e9"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/target.dart",
+      "sha256": "7742636de9fa9a15803bc91703d074e36a2c03b8a1ee592dd845c03171380c43"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/util.dart",
+      "sha256": "6869a2dfa412316900906fd1dc63832b87b6566a4f48ab9b2e6d8e00ed8c9b3f"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/lib/src/verify_binaries.dart",
+      "sha256": "b632dee19581de0ce7efd5d2216f292d6b2e276c6bff7c79d70b4d7a5bec41b1"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/pubspec.lock",
+      "sha256": "c6a4ee2c31deb838e00e1438e3a1940c2725150fa48bb31b6d78cbafc1906f59"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/pubspec.yaml",
+      "sha256": "fff0d493d674123156f3ccbb05f8dd91389d6c1d3da7e26f19965ed4d905a0a8"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/README.md",
+      "sha256": "ad8f07ff4bf41ef3677d9c710d3b751afc70103f40ba1a1fe19f48fd6d77377c"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/android_environment_test.dart",
+      "sha256": "c39230fd4ce2b382bb48e30d2f2b665bb3e3a578a89f8b4985d8e20330f08c25"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/artifacts_provider_test.dart",
+      "sha256": "f9091b03ce3244e02e174b98254249a2ae4c7485a1191c7e1c8cd16c3fda556b"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/builder_test.dart",
+      "sha256": "f61a2d8bbf451b0a720594f6ff8a8fd4d0372781309022092bf5c5d7ec508d34"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/composite_artifacts_test.dart",
+      "sha256": "1f5e9d273cd223580ae938184ad35a0f70d43544895bcb538a8c24b83fcc73b0"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/crate_hash_test.dart",
+      "sha256": "c9cab6be1334d13928c71484082a82a8928f7178da0d1198d322f903f1217227"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/darwin_environment_test.dart",
+      "sha256": "beab0d99a39790b68c56cdf12510d0ff0f8d9174165219cda0f60e229e35ed10"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/options_test.dart",
+      "sha256": "ac0b2a812b440965176e2a287cdb7cd6731d38011b030275643c2a8a61c6f6ba"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/precompiled_asset_store_test.dart",
+      "sha256": "9c602b29132b1c1708e4d5e163caac886bfc199ef298d6ea20ca8a57ee13e299"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/precompiled_generation_test.dart",
+      "sha256": "9a3e089f9382b37bc968dc1bf320303f1e658b429217de145b3af4acdfb40c9d"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/precompiled_publisher_test.dart",
+      "sha256": "05ea5b99235590e2c2a634c5e696633b216569136163d1f8ccf19d0a787150c3"
+    },
+    {
+      "path": "packages/fjs/cargokit/build_tool/test/support/precompiled_asset_store_worker.dart",
+      "sha256": "9a3ee4a556aea95bc0e47b4b182b3016794445b6c8b3866b04b8b193b4f9b201"
+    },
+    {
+      "path": "packages/fjs/cargokit/cmake/cargokit.cmake",
+      "sha256": "be75fb8ee161b83fab6b0d560653e80d30c01f5afc23b351cc4db686256fe2a2"
+    },
+    {
+      "path": "packages/fjs/cargokit/cmake/resolve_symlinks.ps1",
+      "sha256": "f086d447b25885d30ac5d588035ae99ed1dda13e9b3647e3478cea5febf2b5dd"
+    },
+    {
+      "path": "packages/fjs/cargokit/gradle/plugin.gradle",
+      "sha256": "0d0c9523f8bae4b5158fba572d174cf9fc55edce93a5113d9069b5d316c8882c"
+    },
+    {
+      "path": "packages/fjs/cargokit/LICENSE",
+      "sha256": "15b9f9530137a19ac4fe62138efb3ef2931939a4e3e781a87fb4f05652ef1d94"
+    },
+    {
+      "path": "packages/fjs/cargokit/README",
+      "sha256": "530e9253090695d1c49032cc4ea47df85f3ef42846e638fbb129695bbf884608"
+    },
+    {
+      "path": "packages/fjs/cargokit/run_build_tool.cmd",
+      "sha256": "2b3d17806170a4c2f39d380b3f30a27050c7449a65b1f5aa57dd0acfd9ea174d"
+    },
+    {
+      "path": "packages/fjs/cargokit/run_build_tool.sh",
+      "sha256": "e10c2af6e500226bcda78fdbe04125a06469a306c160a43786f42f9b954e3aa1"
+    },
+    {
+      "path": "packages/fjs/darwin/fjs.podspec",
+      "sha256": "e521712d7b61d53ae7cef5e9ebc1dbcf459675a93f7d6fc04f332ad9a2eb3e05"
+    },
+    {
+      "path": "packages/fjs/darwin/fjs/Binaries/.gitkeep",
+      "sha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+    },
+    {
+      "path": "packages/fjs/darwin/fjs/Package.swift",
+      "sha256": "bb67249318338bbeccdae91ee5705c5c509c03d1dbc4e1ff3efc05c2f0d3d4c2"
+    },
+    {
+      "path": "packages/fjs/darwin/fjs/Sources/fjs/FjsPlugin.swift",
+      "sha256": "5d016086e7955aceb6da03a8439bbca4a5c403ed379eea20f5f307c44f745a98"
+    },
+    {
+      "path": "packages/fjs/darwin/fjs/Sources/FjsPlugin/FjsPlugin.swift",
+      "sha256": "77fa8ef5f66e779983010da69818ef4f20e0b91fc8ac22d540a0b6e91bd9196b"
+    },
+    {
+      "path": "packages/fjs/flutter_rust_bridge.yaml",
+      "sha256": "c423fa8274117187ddad9f54264e5a2f9f332c8b26aad33fdc31a17530175e67"
+    },
+    {
+      "path": "packages/fjs/ios/Classes/dummy_file.c",
+      "sha256": "5d45deb2b15710aecd00a98af143e60b6940528442d77bf2c7a077dae882e49a"
+    },
+    {
+      "path": "packages/fjs/ios/fjs.podspec",
+      "sha256": "80bf684e555484bc04f07b40054d3e5f41b7a490abf164e2e82fc0e882dd1dab"
+    },
+    {
+      "path": "packages/fjs/lib/fjs.dart",
+      "sha256": "dcbab9f5198e9dee8f396570ca7bde3f9d1cc88d0f9f5d1b170eb79ba9394bf2"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/bytecode.dart",
+      "sha256": "e3e74e9d316c53f17fe19039609840fd8830d872aa025524022f098bf94a8927"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/engine.dart",
+      "sha256": "5c225b177db90765707e120e07dffec0ddf916a18130cdaab1769c22e6061555"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/engine.freezed.dart",
+      "sha256": "6d3310e068925c2bf74da507a4c7aa5bd67c939715fdbb3a4dcc748d60c2fbe8"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/error.dart",
+      "sha256": "5e5355701f0e8aaef39133423435f2a08ca954b83d70a629f1362e29fdb2fe59"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/error.freezed.dart",
+      "sha256": "29b4420c5efcf935748d4a94d203928b9285f4e72e3efc5caa0e2a071929e2e5"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/runtime.dart",
+      "sha256": "474aa75f1060d32841407005b02942094c8c6e31d02f60a3f8e2f47800e3179f"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/source.dart",
+      "sha256": "4969d3a4711b1bf35ad2c39439d72909a84e94e015e441c1d57ec0ada8b082b8"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/source.freezed.dart",
+      "sha256": "ffeef2ea1a43cffa9326204a8699cea64ba4daa78c75f5ee4e63c08102c7c5cf"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/value.dart",
+      "sha256": "1a1d67cd5fba8fc8b6f87dee2860816e61e447c8f0cec8d7f49aaedf113252b7"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/api/value.freezed.dart",
+      "sha256": "06e1ff9b2fe9ae131e93a878898d2f32204b6cbb8858c1031e7e625fcc8ef9c2"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/frb_generated.dart",
+      "sha256": "aed828b69e316a445f7d4dc523c8ae118dc8d678edf4c0b9ccc1f4b1555d98b4"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/frb_generated.io.dart",
+      "sha256": "cc0f28ef05f5fed905439d25028bc9ce4b5c0f58aaf68b922cc612d16747dbe7"
+    },
+    {
+      "path": "packages/fjs/lib/src/frb/frb_generated.web.dart",
+      "sha256": "2b367f5aa35dcc1c1e2eb8b472a7bd5a80669225896ae8775a174f5a2512e6fe"
+    },
+    {
+      "path": "packages/fjs/LIBER.md",
+      "sha256": "f749361e4317a292fa5bf9cff6d9f73a6c7b0daac7a2d1edab109b59e2fe3553"
+    },
+    {
+      "path": "packages/fjs/libfjs/.gitignore",
+      "sha256": "350575e2ec0797bc3ca89c6a83f8c5659afb499d0400b98a7c2a14acb25e7d5e"
+    },
+    {
+      "path": "packages/fjs/libfjs/Cargo.lock",
+      "sha256": "b7f0f4c866e72e41a4ea2d576fe39510c2ac12557ff19379cde4cada4a7bf6cd"
+    },
+    {
+      "path": "packages/fjs/libfjs/Cargo.toml",
+      "sha256": "f2277594579360caf6783ae93c82c07d2577f20f486314c8d505e0230bc29414"
+    },
+    {
+      "path": "packages/fjs/libfjs/cargokit.yaml",
+      "sha256": "9ce3d00c71fc8e493b74519a58927b14d93a8d7ef9a454301ca0e43f59ccede6"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/bytecode.rs",
+      "sha256": "d8c888a4a36fed9de02f888f5489d512c2b0fda6374e4be069594f296f9ba4be"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/engine.rs",
+      "sha256": "83b844598b66c2713a3673ae5c6209ec7f34ac195a5384669429eea953a65d23"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/error.rs",
+      "sha256": "16b8af6d8877ec2bacf22b5b0288cd62a1d57bdf2e1315bd79fdab91f7973f2f"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/mod.rs",
+      "sha256": "c9df04e4404b555b5a150f7042f7ff54c69ce82f8c68af5ee4770af47d7c7526"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/module.rs",
+      "sha256": "bdc3de32c8b63405c5d229f21c27ee1e701d0bc33a7eb753df3c22c2d8b23397"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/runtime.rs",
+      "sha256": "c3377f173c8f4b2eeab41ec4383da9f2c18f5f8148c461019f4c8bee11841acc"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/source.rs",
+      "sha256": "5429a1dea3f0c6cf19af18e56a0da4e64d3914291ebcd9e5b6c911c44a685a16"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/value.rs",
+      "sha256": "09566467a878215003bb4c864f307f45e8018dfaac817fe7c64932734339d710"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/bytecode_support.rs",
+      "sha256": "d4760b28627d1be59476ab5ef7f1fa01ba6c3e0e8304917b646170e7dd455c99"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/frb_generated.rs",
+      "sha256": "c9b12d801f8f672576d674561a35fb26f59b2e93fa8c7a7bfe42a59cf8817739"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/lib.rs",
+      "sha256": "08be13877bafe742d1b38de03f5b7e04e2caac86e3d011af93fac3346b347908"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/driver.rs",
+      "sha256": "afe6fba85f7278e41e93ba138094bc493bc42dd9bc39ff410d6d30c544146d8d"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/error_sink.rs",
+      "sha256": "2bf615e8a4a7230be3cd88e63d02fc8ace72f2e2dff94b8370dcff888c72be34"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/executor.rs",
+      "sha256": "893bbe7e742d66f8f05650e59feca0c1e7128a2d717019860e694441ce8889e0"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/job_error.rs",
+      "sha256": "a92d8a1defd362ae04734384ec9fed33e47ae7ccce9458ec9801a0af9fdeaae5"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/mod.rs",
+      "sha256": "72ed6c8f519ac0ad783945f13eea276d01bd6d8073c3ea05f3103d8df45e4d26"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/shutdown.rs",
+      "sha256": "ff53b98b0dfb99c331d9ca1ae260ee059dfa12b51b124145b83eafacbe7c234e"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/stack.rs",
+      "sha256": "8a99a2b0c8fd7806ea8d636ff6225724af2813c383328c8a0e994c4e333eac58"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/teardown.rs",
+      "sha256": "bfe4843e33c34707dbef70598cc6c9498ccdec75fe36c8f2a16ffecb7ecbe9d4"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/api_surface_tests.rs",
+      "sha256": "1d65b15926c221fc2192f595dbe7fa86bfffcb96271922a3f9b37af23d02ff04"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/async_tests.rs",
+      "sha256": "9016532e22d385b59cbd443dddad6b7d5ff3774f9f35e52b1244b58f85315f8d"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/boundary_tests.rs",
+      "sha256": "cc88ae4f7434afab9a465ff0daa916e00f8cb3b430756d33dc7bea0568876ee2"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/engine_tests.rs",
+      "sha256": "37360ff583f7283c2223d2bda0c2d23dcbd169d23619bb4be65e1cb13c9eeaa2"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/error_tests.rs",
+      "sha256": "a78308af8ea1761e42bc0825121ef513b1dcb3488e8d4b6bf27f7201ac4a8fd6"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/llrt_module_tests.rs",
+      "sha256": "a64bfc16a8a28b651fb7288e3bdb4251b278c43e59c224980825c93d4bd3ad77"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/memory_tests.rs",
+      "sha256": "bc42806c6d49e33ff6caf8b797fdcc59b8ceabebc7c0babe9870c4b32401951d"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/mod.rs",
+      "sha256": "94bc1d912b1d12361e6b998a5cb0d25573665daa8e39afe66a52a674b5f4fdd1"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/module_tests.rs",
+      "sha256": "9f456b3266c9de122a208e3e8e6f92e2dc938412b0b732da4d5c2d63d0b24528"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/runtime_architecture_tests.rs",
+      "sha256": "a4b8b9103e59a86dc5fc105156ee20a8adb01fe11fa7dadd78476c371425537d"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/runtime_tests.rs",
+      "sha256": "8f149dfc034227be026bdf1f7e43a5858472d8501b09277e7caccd2b389e1654"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/tests/value_tests.rs",
+      "sha256": "3e7d884c61df4ba1b7de6396d18b1ab9f2427e9f6ccc3db459ea5d86c4f8a06f"
+    },
+    {
+      "path": "packages/fjs/LICENSE",
+      "sha256": "3a631e3587dc4241a1d5a94bd61eb28e456f753303dca9f78f26971be93e6c73"
+    },
+    {
+      "path": "packages/fjs/linux/CMakeLists.txt",
+      "sha256": "734fe1fe90b49d52bd4e9c84ff25f650433a468d15121ba869a496fabaeb0b5c"
+    },
+    {
+      "path": "packages/fjs/macos/Classes/dummy_file.c",
+      "sha256": "5d45deb2b15710aecd00a98af143e60b6940528442d77bf2c7a077dae882e49a"
+    },
+    {
+      "path": "packages/fjs/macos/fjs.podspec",
+      "sha256": "cb4bba8450b4bdb10d313b06710fc5051605634245d084f05e9f9b34fa1721cf"
+    },
+    {
+      "path": "packages/fjs/pubspec.yaml",
+      "sha256": "8c7c46544a03957c2be8651b4a7e33907b6091f992216efcecf1c6e5df5cf75a"
+    },
+    {
+      "path": "packages/fjs/README.md",
+      "sha256": "787d2278a4c76579a2b195320dbf13a7735a62fe4c900eb70e2bf3cc6c85b0f4"
+    },
+    {
+      "path": "packages/fjs/windows/.gitignore",
+      "sha256": "7ef4d1430d61b4863788ee68b7fcee019d1170b55ae2176bcf900079827e3201"
+    },
+    {
+      "path": "packages/fjs/windows/CMakeLists.txt",
+      "sha256": "f0043744974a5e421b10429319e661d33c0c48b76b5083b87cccd14f3e54e93e"
+    },
+    {
+      "path": "pubspec.lock",
+      "sha256": "dcc16bbddc346d79adc0367c84e3415443630296698eea04efbcb76cfd3a65db"
+    },
+    {
+      "path": "pubspec.yaml",
+      "sha256": "58ce69e0122d1aa4c4b882db82167efd51adb2d70e630a041129ac137121cbf8"
+    },
+    {
+      "path": "test/fixtures/jiuai_replay.json",
+      "sha256": "3d8a23018985ee6ac32fda32db1df30f8bd4f0745d2a95b9b768e5ae361970ff"
+    },
+    {
+      "path": "test/html_source_rules_test.dart",
+      "sha256": "551cdb7681b9b95b34b721bbff3ff54cbd819c21f22c769c2ad3dcefbd3c8174"
+    },
+    {
+      "path": "test/source_host_dispatcher_test.dart",
+      "sha256": "bc5adbe6f2f9c4c80855d0454cc29b3f19f58a9e616dfaa4f6a0e23e3e919a95"
+    },
+    {
+      "path": "tool/broker_gate_regression.dart",
+      "sha256": "68ffca957d1633769c819e4d581f0cbcbf4d7cdd6429ac4a45d7d5666a61898a"
+    },
+    {
+      "path": "tool/broker_lifecycle_regression.dart",
+      "sha256": "cd88705dd7d3746008b04bca6a9c7d9f686e17e197eb51ddacd55e8932f9048e"
+    },
+    {
+      "path": "tool/broker_loader_regression.dart",
+      "sha256": "9ed196c2925bb1d03e0c520fbfe465e682ac0b1af5ea3a409d904da8f4f04eb6"
+    },
+    {
+      "path": "tool/jiuai_replay.dart",
+      "sha256": "e88da3fdcb47f01f00c814bd578087335462c1bc29aadde18f772e091bde1a4e"
+    },
+    {
+      "path": "tool/jiuai_review.dart",
+      "sha256": "95b940195b85767bcbf6eeb142535b9ee83987d80020c115a944b6084299eb7b"
+    },
+    {
+      "path": "tool/runtime_gate.dart",
+      "sha256": "8321ad3eb440675e2c579209f7750dd23d3cb058174e2d5c4c3de8996fb158f1"
+    },
+    {
+      "path": "tool/runtime_host_integration.dart",
+      "sha256": "be477a72db19986efcb07d2ea6a5214db9bddffe6aba4a51115b0b000c6b0653"
+    },
+    {
+      "path": "tool/source_live_check.dart",
+      "sha256": "f6b31cd08e7b28c5ad5ad73955acbc194b84033f9c9f2bec8ee28f7157d070fb"
+    }
+  ],
+  "manualReview": {
+    "entry": "tool/jiuai_review.dart",
+    "launcher": "FVM CLI; verified actual app window and DTD connection",
+    "visibleSearchResults": 2,
+    "runtimeErrors": 0,
+    "status": "running for user review"
+  },
+  "liveFollowup": {
+    "recordedAt": "2026-09-12T16:47:03.5615105+08:00",
+    "requestTimeoutSeconds": 30,
+    "exitCode": 1,
+    "processTimedOut": false,
+    "dllSha256": "a90bcb31eab05dcb5bc5a486699adc0e1a7f40fd9fece395746fa0dfb2c9766a",
+    "sourceSha256AtRun": "aff3438a99c5fe26a2aebb4cfd81bf6682713277b8f5f447a6dba18b3635d5e0",
+    "sourceSubsequentChange": "dart format only",
+    "observations": [
+      {
+        "request": 1,
+        "event": "start",
+        "method": "GET"
+      },
+      {
+        "request": 1,
+        "event": "response",
+        "elapsedMs": 10533,
+        "statusCode": 502,
+        "bodyBytes": 0
+      },
+      {
+        "request": 2,
+        "event": "start",
+        "method": "POST"
+      },
+      {
+        "request": 2,
+        "event": "response",
+        "elapsedMs": 176,
+        "statusCode": 502,
+        "bodyBytes": 0
+      },
+      {
+        "status": "fail",
+        "stages": [],
+        "failedStage": "search",
+        "errorType": "StateError",
+        "oracle": "not-run"
+      }
+    ],
+    "diagnostics": [
+      "HTTP direct: DNS/open <1s, 502 after approximately 11s, empty body",
+      "HTTP environment proxy: 502 after approximately 10.6s, empty body",
+      "HTTPS same host: HandshakeException in open phase after approximately 11s"
+    ],
+    "conclusion": "HTTP response failure reproduced; source origin versus network gateway unconfirmed",
+    "oracleHost": "No connected adb device and no existing emulator AVD"
+  }
+}

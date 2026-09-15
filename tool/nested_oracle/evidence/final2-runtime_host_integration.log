@@ -1,0 +1,1 @@
+{"status":"pass","checks":{"firstBody":true,"cookieOnWire":true,"echoBody":true,"httpErrorStatus":true,"httpErrorBody":true,"multiValueHeaders":true,"exactRequests":true},"observed":["/set:","/echo:sid=one","/missing:sid=one"]}

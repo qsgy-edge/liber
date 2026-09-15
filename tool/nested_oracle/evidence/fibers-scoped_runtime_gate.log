@@ -1,0 +1,1 @@
+{"status":"pass","checks":{"childCancels":true,"parentIoNotCancelled":true,"parentResumesWithSharedState":true,"cancelledChildHostStopped":true,"stateSurvivesChildCancel":true,"childIoNotCancelled":true,"childCompletesDespiteParentCancel":true,"parentCancels":true,"stateSurvivesParentCancel":true,"firstCompletesWhileSecondHeld":true}}

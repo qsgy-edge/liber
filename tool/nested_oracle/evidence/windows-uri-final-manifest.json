@@ -1,0 +1,98 @@
+{
+  "recordedAt": "2026-09-14T12:52:36.6321797+08:00",
+  "scope": "Literal bracket URL request-target correction on Windows; bounded frozen nested-js corpus",
+  "branch": "master",
+  "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "uncommitted": true,
+  "verdict": "pass",
+  "differential": {
+    "observationsMatched": 15,
+    "rawRequestsMatched": 8,
+    "command": "fvm dart run tool/nested_oracle_compare.dart <fjs.dll> tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json tool/nested_oracle/evidence/windows-uri-final.json",
+    "previousFailureRetained": "tool/nested_oracle/evidence/windows-first.json",
+    "exitCode": 0,
+    "goldenUnchanged": true
+  },
+  "tests": {
+    "passed": 35,
+    "newRegressions": [
+      "Literal versus escaped brackets over real sockets",
+      "Relative redirect raw target",
+      "POST 303 changes to GET",
+      "Cross-host credentials withheld while source header retained",
+      "Encoded CRLF remains encoded",
+      "IPv6 authority, relative resolution, placeholder collision and Uri replacement"
+    ],
+    "command": "fvm flutter test --no-pub test --reporter expanded"
+  },
+  "runtimeGate": {
+    "passed": 13,
+    "command": "fvm dart run tool/runtime_gate.dart <fjs.dll>"
+  },
+  "analysis": {
+    "fallbackCommand": "fvm dart analyze <seven changed Dart files>",
+    "mcp": "timed out",
+    "result": "No issues found"
+  },
+  "windows": {
+    "dtd": "connected",
+    "query": "猫眼",
+    "observedBody": "猫眼正文",
+    "build": "success",
+    "pid": 62208,
+    "runtimeErrors": 0,
+    "target": "tool/cat_eye_driver.dart"
+  },
+  "limitations": [
+    "Other platform executions not-run",
+    "Full URL/OkHttp equivalence beyond square bracket handling not claimed",
+    "Remaining nested-js concurrency/cache-eviction/cancellation-state oracle matrix not-run",
+    "No complete Book Source compatibility or ticket-status promotion"
+  ],
+  "hashes": [
+    {
+      "sha256": "81f0c156647726770355d9ffa83636ba15174f67fa1873fa96c2803d9f031386",
+      "path": "lib/source/source_http_uri.dart"
+    },
+    {
+      "sha256": "f11e6fa4ce523edbd8bc62abbfa66e57cbb4fd05b331194a3622424fe8ab036d",
+      "path": "lib/source/source_host_dispatcher.dart"
+    },
+    {
+      "sha256": "aef45247db8c2540834725d069848bfbc88069a357e1d0601a882e7cac686790",
+      "path": "lib/source/http_source_transport.dart"
+    },
+    {
+      "sha256": "230d6606580ef7c7b733428adead974e19e79494f86d698f3bba837583588a93",
+      "path": "lib/source/html_source_pipeline.dart"
+    },
+    {
+      "sha256": "92f5602ce05bfc8e7304e7bd8d3b48f2dfdb517839763acb3cf3e62caab7de09",
+      "path": "lib/source/json_source_pipeline.dart"
+    },
+    {
+      "sha256": "01fa9e7919657d3f6aa586571115f9d88dda34dc86c9468050c071c31a569950",
+      "path": "lib/source/html_source_browser.dart"
+    },
+    {
+      "sha256": "3bb222422c6c579f5499edf1ad23d22eeb349365aab25c9874d81b109452ef63",
+      "path": "test/source_http_uri_test.dart"
+    },
+    {
+      "sha256": "bb9faf944a461d4a5436581442bf33d49fbf9337904513a62311640cbca8a980",
+      "path": "tool/nested_oracle_compare.dart"
+    },
+    {
+      "sha256": "e0844a020db10fc3e7b3abcf47a61007f4315c3c4e1c0e702d4dca96fd3919a5",
+      "path": "tool/nested_oracle/evidence/windows-uri-final.json"
+    },
+    {
+      "sha256": "86e97e0bc85c3b1e722340f491f5155906beb61a850563c0508917f05be5ac67",
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/manifest.json"
+    },
+    {
+      "sha256": "2300a358c08260833642131c663ade0005e8146aac7a2a78044500ab93314562",
+      "path": "build/windows/x64/runner/Debug/fjs.dll"
+    }
+  ]
+}

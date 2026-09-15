@@ -1,0 +1,96 @@
+{
+  "engine": "Jsoup 1.16.2 rule harness, not Android Legado",
+  "time": "2026-09-09T17:13:34.657+08:00",
+  "sourceSha256": "c0ed1e9c04b170c891ffb1e2cd384980070bd8d527f79084678935f2e55b63ff",
+  "requests": [
+    {
+      "url": "https://www.shudugu.org/i/sor.aspx?key=凡人修仙传",
+      "bytes": 3051,
+      "sha256": "1894c1766d308bb49e1257db4e5ad02ad50cccaf5e89eedbf562a834bec7bf40"
+    },
+    {
+      "url": "https://www.shudugu.org/128/",
+      "bytes": 65116,
+      "sha256": "69f0ae94ffa4ecfb863b048d8959a3dff4766430b93f05f885b0c777e47893cc"
+    },
+    {
+      "url": "https://www.shudugu.org/128/",
+      "bytes": 65116,
+      "sha256": "69f0ae94ffa4ecfb863b048d8959a3dff4766430b93f05f885b0c777e47893cc"
+    },
+    {
+      "url": "https://www.shudugu.org/128/p-2.html",
+      "bytes": 66979,
+      "sha256": "9fe57f211000d70434644bcb2c09a6f5774ce7595eaa68e22d85ca9a78e35c26"
+    },
+    {
+      "url": "https://www.shudugu.org/128/p-3.html",
+      "bytes": 51071,
+      "sha256": "ee63a329a4b5dd7768f48692a3cbefa7b890fd9d34a33d0f461b7020d1ef57ca"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10643.html",
+      "bytes": 6330,
+      "sha256": "f0b5d26ad9966428aaabfbcc98b795c695aba2ea35d931b34156e4ff984924f5"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10643-2.html",
+      "bytes": 6735,
+      "sha256": "a7b5560756121dd3c1744eafcd0d0632f311ad640b715551c2491251e0701f98"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10643-3.html",
+      "bytes": 6443,
+      "sha256": "8eb0e83c8d2353e15b4c773611b1faa2831c6eea58f1161ec46044f4bff2bbd2"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10643-4.html",
+      "bytes": 5966,
+      "sha256": "f1d714c4aa78306dcdf6a10c7ff05cc67890183eb758c302f0efffd3cc736d6e"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10817.html",
+      "bytes": 6143,
+      "sha256": "c01e2e41333070e5c6a1478838fa51a7e5ebc11c01b2611ad4bb3745b9132084"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10817-2.html",
+      "bytes": 5547,
+      "sha256": "5c9090db7589da03e7a40b9a98cca86b64c8e4f790e6e2f410f792e8d96d6dc5"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10817-3.html",
+      "bytes": 6518,
+      "sha256": "d483afca8668bfbff925cd10544d339502932c22e3a89322e852153eaaf149d1"
+    },
+    {
+      "url": "https://www.shudugu.org/128/10817-4.html",
+      "bytes": 5775,
+      "sha256": "664f95634cbef0d31bb957829adf35ed2407c37a1c4c8f862f3b36f13c1fd98c"
+    }
+  ],
+  "searchResults": 1,
+  "title": "凡人修仙传",
+  "author": "忘语",
+  "introChars": 106,
+  "coverUrl": "https://www.shudugu.org/files/cover/202508/c4f8914a-af07-4f83-8d1b-761fd358f6c9.jpg",
+  "tocPages": 3,
+  "chapters": 2512,
+  "checkedChapters": [
+    {
+      "name": "第1章 山边小村",
+      "url": "https://www.shudugu.org/128/10643.html",
+      "pages": 4,
+      "characters": 2482,
+      "sha256": "9cc605ab505618519e077ae4b0d4cefee968f864ab875e473a0acdf3a3383afd"
+    },
+    {
+      "name": "第2章 青牛镇",
+      "url": "https://www.shudugu.org/128/10817.html",
+      "pages": 4,
+      "characters": 1995,
+      "sha256": "33a7f37f5b92ddf00240045a79c9c25916d5a427a46fbc3a96fb12e49a4264ed"
+    }
+  ],
+  "verdict": "pass"
+}

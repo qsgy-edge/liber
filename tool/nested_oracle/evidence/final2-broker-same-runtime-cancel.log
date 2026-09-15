@@ -1,0 +1,2 @@
+Error in dart_fn_handle_output when sending message for call_id 1: Dart2RustMessageSse { vec: [0, 0, 0, 0, 0, 0, 0, 0], data_len: 1 }
+{"case":"same-runtime-cancel","pass":true,"staleRequestRefused":true,"sequentialSharedClosure":true,"nestedCompletedBeforeClose":false,"outerBeforeClose":"pending","nestedAfterClose":"Cancelled: JavaScript engine was closed","outerAfterClose":"Cancelled: JavaScript engine was closed","lateCompletionRejected":true,"callbackFinished":true,"cancelCalls":1,"cleanup":true}

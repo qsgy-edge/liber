@@ -1,0 +1,939 @@
+{
+  "recordedAt": "2026-09-15T13:52:20.8298268+08:00",
+  "status": "pass",
+  "scope": "Windows product runtime integration, bounded frozen corpus",
+  "head": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "branch": "master",
+  "uncommitted": true,
+  "baselineCommit": "e99aa52c7d8c313eb038b28b7a0a524c07a6a45c",
+  "rquickjsRevision": "04e27345bd12e1d9b1eb68d76865805126313998",
+  "quickjsRevision": "fd0a0210b7be00957751871e7e01b8291268fc29",
+  "vendoredQuickJsInputsByteIdentical": true,
+  "checks": {
+    "cargoCheck": "pass",
+    "nestedGoldenRequestsMatched": 8,
+    "windowsBuild": "pass",
+    "stateGoldenObservationsMatched": 10,
+    "nativeFiberChecks": 8,
+    "nestedGoldenObservationsMatched": 15,
+    "scopedRuntimeChecks": 10,
+    "stateGoldenRequestsMatched": 4,
+    "loader": "pass",
+    "ordinaryTestsMcp": 35,
+    "brokerLifecycle": "pass",
+    "runtimeChecks": 13,
+    "brokerModes": [
+      "queued-close",
+      "throw-start",
+      "throw-cancel",
+      "same-runtime-nested",
+      "same-runtime-queued-release",
+      "same-runtime-cancel"
+    ],
+    "realHttpHost": "pass",
+    "nestedRuntimeChecks": 18,
+    "dartAnalyzeMcp": "No errors",
+    "heapLimitEnforced": true
+  },
+  "windowsUi": {
+    "sharedCounterObserved": [
+      1,
+      2,
+      3
+    ],
+    "target": "tool/cat_eye_driver.dart",
+    "initialDriverErrorReasons": [
+      "Minimized window prevented widget refresh",
+      "get_text unsupported for SelectableText",
+      "EditableText finder matched multiple elements"
+    ],
+    "health": "ok",
+    "initialDriverErrors": 5,
+    "mcpPid": 59988,
+    "windowLeftOpen": true,
+    "observedBody": "猫眼正文",
+    "finalRuntimeErrors": 0,
+    "observedChapter": "1 章 · 第一章",
+    "recovery": "Observed minimized root at -32000,-32000; restored exact window; body/chapter passed. Recorded then cleared driver errors; repeated search/body and re-read errors."
+  },
+  "diagnostics": {
+    "newFiberGate": "No diagnostics in final log",
+    "legacyCancellation": "FRB acknowledgement diagnostics in same-runtime-cancel and throw-cancel probes",
+    "deliberateCallbackThrows": "Panic-hook output in throw-start/throw-cancel; catch paths and expected results passed",
+    "nativeCancellationCleanup": "scope cancellation removes owned broker entries, aborts starter, and schedules host cancel callback",
+    "knownExpectedFrbDiagnostics": [
+      "same-runtime-cancel late Dart callback acknowledgement",
+      "throw-start and throw-cancel intentional Dart callback exceptions"
+    ]
+  },
+  "limitations": [
+    "Windows only; other platforms retain prior scheduler and are not-run",
+    "No full Legado compatibility declaration",
+    "Arbitrary promise-job ownership and hostile-code sandbox are not established",
+    "No independent final review claimed",
+    "No ticket promotion or commit",
+    "Graceful close cancels in-flight broker calls by contract; runtime background work still drains"
+  ],
+  "hashes": [
+    {
+      "sha256": "8148ddc58b52e8e40a132f6d446f5ab2869c7eec3105a4d16b107267aa43e845",
+      "path": "build/windows/x64/runner/Debug/fjs.dll"
+    },
+    {
+      "sha256": "b6d1370ac3ef1c0dae5719dd23a42a1de32bdff89f17a74a4c792c7ff8999325",
+      "path": "build/windows/x64/runner/Debug/liber.exe"
+    },
+    {
+      "sha256": "05914fad92a0e5571e06a8e47ab1912558330ba579f33e4074c07f120e654c69",
+      "path": "lib/source/js_source_runtime.dart"
+    },
+    {
+      "sha256": "4192948a6f2f770c57f017b98adef5cc511e47fbb79a6f4d78763207b5f84bec",
+      "path": "packages/fjs/libfjs/Cargo.lock"
+    },
+    {
+      "sha256": "be39331d76c2f2ba7c88f9e8783fdf583ece9a46ed66fc3b28e48e3f42819122",
+      "path": "packages/fjs/libfjs/Cargo.toml"
+    },
+    {
+      "sha256": "2bc58a52b6bf5aca93368ac5d072f79ce745c8b40aa7e338379c521f49618c26",
+      "path": "packages/fjs/libfjs/src/runtime/mod.rs"
+    },
+    {
+      "sha256": "f51ca20afcb07e734c3977dfd104db83e9ca01e7e02952b90ef4c15637611f84",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/Cargo.lock"
+    },
+    {
+      "sha256": "68dec2cd08728c575b97c64d9b9e5da0e634e30383aa0f27235eef70bb293b38",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/Cargo.toml"
+    },
+    {
+      "sha256": "66a346c92c46e2e59be7acf7bc14cb9d4352471074bc7bfef4cc1a070be3dbab",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/LIBER.md"
+    },
+    {
+      "sha256": "976ad3d07927343ab99b31510625acba89eac8e0e517c712925620ddeda91b70",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/LICENSE"
+    },
+    {
+      "sha256": "7e59effd2289bb44d82d8a03bbb5861df8e073c099096abdee7c65f60f0531b6",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs.bind.h"
+    },
+    {
+      "sha256": "15f09db08ed753b453344344cfcb83c375aa72022d8ba1ef0260b78c22197c51",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-array-fromasync.h"
+    },
+    {
+      "sha256": "6b8ef36145ca4a748aacff7a832d967fb9a1f56728c5a31c71cbe52cbdf8b5ec",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip-keyed.h"
+    },
+    {
+      "sha256": "f818521cee10517ec639ec753aed795d3230b0d868be2be35a8a81f3732f12c4",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip.h"
+    },
+    {
+      "sha256": "b93331edd1bf86e1c0b516657d0b16b95bba5f24d799d9824df16f903173b5c2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/cutils.h"
+    },
+    {
+      "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.c"
+    },
+    {
+      "sha256": "1c4a4540c0038632c8a4c225472fbc21bd476fb35c4da4a857a11965b58231b9",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.h"
+    },
+    {
+      "sha256": "c5ee518885eb6e720537b6df5565ddc2bcaadbda512f3fc072adc96fb24a7648",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp-opcode.h"
+    },
+    {
+      "sha256": "d1e7c4280e1948a25310aaa80aedc273b6fe12322964965f9025ba1800f2c14d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.c"
+    },
+    {
+      "sha256": "991adcaedb0e0ab653811f7f6e1244a23a7454dff6ce647b518df9a22201c122",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.h"
+    },
+    {
+      "sha256": "391d664bacefef239c4349d338c59bf6aa70128f23b105bb5c052db48a14c439",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode-table.h"
+    },
+    {
+      "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.c"
+    },
+    {
+      "sha256": "70f9f38b1cd10186d22e30d5f604465f4747662701f3310e089e5749060f4d4f",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.h"
+    },
+    {
+      "sha256": "96f73f9d2a16c21a36b418f06073be26e7d6d5e7c1bc99756b21a4f2c74ef171",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/LICENSE"
+    },
+    {
+      "sha256": "cb6e24e8ee54bccdd66234fe54cd702d1160b9841db2b9b9adeb5003afe301d5",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/list.h"
+    },
+    {
+      "sha256": "66654ae6533d15073ea527979c453709d7ed83162142c656095a10dcef737a60",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-atom.h"
+    },
+    {
+      "sha256": "29883c742a5c512278fce54d19b1b9af949006e1d7dfc9ffa2e0946b184d8c5c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-c-atomics.h"
+    },
+    {
+      "sha256": "0054b0c45fd091afa308c3fb93b5862e0b071235918d3d73e413d23fce388bbc",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-opcode.h"
+    },
+    {
+      "sha256": "ce9a95d3c011f255c1facb7d4361c71209e71ba58d84acd3281a755d0686a285",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c"
+    },
+    {
+      "sha256": "e407f69c89f806dde1ad7f86801e4116d1bbe9e35c0941669acd3ca04278b517",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.h"
+    },
+    {
+      "sha256": "334d0314cfb1e0a743f75bae566ee67c2defc8c498bf8a367e592cdff0c10cf7",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/README.md"
+    },
+    {
+      "sha256": "7c8bac02271982d00d4b3668bf858515659ffd5f914e70f54dff2bdaec3e8494",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/aarch64-apple-darwin.rs"
+    },
+    {
+      "sha256": "f56d962140ddb0c70a9c31ca0a9906fecfe0941c297bcddb010a69358fe5fc74",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/aarch64-pc-windows-msvc.rs"
+    },
+    {
+      "sha256": "fd947ac8acebc9fe3eb269871a9fa511ad968fa10faabd41cc7b99a644796bdd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/aarch64-unknown-linux-gnu.rs"
+    },
+    {
+      "sha256": "a49a7523a5f1478e2cdfd844795ca92da139ba16e8a1050eb22ad34800639d55",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/aarch64-unknown-linux-musl.rs"
+    },
+    {
+      "sha256": "e90ea64f49f87b6cc7a27b80edab2d85ab1270c6042d542bf03e728ee694e4ec",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/armv7-unknown-linux-gnueabihf.rs"
+    },
+    {
+      "sha256": "1ce72908e07ae5e8e87d6d72ca8531c22828eec8f67f712328c80aec8fa5db58",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/i686-unknown-linux-gnu.rs"
+    },
+    {
+      "sha256": "fd947ac8acebc9fe3eb269871a9fa511ad968fa10faabd41cc7b99a644796bdd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/loongarch64-unknown-linux-gnu.rs"
+    },
+    {
+      "sha256": "a49a7523a5f1478e2cdfd844795ca92da139ba16e8a1050eb22ad34800639d55",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/loongarch64-unknown-linux-musl.rs"
+    },
+    {
+      "sha256": "fd947ac8acebc9fe3eb269871a9fa511ad968fa10faabd41cc7b99a644796bdd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/powerpc64-unknown-linux-gnu.rs"
+    },
+    {
+      "sha256": "ea0b38213d704c274012a42c3303dc93030ba0ad717ec9933e34b8e4d00e3f70",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/wasm32-wasip1.rs"
+    },
+    {
+      "sha256": "ea0b38213d704c274012a42c3303dc93030ba0ad717ec9933e34b8e4d00e3f70",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/wasm32-wasip2.rs"
+    },
+    {
+      "sha256": "7c8bac02271982d00d4b3668bf858515659ffd5f914e70f54dff2bdaec3e8494",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/x86_64-apple-darwin.rs"
+    },
+    {
+      "sha256": "a661f54ccecce511b3809e82902452ce709ea522a0e02d15c844a55f7edb95e8",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/x86_64-pc-windows-gnu.rs"
+    },
+    {
+      "sha256": "f56d962140ddb0c70a9c31ca0a9906fecfe0941c297bcddb010a69358fe5fc74",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/x86_64-pc-windows-msvc.rs"
+    },
+    {
+      "sha256": "fd947ac8acebc9fe3eb269871a9fa511ad968fa10faabd41cc7b99a644796bdd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/x86_64-unknown-linux-gnu.rs"
+    },
+    {
+      "sha256": "a49a7523a5f1478e2cdfd844795ca92da139ba16e8a1050eb22ad34800639d55",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/bindings/x86_64-unknown-linux-musl.rs"
+    },
+    {
+      "sha256": "3c1eb2042cc621a4ff5415907a25af090b2ef2fd1c52370d3d9143280c06a081",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/inlines/common.rs"
+    },
+    {
+      "sha256": "f8d6fb9dd38b1c1ffd4d320e7ed8182faf2d7aa1ffa39fe078203057038ef0e5",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/inlines/ptr_32_nan_boxing.rs"
+    },
+    {
+      "sha256": "7f969908bbbf1631d877afb2999b8c954f73d4c7d12f5fc57d6c4962748a347e",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/inlines/ptr_64.rs"
+    },
+    {
+      "sha256": "42f61e2b92547d519616085523e6f4ecb9ea31c741c2846c481754b532c426ef",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/src/lib.rs"
+    },
+    {
+      "sha256": "ac880f15b0aec920be64c67a9ea5338f1cdab93d550cc8e0d715dfa8bb5da4c2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/.rustc_info.json"
+    },
+    {
+      "sha256": "6d9d1d216e0f83abc5e5662ca62c92b4f23009466b54fa27321a69acdb778bb2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/CACHEDIR.TAG"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.cargo-build-lock"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.cargo-lock"
+    },
+    {
+      "sha256": "93a4afc37518a1bf7830744017176e1d1946e5df993e47159069839f61fe49ab",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/cc-1a2db5f03e9b05c7/dep-lib-cc"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/cc-1a2db5f03e9b05c7/invoked.timestamp"
+    },
+    {
+      "sha256": "b3d5673c6811a7c10fdd58fea8021de353ff25fda049d838c2bfafbd61fb77df",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/cc-1a2db5f03e9b05c7/lib-cc"
+    },
+    {
+      "sha256": "8c755c0f9cb58e5ca34c3b753dce961eec97b5d94fed3d3ab6bfc6f32f58fbf0",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/cc-1a2db5f03e9b05c7/lib-cc.json"
+    },
+    {
+      "sha256": "93a4afc37518a1bf7830744017176e1d1946e5df993e47159069839f61fe49ab",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/find-msvc-tools-9df3225a9a63710f/dep-lib-find_msvc_tools"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/find-msvc-tools-9df3225a9a63710f/invoked.timestamp"
+    },
+    {
+      "sha256": "c80deb6910f77ba5ab3b4ed7f62851d9d6674988d29ab1ed17a8ff962ba06edb",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/find-msvc-tools-9df3225a9a63710f/lib-find_msvc_tools"
+    },
+    {
+      "sha256": "bd1ca8e6d676a15c67fffd58b6ecd4f2c3301aaa10bebea0163d943dc344413d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/find-msvc-tools-9df3225a9a63710f/lib-find_msvc_tools.json"
+    },
+    {
+      "sha256": "a5448bef07266ed0ea67a4a156841d081726c6a21619e2d4d8c9183c62ef1bb1",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-57a96b8c6205f63f/run-build-script-build-script-build"
+    },
+    {
+      "sha256": "a954e53aac300718e4ce809e6070d2d8faddfb6d922242df1cc6a56c77a2e94f",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-57a96b8c6205f63f/run-build-script-build-script-build.json"
+    },
+    {
+      "sha256": "dbd10c4a1999d4e2b8415728c2fc4e38bd2d356ef56b1b9eb2b94787740f053d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-62345c734d121a44/dep-test-lib-rquickjs_sys"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-62345c734d121a44/invoked.timestamp"
+    },
+    {
+      "sha256": "6c4f537bd33c6e79edd9577fc803f8cf1301ad380c5b4569273c126175e20c35",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-62345c734d121a44/test-lib-rquickjs_sys"
+    },
+    {
+      "sha256": "206270696937b605190771570365835214ae7b82fa0d67debb2bbc383c381690",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-62345c734d121a44/test-lib-rquickjs_sys.json"
+    },
+    {
+      "sha256": "5255de7e004824b7c4a4af3876ecc699ef711c3809834ae25f03da46e11c0384",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-6e067d7380a69e9d/build-script-build-script-build"
+    },
+    {
+      "sha256": "905ba483461cfe3336bbac58809ac5d24fb0312aa097a75b268eca2a19c2fffd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-6e067d7380a69e9d/build-script-build-script-build.json"
+    },
+    {
+      "sha256": "a71f952e7f3252ef5608298951fd55b25f3590c98bc0765ae4145e623604ee7d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-6e067d7380a69e9d/dep-build-script-build-script-build"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-6e067d7380a69e9d/invoked.timestamp"
+    },
+    {
+      "sha256": "5152a1bb3f5c3dfc6ac834b7f25b252269c7402d7cf0fd589a584bbefdbd01bd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-7e8b2459693afce5/dep-lib-rquickjs_sys"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-7e8b2459693afce5/invoked.timestamp"
+    },
+    {
+      "sha256": "5bd50829e79a1bcbb19f4197a45ea83c515bdd1159130b2fb11de7561b884be2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-7e8b2459693afce5/lib-rquickjs_sys"
+    },
+    {
+      "sha256": "5109685c7aa9ff498d6376e8aa0a27efca92468c4f9fe9ca4300baea738cdf1b",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/rquickjs-sys-7e8b2459693afce5/lib-rquickjs_sys.json"
+    },
+    {
+      "sha256": "93a4afc37518a1bf7830744017176e1d1946e5df993e47159069839f61fe49ab",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/shlex-1a9059c630f8760b/dep-lib-shlex"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/shlex-1a9059c630f8760b/invoked.timestamp"
+    },
+    {
+      "sha256": "cfd6302f65c143a4379adc26ffccc30f66cde60570ee8e2e9c669f67f88b2cc4",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/shlex-1a9059c630f8760b/lib-shlex"
+    },
+    {
+      "sha256": "eef3b9e5e8f70eb0e2264bee9bc47c889072f740b02d05fda0b3d58d06aa7c75",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/.fingerprint/shlex-1a9059c630f8760b/lib-shlex.json"
+    },
+    {
+      "sha256": "5a109e6643e8d3e88642e3f35e85d2a83e639d07523aa6e99166c48178e965c3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/invoked.timestamp"
+    },
+    {
+      "sha256": "2756c8295d406447158b3fcf9e3b8072ab405c069e45edfa996980cbffd7e899",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/3a3dfbd08eb59cae-dtoa.o"
+    },
+    {
+      "sha256": "802b4afdf1cdc2c8976cf4f67ffb39b278af30895b79a4dc4f7dcb0478a15283",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/3a3dfbd08eb59cae-libregexp.o"
+    },
+    {
+      "sha256": "0db23c8ad5bb677ba3d8d2c5c794da48ea32ce7661d5c9b28e2b11f64f23f7c4",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/3a3dfbd08eb59cae-libunicode.o"
+    },
+    {
+      "sha256": "8185d0af0776ea0d53ac7d7b892fe2a9d0f76d3d6e260983f0e78414e783fa99",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/3a3dfbd08eb59cae-quickjs.o"
+    },
+    {
+      "sha256": "f50f2ada1041597a6d4d181dc798036ade06341e02b205a0af072dc252c7e392",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/bindings.rs"
+    },
+    {
+      "sha256": "15f09db08ed753b453344344cfcb83c375aa72022d8ba1ef0260b78c22197c51",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/builtin-array-fromasync.h"
+    },
+    {
+      "sha256": "6b8ef36145ca4a748aacff7a832d967fb9a1f56728c5a31c71cbe52cbdf8b5ec",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/builtin-iterator-zip-keyed.h"
+    },
+    {
+      "sha256": "f818521cee10517ec639ec753aed795d3230b0d868be2be35a8a81f3732f12c4",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/builtin-iterator-zip.h"
+    },
+    {
+      "sha256": "b93331edd1bf86e1c0b516657d0b16b95bba5f24d799d9824df16f903173b5c2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/cutils.h"
+    },
+    {
+      "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/dtoa.c"
+    },
+    {
+      "sha256": "1c4a4540c0038632c8a4c225472fbc21bd476fb35c4da4a857a11965b58231b9",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/dtoa.h"
+    },
+    {
+      "sha256": "65d2fad425e300ae19bd229a513aa7564086a7f0feb9405f806c70b2366ad59a",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/flag_check.c"
+    },
+    {
+      "sha256": "5226c7f549238ded2f3f0017680240af99f4273da7434fc6ffc4620bde1b5b5c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libquickjs.a"
+    },
+    {
+      "sha256": "c5ee518885eb6e720537b6df5565ddc2bcaadbda512f3fc072adc96fb24a7648",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libregexp-opcode.h"
+    },
+    {
+      "sha256": "d1e7c4280e1948a25310aaa80aedc273b6fe12322964965f9025ba1800f2c14d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libregexp.c"
+    },
+    {
+      "sha256": "991adcaedb0e0ab653811f7f6e1244a23a7454dff6ce647b518df9a22201c122",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libregexp.h"
+    },
+    {
+      "sha256": "391d664bacefef239c4349d338c59bf6aa70128f23b105bb5c052db48a14c439",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libunicode-table.h"
+    },
+    {
+      "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libunicode.c"
+    },
+    {
+      "sha256": "70f9f38b1cd10186d22e30d5f604465f4747662701f3310e089e5749060f4d4f",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/libunicode.h"
+    },
+    {
+      "sha256": "cb6e24e8ee54bccdd66234fe54cd702d1160b9841db2b9b9adeb5003afe301d5",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/list.h"
+    },
+    {
+      "sha256": "66654ae6533d15073ea527979c453709d7ed83162142c656095a10dcef737a60",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs-atom.h"
+    },
+    {
+      "sha256": "29883c742a5c512278fce54d19b1b9af949006e1d7dfc9ffa2e0946b184d8c5c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs-c-atomics.h"
+    },
+    {
+      "sha256": "0054b0c45fd091afa308c3fb93b5862e0b071235918d3d73e413d23fce388bbc",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs-opcode.h"
+    },
+    {
+      "sha256": "7e59effd2289bb44d82d8a03bbb5861df8e073c099096abdee7c65f60f0531b6",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs.bind.h"
+    },
+    {
+      "sha256": "c7d6911d2d1e707ab37ebbfb346840cf23090fbd2599bc237f220b90d234904c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs.c"
+    },
+    {
+      "sha256": "e407f69c89f806dde1ad7f86801e4116d1bbe9e35c0941669acd3ca04278b517",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs.h"
+    },
+    {
+      "sha256": "5226c7f549238ded2f3f0017680240af99f4273da7434fc6ffc4620bde1b5b5c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/out/quickjs.lib"
+    },
+    {
+      "sha256": "afa7bf5022be3b7f640fce274a67926ef35bb5aec0086453fe1b16daba04bc07",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/output"
+    },
+    {
+      "sha256": "58a730fb2c23470e762b0c3ce17a77fc53f3f891abcb301e13c987c5bfd3fd95",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/root-output"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-57a96b8c6205f63f/stderr"
+    },
+    {
+      "sha256": "38f37863badb5d9078f5bb06e30be670d58b509c8c49094ed90b6637d2325643",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-6e067d7380a69e9d/build_script_build-6e067d7380a69e9d.d"
+    },
+    {
+      "sha256": "31410e4bb3ac1fc9a376d325b8b4af78a712e6b355680d2bf14e27f4aa8ede16",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-6e067d7380a69e9d/build_script_build-6e067d7380a69e9d.exe"
+    },
+    {
+      "sha256": "651fc15d1d850ed8de00b6f6e65beca685c5b465f2a6a58a5733b0afdc2e4876",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-6e067d7380a69e9d/build_script_build-6e067d7380a69e9d.pdb"
+    },
+    {
+      "sha256": "651fc15d1d850ed8de00b6f6e65beca685c5b465f2a6a58a5733b0afdc2e4876",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-6e067d7380a69e9d/build_script_build.pdb"
+    },
+    {
+      "sha256": "31410e4bb3ac1fc9a376d325b8b4af78a712e6b355680d2bf14e27f4aa8ede16",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/build/rquickjs-sys-6e067d7380a69e9d/build-script-build.exe"
+    },
+    {
+      "sha256": "18805231c4e03aa1a8b82036b53cd313984117aa6d5037ccca632893866f91a1",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/cc-1a2db5f03e9b05c7.d"
+    },
+    {
+      "sha256": "b586dc72d1c634eb04658c590ff03a104c3d528057e486f2d4405eaa24bf998d",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/find_msvc_tools-9df3225a9a63710f.d"
+    },
+    {
+      "sha256": "64c986baf5caf7356069ecee2326c6fb1698a46e80364cc86d1d578f31074caa",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libcc-1a2db5f03e9b05c7.rlib"
+    },
+    {
+      "sha256": "204c792da69504f143eda7ad4aa39473fcd9df927698ecde042984f9be242283",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libcc-1a2db5f03e9b05c7.rmeta"
+    },
+    {
+      "sha256": "9688992d60fc2cfd010d89d76756a953962f0777271688276d4f3905c6d3ee38",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libfind_msvc_tools-9df3225a9a63710f.rlib"
+    },
+    {
+      "sha256": "97f2dc9f6ebf6211e7c979dd0c5e4e796892e0ee23d93534cc3c8cd6a9481877",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libfind_msvc_tools-9df3225a9a63710f.rmeta"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/librquickjs_sys-62345c734d121a44.rmeta"
+    },
+    {
+      "sha256": "c4f7ec051d1bb61820342882ea18d7d618d867d87dfe501e65a7b6eaa435ecaf",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/librquickjs_sys-7e8b2459693afce5.rmeta"
+    },
+    {
+      "sha256": "f8a2aa6aea2ec74ee297b3b9d8bb7402c31498219093e4912c921be9012445fa",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libshlex-1a9059c630f8760b.rlib"
+    },
+    {
+      "sha256": "1f175b7d7f3c06d8a3f968a79f31234af2f25ecebc73ae13c649176b91e0eafe",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/libshlex-1a9059c630f8760b.rmeta"
+    },
+    {
+      "sha256": "26a995867193f057f4d2df175857fa8658d22f6f1272e782a19dbb46e07864c6",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/rquickjs_sys-62345c734d121a44.d"
+    },
+    {
+      "sha256": "123f21f1be003c8d2cd4ddb1506c0a0d22fb1a49c6fde607992edadc3839c8f3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/rquickjs_sys-7e8b2459693afce5.d"
+    },
+    {
+      "sha256": "65f10cc188c1fc296a5178f0a491159a04b7bbebb6d30fe4815b49e3559ab935",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/deps/shlex-1a9059c630f8760b.d"
+    },
+    {
+      "sha256": "2a257ad9f4eb8aac486860ad49412e829117ac5a6bd6b9d2c7e772dad7d12931",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/0jcsez6ni4xgiwvozbtxelc4k.o"
+    },
+    {
+      "sha256": "684082f0f6adbd04f104a90c06ef4c2d028e522b4acac35e46efbb5e8c730956",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/0lc16s105qaihj4b33p85jnyu.o"
+    },
+    {
+      "sha256": "8891abc978ba07c0792e58f49bb5cf4eb7dbefccccf4c90033ad27c7d63df202",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/0pdiugqg9q7wtqulkcvqy7kp9.o"
+    },
+    {
+      "sha256": "2e63fa9745e29ecc54888e9b545fa2ccdca741dcc8c31aee4760aab77b6e636b",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/0wwoat0lczryrgja3sf75f90p.o"
+    },
+    {
+      "sha256": "895a1035dff3fb2fa62b3e15539e02e846bc98c2feec260a8e3c6cd3053bfeb6",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/18nhz2h3e3valnrp1h5lubc28.o"
+    },
+    {
+      "sha256": "d35b22298c2ccee13202fddfe9cac7f76cb90276ab3b09f1be3031664da9c70a",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/19xc8t25kx846cvzltghvcfua.o"
+    },
+    {
+      "sha256": "ab65b0f646f7a0408ad24103b7b7e325748472cf1dada73e84a9a89f23338c73",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/1xqy9ju7rgql9f4ielrwinwbq.o"
+    },
+    {
+      "sha256": "7a4ed22942ecbcbedc928f743972a29179ae7ca14e7b63bd72e959e6b12a3ddd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/23aucooj7v0gtnjke38mtdr93.o"
+    },
+    {
+      "sha256": "d8c8b1f56ff04c0f6eca8227e74a235698b9bb2d280b60d18bb766d39a0fa044",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/24lz7ulqoxnc3hib3wqzpvhbi.o"
+    },
+    {
+      "sha256": "13d2b3f46337b28d8b901a803a3ca98d586014df0df72b64dc72b6673884fcd2",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/24ybyso2yxag1of2jj04ekxlj.o"
+    },
+    {
+      "sha256": "9cb957f760d74c78e1b0183f9b8d37b2bcfc792dea35112ccd10fed1ca7c536b",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/2t4jckktr3ny02qll4n20we4c.o"
+    },
+    {
+      "sha256": "cf593ea931bd67b561972a813087a782f3c8a01cdbc6714280b3b3198d70cc10",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/3edlp9n2x9uimecwxth7jm5ed.o"
+    },
+    {
+      "sha256": "8de6c696bc85b66459d3c8ff31a5db0e70a8357a26d81e41438ccf0695474da0",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/3njhdv5v1zjv07yz4ltmp7ymn.o"
+    },
+    {
+      "sha256": "bbffcd70bb2bde7fbba90df3c63815014e55657040febea55f202f0ab595c27f",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/3vuc0fzxsxg3cb9cz51l14d2b.o"
+    },
+    {
+      "sha256": "9c56543f5eb3e91eb86d877e873f8fb09cf8367c2559c36d0ee71f10256c3822",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/4144rsapr0q2l7ghhei9bbhtt.o"
+    },
+    {
+      "sha256": "fc73911c6602ec69f69c9e4e6a32e0dc701c50da4820a4fd3506324f59207adb",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/45w050jra0o8kbog97sd1hm6d.o"
+    },
+    {
+      "sha256": "cb04c32d48db2b078f08e29b7c07c1332ff1bf6364af035cb13a7abf444e4400",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/4xfg901fihjkhu6c42sn0ykix.o"
+    },
+    {
+      "sha256": "2c540bbfcee99b851f54baa1bdfb15089dbd44716b041cbf99e9f8a6eeed881a",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/54k7p8t13bkappyd8f74bykmc.o"
+    },
+    {
+      "sha256": "05fe9e5790f30f9db6d8e2166cb150817f3bb632fcb7dbd91d7abf2563eca01c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/5ams9tcuabsiwoudnfo68yx90.o"
+    },
+    {
+      "sha256": "0876ac387837a11d86797510db233773603e3e7c21a4d37a1ac6df993c6ad0e8",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/5o5dh4vcaoj60pmgv2v12bz1u.o"
+    },
+    {
+      "sha256": "2cb0ba4cc179a458580fa6d98b3450dca743e25773380805a453b342af7a6c77",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/6njxxwozj7b652r8dsz3mshnj.o"
+    },
+    {
+      "sha256": "23c4585939aa5c5d57c3ce6363e2a4620b72f2a88b15680fd8fc190b80f1af3a",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/6v2a1xzgtn82gjkyp8h0wsmh3.o"
+    },
+    {
+      "sha256": "d1b18b782b16883d0eb37e889f4be7362d5be86990cf963ded4811c8b69c8ceb",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/76t62hi9cv8rv7gp7reey6uy3.o"
+    },
+    {
+      "sha256": "28a00c6742f2953c37118645eb0a4d66f74c7efa80599cd98f979c994b2530f8",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/78598vo9ce0nec0inuxg5tjj3.o"
+    },
+    {
+      "sha256": "b1657809b433c9c7cf671df8e2bd136b681bac3e5680b10215d2eede60fb57f9",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/78t37cuxry0ypwtxflmi4xwat.o"
+    },
+    {
+      "sha256": "a567fbce66004418ddd5214888100ff144584d00a356ebbae8c2cafbe5ac9723",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/7smtqdjbdfs409itoyo7chf1v.o"
+    },
+    {
+      "sha256": "87050dbffa4376c81d5e0781cb21e1e5fb6067c772cb789a01ee528163acfd71",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/7yhhee3ny89favmoiqabrgx1p.o"
+    },
+    {
+      "sha256": "8f605365941cb4adfd580f3164fb763c125751be9d2f0e3dbd42147a3a580a53",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/8flccozdybi7otd8tdnxz6g7e.o"
+    },
+    {
+      "sha256": "79c7f89bc77f1ef32d9b500d02aef5e2d03c5bbdd172a9ceb0446a168bd7b9b9",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/9cz3yiki5f0qp27snpm6sfzp5.o"
+    },
+    {
+      "sha256": "6b3277adf138dde1ec3527f823dcc21151be638ac67ac4b7211f26644983cbba",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/9vyq3emsfa8z2wwesz5194lbl.o"
+    },
+    {
+      "sha256": "49d102601d6ce2faa3e4528e393e316079c045a0007ff51981b2bd334ef531cf",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/aa5nauoqdxisbnxlqy6axb6p2.o"
+    },
+    {
+      "sha256": "09c0b89339367d37f78d41d400e0470cda89e2dc2083d41fe9db0e71ba62db70",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/ainvg91iqtsv449sj013glxtw.o"
+    },
+    {
+      "sha256": "84c7f9075698db618166c23d78cc44a1102f2f7c56d440a6523dd84ccaae4106",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/airgmu73pfqpocxg8mp5uzohj.o"
+    },
+    {
+      "sha256": "69ffc5a49955b9b5107e783fe712b4ededf94473d74bc0d0b832b57c531bcd4a",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/aj19pryhwr8ojs4vm7z6lldlq.o"
+    },
+    {
+      "sha256": "707dd6c24b20d6c59be6f23021990aef4df9ee3b266a52254ef09c9a928559cf",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/ar8j6pnmkcboczhbpamfvurmo.o"
+    },
+    {
+      "sha256": "7427bcb88afb622bdbc5996a847a589aed1027ba7c25a5a16f873e39f1351448",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/b4cni7cno6y25z895p93a9f9d.o"
+    },
+    {
+      "sha256": "c18c42c83bd2bf7c0203b78b9f6439aa309720dbff93acb47deec5e5cfd47037",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/c7rjm25wmux5ysxed8d1jev3x.o"
+    },
+    {
+      "sha256": "38eed691412561a71b9eca720afede3069b095b20b3df601229729a2659ec73c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/cgc93lw2mbvd1oq4vb0zx1x5m.o"
+    },
+    {
+      "sha256": "14f2ae1cd6aae3f35c80fe97484e56525672b3d0142e52a744995780f1a4c7a3",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/clsz5xnl3xvkcxxvtq9dhsp2y.o"
+    },
+    {
+      "sha256": "61bed7025ebb9712262a3cb8f18da25e08d9a36dd421424b5d01fcb9d5f6f31e",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/cn860tcs4n8cilsgb2ce4o0yt.o"
+    },
+    {
+      "sha256": "ccb9794f18b34999a372ee0aa15bb6931596244b85d003be503be3f6ad6993da",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/dep-graph.bin"
+    },
+    {
+      "sha256": "05245ea85cccd56d75cffe42ad381a30150394d9024853f348a117bc0da97f13",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/e9wigopa659p93aeatherqsxw.o"
+    },
+    {
+      "sha256": "2fe8a1496fb21bab9471843312ddd9fdb907e60589ef1908871f589d7f76e30e",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/ef48usxnif2ou6nuytj4p4pu0.o"
+    },
+    {
+      "sha256": "c73bd0effe57533d9441c82b51d09aa3099befc48e0a453a4e1583f749fade4c",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/eh2imn9h036rs90wjmofnt5lm.o"
+    },
+    {
+      "sha256": "73e99586d6fb9c7af8c335716eb0c9e43b7932734ad9f8ddbe650a0808ecfd4b",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/eixkv0swanuwf3fx2u1mqfp54.o"
+    },
+    {
+      "sha256": "c0c853d7ff49ba927ab8f13be0db1ad6aaf46e83edbfa78e9b8d8ee7b90ac3aa",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/eugmq0eco0wbx2ql2qazcbq7w.o"
+    },
+    {
+      "sha256": "0aab62aa269587a606ef7dc2e3e4c16dd76fa86466de886b8999b77cf88c7ad9",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/query-cache.bin"
+    },
+    {
+      "sha256": "2c6f3050019054991ca82e7f124d2f69ab6fee6eeb1e5d4956e8b1b6245a4d7e",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx-d8efzjbqmxrxjenaje4cs8c0j/work-products.bin"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/build_script_build-025g8zun4ikbk/s-hma7v2r78h-02bs1vx.lock"
+    },
+    {
+      "sha256": "aef22d775afd384e4e8ccf290453244f9432c96ad7713b7c9774ef0281993562",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-19wbpgkdo1cnl/s-hma7vheukv-1vcdqsa-d8vt1vlod1qekovzb21hojjbn/dep-graph.bin"
+    },
+    {
+      "sha256": "c4f7ec051d1bb61820342882ea18d7d618d867d87dfe501e65a7b6eaa435ecaf",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-19wbpgkdo1cnl/s-hma7vheukv-1vcdqsa-d8vt1vlod1qekovzb21hojjbn/metadata.rmeta"
+    },
+    {
+      "sha256": "e2eb46d3fc0090fabf0a7b10c5a366796d9526401a783bdb7920384f536f6460",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-19wbpgkdo1cnl/s-hma7vheukv-1vcdqsa-d8vt1vlod1qekovzb21hojjbn/query-cache.bin"
+    },
+    {
+      "sha256": "ba464182851564e266c5a0bf391c830187bc5ee332aada486512aaca09725e67",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-19wbpgkdo1cnl/s-hma7vheukv-1vcdqsa-d8vt1vlod1qekovzb21hojjbn/work-products.bin"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-19wbpgkdo1cnl/s-hma7vheukv-1vcdqsa.lock"
+    },
+    {
+      "sha256": "6ee6d039835b1112f08abca521070579119e3a9fcc579fc5270699249fe6cafd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-1jppl5so3504x/s-hma7vheqew-1eggldz-ckx6m2dvxl9thaf9nnd6rftyh/dep-graph.bin"
+    },
+    {
+      "sha256": "ac75c47effc0a21bb87451036f11e9c7e45e7961b9c476be2a27c91460f87d2f",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-1jppl5so3504x/s-hma7vheqew-1eggldz-ckx6m2dvxl9thaf9nnd6rftyh/query-cache.bin"
+    },
+    {
+      "sha256": "7372a1bd909ba7af429340b29f7643c6b4a2a837fadb5a98a06080e6ed5ebbfd",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-1jppl5so3504x/s-hma7vheqew-1eggldz-ckx6m2dvxl9thaf9nnd6rftyh/work-products.bin"
+    },
+    {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/debug/incremental/rquickjs_sys-1jppl5so3504x/s-hma7vheqew-1eggldz.lock"
+    },
+    {
+      "sha256": "132bf94c8130f1bd90f97a249e155bd3a37636820c27877df2c1e6267e4312ce",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/flycheck0/stderr"
+    },
+    {
+      "sha256": "6a28f3712000f8e842c0892e7c93513c4ee24626d270a471f161e52846091b40",
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/target/flycheck0/stdout"
+    },
+    {
+      "sha256": "30bf09eab6883a1dc3e60d7f3b2d735aeacbcd0ab0916058169f6c2197f207ab",
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json"
+    },
+    {
+      "sha256": "60c92a2ddca8693075f23ec44369c3004d7517f71ae3975d2230ea9cdd6740c7",
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json"
+    },
+    {
+      "sha256": "ca5546c22a04040c57dd33f02a8cafdf23c3c90563bc93266d42617c87ae9c2d",
+      "path": "tool/nested_oracle/evidence/fibers-broker_lifecycle_regression.log"
+    },
+    {
+      "sha256": "fff2fcfe593837da2c295736948ac954d8acd53aa2c85025421792c7ff7307aa",
+      "path": "tool/nested_oracle/evidence/fibers-broker_loader_regression.log"
+    },
+    {
+      "sha256": "bba5506f11e8f87ab53abf45a9664cbe234645916b37e8518827a07c21a81d9e",
+      "path": "tool/nested_oracle/evidence/fibers-broker-queued-close.log"
+    },
+    {
+      "sha256": "0a5fef0f31c0f390097cc43b8c6618aa4770f894a2eac68941781a68dd0dcccb",
+      "path": "tool/nested_oracle/evidence/fibers-broker-same-runtime-cancel.log"
+    },
+    {
+      "sha256": "18b06a7e87d12579e02371292d555bac499c76c5ab565c8b2e2fd49d0c11e9da",
+      "path": "tool/nested_oracle/evidence/fibers-broker-same-runtime-nested.log"
+    },
+    {
+      "sha256": "c694e03f100053ef56a425901db89397d321041e847ec492f7a5e560fd2ffaf3",
+      "path": "tool/nested_oracle/evidence/fibers-broker-same-runtime-queued-release.log"
+    },
+    {
+      "sha256": "26d1567053e1f0e1b96ae091479ef81ed6d8ac67956465f88cd856d3c8989351",
+      "path": "tool/nested_oracle/evidence/fibers-broker-throw-cancel.log"
+    },
+    {
+      "sha256": "3bd5983a73c8abd6d465a6f6bad30ca1fe80e3063bceb29c9710e7a690915cae",
+      "path": "tool/nested_oracle/evidence/fibers-broker-throw-start.log"
+    },
+    {
+      "sha256": "4570b682a558592c1c0669c11e1c8474f4b585ccf7d1d91ad6d87a94ac4f7bd8",
+      "path": "tool/nested_oracle/evidence/fibers-fiber_runtime_gate.log"
+    },
+    {
+      "sha256": "665ec69430faf1193b180c383ffa0cfd2326d956312d2da3d10341ba4be7ba28",
+      "path": "tool/nested_oracle/evidence/fibers-nested_runtime_gate.log"
+    },
+    {
+      "sha256": "205641cc0c3246db336020168d579dcf5250f67c6cea4f3e7ba5fd4bc0651f1c",
+      "path": "tool/nested_oracle/evidence/fibers-runtime_gate.log"
+    },
+    {
+      "sha256": "3b2b73bdd8766809508acae90ab085df3ef20bf5f79443079d669fbcb7c4a8c4",
+      "path": "tool/nested_oracle/evidence/fibers-runtime_host_integration.log"
+    },
+    {
+      "sha256": "2ab5eae7a563b63e0c0ef1654f30838e7cda839d55d284c15e92e9748bc51c9d",
+      "path": "tool/nested_oracle/evidence/fibers-scoped_runtime_gate.log"
+    },
+    {
+      "sha256": "e0844a020db10fc3e7b3abcf47a61007f4315c3c4e1c0e702d4dca96fd3919a5",
+      "path": "tool/nested_oracle/evidence/windows-nested-fibers-final.json"
+    },
+    {
+      "sha256": "865409cd768faf969c2a236fed2e1e7f220ab0ab9f8fc3ec6e649c7519c636d1",
+      "path": "tool/nested_oracle/evidence/windows-state-fibers-final.json"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/fibers.rs",
+      "sha256": "51deabc2ee8069f6936957ab45bb1037372e03967e39c5999604dd157ea9f804"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/build.rs",
+      "sha256": "e138b4fa0a69d5af298872b87fd253356d9f1d249bd6939908b6d3756b6865e0"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/engine.rs",
+      "sha256": "8e812227f60efae479505339d4f35d52cdc941a6ba3deeb487bf8d36b42a5b21"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/runtime/driver.rs",
+      "sha256": "afe6fba85f7278e41e93ba138094bc493bc42dd9bc39ff410d6d30c544146d8d"
+    },
+    {
+      "path": "tool/fiber_runtime_gate.dart",
+      "sha256": "14ec748292f8366cc27f30b1d39d62269260305c1709f2c08a87897a4cb3897c"
+    },
+    {
+      "path": "packages/fjs/libfjs/src/api/runtime.rs",
+      "sha256": "b7c15f946aa73dff2fad85efef4200a8264db2dd60a280ea0300a32f54573d4e"
+    },
+    {
+      "path": "packages/fjs/libfjs/vendor/rquickjs-sys/liber_stack.inc",
+      "sha256": "0ee3f8121df90ffaba1e6a637a4bd796f2ba60f5b0583d369681e19a25d706cf"
+    },
+    {
+      "path": "tool/scoped_runtime_gate.dart",
+      "sha256": "dd2a37505c92be4575f644054ba131fb9fd4a4e5835ec9aca5418a21c3166711"
+    }
+  ]
+}

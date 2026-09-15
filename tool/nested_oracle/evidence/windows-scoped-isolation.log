@@ -1,0 +1,2 @@
+Error in dart_fn_handle_output when sending message for call_id 2: Dart2RustMessageSse { vec: [0, 0, 0, 0, 0, 0, 0, 0], data_len: 1 }
+{"status":"fail","checks":{"childCancels":true,"parentIoNotCancelled":true,"parentResumesWithSharedState":true,"cancelledChildHostStopped":true,"stateSurvivesChildCancel":true,"childIoNotCancelled":true,"childCompletesDespiteParentCancel":true,"parentCancels":true,"stateSurvivesParentCancel":true,"firstCompletesWhileSecondHeld":false}}

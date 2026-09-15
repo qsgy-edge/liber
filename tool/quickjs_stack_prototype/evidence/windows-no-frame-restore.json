@@ -1,0 +1,57 @@
+{
+  "status": "fail",
+  "scope": "Windows standalone C QuickJS fiber feasibility; not fjs/FRB product integration",
+  "frameRestore": false,
+  "checks": {
+    "frozenCancellationInterruptObserved": true,
+    "frozenExecutionObservations": true,
+    "frozenRequestSequence": true,
+    "firstExceptionIsolated": true,
+    "secondExceptionIsolated": true,
+    "resumedNativeBacktraceA": false,
+    "resumedNativeBacktraceB": false,
+    "olderCancelIndependent": true,
+    "newerSurvivesOlderCancel": true,
+    "cancelDoesNotResetOrFinishCancelledCode": true,
+    "newerCancelIndependent": true,
+    "olderSurvivesNewerCancel": true,
+    "cpuLoopInterrupts": true,
+    "cpuCancelRetainsState": true,
+    "subsequentExecutionWorks": true,
+    "cyclesLiveAcrossGcAndBothResumeOrders": true,
+    "outputDrained": true,
+    "nativeNaturalExit": true,
+    "noNativeDiagnostics": true
+  },
+  "failure": null,
+  "values": {
+    "secondCompletedWhileFirstHeld": true,
+    "secondResult": 22,
+    "firstResult": 22,
+    "concurrentFinalState": 22,
+    "firstCompletesWhileSecondHeld": true,
+    "cancelResult": "error:cancelled",
+    "afterCancelState": 41
+  },
+  "differences": [],
+  "frozenRequests": [
+    "GET /hold",
+    "GET /early",
+    "GET /late",
+    "GET /entered"
+  ],
+  "notRun": [
+    "LRU cache: unchanged product layer absent in this native probe",
+    "FRB and Rust suspended frames",
+    "other platforms"
+  ],
+  "resumeBacktraces": {
+    "A": "",
+    "B": ""
+  },
+  "gcCycles": 100,
+  "stderr": [],
+  "exitCode": 0,
+  "goldenSha256": "60c92a2ddca8693075f23ec44369c3004d7517f71ae3975d2230ea9cdd6740c7",
+  "executableSha256": "b1fd149368a25125618565cbf941c622fea1046cc121c30400232a91938f8166"
+}

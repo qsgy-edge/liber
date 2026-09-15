@@ -1,0 +1,47 @@
+{
+  "platform": "windows",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "golden": "tool/nested_oracle/evidence/android-17-os4.0.0.25/state-golden.json",
+  "values": {
+    "secondCompletedWhileFirstHeld": false,
+    "firstResult": "11",
+    "secondResult": "22",
+    "concurrentFinalState": "22",
+    "cancelResult": "error:cancelled",
+    "afterCancelState": "0",
+    "lruTouch": "99",
+    "lruRetained": "99",
+    "lruEvicted": "0"
+  },
+  "requests": [
+    "GET /hold",
+    "GET /entered"
+  ],
+  "numericComparisonFields": [
+    "firstResult",
+    "secondResult",
+    "concurrentFinalState",
+    "afterCancelState",
+    "lruTouch",
+    "lruRetained",
+    "lruEvicted"
+  ],
+  "status": "fail",
+  "differences": [
+    {
+      "field": "secondCompletedWhileFirstHeld",
+      "expected": true,
+      "actual": false
+    },
+    {
+      "field": "firstResult",
+      "expected": "22.0",
+      "actual": "11"
+    },
+    {
+      "field": "afterCancelState",
+      "expected": "41.0",
+      "actual": "0"
+    }
+  ]
+}

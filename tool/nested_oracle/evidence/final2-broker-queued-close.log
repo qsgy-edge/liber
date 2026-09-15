@@ -1,0 +1,1 @@
+{"case":"queued-close","pass":true,"queuedDuringCancel":"Cancelled: JavaScript engine was closed","queuedResult":"Cancelled: JavaScript engine was closed","outerResult":"Cancelled: JavaScript engine was closed","closeError":"null","starts":1,"cancels":1}
