@@ -7,6 +7,9 @@ precompiled_binaries:
     - cargokit/build_tool/pubspec.yaml
     - cargokit/build_tool/pubspec.lock
     - cargokit/run_build_tool.sh
+    - liber_html/Cargo.toml
+    - liber_html/Cargo.lock
+    - liber_html/src
     - libfjs/Cargo.toml
     - libfjs/Cargo.lock
     - libfjs/cargokit.yaml

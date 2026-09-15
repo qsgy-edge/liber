@@ -8,140 +8,177 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'value.freezed.dart';
 
-            // These functions are ignored because they are not marked as `pub`: `capture`, `clear_residual_exception`, `count_node`, `date_millis`, `depth_limit_error`, `detached_buffer_error`, `dynamic_view_bytes`, `ensure_nodes_available`, `from_js_with_state`, `install_value_intrinsics`, `is_array_buffer_instance`, `is_safe_js_integer`, `node_limit_error`, `with_object`
+// These functions are ignored because they are not marked as `pub`: `capture`, `clear_residual_exception`, `count_node`, `date_millis`, `depth_limit_error`, `detached_buffer_error`, `dynamic_view_bytes`, `ensure_nodes_available`, `from_js_with_state`, `install_value_intrinsics`, `is_array_buffer_instance`, `is_safe_js_integer`, `node_limit_error`, `with_object`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ConversionState`, `ValueIntrinsics`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`, `from_js`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `from`, `into_js`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `array`, `bigint`, `boolean`, `bytes`, `date`, `float`, `integer`, `none`, `object`, `string`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
 
+@freezed
+sealed class JsValue with _$JsValue {
+  const JsValue._();
 
-            
+  /// Represents null or undefined values in JavaScript
+  const factory JsValue.none() = JsValue_None;
 
-            @freezed
-                sealed class JsValue with _$JsValue  {
-                    const JsValue._();
+  /// Represents boolean values (true/false)
+  const factory JsValue.boolean(
+    bool field0,
+  ) = JsValue_Boolean;
 
-                     /// Represents null or undefined values in JavaScript
-const factory JsValue.none() = JsValue_None;
- /// Represents boolean values (true/false)
-const factory JsValue.boolean(  bool field0,) = JsValue_Boolean;
- /// Represents JavaScript safe integers (`Number` within +/- 2^53 - 1)
-const factory JsValue.integer(  PlatformInt64 field0,) = JsValue_Integer;
- /// Represents floating-point number values
-const factory JsValue.float(  double field0,) = JsValue_Float;
- /// Represents BigInt values stored as strings for precision
-const factory JsValue.bigint(  String field0,) = JsValue_Bigint;
- /// Represents string values
-const factory JsValue.string(  String field0,) = JsValue_String;
- /// Represents binary data (ArrayBuffer or typed array bytes)
-const factory JsValue.bytes(  Uint8List field0,) = JsValue_Bytes;
- /// Represents arrays with nested value support
-const factory JsValue.array(  List<JsValue> field0,) = JsValue_Array;
- /// Represents objects with string keys and arbitrary values
-const factory JsValue.object(  Map<String, JsValue> field0,) = JsValue_Object;
- /// Represents Date objects (milliseconds since epoch)
-const factory JsValue.date(  PlatformInt64 field0,) = JsValue_Date;
- /// Represents Symbol values (description)
-const factory JsValue.symbol(  String field0,) = JsValue_Symbol;
- /// Represents function references (serialized name/id)
-const factory JsValue.function(  String field0,) = JsValue_Function;
+  /// Represents JavaScript safe integers (`Number` within +/- 2^53 - 1)
+  const factory JsValue.integer(
+    PlatformInt64 field0,
+  ) = JsValue_Integer;
 
-                    
+  /// Represents floating-point number values
+  const factory JsValue.float(
+    double field0,
+  ) = JsValue_Float;
 
-                    static Future<JsValue>  default_()=>LibFjs.instance.api.crateApiValueJsValueDefault();
+  /// Represents BigInt values stored as strings for precision
+  const factory JsValue.bigint(
+    String field0,
+  ) = JsValue_Bigint;
 
+  /// Represents string values
+  const factory JsValue.string(
+    String field0,
+  ) = JsValue_String;
 
-/// Returns true if the value is an array.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::Array`, `false` otherwise
- bool  isArray()=>LibFjs.instance.api.crateApiValueJsValueIsArray(that: this, );
+  /// Represents binary data (ArrayBuffer or typed array bytes)
+  const factory JsValue.bytes(
+    Uint8List field0,
+  ) = JsValue_Bytes;
 
+  /// Represents arrays with nested value support
+  const factory JsValue.array(
+    List<JsValue> field0,
+  ) = JsValue_Array;
 
-/// Returns true if the value is a boolean.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::Boolean`, `false` otherwise
- bool  isBoolean()=>LibFjs.instance.api.crateApiValueJsValueIsBoolean(that: this, );
+  /// Represents objects with string keys and arbitrary values
+  const factory JsValue.object(
+    Map<String, JsValue> field0,
+  ) = JsValue_Object;
 
+  /// Represents Date objects (milliseconds since epoch)
+  const factory JsValue.date(
+    PlatformInt64 field0,
+  ) = JsValue_Date;
 
-/// Returns true if the value is bytes (binary data).
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::Bytes`, `false` otherwise
- bool  isBytes()=>LibFjs.instance.api.crateApiValueJsValueIsBytes(that: this, );
+  /// Represents Symbol values (description)
+  const factory JsValue.symbol(
+    String field0,
+  ) = JsValue_Symbol;
 
+  /// Represents function references (serialized name/id)
+  const factory JsValue.function(
+    String field0,
+  ) = JsValue_Function;
 
-/// Returns true if the value is a Date.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::Date`, `false` otherwise
- bool  isDate()=>LibFjs.instance.api.crateApiValueJsValueIsDate(that: this, );
+  static Future<JsValue> default_() =>
+      LibFjs.instance.api.crateApiValueJsValueDefault();
 
+  /// Returns true if the value is an array.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::Array`, `false` otherwise
+  bool isArray() => LibFjs.instance.api.crateApiValueJsValueIsArray(
+        that: this,
+      );
 
-/// Returns true if the value is None.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::None`, `false` otherwise
- bool  isNone()=>LibFjs.instance.api.crateApiValueJsValueIsNone(that: this, );
+  /// Returns true if the value is a boolean.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::Boolean`, `false` otherwise
+  bool isBoolean() => LibFjs.instance.api.crateApiValueJsValueIsBoolean(
+        that: this,
+      );
 
+  /// Returns true if the value is bytes (binary data).
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::Bytes`, `false` otherwise
+  bool isBytes() => LibFjs.instance.api.crateApiValueJsValueIsBytes(
+        that: this,
+      );
 
-/// Returns true if the value is a number (integer, float, or bigint).
-///
-/// ## Returns
-///
-/// `true` if the value is any numeric type, `false` otherwise
- bool  isNumber()=>LibFjs.instance.api.crateApiValueJsValueIsNumber(that: this, );
+  /// Returns true if the value is a Date.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::Date`, `false` otherwise
+  bool isDate() => LibFjs.instance.api.crateApiValueJsValueIsDate(
+        that: this,
+      );
 
+  /// Returns true if the value is None.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::None`, `false` otherwise
+  bool isNone() => LibFjs.instance.api.crateApiValueJsValueIsNone(
+        that: this,
+      );
 
-/// Returns true if the value is an object.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::Object`, `false` otherwise
- bool  isObject()=>LibFjs.instance.api.crateApiValueJsValueIsObject(that: this, );
+  /// Returns true if the value is a number (integer, float, or bigint).
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is any numeric type, `false` otherwise
+  bool isNumber() => LibFjs.instance.api.crateApiValueJsValueIsNumber(
+        that: this,
+      );
 
+  /// Returns true if the value is an object.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::Object`, `false` otherwise
+  bool isObject() => LibFjs.instance.api.crateApiValueJsValueIsObject(
+        that: this,
+      );
 
-/// Returns true if the value is a primitive type.
-///
-/// Primitive types include: None, Boolean, Integer, Float, Bigint, and String.
-///
-/// ## Returns
-///
-/// `true` if the value is a primitive type, `false` otherwise
- bool  isPrimitive()=>LibFjs.instance.api.crateApiValueJsValueIsPrimitive(that: this, );
+  /// Returns true if the value is a primitive type.
+  ///
+  /// Primitive types include: None, Boolean, Integer, Float, Bigint, and String.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is a primitive type, `false` otherwise
+  bool isPrimitive() => LibFjs.instance.api.crateApiValueJsValueIsPrimitive(
+        that: this,
+      );
 
+  /// Returns true if the value is a string.
+  ///
+  /// ## Returns
+  ///
+  /// `true` if the value is `JsValue::String`, `false` otherwise
+  bool isString() => LibFjs.instance.api.crateApiValueJsValueIsString(
+        that: this,
+      );
 
-/// Returns true if the value is a string.
-///
-/// ## Returns
-///
-/// `true` if the value is `JsValue::String`, `false` otherwise
- bool  isString()=>LibFjs.instance.api.crateApiValueJsValueIsString(that: this, );
-
-
-/// Returns the type name of this value.
-///
-/// Returns a string representation of the JavaScript type name.
-///
-/// ## Returns
-///
-/// The type name as a string (e.g., "null", "boolean", "number", "string", "Array", "Object", etc.)
-///
-/// ## Example
-///
-/// ```dart
-/// final value = JsValue.string("hello");
-/// print(value.typeName()); // "string"
-/// ```
- String  typeName()=>LibFjs.instance.api.crateApiValueJsValueTypeName(that: this, );
-
-
+  /// Returns the type name of this value.
+  ///
+  /// Returns a string representation of the JavaScript type name.
+  ///
+  /// ## Returns
+  ///
+  /// The type name as a string (e.g., "null", "boolean", "number", "string", "Array", "Object", etc.)
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// final value = JsValue.string("hello");
+  /// print(value.typeName()); // "string"
+  /// ```
+  String typeName() => LibFjs.instance.api.crateApiValueJsValueTypeName(
+        that: this,
+      );
 
   /// Creates a JsValue from any Dart object.
   static JsValue from(Object? any) {
@@ -191,14 +228,22 @@ const factory JsValue.function(  String field0,) = JsValue_Function;
       );
 
   /// Safe casting methods
-  bool? get asBoolean => this is JsValue_Boolean ? (this as JsValue_Boolean).field0 : null;
-  int? get asInteger => this is JsValue_Integer ? (this as JsValue_Integer).field0 : null;
-  double? get asFloat => this is JsValue_Float ? (this as JsValue_Float).field0 : null;
-  String? get asBigint => this is JsValue_Bigint ? (this as JsValue_Bigint).field0 : null;
-  String? get asString => this is JsValue_String ? (this as JsValue_String).field0 : null;
-  Uint8List? get asBytes => this is JsValue_Bytes ? (this as JsValue_Bytes).field0 : null;
-  List<JsValue>? get asArray => this is JsValue_Array ? (this as JsValue_Array).field0 : null;
-  Map<String, JsValue>? get asObject => this is JsValue_Object ? (this as JsValue_Object).field0 : null;
+  bool? get asBoolean =>
+      this is JsValue_Boolean ? (this as JsValue_Boolean).field0 : null;
+  int? get asInteger =>
+      this is JsValue_Integer ? (this as JsValue_Integer).field0 : null;
+  double? get asFloat =>
+      this is JsValue_Float ? (this as JsValue_Float).field0 : null;
+  String? get asBigint =>
+      this is JsValue_Bigint ? (this as JsValue_Bigint).field0 : null;
+  String? get asString =>
+      this is JsValue_String ? (this as JsValue_String).field0 : null;
+  Uint8List? get asBytes =>
+      this is JsValue_Bytes ? (this as JsValue_Bytes).field0 : null;
+  List<JsValue>? get asArray =>
+      this is JsValue_Array ? (this as JsValue_Array).field0 : null;
+  Map<String, JsValue>? get asObject =>
+      this is JsValue_Object ? (this as JsValue_Object).field0 : null;
 
   /// Converts to num if possible.
   num? get asNum {
@@ -206,12 +251,11 @@ const factory JsValue.function(  String field0,) = JsValue_Function;
     if (this is JsValue_Float) return (this as JsValue_Float).field0;
     if (this is JsValue_Bigint) {
       final bigint = BigInt.parse((this as JsValue_Bigint).field0);
-      if (bigint >= BigInt.from(-9007199254740991) && bigint <= BigInt.from(9007199254740991)) {
+      if (bigint >= BigInt.from(-9007199254740991) &&
+          bigint <= BigInt.from(9007199254740991)) {
         return bigint.toInt();
       }
     }
     return null;
   }
-
-                }
-            
+}

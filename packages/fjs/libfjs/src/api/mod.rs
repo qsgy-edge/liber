@@ -18,6 +18,7 @@
 pub mod bytecode;
 pub mod engine;
 pub mod error;
+pub mod html;
 pub mod module;
 pub mod runtime;
 pub mod source;
@@ -26,6 +27,9 @@ pub mod value;
 // Re-export main types for convenience
 pub use bytecode::JsBytecode;
 pub use engine::{JsEngine, JsEngineRuntimeOptions};
+pub use html::{
+    HtmlJobFailure, HtmlJobOutcome, HtmlJobOutput, HtmlRuleJob, html_analyze,
+};
 pub use error::{JsError, JsResult};
 pub use module::{DynamicModuleLoader, DynamicModuleResolver, GlobalAttachment, ModuleBuilder};
 pub use runtime::{JsAsyncContext, JsAsyncRuntime, JsContext, JsRuntime, MemoryUsage};
