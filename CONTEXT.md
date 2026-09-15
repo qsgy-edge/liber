@@ -23,3 +23,7 @@ _Avoid_: Latest Legado
 **Local Library（本地书库）**:
 The supported local books discovered under folders explicitly selected by the user and added to the bookshelf.
 _Avoid_: Device-wide file scan
+
+**Space（空间）**:
+The isolation and storage unit that owns its own Book Sources, shelf, groups, progress, local library, and reading settings; its identity is its store's identity, so no query spans spaces. The visible shelf is the default space, and a private shelf is another one.
+_Avoid_: Profile, account, partition, library

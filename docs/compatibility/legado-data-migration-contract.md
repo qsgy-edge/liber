@@ -170,6 +170,11 @@ A fresh read-only reviewer returned **PASS WITH CORRECTIONS** and no critical fi
 - Correct `customOrder` preservation wording.
 - Regenerate source line citations against the frozen checkout.
 
+**Storage alignment (2026-09-15).** The verdict bullet, rules 3, 4, and 6, the storage note above, and
+the third residual risk were revised after that review to match `docs/user-data-contract.md` and
+ADR 0007, which settled storage as one SQLite database per space. Those edits have not been
+independently re-reviewed.
+
 ## Residual Risks
 
 - The full backup has no declared compatibility version; any other Legado snapshot needs its own adapter verification.
