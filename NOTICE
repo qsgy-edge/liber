@@ -1,0 +1,24 @@
+Liber
+Copyright 2026 qsgy
+
+Licensed under either of the Apache License, Version 2.0 (LICENSE-APACHE) or the
+MIT license (LICENSE-MIT), at your option.
+
+Third-party components
+----------------------
+
+- packages/fjs and the vendored fjs/FRB/cargokit code: MIT license, kept in
+  packages/fjs/LICENSE and the vendored subdirectories.
+- QuickJS, vendored under packages/fjs/libfjs/vendor/rquickjs-sys/quickjs for the
+  patched rquickjs-sys build: MIT license, copyright Fabrice Bellard and Charlie
+  Gordon.
+- Dart and Flutter package dependencies: see pubspec.lock for the exact versions
+  and each package's own license.
+- Rust crate dependencies of packages/fjs/libfjs: see Cargo.lock; the crate
+  licenses are recorded by the crates themselves.
+
+The Book Source compatibility baseline this project measures against is a
+separate work (Legado, GPL-3.0-or-later). Nothing in this repository is derived
+from its source code; it is only executed as a black-box oracle by harnesses,
+and those harnesses that link against its classes are kept in the private
+liber-archive repository rather than here.
