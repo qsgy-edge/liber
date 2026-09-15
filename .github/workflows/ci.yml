@@ -102,6 +102,20 @@ jobs:
         run: |
           dart analyze lib test integration_test tool
           flutter test test
+      - name: Generated tree is current
+        if: matrix.platform == 'linux'
+        run: |
+          # The drift schema snapshots and the build_runner output are checked
+          # in: a schema change that never got a version, a step or a snapshot
+          # has to fail here rather than in a user's library.
+          dart run build_runner build
+          dart run drift_dev schema dump lib/store/database.dart drift_schemas/
+          dirty="$(git status --porcelain --untracked-files=all -- lib test integration_test tool drift_schemas)"
+          if [ -n "$dirty" ]; then
+            echo '生成物与源不一致，请重新运行 build_runner 与 drift_dev schema dump：'
+            echo "$dirty"
+            exit 1
+          fi
       - name: Build Windows app
         if: matrix.platform == 'windows'
         run: flutter build windows --debug --no-pub

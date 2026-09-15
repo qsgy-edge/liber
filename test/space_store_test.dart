@@ -37,4 +37,135 @@ void main() {
     expect(book.author, '天蚕土豆');
     await reopened.close();
   });
+
+  test('书籍带分组、目录、进度和替换规则往返', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final bookId = await store.putBook(
+      BooksCompanion.insert(
+        id: 'book-1',
+        title: '斗破苍穹',
+        sourceRef: const Value('https://example.test'),
+        sourceBookUrl: const Value('https://example.test/book/1'),
+      ),
+    );
+
+    // A group is matched by trimmed name, so a second import joins it.
+    final reading = await store.ensureGroup('  在读  ');
+    expect(reading.name, '在读');
+    final again = await store.ensureGroup('在读');
+    expect(again.id, reading.id);
+    final shelf = await store.ensureGroup('书架');
+    await store.setBookGroups(bookId, [reading.id, shelf.id]);
+
+    await store.putChapters(bookId, [
+      BookChapter(
+        bookId: bookId,
+        chapterKey: 'https://example.test/book/1/1',
+        name: '第一章',
+        url: 'https://example.test/book/1/1',
+        chapterIndex: 0,
+      ),
+      BookChapter(
+        bookId: bookId,
+        chapterKey: 'https://example.test/book/1/2',
+        name: '第二章',
+        url: 'https://example.test/book/1/2',
+        chapterIndex: 1,
+      ),
+    ]);
+
+    // Progress only advances: `(chapterIndex, textOffset)` decides.
+    expect(
+      await store.saveProgress(
+        ProgressCompanion.insert(
+          bookId: bookId,
+          textOffset: const Value(120),
+          chapterKey: const Value('https://example.test/book/1/2'),
+          chapterIndex: const Value(1),
+          updatedAt: const Value(1000),
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      await store.saveProgress(
+        ProgressCompanion.insert(
+          bookId: bookId,
+          textOffset: const Value(90),
+          chapterIndex: const Value(1),
+          updatedAt: const Value(2000),
+        ),
+      ),
+      isFalse,
+      reason: '同一章更早的位置不能倒退',
+    );
+    expect((await store.progressOf(bookId))!.textOffset, 120);
+    expect(
+      await store.saveProgress(
+        ProgressCompanion.insert(
+          bookId: bookId,
+          textOffset: const Value(200),
+          chapterIndex: const Value(1),
+          updatedAt: const Value(2000),
+        ),
+      ),
+      isTrue,
+    );
+    expect((await store.progressOf(bookId))!.textOffset, 200);
+
+    await store.putSource(
+      SourcesCompanion.insert(
+        bookSourceUrl: 'https://example.test',
+        name: 'Example',
+        groupNames: const Value('["网络"]'),
+        raw: const Value('{"unknownField":[1,2,3],"jsLib":""}'),
+      ),
+    );
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'rule-1',
+        name: '目录',
+        pattern: r'第(\d+)章',
+        replacement: const Value(r'第$1章'),
+      ),
+    );
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'rule-2',
+        name: '目录',
+        pattern: r'第(\d+)章',
+        replacement: const Value(r'第$1章'),
+      ),
+    );
+    await workspace.close();
+
+    final reopened = await Workspace.open(root: root);
+    final store2 = await reopened.openSpace();
+    final book = (await store2.bookById(bookId))!;
+    expect(book.sourceRef, 'https://example.test');
+    expect(book.sourceBookUrl, 'https://example.test/book/1');
+    expect(book.kind, 'network');
+    expect(book.shelved, isTrue);
+    expect(
+      (await store2.groupsOf(bookId)).map((g) => g.name),
+      containsAll(<String>['在读', '书架']),
+    );
+    final chapters = await store2.chaptersOf(bookId);
+    expect(chapters.map((c) => c.name), ['第一章', '第二章']);
+    expect(chapters.last.chapterKey, 'https://example.test/book/1/2');
+    final progress = (await store2.progressOf(bookId))!;
+    expect(progress.textOffset, 200);
+    expect(progress.chapterKey, 'https://example.test/book/1/2');
+    expect(progress.chapterIndex, 1);
+    expect((await store2.sourceByUrl('https://example.test'))!.raw,
+        '{"unknownField":[1,2,3],"jsLib":""}');
+    final rules = await store2.replaceRules();
+    expect(rules, hasLength(1), reason: '(name, pattern, replacement) 是合并键');
+    expect(rules.single.id, 'rule-1');
+    expect(rules.single.isEnabled, isTrue);
+    expect(rules.single.scopeContent, isTrue);
+    expect(rules.single.scopeTitle, isFalse);
+    await reopened.close();
+  });
 }

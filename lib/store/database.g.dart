@@ -6012,7 +6012,11 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
   late final $SettingsTable settings = $SettingsTable(this);
   late final Index booksNaturalKey = Index(
     'books_natural_key',
-    'CREATE INDEX books_natural_key ON books (source_ref, source_book_url)',
+    'CREATE UNIQUE INDEX books_natural_key ON books (source_ref, source_book_url)',
+  );
+  late final Index booksLocalKey = Index(
+    'books_local_key',
+    'CREATE UNIQUE INDEX books_local_key ON books (root_id, relative_path)',
   );
   late final Index booksShelfOrder = Index(
     'books_shelf_order',
@@ -6059,6 +6063,7 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     localFiles,
     settings,
     booksNaturalKey,
+    booksLocalKey,
     booksShelfOrder,
     groupsName,
     bookGroupsGroup,

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'database.dart';
 import 'ids.dart';
+import 'progress.dart';
 
 /// Intent-level access to one space's store.
 ///
@@ -182,22 +183,20 @@ class SpaceStore {
     return true;
   }
 
-  static bool _advances(ProgressCompanion incoming, ReadingProgress existing) {
-    final incomingChapter = incoming.chapterIndex.present
-        ? incoming.chapterIndex.value
-        : null;
-    final chapterIndex = (incomingChapter ?? 0).compareTo(
-      existing.chapterIndex ?? 0,
-    );
-    if (chapterIndex != 0) return chapterIndex > 0;
-    final offset = incoming.textOffset.present
-        ? incoming.textOffset.value
-        : 0;
-    final compare = offset.compareTo(existing.textOffset);
-    if (compare != 0) return compare > 0;
-    final updatedAt = incoming.updatedAt.present ? incoming.updatedAt.value : 0;
-    return updatedAt > existing.updatedAt;
-  }
+  static bool _advances(ProgressCompanion incoming, ReadingProgress existing) =>
+      ProgressPosition(
+        chapterIndex: incoming.chapterIndex.present
+            ? incoming.chapterIndex.value
+            : null,
+        textOffset: incoming.textOffset.present ? incoming.textOffset.value : 0,
+        updatedAt: incoming.updatedAt.present ? incoming.updatedAt.value : 0,
+      ).advancesFrom(
+        ProgressPosition(
+          chapterIndex: existing.chapterIndex,
+          textOffset: existing.textOffset,
+          updatedAt: existing.updatedAt,
+        ),
+      );
 
   // --- Replace rules (D8) --------------------------------------------------
 

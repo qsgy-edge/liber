@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
+import 'migrations.dart';
+import 'schema_versions.dart';
+
 part 'database.g.dart';
 
 /// The space database: one SQLite file per space
@@ -52,7 +55,8 @@ class Sources extends Table {
   Set<Column> get primaryKey => {bookSourceUrl};
 }
 
-@TableIndex(name: 'books_natural_key', columns: {#sourceRef, #sourceBookUrl})
+@TableIndex(name: 'books_natural_key', columns: {#sourceRef, #sourceBookUrl}, unique: true)
+@TableIndex(name: 'books_local_key', columns: {#rootId, #relativePath}, unique: true)
 @TableIndex(name: 'books_shelf_order', columns: {#shelved, #kind, #bookOrder})
 @DataClassName('ShelfBook')
 class Books extends Table {
@@ -359,7 +363,11 @@ class SpaceDatabase extends _$SpaceDatabase {
   SpaceDatabase.file(File file) : super(NativeDatabase.createInBackground(file));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => latestVersion;
+
+  /// The schema version this build writes. Each released version has a snapshot
+  /// in `drift_schemas/` and a step in `schema_versions.dart`.
+  static const latestVersion = 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -372,10 +380,11 @@ class SpaceDatabase extends _$SpaceDatabase {
           'space 数据库版本 v$from 高于本构建支持的 v$to，拒绝降级读取',
         );
       }
-      // Forward-only steps, one per released version. They are generated from
-      // the snapshots in `drift_schemas/` by `drift_dev schema steps`; a schema
-      // change without a step fails its generated test in CI.
-      throw StateError('未实现从 v$from 到 v$to 的迁移步骤');
+      // Forward-only steps, one per released version, generated from the
+      // snapshots in `drift_schemas/` by `drift_dev schema steps`. Data work a
+      // step needs runs before it, while the old shape is still in place.
+      if (from < 2) await mergeDuplicateNaturalKeys(m);
+      await stepByStep(from1To2: migrateToV2)(m, from, to);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
