@@ -26,15 +26,18 @@ class LegacyHome {
     'unknownSourceField': {'nested': [1, 2]},
   };
 
-  String get _unshelvedBookKey =>
-      jsonEncode(['https://example.test', 'https://example.test/book/2']);
+  /// The pointer at the record the reader had open. It is deliberately the
+  /// *shelved* record: the history record that is not the pointer still has to
+  /// be imported.
+  String get _lastKey =>
+      jsonEncode(['https://example.test', 'https://example.test/book/1']);
 
   Future<File> writeOnlineReading() async {
     final file = File('${directory.path}/online_reading.json');
     await file.writeAsString(
       jsonEncode({
         'version': 2,
-        'last': _unshelvedBookKey,
+        'last': _lastKey,
         'records': [
           {
             'source': source,
@@ -66,9 +69,12 @@ class LegacyHome {
               'cover': '',
               'kind': '',
             },
-            'chapterUrl': '',
-            'chapterName': '',
+            'chapterUrl': 'https://example.test/book/2/1',
+            'chapterName': '第一章',
             'textOffset': 7,
+            'chapters': [
+              {'name': '第一章', 'url': 'https://example.test/book/2/1'},
+            ],
             'shelved': false,
           },
         ],
@@ -171,7 +177,7 @@ void main() {
     expect(report.imported, isTrue);
     expect(report.sources, 2, reason: '在线记录的书源 + 迁移状态的书源');
     expect(report.books, 5, reason: '2 在线（含 1 条未上架）+ 2 本地 + 1 迁移');
-    expect(report.chapters, 2);
+    expect(report.chapters, 3, reason: '未上架的历史记录同样带走目录');
     expect(report.progress, 5);
     expect(report.localFiles, 2);
 
@@ -194,6 +200,7 @@ void main() {
     ))!;
     expect(history.shelved, isFalse, reason: '未上架的阅读记录保留进度但不是书架成员');
     expect((await store.progressOf(history.id))!.textOffset, 7);
+    expect(await store.chaptersOf(history.id), hasLength(1));
 
     final chapters = await store.chaptersOf(network.id);
     expect(chapters.map((c) => c.name), ['第一章', '第二章']);

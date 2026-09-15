@@ -91,6 +91,16 @@ class OnlineReadingStore {
         .toList();
   }
 
+  /// Every record, shelved or not.
+  ///
+  /// The import into the space store goes through here: a record that was
+  /// taken off the shelf still holds a book, its table of contents and its
+  /// position, and the importer keeps it as an unshelved book.
+  Future<List<Map<String, dynamic>>> loadRecords() async {
+    await _queues[_path];
+    return ((await _read())['records'] as List).cast<Map<String, dynamic>>();
+  }
+
   Future<Map<String, dynamic>?> find(
     Map<String, dynamic> source,
     String url,

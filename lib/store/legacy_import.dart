@@ -205,10 +205,9 @@ class LegacyImport {
     final legacy = OnlineReadingStore(file: onlineReadingFile);
     final List<Map<String, dynamic>> records;
     try {
-      records = [
-        ...await legacy.loadBooks(),
-        ...await _unshelved(legacy),
-      ];
+      // Every record, shelved or not: a record that was taken off the shelf
+      // still holds a book, its chapters and its position.
+      records = await legacy.loadRecords();
     } on FormatException catch (error) {
       losses.add('online_reading.json 未导入：${error.message}');
       return const _Counts();
@@ -291,18 +290,6 @@ class LegacyImport {
       chapters: chapters,
       progress: progress,
     );
-  }
-
-  /// Reading history that was taken off the shelf stays a book, just not a
-  /// shelved one: the legacy store kept its position for exactly that reason.
-  static Future<List<Map<String, dynamic>>> _unshelved(
-    OnlineReadingStore legacy,
-  ) async {
-    final state = await legacy.load();
-    if (state == null || state['shelved'] == true) {
-      return const <Map<String, dynamic>>[];
-    }
-    return [state];
   }
 
   /// `local_books.json`: one root plus the files the user admitted from it.
