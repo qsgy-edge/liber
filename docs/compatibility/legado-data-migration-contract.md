@@ -2,14 +2,17 @@
 
 Evidence baseline: `14dd24945b2914ce2708b8abaa4ee67ceef892af`  
 Reviewed: 2026-08-18 UTC  
+Storage aligned: 2026-09-15 UTC  
 Independent review verdict: **PASS WITH CORRECTIONS**; all listed corrections are incorporated below.
+
+**Storage note.** `docs/user-data-contract.md` and ADR 0007 (ticket #16) settle where this data lands — one SQLite database per space, through `drift` — and what shape it takes. The envelope below therefore stays an *interchange* format for import and export files, not a description of the product's own storage. Two details of it are superseded: `legacyKey` is a correlation hint rather than an identity, and an import targets exactly one space.
 
 ## Verdict
 
 - **CONFIRMED** — The frozen Legado baseline exposes two useful explicit JSON surfaces: `BookSource` objects/arrays and `BookProgress` objects. The first-party API documents both shapes and maps them directly to the corresponding data classes ([api.md](/D:/GithubRepositories/Android/legado/api.md:14), [api.md](/D:/GithubRepositories/Android/legado/api.md:182)).
 - **CONFIRMED** — The UI `books.json` export is not a migration format. It writes only `name`, `author`, and `intro`; import reads only name/author, then searches enabled sources again ([BookshelfViewModel.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/ui/main/bookshelf/BookshelfViewModel.kt:102), [BookshelfViewModel.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/ui/main/bookshelf/BookshelfViewModel.kt:156)).
 - **CONFIRMED** — A normal full backup is a root-level ZIP containing direct entity JSON arrays plus Android SharedPreferences `config.xml`. It has no manifest or backup-format version and is therefore a frozen-baseline import source, not a stable protocol ([Backup.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/help/storage/Backup.kt:47), [Backup.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/help/storage/Backup.kt:120)).
-- **INFERENCE** — Liber should accept the frozen Legado surfaces through an adapter, then store a platform-neutral, explicitly versioned UTF-8 JSON contract. Liber must not use Legado's Room entities, Android paths, or backup ZIP layout as its own persistence model.
+- **INFERENCE** — Liber should accept the frozen Legado surfaces through an adapter and keep a platform-neutral, explicitly versioned *interchange* format for import and export. Its own persistence is one SQLite database per space (`docs/user-data-contract.md`), and it must not use Legado's Room entities, Android paths, or backup ZIP layout as its persistence model.
 
 ## Confirmed Migration Surfaces
 
@@ -119,12 +122,12 @@ Independent review verdict: **PASS WITH CORRECTIONS**; all listed corrections ar
 
 ### Normative Rules
 
-1. **INFERENCE** — Require `format`, integer `version`, `sourceBaseline`, `bookSources`, and `books`; reject unsupported major versions.
+1. **INFERENCE** — Require `format`, integer `version`, `sourceBaseline`, `bookSources`, and `books`; reject unsupported major versions. An import targets exactly one space and never mixes spaces.
 2. **INFERENCE** — Preserve each accepted Book Source as a semantic JSON object, including unknown fields. Liber v1 requires non-empty string URL and name even though the Legado UI parser itself requires only URL.
-3. **INFERENCE** — Network books use `(sourceRef, sourceBookUrl)` as migration identity. Same-name/author books from different sources may remain distinct in Liber.
-4. **INFERENCE** — Local books never carry the Android path/URI into Liber. Store a SHA-256 correlation key and original filename, preserve metadata/progress, and mark content unresolved until the user relinks a file.
+3. **INFERENCE** — Network books match on `(sourceRef, sourceBookUrl)`; a book's identity is a minted space-local id, so a later source change does not rewrite it. `legacyKey` is a correlation hint, and `(name, author)` is never merged silently: the baseline's unique index plus `REPLACE` can overwrite a shelf entry and its progress ([Book.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/data/entities/Book.kt:36), [Restore.kt](/D:/GithubRepositories/Android/legado/app/src/main/java/io/legado/app/help/storage/Restore.kt:122)). Same-name/author books from different sources may remain distinct in Liber.
+4. **INFERENCE** — Local books never carry the Android path/URI into Liber. Store a SHA-256 correlation key and original filename, preserve metadata/progress, and mark content unresolved until the user relinks a file; after linking, the file's decoded length plus an anchor decide later edits and relinks.
 5. **INFERENCE** — Resolve every custom bit present in `Book.group` against `bookGroup.json`, including `Long.MIN_VALUE`; exclude Legado's synthetic negative group IDs that are not bit flags. Persist sorted unique group names, not numeric IDs.
-6. **INFERENCE** — Preserve chapter index, character position, title, and update time. Do not treat `syncTime` as reading position.
+6. **INFERENCE** — Preserve chapter index, character position, title, and update time. Liber maps them to `chapter_key`/`chapter_index` plus `text_offset` and re-derives the line index and anchor on first open; `syncTime` is never a reading position.
 7. **INFERENCE** — Import is idempotent. Source replacement requires explicit approval; shelf membership unions; imported metadata fills blanks but does not erase newer edits; progress advances only when `(chapterIndex, chapterPosition)` is greater, with timestamp as a tie-breaker.
 8. **INFERENCE** — Treat all imported source scripts, headers, URLs, comments, and variables as untrusted data. Migration parsing never executes them.
 9. **INFERENCE** — Liber v1 explicitly excludes cookies, login/cache state, chapter/cache data, Android settings, and local file bytes. Future inclusion requires a separate versioned security and portability contract.
@@ -171,4 +174,4 @@ A fresh read-only reviewer returned **PASS WITH CORRECTIONS** and no critical fi
 
 - The full backup has no declared compatibility version; any other Legado snapshot needs its own adapter verification.
 - Normal backup cannot carry local book bytes, credentials, cookies, chapters, or cache state.
-- The recommended Liber envelope is a planning decision and still requires schema/spec finalization before implementation.
+- The recommended Liber envelope is a planning decision; the storage schema behind it is settled by `docs/user-data-contract.md` and ADR 0007 (2026-09-15), while the envelope itself still needs a written fixture before implementation.
