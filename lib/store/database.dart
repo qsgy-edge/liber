@@ -44,7 +44,8 @@ class Sources extends Table {
 
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
 
-  BoolColumn get enabledExplore => boolean().withDefault(const Constant(true))();
+  BoolColumn get enabledExplore =>
+      boolean().withDefault(const Constant(true))();
 
   IntColumn get lastUpdateTime => integer().withDefault(const Constant(0))();
 
@@ -55,8 +56,16 @@ class Sources extends Table {
   Set<Column> get primaryKey => {bookSourceUrl};
 }
 
-@TableIndex(name: 'books_natural_key', columns: {#sourceRef, #sourceBookUrl}, unique: true)
-@TableIndex(name: 'books_local_key', columns: {#rootId, #relativePath}, unique: true)
+@TableIndex(
+  name: 'books_natural_key',
+  columns: {#sourceRef, #sourceBookUrl},
+  unique: true,
+)
+@TableIndex(
+  name: 'books_local_key',
+  columns: {#rootId, #relativePath},
+  unique: true,
+)
 @TableIndex(name: 'books_shelf_order', columns: {#shelved, #kind, #bookOrder})
 @DataClassName('ShelfBook')
 class Books extends Table {
@@ -196,10 +205,15 @@ class Chapters extends Table {
 }
 
 /// Sparse byte ↔ code-unit anchors at line starts, per local file (D4/D10).
+///
+/// The key is the file, not the shelf book: the index describes a file, and a
+/// library file that is not admitted to the shelf has nowhere else to live.
 @DataClassName('TextIndexEntry')
 class TextIndex extends Table {
-  TextColumn get bookId =>
-      text().references(Books, #id, onDelete: KeyAction.cascade)();
+  TextColumn get rootId =>
+      text().references(LocalRoots, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get relativePath => text()();
 
   IntColumn get byteOffset => integer()();
 
@@ -208,11 +222,21 @@ class TextIndex extends Table {
   IntColumn get lineIndex => integer()();
 
   @override
-  Set<Column> get primaryKey => {bookId, byteOffset};
+  Set<Column> get primaryKey => {rootId, relativePath, byteOffset};
+
+  @override
+  List<String> get customConstraints => [
+    'FOREIGN KEY (root_id, relative_path) '
+        'REFERENCES local_files(root_id, relative_path) ON DELETE CASCADE',
+  ];
 }
 
 /// The five-field progress record (D4) plus the timestamp that breaks ties when
 /// two records describe the same position.
+/// The anchor keeps the line's first code units verbatim rather than a hash of
+/// them (D4's wording): the tolerant restore tiers have to relocate and search
+/// for that text, and a hash cannot be searched for. The 32-unit cap is the
+/// writer's.
 @DataClassName('ReadingProgress')
 class Progress extends Table {
   TextColumn get bookId =>
@@ -245,14 +269,18 @@ class Progress extends Table {
   Set<Column> get primaryKey => {bookId};
 }
 
-@TableIndex(name: 'replace_rules_merge_key', columns: {#name, #pattern, #replacement}, unique: true)
+@TableIndex(
+  name: 'replace_rules_merge_key',
+  columns: {#name, #pattern, #replacement},
+  unique: true,
+)
 @TableIndex(name: 'replace_rules_order', columns: {#ruleOrder})
 class ReplaceRules extends Table {
   TextColumn get id => text()();
 
   TextColumn get name => text()();
 
-  /// Legado's `group` field, as a set of names.
+  /// Legado's `group` field: the single group name a rule belongs to.
   TextColumn get groupName => text().withDefault(const Constant(''))();
 
   TextColumn get pattern => text()();
@@ -271,7 +299,8 @@ class ReplaceRules extends Table {
 
   BoolColumn get isRegex => boolean().withDefault(const Constant(true))();
 
-  IntColumn get timeoutMillisecond => integer().withDefault(const Constant(0))();
+  IntColumn get timeoutMillisecond =>
+      integer().withDefault(const Constant(0))();
 
   IntColumn get ruleOrder => integer().withDefault(const Constant(0))();
 
@@ -355,12 +384,12 @@ class Settings extends Table {
   ],
 )
 class SpaceDatabase extends _$SpaceDatabase {
-
   /// A database over an existing executor (an in-memory one in tests).
   SpaceDatabase(super.executor);
 
   /// The space's SQLite file, opened in a background isolate.
-  SpaceDatabase.file(File file) : super(NativeDatabase.createInBackground(file));
+  SpaceDatabase.file(File file)
+    : super(NativeDatabase.createInBackground(file));
 
   @override
   int get schemaVersion => latestVersion;
@@ -376,9 +405,7 @@ class SpaceDatabase extends _$SpaceDatabase {
     },
     onUpgrade: (m, from, to) async {
       if (from > to) {
-        throw StateError(
-          'space 数据库版本 v$from 高于本构建支持的 v$to，拒绝降级读取',
-        );
+        throw StateError('space 数据库版本 v$from 高于本构建支持的 v$to，拒绝降级读取');
       }
       // Forward-only steps, one per released version, generated from the
       // snapshots in `drift_schemas/` by `drift_dev schema steps`. Data work a

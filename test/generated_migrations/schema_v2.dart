@@ -2609,18 +2609,665 @@ class ChaptersCompanion extends UpdateCompanion<ChaptersData> {
   }
 }
 
+class LocalRoots extends Table with TableInfo<LocalRoots, LocalRootsData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  LocalRoots(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> needsRelink = GeneratedColumn<int>(
+    'needs_relink',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (needs_relink IN (0, 1))',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, displayName, needsRelink];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_roots';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LocalRootsData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalRootsData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      needsRelink: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}needs_relink'],
+      )!,
+    );
+  }
+
+  @override
+  LocalRoots createAlias(String alias) {
+    return LocalRoots(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class LocalRootsData extends DataClass implements Insertable<LocalRootsData> {
+  final String id;
+  final String displayName;
+  final int needsRelink;
+  const LocalRootsData({
+    required this.id,
+    required this.displayName,
+    required this.needsRelink,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['display_name'] = Variable<String>(displayName);
+    map['needs_relink'] = Variable<int>(needsRelink);
+    return map;
+  }
+
+  LocalRootsCompanion toCompanion(bool nullToAbsent) {
+    return LocalRootsCompanion(
+      id: Value(id),
+      displayName: Value(displayName),
+      needsRelink: Value(needsRelink),
+    );
+  }
+
+  factory LocalRootsData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalRootsData(
+      id: serializer.fromJson<String>(json['id']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      needsRelink: serializer.fromJson<int>(json['needsRelink']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'displayName': serializer.toJson<String>(displayName),
+      'needsRelink': serializer.toJson<int>(needsRelink),
+    };
+  }
+
+  LocalRootsData copyWith({
+    String? id,
+    String? displayName,
+    int? needsRelink,
+  }) => LocalRootsData(
+    id: id ?? this.id,
+    displayName: displayName ?? this.displayName,
+    needsRelink: needsRelink ?? this.needsRelink,
+  );
+  LocalRootsData copyWithCompanion(LocalRootsCompanion data) {
+    return LocalRootsData(
+      id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      needsRelink: data.needsRelink.present
+          ? data.needsRelink.value
+          : this.needsRelink,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRootsData(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('needsRelink: $needsRelink')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, displayName, needsRelink);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalRootsData &&
+          other.id == this.id &&
+          other.displayName == this.displayName &&
+          other.needsRelink == this.needsRelink);
+}
+
+class LocalRootsCompanion extends UpdateCompanion<LocalRootsData> {
+  final Value<String> id;
+  final Value<String> displayName;
+  final Value<int> needsRelink;
+  final Value<int> rowid;
+  const LocalRootsCompanion({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalRootsCompanion.insert({
+    required String id,
+    required String displayName,
+    this.needsRelink = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       displayName = Value(displayName);
+  static Insertable<LocalRootsData> custom({
+    Expression<String>? id,
+    Expression<String>? displayName,
+    Expression<int>? needsRelink,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
+      if (needsRelink != null) 'needs_relink': needsRelink,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalRootsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? displayName,
+    Value<int>? needsRelink,
+    Value<int>? rowid,
+  }) {
+    return LocalRootsCompanion(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      needsRelink: needsRelink ?? this.needsRelink,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (needsRelink.present) {
+      map['needs_relink'] = Variable<int>(needsRelink.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRootsCompanion(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class LocalFiles extends Table with TableInfo<LocalFiles, LocalFilesData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  LocalFiles(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
+    'root_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL REFERENCES local_roots(id)ON DELETE CASCADE',
+  );
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> format = GeneratedColumn<String>(
+    'format',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'txt\'',
+    defaultValue: const CustomExpression('\'txt\''),
+  );
+  late final GeneratedColumn<int> textLength = GeneratedColumn<int>(
+    'text_length',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> modifiedAt = GeneratedColumn<int>(
+    'modified_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> needsRelink = GeneratedColumn<int>(
+    'needs_relink',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (needs_relink IN (0, 1))',
+    defaultValue: const CustomExpression('0'),
+  );
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL REFERENCES books(id)ON DELETE SET NULL',
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    rootId,
+    relativePath,
+    format,
+    textLength,
+    modifiedAt,
+    needsRelink,
+    bookId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_files';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath};
+  @override
+  LocalFilesData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalFilesData(
+      rootId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}root_id'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
+      )!,
+      format: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}format'],
+      )!,
+      textLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}text_length'],
+      ),
+      modifiedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}modified_at'],
+      ),
+      needsRelink: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}needs_relink'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      ),
+    );
+  }
+
+  @override
+  LocalFiles createAlias(String alias) {
+    return LocalFiles(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(root_id, relative_path)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class LocalFilesData extends DataClass implements Insertable<LocalFilesData> {
+  final String rootId;
+  final String relativePath;
+  final String format;
+  final int? textLength;
+  final int? modifiedAt;
+  final int needsRelink;
+  final String? bookId;
+  const LocalFilesData({
+    required this.rootId,
+    required this.relativePath,
+    required this.format,
+    this.textLength,
+    this.modifiedAt,
+    required this.needsRelink,
+    this.bookId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['root_id'] = Variable<String>(rootId);
+    map['relative_path'] = Variable<String>(relativePath);
+    map['format'] = Variable<String>(format);
+    if (!nullToAbsent || textLength != null) {
+      map['text_length'] = Variable<int>(textLength);
+    }
+    if (!nullToAbsent || modifiedAt != null) {
+      map['modified_at'] = Variable<int>(modifiedAt);
+    }
+    map['needs_relink'] = Variable<int>(needsRelink);
+    if (!nullToAbsent || bookId != null) {
+      map['book_id'] = Variable<String>(bookId);
+    }
+    return map;
+  }
+
+  LocalFilesCompanion toCompanion(bool nullToAbsent) {
+    return LocalFilesCompanion(
+      rootId: Value(rootId),
+      relativePath: Value(relativePath),
+      format: Value(format),
+      textLength: textLength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(textLength),
+      modifiedAt: modifiedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(modifiedAt),
+      needsRelink: Value(needsRelink),
+      bookId: bookId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bookId),
+    );
+  }
+
+  factory LocalFilesData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalFilesData(
+      rootId: serializer.fromJson<String>(json['rootId']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
+      format: serializer.fromJson<String>(json['format']),
+      textLength: serializer.fromJson<int?>(json['textLength']),
+      modifiedAt: serializer.fromJson<int?>(json['modifiedAt']),
+      needsRelink: serializer.fromJson<int>(json['needsRelink']),
+      bookId: serializer.fromJson<String?>(json['bookId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'rootId': serializer.toJson<String>(rootId),
+      'relativePath': serializer.toJson<String>(relativePath),
+      'format': serializer.toJson<String>(format),
+      'textLength': serializer.toJson<int?>(textLength),
+      'modifiedAt': serializer.toJson<int?>(modifiedAt),
+      'needsRelink': serializer.toJson<int>(needsRelink),
+      'bookId': serializer.toJson<String?>(bookId),
+    };
+  }
+
+  LocalFilesData copyWith({
+    String? rootId,
+    String? relativePath,
+    String? format,
+    Value<int?> textLength = const Value.absent(),
+    Value<int?> modifiedAt = const Value.absent(),
+    int? needsRelink,
+    Value<String?> bookId = const Value.absent(),
+  }) => LocalFilesData(
+    rootId: rootId ?? this.rootId,
+    relativePath: relativePath ?? this.relativePath,
+    format: format ?? this.format,
+    textLength: textLength.present ? textLength.value : this.textLength,
+    modifiedAt: modifiedAt.present ? modifiedAt.value : this.modifiedAt,
+    needsRelink: needsRelink ?? this.needsRelink,
+    bookId: bookId.present ? bookId.value : this.bookId,
+  );
+  LocalFilesData copyWithCompanion(LocalFilesCompanion data) {
+    return LocalFilesData(
+      rootId: data.rootId.present ? data.rootId.value : this.rootId,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
+      format: data.format.present ? data.format.value : this.format,
+      textLength: data.textLength.present
+          ? data.textLength.value
+          : this.textLength,
+      modifiedAt: data.modifiedAt.present
+          ? data.modifiedAt.value
+          : this.modifiedAt,
+      needsRelink: data.needsRelink.present
+          ? data.needsRelink.value
+          : this.needsRelink,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFilesData(')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('format: $format, ')
+          ..write('textLength: $textLength, ')
+          ..write('modifiedAt: $modifiedAt, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('bookId: $bookId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    rootId,
+    relativePath,
+    format,
+    textLength,
+    modifiedAt,
+    needsRelink,
+    bookId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalFilesData &&
+          other.rootId == this.rootId &&
+          other.relativePath == this.relativePath &&
+          other.format == this.format &&
+          other.textLength == this.textLength &&
+          other.modifiedAt == this.modifiedAt &&
+          other.needsRelink == this.needsRelink &&
+          other.bookId == this.bookId);
+}
+
+class LocalFilesCompanion extends UpdateCompanion<LocalFilesData> {
+  final Value<String> rootId;
+  final Value<String> relativePath;
+  final Value<String> format;
+  final Value<int?> textLength;
+  final Value<int?> modifiedAt;
+  final Value<int> needsRelink;
+  final Value<String?> bookId;
+  final Value<int> rowid;
+  const LocalFilesCompanion({
+    this.rootId = const Value.absent(),
+    this.relativePath = const Value.absent(),
+    this.format = const Value.absent(),
+    this.textLength = const Value.absent(),
+    this.modifiedAt = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalFilesCompanion.insert({
+    required String rootId,
+    required String relativePath,
+    this.format = const Value.absent(),
+    this.textLength = const Value.absent(),
+    this.modifiedAt = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : rootId = Value(rootId),
+       relativePath = Value(relativePath);
+  static Insertable<LocalFilesData> custom({
+    Expression<String>? rootId,
+    Expression<String>? relativePath,
+    Expression<String>? format,
+    Expression<int>? textLength,
+    Expression<int>? modifiedAt,
+    Expression<int>? needsRelink,
+    Expression<String>? bookId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (rootId != null) 'root_id': rootId,
+      if (relativePath != null) 'relative_path': relativePath,
+      if (format != null) 'format': format,
+      if (textLength != null) 'text_length': textLength,
+      if (modifiedAt != null) 'modified_at': modifiedAt,
+      if (needsRelink != null) 'needs_relink': needsRelink,
+      if (bookId != null) 'book_id': bookId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalFilesCompanion copyWith({
+    Value<String>? rootId,
+    Value<String>? relativePath,
+    Value<String>? format,
+    Value<int?>? textLength,
+    Value<int?>? modifiedAt,
+    Value<int>? needsRelink,
+    Value<String?>? bookId,
+    Value<int>? rowid,
+  }) {
+    return LocalFilesCompanion(
+      rootId: rootId ?? this.rootId,
+      relativePath: relativePath ?? this.relativePath,
+      format: format ?? this.format,
+      textLength: textLength ?? this.textLength,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
+      needsRelink: needsRelink ?? this.needsRelink,
+      bookId: bookId ?? this.bookId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (rootId.present) {
+      map['root_id'] = Variable<String>(rootId.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
+    }
+    if (format.present) {
+      map['format'] = Variable<String>(format.value);
+    }
+    if (textLength.present) {
+      map['text_length'] = Variable<int>(textLength.value);
+    }
+    if (modifiedAt.present) {
+      map['modified_at'] = Variable<int>(modifiedAt.value);
+    }
+    if (needsRelink.present) {
+      map['needs_relink'] = Variable<int>(needsRelink.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFilesCompanion(')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('format: $format, ')
+          ..write('textLength: $textLength, ')
+          ..write('modifiedAt: $modifiedAt, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('bookId: $bookId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class TextIndex extends Table with TableInfo<TextIndex, TextIndexData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   TextIndex(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
-    'book_id',
+  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
+    'root_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES books(id)ON DELETE CASCADE',
+    $customConstraints: 'NOT NULL REFERENCES local_roots(id)ON DELETE CASCADE',
+  );
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
   );
   late final GeneratedColumn<int> byteOffset = GeneratedColumn<int>(
     'byte_offset',
@@ -2648,7 +3295,8 @@ class TextIndex extends Table with TableInfo<TextIndex, TextIndexData> {
   );
   @override
   List<GeneratedColumn> get $columns => [
-    bookId,
+    rootId,
+    relativePath,
     byteOffset,
     codeUnitOffset,
     lineIndex,
@@ -2659,14 +3307,18 @@ class TextIndex extends Table with TableInfo<TextIndex, TextIndexData> {
   String get actualTableName => $name;
   static const String $name = 'text_index';
   @override
-  Set<GeneratedColumn> get $primaryKey => {bookId, byteOffset};
+  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath, byteOffset};
   @override
   TextIndexData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return TextIndexData(
-      bookId: attachedDatabase.typeMapping.read(
+      rootId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}book_id'],
+        data['${effectivePrefix}root_id'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
       )!,
       byteOffset: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -2690,19 +3342,22 @@ class TextIndex extends Table with TableInfo<TextIndex, TextIndexData> {
 
   @override
   List<String> get customConstraints => const [
-    'PRIMARY KEY(book_id, byte_offset)',
+    'PRIMARY KEY(root_id, relative_path, byte_offset)',
+    'FOREIGN KEY(root_id, relative_path)REFERENCES local_files(root_id, relative_path)ON DELETE CASCADE',
   ];
   @override
   bool get dontWriteConstraints => true;
 }
 
 class TextIndexData extends DataClass implements Insertable<TextIndexData> {
-  final String bookId;
+  final String rootId;
+  final String relativePath;
   final int byteOffset;
   final int codeUnitOffset;
   final int lineIndex;
   const TextIndexData({
-    required this.bookId,
+    required this.rootId,
+    required this.relativePath,
     required this.byteOffset,
     required this.codeUnitOffset,
     required this.lineIndex,
@@ -2710,7 +3365,8 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['book_id'] = Variable<String>(bookId);
+    map['root_id'] = Variable<String>(rootId);
+    map['relative_path'] = Variable<String>(relativePath);
     map['byte_offset'] = Variable<int>(byteOffset);
     map['code_unit_offset'] = Variable<int>(codeUnitOffset);
     map['line_index'] = Variable<int>(lineIndex);
@@ -2719,7 +3375,8 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
 
   TextIndexCompanion toCompanion(bool nullToAbsent) {
     return TextIndexCompanion(
-      bookId: Value(bookId),
+      rootId: Value(rootId),
+      relativePath: Value(relativePath),
       byteOffset: Value(byteOffset),
       codeUnitOffset: Value(codeUnitOffset),
       lineIndex: Value(lineIndex),
@@ -2732,7 +3389,8 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return TextIndexData(
-      bookId: serializer.fromJson<String>(json['bookId']),
+      rootId: serializer.fromJson<String>(json['rootId']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
       byteOffset: serializer.fromJson<int>(json['byteOffset']),
       codeUnitOffset: serializer.fromJson<int>(json['codeUnitOffset']),
       lineIndex: serializer.fromJson<int>(json['lineIndex']),
@@ -2742,7 +3400,8 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'bookId': serializer.toJson<String>(bookId),
+      'rootId': serializer.toJson<String>(rootId),
+      'relativePath': serializer.toJson<String>(relativePath),
       'byteOffset': serializer.toJson<int>(byteOffset),
       'codeUnitOffset': serializer.toJson<int>(codeUnitOffset),
       'lineIndex': serializer.toJson<int>(lineIndex),
@@ -2750,19 +3409,24 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
   }
 
   TextIndexData copyWith({
-    String? bookId,
+    String? rootId,
+    String? relativePath,
     int? byteOffset,
     int? codeUnitOffset,
     int? lineIndex,
   }) => TextIndexData(
-    bookId: bookId ?? this.bookId,
+    rootId: rootId ?? this.rootId,
+    relativePath: relativePath ?? this.relativePath,
     byteOffset: byteOffset ?? this.byteOffset,
     codeUnitOffset: codeUnitOffset ?? this.codeUnitOffset,
     lineIndex: lineIndex ?? this.lineIndex,
   );
   TextIndexData copyWithCompanion(TextIndexCompanion data) {
     return TextIndexData(
-      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      rootId: data.rootId.present ? data.rootId.value : this.rootId,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
       byteOffset: data.byteOffset.present
           ? data.byteOffset.value
           : this.byteOffset,
@@ -2776,7 +3440,8 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
   @override
   String toString() {
     return (StringBuffer('TextIndexData(')
-          ..write('bookId: $bookId, ')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
           ..write('byteOffset: $byteOffset, ')
           ..write('codeUnitOffset: $codeUnitOffset, ')
           ..write('lineIndex: $lineIndex')
@@ -2786,49 +3451,56 @@ class TextIndexData extends DataClass implements Insertable<TextIndexData> {
 
   @override
   int get hashCode =>
-      Object.hash(bookId, byteOffset, codeUnitOffset, lineIndex);
+      Object.hash(rootId, relativePath, byteOffset, codeUnitOffset, lineIndex);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is TextIndexData &&
-          other.bookId == this.bookId &&
+          other.rootId == this.rootId &&
+          other.relativePath == this.relativePath &&
           other.byteOffset == this.byteOffset &&
           other.codeUnitOffset == this.codeUnitOffset &&
           other.lineIndex == this.lineIndex);
 }
 
 class TextIndexCompanion extends UpdateCompanion<TextIndexData> {
-  final Value<String> bookId;
+  final Value<String> rootId;
+  final Value<String> relativePath;
   final Value<int> byteOffset;
   final Value<int> codeUnitOffset;
   final Value<int> lineIndex;
   final Value<int> rowid;
   const TextIndexCompanion({
-    this.bookId = const Value.absent(),
+    this.rootId = const Value.absent(),
+    this.relativePath = const Value.absent(),
     this.byteOffset = const Value.absent(),
     this.codeUnitOffset = const Value.absent(),
     this.lineIndex = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TextIndexCompanion.insert({
-    required String bookId,
+    required String rootId,
+    required String relativePath,
     required int byteOffset,
     required int codeUnitOffset,
     required int lineIndex,
     this.rowid = const Value.absent(),
-  }) : bookId = Value(bookId),
+  }) : rootId = Value(rootId),
+       relativePath = Value(relativePath),
        byteOffset = Value(byteOffset),
        codeUnitOffset = Value(codeUnitOffset),
        lineIndex = Value(lineIndex);
   static Insertable<TextIndexData> custom({
-    Expression<String>? bookId,
+    Expression<String>? rootId,
+    Expression<String>? relativePath,
     Expression<int>? byteOffset,
     Expression<int>? codeUnitOffset,
     Expression<int>? lineIndex,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (bookId != null) 'book_id': bookId,
+      if (rootId != null) 'root_id': rootId,
+      if (relativePath != null) 'relative_path': relativePath,
       if (byteOffset != null) 'byte_offset': byteOffset,
       if (codeUnitOffset != null) 'code_unit_offset': codeUnitOffset,
       if (lineIndex != null) 'line_index': lineIndex,
@@ -2837,14 +3509,16 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexData> {
   }
 
   TextIndexCompanion copyWith({
-    Value<String>? bookId,
+    Value<String>? rootId,
+    Value<String>? relativePath,
     Value<int>? byteOffset,
     Value<int>? codeUnitOffset,
     Value<int>? lineIndex,
     Value<int>? rowid,
   }) {
     return TextIndexCompanion(
-      bookId: bookId ?? this.bookId,
+      rootId: rootId ?? this.rootId,
+      relativePath: relativePath ?? this.relativePath,
       byteOffset: byteOffset ?? this.byteOffset,
       codeUnitOffset: codeUnitOffset ?? this.codeUnitOffset,
       lineIndex: lineIndex ?? this.lineIndex,
@@ -2855,8 +3529,11 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexData> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (bookId.present) {
-      map['book_id'] = Variable<String>(bookId.value);
+    if (rootId.present) {
+      map['root_id'] = Variable<String>(rootId.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
     }
     if (byteOffset.present) {
       map['byte_offset'] = Variable<int>(byteOffset.value);
@@ -2876,7 +3553,8 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexData> {
   @override
   String toString() {
     return (StringBuffer('TextIndexCompanion(')
-          ..write('bookId: $bookId, ')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
           ..write('byteOffset: $byteOffset, ')
           ..write('codeUnitOffset: $codeUnitOffset, ')
           ..write('lineIndex: $lineIndex, ')
@@ -4029,645 +4707,6 @@ class ReplaceRulesCompanion extends UpdateCompanion<ReplaceRulesData> {
   }
 }
 
-class LocalRoots extends Table with TableInfo<LocalRoots, LocalRootsData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  LocalRoots(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
-    'display_name',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> needsRelink = GeneratedColumn<int>(
-    'needs_relink',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (needs_relink IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [id, displayName, needsRelink];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'local_roots';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  LocalRootsData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return LocalRootsData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      displayName: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}display_name'],
-      )!,
-      needsRelink: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}needs_relink'],
-      )!,
-    );
-  }
-
-  @override
-  LocalRoots createAlias(String alias) {
-    return LocalRoots(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class LocalRootsData extends DataClass implements Insertable<LocalRootsData> {
-  final String id;
-  final String displayName;
-  final int needsRelink;
-  const LocalRootsData({
-    required this.id,
-    required this.displayName,
-    required this.needsRelink,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['display_name'] = Variable<String>(displayName);
-    map['needs_relink'] = Variable<int>(needsRelink);
-    return map;
-  }
-
-  LocalRootsCompanion toCompanion(bool nullToAbsent) {
-    return LocalRootsCompanion(
-      id: Value(id),
-      displayName: Value(displayName),
-      needsRelink: Value(needsRelink),
-    );
-  }
-
-  factory LocalRootsData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return LocalRootsData(
-      id: serializer.fromJson<String>(json['id']),
-      displayName: serializer.fromJson<String>(json['displayName']),
-      needsRelink: serializer.fromJson<int>(json['needsRelink']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'displayName': serializer.toJson<String>(displayName),
-      'needsRelink': serializer.toJson<int>(needsRelink),
-    };
-  }
-
-  LocalRootsData copyWith({
-    String? id,
-    String? displayName,
-    int? needsRelink,
-  }) => LocalRootsData(
-    id: id ?? this.id,
-    displayName: displayName ?? this.displayName,
-    needsRelink: needsRelink ?? this.needsRelink,
-  );
-  LocalRootsData copyWithCompanion(LocalRootsCompanion data) {
-    return LocalRootsData(
-      id: data.id.present ? data.id.value : this.id,
-      displayName: data.displayName.present
-          ? data.displayName.value
-          : this.displayName,
-      needsRelink: data.needsRelink.present
-          ? data.needsRelink.value
-          : this.needsRelink,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalRootsData(')
-          ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
-          ..write('needsRelink: $needsRelink')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, displayName, needsRelink);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is LocalRootsData &&
-          other.id == this.id &&
-          other.displayName == this.displayName &&
-          other.needsRelink == this.needsRelink);
-}
-
-class LocalRootsCompanion extends UpdateCompanion<LocalRootsData> {
-  final Value<String> id;
-  final Value<String> displayName;
-  final Value<int> needsRelink;
-  final Value<int> rowid;
-  const LocalRootsCompanion({
-    this.id = const Value.absent(),
-    this.displayName = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  LocalRootsCompanion.insert({
-    required String id,
-    required String displayName,
-    this.needsRelink = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       displayName = Value(displayName);
-  static Insertable<LocalRootsData> custom({
-    Expression<String>? id,
-    Expression<String>? displayName,
-    Expression<int>? needsRelink,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (displayName != null) 'display_name': displayName,
-      if (needsRelink != null) 'needs_relink': needsRelink,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  LocalRootsCompanion copyWith({
-    Value<String>? id,
-    Value<String>? displayName,
-    Value<int>? needsRelink,
-    Value<int>? rowid,
-  }) {
-    return LocalRootsCompanion(
-      id: id ?? this.id,
-      displayName: displayName ?? this.displayName,
-      needsRelink: needsRelink ?? this.needsRelink,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (displayName.present) {
-      map['display_name'] = Variable<String>(displayName.value);
-    }
-    if (needsRelink.present) {
-      map['needs_relink'] = Variable<int>(needsRelink.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalRootsCompanion(')
-          ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class LocalFiles extends Table with TableInfo<LocalFiles, LocalFilesData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  LocalFiles(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
-    'root_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES local_roots(id)ON DELETE CASCADE',
-  );
-  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
-    'relative_path',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> format = GeneratedColumn<String>(
-    'format',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT \'txt\'',
-    defaultValue: const CustomExpression('\'txt\''),
-  );
-  late final GeneratedColumn<int> textLength = GeneratedColumn<int>(
-    'text_length',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> modifiedAt = GeneratedColumn<int>(
-    'modified_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> needsRelink = GeneratedColumn<int>(
-    'needs_relink',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (needs_relink IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
-    'book_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL REFERENCES books(id)ON DELETE SET NULL',
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    rootId,
-    relativePath,
-    format,
-    textLength,
-    modifiedAt,
-    needsRelink,
-    bookId,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'local_files';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath};
-  @override
-  LocalFilesData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return LocalFilesData(
-      rootId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}root_id'],
-      )!,
-      relativePath: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}relative_path'],
-      )!,
-      format: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}format'],
-      )!,
-      textLength: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}text_length'],
-      ),
-      modifiedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}modified_at'],
-      ),
-      needsRelink: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}needs_relink'],
-      )!,
-      bookId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}book_id'],
-      ),
-    );
-  }
-
-  @override
-  LocalFiles createAlias(String alias) {
-    return LocalFiles(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const [
-    'PRIMARY KEY(root_id, relative_path)',
-  ];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class LocalFilesData extends DataClass implements Insertable<LocalFilesData> {
-  final String rootId;
-  final String relativePath;
-  final String format;
-  final int? textLength;
-  final int? modifiedAt;
-  final int needsRelink;
-  final String? bookId;
-  const LocalFilesData({
-    required this.rootId,
-    required this.relativePath,
-    required this.format,
-    this.textLength,
-    this.modifiedAt,
-    required this.needsRelink,
-    this.bookId,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['root_id'] = Variable<String>(rootId);
-    map['relative_path'] = Variable<String>(relativePath);
-    map['format'] = Variable<String>(format);
-    if (!nullToAbsent || textLength != null) {
-      map['text_length'] = Variable<int>(textLength);
-    }
-    if (!nullToAbsent || modifiedAt != null) {
-      map['modified_at'] = Variable<int>(modifiedAt);
-    }
-    map['needs_relink'] = Variable<int>(needsRelink);
-    if (!nullToAbsent || bookId != null) {
-      map['book_id'] = Variable<String>(bookId);
-    }
-    return map;
-  }
-
-  LocalFilesCompanion toCompanion(bool nullToAbsent) {
-    return LocalFilesCompanion(
-      rootId: Value(rootId),
-      relativePath: Value(relativePath),
-      format: Value(format),
-      textLength: textLength == null && nullToAbsent
-          ? const Value.absent()
-          : Value(textLength),
-      modifiedAt: modifiedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(modifiedAt),
-      needsRelink: Value(needsRelink),
-      bookId: bookId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bookId),
-    );
-  }
-
-  factory LocalFilesData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return LocalFilesData(
-      rootId: serializer.fromJson<String>(json['rootId']),
-      relativePath: serializer.fromJson<String>(json['relativePath']),
-      format: serializer.fromJson<String>(json['format']),
-      textLength: serializer.fromJson<int?>(json['textLength']),
-      modifiedAt: serializer.fromJson<int?>(json['modifiedAt']),
-      needsRelink: serializer.fromJson<int>(json['needsRelink']),
-      bookId: serializer.fromJson<String?>(json['bookId']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'rootId': serializer.toJson<String>(rootId),
-      'relativePath': serializer.toJson<String>(relativePath),
-      'format': serializer.toJson<String>(format),
-      'textLength': serializer.toJson<int?>(textLength),
-      'modifiedAt': serializer.toJson<int?>(modifiedAt),
-      'needsRelink': serializer.toJson<int>(needsRelink),
-      'bookId': serializer.toJson<String?>(bookId),
-    };
-  }
-
-  LocalFilesData copyWith({
-    String? rootId,
-    String? relativePath,
-    String? format,
-    Value<int?> textLength = const Value.absent(),
-    Value<int?> modifiedAt = const Value.absent(),
-    int? needsRelink,
-    Value<String?> bookId = const Value.absent(),
-  }) => LocalFilesData(
-    rootId: rootId ?? this.rootId,
-    relativePath: relativePath ?? this.relativePath,
-    format: format ?? this.format,
-    textLength: textLength.present ? textLength.value : this.textLength,
-    modifiedAt: modifiedAt.present ? modifiedAt.value : this.modifiedAt,
-    needsRelink: needsRelink ?? this.needsRelink,
-    bookId: bookId.present ? bookId.value : this.bookId,
-  );
-  LocalFilesData copyWithCompanion(LocalFilesCompanion data) {
-    return LocalFilesData(
-      rootId: data.rootId.present ? data.rootId.value : this.rootId,
-      relativePath: data.relativePath.present
-          ? data.relativePath.value
-          : this.relativePath,
-      format: data.format.present ? data.format.value : this.format,
-      textLength: data.textLength.present
-          ? data.textLength.value
-          : this.textLength,
-      modifiedAt: data.modifiedAt.present
-          ? data.modifiedAt.value
-          : this.modifiedAt,
-      needsRelink: data.needsRelink.present
-          ? data.needsRelink.value
-          : this.needsRelink,
-      bookId: data.bookId.present ? data.bookId.value : this.bookId,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalFilesData(')
-          ..write('rootId: $rootId, ')
-          ..write('relativePath: $relativePath, ')
-          ..write('format: $format, ')
-          ..write('textLength: $textLength, ')
-          ..write('modifiedAt: $modifiedAt, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('bookId: $bookId')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    rootId,
-    relativePath,
-    format,
-    textLength,
-    modifiedAt,
-    needsRelink,
-    bookId,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is LocalFilesData &&
-          other.rootId == this.rootId &&
-          other.relativePath == this.relativePath &&
-          other.format == this.format &&
-          other.textLength == this.textLength &&
-          other.modifiedAt == this.modifiedAt &&
-          other.needsRelink == this.needsRelink &&
-          other.bookId == this.bookId);
-}
-
-class LocalFilesCompanion extends UpdateCompanion<LocalFilesData> {
-  final Value<String> rootId;
-  final Value<String> relativePath;
-  final Value<String> format;
-  final Value<int?> textLength;
-  final Value<int?> modifiedAt;
-  final Value<int> needsRelink;
-  final Value<String?> bookId;
-  final Value<int> rowid;
-  const LocalFilesCompanion({
-    this.rootId = const Value.absent(),
-    this.relativePath = const Value.absent(),
-    this.format = const Value.absent(),
-    this.textLength = const Value.absent(),
-    this.modifiedAt = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.bookId = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  LocalFilesCompanion.insert({
-    required String rootId,
-    required String relativePath,
-    this.format = const Value.absent(),
-    this.textLength = const Value.absent(),
-    this.modifiedAt = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.bookId = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : rootId = Value(rootId),
-       relativePath = Value(relativePath);
-  static Insertable<LocalFilesData> custom({
-    Expression<String>? rootId,
-    Expression<String>? relativePath,
-    Expression<String>? format,
-    Expression<int>? textLength,
-    Expression<int>? modifiedAt,
-    Expression<int>? needsRelink,
-    Expression<String>? bookId,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (rootId != null) 'root_id': rootId,
-      if (relativePath != null) 'relative_path': relativePath,
-      if (format != null) 'format': format,
-      if (textLength != null) 'text_length': textLength,
-      if (modifiedAt != null) 'modified_at': modifiedAt,
-      if (needsRelink != null) 'needs_relink': needsRelink,
-      if (bookId != null) 'book_id': bookId,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  LocalFilesCompanion copyWith({
-    Value<String>? rootId,
-    Value<String>? relativePath,
-    Value<String>? format,
-    Value<int?>? textLength,
-    Value<int?>? modifiedAt,
-    Value<int>? needsRelink,
-    Value<String?>? bookId,
-    Value<int>? rowid,
-  }) {
-    return LocalFilesCompanion(
-      rootId: rootId ?? this.rootId,
-      relativePath: relativePath ?? this.relativePath,
-      format: format ?? this.format,
-      textLength: textLength ?? this.textLength,
-      modifiedAt: modifiedAt ?? this.modifiedAt,
-      needsRelink: needsRelink ?? this.needsRelink,
-      bookId: bookId ?? this.bookId,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (rootId.present) {
-      map['root_id'] = Variable<String>(rootId.value);
-    }
-    if (relativePath.present) {
-      map['relative_path'] = Variable<String>(relativePath.value);
-    }
-    if (format.present) {
-      map['format'] = Variable<String>(format.value);
-    }
-    if (textLength.present) {
-      map['text_length'] = Variable<int>(textLength.value);
-    }
-    if (modifiedAt.present) {
-      map['modified_at'] = Variable<int>(modifiedAt.value);
-    }
-    if (needsRelink.present) {
-      map['needs_relink'] = Variable<int>(needsRelink.value);
-    }
-    if (bookId.present) {
-      map['book_id'] = Variable<String>(bookId.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalFilesCompanion(')
-          ..write('rootId: $rootId, ')
-          ..write('relativePath: $relativePath, ')
-          ..write('format: $format, ')
-          ..write('textLength: $textLength, ')
-          ..write('modifiedAt: $modifiedAt, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('bookId: $bookId, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class Settings extends Table with TableInfo<Settings, SettingsData> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -4940,11 +4979,11 @@ class DatabaseAtV2 extends GeneratedDatabase {
   late final Groups groups = Groups(this);
   late final BookGroups bookGroups = BookGroups(this);
   late final Chapters chapters = Chapters(this);
+  late final LocalRoots localRoots = LocalRoots(this);
+  late final LocalFiles localFiles = LocalFiles(this);
   late final TextIndex textIndex = TextIndex(this);
   late final Progress progress = Progress(this);
   late final ReplaceRules replaceRules = ReplaceRules(this);
-  late final LocalRoots localRoots = LocalRoots(this);
-  late final LocalFiles localFiles = LocalFiles(this);
   late final Settings settings = Settings(this);
   late final Index booksNaturalKey = Index(
     'books_natural_key',
@@ -4992,11 +5031,11 @@ class DatabaseAtV2 extends GeneratedDatabase {
     groups,
     bookGroups,
     chapters,
+    localRoots,
+    localFiles,
     textIndex,
     progress,
     replaceRules,
-    localRoots,
-    localFiles,
     settings,
     booksNaturalKey,
     booksLocalKey,
@@ -5033,20 +5072,6 @@ class DatabaseAtV2 extends GeneratedDatabase {
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
-        'books',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('text_index', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'books',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('progress', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
         'local_roots',
         limitUpdateKind: UpdateKind.delete,
       ),
@@ -5058,6 +5083,27 @@ class DatabaseAtV2 extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('local_files', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'local_roots',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('text_index', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'local_files',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('text_index', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'books',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('progress', kind: UpdateKind.delete)],
     ),
   ]);
   @override

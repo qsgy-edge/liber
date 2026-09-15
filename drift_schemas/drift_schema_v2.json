@@ -697,23 +697,155 @@
     },
     {
       "id": 5,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "local_roots",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "display_name",
+            "getter_name": "displayName",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "needs_relink",
+            "getter_name": "needsRelink",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"needs_relink\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"needs_relink\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 6,
       "references": [
+        5,
         1
       ],
       "type": "table",
       "data": {
-        "name": "text_index",
+        "name": "local_files",
         "was_declared_in_moor": false,
         "columns": [
+          {
+            "name": "root_id",
+            "getter_name": "rootId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES local_roots (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES local_roots (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "local_roots",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "relative_path",
+            "getter_name": "relativePath",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "format",
+            "getter_name": "format",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'txt\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "text_length",
+            "getter_name": "textLength",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "modified_at",
+            "getter_name": "modifiedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "needs_relink",
+            "getter_name": "needsRelink",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"needs_relink\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"needs_relink\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
           {
             "name": "book_id",
             "getter_name": "bookId",
             "moor_type": "string",
-            "nullable": false,
+            "nullable": true,
             "customConstraints": null,
-            "defaultConstraints": "REFERENCES books (id) ON DELETE CASCADE",
+            "defaultConstraints": "REFERENCES books (id) ON DELETE SET NULL",
             "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES books (id) ON DELETE CASCADE"
+              "sqlite": "REFERENCES books (id) ON DELETE SET NULL"
             },
             "default_dart": null,
             "default_client_dart": null,
@@ -726,10 +858,67 @@
                   },
                   "initially_deferred": false,
                   "on_update": null,
+                  "on_delete": "setNull"
+                }
+              }
+            ]
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "root_id",
+          "relative_path"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "references": [
+        5,
+        6
+      ],
+      "type": "table",
+      "data": {
+        "name": "text_index",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "root_id",
+            "getter_name": "rootId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES local_roots (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES local_roots (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "local_roots",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
                   "on_delete": "cascade"
                 }
               }
             ]
+          },
+          {
+            "name": "relative_path",
+            "getter_name": "relativePath",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           },
           {
             "name": "byte_offset",
@@ -764,15 +953,18 @@
         ],
         "is_virtual": false,
         "without_rowid": false,
-        "constraints": [],
+        "constraints": [
+          "FOREIGN KEY (root_id, relative_path) REFERENCES local_files(root_id, relative_path) ON DELETE CASCADE"
+        ],
         "explicit_pk": [
-          "book_id",
+          "root_id",
+          "relative_path",
           "byte_offset"
         ]
       }
     },
     {
-      "id": 6,
+      "id": 8,
       "references": [
         1
       ],
@@ -897,7 +1089,7 @@
       }
     },
     {
-      "id": 7,
+      "id": 9,
       "references": [],
       "type": "table",
       "data": {
@@ -1066,184 +1258,6 @@
         "constraints": [],
         "explicit_pk": [
           "id"
-        ]
-      }
-    },
-    {
-      "id": 8,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "local_roots",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "display_name",
-            "getter_name": "displayName",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "needs_relink",
-            "getter_name": "needsRelink",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"needs_relink\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"needs_relink\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 9,
-      "references": [
-        8,
-        1
-      ],
-      "type": "table",
-      "data": {
-        "name": "local_files",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "root_id",
-            "getter_name": "rootId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "REFERENCES local_roots (id) ON DELETE CASCADE",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES local_roots (id) ON DELETE CASCADE"
-            },
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [
-              {
-                "foreign_key": {
-                  "to": {
-                    "table": "local_roots",
-                    "column": "id"
-                  },
-                  "initially_deferred": false,
-                  "on_update": null,
-                  "on_delete": "cascade"
-                }
-              }
-            ]
-          },
-          {
-            "name": "relative_path",
-            "getter_name": "relativePath",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "format",
-            "getter_name": "format",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('\\'txt\\'')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "text_length",
-            "getter_name": "textLength",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "modified_at",
-            "getter_name": "modifiedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "needs_relink",
-            "getter_name": "needsRelink",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"needs_relink\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"needs_relink\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "book_id",
-            "getter_name": "bookId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "defaultConstraints": "REFERENCES books (id) ON DELETE SET NULL",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES books (id) ON DELETE SET NULL"
-            },
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [
-              {
-                "foreign_key": {
-                  "to": {
-                    "table": "books",
-                    "column": "id"
-                  },
-                  "initially_deferred": false,
-                  "on_update": null,
-                  "on_delete": "setNull"
-                }
-              }
-            ]
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "root_id",
-          "relative_path"
         ]
       }
     },
@@ -1446,11 +1460,11 @@
     {
       "id": 17,
       "references": [
-        7
+        9
       ],
       "type": "index",
       "data": {
-        "on": 7,
+        "on": 9,
         "name": "replace_rules_merge_key",
         "sql": null,
         "unique": true,
@@ -1473,11 +1487,11 @@
     {
       "id": 18,
       "references": [
-        7
+        9
       ],
       "type": "index",
       "data": {
-        "on": 7,
+        "on": 9,
         "name": "replace_rules_order",
         "sql": null,
         "unique": false,
@@ -1492,11 +1506,11 @@
     {
       "id": 19,
       "references": [
-        9
+        6
       ],
       "type": "index",
       "data": {
-        "on": 9,
+        "on": 6,
         "name": "local_files_book",
         "sql": null,
         "unique": false,
@@ -1556,11 +1570,29 @@
       ]
     },
     {
+      "name": "local_roots",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"local_roots\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"needs_relink\" INTEGER NOT NULL DEFAULT 0 CHECK (\"needs_relink\" IN (0, 1)), PRIMARY KEY (\"id\"));"
+        }
+      ]
+    },
+    {
+      "name": "local_files",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"local_files\" (\"root_id\" TEXT NOT NULL REFERENCES local_roots (id) ON DELETE CASCADE, \"relative_path\" TEXT NOT NULL, \"format\" TEXT NOT NULL DEFAULT 'txt', \"text_length\" INTEGER NULL, \"modified_at\" INTEGER NULL, \"needs_relink\" INTEGER NOT NULL DEFAULT 0 CHECK (\"needs_relink\" IN (0, 1)), \"book_id\" TEXT NULL REFERENCES books (id) ON DELETE SET NULL, PRIMARY KEY (\"root_id\", \"relative_path\"));"
+        }
+      ]
+    },
+    {
       "name": "text_index",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"text_index\" (\"book_id\" TEXT NOT NULL REFERENCES books (id) ON DELETE CASCADE, \"byte_offset\" INTEGER NOT NULL, \"code_unit_offset\" INTEGER NOT NULL, \"line_index\" INTEGER NOT NULL, PRIMARY KEY (\"book_id\", \"byte_offset\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"text_index\" (\"root_id\" TEXT NOT NULL REFERENCES local_roots (id) ON DELETE CASCADE, \"relative_path\" TEXT NOT NULL, \"byte_offset\" INTEGER NOT NULL, \"code_unit_offset\" INTEGER NOT NULL, \"line_index\" INTEGER NOT NULL, PRIMARY KEY (\"root_id\", \"relative_path\", \"byte_offset\"), FOREIGN KEY (root_id, relative_path) REFERENCES local_files(root_id, relative_path) ON DELETE CASCADE);"
         }
       ]
     },
@@ -1579,24 +1611,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TABLE IF NOT EXISTS \"replace_rules\" (\"id\" TEXT NOT NULL, \"name\" TEXT NOT NULL, \"group_name\" TEXT NOT NULL DEFAULT '', \"pattern\" TEXT NOT NULL, \"replacement\" TEXT NOT NULL DEFAULT '', \"scope\" TEXT NULL, \"exclude_scope\" TEXT NULL, \"scope_title\" INTEGER NOT NULL DEFAULT 0 CHECK (\"scope_title\" IN (0, 1)), \"scope_content\" INTEGER NOT NULL DEFAULT 1 CHECK (\"scope_content\" IN (0, 1)), \"is_enabled\" INTEGER NOT NULL DEFAULT 1 CHECK (\"is_enabled\" IN (0, 1)), \"is_regex\" INTEGER NOT NULL DEFAULT 1 CHECK (\"is_regex\" IN (0, 1)), \"timeout_millisecond\" INTEGER NOT NULL DEFAULT 0, \"rule_order\" INTEGER NOT NULL DEFAULT 0, \"raw\" TEXT NULL, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "local_roots",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"local_roots\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"needs_relink\" INTEGER NOT NULL DEFAULT 0 CHECK (\"needs_relink\" IN (0, 1)), PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "local_files",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"local_files\" (\"root_id\" TEXT NOT NULL REFERENCES local_roots (id) ON DELETE CASCADE, \"relative_path\" TEXT NOT NULL, \"format\" TEXT NOT NULL DEFAULT 'txt', \"text_length\" INTEGER NULL, \"modified_at\" INTEGER NULL, \"needs_relink\" INTEGER NOT NULL DEFAULT 0 CHECK (\"needs_relink\" IN (0, 1)), \"book_id\" TEXT NULL REFERENCES books (id) ON DELETE SET NULL, PRIMARY KEY (\"root_id\", \"relative_path\"));"
         }
       ]
     },

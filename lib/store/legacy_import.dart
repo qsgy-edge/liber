@@ -29,16 +29,23 @@ class LegacyImportReport {
 
   /// A run that did nothing because a previous run already imported.
   factory LegacyImportReport.alreadyImported(LegacyImportReport previous) =>
-      LegacyImportReport(
-        imported: false,
-        importedAt: previous.importedAt,
-        sources: previous.sources,
-        books: previous.books,
-        chapters: previous.chapters,
-        progress: previous.progress,
-        localFiles: previous.localFiles,
-        losses: previous.losses,
-      );
+      previous.copyWith(imported: false, retired: const <String>[]);
+
+  LegacyImportReport copyWith({
+    bool? imported,
+    List<String>? losses,
+    List<String>? retired,
+  }) => LegacyImportReport(
+    imported: imported ?? this.imported,
+    importedAt: importedAt,
+    sources: sources,
+    books: books,
+    chapters: chapters,
+    progress: progress,
+    localFiles: localFiles,
+    losses: losses ?? this.losses,
+    retired: retired ?? this.retired,
+  );
 
   static const markerKey = 'legacy_import.v1';
 
@@ -178,18 +185,7 @@ class LegacyImport {
     });
 
     if (!retireOriginals) return report;
-    final retired = await _retire();
-    return LegacyImportReport(
-      imported: report.imported,
-      importedAt: report.importedAt,
-      sources: report.sources,
-      books: report.books,
-      chapters: report.chapters,
-      progress: report.progress,
-      localFiles: report.localFiles,
-      losses: report.losses,
-      retired: retired,
-    );
+    return report.copyWith(retired: await _retire());
   }
 
   /// `online_reading.json` v2: `{version, last, records[]}`, one record per book
@@ -249,7 +245,8 @@ class LegacyImport {
 
       final rows = <BookChapter>[];
       final indexes = <String, int>{};
-      for (final chapter in (record['chapters'] as List? ?? const <Object?>[])) {
+      for (final chapter
+          in (record['chapters'] as List? ?? const <Object?>[])) {
         if (chapter is! Map) continue;
         final url = '${chapter['url'] ?? ''}';
         if (url.isEmpty) continue;
@@ -275,9 +272,7 @@ class LegacyImport {
           bookId: id,
           textOffset: Value(_int(record['textOffset'])),
           chapterKey: Value(chapterUrl.isEmpty ? null : chapterUrl),
-          chapterIndex: Value(
-            chapterUrl.isEmpty ? null : indexes[chapterUrl],
-          ),
+          chapterIndex: Value(chapterUrl.isEmpty ? null : indexes[chapterUrl]),
           updatedAt: Value(now),
         ),
       );
@@ -319,8 +314,7 @@ class LegacyImport {
     var books = 0, localFiles = 0, progress = 0, missing = 0;
     for (final book in legacy.books) {
       final relative =
-          book.relativePath ??
-          book.path.substring(root.displayName.length + 1);
+          book.relativePath ?? book.path.substring(root.displayName.length + 1);
       final exists = await File(book.path).exists();
       if (!exists) missing++;
       // The legacy id is the root plus the path inside it, so the same file
@@ -365,11 +359,7 @@ class LegacyImport {
     }
     losses.add('本地文件字节不导入；文件缺失的书已标记 needsRelink');
     if (missing > 0) losses.add('$missing 个本地文件已不在原路径');
-    return _Counts(
-      books: books,
-      localFiles: localFiles,
-      progress: progress,
-    );
+    return _Counts(books: books, localFiles: localFiles, progress: progress);
   }
 
   /// `migration_state.json`: what an earlier Legado JSON import left behind.
@@ -446,7 +436,9 @@ class LegacyImport {
       migrationStateFile,
     ]) {
       if (!await file.exists()) continue;
-      await file.rename('${folder.path}${Platform.pathSeparator}${_fileName(file)}');
+      await file.rename(
+        '${folder.path}${Platform.pathSeparator}${_fileName(file)}',
+      );
       retired.add(_fileName(file));
     }
     return retired;

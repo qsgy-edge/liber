@@ -158,8 +158,10 @@ void main() {
     expect(progress.textOffset, 200);
     expect(progress.chapterKey, 'https://example.test/book/1/2');
     expect(progress.chapterIndex, 1);
-    expect((await store2.sourceByUrl('https://example.test'))!.raw,
-        '{"unknownField":[1,2,3],"jsLib":""}');
+    expect(
+      (await store2.sourceByUrl('https://example.test'))!.raw,
+      '{"unknownField":[1,2,3],"jsLib":""}',
+    );
     final rules = await store2.replaceRules();
     expect(rules, hasLength(1), reason: '(name, pattern, replacement) 是合并键');
     expect(rules.single.id, 'rule-1');

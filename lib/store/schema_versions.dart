@@ -14,11 +14,11 @@ final class Schema2 extends i0.VersionedSchema {
     groups,
     bookGroups,
     chapters,
+    localRoots,
+    localFiles,
     textIndex,
     progress,
     replaceRules,
-    localRoots,
-    localFiles,
     settings,
     booksNaturalKey,
     booksLocalKey,
@@ -139,18 +139,51 @@ final class Schema2 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape5 textIndex = Shape5(
+  late final Shape5 localRoots = Shape5(
     source: i0.VersionedTable(
-      entityName: 'text_index',
+      entityName: 'local_roots',
       withoutRowId: false,
       isStrict: false,
-      tableConstraints: ['PRIMARY KEY(book_id, byte_offset)'],
-      columns: [_column_40, _column_45, _column_46, _column_47],
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [_column_9, _column_45, _column_34],
       attachedDatabase: database,
     ),
     alias: null,
   );
-  late final Shape6 progress = Shape6(
+  late final Shape6 localFiles = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'local_files',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(root_id, relative_path)'],
+      columns: [
+        _column_46,
+        _column_47,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_34,
+        _column_51,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 textIndex = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'text_index',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(root_id, relative_path, byte_offset)',
+        'FOREIGN KEY(root_id, relative_path)REFERENCES local_files(root_id, relative_path)ON DELETE CASCADE',
+      ],
+      columns: [_column_46, _column_47, _column_52, _column_53, _column_54],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape8 progress = Shape8(
     source: i0.VersionedTable(
       entityName: 'progress',
       withoutRowId: false,
@@ -158,20 +191,20 @@ final class Schema2 extends i0.VersionedSchema {
       tableConstraints: ['PRIMARY KEY(book_id)'],
       columns: [
         _column_40,
-        _column_48,
-        _column_49,
-        _column_50,
-        _column_51,
-        _column_52,
-        _column_53,
-        _column_54,
         _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+        _column_59,
+        _column_60,
+        _column_61,
+        _column_62,
       ],
       attachedDatabase: database,
     ),
     alias: null,
   );
-  late final Shape7 replaceRules = Shape7(
+  late final Shape9 replaceRules = Shape9(
     source: i0.VersionedTable(
       entityName: 'replace_rules',
       withoutRowId: false,
@@ -180,48 +213,18 @@ final class Schema2 extends i0.VersionedSchema {
       columns: [
         _column_9,
         _column_1,
-        _column_56,
-        _column_57,
-        _column_58,
-        _column_59,
-        _column_60,
-        _column_61,
-        _column_62,
         _column_63,
         _column_64,
         _column_65,
         _column_66,
-        _column_8,
-      ],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  late final Shape8 localRoots = Shape8(
-    source: i0.VersionedTable(
-      entityName: 'local_roots',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: ['PRIMARY KEY(id)'],
-      columns: [_column_9, _column_67, _column_34],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  late final Shape9 localFiles = Shape9(
-    source: i0.VersionedTable(
-      entityName: 'local_files',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: ['PRIMARY KEY(root_id, relative_path)'],
-      columns: [
+        _column_67,
         _column_68,
         _column_69,
         _column_70,
         _column_71,
         _column_72,
-        _column_34,
         _column_73,
+        _column_8,
       ],
       attachedDatabase: database,
     ),
@@ -233,7 +236,7 @@ final class Schema2 extends i0.VersionedSchema {
       withoutRowId: false,
       isStrict: false,
       tableConstraints: ['PRIMARY KEY(book_id, "key")'],
-      columns: [_column_74, _column_75, _column_76, _column_55],
+      columns: [_column_74, _column_75, _column_76, _column_62],
       attachedDatabase: database,
     ),
     alias: null,
@@ -797,8 +800,98 @@ i1.GeneratedColumn<int> _column_44(String aliasedName) =>
 
 class Shape5 extends i0.VersionedTable {
   Shape5({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get displayName =>
+      columnsByName['display_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get needsRelink =>
+      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_45(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'display_name',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+
+class Shape6 extends i0.VersionedTable {
+  Shape6({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get rootId =>
+      columnsByName['root_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get relativePath =>
+      columnsByName['relative_path']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get format =>
+      columnsByName['format']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get textLength =>
+      columnsByName['text_length']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get modifiedAt =>
+      columnsByName['modified_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get needsRelink =>
+      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<String> get bookId =>
       columnsByName['book_id']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_46(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'root_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints:
+          'NOT NULL REFERENCES local_roots(id)ON DELETE CASCADE',
+    );
+i1.GeneratedColumn<String> _column_47(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'relative_path',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_48(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'format',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'txt\'',
+      defaultValue: const i1.CustomExpression('\'txt\''),
+    );
+i1.GeneratedColumn<int> _column_49(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'text_length',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_50(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'modified_at',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_51(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'book_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL REFERENCES books(id)ON DELETE SET NULL',
+    );
+
+class Shape7 extends i0.VersionedTable {
+  Shape7({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get rootId =>
+      columnsByName['root_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get relativePath =>
+      columnsByName['relative_path']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<int> get byteOffset =>
       columnsByName['byte_offset']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get codeUnitOffset =>
@@ -807,7 +900,7 @@ class Shape5 extends i0.VersionedTable {
       columnsByName['line_index']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_45(String aliasedName) =>
+i1.GeneratedColumn<int> _column_52(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'byte_offset',
       aliasedName,
@@ -815,7 +908,7 @@ i1.GeneratedColumn<int> _column_45(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<int> _column_46(String aliasedName) =>
+i1.GeneratedColumn<int> _column_53(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'code_unit_offset',
       aliasedName,
@@ -823,7 +916,7 @@ i1.GeneratedColumn<int> _column_46(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<int> _column_47(String aliasedName) =>
+i1.GeneratedColumn<int> _column_54(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'line_index',
       aliasedName,
@@ -832,8 +925,8 @@ i1.GeneratedColumn<int> _column_47(String aliasedName) =>
       $customConstraints: 'NOT NULL',
     );
 
-class Shape6 extends i0.VersionedTable {
-  Shape6({required super.source, required super.alias}) : super.aliased();
+class Shape8 extends i0.VersionedTable {
+  Shape8({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get bookId =>
       columnsByName['book_id']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<int> get textOffset =>
@@ -854,7 +947,7 @@ class Shape6 extends i0.VersionedTable {
       columnsByName['updated_at']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_48(String aliasedName) =>
+i1.GeneratedColumn<int> _column_55(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'text_offset',
       aliasedName,
@@ -863,7 +956,7 @@ i1.GeneratedColumn<int> _column_48(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<int> _column_49(String aliasedName) =>
+i1.GeneratedColumn<int> _column_56(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'line_index',
       aliasedName,
@@ -872,7 +965,7 @@ i1.GeneratedColumn<int> _column_49(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<int> _column_50(String aliasedName) =>
+i1.GeneratedColumn<int> _column_57(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'offset_in_line',
       aliasedName,
@@ -881,7 +974,7 @@ i1.GeneratedColumn<int> _column_50(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<int> _column_51(String aliasedName) =>
+i1.GeneratedColumn<int> _column_58(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'text_length',
       aliasedName,
@@ -890,7 +983,7 @@ i1.GeneratedColumn<int> _column_51(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<String> _column_52(String aliasedName) =>
+i1.GeneratedColumn<String> _column_59(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'chapter_key',
       aliasedName,
@@ -898,7 +991,7 @@ i1.GeneratedColumn<String> _column_52(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
-i1.GeneratedColumn<int> _column_53(String aliasedName) =>
+i1.GeneratedColumn<int> _column_60(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'chapter_index',
       aliasedName,
@@ -906,7 +999,7 @@ i1.GeneratedColumn<int> _column_53(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NULL',
     );
-i1.GeneratedColumn<String> _column_54(String aliasedName) =>
+i1.GeneratedColumn<String> _column_61(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'anchor',
       aliasedName,
@@ -914,7 +1007,7 @@ i1.GeneratedColumn<String> _column_54(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
-i1.GeneratedColumn<int> _column_55(String aliasedName) =>
+i1.GeneratedColumn<int> _column_62(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'updated_at',
       aliasedName,
@@ -924,8 +1017,8 @@ i1.GeneratedColumn<int> _column_55(String aliasedName) =>
       defaultValue: const i1.CustomExpression('0'),
     );
 
-class Shape7 extends i0.VersionedTable {
-  Shape7({required super.source, required super.alias}) : super.aliased();
+class Shape9 extends i0.VersionedTable {
+  Shape9({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get id =>
       columnsByName['id']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<String> get name =>
@@ -956,7 +1049,7 @@ class Shape7 extends i0.VersionedTable {
       columnsByName['raw']! as i1.GeneratedColumn<String>;
 }
 
-i1.GeneratedColumn<String> _column_56(String aliasedName) =>
+i1.GeneratedColumn<String> _column_63(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'group_name',
       aliasedName,
@@ -965,7 +1058,7 @@ i1.GeneratedColumn<String> _column_56(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT \'\'',
       defaultValue: const i1.CustomExpression('\'\''),
     );
-i1.GeneratedColumn<String> _column_57(String aliasedName) =>
+i1.GeneratedColumn<String> _column_64(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'pattern',
       aliasedName,
@@ -973,7 +1066,7 @@ i1.GeneratedColumn<String> _column_57(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<String> _column_58(String aliasedName) =>
+i1.GeneratedColumn<String> _column_65(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'replacement',
       aliasedName,
@@ -982,7 +1075,7 @@ i1.GeneratedColumn<String> _column_58(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT \'\'',
       defaultValue: const i1.CustomExpression('\'\''),
     );
-i1.GeneratedColumn<String> _column_59(String aliasedName) =>
+i1.GeneratedColumn<String> _column_66(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'scope',
       aliasedName,
@@ -990,7 +1083,7 @@ i1.GeneratedColumn<String> _column_59(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
-i1.GeneratedColumn<String> _column_60(String aliasedName) =>
+i1.GeneratedColumn<String> _column_67(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'exclude_scope',
       aliasedName,
@@ -998,7 +1091,7 @@ i1.GeneratedColumn<String> _column_60(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NULL',
     );
-i1.GeneratedColumn<int> _column_61(String aliasedName) =>
+i1.GeneratedColumn<int> _column_68(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'scope_title',
       aliasedName,
@@ -1007,7 +1100,7 @@ i1.GeneratedColumn<int> _column_61(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0 CHECK (scope_title IN (0, 1))',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<int> _column_62(String aliasedName) =>
+i1.GeneratedColumn<int> _column_69(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'scope_content',
       aliasedName,
@@ -1016,7 +1109,7 @@ i1.GeneratedColumn<int> _column_62(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 1 CHECK (scope_content IN (0, 1))',
       defaultValue: const i1.CustomExpression('1'),
     );
-i1.GeneratedColumn<int> _column_63(String aliasedName) =>
+i1.GeneratedColumn<int> _column_70(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'is_enabled',
       aliasedName,
@@ -1025,7 +1118,7 @@ i1.GeneratedColumn<int> _column_63(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1))',
       defaultValue: const i1.CustomExpression('1'),
     );
-i1.GeneratedColumn<int> _column_64(String aliasedName) =>
+i1.GeneratedColumn<int> _column_71(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'is_regex',
       aliasedName,
@@ -1034,7 +1127,7 @@ i1.GeneratedColumn<int> _column_64(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 1 CHECK (is_regex IN (0, 1))',
       defaultValue: const i1.CustomExpression('1'),
     );
-i1.GeneratedColumn<int> _column_65(String aliasedName) =>
+i1.GeneratedColumn<int> _column_72(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'timeout_millisecond',
       aliasedName,
@@ -1043,7 +1136,7 @@ i1.GeneratedColumn<int> _column_65(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
     );
-i1.GeneratedColumn<int> _column_66(String aliasedName) =>
+i1.GeneratedColumn<int> _column_73(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'rule_order',
       aliasedName,
@@ -1051,94 +1144,6 @@ i1.GeneratedColumn<int> _column_66(String aliasedName) =>
       type: i1.DriftSqlType.int,
       $customConstraints: 'NOT NULL DEFAULT 0',
       defaultValue: const i1.CustomExpression('0'),
-    );
-
-class Shape8 extends i0.VersionedTable {
-  Shape8({required super.source, required super.alias}) : super.aliased();
-  i1.GeneratedColumn<String> get id =>
-      columnsByName['id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get displayName =>
-      columnsByName['display_name']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get needsRelink =>
-      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
-}
-
-i1.GeneratedColumn<String> _column_67(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'display_name',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL',
-    );
-
-class Shape9 extends i0.VersionedTable {
-  Shape9({required super.source, required super.alias}) : super.aliased();
-  i1.GeneratedColumn<String> get rootId =>
-      columnsByName['root_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get relativePath =>
-      columnsByName['relative_path']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get format =>
-      columnsByName['format']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get textLength =>
-      columnsByName['text_length']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get modifiedAt =>
-      columnsByName['modified_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get needsRelink =>
-      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get bookId =>
-      columnsByName['book_id']! as i1.GeneratedColumn<String>;
-}
-
-i1.GeneratedColumn<String> _column_68(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'root_id',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints:
-          'NOT NULL REFERENCES local_roots(id)ON DELETE CASCADE',
-    );
-i1.GeneratedColumn<String> _column_69(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'relative_path',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<String> _column_70(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'format',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL DEFAULT \'txt\'',
-      defaultValue: const i1.CustomExpression('\'txt\''),
-    );
-i1.GeneratedColumn<int> _column_71(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'text_length',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_72(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'modified_at',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<String> _column_73(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'book_id',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NULL REFERENCES books(id)ON DELETE SET NULL',
     );
 
 class Shape10 extends i0.VersionedTable {

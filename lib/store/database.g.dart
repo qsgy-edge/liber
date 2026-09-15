@@ -3195,23 +3195,800 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
   }
 }
 
+class $LocalRootsTable extends LocalRoots
+    with TableInfo<$LocalRootsTable, LocalRoot> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalRootsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _needsRelinkMeta = const VerificationMeta(
+    'needsRelink',
+  );
+  @override
+  late final GeneratedColumn<bool> needsRelink = GeneratedColumn<bool>(
+    'needs_relink',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("needs_relink" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, displayName, needsRelink];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_roots';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalRoot> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('needs_relink')) {
+      context.handle(
+        _needsRelinkMeta,
+        needsRelink.isAcceptableOrUnknown(
+          data['needs_relink']!,
+          _needsRelinkMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LocalRoot map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalRoot(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      needsRelink: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}needs_relink'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalRootsTable createAlias(String alias) {
+    return $LocalRootsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalRoot extends DataClass implements Insertable<LocalRoot> {
+  /// Stable: the lowercased absolute path, so re-authorizing the same root
+  /// keeps the shelf and the progress (ADR 0006).
+  final String id;
+  final String displayName;
+  final bool needsRelink;
+  const LocalRoot({
+    required this.id,
+    required this.displayName,
+    required this.needsRelink,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['display_name'] = Variable<String>(displayName);
+    map['needs_relink'] = Variable<bool>(needsRelink);
+    return map;
+  }
+
+  LocalRootsCompanion toCompanion(bool nullToAbsent) {
+    return LocalRootsCompanion(
+      id: Value(id),
+      displayName: Value(displayName),
+      needsRelink: Value(needsRelink),
+    );
+  }
+
+  factory LocalRoot.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalRoot(
+      id: serializer.fromJson<String>(json['id']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      needsRelink: serializer.fromJson<bool>(json['needsRelink']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'displayName': serializer.toJson<String>(displayName),
+      'needsRelink': serializer.toJson<bool>(needsRelink),
+    };
+  }
+
+  LocalRoot copyWith({String? id, String? displayName, bool? needsRelink}) =>
+      LocalRoot(
+        id: id ?? this.id,
+        displayName: displayName ?? this.displayName,
+        needsRelink: needsRelink ?? this.needsRelink,
+      );
+  LocalRoot copyWithCompanion(LocalRootsCompanion data) {
+    return LocalRoot(
+      id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      needsRelink: data.needsRelink.present
+          ? data.needsRelink.value
+          : this.needsRelink,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRoot(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('needsRelink: $needsRelink')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, displayName, needsRelink);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalRoot &&
+          other.id == this.id &&
+          other.displayName == this.displayName &&
+          other.needsRelink == this.needsRelink);
+}
+
+class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
+  final Value<String> id;
+  final Value<String> displayName;
+  final Value<bool> needsRelink;
+  final Value<int> rowid;
+  const LocalRootsCompanion({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalRootsCompanion.insert({
+    required String id,
+    required String displayName,
+    this.needsRelink = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       displayName = Value(displayName);
+  static Insertable<LocalRoot> custom({
+    Expression<String>? id,
+    Expression<String>? displayName,
+    Expression<bool>? needsRelink,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
+      if (needsRelink != null) 'needs_relink': needsRelink,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalRootsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? displayName,
+    Value<bool>? needsRelink,
+    Value<int>? rowid,
+  }) {
+    return LocalRootsCompanion(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      needsRelink: needsRelink ?? this.needsRelink,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (needsRelink.present) {
+      map['needs_relink'] = Variable<bool>(needsRelink.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRootsCompanion(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalFilesTable extends LocalFiles
+    with TableInfo<$LocalFilesTable, LocalFile> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalFilesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _rootIdMeta = const VerificationMeta('rootId');
+  @override
+  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
+    'root_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES local_roots (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _relativePathMeta = const VerificationMeta(
+    'relativePath',
+  );
+  @override
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _formatMeta = const VerificationMeta('format');
+  @override
+  late final GeneratedColumn<String> format = GeneratedColumn<String>(
+    'format',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('txt'),
+  );
+  static const VerificationMeta _textLengthMeta = const VerificationMeta(
+    'textLength',
+  );
+  @override
+  late final GeneratedColumn<int> textLength = GeneratedColumn<int>(
+    'text_length',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _modifiedAtMeta = const VerificationMeta(
+    'modifiedAt',
+  );
+  @override
+  late final GeneratedColumn<int> modifiedAt = GeneratedColumn<int>(
+    'modified_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _needsRelinkMeta = const VerificationMeta(
+    'needsRelink',
+  );
+  @override
+  late final GeneratedColumn<bool> needsRelink = GeneratedColumn<bool>(
+    'needs_relink',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("needs_relink" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES books (id) ON DELETE SET NULL',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    rootId,
+    relativePath,
+    format,
+    textLength,
+    modifiedAt,
+    needsRelink,
+    bookId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_files';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalFile> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('root_id')) {
+      context.handle(
+        _rootIdMeta,
+        rootId.isAcceptableOrUnknown(data['root_id']!, _rootIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rootIdMeta);
+    }
+    if (data.containsKey('relative_path')) {
+      context.handle(
+        _relativePathMeta,
+        relativePath.isAcceptableOrUnknown(
+          data['relative_path']!,
+          _relativePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_relativePathMeta);
+    }
+    if (data.containsKey('format')) {
+      context.handle(
+        _formatMeta,
+        format.isAcceptableOrUnknown(data['format']!, _formatMeta),
+      );
+    }
+    if (data.containsKey('text_length')) {
+      context.handle(
+        _textLengthMeta,
+        textLength.isAcceptableOrUnknown(data['text_length']!, _textLengthMeta),
+      );
+    }
+    if (data.containsKey('modified_at')) {
+      context.handle(
+        _modifiedAtMeta,
+        modifiedAt.isAcceptableOrUnknown(data['modified_at']!, _modifiedAtMeta),
+      );
+    }
+    if (data.containsKey('needs_relink')) {
+      context.handle(
+        _needsRelinkMeta,
+        needsRelink.isAcceptableOrUnknown(
+          data['needs_relink']!,
+          _needsRelinkMeta,
+        ),
+      );
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath};
+  @override
+  LocalFile map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalFile(
+      rootId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}root_id'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
+      )!,
+      format: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}format'],
+      )!,
+      textLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}text_length'],
+      ),
+      modifiedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}modified_at'],
+      ),
+      needsRelink: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}needs_relink'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      ),
+    );
+  }
+
+  @override
+  $LocalFilesTable createAlias(String alias) {
+    return $LocalFilesTable(attachedDatabase, alias);
+  }
+}
+
+class LocalFile extends DataClass implements Insertable<LocalFile> {
+  final String rootId;
+  final String relativePath;
+  final String format;
+
+  /// Cached decoded length: nothing reads a whole file to clamp an offset (D4).
+  final int? textLength;
+
+  /// Cached modification time; with `textLength` it decides whether the file is
+  /// unchanged, edited in place, or replaced.
+  final int? modifiedAt;
+  final bool needsRelink;
+
+  /// The shelf book this file is admitted as, when it is on the shelf.
+  final String? bookId;
+  const LocalFile({
+    required this.rootId,
+    required this.relativePath,
+    required this.format,
+    this.textLength,
+    this.modifiedAt,
+    required this.needsRelink,
+    this.bookId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['root_id'] = Variable<String>(rootId);
+    map['relative_path'] = Variable<String>(relativePath);
+    map['format'] = Variable<String>(format);
+    if (!nullToAbsent || textLength != null) {
+      map['text_length'] = Variable<int>(textLength);
+    }
+    if (!nullToAbsent || modifiedAt != null) {
+      map['modified_at'] = Variable<int>(modifiedAt);
+    }
+    map['needs_relink'] = Variable<bool>(needsRelink);
+    if (!nullToAbsent || bookId != null) {
+      map['book_id'] = Variable<String>(bookId);
+    }
+    return map;
+  }
+
+  LocalFilesCompanion toCompanion(bool nullToAbsent) {
+    return LocalFilesCompanion(
+      rootId: Value(rootId),
+      relativePath: Value(relativePath),
+      format: Value(format),
+      textLength: textLength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(textLength),
+      modifiedAt: modifiedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(modifiedAt),
+      needsRelink: Value(needsRelink),
+      bookId: bookId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bookId),
+    );
+  }
+
+  factory LocalFile.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalFile(
+      rootId: serializer.fromJson<String>(json['rootId']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
+      format: serializer.fromJson<String>(json['format']),
+      textLength: serializer.fromJson<int?>(json['textLength']),
+      modifiedAt: serializer.fromJson<int?>(json['modifiedAt']),
+      needsRelink: serializer.fromJson<bool>(json['needsRelink']),
+      bookId: serializer.fromJson<String?>(json['bookId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'rootId': serializer.toJson<String>(rootId),
+      'relativePath': serializer.toJson<String>(relativePath),
+      'format': serializer.toJson<String>(format),
+      'textLength': serializer.toJson<int?>(textLength),
+      'modifiedAt': serializer.toJson<int?>(modifiedAt),
+      'needsRelink': serializer.toJson<bool>(needsRelink),
+      'bookId': serializer.toJson<String?>(bookId),
+    };
+  }
+
+  LocalFile copyWith({
+    String? rootId,
+    String? relativePath,
+    String? format,
+    Value<int?> textLength = const Value.absent(),
+    Value<int?> modifiedAt = const Value.absent(),
+    bool? needsRelink,
+    Value<String?> bookId = const Value.absent(),
+  }) => LocalFile(
+    rootId: rootId ?? this.rootId,
+    relativePath: relativePath ?? this.relativePath,
+    format: format ?? this.format,
+    textLength: textLength.present ? textLength.value : this.textLength,
+    modifiedAt: modifiedAt.present ? modifiedAt.value : this.modifiedAt,
+    needsRelink: needsRelink ?? this.needsRelink,
+    bookId: bookId.present ? bookId.value : this.bookId,
+  );
+  LocalFile copyWithCompanion(LocalFilesCompanion data) {
+    return LocalFile(
+      rootId: data.rootId.present ? data.rootId.value : this.rootId,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
+      format: data.format.present ? data.format.value : this.format,
+      textLength: data.textLength.present
+          ? data.textLength.value
+          : this.textLength,
+      modifiedAt: data.modifiedAt.present
+          ? data.modifiedAt.value
+          : this.modifiedAt,
+      needsRelink: data.needsRelink.present
+          ? data.needsRelink.value
+          : this.needsRelink,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFile(')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('format: $format, ')
+          ..write('textLength: $textLength, ')
+          ..write('modifiedAt: $modifiedAt, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('bookId: $bookId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    rootId,
+    relativePath,
+    format,
+    textLength,
+    modifiedAt,
+    needsRelink,
+    bookId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalFile &&
+          other.rootId == this.rootId &&
+          other.relativePath == this.relativePath &&
+          other.format == this.format &&
+          other.textLength == this.textLength &&
+          other.modifiedAt == this.modifiedAt &&
+          other.needsRelink == this.needsRelink &&
+          other.bookId == this.bookId);
+}
+
+class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
+  final Value<String> rootId;
+  final Value<String> relativePath;
+  final Value<String> format;
+  final Value<int?> textLength;
+  final Value<int?> modifiedAt;
+  final Value<bool> needsRelink;
+  final Value<String?> bookId;
+  final Value<int> rowid;
+  const LocalFilesCompanion({
+    this.rootId = const Value.absent(),
+    this.relativePath = const Value.absent(),
+    this.format = const Value.absent(),
+    this.textLength = const Value.absent(),
+    this.modifiedAt = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalFilesCompanion.insert({
+    required String rootId,
+    required String relativePath,
+    this.format = const Value.absent(),
+    this.textLength = const Value.absent(),
+    this.modifiedAt = const Value.absent(),
+    this.needsRelink = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : rootId = Value(rootId),
+       relativePath = Value(relativePath);
+  static Insertable<LocalFile> custom({
+    Expression<String>? rootId,
+    Expression<String>? relativePath,
+    Expression<String>? format,
+    Expression<int>? textLength,
+    Expression<int>? modifiedAt,
+    Expression<bool>? needsRelink,
+    Expression<String>? bookId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (rootId != null) 'root_id': rootId,
+      if (relativePath != null) 'relative_path': relativePath,
+      if (format != null) 'format': format,
+      if (textLength != null) 'text_length': textLength,
+      if (modifiedAt != null) 'modified_at': modifiedAt,
+      if (needsRelink != null) 'needs_relink': needsRelink,
+      if (bookId != null) 'book_id': bookId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalFilesCompanion copyWith({
+    Value<String>? rootId,
+    Value<String>? relativePath,
+    Value<String>? format,
+    Value<int?>? textLength,
+    Value<int?>? modifiedAt,
+    Value<bool>? needsRelink,
+    Value<String?>? bookId,
+    Value<int>? rowid,
+  }) {
+    return LocalFilesCompanion(
+      rootId: rootId ?? this.rootId,
+      relativePath: relativePath ?? this.relativePath,
+      format: format ?? this.format,
+      textLength: textLength ?? this.textLength,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
+      needsRelink: needsRelink ?? this.needsRelink,
+      bookId: bookId ?? this.bookId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (rootId.present) {
+      map['root_id'] = Variable<String>(rootId.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
+    }
+    if (format.present) {
+      map['format'] = Variable<String>(format.value);
+    }
+    if (textLength.present) {
+      map['text_length'] = Variable<int>(textLength.value);
+    }
+    if (modifiedAt.present) {
+      map['modified_at'] = Variable<int>(modifiedAt.value);
+    }
+    if (needsRelink.present) {
+      map['needs_relink'] = Variable<bool>(needsRelink.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFilesCompanion(')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('format: $format, ')
+          ..write('textLength: $textLength, ')
+          ..write('modifiedAt: $modifiedAt, ')
+          ..write('needsRelink: $needsRelink, ')
+          ..write('bookId: $bookId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $TextIndexTable extends TextIndex
     with TableInfo<$TextIndexTable, TextIndexEntry> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $TextIndexTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  static const VerificationMeta _rootIdMeta = const VerificationMeta('rootId');
   @override
-  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
-    'book_id',
+  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
+    'root_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES books (id) ON DELETE CASCADE',
+      'REFERENCES local_roots (id) ON DELETE CASCADE',
     ),
+  );
+  static const VerificationMeta _relativePathMeta = const VerificationMeta(
+    'relativePath',
+  );
+  @override
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
   );
   static const VerificationMeta _byteOffsetMeta = const VerificationMeta(
     'byteOffset',
@@ -3248,7 +4025,8 @@ class $TextIndexTable extends TextIndex
   );
   @override
   List<GeneratedColumn> get $columns => [
-    bookId,
+    rootId,
+    relativePath,
     byteOffset,
     codeUnitOffset,
     lineIndex,
@@ -3265,13 +4043,24 @@ class $TextIndexTable extends TextIndex
   }) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
-    if (data.containsKey('book_id')) {
+    if (data.containsKey('root_id')) {
       context.handle(
-        _bookIdMeta,
-        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+        _rootIdMeta,
+        rootId.isAcceptableOrUnknown(data['root_id']!, _rootIdMeta),
       );
     } else if (isInserting) {
-      context.missing(_bookIdMeta);
+      context.missing(_rootIdMeta);
+    }
+    if (data.containsKey('relative_path')) {
+      context.handle(
+        _relativePathMeta,
+        relativePath.isAcceptableOrUnknown(
+          data['relative_path']!,
+          _relativePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_relativePathMeta);
     }
     if (data.containsKey('byte_offset')) {
       context.handle(
@@ -3304,14 +4093,18 @@ class $TextIndexTable extends TextIndex
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {bookId, byteOffset};
+  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath, byteOffset};
   @override
   TextIndexEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return TextIndexEntry(
-      bookId: attachedDatabase.typeMapping.read(
+      rootId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}book_id'],
+        data['${effectivePrefix}root_id'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
       )!,
       byteOffset: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -3335,12 +4128,14 @@ class $TextIndexTable extends TextIndex
 }
 
 class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
-  final String bookId;
+  final String rootId;
+  final String relativePath;
   final int byteOffset;
   final int codeUnitOffset;
   final int lineIndex;
   const TextIndexEntry({
-    required this.bookId,
+    required this.rootId,
+    required this.relativePath,
     required this.byteOffset,
     required this.codeUnitOffset,
     required this.lineIndex,
@@ -3348,7 +4143,8 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['book_id'] = Variable<String>(bookId);
+    map['root_id'] = Variable<String>(rootId);
+    map['relative_path'] = Variable<String>(relativePath);
     map['byte_offset'] = Variable<int>(byteOffset);
     map['code_unit_offset'] = Variable<int>(codeUnitOffset);
     map['line_index'] = Variable<int>(lineIndex);
@@ -3357,7 +4153,8 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
 
   TextIndexCompanion toCompanion(bool nullToAbsent) {
     return TextIndexCompanion(
-      bookId: Value(bookId),
+      rootId: Value(rootId),
+      relativePath: Value(relativePath),
       byteOffset: Value(byteOffset),
       codeUnitOffset: Value(codeUnitOffset),
       lineIndex: Value(lineIndex),
@@ -3370,7 +4167,8 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return TextIndexEntry(
-      bookId: serializer.fromJson<String>(json['bookId']),
+      rootId: serializer.fromJson<String>(json['rootId']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
       byteOffset: serializer.fromJson<int>(json['byteOffset']),
       codeUnitOffset: serializer.fromJson<int>(json['codeUnitOffset']),
       lineIndex: serializer.fromJson<int>(json['lineIndex']),
@@ -3380,7 +4178,8 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'bookId': serializer.toJson<String>(bookId),
+      'rootId': serializer.toJson<String>(rootId),
+      'relativePath': serializer.toJson<String>(relativePath),
       'byteOffset': serializer.toJson<int>(byteOffset),
       'codeUnitOffset': serializer.toJson<int>(codeUnitOffset),
       'lineIndex': serializer.toJson<int>(lineIndex),
@@ -3388,19 +4187,24 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
   }
 
   TextIndexEntry copyWith({
-    String? bookId,
+    String? rootId,
+    String? relativePath,
     int? byteOffset,
     int? codeUnitOffset,
     int? lineIndex,
   }) => TextIndexEntry(
-    bookId: bookId ?? this.bookId,
+    rootId: rootId ?? this.rootId,
+    relativePath: relativePath ?? this.relativePath,
     byteOffset: byteOffset ?? this.byteOffset,
     codeUnitOffset: codeUnitOffset ?? this.codeUnitOffset,
     lineIndex: lineIndex ?? this.lineIndex,
   );
   TextIndexEntry copyWithCompanion(TextIndexCompanion data) {
     return TextIndexEntry(
-      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      rootId: data.rootId.present ? data.rootId.value : this.rootId,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
       byteOffset: data.byteOffset.present
           ? data.byteOffset.value
           : this.byteOffset,
@@ -3414,7 +4218,8 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
   @override
   String toString() {
     return (StringBuffer('TextIndexEntry(')
-          ..write('bookId: $bookId, ')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
           ..write('byteOffset: $byteOffset, ')
           ..write('codeUnitOffset: $codeUnitOffset, ')
           ..write('lineIndex: $lineIndex')
@@ -3424,49 +4229,56 @@ class TextIndexEntry extends DataClass implements Insertable<TextIndexEntry> {
 
   @override
   int get hashCode =>
-      Object.hash(bookId, byteOffset, codeUnitOffset, lineIndex);
+      Object.hash(rootId, relativePath, byteOffset, codeUnitOffset, lineIndex);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is TextIndexEntry &&
-          other.bookId == this.bookId &&
+          other.rootId == this.rootId &&
+          other.relativePath == this.relativePath &&
           other.byteOffset == this.byteOffset &&
           other.codeUnitOffset == this.codeUnitOffset &&
           other.lineIndex == this.lineIndex);
 }
 
 class TextIndexCompanion extends UpdateCompanion<TextIndexEntry> {
-  final Value<String> bookId;
+  final Value<String> rootId;
+  final Value<String> relativePath;
   final Value<int> byteOffset;
   final Value<int> codeUnitOffset;
   final Value<int> lineIndex;
   final Value<int> rowid;
   const TextIndexCompanion({
-    this.bookId = const Value.absent(),
+    this.rootId = const Value.absent(),
+    this.relativePath = const Value.absent(),
     this.byteOffset = const Value.absent(),
     this.codeUnitOffset = const Value.absent(),
     this.lineIndex = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TextIndexCompanion.insert({
-    required String bookId,
+    required String rootId,
+    required String relativePath,
     required int byteOffset,
     required int codeUnitOffset,
     required int lineIndex,
     this.rowid = const Value.absent(),
-  }) : bookId = Value(bookId),
+  }) : rootId = Value(rootId),
+       relativePath = Value(relativePath),
        byteOffset = Value(byteOffset),
        codeUnitOffset = Value(codeUnitOffset),
        lineIndex = Value(lineIndex);
   static Insertable<TextIndexEntry> custom({
-    Expression<String>? bookId,
+    Expression<String>? rootId,
+    Expression<String>? relativePath,
     Expression<int>? byteOffset,
     Expression<int>? codeUnitOffset,
     Expression<int>? lineIndex,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (bookId != null) 'book_id': bookId,
+      if (rootId != null) 'root_id': rootId,
+      if (relativePath != null) 'relative_path': relativePath,
       if (byteOffset != null) 'byte_offset': byteOffset,
       if (codeUnitOffset != null) 'code_unit_offset': codeUnitOffset,
       if (lineIndex != null) 'line_index': lineIndex,
@@ -3475,14 +4287,16 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexEntry> {
   }
 
   TextIndexCompanion copyWith({
-    Value<String>? bookId,
+    Value<String>? rootId,
+    Value<String>? relativePath,
     Value<int>? byteOffset,
     Value<int>? codeUnitOffset,
     Value<int>? lineIndex,
     Value<int>? rowid,
   }) {
     return TextIndexCompanion(
-      bookId: bookId ?? this.bookId,
+      rootId: rootId ?? this.rootId,
+      relativePath: relativePath ?? this.relativePath,
       byteOffset: byteOffset ?? this.byteOffset,
       codeUnitOffset: codeUnitOffset ?? this.codeUnitOffset,
       lineIndex: lineIndex ?? this.lineIndex,
@@ -3493,8 +4307,11 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexEntry> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (bookId.present) {
-      map['book_id'] = Variable<String>(bookId.value);
+    if (rootId.present) {
+      map['root_id'] = Variable<String>(rootId.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
     }
     if (byteOffset.present) {
       map['byte_offset'] = Variable<int>(byteOffset.value);
@@ -3514,7 +4331,8 @@ class TextIndexCompanion extends UpdateCompanion<TextIndexEntry> {
   @override
   String toString() {
     return (StringBuffer('TextIndexCompanion(')
-          ..write('bookId: $bookId, ')
+          ..write('rootId: $rootId, ')
+          ..write('relativePath: $relativePath, ')
           ..write('byteOffset: $byteOffset, ')
           ..write('codeUnitOffset: $codeUnitOffset, ')
           ..write('lineIndex: $lineIndex, ')
@@ -4486,7 +5304,7 @@ class ReplaceRule extends DataClass implements Insertable<ReplaceRule> {
   final String id;
   final String name;
 
-  /// Legado's `group` field, as a set of names.
+  /// Legado's `group` field: the single group name a rule belongs to.
   final String groupName;
   final String pattern;
   final String replacement;
@@ -4925,772 +5743,6 @@ class ReplaceRulesCompanion extends UpdateCompanion<ReplaceRule> {
   }
 }
 
-class $LocalRootsTable extends LocalRoots
-    with TableInfo<$LocalRootsTable, LocalRoot> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $LocalRootsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _displayNameMeta = const VerificationMeta(
-    'displayName',
-  );
-  @override
-  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
-    'display_name',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _needsRelinkMeta = const VerificationMeta(
-    'needsRelink',
-  );
-  @override
-  late final GeneratedColumn<bool> needsRelink = GeneratedColumn<bool>(
-    'needs_relink',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("needs_relink" IN (0, 1))',
-    ),
-    defaultValue: const Constant(false),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [id, displayName, needsRelink];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'local_roots';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<LocalRoot> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    } else if (isInserting) {
-      context.missing(_idMeta);
-    }
-    if (data.containsKey('display_name')) {
-      context.handle(
-        _displayNameMeta,
-        displayName.isAcceptableOrUnknown(
-          data['display_name']!,
-          _displayNameMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_displayNameMeta);
-    }
-    if (data.containsKey('needs_relink')) {
-      context.handle(
-        _needsRelinkMeta,
-        needsRelink.isAcceptableOrUnknown(
-          data['needs_relink']!,
-          _needsRelinkMeta,
-        ),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  LocalRoot map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return LocalRoot(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      displayName: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}display_name'],
-      )!,
-      needsRelink: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}needs_relink'],
-      )!,
-    );
-  }
-
-  @override
-  $LocalRootsTable createAlias(String alias) {
-    return $LocalRootsTable(attachedDatabase, alias);
-  }
-}
-
-class LocalRoot extends DataClass implements Insertable<LocalRoot> {
-  /// Stable: the lowercased absolute path, so re-authorizing the same root
-  /// keeps the shelf and the progress (ADR 0006).
-  final String id;
-  final String displayName;
-  final bool needsRelink;
-  const LocalRoot({
-    required this.id,
-    required this.displayName,
-    required this.needsRelink,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['display_name'] = Variable<String>(displayName);
-    map['needs_relink'] = Variable<bool>(needsRelink);
-    return map;
-  }
-
-  LocalRootsCompanion toCompanion(bool nullToAbsent) {
-    return LocalRootsCompanion(
-      id: Value(id),
-      displayName: Value(displayName),
-      needsRelink: Value(needsRelink),
-    );
-  }
-
-  factory LocalRoot.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return LocalRoot(
-      id: serializer.fromJson<String>(json['id']),
-      displayName: serializer.fromJson<String>(json['displayName']),
-      needsRelink: serializer.fromJson<bool>(json['needsRelink']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'displayName': serializer.toJson<String>(displayName),
-      'needsRelink': serializer.toJson<bool>(needsRelink),
-    };
-  }
-
-  LocalRoot copyWith({String? id, String? displayName, bool? needsRelink}) =>
-      LocalRoot(
-        id: id ?? this.id,
-        displayName: displayName ?? this.displayName,
-        needsRelink: needsRelink ?? this.needsRelink,
-      );
-  LocalRoot copyWithCompanion(LocalRootsCompanion data) {
-    return LocalRoot(
-      id: data.id.present ? data.id.value : this.id,
-      displayName: data.displayName.present
-          ? data.displayName.value
-          : this.displayName,
-      needsRelink: data.needsRelink.present
-          ? data.needsRelink.value
-          : this.needsRelink,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalRoot(')
-          ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
-          ..write('needsRelink: $needsRelink')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, displayName, needsRelink);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is LocalRoot &&
-          other.id == this.id &&
-          other.displayName == this.displayName &&
-          other.needsRelink == this.needsRelink);
-}
-
-class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
-  final Value<String> id;
-  final Value<String> displayName;
-  final Value<bool> needsRelink;
-  final Value<int> rowid;
-  const LocalRootsCompanion({
-    this.id = const Value.absent(),
-    this.displayName = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  LocalRootsCompanion.insert({
-    required String id,
-    required String displayName,
-    this.needsRelink = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       displayName = Value(displayName);
-  static Insertable<LocalRoot> custom({
-    Expression<String>? id,
-    Expression<String>? displayName,
-    Expression<bool>? needsRelink,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (displayName != null) 'display_name': displayName,
-      if (needsRelink != null) 'needs_relink': needsRelink,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  LocalRootsCompanion copyWith({
-    Value<String>? id,
-    Value<String>? displayName,
-    Value<bool>? needsRelink,
-    Value<int>? rowid,
-  }) {
-    return LocalRootsCompanion(
-      id: id ?? this.id,
-      displayName: displayName ?? this.displayName,
-      needsRelink: needsRelink ?? this.needsRelink,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (displayName.present) {
-      map['display_name'] = Variable<String>(displayName.value);
-    }
-    if (needsRelink.present) {
-      map['needs_relink'] = Variable<bool>(needsRelink.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalRootsCompanion(')
-          ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $LocalFilesTable extends LocalFiles
-    with TableInfo<$LocalFilesTable, LocalFile> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $LocalFilesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _rootIdMeta = const VerificationMeta('rootId');
-  @override
-  late final GeneratedColumn<String> rootId = GeneratedColumn<String>(
-    'root_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES local_roots (id) ON DELETE CASCADE',
-    ),
-  );
-  static const VerificationMeta _relativePathMeta = const VerificationMeta(
-    'relativePath',
-  );
-  @override
-  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
-    'relative_path',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _formatMeta = const VerificationMeta('format');
-  @override
-  late final GeneratedColumn<String> format = GeneratedColumn<String>(
-    'format',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('txt'),
-  );
-  static const VerificationMeta _textLengthMeta = const VerificationMeta(
-    'textLength',
-  );
-  @override
-  late final GeneratedColumn<int> textLength = GeneratedColumn<int>(
-    'text_length',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _modifiedAtMeta = const VerificationMeta(
-    'modifiedAt',
-  );
-  @override
-  late final GeneratedColumn<int> modifiedAt = GeneratedColumn<int>(
-    'modified_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _needsRelinkMeta = const VerificationMeta(
-    'needsRelink',
-  );
-  @override
-  late final GeneratedColumn<bool> needsRelink = GeneratedColumn<bool>(
-    'needs_relink',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("needs_relink" IN (0, 1))',
-    ),
-    defaultValue: const Constant(false),
-  );
-  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
-  @override
-  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
-    'book_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES books (id) ON DELETE SET NULL',
-    ),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    rootId,
-    relativePath,
-    format,
-    textLength,
-    modifiedAt,
-    needsRelink,
-    bookId,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'local_files';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<LocalFile> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('root_id')) {
-      context.handle(
-        _rootIdMeta,
-        rootId.isAcceptableOrUnknown(data['root_id']!, _rootIdMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_rootIdMeta);
-    }
-    if (data.containsKey('relative_path')) {
-      context.handle(
-        _relativePathMeta,
-        relativePath.isAcceptableOrUnknown(
-          data['relative_path']!,
-          _relativePathMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_relativePathMeta);
-    }
-    if (data.containsKey('format')) {
-      context.handle(
-        _formatMeta,
-        format.isAcceptableOrUnknown(data['format']!, _formatMeta),
-      );
-    }
-    if (data.containsKey('text_length')) {
-      context.handle(
-        _textLengthMeta,
-        textLength.isAcceptableOrUnknown(data['text_length']!, _textLengthMeta),
-      );
-    }
-    if (data.containsKey('modified_at')) {
-      context.handle(
-        _modifiedAtMeta,
-        modifiedAt.isAcceptableOrUnknown(data['modified_at']!, _modifiedAtMeta),
-      );
-    }
-    if (data.containsKey('needs_relink')) {
-      context.handle(
-        _needsRelinkMeta,
-        needsRelink.isAcceptableOrUnknown(
-          data['needs_relink']!,
-          _needsRelinkMeta,
-        ),
-      );
-    }
-    if (data.containsKey('book_id')) {
-      context.handle(
-        _bookIdMeta,
-        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {rootId, relativePath};
-  @override
-  LocalFile map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return LocalFile(
-      rootId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}root_id'],
-      )!,
-      relativePath: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}relative_path'],
-      )!,
-      format: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}format'],
-      )!,
-      textLength: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}text_length'],
-      ),
-      modifiedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}modified_at'],
-      ),
-      needsRelink: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}needs_relink'],
-      )!,
-      bookId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}book_id'],
-      ),
-    );
-  }
-
-  @override
-  $LocalFilesTable createAlias(String alias) {
-    return $LocalFilesTable(attachedDatabase, alias);
-  }
-}
-
-class LocalFile extends DataClass implements Insertable<LocalFile> {
-  final String rootId;
-  final String relativePath;
-  final String format;
-
-  /// Cached decoded length: nothing reads a whole file to clamp an offset (D4).
-  final int? textLength;
-
-  /// Cached modification time; with `textLength` it decides whether the file is
-  /// unchanged, edited in place, or replaced.
-  final int? modifiedAt;
-  final bool needsRelink;
-
-  /// The shelf book this file is admitted as, when it is on the shelf.
-  final String? bookId;
-  const LocalFile({
-    required this.rootId,
-    required this.relativePath,
-    required this.format,
-    this.textLength,
-    this.modifiedAt,
-    required this.needsRelink,
-    this.bookId,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['root_id'] = Variable<String>(rootId);
-    map['relative_path'] = Variable<String>(relativePath);
-    map['format'] = Variable<String>(format);
-    if (!nullToAbsent || textLength != null) {
-      map['text_length'] = Variable<int>(textLength);
-    }
-    if (!nullToAbsent || modifiedAt != null) {
-      map['modified_at'] = Variable<int>(modifiedAt);
-    }
-    map['needs_relink'] = Variable<bool>(needsRelink);
-    if (!nullToAbsent || bookId != null) {
-      map['book_id'] = Variable<String>(bookId);
-    }
-    return map;
-  }
-
-  LocalFilesCompanion toCompanion(bool nullToAbsent) {
-    return LocalFilesCompanion(
-      rootId: Value(rootId),
-      relativePath: Value(relativePath),
-      format: Value(format),
-      textLength: textLength == null && nullToAbsent
-          ? const Value.absent()
-          : Value(textLength),
-      modifiedAt: modifiedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(modifiedAt),
-      needsRelink: Value(needsRelink),
-      bookId: bookId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bookId),
-    );
-  }
-
-  factory LocalFile.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return LocalFile(
-      rootId: serializer.fromJson<String>(json['rootId']),
-      relativePath: serializer.fromJson<String>(json['relativePath']),
-      format: serializer.fromJson<String>(json['format']),
-      textLength: serializer.fromJson<int?>(json['textLength']),
-      modifiedAt: serializer.fromJson<int?>(json['modifiedAt']),
-      needsRelink: serializer.fromJson<bool>(json['needsRelink']),
-      bookId: serializer.fromJson<String?>(json['bookId']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'rootId': serializer.toJson<String>(rootId),
-      'relativePath': serializer.toJson<String>(relativePath),
-      'format': serializer.toJson<String>(format),
-      'textLength': serializer.toJson<int?>(textLength),
-      'modifiedAt': serializer.toJson<int?>(modifiedAt),
-      'needsRelink': serializer.toJson<bool>(needsRelink),
-      'bookId': serializer.toJson<String?>(bookId),
-    };
-  }
-
-  LocalFile copyWith({
-    String? rootId,
-    String? relativePath,
-    String? format,
-    Value<int?> textLength = const Value.absent(),
-    Value<int?> modifiedAt = const Value.absent(),
-    bool? needsRelink,
-    Value<String?> bookId = const Value.absent(),
-  }) => LocalFile(
-    rootId: rootId ?? this.rootId,
-    relativePath: relativePath ?? this.relativePath,
-    format: format ?? this.format,
-    textLength: textLength.present ? textLength.value : this.textLength,
-    modifiedAt: modifiedAt.present ? modifiedAt.value : this.modifiedAt,
-    needsRelink: needsRelink ?? this.needsRelink,
-    bookId: bookId.present ? bookId.value : this.bookId,
-  );
-  LocalFile copyWithCompanion(LocalFilesCompanion data) {
-    return LocalFile(
-      rootId: data.rootId.present ? data.rootId.value : this.rootId,
-      relativePath: data.relativePath.present
-          ? data.relativePath.value
-          : this.relativePath,
-      format: data.format.present ? data.format.value : this.format,
-      textLength: data.textLength.present
-          ? data.textLength.value
-          : this.textLength,
-      modifiedAt: data.modifiedAt.present
-          ? data.modifiedAt.value
-          : this.modifiedAt,
-      needsRelink: data.needsRelink.present
-          ? data.needsRelink.value
-          : this.needsRelink,
-      bookId: data.bookId.present ? data.bookId.value : this.bookId,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalFile(')
-          ..write('rootId: $rootId, ')
-          ..write('relativePath: $relativePath, ')
-          ..write('format: $format, ')
-          ..write('textLength: $textLength, ')
-          ..write('modifiedAt: $modifiedAt, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('bookId: $bookId')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    rootId,
-    relativePath,
-    format,
-    textLength,
-    modifiedAt,
-    needsRelink,
-    bookId,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is LocalFile &&
-          other.rootId == this.rootId &&
-          other.relativePath == this.relativePath &&
-          other.format == this.format &&
-          other.textLength == this.textLength &&
-          other.modifiedAt == this.modifiedAt &&
-          other.needsRelink == this.needsRelink &&
-          other.bookId == this.bookId);
-}
-
-class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
-  final Value<String> rootId;
-  final Value<String> relativePath;
-  final Value<String> format;
-  final Value<int?> textLength;
-  final Value<int?> modifiedAt;
-  final Value<bool> needsRelink;
-  final Value<String?> bookId;
-  final Value<int> rowid;
-  const LocalFilesCompanion({
-    this.rootId = const Value.absent(),
-    this.relativePath = const Value.absent(),
-    this.format = const Value.absent(),
-    this.textLength = const Value.absent(),
-    this.modifiedAt = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.bookId = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  LocalFilesCompanion.insert({
-    required String rootId,
-    required String relativePath,
-    this.format = const Value.absent(),
-    this.textLength = const Value.absent(),
-    this.modifiedAt = const Value.absent(),
-    this.needsRelink = const Value.absent(),
-    this.bookId = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : rootId = Value(rootId),
-       relativePath = Value(relativePath);
-  static Insertable<LocalFile> custom({
-    Expression<String>? rootId,
-    Expression<String>? relativePath,
-    Expression<String>? format,
-    Expression<int>? textLength,
-    Expression<int>? modifiedAt,
-    Expression<bool>? needsRelink,
-    Expression<String>? bookId,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (rootId != null) 'root_id': rootId,
-      if (relativePath != null) 'relative_path': relativePath,
-      if (format != null) 'format': format,
-      if (textLength != null) 'text_length': textLength,
-      if (modifiedAt != null) 'modified_at': modifiedAt,
-      if (needsRelink != null) 'needs_relink': needsRelink,
-      if (bookId != null) 'book_id': bookId,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  LocalFilesCompanion copyWith({
-    Value<String>? rootId,
-    Value<String>? relativePath,
-    Value<String>? format,
-    Value<int?>? textLength,
-    Value<int?>? modifiedAt,
-    Value<bool>? needsRelink,
-    Value<String?>? bookId,
-    Value<int>? rowid,
-  }) {
-    return LocalFilesCompanion(
-      rootId: rootId ?? this.rootId,
-      relativePath: relativePath ?? this.relativePath,
-      format: format ?? this.format,
-      textLength: textLength ?? this.textLength,
-      modifiedAt: modifiedAt ?? this.modifiedAt,
-      needsRelink: needsRelink ?? this.needsRelink,
-      bookId: bookId ?? this.bookId,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (rootId.present) {
-      map['root_id'] = Variable<String>(rootId.value);
-    }
-    if (relativePath.present) {
-      map['relative_path'] = Variable<String>(relativePath.value);
-    }
-    if (format.present) {
-      map['format'] = Variable<String>(format.value);
-    }
-    if (textLength.present) {
-      map['text_length'] = Variable<int>(textLength.value);
-    }
-    if (modifiedAt.present) {
-      map['modified_at'] = Variable<int>(modifiedAt.value);
-    }
-    if (needsRelink.present) {
-      map['needs_relink'] = Variable<bool>(needsRelink.value);
-    }
-    if (bookId.present) {
-      map['book_id'] = Variable<String>(bookId.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('LocalFilesCompanion(')
-          ..write('rootId: $rootId, ')
-          ..write('relativePath: $relativePath, ')
-          ..write('format: $format, ')
-          ..write('textLength: $textLength, ')
-          ..write('modifiedAt: $modifiedAt, ')
-          ..write('needsRelink: $needsRelink, ')
-          ..write('bookId: $bookId, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $SettingsTable extends Settings
     with TableInfo<$SettingsTable, SpaceSetting> {
   @override
@@ -6004,11 +6056,11 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
   late final $GroupsTable groups = $GroupsTable(this);
   late final $BookGroupsTable bookGroups = $BookGroupsTable(this);
   late final $ChaptersTable chapters = $ChaptersTable(this);
+  late final $LocalRootsTable localRoots = $LocalRootsTable(this);
+  late final $LocalFilesTable localFiles = $LocalFilesTable(this);
   late final $TextIndexTable textIndex = $TextIndexTable(this);
   late final $ProgressTable progress = $ProgressTable(this);
   late final $ReplaceRulesTable replaceRules = $ReplaceRulesTable(this);
-  late final $LocalRootsTable localRoots = $LocalRootsTable(this);
-  late final $LocalFilesTable localFiles = $LocalFilesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final Index booksNaturalKey = Index(
     'books_natural_key',
@@ -6056,11 +6108,11 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     groups,
     bookGroups,
     chapters,
+    localRoots,
+    localFiles,
     textIndex,
     progress,
     replaceRules,
-    localRoots,
-    localFiles,
     settings,
     booksNaturalKey,
     booksLocalKey,
@@ -6097,20 +6149,6 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
-        'books',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('text_index', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'books',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('progress', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
         'local_roots',
         limitUpdateKind: UpdateKind.delete,
       ),
@@ -6122,6 +6160,20 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('local_files', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'local_roots',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('text_index', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'books',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('progress', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -6523,19 +6575,19 @@ final class $$BooksTableReferences
     );
   }
 
-  static MultiTypedResultKey<$TextIndexTable, List<TextIndexEntry>>
-  _textIndexRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
-    db.textIndex,
-    aliasName: 'books__id__text_index__book_id',
+  static MultiTypedResultKey<$LocalFilesTable, List<LocalFile>>
+  _localFilesRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
+    db.localFiles,
+    aliasName: 'books__id__local_files__book_id',
   );
 
-  $$TextIndexTableProcessedTableManager get textIndexRefs {
-    final manager = $$TextIndexTableTableManager(
+  $$LocalFilesTableProcessedTableManager get localFilesRefs {
+    final manager = $$LocalFilesTableTableManager(
       $_db,
-      $_db.textIndex,
+      $_db.localFiles,
     ).filter((f) => f.bookId.id.sqlEquals($_itemColumn<String>('id')!));
 
-    final cache = $_typedResult.readTableOrNull(_textIndexRefsTable($_db));
+    final cache = $_typedResult.readTableOrNull(_localFilesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -6554,24 +6606,6 @@ final class $$BooksTableReferences
     ).filter((f) => f.bookId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_progressRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-
-  static MultiTypedResultKey<$LocalFilesTable, List<LocalFile>>
-  _localFilesRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
-    db.localFiles,
-    aliasName: 'books__id__local_files__book_id',
-  );
-
-  $$LocalFilesTableProcessedTableManager get localFilesRefs {
-    final manager = $$LocalFilesTableTableManager(
-      $_db,
-      $_db.localFiles,
-    ).filter((f) => f.bookId.id.sqlEquals($_itemColumn<String>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_localFilesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -6777,22 +6811,22 @@ class $$BooksTableFilterComposer
     return f(composer);
   }
 
-  Expression<bool> textIndexRefs(
-    Expression<bool> Function($$TextIndexTableFilterComposer f) f,
+  Expression<bool> localFilesRefs(
+    Expression<bool> Function($$LocalFilesTableFilterComposer f) f,
   ) {
-    final $$TextIndexTableFilterComposer composer = $composerBuilder(
+    final $$LocalFilesTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.textIndex,
+      referencedTable: $db.localFiles,
       getReferencedColumn: (t) => t.bookId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$TextIndexTableFilterComposer(
+          }) => $$LocalFilesTableFilterComposer(
             $db: $db,
-            $table: $db.textIndex,
+            $table: $db.localFiles,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -6818,31 +6852,6 @@ class $$BooksTableFilterComposer
           }) => $$ProgressTableFilterComposer(
             $db: $db,
             $table: $db.progress,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> localFilesRefs(
-    Expression<bool> Function($$LocalFilesTableFilterComposer f) f,
-  ) {
-    final $$LocalFilesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.localFiles,
-      getReferencedColumn: (t) => t.bookId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalFilesTableFilterComposer(
-            $db: $db,
-            $table: $db.localFiles,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7168,22 +7177,22 @@ class $$BooksTableAnnotationComposer
     return f(composer);
   }
 
-  Expression<T> textIndexRefs<T extends Object>(
-    Expression<T> Function($$TextIndexTableAnnotationComposer a) f,
+  Expression<T> localFilesRefs<T extends Object>(
+    Expression<T> Function($$LocalFilesTableAnnotationComposer a) f,
   ) {
-    final $$TextIndexTableAnnotationComposer composer = $composerBuilder(
+    final $$LocalFilesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.textIndex,
+      referencedTable: $db.localFiles,
       getReferencedColumn: (t) => t.bookId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$TextIndexTableAnnotationComposer(
+          }) => $$LocalFilesTableAnnotationComposer(
             $db: $db,
-            $table: $db.textIndex,
+            $table: $db.localFiles,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7217,31 +7226,6 @@ class $$BooksTableAnnotationComposer
     );
     return f(composer);
   }
-
-  Expression<T> localFilesRefs<T extends Object>(
-    Expression<T> Function($$LocalFilesTableAnnotationComposer a) f,
-  ) {
-    final $$LocalFilesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.localFiles,
-      getReferencedColumn: (t) => t.bookId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalFilesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.localFiles,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$BooksTableTableManager
@@ -7260,9 +7244,8 @@ class $$BooksTableTableManager
           PrefetchHooks Function({
             bool bookGroupsRefs,
             bool chaptersRefs,
-            bool textIndexRefs,
-            bool progressRefs,
             bool localFilesRefs,
+            bool progressRefs,
           })
         > {
   $$BooksTableTableManager(_$SpaceDatabase db, $BooksTable table)
@@ -7412,18 +7395,16 @@ class $$BooksTableTableManager
               ({
                 bookGroupsRefs = false,
                 chaptersRefs = false,
-                textIndexRefs = false,
-                progressRefs = false,
                 localFilesRefs = false,
+                progressRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (bookGroupsRefs) db.bookGroups,
                     if (chaptersRefs) db.chapters,
-                    if (textIndexRefs) db.textIndex,
-                    if (progressRefs) db.progress,
                     if (localFilesRefs) db.localFiles,
+                    if (progressRefs) db.progress,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -7470,21 +7451,21 @@ class $$BooksTableTableManager
                               ),
                           typedResults: items,
                         ),
-                      if (textIndexRefs)
+                      if (localFilesRefs)
                         await $_getPrefetchedData<
                           ShelfBook,
                           $BooksTable,
-                          TextIndexEntry
+                          LocalFile
                         >(
                           currentTable: table,
                           referencedTable: $$BooksTableReferences
-                              ._textIndexRefsTable(db),
+                              ._localFilesRefsTable(db),
                           managerFromTypedResult: (p0) =>
                               $$BooksTableReferences(
                                 db,
                                 table,
                                 p0,
-                              ).textIndexRefs,
+                              ).localFilesRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.bookId == item.id,
@@ -7506,27 +7487,6 @@ class $$BooksTableTableManager
                                 table,
                                 p0,
                               ).progressRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.bookId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
-                      if (localFilesRefs)
-                        await $_getPrefetchedData<
-                          ShelfBook,
-                          $BooksTable,
-                          LocalFile
-                        >(
-                          currentTable: table,
-                          referencedTable: $$BooksTableReferences
-                              ._localFilesRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$BooksTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).localFilesRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.bookId == item.id,
@@ -7556,9 +7516,8 @@ typedef $$BooksTableProcessedTableManager =
       PrefetchHooks Function({
         bool bookGroupsRefs,
         bool chaptersRefs,
-        bool textIndexRefs,
-        bool progressRefs,
         bool localFilesRefs,
+        bool progressRefs,
       })
     >;
 typedef $$GroupsTableCreateCompanionBuilder =
@@ -8586,33 +8545,418 @@ typedef $$ChaptersTableProcessedTableManager =
       BookChapter,
       PrefetchHooks Function({bool bookId})
     >;
-typedef $$TextIndexTableCreateCompanionBuilder =
-    TextIndexCompanion Function({
-      required String bookId,
-      required int byteOffset,
-      required int codeUnitOffset,
-      required int lineIndex,
+typedef $$LocalRootsTableCreateCompanionBuilder =
+    LocalRootsCompanion Function({
+      required String id,
+      required String displayName,
+      Value<bool> needsRelink,
       Value<int> rowid,
     });
-typedef $$TextIndexTableUpdateCompanionBuilder =
-    TextIndexCompanion Function({
-      Value<String> bookId,
-      Value<int> byteOffset,
-      Value<int> codeUnitOffset,
-      Value<int> lineIndex,
+typedef $$LocalRootsTableUpdateCompanionBuilder =
+    LocalRootsCompanion Function({
+      Value<String> id,
+      Value<String> displayName,
+      Value<bool> needsRelink,
       Value<int> rowid,
     });
 
-final class $$TextIndexTableReferences
-    extends BaseReferences<_$SpaceDatabase, $TextIndexTable, TextIndexEntry> {
-  $$TextIndexTableReferences(super.$_db, super.$_table, super.$_typedResult);
+final class $$LocalRootsTableReferences
+    extends BaseReferences<_$SpaceDatabase, $LocalRootsTable, LocalRoot> {
+  $$LocalRootsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$LocalFilesTable, List<LocalFile>>
+  _localFilesRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
+    db.localFiles,
+    aliasName: 'local_roots__id__local_files__root_id',
+  );
+
+  $$LocalFilesTableProcessedTableManager get localFilesRefs {
+    final manager = $$LocalFilesTableTableManager(
+      $_db,
+      $_db.localFiles,
+    ).filter((f) => f.rootId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_localFilesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$TextIndexTable, List<TextIndexEntry>>
+  _textIndexRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
+    db.textIndex,
+    aliasName: 'local_roots__id__text_index__root_id',
+  );
+
+  $$TextIndexTableProcessedTableManager get textIndexRefs {
+    final manager = $$TextIndexTableTableManager(
+      $_db,
+      $_db.textIndex,
+    ).filter((f) => f.rootId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_textIndexRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$LocalRootsTableFilterComposer
+    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
+  $$LocalRootsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> localFilesRefs(
+    Expression<bool> Function($$LocalFilesTableFilterComposer f) f,
+  ) {
+    final $$LocalFilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.localFiles,
+      getReferencedColumn: (t) => t.rootId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalFilesTableFilterComposer(
+            $db: $db,
+            $table: $db.localFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> textIndexRefs(
+    Expression<bool> Function($$TextIndexTableFilterComposer f) f,
+  ) {
+    final $$TextIndexTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.textIndex,
+      getReferencedColumn: (t) => t.rootId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TextIndexTableFilterComposer(
+            $db: $db,
+            $table: $db.textIndex,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LocalRootsTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
+  $$LocalRootsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalRootsTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
+  $$LocalRootsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => column,
+  );
+
+  Expression<T> localFilesRefs<T extends Object>(
+    Expression<T> Function($$LocalFilesTableAnnotationComposer a) f,
+  ) {
+    final $$LocalFilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.localFiles,
+      getReferencedColumn: (t) => t.rootId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalFilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.localFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> textIndexRefs<T extends Object>(
+    Expression<T> Function($$TextIndexTableAnnotationComposer a) f,
+  ) {
+    final $$TextIndexTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.textIndex,
+      getReferencedColumn: (t) => t.rootId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TextIndexTableAnnotationComposer(
+            $db: $db,
+            $table: $db.textIndex,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LocalRootsTableTableManager
+    extends
+        RootTableManager<
+          _$SpaceDatabase,
+          $LocalRootsTable,
+          LocalRoot,
+          $$LocalRootsTableFilterComposer,
+          $$LocalRootsTableOrderingComposer,
+          $$LocalRootsTableAnnotationComposer,
+          $$LocalRootsTableCreateCompanionBuilder,
+          $$LocalRootsTableUpdateCompanionBuilder,
+          (LocalRoot, $$LocalRootsTableReferences),
+          LocalRoot,
+          PrefetchHooks Function({bool localFilesRefs, bool textIndexRefs})
+        > {
+  $$LocalRootsTableTableManager(_$SpaceDatabase db, $LocalRootsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalRootsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalRootsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalRootsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<bool> needsRelink = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalRootsCompanion(
+                id: id,
+                displayName: displayName,
+                needsRelink: needsRelink,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String displayName,
+                Value<bool> needsRelink = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalRootsCompanion.insert(
+                id: id,
+                displayName: displayName,
+                needsRelink: needsRelink,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$LocalRootsTable, LocalRoot>(table),
+                  $$LocalRootsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({localFilesRefs = false, textIndexRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (localFilesRefs) db.localFiles,
+                    if (textIndexRefs) db.textIndex,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (localFilesRefs)
+                        await $_getPrefetchedData<
+                          LocalRoot,
+                          $LocalRootsTable,
+                          LocalFile
+                        >(
+                          currentTable: table,
+                          referencedTable: $$LocalRootsTableReferences
+                              ._localFilesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$LocalRootsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).localFilesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.rootId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (textIndexRefs)
+                        await $_getPrefetchedData<
+                          LocalRoot,
+                          $LocalRootsTable,
+                          TextIndexEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$LocalRootsTableReferences
+                              ._textIndexRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$LocalRootsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).textIndexRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.rootId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$LocalRootsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SpaceDatabase,
+      $LocalRootsTable,
+      LocalRoot,
+      $$LocalRootsTableFilterComposer,
+      $$LocalRootsTableOrderingComposer,
+      $$LocalRootsTableAnnotationComposer,
+      $$LocalRootsTableCreateCompanionBuilder,
+      $$LocalRootsTableUpdateCompanionBuilder,
+      (LocalRoot, $$LocalRootsTableReferences),
+      LocalRoot,
+      PrefetchHooks Function({bool localFilesRefs, bool textIndexRefs})
+    >;
+typedef $$LocalFilesTableCreateCompanionBuilder =
+    LocalFilesCompanion Function({
+      required String rootId,
+      required String relativePath,
+      Value<String> format,
+      Value<int?> textLength,
+      Value<int?> modifiedAt,
+      Value<bool> needsRelink,
+      Value<String?> bookId,
+      Value<int> rowid,
+    });
+typedef $$LocalFilesTableUpdateCompanionBuilder =
+    LocalFilesCompanion Function({
+      Value<String> rootId,
+      Value<String> relativePath,
+      Value<String> format,
+      Value<int?> textLength,
+      Value<int?> modifiedAt,
+      Value<bool> needsRelink,
+      Value<String?> bookId,
+      Value<int> rowid,
+    });
+
+final class $$LocalFilesTableReferences
+    extends BaseReferences<_$SpaceDatabase, $LocalFilesTable, LocalFile> {
+  $$LocalFilesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $LocalRootsTable _rootIdTable(_$SpaceDatabase db) =>
+      db.localRoots.createAlias('local_files__root_id__local_roots__id');
+
+  $$LocalRootsTableProcessedTableManager get rootId {
+    final $_column = $_itemColumn<String>('root_id')!;
+
+    final manager = $$LocalRootsTableTableManager(
+      $_db,
+      $_db.localRoots,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_rootIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static $BooksTable _bookIdTable(_$SpaceDatabase db) =>
-      db.books.createAlias('text_index__book_id__books__id');
+      db.books.createAlias('local_files__book_id__books__id');
 
-  $$BooksTableProcessedTableManager get bookId {
-    final $_column = $_itemColumn<String>('book_id')!;
-
+  $$BooksTableProcessedTableManager? get bookId {
+    final $_column = $_itemColumn<String>('book_id');
+    if ($_column == null) return null;
     final manager = $$BooksTableTableManager(
       $_db,
       $_db.books,
@@ -8625,29 +8969,62 @@ final class $$TextIndexTableReferences
   }
 }
 
-class $$TextIndexTableFilterComposer
-    extends Composer<_$SpaceDatabase, $TextIndexTable> {
-  $$TextIndexTableFilterComposer({
+class $$LocalFilesTableFilterComposer
+    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
+  $$LocalFilesTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<int> get byteOffset => $composableBuilder(
-    column: $table.byteOffset,
+  ColumnFilters<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get codeUnitOffset => $composableBuilder(
-    column: $table.codeUnitOffset,
+  ColumnFilters<String> get format => $composableBuilder(
+    column: $table.format,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get lineIndex => $composableBuilder(
-    column: $table.lineIndex,
+  ColumnFilters<int> get textLength => $composableBuilder(
+    column: $table.textLength,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<int> get modifiedAt => $composableBuilder(
+    column: $table.modifiedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LocalRootsTableFilterComposer get rootId {
+    final $$LocalRootsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableFilterComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   $$BooksTableFilterComposer get bookId {
     final $$BooksTableFilterComposer composer = $composerBuilder(
@@ -8673,29 +9050,62 @@ class $$TextIndexTableFilterComposer
   }
 }
 
-class $$TextIndexTableOrderingComposer
-    extends Composer<_$SpaceDatabase, $TextIndexTable> {
-  $$TextIndexTableOrderingComposer({
+class $$LocalFilesTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
+  $$LocalFilesTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<int> get byteOffset => $composableBuilder(
-    column: $table.byteOffset,
+  ColumnOrderings<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get codeUnitOffset => $composableBuilder(
-    column: $table.codeUnitOffset,
+  ColumnOrderings<String> get format => $composableBuilder(
+    column: $table.format,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get lineIndex => $composableBuilder(
-    column: $table.lineIndex,
+  ColumnOrderings<int> get textLength => $composableBuilder(
+    column: $table.textLength,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get modifiedAt => $composableBuilder(
+    column: $table.modifiedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LocalRootsTableOrderingComposer get rootId {
+    final $$LocalRootsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableOrderingComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   $$BooksTableOrderingComposer get bookId {
     final $$BooksTableOrderingComposer composer = $composerBuilder(
@@ -8721,27 +9131,60 @@ class $$TextIndexTableOrderingComposer
   }
 }
 
-class $$TextIndexTableAnnotationComposer
-    extends Composer<_$SpaceDatabase, $TextIndexTable> {
-  $$TextIndexTableAnnotationComposer({
+class $$LocalFilesTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
+  $$LocalFilesTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<int> get byteOffset => $composableBuilder(
-    column: $table.byteOffset,
+  GeneratedColumn<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
     builder: (column) => column,
   );
 
-  GeneratedColumn<int> get codeUnitOffset => $composableBuilder(
-    column: $table.codeUnitOffset,
+  GeneratedColumn<String> get format =>
+      $composableBuilder(column: $table.format, builder: (column) => column);
+
+  GeneratedColumn<int> get textLength => $composableBuilder(
+    column: $table.textLength,
     builder: (column) => column,
   );
 
-  GeneratedColumn<int> get lineIndex =>
-      $composableBuilder(column: $table.lineIndex, builder: (column) => column);
+  GeneratedColumn<int> get modifiedAt => $composableBuilder(
+    column: $table.modifiedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get needsRelink => $composableBuilder(
+    column: $table.needsRelink,
+    builder: (column) => column,
+  );
+
+  $$LocalRootsTableAnnotationComposer get rootId {
+    final $$LocalRootsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   $$BooksTableAnnotationComposer get bookId {
     final $$BooksTableAnnotationComposer composer = $composerBuilder(
@@ -8767,69 +9210,81 @@ class $$TextIndexTableAnnotationComposer
   }
 }
 
-class $$TextIndexTableTableManager
+class $$LocalFilesTableTableManager
     extends
         RootTableManager<
           _$SpaceDatabase,
-          $TextIndexTable,
-          TextIndexEntry,
-          $$TextIndexTableFilterComposer,
-          $$TextIndexTableOrderingComposer,
-          $$TextIndexTableAnnotationComposer,
-          $$TextIndexTableCreateCompanionBuilder,
-          $$TextIndexTableUpdateCompanionBuilder,
-          (TextIndexEntry, $$TextIndexTableReferences),
-          TextIndexEntry,
-          PrefetchHooks Function({bool bookId})
+          $LocalFilesTable,
+          LocalFile,
+          $$LocalFilesTableFilterComposer,
+          $$LocalFilesTableOrderingComposer,
+          $$LocalFilesTableAnnotationComposer,
+          $$LocalFilesTableCreateCompanionBuilder,
+          $$LocalFilesTableUpdateCompanionBuilder,
+          (LocalFile, $$LocalFilesTableReferences),
+          LocalFile,
+          PrefetchHooks Function({bool rootId, bool bookId})
         > {
-  $$TextIndexTableTableManager(_$SpaceDatabase db, $TextIndexTable table)
+  $$LocalFilesTableTableManager(_$SpaceDatabase db, $LocalFilesTable table)
     : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$TextIndexTableFilterComposer($db: db, $table: table),
+              $$LocalFilesTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$TextIndexTableOrderingComposer($db: db, $table: table),
+              $$LocalFilesTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$TextIndexTableAnnotationComposer($db: db, $table: table),
+              $$LocalFilesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> bookId = const Value.absent(),
-                Value<int> byteOffset = const Value.absent(),
-                Value<int> codeUnitOffset = const Value.absent(),
-                Value<int> lineIndex = const Value.absent(),
+                Value<String> rootId = const Value.absent(),
+                Value<String> relativePath = const Value.absent(),
+                Value<String> format = const Value.absent(),
+                Value<int?> textLength = const Value.absent(),
+                Value<int?> modifiedAt = const Value.absent(),
+                Value<bool> needsRelink = const Value.absent(),
+                Value<String?> bookId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => TextIndexCompanion(
+              }) => LocalFilesCompanion(
+                rootId: rootId,
+                relativePath: relativePath,
+                format: format,
+                textLength: textLength,
+                modifiedAt: modifiedAt,
+                needsRelink: needsRelink,
                 bookId: bookId,
-                byteOffset: byteOffset,
-                codeUnitOffset: codeUnitOffset,
-                lineIndex: lineIndex,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                required String bookId,
-                required int byteOffset,
-                required int codeUnitOffset,
-                required int lineIndex,
+                required String rootId,
+                required String relativePath,
+                Value<String> format = const Value.absent(),
+                Value<int?> textLength = const Value.absent(),
+                Value<int?> modifiedAt = const Value.absent(),
+                Value<bool> needsRelink = const Value.absent(),
+                Value<String?> bookId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => TextIndexCompanion.insert(
+              }) => LocalFilesCompanion.insert(
+                rootId: rootId,
+                relativePath: relativePath,
+                format: format,
+                textLength: textLength,
+                modifiedAt: modifiedAt,
+                needsRelink: needsRelink,
                 bookId: bookId,
-                byteOffset: byteOffset,
-                codeUnitOffset: codeUnitOffset,
-                lineIndex: lineIndex,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$TextIndexTable, TextIndexEntry>(table),
-                  $$TextIndexTableReferences(db, table, e),
+                  e.readTable<$LocalFilesTable, LocalFile>(table),
+                  $$LocalFilesTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({bookId = false}) {
+          prefetchHooksCallback: ({rootId = false, bookId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -8849,15 +9304,351 @@ class $$TextIndexTableTableManager
                       dynamic
                     >
                   >(state) {
+                    if (rootId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.rootId,
+                                referencedTable: $$LocalFilesTableReferences
+                                    ._rootIdTable(db),
+                                referencedColumn: $$LocalFilesTableReferences
+                                    ._rootIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
                     if (bookId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
                                 currentColumn: table.bookId,
-                                referencedTable: $$TextIndexTableReferences
+                                referencedTable: $$LocalFilesTableReferences
                                     ._bookIdTable(db),
-                                referencedColumn: $$TextIndexTableReferences
+                                referencedColumn: $$LocalFilesTableReferences
                                     ._bookIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LocalFilesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SpaceDatabase,
+      $LocalFilesTable,
+      LocalFile,
+      $$LocalFilesTableFilterComposer,
+      $$LocalFilesTableOrderingComposer,
+      $$LocalFilesTableAnnotationComposer,
+      $$LocalFilesTableCreateCompanionBuilder,
+      $$LocalFilesTableUpdateCompanionBuilder,
+      (LocalFile, $$LocalFilesTableReferences),
+      LocalFile,
+      PrefetchHooks Function({bool rootId, bool bookId})
+    >;
+typedef $$TextIndexTableCreateCompanionBuilder =
+    TextIndexCompanion Function({
+      required String rootId,
+      required String relativePath,
+      required int byteOffset,
+      required int codeUnitOffset,
+      required int lineIndex,
+      Value<int> rowid,
+    });
+typedef $$TextIndexTableUpdateCompanionBuilder =
+    TextIndexCompanion Function({
+      Value<String> rootId,
+      Value<String> relativePath,
+      Value<int> byteOffset,
+      Value<int> codeUnitOffset,
+      Value<int> lineIndex,
+      Value<int> rowid,
+    });
+
+final class $$TextIndexTableReferences
+    extends BaseReferences<_$SpaceDatabase, $TextIndexTable, TextIndexEntry> {
+  $$TextIndexTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $LocalRootsTable _rootIdTable(_$SpaceDatabase db) =>
+      db.localRoots.createAlias('text_index__root_id__local_roots__id');
+
+  $$LocalRootsTableProcessedTableManager get rootId {
+    final $_column = $_itemColumn<String>('root_id')!;
+
+    final manager = $$LocalRootsTableTableManager(
+      $_db,
+      $_db.localRoots,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_rootIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$TextIndexTableFilterComposer
+    extends Composer<_$SpaceDatabase, $TextIndexTable> {
+  $$TextIndexTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get byteOffset => $composableBuilder(
+    column: $table.byteOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get codeUnitOffset => $composableBuilder(
+    column: $table.codeUnitOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lineIndex => $composableBuilder(
+    column: $table.lineIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LocalRootsTableFilterComposer get rootId {
+    final $$LocalRootsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableFilterComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TextIndexTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $TextIndexTable> {
+  $$TextIndexTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get byteOffset => $composableBuilder(
+    column: $table.byteOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get codeUnitOffset => $composableBuilder(
+    column: $table.codeUnitOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lineIndex => $composableBuilder(
+    column: $table.lineIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LocalRootsTableOrderingComposer get rootId {
+    final $$LocalRootsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableOrderingComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TextIndexTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $TextIndexTable> {
+  $$TextIndexTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get byteOffset => $composableBuilder(
+    column: $table.byteOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get codeUnitOffset => $composableBuilder(
+    column: $table.codeUnitOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get lineIndex =>
+      $composableBuilder(column: $table.lineIndex, builder: (column) => column);
+
+  $$LocalRootsTableAnnotationComposer get rootId {
+    final $$LocalRootsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.rootId,
+      referencedTable: $db.localRoots,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LocalRootsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.localRoots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TextIndexTableTableManager
+    extends
+        RootTableManager<
+          _$SpaceDatabase,
+          $TextIndexTable,
+          TextIndexEntry,
+          $$TextIndexTableFilterComposer,
+          $$TextIndexTableOrderingComposer,
+          $$TextIndexTableAnnotationComposer,
+          $$TextIndexTableCreateCompanionBuilder,
+          $$TextIndexTableUpdateCompanionBuilder,
+          (TextIndexEntry, $$TextIndexTableReferences),
+          TextIndexEntry,
+          PrefetchHooks Function({bool rootId})
+        > {
+  $$TextIndexTableTableManager(_$SpaceDatabase db, $TextIndexTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TextIndexTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TextIndexTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TextIndexTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> rootId = const Value.absent(),
+                Value<String> relativePath = const Value.absent(),
+                Value<int> byteOffset = const Value.absent(),
+                Value<int> codeUnitOffset = const Value.absent(),
+                Value<int> lineIndex = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TextIndexCompanion(
+                rootId: rootId,
+                relativePath: relativePath,
+                byteOffset: byteOffset,
+                codeUnitOffset: codeUnitOffset,
+                lineIndex: lineIndex,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String rootId,
+                required String relativePath,
+                required int byteOffset,
+                required int codeUnitOffset,
+                required int lineIndex,
+                Value<int> rowid = const Value.absent(),
+              }) => TextIndexCompanion.insert(
+                rootId: rootId,
+                relativePath: relativePath,
+                byteOffset: byteOffset,
+                codeUnitOffset: codeUnitOffset,
+                lineIndex: lineIndex,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$TextIndexTable, TextIndexEntry>(table),
+                  $$TextIndexTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({rootId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (rootId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.rootId,
+                                referencedTable: $$TextIndexTableReferences
+                                    ._rootIdTable(db),
+                                referencedColumn: $$TextIndexTableReferences
+                                    ._rootIdTable(db)
                                     .id,
                               )
                               as T;
@@ -8886,7 +9677,7 @@ typedef $$TextIndexTableProcessedTableManager =
       $$TextIndexTableUpdateCompanionBuilder,
       (TextIndexEntry, $$TextIndexTableReferences),
       TextIndexEntry,
-      PrefetchHooks Function({bool bookId})
+      PrefetchHooks Function({bool rootId})
     >;
 typedef $$ProgressTableCreateCompanionBuilder =
     ProgressCompanion Function({
@@ -9681,722 +10472,6 @@ typedef $$ReplaceRulesTableProcessedTableManager =
       ReplaceRule,
       PrefetchHooks Function()
     >;
-typedef $$LocalRootsTableCreateCompanionBuilder =
-    LocalRootsCompanion Function({
-      required String id,
-      required String displayName,
-      Value<bool> needsRelink,
-      Value<int> rowid,
-    });
-typedef $$LocalRootsTableUpdateCompanionBuilder =
-    LocalRootsCompanion Function({
-      Value<String> id,
-      Value<String> displayName,
-      Value<bool> needsRelink,
-      Value<int> rowid,
-    });
-
-final class $$LocalRootsTableReferences
-    extends BaseReferences<_$SpaceDatabase, $LocalRootsTable, LocalRoot> {
-  $$LocalRootsTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static MultiTypedResultKey<$LocalFilesTable, List<LocalFile>>
-  _localFilesRefsTable(_$SpaceDatabase db) => MultiTypedResultKey.fromTable(
-    db.localFiles,
-    aliasName: 'local_roots__id__local_files__root_id',
-  );
-
-  $$LocalFilesTableProcessedTableManager get localFilesRefs {
-    final manager = $$LocalFilesTableTableManager(
-      $_db,
-      $_db.localFiles,
-    ).filter((f) => f.rootId.id.sqlEquals($_itemColumn<String>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_localFilesRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-}
-
-class $$LocalRootsTableFilterComposer
-    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
-  $$LocalRootsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get displayName => $composableBuilder(
-    column: $table.displayName,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  Expression<bool> localFilesRefs(
-    Expression<bool> Function($$LocalFilesTableFilterComposer f) f,
-  ) {
-    final $$LocalFilesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.localFiles,
-      getReferencedColumn: (t) => t.rootId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalFilesTableFilterComposer(
-            $db: $db,
-            $table: $db.localFiles,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$LocalRootsTableOrderingComposer
-    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
-  $$LocalRootsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<String> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get displayName => $composableBuilder(
-    column: $table.displayName,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$LocalRootsTableAnnotationComposer
-    extends Composer<_$SpaceDatabase, $LocalRootsTable> {
-  $$LocalRootsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<String> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get displayName => $composableBuilder(
-    column: $table.displayName,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => column,
-  );
-
-  Expression<T> localFilesRefs<T extends Object>(
-    Expression<T> Function($$LocalFilesTableAnnotationComposer a) f,
-  ) {
-    final $$LocalFilesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.localFiles,
-      getReferencedColumn: (t) => t.rootId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalFilesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.localFiles,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$LocalRootsTableTableManager
-    extends
-        RootTableManager<
-          _$SpaceDatabase,
-          $LocalRootsTable,
-          LocalRoot,
-          $$LocalRootsTableFilterComposer,
-          $$LocalRootsTableOrderingComposer,
-          $$LocalRootsTableAnnotationComposer,
-          $$LocalRootsTableCreateCompanionBuilder,
-          $$LocalRootsTableUpdateCompanionBuilder,
-          (LocalRoot, $$LocalRootsTableReferences),
-          LocalRoot,
-          PrefetchHooks Function({bool localFilesRefs})
-        > {
-  $$LocalRootsTableTableManager(_$SpaceDatabase db, $LocalRootsTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$LocalRootsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$LocalRootsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$LocalRootsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> id = const Value.absent(),
-                Value<String> displayName = const Value.absent(),
-                Value<bool> needsRelink = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => LocalRootsCompanion(
-                id: id,
-                displayName: displayName,
-                needsRelink: needsRelink,
-                rowid: rowid,
-              ),
-          createCompanionCallback:
-              ({
-                required String id,
-                required String displayName,
-                Value<bool> needsRelink = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => LocalRootsCompanion.insert(
-                id: id,
-                displayName: displayName,
-                needsRelink: needsRelink,
-                rowid: rowid,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$LocalRootsTable, LocalRoot>(table),
-                  $$LocalRootsTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({localFilesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (localFilesRefs) db.localFiles],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (localFilesRefs)
-                    await $_getPrefetchedData<
-                      LocalRoot,
-                      $LocalRootsTable,
-                      LocalFile
-                    >(
-                      currentTable: table,
-                      referencedTable: $$LocalRootsTableReferences
-                          ._localFilesRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$LocalRootsTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).localFilesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.rootId == item.id),
-                      typedResults: items,
-                    ),
-                ];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$LocalRootsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$SpaceDatabase,
-      $LocalRootsTable,
-      LocalRoot,
-      $$LocalRootsTableFilterComposer,
-      $$LocalRootsTableOrderingComposer,
-      $$LocalRootsTableAnnotationComposer,
-      $$LocalRootsTableCreateCompanionBuilder,
-      $$LocalRootsTableUpdateCompanionBuilder,
-      (LocalRoot, $$LocalRootsTableReferences),
-      LocalRoot,
-      PrefetchHooks Function({bool localFilesRefs})
-    >;
-typedef $$LocalFilesTableCreateCompanionBuilder =
-    LocalFilesCompanion Function({
-      required String rootId,
-      required String relativePath,
-      Value<String> format,
-      Value<int?> textLength,
-      Value<int?> modifiedAt,
-      Value<bool> needsRelink,
-      Value<String?> bookId,
-      Value<int> rowid,
-    });
-typedef $$LocalFilesTableUpdateCompanionBuilder =
-    LocalFilesCompanion Function({
-      Value<String> rootId,
-      Value<String> relativePath,
-      Value<String> format,
-      Value<int?> textLength,
-      Value<int?> modifiedAt,
-      Value<bool> needsRelink,
-      Value<String?> bookId,
-      Value<int> rowid,
-    });
-
-final class $$LocalFilesTableReferences
-    extends BaseReferences<_$SpaceDatabase, $LocalFilesTable, LocalFile> {
-  $$LocalFilesTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $LocalRootsTable _rootIdTable(_$SpaceDatabase db) =>
-      db.localRoots.createAlias('local_files__root_id__local_roots__id');
-
-  $$LocalRootsTableProcessedTableManager get rootId {
-    final $_column = $_itemColumn<String>('root_id')!;
-
-    final manager = $$LocalRootsTableTableManager(
-      $_db,
-      $_db.localRoots,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_rootIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
-  static $BooksTable _bookIdTable(_$SpaceDatabase db) =>
-      db.books.createAlias('local_files__book_id__books__id');
-
-  $$BooksTableProcessedTableManager? get bookId {
-    final $_column = $_itemColumn<String>('book_id');
-    if ($_column == null) return null;
-    final manager = $$BooksTableTableManager(
-      $_db,
-      $_db.books,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_bookIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
-class $$LocalFilesTableFilterComposer
-    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
-  $$LocalFilesTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<String> get relativePath => $composableBuilder(
-    column: $table.relativePath,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get format => $composableBuilder(
-    column: $table.format,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get textLength => $composableBuilder(
-    column: $table.textLength,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get modifiedAt => $composableBuilder(
-    column: $table.modifiedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$LocalRootsTableFilterComposer get rootId {
-    final $$LocalRootsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.rootId,
-      referencedTable: $db.localRoots,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalRootsTableFilterComposer(
-            $db: $db,
-            $table: $db.localRoots,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BooksTableFilterComposer get bookId {
-    final $$BooksTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bookId,
-      referencedTable: $db.books,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BooksTableFilterComposer(
-            $db: $db,
-            $table: $db.books,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$LocalFilesTableOrderingComposer
-    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
-  $$LocalFilesTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<String> get relativePath => $composableBuilder(
-    column: $table.relativePath,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get format => $composableBuilder(
-    column: $table.format,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get textLength => $composableBuilder(
-    column: $table.textLength,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get modifiedAt => $composableBuilder(
-    column: $table.modifiedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$LocalRootsTableOrderingComposer get rootId {
-    final $$LocalRootsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.rootId,
-      referencedTable: $db.localRoots,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalRootsTableOrderingComposer(
-            $db: $db,
-            $table: $db.localRoots,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BooksTableOrderingComposer get bookId {
-    final $$BooksTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bookId,
-      referencedTable: $db.books,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BooksTableOrderingComposer(
-            $db: $db,
-            $table: $db.books,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$LocalFilesTableAnnotationComposer
-    extends Composer<_$SpaceDatabase, $LocalFilesTable> {
-  $$LocalFilesTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<String> get relativePath => $composableBuilder(
-    column: $table.relativePath,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get format =>
-      $composableBuilder(column: $table.format, builder: (column) => column);
-
-  GeneratedColumn<int> get textLength => $composableBuilder(
-    column: $table.textLength,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<int> get modifiedAt => $composableBuilder(
-    column: $table.modifiedAt,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<bool> get needsRelink => $composableBuilder(
-    column: $table.needsRelink,
-    builder: (column) => column,
-  );
-
-  $$LocalRootsTableAnnotationComposer get rootId {
-    final $$LocalRootsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.rootId,
-      referencedTable: $db.localRoots,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$LocalRootsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.localRoots,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  $$BooksTableAnnotationComposer get bookId {
-    final $$BooksTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.bookId,
-      referencedTable: $db.books,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BooksTableAnnotationComposer(
-            $db: $db,
-            $table: $db.books,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$LocalFilesTableTableManager
-    extends
-        RootTableManager<
-          _$SpaceDatabase,
-          $LocalFilesTable,
-          LocalFile,
-          $$LocalFilesTableFilterComposer,
-          $$LocalFilesTableOrderingComposer,
-          $$LocalFilesTableAnnotationComposer,
-          $$LocalFilesTableCreateCompanionBuilder,
-          $$LocalFilesTableUpdateCompanionBuilder,
-          (LocalFile, $$LocalFilesTableReferences),
-          LocalFile,
-          PrefetchHooks Function({bool rootId, bool bookId})
-        > {
-  $$LocalFilesTableTableManager(_$SpaceDatabase db, $LocalFilesTable table)
-    : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$LocalFilesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$LocalFilesTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$LocalFilesTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<String> rootId = const Value.absent(),
-                Value<String> relativePath = const Value.absent(),
-                Value<String> format = const Value.absent(),
-                Value<int?> textLength = const Value.absent(),
-                Value<int?> modifiedAt = const Value.absent(),
-                Value<bool> needsRelink = const Value.absent(),
-                Value<String?> bookId = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => LocalFilesCompanion(
-                rootId: rootId,
-                relativePath: relativePath,
-                format: format,
-                textLength: textLength,
-                modifiedAt: modifiedAt,
-                needsRelink: needsRelink,
-                bookId: bookId,
-                rowid: rowid,
-              ),
-          createCompanionCallback:
-              ({
-                required String rootId,
-                required String relativePath,
-                Value<String> format = const Value.absent(),
-                Value<int?> textLength = const Value.absent(),
-                Value<int?> modifiedAt = const Value.absent(),
-                Value<bool> needsRelink = const Value.absent(),
-                Value<String?> bookId = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
-              }) => LocalFilesCompanion.insert(
-                rootId: rootId,
-                relativePath: relativePath,
-                format: format,
-                textLength: textLength,
-                modifiedAt: modifiedAt,
-                needsRelink: needsRelink,
-                bookId: bookId,
-                rowid: rowid,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable<$LocalFilesTable, LocalFile>(table),
-                  $$LocalFilesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({rootId = false, bookId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (rootId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.rootId,
-                                referencedTable: $$LocalFilesTableReferences
-                                    ._rootIdTable(db),
-                                referencedColumn: $$LocalFilesTableReferences
-                                    ._rootIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-                    if (bookId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.bookId,
-                                referencedTable: $$LocalFilesTableReferences
-                                    ._bookIdTable(db),
-                                referencedColumn: $$LocalFilesTableReferences
-                                    ._bookIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$LocalFilesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$SpaceDatabase,
-      $LocalFilesTable,
-      LocalFile,
-      $$LocalFilesTableFilterComposer,
-      $$LocalFilesTableOrderingComposer,
-      $$LocalFilesTableAnnotationComposer,
-      $$LocalFilesTableCreateCompanionBuilder,
-      $$LocalFilesTableUpdateCompanionBuilder,
-      (LocalFile, $$LocalFilesTableReferences),
-      LocalFile,
-      PrefetchHooks Function({bool rootId, bool bookId})
-    >;
 typedef $$SettingsTableCreateCompanionBuilder =
     SettingsCompanion Function({
       Value<String> bookId,
@@ -10601,16 +10676,16 @@ class $SpaceDatabaseManager {
       $$BookGroupsTableTableManager(_db, _db.bookGroups);
   $$ChaptersTableTableManager get chapters =>
       $$ChaptersTableTableManager(_db, _db.chapters);
+  $$LocalRootsTableTableManager get localRoots =>
+      $$LocalRootsTableTableManager(_db, _db.localRoots);
+  $$LocalFilesTableTableManager get localFiles =>
+      $$LocalFilesTableTableManager(_db, _db.localFiles);
   $$TextIndexTableTableManager get textIndex =>
       $$TextIndexTableTableManager(_db, _db.textIndex);
   $$ProgressTableTableManager get progress =>
       $$ProgressTableTableManager(_db, _db.progress);
   $$ReplaceRulesTableTableManager get replaceRules =>
       $$ReplaceRulesTableTableManager(_db, _db.replaceRules);
-  $$LocalRootsTableTableManager get localRoots =>
-      $$LocalRootsTableTableManager(_db, _db.localRoots);
-  $$LocalFilesTableTableManager get localFiles =>
-      $$LocalFilesTableTableManager(_db, _db.localFiles);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
 }

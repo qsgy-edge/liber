@@ -37,11 +37,7 @@ void spaceStoreTest(Directory Function() root) {
         reason: '空间数据库的位置要能看见',
       );
       expect(find.textContaining('书源 2'), findsOneWidget);
-      expect(
-        find.textContaining('上次阅读'),
-        findsOneWidget,
-        reason: '损失要写出来',
-      );
+      expect(find.textContaining('上次阅读'), findsOneWidget, reason: '损失要写出来');
 
       // The second launch reopens the same space, finds the record and imports
       // nothing again.
@@ -86,45 +82,47 @@ void main() {
 /// The three JSON stores live in the installation directory itself, next to the
 /// manifest and the space database.
 Future<void> _writeLegacyStores(Directory home) async {
-  await File('${home.path}${Platform.pathSeparator}online_reading.json')
-      .writeAsString(
-        jsonEncode({
-          'version': 2,
-          'last': '',
-          'records': [
-            {
-              'source': {
-                'bookSourceUrl': 'https://example.test',
-                'bookSourceName': 'Example',
-              },
-              'book': {
-                'url': 'https://example.test/book/1',
-                'title': '斗破苍穹',
-                'author': '天蚕土豆',
-                'intro': '',
-                'cover': '',
-              },
-              'chapterUrl': '',
-              'chapterName': '',
-              'textOffset': 12,
-              'chapters': [
-                {'name': '第一章', 'url': 'https://example.test/book/1/1'},
-              ],
-              'shelved': true,
-            },
+  await File(
+    '${home.path}${Platform.pathSeparator}online_reading.json',
+  ).writeAsString(
+    jsonEncode({
+      'version': 2,
+      'last': '',
+      'records': [
+        {
+          'source': {
+            'bookSourceUrl': 'https://example.test',
+            'bookSourceName': 'Example',
+          },
+          'book': {
+            'url': 'https://example.test/book/1',
+            'title': '斗破苍穹',
+            'author': '天蚕土豆',
+            'intro': '',
+            'cover': '',
+          },
+          'chapterUrl': '',
+          'chapterName': '',
+          'textOffset': 12,
+          'chapters': [
+            {'name': '第一章', 'url': 'https://example.test/book/1/1'},
           ],
-        }),
-      );
-  await File('${home.path}${Platform.pathSeparator}migration_state.json')
-      .writeAsString(
-        jsonEncode({
-          'sources': [
-            {
-              'id': 'fixture',
-              'data': {'bookSourceUrl': 'fixture', 'bookSourceName': 'Fixture'},
-            },
-          ],
-          'books': [],
-        }),
-      );
+          'shelved': true,
+        },
+      ],
+    }),
+  );
+  await File(
+    '${home.path}${Platform.pathSeparator}migration_state.json',
+  ).writeAsString(
+    jsonEncode({
+      'sources': [
+        {
+          'id': 'fixture',
+          'data': {'bookSourceUrl': 'fixture', 'bookSourceName': 'Fixture'},
+        },
+      ],
+      'books': [],
+    }),
+  );
 }

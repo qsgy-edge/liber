@@ -16,14 +16,15 @@ import 'schema_versions.dart';
 /// be created afterwards.
 Future<void> mergeDuplicateNaturalKeys(Migrator m) async {
   final database = m.database;
-  for (final group in await database
-      .customSelect(
-        'SELECT source_ref AS first_key, source_book_url AS second_key FROM books '
-        "WHERE kind = 'network' AND source_ref IS NOT NULL "
-        'AND source_book_url IS NOT NULL '
-        'GROUP BY source_ref, source_book_url HAVING COUNT(*) > 1',
-      )
-      .get()) {
+  for (final group
+      in await database
+          .customSelect(
+            'SELECT source_ref AS first_key, source_book_url AS second_key FROM books '
+            "WHERE kind = 'network' AND source_ref IS NOT NULL "
+            'AND source_book_url IS NOT NULL '
+            'GROUP BY source_ref, source_book_url HAVING COUNT(*) > 1',
+          )
+          .get()) {
     await _merge(
       database,
       await _duplicateIds(
@@ -33,14 +34,15 @@ Future<void> mergeDuplicateNaturalKeys(Migrator m) async {
       ),
     );
   }
-  for (final group in await database
-      .customSelect(
-        'SELECT root_id AS first_key, relative_path AS second_key FROM books '
-        "WHERE kind = 'local' AND root_id IS NOT NULL "
-        'AND relative_path IS NOT NULL '
-        'GROUP BY root_id, relative_path HAVING COUNT(*) > 1',
-      )
-      .get()) {
+  for (final group
+      in await database
+          .customSelect(
+            'SELECT root_id AS first_key, relative_path AS second_key FROM books '
+            "WHERE kind = 'local' AND root_id IS NOT NULL "
+            'AND relative_path IS NOT NULL '
+            'GROUP BY root_id, relative_path HAVING COUNT(*) > 1',
+          )
+          .get()) {
     await _merge(
       database,
       await _duplicateIds(
@@ -97,10 +99,9 @@ Future<void> _merge(GeneratedDatabase database, List<String> ids) async {
         [winner, loser],
       );
     }
-    await database.customStatement(
-      'DELETE FROM chapters WHERE book_id = ?',
-      [loser],
-    );
+    await database.customStatement('DELETE FROM chapters WHERE book_id = ?', [
+      loser,
+    ]);
 
     await _mergeProgress(database, winner, loser);
 
@@ -174,15 +175,35 @@ ProgressPosition _position(Map<String, Object?> row) => ProgressPosition(
   updatedAt: (row['updated_at'] as int?) ?? 0,
 );
 
-/// v1 → v2: the natural keys become constraints.
+/// v1 → v2: the natural keys become constraints, and `text_index` describes a
+/// local file rather than a shelf book.
 ///
 /// v1's `books_natural_key` was an ordinary index and a local book had no key
 /// index at all, so a database could hold two rows for one book.
 /// [mergeDuplicateNaturalKeys] folds those duplicates together while the old
 /// shape is still in place; only then can the index be recreated as `UNIQUE`
 /// and the local key be added.
+///
+/// v1's `text_index` was keyed by book; a v1 database carries no index rows at
+/// all today (nothing builds one yet), and an index row for a network book has
+/// no file to belong to now, so those cannot be carried over.
 Future<void> migrateToV2(Migrator m, Schema2 schema) async {
   await m.drop(schema.booksNaturalKey);
   await m.createIndex(schema.booksNaturalKey);
   await m.createIndex(schema.booksLocalKey);
+
+  await m.database.customStatement(
+    'ALTER TABLE text_index RENAME TO text_index_v1',
+  );
+  await m.createTable(schema.textIndex);
+  await m.database.customStatement(
+    'INSERT INTO text_index '
+    '(root_id, relative_path, byte_offset, code_unit_offset, line_index) '
+    'SELECT l.root_id, l.relative_path, t.byte_offset, t.code_unit_offset, '
+    't.line_index FROM text_index_v1 t '
+    'JOIN books b ON b.id = t.book_id '
+    'JOIN local_files l ON l.root_id = b.root_id '
+    'AND l.relative_path = b.relative_path',
+  );
+  await m.database.customStatement('DROP TABLE text_index_v1');
 }

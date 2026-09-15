@@ -58,6 +58,10 @@ class Workspace {
   Directory spaceDirectory(String id) =>
       Directory(_join(root.path, spacesFolderName, id));
 
+  /// The space's database file, whether or not the space exists yet.
+  File databaseFile(String id) =>
+      File(_join(spaceDirectory(id).path, databaseFileName));
+
   /// Opens the active space by default. A space that is not in the registry yet
   /// is registered and created empty (D1: a new space starts empty).
   Future<SpaceStore> openSpace([String? id]) async {
@@ -75,7 +79,7 @@ class Workspace {
     final directory = spaceDirectory(spaceId);
     await directory.create(recursive: true);
     final store = SpaceStore(
-      SpaceDatabase.file(File(_join(directory.path, databaseFileName))),
+      SpaceDatabase.file(databaseFile(spaceId)),
       spaceId: spaceId,
     );
     _openStores.add(store);

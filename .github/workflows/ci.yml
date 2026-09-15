@@ -105,15 +105,29 @@ jobs:
       - name: Generated tree is current
         if: matrix.platform == 'linux'
         run: |
-          # The drift schema snapshots and the build_runner output are checked
-          # in: a schema change that never got a version, a step or a snapshot
-          # has to fail here rather than in a user's library.
+          # Every generated artifact is regenerated and then required to be
+          # unchanged: build_runner's output, the drift schema snapshots, the
+          # generated migration steps and the generated migration fixtures. A
+          # schema change that never got a version, a step or a snapshot has to
+          # fail here rather than in a user's library. (`--delete-conflicting-
+          # outputs` is gone in build_runner 2.15: `build` alone is current.)
           dart run build_runner build
           dart run drift_dev schema dump lib/store/database.dart drift_schemas/
-          dirty="$(git status --porcelain --untracked-files=all -- lib test integration_test tool drift_schemas)"
-          if [ -n "$dirty" ]; then
-            echo '生成物与源不一致，请重新运行 build_runner 与 drift_dev schema dump：'
-            echo "$dirty"
+          dart run drift_dev schema steps drift_schemas/ lib/store/schema_versions.dart
+          dart run drift_dev schema generate --data-classes --companions drift_schemas/ test/generated_migrations/
+          # `git diff` ignores line-ending churn (core.autocrlf), so this gate
+          # says the same thing on Windows as it does on Linux. Untracked output
+          # is checked separately: a diff cannot see a file that is not there.
+          paths='lib test integration_test tool drift_schemas'
+          if ! git diff --quiet -- $paths; then
+            echo '生成物与源不一致，请重新生成并提交：'
+            git diff --stat -- $paths
+            exit 1
+          fi
+          untracked="$(git ls-files --others --exclude-standard -- $paths)"
+          if [ -n "$untracked" ]; then
+            echo '有未提交的生成物：'
+            echo "$untracked"
             exit 1
           fi
       - name: Build Windows app

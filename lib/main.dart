@@ -76,6 +76,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
   /// Opens the space store and imports the JSON stores this product wrote
   /// before it, once.
   ///
+  /// The import targets the default space: those files belong to the
+  /// installation's original space, not to whichever space is active now.
+  ///
   /// The shelf still reads those JSON files in this build, so the originals are
   /// left in place: the import records itself in the space, which is what makes
   /// a second launch a no-op.
@@ -83,12 +86,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
     Workspace? workspace;
     try {
       workspace = await Workspace.open(root: widget.workspaceRoot);
-      final store = await workspace.openSpace();
+      final store = await workspace.openSpace(Workspace.defaultSpaceId);
       final report = await LegacyImport(home: workspace.root).run(store);
-      final path = File(
-        '${workspace.spaceDirectory(store.spaceId).path}'
-        '${Platform.pathSeparator}${Workspace.databaseFileName}',
-      ).path;
+      final path = workspace.databaseFile(store.spaceId).path;
       if (mounted) {
         setState(() {
           _spaceImport = report;
@@ -698,10 +698,7 @@ class _MigrationPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (spaceMessage != null)
-              Text(
-                spaceMessage!,
-                key: const ValueKey('space-store-status'),
-              )
+              Text(spaceMessage!, key: const ValueKey('space-store-status'))
             else if (report == null)
               const Text('正在打开…')
             else if (report.imported)
@@ -710,10 +707,7 @@ class _MigrationPage extends StatelessWidget {
                 key: const ValueKey('space-store-status'),
               )
             else if (report.importedAt.isEmpty)
-              const Text(
-                '没有可导入的旧数据',
-                key: ValueKey('space-store-status'),
-              )
+              const Text('没有可导入的旧数据', key: ValueKey('space-store-status'))
             else
               Text(
                 '已在 ${report.importedAt} 导入过：${report.summary()}，本次未重复导入',

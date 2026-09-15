@@ -28,17 +28,15 @@ class SpaceStore {
     return (await sourceByUrl(source.bookSourceUrl.value))!;
   }
 
-  Future<BookSource?> sourceByUrl(String bookSourceUrl) =>
-      (db.select(db.sources)
-            ..where((s) => s.bookSourceUrl.equals(bookSourceUrl)))
-          .getSingleOrNull();
+  Future<BookSource?> sourceByUrl(String bookSourceUrl) => (db.select(
+    db.sources,
+  )..where((s) => s.bookSourceUrl.equals(bookSourceUrl))).getSingleOrNull();
 
   Future<List<BookSource>> allSources() =>
-      (db.select(db.sources)
-            ..orderBy([
-              (s) => OrderingTerm(expression: s.customOrder),
-              (s) => OrderingTerm(expression: s.bookSourceUrl),
-            ]))
+      (db.select(db.sources)..orderBy([
+            (s) => OrderingTerm(expression: s.customOrder),
+            (s) => OrderingTerm(expression: s.bookSourceUrl),
+          ]))
           .get();
 
   // --- Shelf books (D2) ----------------------------------------------------
@@ -110,16 +108,15 @@ class SpaceStore {
     return (await groupByName(trimmed))!;
   }
 
-  Future<ShelfGroup?> groupByName(String name) =>
-      (db.select(db.groups)..where((g) => g.name.equals(name)))
-          .getSingleOrNull();
+  Future<ShelfGroup?> groupByName(String name) => (db.select(
+    db.groups,
+  )..where((g) => g.name.equals(name))).getSingleOrNull();
 
   Future<List<ShelfGroup>> allGroups() =>
-      (db.select(db.groups)
-            ..orderBy([
-              (g) => OrderingTerm(expression: g.groupOrder),
-              (g) => OrderingTerm(expression: g.id),
-            ]))
+      (db.select(db.groups)..orderBy([
+            (g) => OrderingTerm(expression: g.groupOrder),
+            (g) => OrderingTerm(expression: g.id),
+          ]))
           .get();
 
   /// Membership is the whole list of group ids for a book; importing unions.
@@ -151,7 +148,9 @@ class SpaceStore {
   /// A book's chapters are its TOC: replacing the list replaces the rows.
   Future<void> putChapters(String bookId, List<BookChapter> chapters) async {
     await db.transaction(() async {
-      await (db.delete(db.chapters)..where((c) => c.bookId.equals(bookId))).go();
+      await (db.delete(
+        db.chapters,
+      )..where((c) => c.bookId.equals(bookId))).go();
       await db.batch((b) => b.insertAll(db.chapters, chapters));
     });
   }
@@ -164,9 +163,9 @@ class SpaceStore {
 
   // --- Progress (D4) -------------------------------------------------------
 
-  Future<ReadingProgress?> progressOf(String bookId) =>
-      (db.select(db.progress)..where((p) => p.bookId.equals(bookId)))
-          .getSingleOrNull();
+  Future<ReadingProgress?> progressOf(String bookId) => (db.select(
+    db.progress,
+  )..where((p) => p.bookId.equals(bookId))).getSingleOrNull();
 
   /// Forward-only: `(chapterIndex, textOffset)` decides whether the incoming
   /// record advances, and the timestamp breaks ties. Returns whether it was
@@ -207,14 +206,12 @@ class SpaceStore {
               (r) =>
                   r.name.equals(rule.name.value) &
                   r.pattern.equals(rule.pattern.value) &
-                  r.replacement.equals(rule.replacement.present
-                      ? rule.replacement.value
-                      : ''),
+                  r.replacement.equals(
+                    rule.replacement.present ? rule.replacement.value : '',
+                  ),
             ))
             .getSingleOrNull();
-    final row = existing == null
-        ? rule
-        : rule.copyWith(id: Value(existing.id));
+    final row = existing == null ? rule : rule.copyWith(id: Value(existing.id));
     await db.into(db.replaceRules).insertOnConflictUpdate(row);
     final stored = db.select(db.replaceRules)
       ..where((r) => r.id.equals(row.id.value));
@@ -222,11 +219,10 @@ class SpaceStore {
   }
 
   Future<List<ReplaceRule>> replaceRules() =>
-      (db.select(db.replaceRules)
-            ..orderBy([
-              (r) => OrderingTerm(expression: r.ruleOrder),
-              (r) => OrderingTerm(expression: r.id),
-            ]))
+      (db.select(db.replaceRules)..orderBy([
+            (r) => OrderingTerm(expression: r.ruleOrder),
+            (r) => OrderingTerm(expression: r.id),
+          ]))
           .get();
 
   // --- Local library -------------------------------------------------------
@@ -276,9 +272,8 @@ class SpaceStore {
 
   Future<String?> setting(String key, {String bookId = ''}) async {
     final row =
-        await (db.select(db.settings)..where(
-              (s) => s.bookId.equals(bookId) & s.key.equals(key),
-            ))
+        await (db.select(db.settings)
+              ..where((s) => s.bookId.equals(bookId) & s.key.equals(key)))
             .getSingleOrNull();
     return row?.value;
   }

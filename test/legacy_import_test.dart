@@ -23,7 +23,9 @@ class LegacyHome {
     'bookSourceName': 'Example',
     'bookSourceGroup': '网络, 精选 ',
     'customOrder': 3,
-    'unknownSourceField': {'nested': [1, 2]},
+    'unknownSourceField': {
+      'nested': [1, 2],
+    },
   };
 
   /// The pointer at the record the reader had open. It is deliberately the
@@ -88,11 +90,7 @@ class LegacyHome {
     final rootId = rootPath.toLowerCase();
     await file.writeAsString(
       jsonEncode({
-        'root': {
-          'id': rootId,
-          'displayName': rootPath,
-          'needsRelink': false,
-        },
+        'root': {'id': rootId, 'displayName': rootPath, 'needsRelink': false},
         'books': [
           {
             'id': '$rootId::kept.txt',
@@ -183,7 +181,10 @@ void main() {
 
     // Books, chapters and progress are all reachable from the store.
     final shelf = await store.shelf();
-    expect(shelf.map((book) => book.title), containsAll(<String>['斗破苍穹', 'kept.txt']));
+    expect(
+      shelf.map((book) => book.title),
+      containsAll(<String>['斗破苍穹', 'kept.txt']),
+    );
     final network = (await store.bookByNaturalKey(
       'https://example.test',
       'https://example.test/book/1',
@@ -223,13 +224,16 @@ void main() {
     expect(local.kind, 'local');
     expect(local.needsRelink, isTrue, reason: '文件已不在原路径');
     expect(
-      (await store.localBook(library.path.toLowerCase(), 'kept.txt'))!
-          .needsRelink,
+      (await store.localBook(
+        library.path.toLowerCase(),
+        'kept.txt',
+      ))!.needsRelink,
       isFalse,
     );
     expect(
-      (await store.localFilesOf(library.path.toLowerCase()))
-          .map((file) => file.relativePath),
+      (await store.localFilesOf(
+        library.path.toLowerCase(),
+      )).map((file) => file.relativePath),
       containsAll(<String>['kept.txt', 'gone.txt']),
     );
 
@@ -259,7 +263,8 @@ void main() {
     // The user read further and the JSON store moved on; the forced re-import
     // carries the newer position without duplicating anything.
     final online = File('${home.path}/online_reading.json');
-    final state = jsonDecode(await online.readAsString()) as Map<String, dynamic>;
+    final state =
+        jsonDecode(await online.readAsString()) as Map<String, dynamic>;
     final records = (state['records'] as List).cast<Map<String, dynamic>>();
     records.first['textOffset'] = 300;
     await online.writeAsString(jsonEncode(state));
@@ -316,14 +321,19 @@ void main() {
   test('原文件移到 legacy/ 而不是删除', () async {
     final (legacy, workspace) = await workspaceWithStores();
     final store = await workspace.openSpace();
-    final before = await File('${home.path}/online_reading.json').readAsString();
+    final before = await File(
+      '${home.path}/online_reading.json',
+    ).readAsString();
 
     final report = await legacy.run(store, retireOriginals: true);
-    expect(report.retired, containsAll(<String>[
-      'online_reading.json',
-      'local_books.json',
-      'migration_state.json',
-    ]));
+    expect(
+      report.retired,
+      containsAll(<String>[
+        'online_reading.json',
+        'local_books.json',
+        'migration_state.json',
+      ]),
+    );
     expect(await File('${home.path}/online_reading.json').exists(), isFalse);
     final retired = File('${home.path}/legacy/online_reading.json');
     expect(await retired.exists(), isTrue);

@@ -39,29 +39,37 @@ void main() {
     expect(books.map((book) => book.id), ['book-1', 'local-1']);
 
     // Memberships union, and the more advanced position wins.
-    final groups =
-        await (database.select(database.bookGroups)
-              ..where((m) => m.bookId.equals('book-1')))
-            .get();
+    final groups = await (database.select(
+      database.bookGroups,
+    )..where((m) => m.bookId.equals('book-1'))).get();
     expect(groups.map((m) => m.groupId), unorderedEquals(['g1', 'g2']));
-    final progress =
-        await (database.select(database.progress)
-              ..where((p) => p.bookId.equals('book-1')))
-            .getSingle();
+    final progress = await (database.select(
+      database.progress,
+    )..where((p) => p.bookId.equals('book-1'))).getSingle();
     expect(progress.textOffset, 300);
     expect(progress.chapterKey, 'https://s/1/2');
     expect(progress.anchor, '第二章的那一行');
 
     // The TOC of the row that had one moved to the survivor.
-    final chapters =
-        await (database.select(database.chapters)
-              ..where((c) => c.bookId.equals('book-1')))
-            .get();
-    expect(chapters.map((c) => c.chapterKey), ['https://s/1/1', 'https://s/1/2']);
+    final chapters = await (database.select(
+      database.chapters,
+    )..where((c) => c.bookId.equals('book-1'))).get();
+    expect(chapters.map((c) => c.chapterKey), [
+      'https://s/1/1',
+      'https://s/1/2',
+    ]);
 
     // The local file row followed the surviving book.
     final file = await database.select(database.localFiles).getSingle();
     expect(file.bookId, 'local-1');
+
+    // The text index belongs to the file now, so the local anchors survived
+    // and the one v1 had attached to a network book — which has no file — did
+    // not.
+    final index = await database.select(database.textIndex).getSingle();
+    expect(index.rootId, 'root-1');
+    expect(index.relativePath, 'kept.txt');
+    expect(index.codeUnitOffset, 24);
 
     // The constraint is real now: a second row for the same book is refused.
     await expectLater(
@@ -133,7 +141,9 @@ void main() {
 /// (with their own groups, chapters and progress) and two for one local file.
 Future<void> _seedV1(v1.DatabaseAtV1 old) async {
   for (final id in ['g1', 'g2']) {
-    await old.into(old.groups).insert(v1.GroupsCompanion.insert(id: id, name: id));
+    await old
+        .into(old.groups)
+        .insert(v1.GroupsCompanion.insert(id: id, name: id));
   }
   await old
       .into(old.books)
@@ -219,6 +229,27 @@ Future<void> _seedV1(v1.DatabaseAtV1 old) async {
           ),
         );
   }
+  await old
+      .into(old.textIndex)
+      .insert(
+        v1.TextIndexCompanion.insert(
+          bookId: 'local-1',
+          byteOffset: 0,
+          codeUnitOffset: 24,
+          lineIndex: 0,
+        ),
+      );
+  await old
+      .into(old.textIndex)
+      .insert(
+        v1.TextIndexCompanion.insert(
+          bookId: 'book-1',
+          byteOffset: 0,
+          codeUnitOffset: 0,
+          lineIndex: 0,
+        ),
+      );
+
   // v1's local file row may point at either duplicate.
   await old
       .into(old.localFiles)
