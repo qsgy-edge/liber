@@ -29,6 +29,10 @@ def main():
     gates = ['runtime_gate', 'runtime_host_integration', 'host_surface_gate',
              'broker_lifecycle_regression', 'broker_loader_regression']
     commands = [(name, [dart, 'run', f'tool/{name}.dart', str(library)]) for name in gates]
+    # The HTML adapter corpus is platform-independent: the same rows run wherever
+    # the native library builds, so each destination platform records its own row.
+    commands += [('html-adapter', [dart, 'run', 'tool/html_adapter_gate.dart', str(library), '-',
+                                   str(output / 'html-adapter.json')])]
     broker_modes = ['queued-close', 'throw-start', 'throw-cancel', 'same-runtime-nested',
                     'same-runtime-queued-release', 'same-runtime-cancel']
     commands += [(f'broker_gate_regression-{mode}',
@@ -44,8 +48,6 @@ def main():
                                     golden + 'state-expanded-golden.json', str(output / 'state.json')]),
             ('nested-differential', [dart, 'run', 'tool/nested_oracle_compare.dart', str(library),
                                      golden + 'golden.json', str(output / 'nested.json')]),
-            ('html-adapter', [dart, 'run', 'tool/html_adapter_gate.dart', str(library), '-',
-                              str(output / 'html-adapter.json')]),
         ]
     manifest = {'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                 'platform': platform, 'target': target,

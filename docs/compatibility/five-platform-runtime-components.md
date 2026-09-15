@@ -12,11 +12,15 @@ The smallest candidate stack is:
 
 - `flutter_js` for persistent JavaScript and controlled host messages on all five platforms.
 - `dio`, `dio_cookie_manager`, and `cookie_jar` for HTTP and session transport.
-- `html`, `json_path`, and Dart `RegExp` for shared rule primitives.
+- `json_path` and Dart `RegExp` for shared rule primitives. HTML and CSS are **superseded**:
+  the Book Source rule path runs through the Rust adapter (`packages/fjs/liber_html`, ADR 0008),
+  and the Dart `html` package is no longer imported by the product. XPath stays open (#22).
 - `flutter_inappwebview` for Android, iOS, macOS, and Windows native WebViews.
 - A Linux WebKitGTK adapter, reusing `webview_linux` only if prototypes prove its lifecycle and cookie surface.
 
-Three prototype gates remain **HIGH** risk: tolerant-HTML XPath compatibility, Linux background WebView completeness, and terminating/resource-limiting untrusted JavaScript.
+Two prototype gates remain **HIGH** risk after the HTML rule adapter landed: Linux background
+WebView completeness, and terminating/resource-limiting untrusted JavaScript. Tolerant-HTML
+XPath keeps its own gate as #22; the HTML/CSS half of this survey is settled by ADR 0008.
 
 **Update (2026-09-16, ticket #3):** the third gate is measured on Windows, not
 resolved. The vendored QuickJS enforces its heap limit (catchable
@@ -35,8 +39,8 @@ other four platforms remain `not-run`.
 | Persistent JavaScript and host bridge | `flutter_js` 0.8.7 | Android, iOS, Windows, macOS, Linux | QuickJS on Android/Windows/Linux; JavaScriptCore on iOS/macOS; retained runtime and JS-to-Dart messages | No documented deadline, interrupt, memory quota, or sandbox policy; synchronous FFI |
 | HTTP transport | `dio` 5.11.0 | All five through Dart IO | Methods, headers, bodies, redirects, staged timeouts, decoding hook, streaming, native proxy hook | No intrinsic body-size ceiling or cookies |
 | Cookies | `dio_cookie_manager` 3.5.0 + `cookie_jar` | All five | Request/response cookies and persistent file jar | Separate from native WebView stores; synchronization must be tested |
-| HTML5 and CSS | `html` 0.15.6 | Pure Dart | HTML5 parser and `querySelectorAll` | Incomplete Selectors Level 4 and unverified Jsoup extensions |
-| XPath | `xml` 7.0.1 as a candidate | Pure Dart | Current Dart 3 XPath 3.1 implementation | XML DOM semantics are not proven equivalent to tolerant HTML/Jsoup XPath |
+| HTML5 and CSS | `html` 0.15.6 | Pure Dart | HTML5 parser and `querySelectorAll` | **Superseded for rules** by the Rust adapter (ADR 0008): the JSoup extensions this row could not reproduce are ported there, and the product no longer imports the package |
+| XPath | `xml` 7.0.1 as a candidate | Pure Dart | Current Dart 3 XPath 3.1 implementation | XML DOM semantics are not proven equivalent to tolerant HTML/Jsoup XPath; still open, tracked as #22 |
 | JSONPath | `json_path` 0.9.0 | Pure Dart | RFC 9535 parser and reusable queries | Legado-specific/non-standard behavior must be mapped |
 | Regex | Dart `RegExp` | All five | ECMAScript semantics | Catastrophic backtracking requires input, pattern, and time limits |
 | Native background WebView | `flutter_inappwebview` 6.1.5 | Android, iOS, macOS, Windows | Headless WebView, JS evaluation, URL and cookie APIs | No Linux; Windows `getHtml()` not documented; request parity differs by platform |
@@ -57,7 +61,7 @@ other four platforms remain `not-run`.
 
 ## Coverage Gaps
 
-1. **HIGH — XPath on tolerant HTML:** no maintained Dart 3 package was verified to directly reproduce Legado's HTML XPath semantics.
+1. **HIGH — XPath on tolerant HTML:** no maintained Dart 3 package was verified to directly reproduce Legado's HTML XPath semantics; the ported adapter owns the HTML/CSS half, and the XPath half is #22.
 2. **HIGH — Linux background WebView:** no mature package was verified for hidden lifecycle, JavaScript results, final URL, DOM, cookies, cancellation, and cleanup.
 3. **HIGH — JavaScript resource control:** `flutter_js` documents no deadline, interrupt handler, or memory cap.
 4. **HIGH — WebView request parity:** arbitrary methods, request bodies, headers, redirects, proxy, and timeout do not form a uniform platform contract. Rich requests should stay in the HTTP transport when possible.

@@ -6,14 +6,15 @@ result) and one case per capability - the ordered and bracket index syntax, the
 `&&`/`||`/`%%` merges, the legacy `class.`/`tag.`/`text.` sub-syntax, every
 extraction operation, and the Jsoup CSS extensions.
 
-## Windows side
+## Destination side
 
 ```
 dart run tool/html_adapter_gate.dart <fjs library> - <observations.json>
 ```
 
-The gate runs every case through the Rust adapter, writes the observations, and
-fails when a value differs from the case's `expected`. Those expectations were
+CI runs this gate on every destination platform. It runs every case through the
+Rust adapter, writes the observations, and fails when a value differs from the
+case's `expected`. Those expectations were
 derived by reading the frozen `AnalyzeByJSoup.kt`, `AnalyzeRule.kt` and jsoup
 1.16.2 at `14dd24945b2914ce2708b8abaa4ee67ceef892af`. They are a reading, not an
 executed row: the frozen application has not been run against this corpus.
