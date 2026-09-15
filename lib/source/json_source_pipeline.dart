@@ -22,6 +22,7 @@ class JsonSourcePipeline {
     int page = 1,
   }) async {
     final trace = <BookSourceTraceEntry>[];
+    final ruleState = <String, Object?>{};
     var stage = BookSourceStage.search;
     // The frozen search URL carries an `AnalyzeUrl` page; every later stage is
     // built without one, so `{{page}}` and `<a,b>` stay empty there.
@@ -57,6 +58,15 @@ class JsonSourcePipeline {
       );
       Map<String, Object?> scriptInput(Object? result) => {
         'sourceKey': '$base',
+        'source': {
+          'bookSourceUrl': source['bookSourceUrl'],
+          'bookSourceName': source['bookSourceName'],
+          'bookSourceGroup': source['bookSourceGroup'],
+          'bookSourceType': source['bookSourceType'],
+          'bookSourceComment': source['bookSourceComment'],
+          'enabledCookieJar': source['enabledCookieJar'],
+          'loginUrl': source['loginUrl'],
+        },
         'key': keyword,
         'page': activePage,
         'baseUrl': '$base',
@@ -68,6 +78,7 @@ class JsonSourcePipeline {
             source: script,
             input: scriptInput(result),
             timeout: const Duration(seconds: 30),
+            state: ruleState,
           );
       Future<String> expand(String value) => expandSourceUrl(
         value,

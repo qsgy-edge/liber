@@ -26,8 +26,8 @@ def main():
     output = pathlib.Path('.ci-results')
     shutil.rmtree(output, ignore_errors=True)
     output.mkdir(exist_ok=True)
-    gates = ['runtime_gate', 'runtime_host_integration', 'broker_lifecycle_regression',
-             'broker_loader_regression']
+    gates = ['runtime_gate', 'runtime_host_integration', 'host_surface_gate',
+             'broker_lifecycle_regression', 'broker_loader_regression']
     commands = [(name, [dart, 'run', f'tool/{name}.dart', str(library)]) for name in gates]
     broker_modes = ['queued-close', 'throw-start', 'throw-cancel', 'same-runtime-nested',
                     'same-runtime-queued-release', 'same-runtime-cancel']

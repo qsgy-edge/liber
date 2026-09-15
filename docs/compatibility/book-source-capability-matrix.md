@@ -8,8 +8,8 @@ Survey date: 2026-09-15 UTC
 ## Verdict
 
 - **CONFIRMED** — The frozen Book Source execution surface has six axes: source fields, rule grammar, JavaScript host surface, request/URL semantics, pipeline features, and product-side reading features. This document inventories the first five; the sixth is listed only as declared non-goals.
-- **CONFIRMED** — The current product implements a bounded slice of all five axes: legacy and `@CSS:` HTML selectors with four extraction operations, a `$.`/`$..`-style JSON adapter, five `java.*` request methods, and four pipeline stages with page-chaining.
-- **CONFIRMED** — Several current behaviors are *divergent* rather than absent: `{{key}}` is percent-encoded where the baseline substitutes raw text and re-encodes the query, `{{page}}` is fixed at `1`, redirects keep the original method on 301/302, no default `User-Agent`/connection headers are injected, and JSON rules silently drop a ` @js:` suffix instead of executing or rejecting it.
+- **CONFIRMED** — The current product implements a bounded slice of all five axes: legacy and `@CSS:` HTML selectors with four extraction operations, a `$.`/`$..`-style JSON adapter, the `java.*` request methods plus the rule-state, cookie, cache, logging and encoding members, the frozen request defaults and redirect rules, and four pipeline stages with page-chaining.
+- **CONFIRMED** — Several current behaviors are *divergent* rather than absent: the query characters Dart's client escapes that the frozen one sends raw, cookie keys that are the exact host instead of the effective domain, a declared `Cookie` that is not forwarded across origins, a source debug console that records instead of showing messages, `t2s`/`s2t` and Chinese-numeral `toNumChapter` gaps, and JSON rules that silently drop a ` @js:` suffix instead of executing or rejecting it.
 - **UNVERIFIED** — Every status below is a source-level comparison against the frozen commit above. Only the five-source live triage in [Sample weighting](#sample-weighting) is runtime evidence, and it is an observation, not a golden. No per-capability runtime row exists.
 - **UNVERIFIED** — The sample sources hit 18 of the sampled capability tokens and hit none of `@CSS:`-style rules, `@XPath:`, `@Json:` element rules, `&&`/`%%` merges, `@get:`, cache bindings, or the login fields. Priority in [Proposed slice order](#proposed-slice-order) is ordered by blocking impact, then by sample frequency; it is not a compatibility claim.
 
@@ -105,17 +105,17 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Capability | Status |
 |---|---|
 | Bindings `baseUrl`, `key`, `page`, `result` | ✅ |
-| Binding `java` | 🟡 `connect`/`ajax`/`get`/`head`/`post` only; ❌ multi-URL `ajax`, `ajaxAll`, header-string `connect` overload |
-| Binding `source` | 🟡 `getKey()` only; ❌ `getName`, `getHeaderMap`, `getVariable`, `put`/`get`, login helpers |
-| Binding `book` | 🟡 present but always `null` |
-| Binding `cookie` (`CookieStore`) | ❌ `setCookie`, `getCookie`, `removeCookie` |
-| Binding `cache` (`CacheManager`) | ❌ |
-| `java.get`/`put` rule state | ❌ |
-| `java.toast`, `longToast`, `log`, `logType` | ❌ |
-| `java` encoding/utility family (`base64*`, `hex*`, `encodeURI`, `htmlFormat`, `t2s`, `s2t`, `timeFormat*`, `strToBytes`, `bytesToStr`, `toNumChapter`, `toURL`, `randomUUID`, `androidId`) | ❌ |
-| `java` file/cache family (`downloadFile`, `cacheFile`, `getFile`, `readFile`, `deleteFile`, `unzip*`) | ❌ |
-| `java` WebView family (`webView*`, `startBrowser*`, `getVerificationCode`, `getWebViewUA`) | ❌ |
-| `java.importScript` (remote `jsLib`) | ❌ |
+| Binding `java` | 🟡 `connect`/`ajax`/`get`/`head`/`post` and the one-argument `get` rule-state overload; ❌ multi-URL `ajax`, `ajaxAll`, the header-string `connect` overload |
+| Binding `source` | 🟡 `getKey`, `getName`, `getTag`, `getVariable`, `put`/`get` and the common fields; ❌ `getHeaderMap`, `enabledCookieJar` handling, login helpers |
+| Binding `book` | 🟡 present but always `null`, so `java.get('bookName')` has no book to read |
+| Binding `cookie` (`CookieStore`) | 🟡 `setCookie`, `replaceCookie`, `getCookie`, `getKey`, `removeCookie` over the session jar; ❌ persistence, and two recorded divergences: keys are the exact host instead of the effective domain, and the frozen 4096-character random-pair trim is not reproduced |
+| Binding `cache` (`CacheManager`) | 🟡 the whole accessor set (`get`, `put`, `getInt`/`getLong`/`getDouble`, `delete`, `putMemory`, `getFromMemory`, `deleteMemory`) over a process-lifetime store; ❌ persistence, `getFile`/`putFile`/`getQueryTTF` |
+| `java.get`/`put` rule state | ✅ scoped to one source analysis; ❌ chapter/book variables, which this product has no objects for |
+| `java.toast`, `longToast`, `log`, `logType` | 🟡 recorded instead of shown: this product has no source debug console yet |
+| `java` encoding/utility family | 🟡 `base64*` (Android flags), `hex*`, `encodeURI`, `htmlFormat`, `timeFormat*` (pattern subset, local time), `strToBytes`/`bytesToStr` (UTF-8 only, other charsets throw), `toNumChapter` (fullwidth digits only), `toURL`; ❌ `t2s`/`s2t` (needs a conversion table), `toNumChapter` for Chinese numerals, `androidId` |
+| `java` file/cache family (`downloadFile`, `cacheFile`, `getFile`, `readFile`, `deleteFile`, `unzip*`) | ⛔ deferred on purpose: writing files an untrusted source names is a data-integrity decision that belongs to the untrusted-source boundary, and the WebView/verification members wait for the WebView adapter lane |
+| `java` WebView family (`webView*`, `startBrowser*`, `getVerificationCode`, `getWebViewUA`) | ⛔ options rejected; the Windows WebView adapter exists but is not wired to sources |
+| `java.importScript` (remote `jsLib`) | ❌ remote `jsLib` still loads nothing; local `jsLib` shares one scope across a source's rules |
 | Synchronous return contract | ✅ native in-process broker, cancellable host I/O |
 
 ### D. Request and URL semantics
@@ -170,7 +170,7 @@ TTS/reading aloud, image and audio Book Sources, review UI, cloud synchronizatio
 Ordered by blocking impact on running real sources, then by sample frequency. Each slice is independently verifiable and should keep its own evidence.
 
 1. ~~**Request defaults and redirect semantics.**~~ *Implemented (issue #9, 2026-09-15): the rows above are closed except the platform encoding seam and the reader's page-1-only UI.* Default `User-Agent`/connection headers, OkHttp-style 301/302/303 → GET without body and 307/308 preserving method and body, `{{page}}` substitution, and keyword substitution matching the frozen rule. Blocks every source whose search depends on a browser-like request or a redirected POST result page.
-2. **JavaScript host surface.** `cookie.*`, `java.get`/`put`, `java.toast`/`log`, `cache.*`, the common utility family (`base64*`, `hex*`, `encodeURI`, `t2s`), and the `source.*` accessors. Four of five sample sources call `java.*`; two fail before any request for exactly this reason.
+2. ~~**JavaScript host surface.**~~ *Implemented (issue #10, 2026-09-15): `cookie.*`, `java.get`/`put`, `java.toast`/`longToast`/`log`/`logType`, `cache.*`, the `source.*` accessors, and the encoding family except `t2s`/`s2t` and `androidId`; the file and WebView members are deferred to the untrusted-source boundary and the WebView lane. Both sample sources that previously failed before any request now reach the network.* The slice covered `cookie.*`, `java.get`/`put`, `java.toast`/`log`, `cache.*`, the common utility family (`base64*`, `hex*`, `encodeURI`, `t2s`), and the `source.*` accessors.
 3. **Rule-level JavaScript and templates.** `@js:`/`<js>`/`{{js}}` inside rule fields, `@get:`, inline put parameters, `{{baseUrl}}`/`{{book.*}}`/`{{title}}`, and `###` replaceFirst. Also removes the JSON adapter's silent ` @js:` truncation.
 4. **Extraction and selector family.** Extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`@tag.`, and the Jsoup CSS extensions, behind the ticket 12 adapter.
 5. **Pipeline features.** Login, explore, source variables, remote `jsLib`, table-of-contents formatting, volume/VIP markers, cover decoding.

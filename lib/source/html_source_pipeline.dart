@@ -68,6 +68,10 @@ class HtmlSourcePipeline {
   final trace = <BookSourceTraceEntry>[];
   int tocPages = 0;
 
+  /// Rule state shared by one source analysis (`java.put`/`java.get`), the
+  /// frozen runtime's per-book rule data.
+  final _ruleState = <String, Object?>{};
+
   /// The frozen `AnalyzeUrl` page: a search carries one, every other stage is
   /// built without a page, so `{{page}}` and `<a,b>` stay empty there.
   int? _page;
@@ -127,6 +131,7 @@ class HtmlSourcePipeline {
         source: script,
         input: {
           'sourceKey': source['bookSourceUrl'],
+          'source': _sourceFields,
           'key': keyword,
           'page': _page,
           'result': result,
@@ -135,7 +140,20 @@ class HtmlSourcePipeline {
         },
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
+        state: _ruleState,
       );
+
+  /// The source fields a script can read, as the frozen `source` object exposes
+  /// them. Headers stay out: they are reachable through `java.ajax` only.
+  Map<String, Object?> get _sourceFields => {
+    'bookSourceUrl': source['bookSourceUrl'],
+    'bookSourceName': source['bookSourceName'],
+    'bookSourceGroup': source['bookSourceGroup'],
+    'bookSourceType': source['bookSourceType'],
+    'bookSourceComment': source['bookSourceComment'],
+    'enabledCookieJar': source['enabledCookieJar'],
+    'loginUrl': source['loginUrl'],
+  };
 
   Future<String> _expand(String template, String keyword) async {
     return expandSourceUrl(

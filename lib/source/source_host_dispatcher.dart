@@ -10,7 +10,7 @@ class SourceHostDispatcher {
     this.maxResponseBytes = 8 * 1024 * 1024,
     this.maxRequestBytes = 1024 * 1024,
     this.cancellation,
-  }) : _cookies = {};
+  }) : _cookies = SourceCookieJar();
 
   SourceHostDispatcher._execution(
     SourceHostDispatcher session,
@@ -28,7 +28,10 @@ class SourceHostDispatcher {
   final SourceCancellation? cancellation;
   final int maxResponseBytes;
   final int maxRequestBytes;
-  final Map<String, Map<String, String>> _cookies;
+  final SourceCookieJar _cookies;
+
+  /// The session jar, shared with a script runtime that has no transport.
+  SourceCookieJar get cookies => _cookies;
 
   Future<SourceHttpResponse> request(
     String method,
@@ -153,16 +156,79 @@ class SourceHostDispatcher {
         maxResponseBytes) {
       throw const SourceIoLimitExceeded('response');
     }
-    _acceptCookies(uri.host, response.headers['set-cookie'] ?? const []);
+    _cookies.accept(uri.host, response.headers['set-cookie'] ?? const []);
     return response;
   }
 
-  String _cookieHeader(String domain) => (_cookies[domain] ?? const {}).entries
+  String _cookieHeader(String domain) => _cookies.header(domain);
+
+  /// Frozen `CookieStore.getCookie` for this session's jar.
+  String cookiesFor(String url) => _cookies.cookiesFor(url);
+
+  /// Frozen `CookieStore.getKey`.
+  String cookieValue(String url, String key) => _cookies.value(url, key);
+
+  /// Frozen `CookieStore.setCookie`: replace what this host holds.
+  void setCookies(String url, String cookie) => _cookies.set(url, cookie);
+
+  /// Frozen `CookieStore.replaceCookie`: merge instead of replace.
+  void replaceCookies(String url, String cookie) =>
+      _cookies.replace(url, cookie);
+
+  /// Frozen `CookieStore.removeCookie`.
+  void removeCookies(String url) => _cookies.remove(url);
+
+  void clearSessionCookies() => _cookies.clear();
+}
+
+/// The session cookie store the frozen baseline keeps in `CookieStore` plus its
+/// platform jar, restricted to one process and one source session.
+class SourceCookieJar {
+  final Map<String, Map<String, String>> _domains = {};
+
+  String header(String domain) => (_domains[domain] ?? const {}).entries
       .map((entry) => '${entry.key}=${entry.value}')
       .join('; ');
 
-  void _acceptCookies(String domain, Iterable<String> values) {
-    final jar = _cookies.putIfAbsent(domain, () => {});
+  /// Frozen `CookieStore.getCookie`: the pairs held for the URL's host,
+  /// serialized `k=v; k2=v2`. The frozen baseline keys by effective domain
+  /// through a public-suffix database and drops a random key past 4096
+  /// characters; this jar keys by the exact host and never drops a pair, both
+  /// recorded divergences.
+  String cookiesFor(String url) => header(_hostOf(url));
+
+  /// Frozen `CookieStore.getKey`.
+  String value(String url, String key) =>
+      _domains[_hostOf(url)]?[key] ?? '';
+
+  /// Frozen `CookieStore.setCookie`: the given cookie string replaces what this
+  /// host holds. Unlike a `Set-Cookie` header, the whole string is name/value
+  /// pairs, not attributes.
+  void set(String url, String cookie) {
+    final host = _hostOf(url);
+    _domains.remove(host);
+    mergePairs(host, cookie);
+  }
+
+  /// Frozen `CookieStore.replaceCookie`: merge instead of replace.
+  void replace(String url, String cookie) {
+    mergePairs(_hostOf(url), '${cookiesFor(url)}; $cookie');
+  }
+
+  /// Stores every `name=value` pair of a cookie string.
+  void mergePairs(String domain, String cookie) {
+    for (final pair in cookie.split(';')) {
+      final trimmed = pair.trim();
+      if (trimmed.isEmpty) continue;
+      accept(domain, [trimmed]);
+    }
+  }
+
+  /// Frozen `CookieStore.removeCookie`.
+  void remove(String url) => _domains.remove(_hostOf(url));
+
+  void accept(String domain, Iterable<String> values) {
+    final jar = _domains.putIfAbsent(domain, () => {});
     for (final raw in values) {
       final pair = raw.split(';').first.split('=');
       if (pair.length < 2) continue;
@@ -174,8 +240,16 @@ class SourceHostDispatcher {
         jar[name] = value;
       }
     }
-    if (jar.isEmpty) _cookies.remove(domain);
+    if (jar.isEmpty) _domains.remove(domain);
   }
 
-  void clearSessionCookies() => _cookies.clear();
+  void clear() => _domains.clear();
+
+  static String _hostOf(String url) {
+    try {
+      return SourceHttpUri.parse(url).host;
+    } on FormatException {
+      return url;
+    }
+  }
 }
