@@ -10,8 +10,8 @@ import 'package:pointycastle/export.dart';
 /// golden is supplied, compares it with the values the frozen APK produced.
 ///
 /// Usage:
-///   dart run tool/html_adapter_gate.dart <fjs library> [<frozen golden.json>]
-///                                       [<observations.json>]
+///   dart run tool/html_adapter_gate.dart `<fjs library>` `[<frozen golden>]`
+///                                       `[<observations>]`
 ///
 /// Without a frozen golden the run still checks the adapter against the corpus'
 /// expectations, which were derived by reading the frozen rule layer at the

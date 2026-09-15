@@ -551,16 +551,16 @@ impl Parser {
             return Ok(Evaluator::Attribute(key.trim().to_string()));
         }
         if cq.match_chomp("!=") {
-            return Ok(Evaluator::AttributeWithValueNot { key: normalize(&key), value: attribute_value(cq.remainder(), true) });
+            return Ok(Evaluator::AttributeWithValueNot { key: normalize(&key), value: attribute_value(cq.remainder(), true)? });
         }
         if cq.match_chomp("^=") {
-            return Ok(Evaluator::AttributeWithValueStarting { key: normalize(&key), value: attribute_value(cq.remainder(), false) });
+            return Ok(Evaluator::AttributeWithValueStarting { key: normalize(&key), value: attribute_value(cq.remainder(), false)? });
         }
         if cq.match_chomp("$=") {
-            return Ok(Evaluator::AttributeWithValueEnding { key: normalize(&key), value: attribute_value(cq.remainder(), false) });
+            return Ok(Evaluator::AttributeWithValueEnding { key: normalize(&key), value: attribute_value(cq.remainder(), false)? });
         }
         if cq.match_chomp("*=") {
-            return Ok(Evaluator::AttributeWithValueContaining { key: normalize(&key), value: attribute_value(cq.remainder(), false) });
+            return Ok(Evaluator::AttributeWithValueContaining { key: normalize(&key), value: attribute_value(cq.remainder(), false)? });
         }
         if cq.match_chomp("~=") {
             let raw = cq.remainder();
@@ -568,7 +568,7 @@ impl Parser {
             return Ok(Evaluator::AttributeWithValueMatching { key: normalize(&key), pattern });
         }
         if cq.match_chomp("=") {
-            return Ok(Evaluator::AttributeWithValue { key: normalize(&key), value: attribute_value(cq.remainder(), true) });
+            return Ok(Evaluator::AttributeWithValue { key: normalize(&key), value: attribute_value(cq.remainder(), true)? });
         }
         Err(SelectError::new(format!("Could not parse attribute query '{}': unexpected token at '{}'", self.query, cq.remainder())))
     }
@@ -586,11 +586,19 @@ impl Parser {
                 }
                 Evaluator::Has(Box::new(parse(&sub_query)?))
             }
-            "contains" => Evaluator::ContainsText(pseudo_argument(self.consume_parens()?, ":contains")?),
-            "containsOwn" => Evaluator::ContainsOwnText(pseudo_argument(self.consume_parens()?, ":containsOwn")?),
+            "contains" => Evaluator::ContainsText(lower_normalised(pseudo_argument(
+                self.consume_parens()?,
+                ":contains",
+            )?)),
+            "containsOwn" => Evaluator::ContainsOwnText(lower_normalised(pseudo_argument(
+                self.consume_parens()?,
+                ":containsOwn",
+            )?)),
             "containsWholeText" => Evaluator::ContainsWholeText(pseudo_argument(self.consume_parens()?, ":containsWholeText")?),
             "containsWholeOwnText" => Evaluator::ContainsWholeOwnText(pseudo_argument(self.consume_parens()?, ":containsWholeOwnText")?),
-            "containsData" => Evaluator::ContainsData(pseudo_argument(self.consume_parens()?, ":containsData")?),
+            "containsData" => Evaluator::ContainsData(
+                pseudo_argument(self.consume_parens()?, ":containsData")?.to_lowercase(),
+            ),
             "matches" => Evaluator::Matches(compile_regex(&self.consume_parens()?, ":matches")?),
             "matchesOwn" => Evaluator::MatchesOwn(compile_regex(&self.consume_parens()?, ":matchesOwn")?),
             "matchesWholeText" => Evaluator::MatchesWholeText(compile_regex(&self.consume_parens()?, ":matchesWholeText")?),
@@ -886,6 +894,11 @@ fn pseudo_argument(raw: String, name: &str) -> Result<String, SelectError> {
     Ok(text)
 }
 
+/// jsoup `ContainsText`/`ContainsOwnText`: `lowerCase(normaliseWhitespace(text))`.
+fn lower_normalised(value: String) -> String {
+    normalise_whitespace(&value).to_lowercase()
+}
+
 fn compile_regex(raw: &str, name: &str) -> Result<Regex, SelectError> {
     if raw.is_empty() {
         return Err(SelectError::new(format!("{}(regex) query must not be empty", name)));
@@ -895,7 +908,15 @@ fn compile_regex(raw: &str, name: &str) -> Result<Regex, SelectError> {
 
 /// jsoup `AttributeKeyPair`: quotes stripped, values normalised (lower case,
 /// trimmed) unless the value was quoted, in which case it is only lower-cased.
-fn attribute_value(raw: String, trim_value: bool) -> String {
+fn attribute_value(raw: String, trim_value: bool) -> Result<String, SelectError> {
+    let value = attribute_value_raw(raw, trim_value);
+    if value.is_empty() {
+        return Err(SelectError::new("String must not be empty"));
+    }
+    Ok(value)
+}
+
+fn attribute_value_raw(raw: String, trim_value: bool) -> String {
     let is_string_literal = (raw.starts_with('\'') && raw.ends_with('\'') && raw.len() >= 2)
         || (raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2);
     let value = if is_string_literal { raw[1..raw.len() - 1].to_string() } else { raw };
@@ -980,6 +1001,13 @@ mod tests {
         assert_eq!(ids(&dom, "#u > li:first-child"), vec!["l1"]);
         assert_eq!(ids(&dom, "#u > li:last-child"), vec!["l3"]);
         assert_eq!(ids(&dom, "#u > li:only-child"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn contains_normalises_and_lower_cases_its_argument() {
+        let dom = Dom::parse(DOC);
+        assert_eq!(ids_from(&dom, 0, "p:contains(A   B)"), vec!["p1"]);
+        assert_eq!(ids_from(&dom, 0, "p:contains(a b)"), vec!["p1"]);
     }
 
     #[test]

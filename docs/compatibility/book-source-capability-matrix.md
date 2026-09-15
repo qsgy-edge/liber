@@ -32,7 +32,7 @@ Out of scope: UI reproduction, bookshelf/sync semantics, migration format, diffe
 
 Frozen side (read-only, no execution): `data/entities/BookSource.kt`, `data/entities/BaseSource.kt`, `data/entities/rule/{SearchRule,ExploreRule,BookInfoRule,TocRule,ContentRule,ReviewRule}.kt`, `model/analyzeRule/{AnalyzeRule,RuleAnalyzer,AnalyzeByJSoup,AnalyzeByXPath,AnalyzeByJSonPath,AnalyzeUrl}.kt`, `help/JsExtensions.kt`, `help/http/{HttpHelper,OkHttpUtils,CookieStore,CookieManager}.kt`, `model/webBook/{WebBook,BookChapterList,BookContent}.kt`.
 
-Product side: `lib/source/{html_source_rules,json_source_rules,html_source_pipeline,json_source_pipeline,source_url_rules,js_source_runtime,source_host_dispatcher,http_source_transport,online_reader_page,online_reading_store}.dart`, plus the gates in `tool/`.
+Product side: `lib/source/{html_rule_adapter,native_library,json_source_rules,html_source_pipeline,json_source_pipeline,source_url_rules,js_source_runtime,source_host_dispatcher,http_source_transport,online_reader_page,online_reading_store}.dart`, plus the gates in `tool/`.
 
 Runtime observation: `tool/source_triage.dart` runs each source of one exported file through the four stages and reports stage outcomes only. It never logs headers, tokens, URLs, or response bodies.
 
@@ -69,7 +69,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `ruleSearch` | `SearchRule.kt:14-24` | ✅ `bookList`/`name`/`bookUrl`/`author`/`kind`/`coverUrl`; ❌ `intro`/`lastChapter`/`wordCount`/`updateTime`/`checkKeyWord` |
 | `ruleBookInfo` | `BookInfoRule.kt:13-24` | ✅ `name`/`author`/`intro`/`kind`/`coverUrl`/`lastChapter`/`tocUrl`; 🟡 `init` (JSON pipeline only), `canReName` (accepted, unused); ❌ `downloadUrls` |
 | `ruleToc` | `TocRule.kt:10-19` | ✅ `chapterList`/`chapterName`/`chapterUrl`/`nextTocUrl`; ❌ `preUpdateJs`/`formatJs`/`isVolume`/`isVip`/`isPay`/`updateTime` |
-| `ruleContent` | `ContentRule.kt:13-21` | ✅ `content`/`nextContentUrl`; 🟡 `replaceRegex` (`##regex##replacement` and `{{chapter.title}}` only); ❌ `title`/`webJs`/`sourceRegex`/`imageStyle`/`imageDecode`/`payAction` |
+| `ruleContent` | `ContentRule.kt:13-21` | ✅ `content`/`nextContentUrl`; 🟡 `replaceRegex` (`##regex##replacement` and `{{chapter.title}}` only; a source that also writes an inline `##` replacement in `content` is ⛔ rejected with an explicit error instead of being applied twice — the frozen content-stage replacement belongs to #17); ❌ `title`/`webJs`/`sourceRegex`/`imageStyle`/`imageDecode`/`payAction` |
 | `ruleExplore`, `ruleReview` | `ExploreRule.kt`, `ReviewRule.kt` | ❌ |
 | `header` | `BaseSource.kt:103-123` | ✅ static JSON, `@js:`, `<js>` |
 | `loginUrl`, `loginUi`, `loginCheckJs` | `BaseSource.kt:134-182`, `WebBook.kt:211` | ❌ rejected with an explicit error |
@@ -80,6 +80,11 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 
 ### B. Rule grammar and selectors
 
+The rows below include the #12 adapter rows. `✅` there means implemented and covered by the
+crate's tests plus the Windows gate corpus (`tool/html_adapter_gate.dart`); their frozen-device
+rows are `not-run` (`tool/html_oracle/README.md`), so nothing in this section is a
+device-confirmed compatibility claim.
+
 | Capability | Frozen | Status |
 |---|---|---|
 | Mode prefixes | `AnalyzeRule.kt:526-560` | ✅ `@CSS:` and legacy bare, `@@` literal; ⛔ `@Json:` element rules, `@XPath:` and a leading `/` rejected with an explicit error |
@@ -88,7 +93,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `$1` regex captures in rules | `AnalyzeRule.kt:600-616` | ⛔ rejected by the adapter; the rule-JavaScript family is #3 |
 | Extraction `text`, `textNodes` | `AnalyzeByJSoup.kt:232-252` | ✅ (`textNodes` keeps the frozen raw-trim, not a whitespace-collapsed value) |
 | Extraction by attribute name (`@content`, `@data-*`) | `AnalyzeByJSoup.kt:272` | ✅ every attribute name; the baseline has no `attr(x)` form, so that row was a plan error |
-| Extraction `ownText`, `html`, `all` | `AnalyzeByJSoup.kt:253-272` | ✅ jsoup serialization with its pretty printing, and `html` dropping `script`/`style` |
+| Extraction `ownText`, `html`, `all` | `AnalyzeByJSoup.kt:253-272` | ✅ jsoup serialization with its pretty printing; `html` drops `script`/`style` and `all` keeps them, as frozen. The frozen `AnalyzeRule.getString` entity unescape runs over the result; the table used is HTML5's, a superset of Java's HTML 4 one |
 | Replacement `##regex` and `##regex##replacement` | `AnalyzeRule.kt:421-430`, `650-665` | ✅ |
 | Replacement fourth field (`replaceFirst`) | `AnalyzeRule.kt:663-665` | ✅ |
 | Rule-level templates `{{js}}`, `@get:key`, inline `{json}` put parameters | `AnalyzeRule.kt:404-416`, `575-620` | ⛔ rejected by the adapter; templates are #3 |
@@ -172,7 +177,7 @@ Ordered by blocking impact on running real sources, then by sample frequency. Ea
 1. ~~**Request defaults and redirect semantics.**~~ *Implemented (issue #9, 2026-09-15): the rows above are closed except the platform encoding seam and the reader's page-1-only UI.* Default `User-Agent`/connection headers, OkHttp-style 301/302/303 → GET without body and 307/308 preserving method and body, `{{page}}` substitution, and keyword substitution matching the frozen rule. Blocks every source whose search depends on a browser-like request or a redirected POST result page.
 2. ~~**JavaScript host surface.**~~ *Implemented (issue #10, 2026-09-15): `cookie.*`, `java.get`/`put`, `java.toast`/`longToast`/`log`/`logType`, `cache.*`, the `source.*` accessors, and the encoding family except `t2s`/`s2t` and `androidId`; the file and WebView members are deferred to the untrusted-source boundary and the WebView lane. Both sample sources that previously failed before any request now reach the network.* The slice covered `cookie.*`, `java.get`/`put`, `java.toast`/`log`, `cache.*`, the common utility family (`base64*`, `hex*`, `encodeURI`, `t2s`), and the `source.*` accessors.
 3. **Rule-level JavaScript and templates.** `@js:`/`<js>`/`{{js}}` inside rule fields, `@get:`, inline put parameters, `{{baseUrl}}`/`{{book.*}}`/`{{title}}`, and `###` replaceFirst. Also removes the JSON adapter's silent ` @js:` truncation.
-4. ~~**Extraction and selector family.**~~ *Implemented (issue #12, 2026-09-15): extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`tag.`/`text.`, the index list form and the Jsoup CSS extensions now run through the Rust adapter (`packages/fjs/liber_html`), behind one whole-document bridge call per stage. The 28 corpus rows in `tool/html_oracle/fixtures.json` are checked on Windows against values read from the frozen source; the frozen-device golden is `not-run`.*
+4. ~~**Extraction and selector family.**~~ *Implemented (issue #12, 2026-09-15): extraction by attribute name, `html`/`ownText`/`all`, `&&`/`||`/`%%`, `class.`/`tag.`/`text.`, the index list form and the Jsoup CSS extensions now run through the Rust adapter (`packages/fjs/liber_html`), behind one whole-document bridge call per stage. The 35 corpus rows in `tool/html_oracle/fixtures.json` are checked on Windows against values read from the frozen source; the frozen-device golden is `not-run`.*
 5. **Pipeline features.** Login, explore, source variables, remote `jsLib`, table-of-contents formatting, volume/VIP markers, cover decoding.
 6. **Peripheral.** Multi-URL page results, `sourceRegex`, downloads, reviews, image/audio sources, reading aloud.
 

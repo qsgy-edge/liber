@@ -57,7 +57,7 @@ call to a worker thread stays open if profiling shows a page large enough to mat
 `lib/source/html_source_pipeline.dart` now declares each stage's rules as one
 `HtmlRuleBatch` (`lib/source/html_rule_adapter.dart`), and the old rule layer with its
 `text`/`textNodes`/`href`/`src` whitelist is gone, so `ownText`, `html`, `all` and every
-attribute name are reachable. `tool/html_oracle/fixtures.json` carries 28 rows for
+attribute name are reachable. `tool/html_oracle/fixtures.json` carries 35 rows for
 the extraction and selector families, and `tool/html_adapter_gate.dart` runs them through the
 adapter in CI; those rows are compared against values read from the frozen source until a
 device run produces the frozen golden, so they stay `not-run` in

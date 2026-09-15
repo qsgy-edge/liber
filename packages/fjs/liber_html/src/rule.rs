@@ -8,6 +8,7 @@
 //! of returning approximated values.
 
 use crate::dom::{Dom, NodeId, NodeKind};
+use crate::entity::unescape_html;
 use crate::selector::{self, Evaluator};
 use crate::serialize;
 use fancy_regex::Regex;
@@ -107,7 +108,9 @@ fn reject_unsupported_rule_body(body: &str) -> Result<(), RuleError> {
     if lower.contains("@xpath:") || lower.contains("@json:") {
         return Err(RuleError::unsupported("暂不支持该元素规则"));
     }
-    if has_regex_capture(body) {
+    // `$1` in the rule part is the frozen regex-capture family (#3); in a `##`
+    // replacement it is a capture group of the replacement regex, which works.
+    if has_regex_capture(body.split("##").next().unwrap_or("")) {
         return Err(RuleError::unsupported("暂不支持该替换形式"));
     }
     Ok(())
@@ -128,9 +131,15 @@ fn index_of_capture(chars: &[char]) -> Option<usize> {
     None
 }
 
-/// Splits `##` fields the way `SourceRule.makeUpRule` does.
+/// Splits `##` fields the way `SourceRule.makeUpRule` does. Kotlin's
+/// `split("##")` drops trailing empty fields, so a rule ending in `##` is a
+/// three-field replacement while `###` keeps its extra field and means
+/// `replaceFirst`.
 fn split_replace(body: &str) -> (String, Option<Replace>) {
-    let parts: Vec<&str> = body.split("##").collect();
+    let mut parts: Vec<&str> = body.split("##").collect();
+    while parts.len() > 1 && parts.last() == Some(&"") {
+        parts.pop();
+    }
     let rule = parts[0].trim().to_string();
     if parts.len() < 2 {
         return (rule, None);
@@ -143,15 +152,60 @@ fn split_replace(body: &str) -> (String, Option<Replace>) {
     (rule, Some(replace))
 }
 
+/// Java `Matcher.replaceAll` reads `$1` as the first capture group, while the
+/// Rust regex engines read `$1是` as a group *named* `1是` and expand it to
+/// nothing. Rewriting the references into the explicit `${1}` form keeps a
+/// replacement like `##(作者)：##$1是##` behaving as the frozen reader does.
+fn java_replacement(replacement: &str) -> String {
+    let chars: Vec<char> = replacement.chars().collect();
+    let mut out = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        let c = chars[index];
+        if c == '\\' && chars.get(index + 1) == Some(&'$') {
+            out.push_str("$$");
+            index += 2;
+            continue;
+        }
+        if c == '$' {
+            let mut look = index + 1;
+            let mut digits = String::new();
+            while look < chars.len() && chars[look].is_ascii_digit() {
+                digits.push(chars[look]);
+                look += 1;
+            }
+            if !digits.is_empty() {
+                out.push_str("${");
+                out.push_str(&digits);
+                out.push('}');
+                index = look;
+                continue;
+            }
+            if chars.get(look) == Some(&'{') {
+                out.push('$');
+                index += 1;
+                continue;
+            }
+            out.push_str("$$");
+            index += 1;
+            continue;
+        }
+        out.push(c);
+        index += 1;
+    }
+    out
+}
+
 /// Frozen `AnalyzeRule.replaceRegex`.
 pub fn apply_replace(value: &str, replace: &Replace) -> String {
     let compiled = Regex::new(&replace.regex).ok();
+    let replacement = java_replacement(&replace.replacement);
     if replace.replace_first {
         return match compiled {
             Some(regex) => match regex.find(value) {
                 Ok(Some(found)) => {
                     let text = found.as_str().to_string();
-                    regex.replace_all(&text, replace.replacement.as_str()).into_owned()
+                    regex.replace_all(&text, replacement.as_str()).into_owned()
                 }
                 _ => String::new(),
             },
@@ -159,7 +213,7 @@ pub fn apply_replace(value: &str, replace: &Replace) -> String {
         };
     }
     match compiled {
-        Some(regex) => regex.replace_all(value, replace.replacement.as_str()).into_owned(),
+        Some(regex) => regex.replace_all(value, replacement.as_str()).into_owned(),
         None => value.replace(&replace.regex, &replace.replacement),
     }
 }
@@ -678,7 +732,9 @@ fn result_last(dom: &Dom, elements: &[NodeId], last_rule: &str) -> Result<Vec<St
                 out.push(html);
             }
         }
-        "all" => out.push(serialize::elements_outer_html(dom, elements, true)),
+        // Frozen `all` serializes without the `html` branch's script/style
+        // removal (that branch mutates the tree, which this adapter does not).
+        "all" => out.push(serialize::elements_outer_html(dom, elements, false)),
         attribute => {
             for element in elements {
                 let Some(value) = dom.attr(*element, attribute) else { continue };
@@ -755,10 +811,12 @@ pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleErro
         1 => values[0].clone(),
         _ => values.join("\n"),
     };
-    Ok(match &source.replace {
+    let replaced = match &source.replace {
         Some(replace) => apply_replace(&joined, replace),
         None => joined,
-    })
+    };
+    // Frozen `AnalyzeRule.getString` unescapes the result last.
+    Ok(unescape_html(&replaced))
 }
 
 #[cfg(test)]
@@ -789,10 +847,34 @@ mod tests {
         assert_eq!(list(".chapters li!0@a@href"), vec!["/1"]);
         assert_eq!(list(".chapters li[0]@a@href"), vec!["/ad"]);
         assert_eq!(list(".chapters li[1,0]@a@href"), vec!["/1", "/ad"]);
+        // A `[i, a:b:c]` list: negative start, step past the end of the list.
+        assert_eq!(list(".chapters li[-1:0]@a@href"), vec!["/1", "/ad"]);
+        // A range whose step is not smaller than the list collapses to its start.
+        assert_eq!(list(".chapters li[0:2:2]@a@href"), vec!["/ad"]);
+        assert_eq!(list(".info span[0:3:2]@text"), vec!["A", "C"]);
+        // A negative step is shifted by the list length, as the frozen scanner does.
+        assert_eq!(list(".info span[3:0:-2]@text"), vec!["D", "B"]);
+        // `@@` escapes the mode detection, so the rule stays a selector.
+        assert_eq!(text("@@#meta@text"), "作者：忘语");
         assert_eq!(text(".info span.-1@text"), "D");
         assert_eq!(text(".info span@textNodes"), "A\nB\nC\nD");
         assert_eq!(list("text.下一页@href"), vec!["/2"]);
         assert_eq!(text(".chapter_content@textNodes"), "第一段\n第二段\n第三段");
+    }
+
+    #[test]
+    fn entities_are_unescaped_like_the_frozen_get_string() {
+        let dom = Dom::parse("<div id=\"e\">A&amp;amp;B</div>");
+        assert_eq!(string(&dom, 0, "#e@text").unwrap(), "A&B");
+    }
+
+    #[test]
+    fn all_keeps_script_and_style_nodes() {
+        let dom = Dom::parse("<div id=\"c\"><script>var a=1;</script>正文</div>");
+        let all = string(&dom, 0, "#c@all").unwrap();
+        assert!(all.contains("<script>var a=1;</script>"), "{all}");
+        let html = string(&dom, 0, "#c@html").unwrap();
+        assert!(!html.contains("<script>"), "{html}");
     }
 
     #[test]
@@ -804,6 +886,17 @@ mod tests {
         assert_eq!(list("#meta@data-id"), vec!["42"]);
         assert_eq!(list(".chapters a@href"), vec!["/ad", "/1"]);
         assert_eq!(text("#meta@text##^作者：##"), "忘语");
+    }
+
+    #[test]
+    fn replacements_follow_the_frozen_field_rules() {
+        // A trailing `##` leaves three fields: replace every match.
+        assert_eq!(text("#meta@text##忘语##忘语先生##"), "作者：忘语先生");
+        // `###` keeps a fourth field, which means replace the first match only.
+        assert_eq!(text("#meta@text##忘语##忘语先生###"), "忘语先生");
+        // Java capture references survive a Chinese suffix.
+        assert_eq!(text("#meta@text##(作者)：##$1是###"), "作者是");
+        assert_eq!(text("#meta@text##(作者)：##$1是##"), "作者是忘语");
     }
 
     #[test]

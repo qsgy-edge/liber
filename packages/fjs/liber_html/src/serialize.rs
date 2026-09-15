@@ -4,7 +4,7 @@
 //! The frozen `html`/`all` extractions return `Elements.outerHtml()`, so the
 //! whitespace this module emits is part of the compared output.
 
-use crate::dom::{Dom, NodeId, NodeKind, format_as_block, is_block, is_empty_tag, is_whitespace, last_char_is_whitespace};
+use crate::dom::{Dom, NodeId, NodeKind, format_as_block, is_block, is_empty_tag, is_whitespace};
 
 pub fn outer_html(dom: &Dom, id: NodeId) -> String {
     outer_html_with(dom, id, false)
@@ -268,12 +268,6 @@ const BOOLEAN_ATTRIBUTES: &[&str] = &[
 fn is_boolean_attribute(key: &str) -> bool {
     let lower = key.to_ascii_lowercase();
     BOOLEAN_ATTRIBUTES.binary_search(&lower.as_str()).is_ok()
-}
-
-/// Keeps the shared text-normalisation helper referenced from the serializer.
-#[allow(dead_code)]
-fn whitespace_tail(accum: &str) -> bool {
-    last_char_is_whitespace(accum)
 }
 
 #[cfg(test)]

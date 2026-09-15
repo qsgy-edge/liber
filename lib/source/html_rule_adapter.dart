@@ -48,7 +48,7 @@ class HtmlRuleBatch {
       return;
     }
     await NativeLibrary.ready;
-    final outcomes = await htmlAnalyze(html: html, jobs: _jobs);
+    final outcomes = htmlAnalyze(html: html, jobs: _jobs);
     _ran = true;
     for (final outcome in outcomes) {
       final failure = outcome.failure;
@@ -80,7 +80,6 @@ class HtmlElementSet {
 
   int get length => _batch._result(id).count;
   bool get isEmpty => length == 0;
-  bool get isNotEmpty => length != 0;
 }
 
 /// One value per element of an [HtmlElementSet].
@@ -91,8 +90,6 @@ class HtmlStringList {
   final String id;
 
   List<String> get values => _batch._result(id).values;
-  String operator [](int index) => values[index];
-  int get length => values.length;
 }
 
 /// The value one rule yields for the document or for a single context.
@@ -108,5 +105,4 @@ class HtmlString {
   }
 
   bool get isEmpty => value.isEmpty;
-  bool get isNotEmpty => value.isNotEmpty;
 }

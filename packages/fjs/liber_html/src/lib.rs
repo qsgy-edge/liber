@@ -12,6 +12,7 @@
 //! selector.
 
 pub mod dom;
+pub mod entity;
 pub mod rule;
 pub mod selector;
 pub mod serialize;

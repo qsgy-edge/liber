@@ -6,6 +6,8 @@
   "documents": {
     "chapter": "<div class=\"info\"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div><script>var ad = 1;</script><style>.ad{}</style><a href=\"/2\">下一页</a><div id=\"meta\" data-id=\"42\">作者：忘语</div>",
     "toc": "<div id=\"list\"><li><a href=\"/ad\">忽略</a></li><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
+    "scripted": "<div id=\"wrapped\"><p>正文</p><script>var ad=1;</script></div>",
+    "entity": "<div id=\"code\">A&amp;amp;B</div>",
     "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>"
   },
   "cases": [
@@ -76,6 +78,42 @@
       "expected": "/toc/2"
     },
     {
+      "id": "escape-at-literal",
+      "document": "chapter",
+      "rule": "@@#meta@text",
+      "expected": "作者：忘语"
+    },
+    {
+      "id": "index-list-step",
+      "document": "chapter",
+      "rule": ".info span[0:3:2]@text",
+      "expected": "A\nC"
+    },
+    {
+      "id": "index-list-negative-step",
+      "document": "chapter",
+      "rule": ".info span[3:0:-2]@text",
+      "expected": "D\nB"
+    },
+    {
+      "id": "all-keeps-script",
+      "document": "scripted",
+      "rule": "#wrapped@all",
+      "expected": "<div id=\"wrapped\">\n <p>正文</p>\n <script>var ad=1;</script>\n</div>"
+    },
+    {
+      "id": "html-drops-script",
+      "document": "scripted",
+      "rule": "#wrapped@html",
+      "expected": "<div id=\"wrapped\">\n <p>正文</p>\n</div>"
+    },
+    {
+      "id": "entity-unescape",
+      "document": "entity",
+      "rule": "#code@text",
+      "expected": "A&B"
+    },
+    {
       "id": "merge-and",
       "document": "chapter",
       "rule": ".info span@text&&#meta@data-id",
@@ -118,9 +156,15 @@
       "expected": "忘语"
     },
     {
-      "id": "replacement-first-match",
+      "id": "replacement-trailing-field",
       "document": "chapter",
       "rule": "#meta@text##忘语##忘语先生##",
+      "expected": "作者：忘语先生"
+    },
+    {
+      "id": "replacement-first-match",
+      "document": "chapter",
+      "rule": "#meta@text##忘语##忘语先生###",
       "expected": "忘语先生"
     },
     {
