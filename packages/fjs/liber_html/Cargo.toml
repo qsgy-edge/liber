@@ -1,0 +1,19 @@
+[package]
+name = "liber_html"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+description = "Jsoup-compatible HTML rule and selector adapter for Liber Book Sources"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+html5ever = "0.35"
+markup5ever = "0.35"
+fancy-regex = "0.17"
+markup5ever_rcdom = "0.35"
+
+[workspace]
