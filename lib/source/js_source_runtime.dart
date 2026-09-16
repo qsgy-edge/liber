@@ -339,7 +339,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   }
 
   /// Frozen `JsExtensions.t2s`/`s2t`, which call `ChineseUtils`. Both go through
-  /// the same tables the reader converts with (ADR 0009), so a Book Source rule
+  /// the same tables the reader converts with (ADR 0010), so a Book Source rule
   /// and the reader never disagree about a character.
   ///
   /// Synchronous on purpose: the frozen `java.t2s` returns a string a rule uses

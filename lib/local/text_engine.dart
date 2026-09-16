@@ -15,7 +15,7 @@ import '../source/native_library.dart';
 /// because a Book Source rule calls `java.t2s` inside its own script.
 ///
 /// The conversion tables and their measured divergence from the frozen reader
-/// are recorded in ADR 0009, and the fixtures in
+/// are recorded in ADR 0010, and the fixtures in
 /// `packages/fjs/liber_text/assets/conversion_fixtures.tsv` pin them.
 class TextEngine {
   TextEngine._();

@@ -64,7 +64,7 @@ it by path and exposes `text_*` through `libfjs/src/api/text.rs`; the Dart API i
 independent of the JavaScript runtime:
 `cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml`, and the
 conversion tables it ships are recorded in `liber_text/assets/hanlp-tc/PROVENANCE.md`
-with the decision in ADR 0009.
+with the decision in ADR 0010.
 
 Build through the package's existing cargokit integration when building Flutter.
 For a native diagnostic build, use `cargo build --release --locked` from

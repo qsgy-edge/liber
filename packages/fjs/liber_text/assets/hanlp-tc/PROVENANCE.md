@@ -13,7 +13,7 @@ Both files are verbatim copies from HanLP's `1.x` branch,
   conversion of OpenCC's dictionaries (Apache-2.0), which Hankcs published as
   `hankcs/OpenCC-to-HanLP`. Nothing in these two files comes from anywhere the
   repository cannot license.
-- **Why these and not OpenCC's own files:** `docs/adr/0009-convert-chinese-with-hanlp-tables.md`
+- **Why these and not OpenCC's own files:** `docs/adr/0010-convert-chinese-with-hanlp-tables.md`
   measures both against the frozen reader. HanLP's tables sit three to thirty
   times closer to it, they are readable text in this repository rather than data
   compiled into a dependency, and they are the same upstream family the frozen

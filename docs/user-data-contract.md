@@ -167,7 +167,7 @@ Relational, never a mask:
   (`lib/main.dart:376-384`) do.
 - **Decoding happens off the UI thread** (`Isolate.run`/`compute`), and only the open book's
   window stays in memory.
-- **Executed (2026-09-16, ADR 0009 and `tool/text_engine_prototype/`):** the Rust engine
+- **Executed (2026-09-16, ADR 0010 and `tool/text_engine_prototype/`):** the Rust engine
   indexes the same 500 MB file in **609 ms** with a **5.7 MB** peak RSS and a 2.5 MB
   footprint, against **11.6 s / 20 MB** for a pure-Dart streaming index over it and the
   2.8 s / 817 MB `File.readAsString()` row above (reproduced). A window of 20 000 code units

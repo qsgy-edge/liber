@@ -29,7 +29,7 @@ Future<TextIndex> textIndexFile(
 Future<TextWindow> textReadWindow({required TextWindowRequest request}) =>
     LibFjs.instance.api.crateApiTextTextReadWindow(request: request);
 
-/// Converts Chinese text with the tables ADR 0009 records.
+/// Converts Chinese text with the tables ADR 0010 records.
 ///
 /// Synchronous because the frozen `java.t2s`/`java.s2t` are: a rule calls them
 /// inside a script and uses the result immediately.

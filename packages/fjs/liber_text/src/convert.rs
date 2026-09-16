@@ -548,12 +548,12 @@ mod tests {
             failures.join("\n")
         );
         assert!(agreements > 0, "fixture 里没有与冻结基线一致的行");
-        // Nine rows diverge with the tables measured in ADR 0009 and the phrase
+        // Nine rows diverge with the tables measured in ADR 0010 and the phrase
         // tables added afterwards; a different number is a different product and
         // the ADR has to say so.
         assert_eq!(
             divergences, 12,
-            "与冻结基线的差异行数变了，需要更新 ADR 0009"
+            "与冻结基线的差异行数变了，需要更新 ADR 0010"
         );
     }
 
