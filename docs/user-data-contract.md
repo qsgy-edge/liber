@@ -300,9 +300,11 @@ produces 13.1 M replacement characters. Numbers, hashes and re-run steps:
 
 ## 4. Out of this contract
 
-- Host-surface state (cookies, cache, rule state): shape and lifecycle are #10's; when its
-  persistence lands, it goes in the space database, not in a file beside it. As of commit
-  `ddf55ce` both the cookie jar and the cache are in-memory only.
+- Host-surface state (cookies, cache, rule state): shape and lifecycle were #10's; **where it persists
+  is settled in ADR 0011 §3** — inside this space's `data.db`, cookies keyed by the registrable domain
+  and visible per source site group, cache entries and `java.put`/`java.get` values owned by the source
+  that wrote them, implementation in #21. As of commit `ddf55ce` both the cookie jar and the cache are
+  in-memory only.
 - Chapter content cache and prefetch policy, settings shape — the map's fog.
 - Everything the map lists as out of scope, including the private-shelf feature itself.
 

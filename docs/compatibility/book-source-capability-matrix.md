@@ -25,7 +25,7 @@ Out of scope: UI reproduction, bookshelf/sync semantics, migration format, diffe
 |---|---|
 | ✅ | Implemented and covered by an automated test or gate on a destination platform |
 | 🟡 | Implemented partially, or implemented with a known behavioral divergence from the frozen baseline |
-| ❌ | Not implemented; the capability is currently unreachable |
+| ❌ | Not implemented; the capability is currently unreachable (a *deferred* row names the ADR that fixes its shape and the ticket that lands it — ADR 0011 §7) |
 | ⛔ | Deliberately rejected with an explicit error, or reserved for a security decision |
 
 ## Method
@@ -75,7 +75,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `loginUrl`, `loginUi`, `loginCheckJs` | `BaseSource.kt:134-182`, `WebBook.kt:211` | ❌ rejected with an explicit error |
 | `jsLib` | `BaseSource.kt:245-252`, `JsExtensions.kt:253` | 🟡 local shared library ✅; remote URL and `importScript` ❌ |
 | `enabledCookieJar` | `AnalyzeUrl.kt:597-615` | 🟡 session retention only; no domain store or persistence parity |
-| `bookSourceType` | `BookSource.kt:41` | 🟡 text (`0`) only; audio/image/file sources ❌ |
+| `bookSourceType` | `BookSource.kt:41` | 🟡 text (`0`) only; audio/image/file sources deferred beyond the first slice, not refused (ADR 0011 §7) |
 | `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment`, `concurrentRate` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ |
 
 ### B. Rule grammar and selectors
@@ -113,13 +113,13 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Binding `java` | 🟡 `connect`/`ajax`/`get`/`head`/`post` and the one-argument `get` rule-state overload; ❌ multi-URL `ajax`, `ajaxAll`, the header-string `connect` overload |
 | Binding `source` | 🟡 `getKey`, `getName`, `getTag`, `getVariable`, `put`/`get` and the common fields; ❌ `getHeaderMap`, `enabledCookieJar` handling, login helpers |
 | Binding `book` | 🟡 present but always `null`, so `java.get('bookName')` has no book to read |
-| Binding `cookie` (`CookieStore`) | 🟡 `setCookie`, `replaceCookie`, `getCookie`, `getKey`, `removeCookie` over the session jar; ❌ persistence, and two recorded divergences: keys are the exact host instead of the effective domain, and the frozen 4096-character random-pair trim is not reproduced |
-| Binding `cache` (`CacheManager`) | 🟡 the whole accessor set (`get`, `put`, `getInt`/`getLong`/`getDouble`, `delete`, `putMemory`, `getFromMemory`, `deleteMemory`) over a process-lifetime store; ❌ persistence, `getFile`/`putFile`/`getQueryTTF` |
-| `java.get`/`put` rule state | ✅ scoped to one source analysis; ❌ chapter/book variables, which this product has no objects for |
-| `java.toast`, `longToast`, `log`, `logType` | 🟡 recorded instead of shown: this product has no source debug console yet |
-| `java` encoding/utility family | 🟡 `base64*` (Android flags), `hex*`, `encodeURI`, `htmlFormat`, `timeFormat*` (pattern subset, local time), `strToBytes`/`bytesToStr` (UTF-8 only, other charsets throw), `toNumChapter` (fullwidth digits only), `toURL`; 🟡 `t2s`/`s2t` through the same HanLP-based tables and exclude list the reader converts with, measured against the frozen reader at 0.055 %–0.210 % of code units on the ADR 0010 corpora — the divergences are the frozen library's extra phrase tables, which are unlicensed and not shipped; ❌ `toNumChapter` for Chinese numerals, `androidId` |
-| `java` file/cache family (`downloadFile`, `cacheFile`, `getFile`, `readFile`, `deleteFile`, `unzip*`) | ⛔ deferred on purpose: writing files an untrusted source names is a data-integrity decision that belongs to the untrusted-source boundary, and the WebView/verification members wait for the WebView adapter lane |
-| `java` WebView family (`webView*`, `startBrowser*`, `getVerificationCode`, `getWebViewUA`) | ⛔ options rejected; the Windows WebView adapter exists but is not wired to sources |
+| Binding `cookie` (`CookieStore`) | 🟡 `setCookie`, `replaceCookie`, `getCookie`, `getKey`, `removeCookie` over the session jar; ❌ persistence — decided as part of the space store, keyed by the registrable domain and visible per source site group, implementation in #21 (ADR 0011 §3); one recorded divergence remains: the frozen 4096-character random-pair trim is not reproduced |
+| Binding `cache` (`CacheManager`) | 🟡 the whole accessor set (`get`, `put`, `getInt`/`getLong`/`getDouble`, `delete`, `putMemory`, `getFromMemory`, `deleteMemory`) over a process-lifetime store; ❌ persistence — decided as part of the space store, with entries owned by the source that wrote them, implementation in #21 (ADR 0011 §3); ❌ `getFile`/`putFile` deferred with the file family and `getQueryTTF` with font de-obfuscation (ADR 0011 §2, §6) |
+| `java.get`/`put` rule state | 🟡 scoped to one source analysis today; ADR 0011 §3 decides the baseline's persistent per-source variables instead (`v_<sourceKey>_<key>`), with #21 owning the store and #13 the `source.getVariable`/`setVariable` half; ❌ chapter variables, which this product has no objects for |
+| `java.toast`, `longToast`, `log`, `logType` | 🟡 recorded instead of shown: this product has no source debug console yet; ADR 0011 §6 decides them as emulated — a bounded per-source log and a rate-limited notice — so a source that tells the user to finish a verification is not silent |
+| `java` encoding/utility family | 🟡 `base64*` (Android flags), `hex*`, `encodeURI`, `htmlFormat`, `timeFormat*` (pattern subset, local time), `strToBytes`/`bytesToStr` (UTF-8 only, other charsets throw), `toNumChapter` (fullwidth digits only), `toURL`; 🟡 `t2s`/`s2t` through the same HanLP-based tables and exclude list the reader converts with, measured against the frozen reader at 0.055 %–0.210 % of code units on the ADR 0010 corpora — the divergences are the frozen library's extra phrase tables, which are unlicensed and not shipped; ❌ `toNumChapter` for Chinese numerals; `androidId` is emulated as a per-install opaque id rather than the platform identifier (ADR 0011 §6) |
+| `java` file/cache family (`downloadFile`, `cacheFile`, `getFile`, `readFile`, `deleteFile`, `unzip*`) | ❌ deferred, not refused (ADR 0011 §2): the members refuse by name for now, and the sandbox root, traversal rule, caps, archive handling and streaming download the family needs are fixed there as the constraint on #13 (remote `jsLib`) and #14 (`downloadUrls`, file-type sources), which land it |
+| `java` WebView family (`webView*`, `startBrowser*`, `getVerificationCode`, `getWebViewUA`) | ❌ allowed by policy, not wired yet (ADR 0011 §4): `webView`/`webJs`/`webViewDelayTime` run headlessly through #2's adapter with the session cookie jar, `startBrowser*`/`getVerificationCode`/`openUrl` require the user's confirmation, and `getWebViewUA` is emulated |
 | `java.importScript` (remote `jsLib`) | ❌ remote `jsLib` still loads nothing; local `jsLib` shares one scope across a source's rules |
 | Synchronous return contract | ✅ native in-process broker, cancellable host I/O |
 
@@ -137,9 +137,10 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Non-2xx retry from the `retry` option | `OkHttpUtils.kt:29-43` | ✅ |
 | Connection retry, 60 s read/call budgets | `HttpHelper.kt:56-62` | 🟡 30 s request budget, no separate connection-retry parity |
 | Per-source concurrency limit (`ConcurrentRateLimiter`, `concurrentRate`) | `AnalyzeUrl.kt:479`, `JsExtensions.kt:371` | ❌ |
-| Cookie priority and persistence (`setCookie`, `enabledCookieJar`) | `AnalyzeUrl.kt:597-615` | 🟡 session-scoped only |
-| TLS policy | `HttpHelper.kt:63-65` (unsafe trust) | ⛔ rejected by policy; a divergence recorded in the differential contract |
-| WebView request path | `BackstageWebView`, `webView*` options | ⛔ options rejected; the Windows WebView adapter exists but is not wired to sources |
+| Cookie priority and persistence (`setCookie`, `enabledCookieJar`) | `AnalyzeUrl.kt:597-615` | 🟡 session-scoped only; persistence is decided with the space store (#21) and scoped to a source's own site group (ADR 0011 §3) |
+| TLS policy | `HttpHelper.kt:63-65` (unsafe trust) | ⛔ rejected by default, with a per-source user exception (ADR 0011 §5): validation stays the default and a certificate failure asks once for that source, like a browser's "continue (unsafe)"; the divergence stays recorded in the differential contract |
+| Host reachability | any host the source names | 🟡 any `http`/`https` host, with no private-address filter — a LAN or self-hosted source is a real use, and the filter would remove a capability without removing the leak (ADR 0011 §5) |
+| WebView request path | `BackstageWebView`, `webView*` options | ❌ allowed by policy, not wired yet: executed headlessly through #2's adapter when it lands (ADR 0011 §4) |
 
 ### E. Pipeline features
 
@@ -159,12 +160,12 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Cover decoding (`coverDecodeJs`) | `BookCover.kt` | ❌ |
 | Content source validation (`sourceRegex`) | `ContentRule.kt`, `WebBook.kt` | ❌ |
 | Image style/decoding/pay actions | `ContentRule.kt` | ❌ |
-| Download (`downloadUrls`, file sources) | `BookInfo.kt` | ❌ |
+| Download (`downloadUrls`, file sources) | `BookInfo.kt` | ❌ deferred with the file family (ADR 0011 §2), #14 |
 | Auto source switching, precise search | `WebBook.kt:358` | ❌ |
 
 ### F. Declared non-goals
 
-TTS/reading aloud, image and audio Book Sources, review UI, cloud synchronization, pixel-level UI reproduction, bundled browser engine, required backend. These stay out of the compatibility path and are not gaps to close for the current target.
+TTS/reading aloud, image and audio Book Sources, review UI, cloud synchronization, pixel-level UI reproduction, bundled browser engine, required backend. These stay out of the current compatibility path and are **deferred beyond the first slice rather than refused** (ADR 0011 §7), as are the map's bookmarks, reading history, search history and Book Source subscriptions: each arrives as its own slice with its own evidence, instead of appearing here as a gap the boundary is hiding.
 
 ## What the sample does not exercise
 
