@@ -125,6 +125,12 @@ Relational, never a mask:
   textOffset)` comparison decides "advances only" and the timestamp breaks ties. The line
   fields cost nothing extra: the sparse index used for window lookup is already anchored at
   line starts.
+- **Ownership of the offset (ADR 0012).** The reading module treats `text_offset` as opaque: it
+  stores the value and hands it back to whoever produced the text space — a format for a
+  file-backed book, a source for a network chapter — and `chapter_key` names the reading unit,
+  with a chapterless file being one implicit chapter. No later format may fork this record:
+  a format that needs a different *field set* takes its own ADR and a generated migration test
+  with it, while which text space the values live in stays the format's own business.
 - **Restore is tiered**, because a local file can be edited, re-encoded, or replaced:
   1. exact — `text_length` matches and `anchor` matches at `text_offset`;
   2. near — relocate the anchor within ±N lines using the line index;
