@@ -23,6 +23,14 @@ def main():
     dart = shutil.which('dart')
     if dart is None:
         raise SystemExit('dart is not on PATH')
+    # Windows reports the case it launched with in Platform.resolvedExecutable,
+    # and the Dart build-hooks runner appends '.exe' unless that path already
+    # ends with those exact three characters. shutil.which builds its result
+    # from PATHEXT, whose suffix is upper case, so the runner asks for
+    # 'dart.EXE.exe' and every gate dies inside the sqlite3 hook. Restore the
+    # suffix's spelling before the gates see it.
+    if dart[-4:].lower() == '.exe':
+        dart = dart[:-4] + '.exe'
     output = pathlib.Path('.ci-results')
     shutil.rmtree(output, ignore_errors=True)
     output.mkdir(exist_ok=True)

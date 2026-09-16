@@ -144,6 +144,11 @@ def main():
     pwsh = shutil.which('pwsh') or shutil.which('powershell')
     if dart is None or pwsh is None:
         raise SystemExit('dart and pwsh must be on PATH')
+    # Same spelling trap as tool/ci_runtime.py: PATHEXT hands back '.EXE', and the
+    # build-hooks runner then asks Windows for 'dart.EXE.exe' when the product
+    # probe runs in a package carrying a native build hook.
+    if dart[-4:].lower() == '.exe':
+        dart = dart[:-4] + '.exe'
 
     failures = []
 
