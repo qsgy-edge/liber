@@ -6048,6 +6048,627 @@ class SettingsCompanion extends UpdateCompanion<SpaceSetting> {
   }
 }
 
+class $SourceCookiesTable extends SourceCookies
+    with TableInfo<$SourceCookiesTable, StoredCookie> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SourceCookiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _domainMeta = const VerificationMeta('domain');
+  @override
+  late final GeneratedColumn<String> domain = GeneratedColumn<String>(
+    'domain',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _writerRefMeta = const VerificationMeta(
+    'writerRef',
+  );
+  @override
+  late final GeneratedColumn<String> writerRef = GeneratedColumn<String>(
+    'writer_ref',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [domain, name, value, writerRef];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'source_cookies';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StoredCookie> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('domain')) {
+      context.handle(
+        _domainMeta,
+        domain.isAcceptableOrUnknown(data['domain']!, _domainMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_domainMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    if (data.containsKey('writer_ref')) {
+      context.handle(
+        _writerRefMeta,
+        writerRef.isAcceptableOrUnknown(data['writer_ref']!, _writerRefMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {domain, name};
+  @override
+  StoredCookie map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StoredCookie(
+      domain: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}domain'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+      writerRef: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}writer_ref'],
+      ),
+    );
+  }
+
+  @override
+  $SourceCookiesTable createAlias(String alias) {
+    return $SourceCookiesTable(attachedDatabase, alias);
+  }
+}
+
+class StoredCookie extends DataClass implements Insertable<StoredCookie> {
+  final String domain;
+  final String name;
+  final String value;
+  final String? writerRef;
+  const StoredCookie({
+    required this.domain,
+    required this.name,
+    required this.value,
+    this.writerRef,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['domain'] = Variable<String>(domain);
+    map['name'] = Variable<String>(name);
+    map['value'] = Variable<String>(value);
+    if (!nullToAbsent || writerRef != null) {
+      map['writer_ref'] = Variable<String>(writerRef);
+    }
+    return map;
+  }
+
+  SourceCookiesCompanion toCompanion(bool nullToAbsent) {
+    return SourceCookiesCompanion(
+      domain: Value(domain),
+      name: Value(name),
+      value: Value(value),
+      writerRef: writerRef == null && nullToAbsent
+          ? const Value.absent()
+          : Value(writerRef),
+    );
+  }
+
+  factory StoredCookie.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StoredCookie(
+      domain: serializer.fromJson<String>(json['domain']),
+      name: serializer.fromJson<String>(json['name']),
+      value: serializer.fromJson<String>(json['value']),
+      writerRef: serializer.fromJson<String?>(json['writerRef']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'domain': serializer.toJson<String>(domain),
+      'name': serializer.toJson<String>(name),
+      'value': serializer.toJson<String>(value),
+      'writerRef': serializer.toJson<String?>(writerRef),
+    };
+  }
+
+  StoredCookie copyWith({
+    String? domain,
+    String? name,
+    String? value,
+    Value<String?> writerRef = const Value.absent(),
+  }) => StoredCookie(
+    domain: domain ?? this.domain,
+    name: name ?? this.name,
+    value: value ?? this.value,
+    writerRef: writerRef.present ? writerRef.value : this.writerRef,
+  );
+  StoredCookie copyWithCompanion(SourceCookiesCompanion data) {
+    return StoredCookie(
+      domain: data.domain.present ? data.domain.value : this.domain,
+      name: data.name.present ? data.name.value : this.name,
+      value: data.value.present ? data.value.value : this.value,
+      writerRef: data.writerRef.present ? data.writerRef.value : this.writerRef,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StoredCookie(')
+          ..write('domain: $domain, ')
+          ..write('name: $name, ')
+          ..write('value: $value, ')
+          ..write('writerRef: $writerRef')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(domain, name, value, writerRef);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StoredCookie &&
+          other.domain == this.domain &&
+          other.name == this.name &&
+          other.value == this.value &&
+          other.writerRef == this.writerRef);
+}
+
+class SourceCookiesCompanion extends UpdateCompanion<StoredCookie> {
+  final Value<String> domain;
+  final Value<String> name;
+  final Value<String> value;
+  final Value<String?> writerRef;
+  final Value<int> rowid;
+  const SourceCookiesCompanion({
+    this.domain = const Value.absent(),
+    this.name = const Value.absent(),
+    this.value = const Value.absent(),
+    this.writerRef = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SourceCookiesCompanion.insert({
+    required String domain,
+    required String name,
+    required String value,
+    this.writerRef = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : domain = Value(domain),
+       name = Value(name),
+       value = Value(value);
+  static Insertable<StoredCookie> custom({
+    Expression<String>? domain,
+    Expression<String>? name,
+    Expression<String>? value,
+    Expression<String>? writerRef,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (domain != null) 'domain': domain,
+      if (name != null) 'name': name,
+      if (value != null) 'value': value,
+      if (writerRef != null) 'writer_ref': writerRef,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SourceCookiesCompanion copyWith({
+    Value<String>? domain,
+    Value<String>? name,
+    Value<String>? value,
+    Value<String?>? writerRef,
+    Value<int>? rowid,
+  }) {
+    return SourceCookiesCompanion(
+      domain: domain ?? this.domain,
+      name: name ?? this.name,
+      value: value ?? this.value,
+      writerRef: writerRef ?? this.writerRef,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (domain.present) {
+      map['domain'] = Variable<String>(domain.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (writerRef.present) {
+      map['writer_ref'] = Variable<String>(writerRef.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SourceCookiesCompanion(')
+          ..write('domain: $domain, ')
+          ..write('name: $name, ')
+          ..write('value: $value, ')
+          ..write('writerRef: $writerRef, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SourceEntriesTable extends SourceEntries
+    with TableInfo<$SourceEntriesTable, StoredSourceEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SourceEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sourceRefMeta = const VerificationMeta(
+    'sourceRef',
+  );
+  @override
+  late final GeneratedColumn<String> sourceRef = GeneratedColumn<String>(
+    'source_ref',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<int> expiresAt = GeneratedColumn<int>(
+    'expires_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [sourceRef, key, value, expiresAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'source_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StoredSourceEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('source_ref')) {
+      context.handle(
+        _sourceRefMeta,
+        sourceRef.isAcceptableOrUnknown(data['source_ref']!, _sourceRefMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceRefMeta);
+    }
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sourceRef, key};
+  @override
+  StoredSourceEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StoredSourceEntry(
+      sourceRef: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_ref'],
+      )!,
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      ),
+      expiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}expires_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SourceEntriesTable createAlias(String alias) {
+    return $SourceEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class StoredSourceEntry extends DataClass
+    implements Insertable<StoredSourceEntry> {
+  final String sourceRef;
+  final String key;
+  final String? value;
+  final int expiresAt;
+  const StoredSourceEntry({
+    required this.sourceRef,
+    required this.key,
+    this.value,
+    required this.expiresAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['source_ref'] = Variable<String>(sourceRef);
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || value != null) {
+      map['value'] = Variable<String>(value);
+    }
+    map['expires_at'] = Variable<int>(expiresAt);
+    return map;
+  }
+
+  SourceEntriesCompanion toCompanion(bool nullToAbsent) {
+    return SourceEntriesCompanion(
+      sourceRef: Value(sourceRef),
+      key: Value(key),
+      value: value == null && nullToAbsent
+          ? const Value.absent()
+          : Value(value),
+      expiresAt: Value(expiresAt),
+    );
+  }
+
+  factory StoredSourceEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StoredSourceEntry(
+      sourceRef: serializer.fromJson<String>(json['sourceRef']),
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String?>(json['value']),
+      expiresAt: serializer.fromJson<int>(json['expiresAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sourceRef': serializer.toJson<String>(sourceRef),
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String?>(value),
+      'expiresAt': serializer.toJson<int>(expiresAt),
+    };
+  }
+
+  StoredSourceEntry copyWith({
+    String? sourceRef,
+    String? key,
+    Value<String?> value = const Value.absent(),
+    int? expiresAt,
+  }) => StoredSourceEntry(
+    sourceRef: sourceRef ?? this.sourceRef,
+    key: key ?? this.key,
+    value: value.present ? value.value : this.value,
+    expiresAt: expiresAt ?? this.expiresAt,
+  );
+  StoredSourceEntry copyWithCompanion(SourceEntriesCompanion data) {
+    return StoredSourceEntry(
+      sourceRef: data.sourceRef.present ? data.sourceRef.value : this.sourceRef,
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StoredSourceEntry(')
+          ..write('sourceRef: $sourceRef, ')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('expiresAt: $expiresAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(sourceRef, key, value, expiresAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StoredSourceEntry &&
+          other.sourceRef == this.sourceRef &&
+          other.key == this.key &&
+          other.value == this.value &&
+          other.expiresAt == this.expiresAt);
+}
+
+class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
+  final Value<String> sourceRef;
+  final Value<String> key;
+  final Value<String?> value;
+  final Value<int> expiresAt;
+  final Value<int> rowid;
+  const SourceEntriesCompanion({
+    this.sourceRef = const Value.absent(),
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SourceEntriesCompanion.insert({
+    required String sourceRef,
+    required String key,
+    this.value = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : sourceRef = Value(sourceRef),
+       key = Value(key);
+  static Insertable<StoredSourceEntry> custom({
+    Expression<String>? sourceRef,
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? expiresAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sourceRef != null) 'source_ref': sourceRef,
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SourceEntriesCompanion copyWith({
+    Value<String>? sourceRef,
+    Value<String>? key,
+    Value<String?>? value,
+    Value<int>? expiresAt,
+    Value<int>? rowid,
+  }) {
+    return SourceEntriesCompanion(
+      sourceRef: sourceRef ?? this.sourceRef,
+      key: key ?? this.key,
+      value: value ?? this.value,
+      expiresAt: expiresAt ?? this.expiresAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sourceRef.present) {
+      map['source_ref'] = Variable<String>(sourceRef.value);
+    }
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<int>(expiresAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SourceEntriesCompanion(')
+          ..write('sourceRef: $sourceRef, ')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$SpaceDatabase extends GeneratedDatabase {
   _$SpaceDatabase(QueryExecutor e) : super(e);
   $SpaceDatabaseManager get managers => $SpaceDatabaseManager(this);
@@ -6062,6 +6683,8 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
   late final $ProgressTable progress = $ProgressTable(this);
   late final $ReplaceRulesTable replaceRules = $ReplaceRulesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $SourceCookiesTable sourceCookies = $SourceCookiesTable(this);
+  late final $SourceEntriesTable sourceEntries = $SourceEntriesTable(this);
   late final Index booksNaturalKey = Index(
     'books_natural_key',
     'CREATE UNIQUE INDEX books_natural_key ON books (source_ref, source_book_url)',
@@ -6114,6 +6737,8 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     progress,
     replaceRules,
     settings,
+    sourceCookies,
+    sourceEntries,
     booksNaturalKey,
     booksLocalKey,
     booksShelfOrder,
@@ -10662,6 +11287,394 @@ typedef $$SettingsTableProcessedTableManager =
       SpaceSetting,
       PrefetchHooks Function()
     >;
+typedef $$SourceCookiesTableCreateCompanionBuilder =
+    SourceCookiesCompanion Function({
+      required String domain,
+      required String name,
+      required String value,
+      Value<String?> writerRef,
+      Value<int> rowid,
+    });
+typedef $$SourceCookiesTableUpdateCompanionBuilder =
+    SourceCookiesCompanion Function({
+      Value<String> domain,
+      Value<String> name,
+      Value<String> value,
+      Value<String?> writerRef,
+      Value<int> rowid,
+    });
+
+class $$SourceCookiesTableFilterComposer
+    extends Composer<_$SpaceDatabase, $SourceCookiesTable> {
+  $$SourceCookiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get domain => $composableBuilder(
+    column: $table.domain,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get writerRef => $composableBuilder(
+    column: $table.writerRef,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SourceCookiesTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $SourceCookiesTable> {
+  $$SourceCookiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get domain => $composableBuilder(
+    column: $table.domain,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get writerRef => $composableBuilder(
+    column: $table.writerRef,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SourceCookiesTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $SourceCookiesTable> {
+  $$SourceCookiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get domain =>
+      $composableBuilder(column: $table.domain, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<String> get writerRef =>
+      $composableBuilder(column: $table.writerRef, builder: (column) => column);
+}
+
+class $$SourceCookiesTableTableManager
+    extends
+        RootTableManager<
+          _$SpaceDatabase,
+          $SourceCookiesTable,
+          StoredCookie,
+          $$SourceCookiesTableFilterComposer,
+          $$SourceCookiesTableOrderingComposer,
+          $$SourceCookiesTableAnnotationComposer,
+          $$SourceCookiesTableCreateCompanionBuilder,
+          $$SourceCookiesTableUpdateCompanionBuilder,
+          (
+            StoredCookie,
+            BaseReferences<_$SpaceDatabase, $SourceCookiesTable, StoredCookie>,
+          ),
+          StoredCookie,
+          PrefetchHooks Function()
+        > {
+  $$SourceCookiesTableTableManager(
+    _$SpaceDatabase db,
+    $SourceCookiesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SourceCookiesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SourceCookiesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SourceCookiesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> domain = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<String?> writerRef = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceCookiesCompanion(
+                domain: domain,
+                name: name,
+                value: value,
+                writerRef: writerRef,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String domain,
+                required String name,
+                required String value,
+                Value<String?> writerRef = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceCookiesCompanion.insert(
+                domain: domain,
+                name: name,
+                value: value,
+                writerRef: writerRef,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SourceCookiesTable, StoredCookie>(table),
+                  BaseReferences<
+                    _$SpaceDatabase,
+                    $SourceCookiesTable,
+                    StoredCookie
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SourceCookiesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SpaceDatabase,
+      $SourceCookiesTable,
+      StoredCookie,
+      $$SourceCookiesTableFilterComposer,
+      $$SourceCookiesTableOrderingComposer,
+      $$SourceCookiesTableAnnotationComposer,
+      $$SourceCookiesTableCreateCompanionBuilder,
+      $$SourceCookiesTableUpdateCompanionBuilder,
+      (
+        StoredCookie,
+        BaseReferences<_$SpaceDatabase, $SourceCookiesTable, StoredCookie>,
+      ),
+      StoredCookie,
+      PrefetchHooks Function()
+    >;
+typedef $$SourceEntriesTableCreateCompanionBuilder =
+    SourceEntriesCompanion Function({
+      required String sourceRef,
+      required String key,
+      Value<String?> value,
+      Value<int> expiresAt,
+      Value<int> rowid,
+    });
+typedef $$SourceEntriesTableUpdateCompanionBuilder =
+    SourceEntriesCompanion Function({
+      Value<String> sourceRef,
+      Value<String> key,
+      Value<String?> value,
+      Value<int> expiresAt,
+      Value<int> rowid,
+    });
+
+class $$SourceEntriesTableFilterComposer
+    extends Composer<_$SpaceDatabase, $SourceEntriesTable> {
+  $$SourceEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sourceRef => $composableBuilder(
+    column: $table.sourceRef,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SourceEntriesTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $SourceEntriesTable> {
+  $$SourceEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sourceRef => $composableBuilder(
+    column: $table.sourceRef,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SourceEntriesTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $SourceEntriesTable> {
+  $$SourceEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sourceRef =>
+      $composableBuilder(column: $table.sourceRef, builder: (column) => column);
+
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<int> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+}
+
+class $$SourceEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$SpaceDatabase,
+          $SourceEntriesTable,
+          StoredSourceEntry,
+          $$SourceEntriesTableFilterComposer,
+          $$SourceEntriesTableOrderingComposer,
+          $$SourceEntriesTableAnnotationComposer,
+          $$SourceEntriesTableCreateCompanionBuilder,
+          $$SourceEntriesTableUpdateCompanionBuilder,
+          (
+            StoredSourceEntry,
+            BaseReferences<
+              _$SpaceDatabase,
+              $SourceEntriesTable,
+              StoredSourceEntry
+            >,
+          ),
+          StoredSourceEntry,
+          PrefetchHooks Function()
+        > {
+  $$SourceEntriesTableTableManager(
+    _$SpaceDatabase db,
+    $SourceEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SourceEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SourceEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SourceEntriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> sourceRef = const Value.absent(),
+                Value<String> key = const Value.absent(),
+                Value<String?> value = const Value.absent(),
+                Value<int> expiresAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceEntriesCompanion(
+                sourceRef: sourceRef,
+                key: key,
+                value: value,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String sourceRef,
+                required String key,
+                Value<String?> value = const Value.absent(),
+                Value<int> expiresAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceEntriesCompanion.insert(
+                sourceRef: sourceRef,
+                key: key,
+                value: value,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SourceEntriesTable, StoredSourceEntry>(table),
+                  BaseReferences<
+                    _$SpaceDatabase,
+                    $SourceEntriesTable,
+                    StoredSourceEntry
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SourceEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SpaceDatabase,
+      $SourceEntriesTable,
+      StoredSourceEntry,
+      $$SourceEntriesTableFilterComposer,
+      $$SourceEntriesTableOrderingComposer,
+      $$SourceEntriesTableAnnotationComposer,
+      $$SourceEntriesTableCreateCompanionBuilder,
+      $$SourceEntriesTableUpdateCompanionBuilder,
+      (
+        StoredSourceEntry,
+        BaseReferences<_$SpaceDatabase, $SourceEntriesTable, StoredSourceEntry>,
+      ),
+      StoredSourceEntry,
+      PrefetchHooks Function()
+    >;
 
 class $SpaceDatabaseManager {
   final _$SpaceDatabase _db;
@@ -10688,4 +11701,8 @@ class $SpaceDatabaseManager {
       $$ReplaceRulesTableTableManager(_db, _db.replaceRules);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$SourceCookiesTableTableManager get sourceCookies =>
+      $$SourceCookiesTableTableManager(_db, _db.sourceCookies);
+  $$SourceEntriesTableTableManager get sourceEntries =>
+      $$SourceEntriesTableTableManager(_db, _db.sourceEntries);
 }

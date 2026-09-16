@@ -8,6 +8,7 @@ import '../domain/contracts.dart';
 import '../local/text_engine.dart';
 import 'native_library.dart';
 import 'source_host_dispatcher.dart';
+import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_url_rules.dart';
 
@@ -24,10 +25,6 @@ abstract interface class SourceScriptRuntime {
     required Map<String, Object?> input,
     required Duration timeout,
     SourceCancellation? cancellation,
-
-    /// Rule state (`java.put`/`java.get`) shared by one source analysis. The
-    /// frozen runtime scopes it to the rule data of the book being analysed.
-    Map<String, Object?>? state,
   });
 }
 
@@ -56,7 +53,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.hostCall,
     this.dispatcher,
     this.jsLib = '',
-  });
+    SourceHostState? hostState,
+  }) : _providedState = hostState;
   final String jsLib;
   final int maxScriptBytes;
   final int maxHostBytes;
@@ -64,15 +62,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   final int memoryLimitBytes;
   final SourceHostCall? hostCall;
   final SourceHostDispatcher? dispatcher;
+  final SourceHostState? _providedState;
+
+  /// The host surface this runtime reads and writes (ADR 0011 §3): what the
+  /// caller passed, the dispatcher's when a transport is attached — the
+  /// pipelines wire one state into both — or one of its own, which is what the
+  /// gates and the tools run on.
+  late final SourceHostState hostState =
+      _providedState ?? dispatcher?.hostState ?? SourceHostState();
 
   /// Messages a source logged or toasted during this runtime's lifetime.
   final messages = <SourceHostMessage>[];
 
-  /// Cookies when no transport is attached; the dispatcher owns them otherwise.
-  final SourceCookieJar fallbackCookies = SourceCookieJar();
-
-  /// Frozen `CacheManager` storage, for this process only.
-  static final Map<String, (Object?, int)> _cache = {};
+  /// Frozen `CacheManager` storage used to be a process-wide map here; it is
+  /// the space's now ([SourceHostState]), which is what makes an entry belong to
+  /// the source that wrote it.
   static int _active = 0;
   static Future<void> initialize({String? libraryPath}) =>
       NativeLibrary.initialize(libraryPath: libraryPath);
@@ -109,10 +113,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     required Map<String, Object?> input,
     required Duration timeout,
     SourceCancellation? cancellation,
-    Map<String, Object?>? state,
   }) async {
-    final ruleState = state ?? <String, Object?>{};
-    final cookies = dispatcher?.cookies ?? fallbackCookies;
+    final sourceRef = input['sourceKey'] is String
+        ? input['sourceKey'] as String
+        : '';
+    // A cookie or a cache entry another run wrote is on disk until it is read
+    // back, and the jar's reads inside one JavaScript call are synchronous.
+    // Loading the space's state once here is what makes the synchronous reads
+    // see what the last run wrote (ADR 0011 §3); a state with nothing to load
+    // skips the wait.
+    if (!hostState.isLoaded) await hostState.ready();
+    final cookies = dispatcher?.cookies ?? hostState.cookiesFor(sourceRef);
     final encodedInput = jsonEncode(input);
     if (utf8.encode(source).length +
             utf8.encode(encodedInput).length +
@@ -191,11 +202,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
                 ? payload
                 : await hostCall!(method, payload, token);
           } else if (method == 'state') {
-            answer = _handleState(payload, ruleState);
+            answer = await _handleState(payload, sourceRef);
           } else if (method == 'cache') {
-            answer = _handleCache(payload);
+            answer = await _handleCache(payload, sourceRef);
           } else if (method == 'cookie') {
-            answer = _handleCookie(payload, cookies);
+            answer = await _handleCookie(payload, cookies);
           } else if (method == 'log') {
             answer = _handleLog(payload);
           } else if (method == 'url') {
@@ -318,8 +329,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
-  /// Frozen `AnalyzeRule.put`/`get`, scoped to the rule data of one analysis.
-  Object? _handleState(Object? payload, Map<String, Object?> state) {
+  /// Frozen `java.put`/`java.get`: the baseline's persistent per-source
+  /// variables, `v_<sourceKey>_<key>` (`BaseSource.kt:220-233`), which
+  /// `source.put`/`source.get` share. They are not one analysis's rule state
+  /// any more (ADR 0011 §3): a source reads them again in the next analysis and
+  /// after a restart, and no other source reads them at all.
+  Future<Object?> _handleState(Object? payload, String sourceRef) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid state call');
     }
@@ -327,13 +342,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (key is! String) {
       throw const SourceScriptError('host-input', 'invalid state key');
     }
+    final variable = 'v_${sourceRef}_$key';
     switch (payload['op']) {
       case 'get':
-        final value = state[key];
+        final value = await hostState.entry(sourceRef, variable);
         return value is String ? value : '';
       case 'put':
         final value = '${payload['value']}';
-        state[key] = value;
+        await hostState.putEntry(sourceRef, variable, value);
         return value;
       default:
         throw const SourceScriptError('host-method', 'state op refused');
@@ -364,9 +380,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
-  /// Frozen `CacheManager`. Values live for this process only: the baseline
-  /// persists them, which this destination does not do yet.
-  Object? _handleCache(Object? payload) {
+  /// Frozen `CacheManager`: an entry belongs to the source that wrote it and
+  /// outlives this process (ADR 0011 §3). `saveTime` is the entry's deadline,
+  /// read by [SourceHostState.expiryOf] so the write and the read cannot
+  /// disagree, and a `saveTime` of 0 means permanent. Every read goes through
+  /// the same deadline check, typed getters included.
+  Future<Object?> _handleCache(Object? payload, String sourceRef) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid cache call');
     }
@@ -374,44 +393,35 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (key is! String) {
       throw const SourceScriptError('host-input', 'invalid cache key');
     }
-    final entry = _cache[key];
     switch (payload['op']) {
       case 'put':
       case 'putMemory':
         final saveTime = payload['saveTime'];
-        final seconds = saveTime is num ? saveTime.toInt() : 0;
-        _cache[key] = (
+        await hostState.putEntry(
+          sourceRef,
+          key,
           payload['value'],
-          seconds <= 0
-              ? 0
-              : DateTime.now().millisecondsSinceEpoch + seconds * 1000,
+          saveTime: saveTime is num ? saveTime.toInt() : 0,
         );
         return null;
       case 'get':
       case 'getFromMemory':
-        if (entry == null) return null;
-        final (value, expires) = entry;
-        if (expires != 0 &&
-            DateTime.now().millisecondsSinceEpoch > expires) {
-          _cache.remove(key);
-          return null;
-        }
-        return value;
       case 'getInt':
       case 'getLong':
       case 'getDouble':
-        return entry?.$1;
+        return hostState.entry(sourceRef, key);
       case 'delete':
       case 'deleteMemory':
-        _cache.remove(key);
+        await hostState.deleteEntry(sourceRef, key);
         return null;
       default:
         throw const SourceScriptError('host-method', 'cache op refused');
     }
   }
 
-  /// Frozen `CookieStore`, over this session's jar.
-  Object? _handleCookie(Object? payload, SourceCookieJar jar) {
+  /// Frozen `CookieStore`, over the jar this source speaks through: pairs keyed
+  /// by registrable domain, filtered by the source's site group (ADR 0011 §3).
+  Future<Object?> _handleCookie(Object? payload, SourceCookieJar jar) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid cookie call');
     }
@@ -429,13 +439,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         }
         return jar.value(url, key);
       case 'setCookie':
-        jar.set(url, '${payload['cookie'] ?? ''}');
+        await jar.set(url, '${payload['cookie'] ?? ''}');
         return null;
       case 'replaceCookie':
-        jar.replace(url, '${payload['cookie'] ?? ''}');
+        await jar.replace(url, '${payload['cookie'] ?? ''}');
         return null;
       case 'removeCookie':
-        jar.remove(url);
+        await jar.remove(url);
         return null;
       default:
         throw const SourceScriptError('host-method', 'cookie op refused');

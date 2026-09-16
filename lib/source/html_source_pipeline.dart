@@ -5,6 +5,7 @@ import 'book_source_service.dart';
 import 'html_rule_adapter.dart';
 import 'js_source_runtime.dart';
 import 'source_host_dispatcher.dart';
+import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_url_rules.dart';
 import 'json_source_pipeline.dart' show SourceChapter;
@@ -53,26 +54,43 @@ class HtmlChapterBody {
 /// stage's rules to [HtmlRuleBatch], which is the frozen `AnalyzeByJSoup`
 /// shape: one tree, many rules, one bridge call.
 class HtmlSourcePipeline {
-  HtmlSourcePipeline(this.source, this.transport, {this._scriptRuntime});
+  HtmlSourcePipeline(
+    this.source,
+    this.transport, {
+    this._scriptRuntime,
+    this.hostState,
+  });
   final Map<String, dynamic> source;
   final BookSourceTransport transport;
   final SourceScriptRuntime? _scriptRuntime;
+
+  /// The space's host surface, when the caller has one: the jar, the cache
+  /// entries and the per-source variables a source writes outlive this pipeline
+  /// (ADR 0011 §3, ticket #21). Without one they live for the process, which is
+  /// what the gates and the tools need.
+  final SourceHostState? hostState;
+
+  /// The source this pipeline speaks for: its `bookSourceUrl`, the key its
+  /// per-source state is owned by.
+  String get _sourceRef => '${source['bookSourceUrl'] ?? ''}';
+
   final _cancellation = SourceCancellation();
   late final SourceHostDispatcher? _host = transport is SourceHttpTransport
-      ? SourceHostDispatcher(transport: transport as SourceHttpTransport)
+      ? SourceHostDispatcher(
+          transport: transport as SourceHttpTransport,
+          hostState: hostState,
+          sourceRef: _sourceRef,
+        )
       : null;
   late final SourceScriptRuntime _runtime =
       _scriptRuntime ??
       InProcessSourceScriptRuntime(
         dispatcher: _host,
+        hostState: hostState,
         jsLib: source['jsLib'] as String? ?? '',
       );
   final trace = <BookSourceTraceEntry>[];
   int tocPages = 0;
-
-  /// Rule state shared by one source analysis (`java.put`/`java.get`), the
-  /// frozen runtime's per-book rule data.
-  final _ruleState = <String, Object?>{};
 
   /// The frozen `AnalyzeUrl` page: a search carries one, every other stage is
   /// built without a page, so `{{page}}` and `<a,b>` stay empty there.
@@ -132,7 +150,7 @@ class HtmlSourcePipeline {
       _runtime.evaluate(
         source: script,
         input: {
-          'sourceKey': source['bookSourceUrl'],
+          'sourceKey': _sourceRef,
           'source': _sourceFields,
           'key': keyword,
           'page': _page,
@@ -142,7 +160,6 @@ class HtmlSourcePipeline {
         },
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
-        state: _ruleState,
       );
 
   /// The source fields a script can read, as the frozen `source` object exposes

@@ -5,15 +5,25 @@ import 'book_source_service.dart';
 import 'json_source_rules.dart';
 import 'js_source_runtime.dart';
 import 'source_host_dispatcher.dart';
+import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_url_rules.dart';
 
 /// A bounded JSON-only Legado source slice, not a complete rule runtime.
 class JsonSourcePipeline {
-  JsonSourcePipeline(this.transport, {this.headers = const {}});
+  JsonSourcePipeline(
+    this.transport, {
+    this.headers = const {},
+    this.hostState,
+  });
   final BookSourceTransport transport;
   Map<String, String> _activeHeaders = const {};
   final Map<String, String> headers;
+
+  /// The space's host surface, when the caller has one (ADR 0011 §3): cookies,
+  /// cache entries and per-source variables outlive the run. Without one they
+  /// live for the process.
+  final SourceHostState? hostState;
 
   Future<SourceReadingResult> run(
     Map<String, dynamic> source,
@@ -22,7 +32,6 @@ class JsonSourcePipeline {
     int page = 1,
   }) async {
     final trace = <BookSourceTraceEntry>[];
-    final ruleState = <String, Object?>{};
     var stage = BookSourceStage.search;
     // The frozen search URL carries an `AnalyzeUrl` page; every later stage is
     // built without one, so `{{page}}` and `<a,b>` stay empty there.
@@ -53,8 +62,13 @@ class JsonSourcePipeline {
       final runtime = InProcessSourceScriptRuntime(
         jsLib: source['jsLib'] as String? ?? '',
         dispatcher: transport is SourceHttpTransport
-            ? SourceHostDispatcher(transport: transport as SourceHttpTransport)
+            ? SourceHostDispatcher(
+                transport: transport as SourceHttpTransport,
+                hostState: hostState,
+                sourceRef: '$base',
+              )
             : null,
+        hostState: hostState,
       );
       Map<String, Object?> scriptInput(Object? result) => {
         'sourceKey': '$base',
@@ -78,7 +92,6 @@ class JsonSourcePipeline {
             source: script,
             input: scriptInput(result),
             timeout: const Duration(seconds: 30),
-            state: ruleState,
           );
       Future<String> expand(String value) => expandSourceUrl(
         value,

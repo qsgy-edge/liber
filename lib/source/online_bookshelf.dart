@@ -77,7 +77,11 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           service: widget.service,
           pipeline: widget.transport == null
               ? null
-              : HtmlSourcePipeline(entry.sourceJson, widget.transport!),
+              : HtmlSourcePipeline(
+                  entry.sourceJson,
+                  widget.transport!,
+                  hostState: widget.service.hostState,
+                ),
         ),
       ),
     );
@@ -97,6 +101,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         final pipeline = HtmlSourcePipeline(
           source,
           widget.transport ?? HttpSourceTransport(),
+          hostState: widget.service.hostState,
         );
         try {
           final (book, chapters) = await pipeline.details(entry.htmlBook);
