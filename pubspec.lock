@@ -638,6 +638,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.2.1"
+  public_suffix:
+    dependency: "direct main"
+    description:
+      name: public_suffix
+      sha256: "8c41d2246cd6e8355459dbfa5fcb36add619b3afe5e0cad535cfa460f5498b68"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.0.0"
   pubspec_parse:
     dependency: transitive
     description:
@@ -646,6 +654,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.6.0"
+  punycode:
+    dependency: transitive
+    description:
+      name: punycode
+      sha256: "39b874cc1f78b94e57db17e74b3f2ba2a96e25c0bebdcc8a571614dccda0ff0c"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.0.0"
   recase:
     dependency: transitive
     description:
