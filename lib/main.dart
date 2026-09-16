@@ -5,12 +5,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'domain/contracts.dart';
-import 'local/local_library_service.dart';
-import 'migration/migration_service.dart';
 import 'source/book_source_service.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'store/legacy_import.dart';
+import 'store/local_library.dart';
+import 'store/shelf.dart';
+import 'store/space_store.dart';
 import 'store/workspace.dart';
 
 void main() {
@@ -53,11 +54,13 @@ class _LiberHomePageState extends State<LiberHomePage> {
   BookSourceRunState _run = const BookSourceRunState(
     stage: BookSourceStage.idle,
   );
-  final LocalLibraryService _libraryService = LocalLibraryService();
-  final MigrationService _migrationService = MigrationService();
   final BookSourceService _bookSourceService = BookSourceService();
+  SpaceStore? _store;
+  ShelfService? _shelf;
+  LocalLibrary? _library;
   List<FileSystemEntity> _folderEntries = const <FileSystemEntity>[];
-  List<LocalBook> _addedBooks = const <LocalBook>[];
+  List<ShelfEntry> _migratedBooks = const <ShelfEntry>[];
+  List<ImportedBookSource> _sources = const <ImportedBookSource>[];
   MigrationImportRecord? _migrationResult;
   String? _libraryMessage;
   String? _migrationMessage;
@@ -69,44 +72,58 @@ class _LiberHomePageState extends State<LiberHomePage> {
   @override
   void initState() {
     super.initState();
-    _loadLibrary();
-    _importLegacyStores();
+    _openSpace();
   }
 
-  /// Opens the space store and imports the JSON stores this product wrote
-  /// before it, once.
+  /// Opens the installation's space and imports the JSON stores this product
+  /// wrote before it, once the store is the writer.
   ///
-  /// The import targets the default space: those files belong to the
-  /// installation's original space, not to whichever space is active now.
-  ///
-  /// The shelf still reads those JSON files in this build, so the originals are
-  /// left in place: the import records itself in the space, which is what makes
-  /// a second launch a no-op.
-  Future<void> _importLegacyStores() async {
-    Workspace? workspace;
+  /// The import is forced and retiring: a file that is still there is a delta
+  /// to merge by natural key, and renaming it aside is what proves nothing
+  /// reads it any more. The import targets the default space — those files
+  /// belong to the installation's original space, not to whichever space is
+  /// active now.
+  Future<void> _openSpace() async {
     try {
-      workspace = await Workspace.open(root: widget.workspaceRoot);
+      final workspace = await Workspace.open(root: widget.workspaceRoot);
       final store = await workspace.openSpace(Workspace.defaultSpaceId);
-      final report = await LegacyImport(home: workspace.root).run(store);
+      final shelf = ShelfService(store);
+      final library = LocalLibrary(store);
+      final report = await LegacyImport(
+        home: workspace.root,
+      ).run(store, force: true, retireOriginals: true);
+      await library.load();
+      final migrated = await shelf.migratedBooks();
+      final sources = await shelf.sources();
       final path = workspace.databaseFile(store.spaceId).path;
-      if (mounted) {
-        setState(() {
-          _spaceImport = report;
-          _spaceStorePath = path;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _store = store;
+        _shelf = shelf;
+        _library = library;
+        _spaceImport = report;
+        _spaceStorePath = path;
+        _migratedBooks = migrated;
+        _sources = sources;
+      });
+      await _refreshFolder();
     } on Object catch (error) {
       if (mounted) setState(() => _spaceMessage = '空间存储不可用：$error');
-    } finally {
-      await workspace?.close();
     }
   }
 
-  Future<void> _loadLibrary() async {
-    await _libraryService.load();
-    await _migrationService.load();
-    final entries = await _libraryService.listCurrentFolder();
+  Future<void> _refreshFolder() async {
+    final library = _library;
+    if (library == null) return;
+    final entries = await library.listCurrentFolder();
     if (mounted) setState(() => _folderEntries = entries);
+  }
+
+  Future<void> _refreshSources() async {
+    final shelf = _shelf;
+    if (shelf == null) return;
+    final sources = await shelf.sources();
+    if (mounted) setState(() => _sources = sources);
   }
 
   Future<void> _runControlledSource() async {
@@ -117,13 +134,26 @@ class _LiberHomePageState extends State<LiberHomePage> {
   }
 
   @override
+  void dispose() {
+    // The page owns the space for its lifetime; letting go of it here is what
+    // lets the database file be moved or deleted while the process lives.
+    unawaited(_shelf?.close() ?? Future<void>.value());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final shelf = _shelf;
+    final library = _library;
+    final store = _store;
     final pages = <Widget>[
       _BookshelfPage(
         run: _run,
-        localBooks: _libraryService.books,
-        importedBooks: _migrationService.books,
+        localBooks: library?.books ?? const <LocalBook>[],
+        importedBooks: _migratedBooks,
         onlineRevision: _onlineRevision,
+        shelf: shelf,
+        spaceMessage: _spaceMessage,
         onRunSource: _runControlledSource,
         trace: _trace,
         onOpenBook: (book) async {
@@ -132,7 +162,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
               builder: (_) => _ReaderPage(
                 book: book,
                 onOffsetChanged: (offset) async {
-                  await _libraryService.updateOffset(book.id, offset);
+                  await library?.updateOffset(book.id, offset);
                   if (mounted) setState(() {});
                 },
               ),
@@ -142,49 +172,61 @@ class _LiberHomePageState extends State<LiberHomePage> {
         },
       ),
       _LocalLibraryPage(
-        service: _libraryService,
+        service: library,
         entries: _folderEntries,
-        books: _libraryService.books,
+        books: library?.books ?? const <LocalBook>[],
         message: _libraryMessage,
-        currentPath: _libraryService.currentPath,
         onEnterFolder: (path) async {
-          final entries = await _libraryService.enterFolder(path);
-          setState(() => _folderEntries = entries);
+          final entries = await library?.enterFolder(path);
+          if (mounted) {
+            setState(() {
+              if (entries != null) _folderEntries = entries;
+            });
+          }
         },
         onGoUp: () async {
-          final entries = await _libraryService.goUp();
-          setState(() => _folderEntries = entries);
+          final entries = await library?.goUp();
+          if (mounted) {
+            setState(() {
+              if (entries != null) _folderEntries = entries;
+            });
+          }
         },
         onRootSelected: (path) async {
-          final root = await _libraryService.selectRoot(path);
-          final entries = await _libraryService.listCurrentFolder();
+          final root = await library?.selectRoot(path);
+          final entries = await library?.listCurrentFolder();
+          if (!mounted) return;
           setState(() {
-            _folderEntries = entries;
-            _libraryMessage = '已选择根目录：${root.displayName}';
+            if (entries != null) _folderEntries = entries;
+            if (root != null) {
+              _libraryMessage = '已选择根目录：${root.displayName}';
+            }
           });
         },
         onScan: () async {
-          final entries = await _libraryService.scanRecursively();
+          final entries = await library?.scanRecursively();
+          if (!mounted) return;
           setState(() {
-            _folderEntries = entries;
-            _libraryMessage = '递归扫描完成：发现 ${entries.length} 个 TXT/Markdown 文件';
+            if (entries != null) _folderEntries = entries;
+            _libraryMessage =
+                '递归扫描完成：发现 ${entries?.length ?? 0} 个 TXT/Markdown 文件';
           });
         },
         onAdd: () async {
-          final books = await _libraryService.addFiles(_folderEntries);
+          final books = await library?.addFiles(_folderEntries);
+          if (!mounted) return;
           setState(() {
-            _addedBooks = [..._addedBooks, ...books];
-            _libraryMessage = books.isEmpty
+            _libraryMessage = books == null || books.isEmpty
                 ? '没有新的文件加入书架'
                 : '已显式加入 ${books.length} 本书';
           });
         },
 
         onAddEntry: (entry) async {
-          final books = await _libraryService.addFiles([entry]);
+          final books = await library?.addFiles([entry]);
+          if (!mounted) return;
           setState(() {
-            _addedBooks = [..._addedBooks, ...books];
-            _libraryMessage = books.isEmpty
+            _libraryMessage = books == null || books.isEmpty
                 ? '该文件已经在书架中'
                 : '已加入 ${books.first.title}';
           });
@@ -192,20 +234,23 @@ class _LiberHomePageState extends State<LiberHomePage> {
       ),
       _MigrationPage(
         result: _migrationResult,
-        sources: _migrationService.sources,
+        sources: _sources,
         message: _migrationMessage,
         spaceImport: _spaceImport,
         spaceStorePath: _spaceStorePath,
         spaceMessage: _spaceMessage,
         onImport: (jsonText) async {
+          if (store == null) return;
           try {
-            final result = await _migrationService.importJson(jsonText);
+            final result = await LegadoBackupImport(store).importJson(jsonText);
+            if (!mounted) return;
             setState(() {
               _migrationResult = result;
               _migrationMessage = '导入预览完成';
             });
+            await _refreshSources();
           } on FormatException catch (error) {
-            setState(() => _migrationMessage = error.message);
+            if (mounted) setState(() => _migrationMessage = error.message);
           }
         },
       ),
@@ -215,15 +260,18 @@ class _LiberHomePageState extends State<LiberHomePage> {
       appBar: AppBar(
         actions: [
           TextButton.icon(
-            onPressed: () async {
-              await Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      SourceTrialPage(sources: _migrationService.sources),
-                ),
-              );
-              if (mounted) setState(() => _onlineRevision++);
-            },
+            onPressed: shelf == null
+                ? null
+                : () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            SourceTrialPage(sources: _sources, service: shelf),
+                      ),
+                    );
+                    if (mounted) setState(() => _onlineRevision++);
+                    await _refreshSources();
+                  },
             icon: const Icon(Icons.travel_explore),
             label: const Text('书源试读'),
           ),
@@ -269,6 +317,8 @@ class _BookshelfPage extends StatelessWidget {
     required this.localBooks,
     required this.importedBooks,
     required this.onlineRevision,
+    required this.shelf,
+    required this.spaceMessage,
     required this.onRunSource,
     required this.trace,
     required this.onOpenBook,
@@ -276,8 +326,17 @@ class _BookshelfPage extends StatelessWidget {
 
   final BookSourceRunState run;
   final List<LocalBook> localBooks;
-  final List<ImportedBook> importedBooks;
+
+  /// The rows a legacy import left behind: they have no source, so the shelf
+  /// lists what they are instead of pretending they can be opened.
+  final List<ShelfEntry> importedBooks;
   final int onlineRevision;
+
+  /// Null until the space opens; the online section waits for it.
+  final ShelfService? shelf;
+
+  /// Why the space is not open, when it is not.
+  final String? spaceMessage;
   final VoidCallback onRunSource;
   final List<BookSourceTraceEntry> trace;
   final ValueChanged<LocalBook> onOpenBook;
@@ -339,19 +398,25 @@ class _BookshelfPage extends StatelessWidget {
           Expanded(
             child: ListView(
               children: [
-                OnlineBookshelf(revision: onlineRevision),
+                if (shelf case final service?)
+                  OnlineBookshelf(service: service, revision: onlineRevision)
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(spaceMessage ?? '正在打开空间存储…'),
+                  ),
                 if (importedBooks.isNotEmpty) ...[
                   Text('已迁移书籍', style: theme.textTheme.titleLarge),
                   const SizedBox(height: 8),
-                  for (final book in importedBooks)
+                  for (final entry in importedBooks)
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.cloud_download_outlined),
-                        title: Text(book.title),
+                        title: Text(entry.title),
                         subtitle: Text(
-                          book.needsRelink
-                              ? '需要重新关联本地文件 · offset：${book.progressOffset}'
-                              : '迁移进度 offset：${book.progressOffset}',
+                          entry.book.needsRelink
+                              ? '需要重新关联本地文件 · offset：${entry.textOffset}'
+                              : '迁移进度 offset：${entry.textOffset}',
                         ),
                         trailing: const Icon(Icons.info_outline),
                       ),
@@ -539,7 +604,6 @@ class _LocalLibraryPage extends StatelessWidget {
     required this.entries,
     required this.books,
     required this.message,
-    required this.currentPath,
     required this.onEnterFolder,
     required this.onGoUp,
     required this.onRootSelected,
@@ -548,11 +612,11 @@ class _LocalLibraryPage extends StatelessWidget {
     required this.onAddEntry,
   });
 
-  final LocalLibraryService service;
+  /// Null until the space opens; every action below needs it.
+  final LocalLibrary? service;
   final List<FileSystemEntity> entries;
   final List<LocalBook> books;
   final String? message;
-  final String? currentPath;
   final Future<void> Function(String path) onEnterFolder;
   final Future<void> Function() onGoUp;
   final Future<void> Function(String path) onRootSelected;
@@ -562,7 +626,8 @@ class _LocalLibraryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final root = service.root;
+    final root = service?.root;
+    final current = service?.currentPath;
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -571,7 +636,10 @@ class _LocalLibraryPage extends StatelessWidget {
           Text('本地书库', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 8),
           Text(
-            root == null ? '尚未授权目录' : '当前位置：${currentPath ?? root.displayName}',
+            root == null
+                ? '尚未授权目录'
+                : '当前位置：${current ?? root.displayName}'
+                      '${root.needsRelink ? '（目录不可用，请重新选择根目录）' : ''}',
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -725,18 +793,20 @@ class _MigrationPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    // The source list grows with the space, so the page scrolls rather than
+    // clipping what does not fit.
+    return ListView(
       padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('迁移', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          const Text('选择 JSON 备份文件，先做导入预览并报告无法迁移的数据。'),
-          const SizedBox(height: 20),
-          _spaceCard(context),
-          const SizedBox(height: 20),
-          FilledButton.icon(
+      children: [
+        Text('迁移', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 8),
+        const Text('选择 JSON 备份文件，先做导入预览并报告无法迁移的数据。'),
+        const SizedBox(height: 20),
+        _spaceCard(context),
+        const SizedBox(height: 20),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
             onPressed: () async {
               final picked = await FilePicker.pickFile(
                 type: FileType.custom,
@@ -750,43 +820,43 @@ class _MigrationPage extends StatelessWidget {
             icon: const Icon(Icons.file_open),
             label: const Text('选择 Legado JSON'),
           ),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(message!, key: const ValueKey('migration-status')),
-          ],
-          if (sources.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text('已导入书源', style: Theme.of(context).textTheme.titleLarge),
-            for (final source in sources)
-              ListTile(
-                leading: const Icon(Icons.public),
-                title: Text('${source.data['bookSourceName'] ?? source.id}'),
-                subtitle: Text(
-                  '${source.data['bookSourceUrl'] ?? '未提供 URL'} · 等待 WebView2 transport',
-                ),
-              ),
-          ],
-          if (result != null) ...[
-            const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('导入预览', style: Theme.of(context).textTheme.titleLarge),
-                    Text('Book Sources：${result!.sourceCount}'),
-                    Text('书架：${result!.bookCount}'),
-                    Text('阅读进度：${result!.progressCount}'),
-                    const SizedBox(height: 12),
-                    for (final loss in result!.losses) Text('• $loss'),
-                  ],
-                ),
+        ),
+        if (message != null) ...[
+          const SizedBox(height: 16),
+          Text(message!, key: const ValueKey('migration-status')),
+        ],
+        if (sources.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text('已导入书源', style: Theme.of(context).textTheme.titleLarge),
+          for (final source in sources)
+            ListTile(
+              leading: const Icon(Icons.public),
+              title: Text('${source.data['bookSourceName'] ?? source.id}'),
+              subtitle: Text(
+                '${source.data['bookSourceUrl'] ?? '未提供 URL'} · 等待 WebView2 transport',
               ),
             ),
-          ],
         ],
-      ),
+        if (result != null) ...[
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('导入预览', style: Theme.of(context).textTheme.titleLarge),
+                  Text('Book Sources：${result!.sourceCount}'),
+                  Text('书架：${result!.bookCount}'),
+                  Text('阅读进度：${result!.progressCount}'),
+                  const SizedBox(height: 12),
+                  for (final loss in result!.losses) Text('• $loss'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

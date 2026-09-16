@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
@@ -9,16 +9,9 @@ import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/online_reader_page.dart';
-import 'package:liber/source/online_reading_store.dart';
-
-class MemoryStore extends OnlineReadingStore {
-  MemoryStore() : super(file: File('not-used'));
-  Map<String, dynamic>? value;
-  @override
-  Future<void> save(Map<String, dynamic> value) async {
-    this.value = value;
-  }
-}
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 /// The reader only needs chapter text. Driving the real rule adapter here would
 /// load the native library into a widget test, where the binding cannot settle
@@ -26,7 +19,9 @@ class MemoryStore extends OnlineReadingStore {
 /// `html_rule_adapter_test.dart` and in the HTML pipeline test.
 class ScriptedPipeline extends HtmlSourcePipeline {
   ScriptedPipeline({this.gate})
-    : super(const {'bookSourceUrl': 'https://example.test'}, _UnusedTransport());
+    : super(const {
+        'bookSourceUrl': 'https://example.test',
+      }, _UnusedTransport());
 
   /// Holds the second chapter response so the loading header can be observed.
   final Completer<void>? gate;
@@ -36,10 +31,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
     if (gate != null && calls++ > 0) await gate!.future;
     return HtmlChapterBody(
-      List.generate(
-        60,
-        (i) => '${chapter.url} 第$i段 中文内容。',
-      ).join('\n'),
+      List.generate(60, (i) => '${chapter.url} 第$i段 中文内容。').join('\n'),
       1,
     );
   }
@@ -55,15 +47,46 @@ class _UnusedTransport implements BookSourceTransport {
 }
 
 void main() {
+  late SpaceStore store;
+  late ShelfService shelf;
+  late String bookId;
+
+  const sourceUrl = 'https://example.test';
+  const bookUrl = '$sourceUrl/book';
+
+  setUp(() async {
+    store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    shelf = ShelfService(store);
+    bookId = await shelf.ensureBook(const {
+      'bookSourceUrl': sourceUrl,
+    }, HtmlBook(url: Uri.parse(bookUrl), title: '书'));
+  });
+
+  tearDown(() => store.close());
+
+  Future<void> addChapters(List<(String, String)> chapters) =>
+      store.putChapters(bookId, [
+        for (var index = 0; index < chapters.length; index++)
+          BookChapter(
+            bookId: bookId,
+            chapterKey: chapters[index].$2,
+            name: chapters[index].$1,
+            url: chapters[index].$2,
+            chapterIndex: index,
+          ),
+      ]);
+
   testWidgets(
     'cached shelf resume waits for route construction before opening reader',
     (tester) async {
-      final source = <String, dynamic>{
-        'bookSourceUrl': 'https://example.test',
+      const source = {
+        'bookSourceUrl': sourceUrl,
         'ruleContent': {'content': '@CSS:.con p@text'},
       };
       final pipeline = ScriptedPipeline();
-      final store = MemoryStore();
+      await addChapters([('第一章', '$sourceUrl/1')]);
+      final entry = (await shelf.find(sourceUrl, bookUrl))!;
+
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(
@@ -74,19 +97,8 @@ void main() {
                     source: source,
                     keyword: '',
                     pipeline: pipeline,
-                    store: store,
-                    resume: {
-                      'source': source,
-                      'book': {
-                        'url': 'https://example.test/book',
-                        'title': '书',
-                      },
-                      'chapterUrl': 'https://example.test/1',
-                      'textOffset': 0,
-                      'chapters': [
-                        {'name': '第一章', 'url': 'https://example.test/1'},
-                      ],
-                    },
+                    service: shelf,
+                    resume: entry,
                   ),
                 ),
               ),
@@ -101,24 +113,22 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
   testWidgets(
     'reader saves visible paragraph, restores it, and switches chapters',
     (tester) async {
-      final store = MemoryStore();
       final pipeline = ScriptedPipeline();
       final chapters = [
-        SourceChapter('第一章', Uri.parse('https://example.test/1')),
-        SourceChapter('第二章', Uri.parse('https://example.test/2')),
+        SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+        SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
       ];
       Widget page(int index, int offset) => MaterialApp(
         home: OnlineReaderPage(
           pipeline: pipeline,
-          book: HtmlBook(
-            url: Uri.parse('https://example.test/book'),
-            title: '书',
-          ),
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
           chapters: chapters,
-          store: store,
+          service: shelf,
           chapterIndex: index,
           textOffset: offset,
         ),
@@ -130,41 +140,43 @@ void main() {
         const Offset(0, -800),
       );
       await tester.pumpAndSettle();
-      final saved = store.value!['textOffset'] as int;
+      final saved = (await store.progressOf(bookId))!.textOffset;
       expect(saved, greaterThan(0));
+
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(page(0, saved));
       await tester.pumpAndSettle();
-      expect(store.value!['textOffset'], saved);
+      expect((await store.progressOf(bookId))!.textOffset, saved);
+
       await tester.tap(find.text('下一章'));
       await tester.pumpAndSettle();
-      expect(store.value!['chapterUrl'], 'https://example.test/2');
-      expect(store.value!['textOffset'], 0);
+      expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/2');
+      expect((await store.progressOf(bookId))!.textOffset, 0);
+      expect((await store.progressOf(bookId))!.chapterIndex, 1);
+
       await tester.tap(find.text('上一章'));
       await tester.pumpAndSettle();
-      expect(store.value!['chapterUrl'], 'https://example.test/1');
+      expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/1');
       expect(tester.takeException(), isNull);
     },
   );
+
   testWidgets('reader blanks the chapter name while a chapter loads', (
     tester,
   ) async {
-    final store = MemoryStore();
     final pipeline = ScriptedPipeline(gate: Completer<void>());
     final chapters = [
-      SourceChapter('第一章', Uri.parse('https://example.test/1')),
-      SourceChapter('第二章', Uri.parse('https://example.test/2')),
+      SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+      SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
     ];
     await tester.pumpWidget(
       MaterialApp(
         home: OnlineReaderPage(
           pipeline: pipeline,
-          book: HtmlBook(
-            url: Uri.parse('https://example.test/book'),
-            title: '书',
-          ),
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
           chapters: chapters,
-          store: store,
+          service: shelf,
         ),
       ),
     );
@@ -179,7 +191,7 @@ void main() {
     pipeline.gate!.complete();
     await tester.pumpAndSettle();
     expect(find.text('第二章'), findsOneWidget);
-    expect(store.value!['chapterUrl'], 'https://example.test/2');
+    expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/2');
     expect(tester.takeException(), isNull);
   });
 }

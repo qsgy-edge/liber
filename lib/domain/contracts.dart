@@ -99,35 +99,9 @@ class BookSourceRunState {
   bool get isComplete => stage == BookSourceStage.completed;
 }
 
-class LocalRoot {
-  const LocalRoot({
-    required this.id,
-    required this.displayName,
-    this.needsRelink = false,
-  });
-  final String id;
-  final String displayName;
-  final bool needsRelink;
-
-  LocalRoot copyWith({String? displayName, bool? needsRelink}) => LocalRoot(
-    id: id,
-    displayName: displayName ?? this.displayName,
-    needsRelink: needsRelink ?? this.needsRelink,
-  );
-
-  Map<String, Object> toJson() => {
-    'id': id,
-    'displayName': displayName,
-    'needsRelink': needsRelink,
-  };
-
-  factory LocalRoot.fromJson(Map<String, dynamic> json) => LocalRoot(
-    id: json['id'] as String,
-    displayName: json['displayName'] as String,
-    needsRelink: json['needsRelink'] as bool? ?? false,
-  );
-}
-
+/// A local book as the pages read it: the `books` row of kind `local` plus the
+/// position, with the path resolved from its root. The roots themselves are the
+/// `local_roots` rows ([LocalRoot] in `store/database.dart`).
 class LocalBook {
   const LocalBook({
     required this.id,
@@ -137,7 +111,6 @@ class LocalBook {
     required this.textOffset,
     this.relativePath,
     this.format = 'txt',
-    this.updatedAt,
   });
 
   final String id;
@@ -147,9 +120,8 @@ class LocalBook {
   final int textOffset;
   final String? relativePath;
   final String format;
-  final DateTime? updatedAt;
 
-  LocalBook copyWith({int? textOffset, DateTime? updatedAt}) => LocalBook(
+  LocalBook copyWith({int? textOffset}) => LocalBook(
     id: id,
     rootId: rootId,
     path: path,
@@ -157,29 +129,6 @@ class LocalBook {
     textOffset: textOffset ?? this.textOffset,
     relativePath: relativePath,
     format: format,
-    updatedAt: updatedAt ?? this.updatedAt,
-  );
-
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'rootId': rootId,
-    'path': path,
-    'title': title,
-    'textOffset': textOffset,
-    'relativePath': relativePath,
-    'format': format,
-    'updatedAt': updatedAt?.toIso8601String(),
-  };
-
-  factory LocalBook.fromJson(Map<String, dynamic> json) => LocalBook(
-    id: json['id'] as String,
-    rootId: json['rootId'] as String,
-    path: json['path'] as String,
-    title: json['title'] as String,
-    textOffset: (json['textOffset'] as num?)?.toInt() ?? 0,
-    relativePath: json['relativePath'] as String?,
-    format: json['format'] as String? ?? 'txt',
-    updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
   );
 }
 

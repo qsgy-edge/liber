@@ -2,30 +2,36 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'html_source_browser.dart';
+import '../store/shelf.dart';
 import 'book_source_service.dart';
+import 'html_source_browser.dart';
 import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
-import 'online_reading_store.dart';
 
 /// Inline online section of the existing bookshelf; the parent owns scrolling.
+///
+/// The list comes from the space's store: a book is on the shelf because
+/// `books.shelved` says so, and removing one keeps its chapters and its
+/// position.
 class OnlineBookshelf extends StatefulWidget {
   const OnlineBookshelf({
     super.key,
+    required this.service,
     this.revision = 0,
-    this.store,
     this.transport,
   });
+  final ShelfService service;
   final BookSourceTransport? transport;
+
+  /// Bumped by the parent when something outside this widget changed the shelf.
   final int revision;
-  final OnlineReadingStore? store;
+
   @override
   State<OnlineBookshelf> createState() => _OnlineBookshelfState();
 }
 
 class _OnlineBookshelfState extends State<OnlineBookshelf> {
-  late final store = widget.store ?? OnlineReadingStore();
-  List<Map<String, dynamic>> books = [];
+  List<ShelfEntry> books = const <ShelfEntry>[];
   bool loading = true;
   String? busyId, error;
 
@@ -43,7 +49,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
 
   Future<void> reload() async {
     try {
-      final saved = await store.loadBooks();
+      final saved = await widget.service.onlineShelf();
       if (mounted) {
         setState(() {
           books = saved;
@@ -61,46 +67,40 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     }
   }
 
-  Future<void> open(Map<String, dynamic> entry) async {
+  Future<void> open(ShelfEntry entry) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => HtmlSourceBrowser(
-          source: Map<String, dynamic>.from(entry['source'] as Map),
+          source: entry.sourceJson,
           keyword: '',
           resume: entry,
-          store: store,
+          service: widget.service,
           pipeline: widget.transport == null
               ? null
-              : HtmlSourcePipeline(
-                  Map<String, dynamic>.from(entry['source'] as Map),
-                  widget.transport!,
-                ),
+              : HtmlSourcePipeline(entry.sourceJson, widget.transport!),
         ),
       ),
     );
     if (mounted) await reload();
   }
 
-  Future<void> action(String action, Map<String, dynamic> entry) async {
-    final id = OnlineReadingStore.recordKey(entry);
+  Future<void> action(String action, ShelfEntry entry) async {
     setState(() {
-      busyId = id;
+      busyId = entry.id;
       error = null;
     });
     try {
       if (action == 'remove') {
-        await store.removeBook(entry);
+        await widget.service.remove(entry.id);
       } else {
-        final source = Map<String, dynamic>.from(entry['source'] as Map);
+        final source = entry.sourceJson;
         final pipeline = HtmlSourcePipeline(
           source,
           widget.transport ?? HttpSourceTransport(),
         );
         try {
-          final (book, chapters) = await pipeline.details(
-            HtmlBook.fromJson(Map<String, dynamic>.from(entry['book'] as Map)),
-          );
-          await store.updateCatalog(source, book, chapters);
+          final (book, chapters) = await pipeline.details(entry.htmlBook);
+          await widget.service.updateCatalog(entry.sourceRef, book, chapters);
         } finally {
           pipeline.cancel();
         }
@@ -133,16 +133,14 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         ),
       for (final entry in books)
         ListTile(
-          title: Text('${(entry['book'] as Map)['title']}'),
+          title: Text(entry.title),
           subtitle: Text(
-            entry['chapterUrl'] == ''
-                ? '尚未阅读'
-                : '${entry['chapterName'] ?? '继续上次章节'}',
+            entry.chapterKey.isEmpty ? '尚未阅读' : entry.chapterName ?? '继续上次章节',
           ),
           leading: const Icon(Icons.menu_book_outlined),
           enabled: busyId == null,
           onTap: () => open(entry),
-          trailing: busyId == OnlineReadingStore.recordKey(entry)
+          trailing: busyId == entry.id
               ? const SizedBox(
                   width: 20,
                   height: 20,

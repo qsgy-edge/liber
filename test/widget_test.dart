@@ -51,6 +51,11 @@ void spaceStoreTest(Directory Function() root) {
 
       expect(find.textContaining('本次未重复导入'), findsOneWidget);
       expect(find.textContaining('本次导入旧数据'), findsNothing);
+
+      // Unmounting the app is what releases the space, and the directory can
+      // only be deleted once that happened.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
     });
   });
 }
@@ -73,7 +78,19 @@ void main() {
     await _writeLegacyStores(root);
   });
 
-  tearDown(() => root.delete(recursive: true));
+  // The app lets go of the space when its page is disposed, which is
+  // asynchronous: the directory can only go once the database file is closed.
+  tearDown(() async {
+    for (var attempt = 0; attempt < 40; attempt++) {
+      try {
+        await root.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+    await root.delete(recursive: true);
+  });
 
   defaultAppTest(() => root);
   spaceStoreTest(() => root);

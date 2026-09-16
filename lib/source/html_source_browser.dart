@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../store/shelf.dart';
 import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
 import 'json_source_pipeline.dart' show SourceChapter;
 import 'online_reader_page.dart';
-import 'online_reading_store.dart';
 import 'source_http_uri.dart';
 
 class HtmlSourceBrowser extends StatefulWidget {
@@ -14,14 +14,19 @@ class HtmlSourceBrowser extends StatefulWidget {
     super.key,
     required this.source,
     required this.keyword,
+    required this.service,
     this.resume,
-    this.store,
     this.pipeline,
   });
   final Map<String, dynamic> source;
   final String keyword;
-  final Map<String, dynamic>? resume;
-  final OnlineReadingStore? store;
+
+  /// The space's shelf: membership, the TOC and the position all live there.
+  final ShelfService service;
+
+  /// The shelf book this browser was opened from, when it was.
+  final ShelfEntry? resume;
+
   final HtmlSourcePipeline? pipeline;
   @override
   State<HtmlSourceBrowser> createState() => _HtmlSourceBrowserState();
@@ -31,7 +36,6 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   late final pipeline =
       widget.pipeline ??
       HtmlSourcePipeline(widget.source, HttpSourceTransport());
-  late final store = widget.store ?? OnlineReadingStore();
   bool inShelf = false;
   List<HtmlBook> hits = [];
   HtmlBook? selected;
@@ -39,6 +43,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   bool busy = true;
   String status = '正在搜索';
   String? error;
+
+  String get sourceUrl => '${widget.source['bookSourceUrl'] ?? ''}';
 
   @override
   void initState() {
@@ -50,35 +56,31 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
 
   Future<void> start() async {
     try {
-      if (widget.resume case final saved?) {
-        final hit = HtmlBook.fromJson(
-          Map<String, dynamic>.from(saved['book'] as Map),
-        );
-        final cached = saved['chapters'];
-        if (cached is List && cached.isNotEmpty) {
+      if (widget.resume case final entry?) {
+        final hit = entry.htmlBook;
+        if (entry.chapters.isNotEmpty) {
           setState(() {
             selected = hit;
-            inShelf = saved['shelved'] == true;
-            chapters = cached
-                .map(
-                  (c) => SourceChapter(
-                    c['name'] as String,
-                    SourceHttpUri.parse(c['url'] as String),
-                  ),
-                )
-                .toList();
+            inShelf = entry.shelved;
+            chapters = [
+              for (final chapter in entry.chapters)
+                SourceChapter(
+                  chapter.name,
+                  SourceHttpUri.parse(chapter.url ?? chapter.chapterKey),
+                ),
+            ];
             busy = false;
           });
         } else {
           await details(hit);
         }
         if (!mounted || error != null) return;
-        final savedUrl = saved['chapterUrl'] as String;
+        final savedUrl = entry.chapterKey;
         final index = savedUrl.isEmpty
             ? 0
             : chapters.indexWhere((c) => '${c.url}' == savedUrl);
         if (index < 0) throw StateError('原章节已不在目录中，进度仍保留，请选择章节');
-        await read(index, saved['textOffset'] as int);
+        await read(index, entry.textOffset);
       } else {
         final output = await pipeline.search(widget.keyword);
         if (mounted) {
@@ -107,14 +109,14 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     });
     try {
       final (book, items) = await pipeline.details(hit);
-      final existing = await store.find(widget.source, '${book.url}');
+      final existing = await widget.service.find(sourceUrl, '${book.url}');
       if (existing != null) {
-        await store.updateCatalog(widget.source, book, items);
+        await widget.service.updateCatalog(sourceUrl, book, items);
       }
       if (mounted) {
         setState(() {
           selected = book;
-          inShelf = existing?['shelved'] == true;
+          inShelf = existing?.shelved == true;
           chapters = items;
           busy = false;
         });
@@ -134,7 +136,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     List<SourceChapter> items = const [],
   ]) async {
     try {
-      await store.addBook(widget.source, book, items);
+      await widget.service.add(widget.source, book, items);
       if (!mounted) return;
       setState(() {
         if (selected?.url == book.url) inShelf = true;
@@ -148,13 +150,21 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   }
 
   Future<void> read(int index, [int offset = 0]) async {
+    final book = selected!;
+    // Reading a book nobody added still tracks a position, and a position
+    // belongs to a book row; the row stays off the shelf.
+    final bookId =
+        (await widget.service.find(sourceUrl, '${book.url}'))?.id ??
+        await widget.service.ensureBook(widget.source, book);
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => OnlineReaderPage(
           pipeline: pipeline,
-          book: selected!,
+          book: book,
+          bookId: bookId,
           chapters: chapters,
-          store: store,
+          service: widget.service,
           chapterIndex: index,
           textOffset: offset,
         ),

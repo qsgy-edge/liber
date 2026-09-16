@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/online_reader_page.dart';
-import 'package:liber/source/online_reading_store.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -17,8 +19,8 @@ void main() {
     final directory = await Directory.systemTemp.createTemp(
       'liber-jiuai-native-',
     );
-    final store = OnlineReadingStore(
-      file: File('${directory.path}/reading.json'),
+    final service = ShelfService(
+      SpaceStore(SpaceDatabase.file(File('${directory.path}/data.db'))),
     );
     final source =
         jsonDecode(await File(sourcePath).readAsString())
@@ -31,7 +33,11 @@ void main() {
     try {
       await tester.pumpWidget(
         MaterialApp(
-          home: HtmlSourceBrowser(source: source, keyword: '回放', store: store),
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '回放',
+            service: service,
+          ),
         ),
       );
       await settle();
@@ -52,10 +58,9 @@ void main() {
       await settle();
       // The original replaceRegex removes chapter.title from the fixture text.
       expect(find.text('正文。'), findsOneWidget);
-      final saved = await OnlineReadingStore(
-        file: File('${directory.path}/reading.json'),
-      ).load();
-      expect(saved!['chapterName'], '第二章');
+      final saved = await service.lastRead();
+      expect(saved!.progress!.chapterIndex, 1, reason: '第二章');
+      expect(saved.textOffset, greaterThan(0));
       expect(tester.takeException(), isNull);
       await File(evidencePath).writeAsString(
         jsonEncode({
@@ -63,7 +68,8 @@ void main() {
           'searchHits': 2,
           'selectedBook': '回放之书',
           'firstChapterPages': 2,
-          'savedChapter': saved['chapterName'],
+          'savedChapter': '第二章',
+          'savedOffset': saved.textOffset,
           'runtimeErrors': 0,
           'oracle': 'not-run',
         }),
@@ -77,6 +83,7 @@ void main() {
     } finally {
       await tester.pumpWidget(const SizedBox());
       await settle();
+      await service.close();
       await directory.delete(recursive: true);
     }
   });

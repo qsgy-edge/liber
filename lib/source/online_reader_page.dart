@@ -2,24 +2,28 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../store/shelf.dart';
 import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart' show SourceChapter;
-import 'online_reading_store.dart';
 
 class OnlineReaderPage extends StatefulWidget {
   const OnlineReaderPage({
     super.key,
     required this.pipeline,
     required this.book,
+    required this.bookId,
     required this.chapters,
-    required this.store,
+    required this.service,
     this.chapterIndex = 0,
     this.textOffset = 0,
   });
   final HtmlSourcePipeline pipeline;
   final HtmlBook book;
+
+  /// The space's book row this reader reports progress for.
+  final String bookId;
   final List<SourceChapter> chapters;
-  final OnlineReadingStore store;
+  final ShelfService service;
   final int chapterIndex, textOffset;
   @override
   State<OnlineReaderPage> createState() => _OnlineReaderPageState();
@@ -43,18 +47,15 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     unawaited(load(index, widget.textOffset));
   }
 
-  Map<String, dynamic> record() => {
-    'source': widget.pipeline.source,
-    'book': widget.book.toJson(),
-    'chapterUrl': '${widget.chapters[index].url}',
-    'chapterName': widget.chapters[index].name,
-    'textOffset': offset,
-  };
-
   Future<void> save() async {
     try {
       if (index < 0 || index >= widget.chapters.length) return;
-      await widget.store.save(record());
+      await widget.service.saveProgress(
+        widget.bookId,
+        chapterKey: '${widget.chapters[index].url}',
+        chapterIndex: index,
+        textOffset: offset,
+      );
     } catch (e) {
       if (mounted) setState(() => error = '进度保存失败：$e');
     }

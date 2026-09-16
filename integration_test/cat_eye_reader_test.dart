@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:liber/migration/migration_service.dart';
 import 'package:liber/source/source_trial_page.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +15,14 @@ void main() {
   testWidgets('cat eye source trial completes four stages through UI', (
     tester,
   ) async {
+    final directory = await Directory.systemTemp.createTemp('liber-cat-eye-');
+    final service = ShelfService(
+      SpaceStore(SpaceDatabase.file(File('${directory.path}/data.db'))),
+    );
+    addTearDown(() async {
+      await service.close();
+      await directory.delete(recursive: true);
+    });
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(server.close);
     server.listen((request) async {
@@ -78,6 +88,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SourceTrialPage(
+          service: service,
           sources: [ImportedBookSource(id: 'cat-eye', data: source)],
         ),
       ),

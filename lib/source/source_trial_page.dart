@@ -4,15 +4,21 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../migration/migration_service.dart';
+import '../store/shelf.dart';
 import 'http_source_transport.dart';
 import 'html_source_browser.dart';
-import 'online_reading_store.dart';
 import 'json_source_pipeline.dart';
 
 class SourceTrialPage extends StatefulWidget {
-  const SourceTrialPage({super.key, required this.sources});
+  const SourceTrialPage({
+    super.key,
+    required this.sources,
+    required this.service,
+  });
   final List<ImportedBookSource> sources;
+
+  /// The space's shelf, which a source trial writes into once a book is read.
+  final ShelfService service;
   @override
   State<SourceTrialPage> createState() => _SourceTrialPageState();
 }
@@ -90,8 +96,11 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
     if (search is Map && !jsonRule) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) =>
-              HtmlSourceBrowser(source: source, keyword: keyword.text.trim()),
+          builder: (_) => HtmlSourceBrowser(
+            source: source,
+            keyword: keyword.text.trim(),
+            service: widget.service,
+          ),
         ),
       );
       return;
@@ -131,7 +140,7 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                   ? null
                   : () async {
                       try {
-                        final saved = await OnlineReadingStore().load();
+                        final saved = await widget.service.lastRead();
                         if (!mounted) return;
                         if (saved == null) {
                           setState(() => status = '尚无在线阅读记录');
@@ -141,11 +150,10 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                         await Navigator.of(context).push<void>(
                           MaterialPageRoute(
                             builder: (_) => HtmlSourceBrowser(
-                              source: Map<String, dynamic>.from(
-                                saved['source'] as Map,
-                              ),
+                              source: saved.sourceJson,
                               keyword: '',
                               resume: saved,
+                              service: widget.service,
                             ),
                           ),
                         );

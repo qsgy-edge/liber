@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_driver/driver_extension.dart';
-import 'package:liber/migration/migration_service.dart';
 import 'package:liber/source/source_trial_page.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 Future<void> main() async {
   enableFlutterDriverExtension();
@@ -75,9 +77,15 @@ Future<void> main() async {
     'ruleContent': {'content': r'$.content'},
   };
 
+  final directory = await Directory.systemTemp.createTemp('liber-driver-');
+  final service = ShelfService(
+    SpaceStore(SpaceDatabase.file(File('${directory.path}/data.db'))),
+  );
+
   runApp(
     MaterialApp(
       home: SourceTrialPage(
+        service: service,
         sources: [ImportedBookSource(id: 'cat-eye', data: source)],
       ),
     ),
