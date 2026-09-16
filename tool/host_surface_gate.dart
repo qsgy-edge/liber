@@ -251,7 +251,10 @@ Future<void> main(List<String> args) async {
     // Legado's exclude list (魔戒 stays 魔戒 although the table knows 指环王).
     checks['t2s'] = decoded['t2s'] == '　　“你这是什么意思？”他问道。';
     checks['t2sExcluded'] = decoded['t2sExcluded'] == '魔戒三部曲、桌球选手、雪梨歌剧院。';
-    checks['s2t'] = decoded['s2t'] == '龍應臺的小說在臺灣很受歡迎。';
+    // The character table now also carries OpenCC's variant characters, so the
+    // surname 台 keeps its Simplified form while the place 台湾 becomes 臺灣
+    // (the phrase table has that one word). See ADR 0009's revision.
+    checks['s2t'] = decoded['s2t'] == '龍應台的小說在臺灣很受歡迎。';
     checks['htmlFormat'] =
         decoded['htmlFormat'] ==
         '\u3000\u3000\u4e00\n\u3000\u3000\u4e8c\n\u3000\u3000\u4e09\n\u3000\u3000<img src="/i.png">';

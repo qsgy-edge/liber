@@ -26,7 +26,7 @@ use std::path::Path;
 use conversion_probe::{
     convert_opencc, convert_opencc_excluded, opencc, rate, to_text, Report, Table, EXCLUDE,
 };
-use liber_text::{convert_to, ConvertTarget};
+use liber_text::{ConvertTarget, Direction, convert, convert_to};
 use serde_json::{json, Value};
 
 fn main() {
@@ -67,6 +67,7 @@ fn main() {
 
     let mut reports: Vec<Report> = vec![
         Report::new("liber-reading", "t2s"),
+        Report::new("liber-s2t", "s2t"),
         Report::new("jar-fmm+exclude", "t2s"),
         Report::new("hanlp-fmm+exclude", "t2s"),
         Report::new("opencc-t2s+exclude", "t2s"),
@@ -105,6 +106,7 @@ fn main() {
                 &to_text(&source),
                 ConvertTarget::SimplifiedMainland,
             )),
+            utf16(&convert(&to_text(&source), Direction::SimplifiedToTraditional)),
             jar_t2s.convert(&source),
             hanlp_t2s.convert(&source),
             convert_opencc_excluded(&opencc_t2s, &source),

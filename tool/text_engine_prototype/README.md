@@ -151,10 +151,10 @@ conversion then measures:
 
 | | shipped reading conversion | previous implementation | OpenCC's list unedited |
 |---|---|---|---|
-| sentence-level exact | **72.8 %** | 68.8 % | 64.8 % |
-| error positions | **1.01 %** | 1.71 % | 1.92 % |
-| converted by the reference, left Traditional | **1 969** | 4 530 | 3 003 |
-| Traditional characters left per 1 000 | 0.06 | 0.36 | 0.36 |
+| sentence-level exact | **73.3 %** | 68.8 % | 64.8 % |
+| error positions (strict / excluding wording variants) | **1.00 % / 0.96 %** | 1.71 % | 1.92 % |
+| converted by the reference, left Traditional | **1 799** | 4 530 | 3 003 |
+| Traditional characters left per 1 000 | 0.03 | 0.36 | 0.36 |
 
 The remaining misses are mostly wording where the two references differ among
 themselves (資訊 → 信息 against the reference's 资讯), alignment noise on long

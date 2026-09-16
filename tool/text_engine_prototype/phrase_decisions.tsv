@@ -153,3 +153,20 @@ add	沈沒	沉没	chén word
 add	沈澱	沉淀	chén word
 add	沈重	沉重	chén word
 add	沈迷	沉迷	chén word
+add	編著	编著	zhù word: the mainland keeps 著, so this is a phrase entry rather than an exclude (which would keep 編 too)
+add	著錄	著录	zhù word
+add	著譯	著译	zhù word
+add	著稱	著称	zhù word
+add	譯著	译著	zhù word
+add	論著	论著	zhù word
+add	專著	专著	zhù word
+add	顯著	显著	zhù word
+add	遺著	遗著	zhù word
+add	牠	它	Taiwanese 牠 (an animal) is the mainland 它
+add	鳳梨	菠萝	Taiwanese 鳳梨 is the mainland 菠萝/凤梨
+add	月台	站台	Taiwanese 月台 is the mainland 站台
+add	橘色	橙色	Taiwanese 橘色 is the mainland 橙色
+add	砲	炮	variant character: the mainland norm is 炮
+add	硏	研	variant character: the mainland norm is 研
+add	』	’	Taiwanese inner closing quote
+add	鳳梨酥	凤梨酥	the pastry keeps its name in the mainland, so it overrides the 鳳梨 → 菠萝 entry

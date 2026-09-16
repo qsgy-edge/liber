@@ -69,17 +69,20 @@ instead, and the numbers say the Taiwan target is the good one:
 
 | candidate | sentence-level exact against the `zh-tw` reference |
 |---|---|
-| `liber_taiwan` (character table + `tw.txt`) | **67.6 %** |
+| `liber_taiwan` (character table + `tw.txt`) | **67.8 %** |
 | OpenCC's `s2twp` | 61.8 % |
-| `liber_hongkong` (character table + `hk.txt`) | 53.9 % |
+| `liber_hongkong` (character table + `hk.txt`) | 54.0 % |
 | `liber_generic` (character table only) | 53.8 % |
 | the frozen reader | 53.7 % |
 | OpenCC's `s2t` | 50.7 % |
 
-On OpenCC's own cases the character table is the weak link: `opencc-s2t` scores
+On OpenCC's own cases the character table was the weak link: `opencc-s2t` scored
 49.4 % against `liber_generic`'s 34.3 %, because HanLP's `s2t` table lacks the
-variant characters OpenCC's `STCharacters` carries. Merging the two, or adopting
-OpenCC's for this direction, is the next thing to try.
+variant characters OpenCC's carries. `st-characters.txt` (4 012 entries) and
+`st-phrases.txt` (49 238) are OpenCC's `STCharacters`/`STPhrases`, merged *under*
+HanLP's table — HanLP's character choices win where they disagree, OpenCC's fill
+the gaps — and that closes it: `liber_generic` 56.0 % (above `opencc-s2t`'s
+49.4 %), `liber_taiwan` 51.6 % with the fewest misses (114 against OpenCC's 652).
 
 ## Licence and provenance
 

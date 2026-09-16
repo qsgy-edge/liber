@@ -436,11 +436,13 @@ fn conversion_is_available_where_indexing_is() {
         ),
         "　　苏贞昌与韩国瑜在台上握手。",
     );
+    // Merged with OpenCC's tables, 台湾 becomes 臺灣 as a word while the
+    // surname 台 stays 台 — 龍應台 is how the author writes it.
     assert_eq!(
         convert(
             "龙应台的小说在台湾很受欢迎。",
             Direction::SimplifiedToTraditional
         ),
-        "龍應臺的小說在臺灣很受歡迎。",
+        "龍應台的小說在臺灣很受歡迎。",
     );
 }

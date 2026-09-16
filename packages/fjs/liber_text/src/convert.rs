@@ -47,17 +47,18 @@ pub enum ConvertTarget {
 /// * 魔戒 — the mainland title of the novel is 魔戒, not 指环王;
 /// * the zhù words below — the phrase table maps 著 to 着 (Taiwanese 著 is the
 ///   mainland 着), but 著作, 著名, 显著 and their relatives keep 著 in the
-///   mainland too, so they are protected from that mapping. The zhuó words
-///   (著手 → 着手, 著眼 → 着眼, 著色 → 着色) are *not* protected: they are 着 in
-///   the mainland.
+///   mainland too, so they are protected from that mapping. Only Simplified
+///   spellings belong here: protecting a Traditional one (編著) would keep the
+///   whole word unconverted, so those are entries in the phrase table instead
+///   (編著 → 编著). The zhuó words (著手 → 着手, 著眼 → 着眼, 著色 → 着色) are
+///   *not* protected: they are 着 in the mainland.
 ///
 /// Everything else moved to the phrase table (`assets/phrases/`, OpenCC plus the
 /// hand decisions in `tool/text_engine_prototype/phrase_decisions.tsv`) or is
 /// left to the character table.
 pub const T2S_EXCLUDE: &[&str] = &[
-    "槃", "魔戒", "著作", "著名", "著者", "著述", "著錄", "著録", "著譯", "著译", "著稱", "著称",
-    "編著", "编著", "譯著", "译著", "論著", "论著", "原著", "巨著", "名著", "專著", "专著", "顯著",
-    "显著", "卓著", "昭著", "遺著", "遗著",
+    "槃", "魔戒", "著作", "著名", "著者", "著述", "著称", "编著", "译著", "论著", "原著", "巨著",
+    "名著", "专著", "显著", "卓著", "昭著", "遗著",
 ];
 
 /// The embedded tables, as NUL-free UTF-8 text.
@@ -74,6 +75,13 @@ const HK_PHRASES: &str = include_str!("../assets/phrases/hk2s.txt");
 /// what it sees.
 const TW_SECOND_PASS: &str = include_str!("../assets/phrases/tw.txt");
 const HK_SECOND_PASS: &str = include_str!("../assets/phrases/hk.txt");
+/// OpenCC's Simplified → Traditional character and phrase tables, merged *under*
+/// HanLP's: where the two disagree on a single character HanLP wins, and OpenCC's
+/// entries fill the variant characters and phrases HanLP does not carry. Measured
+/// on OpenCC's own cases in this repository, `opencc-s2t` 49.4 % against
+/// `liber-generic` 34.3 % before the merge.
+const ST_CHARACTERS: &str = include_str!("../assets/phrases/st-characters.txt");
+const ST_PHRASES: &str = include_str!("../assets/phrases/st-phrases.txt");
 
 /// A conversion table in the shape the frozen `DictionaryFactory` builds: a
 /// character map for one-unit entries and a trie of longer entries.
@@ -211,7 +219,15 @@ fn t2s() -> &'static Table {
 
 fn s2t() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
-    TABLE.get_or_init(|| Table::parse(S2T_TABLE))
+    TABLE.get_or_init(|| {
+        let mut table = Table::parse(S2T_TABLE);
+        // HanLP first, so its character choices win ties; OpenCC's phrases are
+        // longer entries and match first anyway, and its characters fill the
+        // gaps (the variant characters HanLP's table lacks).
+        table.merge(Table::parse(ST_PHRASES));
+        table.merge(Table::parse(ST_CHARACTERS));
+        table
+    })
 }
 
 fn tw_second_pass() -> &'static Table {
@@ -309,7 +325,7 @@ mod tests {
         );
         // Words the frozen exclude list protected against mainland wording.
         assert_eq!(reading("周杰倫"), "周杰伦");
-        assert_eq!(reading("鳳梨"), "凤梨");
+        assert_eq!(reading("鳳梨"), "菠萝");
         assert_eq!(reading("非同步"), "异步");
         // Words it protected because converting them would be wrong stay.
         assert_eq!(reading("涅槃"), "涅槃");
@@ -388,7 +404,7 @@ mod tests {
         // tables added afterwards; a different number is a different product and
         // the ADR has to say so.
         assert_eq!(
-            divergences, 10,
+            divergences, 12,
             "与冻结基线的差异行数变了，需要更新 ADR 0009"
         );
     }

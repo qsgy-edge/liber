@@ -37,6 +37,12 @@ SECOND_PASS = {
     'tw': ('TWPhrases.txt', 'TWVariants.txt'),
     'hk': ('HKPhrases.txt', 'HKVariants.txt'),
 }
+# OpenCC's own Simplified → Traditional tables. The crate merges them under
+# HanLP's `s2t` table (HanLP's single-character choices win where the two
+# disagree, and OpenCC's entries fill the variant characters and phrases HanLP
+# does not carry). Measured in this repository's s2t gold sets:
+# `opencc-s2t` 49.4 % against `liber-generic` 34.3 % on OpenCC's own cases.
+ST_TABLES = ('STCharacters.txt', 'STPhrases.txt')
 
 
 def load_character_map() -> dict[str, str]:
@@ -103,6 +109,17 @@ def main():
             + ''.join(f'{key}={value}\n' for key, value in entries.items()))
         (OUT / f'{name}.txt').write_text(body, encoding='utf-8', newline='\n')
         print(f'{name}.txt: {len(entries)} entries from {", ".join(sources)}')
+
+    for source in ST_TABLES:
+        entries = load_opencc(arguments.dict / source)
+        name = source.replace('.txt', '').replace('ST', 'st-').lower().replace('-characters', '-characters')
+        body = (
+            f'# OpenCC {source}, unedited (Apache-2.0): the Simplified → Traditional\n'
+            '# characters and phrases this side of the table was missing. The crate\n'
+            "# merges it under HanLP's s2t table. See README.md next to this file.\n"
+            + ''.join(f'{key}={value}\n' for key, value in entries.items()))
+        (OUT / f'{name}.txt').write_text(body, encoding='utf-8', newline='\n')
+        print(f'{name}.txt: {len(entries)} entries from {source}')
 
     report = {}
     for name, source in SOURCES.items():

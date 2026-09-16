@@ -132,9 +132,11 @@ image of the same corpus (the 18 653 sentences as `zh-cn` input against their
 (`tw.txt`, `hk.txt`: OpenCC's `TWPhrases`+`TWVariants` and `HKPhrases`+`HKVariants`)
 are unedited and run as a *second pass*, because OpenCC keys them in Traditional —
 its pipeline converts characters first. On OpenCC's own cases the character table
-is the weak link (`opencc-s2t` 49.4 % against `liber_generic` 34.3 %): HanLP's
-`s2t` table lacks variant characters OpenCC's `STCharacters` carries, which is the
-next thing to try for that direction.
+was the weak link (`opencc-s2t` 49.4 % against `liber_generic` 34.3 %, because
+HanLP's `s2t` table lacks the variant characters OpenCC's carries), so the
+character side now merges OpenCC's `STCharacters`/`STPhrases` under HanLP's: the
+Taiwan target reaches 67.8 % on the Wikipedia mirror set and the generic one
+56.0 % on OpenCC's cases, above OpenCC's own `s2t`.
 
 Two consequences worth stating plainly. First, the frozen reader's `t2s` is no
 longer the reference behaviour: the character-only path (`java.t2s`, which Book

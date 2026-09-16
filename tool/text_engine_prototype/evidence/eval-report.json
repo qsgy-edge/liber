@@ -572,29 +572,29 @@
     },
     "liber-now": {
      "rows": 174,
-     "exact": 92,
-     "exact_rate": 0.5287356321839081,
+     "exact": 91,
+     "exact_rate": 0.5229885057471264,
      "short_rows": 140,
      "short_exact": 75,
      "short_exact_rate": 0.5357142857142857,
      "counts": {
-      "converted": 1303,
-      "kept": 2476,
+      "converted": 1299,
+      "kept": 2472,
       "candidate_traditional": 23,
       "reference_traditional": 121,
       "source_traditional": 1205,
       "code_units": 4104,
       "over_correct": 108,
       "missed": 27,
-      "wrong": 86,
-      "why:wording differs": 199,
-      "over_other": 113
+      "wrong": 90,
+      "why:wording differs": 207,
+      "over_other": 117
      },
-     "positions": 4312,
-     "error_positions": 226,
-     "error_rate": 0.05241187384044527,
-     "core_error_positions": 226,
-     "core_error_rate": 0.05241187384044527,
+     "positions": 4320,
+     "error_positions": 234,
+     "error_rate": 0.05416666666666667,
+     "core_error_positions": 234,
+     "core_error_rate": 0.05416666666666667,
      "wording_positions": 0,
      "candidate_traditional_per_1k": 5.604288499025341,
      "reference_traditional_per_1k": 29.483430799220272,
@@ -603,6 +603,10 @@
      "reference_residue_per_1k": 29.483430799220272,
      "top_pairs": {
       "wrong": [
+       [
+        "凤→菠",
+        8
+       ],
        [
         "机→",
         8
@@ -698,10 +702,6 @@
        [
         "脑→计算机断层",
         4
-       ],
-       [
-        "断→计算机断层",
-        4
        ]
       ],
       "missed": [
@@ -754,6 +754,10 @@
        [
         " →",
         10
+       ],
+       [
+        "梨→萝",
+        8
        ],
        [
         "藉→借",
@@ -842,10 +846,6 @@
        [
         "著→着",
         4
-       ],
-       [
-        "示→标",
-        2
        ]
       ]
      },
@@ -5405,35 +5405,35 @@
     },
     "liber-now": {
      "rows": 18658,
-     "exact": 13593,
-     "exact_rate": 0.7285346768142352,
+     "exact": 13680,
+     "exact_rate": 0.7331975560081466,
      "short_rows": 7540,
-     "short_exact": 6756,
-     "short_exact_rate": 0.8960212201591512,
+     "short_exact": 6784,
+     "short_exact_rate": 0.89973474801061,
      "counts": {
-      "kept": 739526,
-      "converted": 178484,
-      "candidate_traditional": 61,
+      "kept": 739498,
+      "converted": 178664,
+      "candidate_traditional": 32,
       "reference_traditional": 19422,
       "source_traditional": 202535,
       "code_units": 946238,
-      "wrong": 7017,
-      "why:wording differs": 7706,
-      "over_other": 689,
-      "missed": 1966,
+      "wrong": 7004,
+      "why:wording differs": 7721,
+      "over_other": 717,
+      "missed": 1799,
       "over_correct": 19411,
       "wording": 343
      },
-     "positions": 955142,
-     "error_positions": 9672,
-     "error_rate": 0.010126243008892918,
-     "core_error_positions": 9329,
-     "core_error_rate": 0.009767134101526265,
+     "positions": 955157,
+     "error_positions": 9520,
+     "error_rate": 0.009966947842082506,
+     "core_error_positions": 9177,
+     "core_error_rate": 0.009607844574242769,
      "wording_positions": 343,
-     "candidate_traditional_per_1k": 0.06446581092706063,
+     "candidate_traditional_per_1k": 0.03381813032239246,
      "reference_traditional_per_1k": 20.525491472547078,
      "source_traditional_per_1k": 214.04234452642993,
-     "candidate_residue_per_1k": 0.06446581092706063,
+     "candidate_residue_per_1k": 0.03381813032239246,
      "reference_residue_per_1k": 20.525491472547078,
      "top_pairs": {
       "wrong": [
@@ -5548,10 +5548,6 @@
         51
        ],
        [
-        "』→’",
-        45
-       ],
-       [
         "〈→《",
         45
        ],
@@ -5568,10 +5564,6 @@
         41
        ],
        [
-        "月→站",
-        31
-       ],
-       [
         "料→据",
         30
        ],
@@ -5586,22 +5578,6 @@
        [
         "模→级",
         23
-       ],
-       [
-        "牠→它",
-        21
-       ],
-       [
-        "顯→显",
-        19
-       ],
-       [
-        "砲→炮",
-        19
-       ],
-       [
-        "編→编",
-        19
        ],
        [
         "元→器",
@@ -5638,6 +5614,30 @@
        [
         "公→千",
         13
+       ],
+       [
+        "正→繁",
+        13
+       ],
+       [
+        "拚→拼",
+        12
+       ],
+       [
+        "定→议",
+        12
+       ],
+       [
+        "洲→大利亚",
+        12
+       ],
+       [
+        "新→定",
+        12
+       ],
+       [
+        "整→集",
+        11
        ]
       ],
       "over_other": [
@@ -5672,6 +5672,10 @@
        [
         "路→络",
         19
+       ],
+       [
+        "月→站",
+        18
        ],
        [
         "使→",
@@ -5735,10 +5739,6 @@
        ],
        [
         "全→万维网",
-        11
-       ],
-       [
-        "球→万维网",
         11
        ]
       ]
@@ -10332,48 +10332,40 @@
     },
     "liber-generic": {
      "rows": 318,
-     "exact": 109,
-     "exact_rate": 0.34276729559748426,
+     "exact": 178,
+     "exact_rate": 0.559748427672956,
      "short_rows": 249,
-     "short_exact": 90,
-     "short_exact_rate": 0.3614457831325301,
+     "short_exact": 143,
+     "short_exact_rate": 0.5742971887550201,
      "counts": {
-      "converted": 1815,
-      "wrong": 393,
-      "why:wording differs": 347,
-      "kept": 5487,
-      "candidate_traditional": 2571,
+      "converted": 2068,
+      "wrong": 411,
+      "why:wording differs": 365,
+      "kept": 5595,
+      "candidate_traditional": 2713,
       "reference_traditional": 2653,
       "source_traditional": 165,
-      "candidate_simplified": 83,
+      "candidate_simplified": 181,
       "reference_simplified": 244,
       "code_units": 8576,
-      "over_other": 213,
-      "why:candidate keeps Traditional": 257,
-      "missed": 668,
+      "over_other": 105,
+      "why:candidate keeps Traditional": 149,
+      "missed": 397,
       "why:reference keeps Traditional": 2
      },
-     "positions": 9182,
-     "error_positions": 1274,
-     "error_rate": 0.1387497277281638,
-     "core_error_positions": 1274,
-     "core_error_rate": 0.1387497277281638,
+     "positions": 9092,
+     "error_positions": 913,
+     "error_rate": 0.10041794984601848,
+     "core_error_positions": 913,
+     "core_error_rate": 0.10041794984601848,
      "wording_positions": 0,
-     "candidate_traditional_per_1k": 299.7901119402985,
+     "candidate_traditional_per_1k": 316.347947761194,
      "reference_traditional_per_1k": 309.3516791044776,
      "source_traditional_per_1k": 19.23973880597015,
-     "candidate_residue_per_1k": 9.678171641791044,
+     "candidate_residue_per_1k": 21.105410447761194,
      "reference_residue_per_1k": 28.45149253731343,
      "top_pairs": {
       "wrong": [
-       [
-        "乾→幹",
-        12
-       ],
-       [
-        "發→髮",
-        10
-       ],
        [
         "裡→裏",
         10
@@ -10384,10 +10376,6 @@
        ],
        [
         "別→彆",
-        8
-       ],
-       [
-        "髮→發",
         8
        ],
        [
@@ -10420,10 +10408,6 @@
        ],
        [
         "復→覆",
-        4
-       ],
-       [
-        "噹→當",
         4
        ],
        [
@@ -10465,20 +10449,28 @@
        [
         "紐約→約",
         4
+       ],
+       [
+        "羅萊納→羅",
+        4
+       ],
+       [
+        "羅萊納→來",
+        4
+       ],
+       [
+        "羅萊納→納",
+        4
+       ],
+       [
+        "羅德島→羅",
+        4
        ]
       ],
       "missed": [
        [
-        "吃→喫",
-        12
-       ],
-       [
         "着→著",
         12
-       ],
-       [
-        "周→週",
-        8
        ],
        [
         "厘→釐",
@@ -10497,20 +10489,8 @@
         6
        ],
        [
-        "卷→捲",
-        6
-       ],
-       [
         "拐→柺",
         6
-       ],
-       [
-        "面→麪",
-        4
-       ],
-       [
-        "面→麵",
-        4
        ],
        [
         "鼠→滑",
@@ -10526,10 +10506,6 @@
        ],
        [
         "茨→茲",
-        4
-       ],
-       [
-        "𫫇→噁",
         4
        ],
        [
@@ -10567,13 +10543,33 @@
        [
         "線→綫",
         4
+       ],
+       [
+        "酰→醯",
+        4
+       ],
+       [
+        "谷→穀",
+        4
+       ],
+       [
+        "存→裝記憶體模組",
+        4
+       ],
+       [
+        "皮→彼",
+        4
+       ],
+       [
+        "涌→湧",
+        2
+       ],
+       [
+        "喱→哩",
+        2
        ]
       ],
       "over_other": [
-       [
-        "干→幹",
-        18
-       ],
        [
         "台→臺",
         16
@@ -10587,28 +10583,8 @@
         12
        ],
        [
-        "厘→釐",
-        10
-       ],
-       [
-        "周→週",
-        10
-       ],
-       [
         "舍→捨",
         10
-       ],
-       [
-        "谷→穀",
-        10
-       ],
-       [
-        "里→裏",
-        8
-       ],
-       [
-        "霉→黴",
-        8
        ],
        [
         "台→檯",
@@ -10624,14 +10600,6 @@
        ],
        [
         "症→癥",
-        8
-       ],
-       [
-        "硷→礆",
-        8
-       ],
-       [
-        "托→託",
         8
        ],
        [
@@ -10668,6 +10636,26 @@
        ],
        [
         "布→佈",
+        2
+       ],
+       [
+        "腊→臘",
+        2
+       ],
+       [
+        "峰→峯",
+        2
+       ],
+       [
+        "里→裏",
+        2
+       ],
+       [
+        "卷→捲",
+        2
+       ],
+       [
+        "谷→穀",
         2
        ]
       ]
@@ -10728,92 +10716,15 @@
        }
       },
       {
-       "id": "opencc-case_014-s2hk",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2t",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2tw",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2twp",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_023-s2t",
-       "title": null,
-       "source": "经理发现后劝谕两人",
-       "reference": "經理發現後勸諭兩人",
-       "candidate": "經理髮現後勸諭兩人",
-       "counts": {
-        "converted": 6,
-        "kept": 2,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_024-s2t",
-       "title": null,
-       "source": "想到自己一紧张就口吃，我就没胃口吃饭",
-       "reference": "想到自己一緊張就口吃，我就沒胃口喫飯",
-       "candidate": "想到自己一緊張就口吃，我就沒胃口吃飯",
-       "counts": {
-        "kept": 13,
-        "converted": 4,
-        "missed": 1
-       }
-      },
-      {
        "id": "opencc-case_025-s2t",
        "title": null,
        "source": "恒指最新消息，恒生指数跌破 2 万点",
        "reference": "恒指最新消息，恒生指數跌破 2 萬點",
-       "candidate": "恆指最新消息，恆生指數跌破 2 萬點",
+       "candidate": "恒指最新消息，恆生指數跌破 2 萬點",
        "counts": {
-        "over_other": 2,
-        "why:candidate keeps Traditional": 2,
-        "kept": 13,
+        "kept": 14,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
         "converted": 3
        }
       },
@@ -10822,11 +10733,11 @@
        "title": null,
        "source": "恒生银行和恒大集团发布财报",
        "reference": "恒生銀行和恒大集團發佈財報",
-       "candidate": "恆生銀行和恆大集團發佈財報",
+       "candidate": "恆生銀行和恒大集團發佈財報",
        "counts": {
-        "over_other": 2,
-        "why:candidate keeps Traditional": 2,
-        "kept": 5,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
+        "kept": 6,
         "converted": 6
        }
       },
@@ -10851,12 +10762,12 @@
        "title": null,
        "source": "鲶鱼和鲇鱼是一种生物。",
        "reference": "鯰魚和鯰魚是一種生物。",
-       "candidate": "鮎魚和鮎魚是一種生物。",
+       "candidate": "鯰魚和鮎魚是一種生物。",
        "counts": {
-        "wrong": 2,
-        "why:wording differs": 2,
-        "converted": 3,
-        "kept": 6
+        "converted": 4,
+        "kept": 6,
+        "wrong": 1,
+        "why:wording differs": 1
        }
       },
       {
@@ -10906,101 +10817,167 @@
        }
       },
       {
-       "id": "opencc-case_055_s2t-s2t",
+       "id": "opencc-case_056_x2x-s2hkp",
        "title": null,
-       "source": "自干五 扇风 扇风耳朵 呼扇 扇火 扇火止沸 铺眉扇眼",
-       "reference": "自乾五 搧風 扇風耳朵 呼搧 搧火 扇火止沸 鋪眉搧眼",
-       "candidate": "自幹五 扇風 扇風耳朵 呼扇 扇火 扇火止沸 鋪眉扇眼",
+       "source": "舒芙蕾 梳芙厘",
+       "reference": "梳芙厘 梳芙厘",
+       "candidate": "舒芙蕾 梳芙厘",
        "counts": {
-        "kept": 19,
+        "missed": 2,
+        "kept": 5
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2hk",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小丑 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 29,
+        "kept": 35,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2t",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小丑 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 29,
+        "kept": 35,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2tw",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋梁 鼻梁 頂梁柱 結梁子 懸梁刺股 偷梁換柱 跳梁小丑 棟梁之材 餘音繞梁 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 20,
+        "kept": 35,
+        "over_other": 10,
+        "why:candidate keeps Traditional": 10
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2hk",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "kept": 6,
+        "converted": 1,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2t",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "kept": 6,
+        "converted": 1,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2tw",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "么麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "missed": 1,
+        "converted": 1,
+        "kept": 5,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_063_s2x-s2t",
+       "title": null,
+       "source": "赛后复盘 覆盘难照",
+       "reference": "賽後復盤 覆盤難照",
+       "candidate": "賽後覆盤 覆盤難照",
+       "counts": {
+        "converted": 5,
         "wrong": 1,
-        "why:wording differs": 1,
-        "missed": 4,
-        "converted": 3
+        "why:reference keeps Traditional": 1,
+        "kept": 3
        }
       },
       {
-       "id": "opencc-case_056_x2x-s2t",
+       "id": "opencc-case_063_s2x-s2tw",
        "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
+       "source": "赛后复盘 覆盘难照",
+       "reference": "賽後復盤 覆盤難照",
+       "candidate": "賽後覆盤 覆盤難照",
        "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
-       }
-      },
-      {
-       "id": "opencc-case_056_x2x-s2tw",
-       "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
-       "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
+        "converted": 5,
+        "wrong": 1,
+        "why:reference keeps Traditional": 1,
+        "kept": 3
        }
       }
      ]
     },
     "liber-taiwan": {
      "rows": 318,
-     "exact": 107,
-     "exact_rate": 0.33647798742138363,
+     "exact": 164,
+     "exact_rate": 0.5157232704402516,
      "short_rows": 249,
-     "short_exact": 93,
-     "short_exact_rate": 0.37349397590361444,
+     "short_exact": 139,
+     "short_exact_rate": 0.5582329317269076,
      "counts": {
-      "converted": 2155,
-      "kept": 5275,
-      "candidate_traditional": 2527,
+      "converted": 2400,
+      "kept": 5381,
+      "candidate_traditional": 2660,
       "reference_traditional": 2653,
       "source_traditional": 165,
-      "candidate_simplified": 149,
+      "candidate_simplified": 246,
       "reference_simplified": 244,
       "code_units": 8591,
-      "wrong": 342,
-      "why:wording differs": 465,
-      "over_other": 415,
-      "why:candidate keeps Traditional": 268,
-      "missed": 379,
+      "wrong": 362,
+      "why:wording differs": 488,
+      "over_other": 309,
+      "why:candidate keeps Traditional": 159,
+      "missed": 114,
       "why:reference keeps Traditional": 24,
       "over_correct": 10,
       "wording": 13
      },
-     "positions": 9346,
-     "error_positions": 1136,
-     "error_rate": 0.12154932591482988,
-     "core_error_positions": 1123,
-     "core_error_rate": 0.12015835651615664,
+     "positions": 9260,
+     "error_positions": 785,
+     "error_rate": 0.0847732181425486,
+     "core_error_positions": 772,
+     "core_error_rate": 0.08336933045356372,
      "wording_positions": 13,
-     "candidate_traditional_per_1k": 294.1450355022698,
+     "candidate_traditional_per_1k": 309.626353160284,
      "reference_traditional_per_1k": 308.81154696775695,
      "source_traditional_per_1k": 19.206145966709347,
-     "candidate_residue_per_1k": 17.343731812361774,
+     "candidate_residue_per_1k": 28.634617623093934,
      "reference_residue_per_1k": 28.40181585380049,
      "top_pairs": {
       "wrong": [
-       [
-        "乾→幹",
-        12
-       ],
        [
         "裏→裡",
         12
        ],
        [
-        "發→髮",
-        10
-       ],
-       [
         "別→彆",
-        8
-       ],
-       [
-        "髮→發",
         8
        ],
        [
@@ -11082,16 +11059,24 @@
        [
         "後→斷劑後",
         4
+       ],
+       [
+        "細→血球與紅血球計數",
+        4
+       ],
+       [
+        "與→血球與紅血球計數",
+        4
+       ],
+       [
+        "紅→血球與紅血球計數",
+        4
        ]
       ],
       "missed": [
        [
         "吃→喫",
         12
-       ],
-       [
-        "周→週",
-        8
        ],
        [
         "厘→釐",
@@ -11110,27 +11095,11 @@
         6
        ],
        [
-        "卷→捲",
-        6
-       ],
-       [
         "拐→柺",
         6
        ],
        [
         "群→羣",
-        4
-       ],
-       [
-        "面→麪",
-        4
-       ],
-       [
-        "面→麵",
-        4
-       ],
-       [
-        "𫫇→噁",
         4
        ],
        [
@@ -11154,27 +11123,11 @@
         2
        ],
        [
-        "扇→搧",
-        2
-       ],
-       [
         "舒→梳",
         2
        ],
        [
         "蕾→厘",
-        2
-       ],
-       [
-        "二→戴",
-        2
-       ],
-       [
-        "𫫇→奧",
-        2
-       ],
-       [
-        "英→辛",
         2
        ],
        [
@@ -11184,13 +11137,45 @@
        [
         " →資",
         2
+       ],
+       [
+        " →調",
+        2
+       ],
+       [
+        "制→ ",
+        2
+       ],
+       [
+        "解→數",
+        2
+       ],
+       [
+        "器→機",
+        2
+       ],
+       [
+        "科→高沙可",
+        2
+       ],
+       [
+        "列→萊茲",
+        2
+       ],
+       [
+        "拐→枴",
+        2
+       ],
+       [
+        "里→馬利蘭",
+        2
+       ],
+       [
+        "法→凡",
+        2
        ]
       ],
       "over_other": [
-       [
-        "干→幹",
-        18
-       ],
        [
         "抬→擡",
         16
@@ -11204,31 +11189,11 @@
         12
        ],
        [
-        "厘→釐",
-        10
-       ],
-       [
-        "周→週",
-        10
-       ],
-       [
         "舍→捨",
         10
        ],
        [
-        "谷→穀",
-        10
-       ],
-       [
         "乙→B",
-        8
-       ],
-       [
-        "里→裡",
-        8
-       ],
-       [
-        "霉→黴",
         8
        ],
        [
@@ -11256,15 +11221,7 @@
         8
        ],
        [
-        "硷→礆",
-        8
-       ],
-       [
         "概→機",
-        8
-       ],
-       [
-        "托→託",
         8
        ],
        [
@@ -11285,6 +11242,38 @@
        ],
        [
         "持→永",
+        6
+       ],
+       [
+        "久→續",
+        6
+       ],
+       [
+        "坦→他",
+        6
+       ],
+       [
+        "托→多福",
+        6
+       ],
+       [
+        "弗→多福",
+        6
+       ],
+       [
+        "梅→麥",
+        6
+       ],
+       [
+        "斯→史柯西",
+        6
+       ],
+       [
+        "科→史柯西",
+        6
+       ],
+       [
+        "塞→史柯西",
         6
        ]
       ]
@@ -11330,58 +11319,6 @@
        }
       },
       {
-       "id": "opencc-case_014-s2hk",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2t",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2tw",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2twp",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
        "id": "opencc-case_019-s2t",
        "title": null,
        "source": "请成相，世之殃，愚暗愚暗堕贤良。人主无贤，如瞽无相何伥伥！请布基，慎圣人，愚而自专事不治。主忌苟胜，群臣莫谏必逢灾。",
@@ -11391,19 +11328,6 @@
         "converted": 16,
         "kept": 41,
         "missed": 1
-       }
-      },
-      {
-       "id": "opencc-case_023-s2t",
-       "title": null,
-       "source": "经理发现后劝谕两人",
-       "reference": "經理發現後勸諭兩人",
-       "candidate": "經理髮現後勸諭兩人",
-       "counts": {
-        "converted": 6,
-        "kept": 2,
-        "wrong": 1,
-        "why:wording differs": 1
        }
       },
       {
@@ -11423,11 +11347,11 @@
        "title": null,
        "source": "恒指最新消息，恒生指数跌破 2 万点",
        "reference": "恒指最新消息，恒生指數跌破 2 萬點",
-       "candidate": "恆指最新訊息，恆生指數跌破 2 萬點",
+       "candidate": "恒指最新訊息，恆生指數跌破 2 萬點",
        "counts": {
-        "over_other": 3,
-        "why:candidate keeps Traditional": 3,
-        "kept": 12,
+        "kept": 13,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2,
         "converted": 3
        }
       },
@@ -11436,11 +11360,11 @@
        "title": null,
        "source": "恒生银行和恒大集团发布财报",
        "reference": "恒生銀行和恒大集團發佈財報",
-       "candidate": "恆生銀行和恆大集團釋出財報",
+       "candidate": "恆生銀行和恒大集團釋出財報",
        "counts": {
-        "over_other": 2,
-        "why:candidate keeps Traditional": 2,
-        "kept": 5,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
+        "kept": 6,
         "converted": 4,
         "wrong": 2,
         "why:wording differs": 1,
@@ -11448,78 +11372,14 @@
        }
       },
       {
-       "id": "opencc-case_055_s2t-s2t",
-       "title": null,
-       "source": "自干五 扇风 扇风耳朵 呼扇 扇火 扇火止沸 铺眉扇眼",
-       "reference": "自乾五 搧風 扇風耳朵 呼搧 搧火 扇火止沸 鋪眉搧眼",
-       "candidate": "自幹五 扇風 扇風耳朵 呼扇 扇火 扇火止沸 鋪眉扇眼",
-       "counts": {
-        "kept": 19,
-        "wrong": 1,
-        "why:wording differs": 1,
-        "missed": 4,
-        "converted": 3
-       }
-      },
-      {
-       "id": "opencc-case_056_x2x-s2t",
-       "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
-       "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
-       }
-      },
-      {
-       "id": "opencc-case_056_x2x-s2tw",
-       "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
-       "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
-       }
-      },
-      {
-       "id": "opencc-case_056_x2x-s2twp",
-       "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
-       "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
-       }
-      },
-      {
-       "id": "opencc-case_056_x2x-s2hk",
-       "title": null,
-       "source": "舒芙蕾 梳芙厘",
-       "reference": "舒芙蕾 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
-       "counts": {
-        "kept": 6,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
-       }
-      },
-      {
        "id": "opencc-case_056_x2x-s2hkp",
        "title": null,
        "source": "舒芙蕾 梳芙厘",
        "reference": "梳芙厘 梳芙厘",
-       "candidate": "舒芙蕾 梳芙釐",
+       "candidate": "舒芙蕾 梳芙厘",
        "counts": {
         "missed": 2,
-        "kept": 4,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
+        "kept": 5
        }
       },
       {
@@ -11549,65 +11409,182 @@
         "over_other": 1,
         "why:candidate keeps Traditional": 1
        }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2tw",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋梁 鼻梁 頂梁柱 結梁子 懸梁刺股 偷梁換柱 跳梁小丑 棟梁之材 餘音繞梁 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋梁 鼻梁 頂梁柱 結梁子 懸梁刺股 偷梁換柱 跳梁小醜 棟梁之材 餘音繞梁 梁父吟 梁惠王 穀梁傳 張棟梁 蔣國梁 楊士梁",
+       "counts": {
+        "converted": 17,
+        "kept": 44,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
+        "missed": 3
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2hk",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "么麼小醜 小醜丫鬟",
+       "counts": {
+        "over_other": 3,
+        "why:wording differs": 1,
+        "converted": 1,
+        "kept": 5,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2t",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "么麼小醜 小醜丫鬟",
+       "counts": {
+        "over_other": 3,
+        "why:wording differs": 1,
+        "converted": 1,
+        "kept": 5,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2tw",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "么麼小丑 小丑丫鬟",
+       "candidate": "么麼小醜 小醜丫鬟",
+       "counts": {
+        "converted": 2,
+        "kept": 5,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_063_s2x-s2t",
+       "title": null,
+       "source": "赛后复盘 覆盘难照",
+       "reference": "賽後復盤 覆盤難照",
+       "candidate": "賽後覆盤 覆盤難照",
+       "counts": {
+        "converted": 5,
+        "wrong": 1,
+        "why:reference keeps Traditional": 1,
+        "kept": 3
+       }
+      },
+      {
+       "id": "opencc-case_063_s2x-s2tw",
+       "title": null,
+       "source": "赛后复盘 覆盘难照",
+       "reference": "賽後復盤 覆盤難照",
+       "candidate": "賽後覆盤 覆盤難照",
+       "counts": {
+        "converted": 5,
+        "wrong": 1,
+        "why:reference keeps Traditional": 1,
+        "kept": 3
+       }
+      },
+      {
+       "id": "opencc-case_065_s2x-s2t",
+       "title": null,
+       "source": "这周复习 那周开会 若干周后 周线图 这周围 那周围 这周边 那周边 这周遭 那周遭 若干周边设备",
+       "reference": "這週複習 那週開會 若干週後 週線圖 這周圍 那周圍 這周邊 那周邊 這周遭 那周遭 若干周邊設備",
+       "candidate": "這週複習 那週開會 若干週後 週線圖 這周圍 那周圍 這周邊 那周邊 這周遭 那周遭 若干周邊裝置",
+       "counts": {
+        "converted": 20,
+        "kept": 27,
+        "wrong": 2,
+        "why:wording differs": 1,
+        "why:reference keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-case_065_s2x-s2tw",
+       "title": null,
+       "source": "这周复习 那周开会 若干周后 周线图 这周围 那周围 这周边 那周边 这周遭 那周遭 若干周边设备",
+       "reference": "這週複習 那週開會 若干週後 週線圖 這周圍 那周圍 這周邊 那周邊 這周遭 那周遭 若干周邊設備",
+       "candidate": "這週複習 那週開會 若干週後 週線圖 這周圍 那周圍 這周邊 那周邊 這周遭 那周遭 若干周邊裝置",
+       "counts": {
+        "converted": 20,
+        "kept": 27,
+        "wrong": 2,
+        "why:wording differs": 1,
+        "why:reference keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-ByVoid_OpenCC_Issue950_AlgorithmConversion-s2t",
+       "title": null,
+       "source": "算法",
+       "reference": "算法",
+       "candidate": "演算法",
+       "counts": {
+        "kept": 2
+       }
+      },
+      {
+       "id": "opencc-ByVoid_OpenCC_Issue950_AlgorithmConversion-s2tw",
+       "title": null,
+       "source": "算法",
+       "reference": "算法",
+       "candidate": "演算法",
+       "counts": {
+        "kept": 2
+       }
       }
      ]
     },
     "liber-hongkong": {
      "rows": 318,
-     "exact": 106,
-     "exact_rate": 0.3333333333333333,
+     "exact": 164,
+     "exact_rate": 0.5157232704402516,
      "short_rows": 249,
-     "short_exact": 91,
-     "short_exact_rate": 0.3654618473895582,
+     "short_exact": 135,
+     "short_exact_rate": 0.5421686746987951,
      "counts": {
-      "converted": 1883,
-      "kept": 5355,
-      "candidate_traditional": 2517,
+      "converted": 2127,
+      "kept": 5457,
+      "candidate_traditional": 2656,
       "reference_traditional": 2653,
       "source_traditional": 165,
-      "candidate_simplified": 125,
+      "candidate_simplified": 217,
       "reference_simplified": 244,
       "code_units": 8521,
-      "missed": 594,
-      "wrong": 399,
-      "why:wording differs": 431,
-      "over_other": 336,
-      "why:candidate keeps Traditional": 279,
+      "missed": 332,
+      "wrong": 417,
+      "why:wording differs": 449,
+      "over_other": 234,
+      "why:candidate keeps Traditional": 177,
       "why:reference keeps Traditional": 25,
       "over_correct": 9,
       "wording": 13
      },
-     "positions": 9324,
-     "error_positions": 1329,
-     "error_rate": 0.14253539253539255,
-     "core_error_positions": 1316,
-     "core_error_rate": 0.14114114114114115,
+     "positions": 9240,
+     "error_positions": 983,
+     "error_rate": 0.10638528138528139,
+     "core_error_positions": 970,
+     "core_error_rate": 0.10497835497835498,
      "wording_positions": 13,
-     "candidate_traditional_per_1k": 295.38786527402885,
+     "candidate_traditional_per_1k": 311.70050463560614,
      "reference_traditional_per_1k": 311.3484332824786,
      "source_traditional_per_1k": 19.363924422016197,
-     "candidate_residue_per_1k": 14.669639713648634,
+     "candidate_residue_per_1k": 25.466494542894026,
      "reference_residue_per_1k": 28.63513672104213,
      "top_pairs": {
       "wrong": [
-       [
-        "乾→幹",
-        12
-       ],
-       [
-        "發→髮",
-        10
-       ],
        [
         "裡→裏",
         10
        ],
        [
         "別→彆",
-        8
-       ],
-       [
-        "髮→發",
         8
        ],
        [
@@ -11687,8 +11664,20 @@
         4
        ],
        [
-        "噹→當",
+        "設→認",
         4
+       ],
+       [
+        "綫→線",
+        4
+       ],
+       [
+        "衛→衞",
+        4
+       ],
+       [
+        "鯰→鮎",
+        2
        ]
       ],
       "missed": [
@@ -11699,10 +11688,6 @@
        [
         "着→著",
         12
-       ],
-       [
-        "周→週",
-        8
        ],
        [
         "厘→釐",
@@ -11725,20 +11710,8 @@
         6
        ],
        [
-        "卷→捲",
-        6
-       ],
-       [
         "拐→柺",
         6
-       ],
-       [
-        "面→麪",
-        4
-       ],
-       [
-        "面→麵",
-        4
        ],
        [
         "乙→B",
@@ -11746,10 +11719,6 @@
        ],
        [
         "茨→茲",
-        4
-       ],
-       [
-        "𫫇→噁",
         4
        ],
        [
@@ -11791,13 +11760,29 @@
        [
         "喱→哩",
         2
+       ],
+       [
+        "意→義",
+        2
+       ],
+       [
+        "泄→洩",
+        2
+       ],
+       [
+        "硅→矽",
+        2
+       ],
+       [
+        "管→體",
+        2
+       ],
+       [
+        "分→解",
+        2
        ]
       ],
       "over_other": [
-       [
-        "干→幹",
-        18
-       ],
        [
         "抬→擡",
         16
@@ -11807,19 +11792,7 @@
         12
        ],
        [
-        "厘→釐",
-        10
-       ],
-       [
-        "周→週",
-        10
-       ],
-       [
         "舍→捨",
-        10
-       ],
-       [
-        "谷→穀",
         10
        ],
        [
@@ -11828,14 +11801,6 @@
        ],
        [
         "蕾→厘",
-        8
-       ],
-       [
-        "里→裏",
-        8
-       ],
-       [
-        "霉→黴",
         8
        ],
        [
@@ -11852,14 +11817,6 @@
        ],
        [
         "症→癥",
-        8
-       ],
-       [
-        "硷→礆",
-        8
-       ],
-       [
-        "托→託",
         8
        ],
        [
@@ -11893,6 +11850,38 @@
        [
         "丁→馬田",
         8
+       ],
+       [
+        "蒂→史提",
+        8
+       ],
+       [
+        "克→艾佛力",
+        8
+       ],
+       [
+        "克→古",
+        8
+       ],
+       [
+        "布→畢",
+        8
+       ],
+       [
+        "德→畢",
+        8
+       ],
+       [
+        "西→法蘭絲",
+        8
+       ],
+       [
+        "曼→麥杜雯",
+        8
+       ],
+       [
+        "斯→理士",
+        8
        ]
       ]
      },
@@ -11910,58 +11899,6 @@
        }
       },
       {
-       "id": "opencc-case_014-s2hk",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2t",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2tw",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_014-s2twp",
-       "title": null,
-       "source": "高剂量的苦瓜素还会抑制胚胎发育",
-       "reference": "高劑量的苦瓜素還會抑制胚胎發育",
-       "candidate": "高劑量的苦瓜素還會抑制胚胎髮育",
-       "counts": {
-        "kept": 11,
-        "converted": 3,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
        "id": "opencc-case_020-s2t",
        "title": null,
        "source": "曾经有一份真诚的爱情放在我面前，我没有珍惜，等我失去的时候我才后悔莫及。人事间最痛苦的事莫过于此。如果上天能够给我一个再来一次得机会，我会对那个女孩子说三个字，我爱你。如果非要在这份爱上加个期限，我希望是，一万年。",
@@ -11970,19 +11907,6 @@
        "counts": {
         "kept": 82,
         "converted": 24,
-        "wrong": 1,
-        "why:wording differs": 1
-       }
-      },
-      {
-       "id": "opencc-case_023-s2t",
-       "title": null,
-       "source": "经理发现后劝谕两人",
-       "reference": "經理發現後勸諭兩人",
-       "candidate": "經理髮現後勸諭兩人",
-       "counts": {
-        "converted": 6,
-        "kept": 2,
         "wrong": 1,
         "why:wording differs": 1
        }
@@ -12004,11 +11928,11 @@
        "title": null,
        "source": "恒指最新消息，恒生指数跌破 2 万点",
        "reference": "恒指最新消息，恒生指數跌破 2 萬點",
-       "candidate": "恆指最新消息，恆生指數跌破 2 萬點",
+       "candidate": "恒指最新消息，恆生指數跌破 2 萬點",
        "counts": {
-        "over_other": 2,
-        "why:candidate keeps Traditional": 2,
-        "kept": 13,
+        "kept": 14,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
         "converted": 3
        }
       },
@@ -12017,11 +11941,11 @@
        "title": null,
        "source": "恒生银行和恒大集团发布财报",
        "reference": "恒生銀行和恒大集團發佈財報",
-       "candidate": "恆生銀行和恆大集團發佈財報",
+       "candidate": "恆生銀行和恒大集團發佈財報",
        "counts": {
-        "over_other": 2,
-        "why:candidate keeps Traditional": 2,
-        "kept": 5,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1,
+        "kept": 6,
         "converted": 6
        }
       },
@@ -12046,12 +11970,12 @@
        "title": null,
        "source": "鲶鱼和鲇鱼是一种生物。",
        "reference": "鯰魚和鯰魚是一種生物。",
-       "candidate": "鮎魚和鮎魚是一種生物。",
+       "candidate": "鯰魚和鮎魚是一種生物。",
        "counts": {
-        "wrong": 2,
-        "why:wording differs": 2,
-        "converted": 3,
-        "kept": 6
+        "converted": 4,
+        "kept": 6,
+        "wrong": 1,
+        "why:wording differs": 1
        }
       },
       {
@@ -12100,30 +12024,15 @@
        }
       },
       {
-       "id": "opencc-case_055_s2t-s2t",
-       "title": null,
-       "source": "自干五 扇风 扇风耳朵 呼扇 扇火 扇火止沸 铺眉扇眼",
-       "reference": "自乾五 搧風 扇風耳朵 呼搧 搧火 扇火止沸 鋪眉搧眼",
-       "candidate": "自幹五 扇風 扇風耳朵 呼扇 扇火 扇火止沸 鋪眉扇眼",
-       "counts": {
-        "kept": 19,
-        "wrong": 1,
-        "why:wording differs": 1,
-        "missed": 4,
-        "converted": 3
-       }
-      },
-      {
        "id": "opencc-case_056_x2x-s2t",
        "title": null,
        "source": "舒芙蕾 梳芙厘",
        "reference": "舒芙蕾 梳芙厘",
-       "candidate": "梳芙厘 梳芙釐",
+       "candidate": "梳芙厘 梳芙厘",
        "counts": {
-        "over_other": 3,
+        "over_other": 2,
         "why:wording differs": 2,
-        "kept": 4,
-        "why:candidate keeps Traditional": 1
+        "kept": 5
        }
       },
       {
@@ -12131,12 +12040,11 @@
        "title": null,
        "source": "舒芙蕾 梳芙厘",
        "reference": "舒芙蕾 梳芙厘",
-       "candidate": "梳芙厘 梳芙釐",
+       "candidate": "梳芙厘 梳芙厘",
        "counts": {
-        "over_other": 3,
+        "over_other": 2,
         "why:wording differs": 2,
-        "kept": 4,
-        "why:candidate keeps Traditional": 1
+        "kept": 5
        }
       },
       {
@@ -12144,12 +12052,11 @@
        "title": null,
        "source": "舒芙蕾 梳芙厘",
        "reference": "舒芙蕾 梳芙厘",
-       "candidate": "梳芙厘 梳芙釐",
+       "candidate": "梳芙厘 梳芙厘",
        "counts": {
-        "over_other": 3,
+        "over_other": 2,
         "why:wording differs": 2,
-        "kept": 4,
-        "why:candidate keeps Traditional": 1
+        "kept": 5
        }
       },
       {
@@ -12157,12 +12064,90 @@
        "title": null,
        "source": "舒芙蕾 梳芙厘",
        "reference": "舒芙蕾 梳芙厘",
-       "candidate": "梳芙厘 梳芙釐",
+       "candidate": "梳芙厘 梳芙厘",
        "counts": {
-        "over_other": 3,
+        "over_other": 2,
         "why:wording differs": 2,
-        "kept": 4,
+        "kept": 5
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2hk",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小丑 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 29,
+        "kept": 35,
+        "over_other": 1,
         "why:candidate keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2t",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小丑 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 29,
+        "kept": 35,
+        "over_other": 1,
+        "why:candidate keeps Traditional": 1
+       }
+      },
+      {
+       "id": "opencc-case_057_s2x-s2tw",
+       "title": null,
+       "source": "刚构式桥梁 鼻梁 顶梁柱 结梁子 悬梁刺股 偷梁换柱 跳梁小丑 栋梁之材 余音绕梁 梁父吟 梁惠王 谷梁传 张栋梁 蒋国梁 杨士梁",
+       "reference": "剛構式橋梁 鼻梁 頂梁柱 結梁子 懸梁刺股 偷梁換柱 跳梁小丑 棟梁之材 餘音繞梁 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "candidate": "剛構式橋樑 鼻樑 頂樑柱 結樑子 懸樑刺股 偷樑換柱 跳樑小醜 棟樑之材 餘音繞樑 梁父吟 梁惠王 穀梁傳 張棟樑 蔣國樑 楊士樑",
+       "counts": {
+        "converted": 20,
+        "kept": 35,
+        "over_other": 10,
+        "why:candidate keeps Traditional": 10
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2hk",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "kept": 6,
+        "converted": 1,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2t",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "幺麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "kept": 6,
+        "converted": 1,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
+       }
+      },
+      {
+       "id": "opencc-case_060_s2x-s2tw",
+       "title": null,
+       "source": "幺麽小丑 小丑丫鬟",
+       "reference": "么麼小丑 小丑丫鬟",
+       "candidate": "幺麼小醜 小醜丫鬟",
+       "counts": {
+        "missed": 1,
+        "converted": 1,
+        "kept": 5,
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
        }
       }
      ]
@@ -15233,37 +15218,37 @@
     },
     "liber-generic": {
      "rows": 18653,
-     "exact": 10037,
-     "exact_rate": 0.538090387605211,
+     "exact": 10044,
+     "exact_rate": 0.5384656623599421,
      "short_rows": 7544,
-     "short_exact": 5556,
-     "short_exact_rate": 0.7364793213149523,
+     "short_exact": 5552,
+     "short_exact_rate": 0.735949098621421,
      "counts": {
-      "kept": 752246,
-      "converted": 166142,
-      "candidate_traditional": 209016,
+      "kept": 752229,
+      "converted": 166146,
+      "candidate_traditional": 209025,
       "reference_traditional": 202524,
       "source_traditional": 19422,
-      "candidate_simplified": 1366,
+      "candidate_simplified": 1439,
       "reference_simplified": 7952,
       "code_units": 946520,
       "wrong": 16179,
-      "why:wording differs": 15262,
-      "over_other": 7373,
-      "why:candidate keeps Traditional": 8283,
-      "missed": 4580,
-      "why:reference keeps Traditional": 7
+      "why:wording differs": 15275,
+      "over_other": 7390,
+      "why:candidate keeps Traditional": 8288,
+      "missed": 4576,
+      "why:reference keeps Traditional": 6
      },
-     "positions": 970072,
-     "error_positions": 28132,
-     "error_rate": 0.028999909285083995,
-     "core_error_positions": 28132,
-     "core_error_rate": 0.028999909285083995,
+     "positions": 970089,
+     "error_positions": 28145,
+     "error_rate": 0.029012801918174517,
+     "core_error_positions": 28145,
+     "core_error_rate": 0.029012801918174517,
      "wording_positions": 0,
-     "candidate_traditional_per_1k": 220.825761737734,
+     "candidate_traditional_per_1k": 220.83527025313782,
      "reference_traditional_per_1k": 213.96695262646327,
      "source_traditional_per_1k": 20.519376241389512,
-     "candidate_residue_per_1k": 1.4431813379537675,
+     "candidate_residue_per_1k": 1.52030596289566,
      "reference_residue_per_1k": 8.401301610108609,
      "top_pairs": {
       "wrong": [
@@ -15325,7 +15310,7 @@
        ],
        [
         "麵→麪",
-        65
+        66
        ],
        [
         "廈→樓",
@@ -15473,7 +15458,7 @@
       "over_other": [
        [
         "台→臺",
-        3311
+        3310
        ],
        [
         "布→佈",
@@ -15496,28 +15481,28 @@
         93
        ],
        [
-        "周→週",
-        78
+        "吃→喫",
+        92
        ],
        [
         "里→裏",
         78
        ],
        [
-        "梁→樑",
-        65
-       ],
-       [
         "秘→祕",
         64
        ],
        [
-        "制→製",
-        50
+        "周→週",
+        61
        ],
        [
         "才→纔",
-        49
+        50
+       ],
+       [
+        "制→製",
+        50
        ],
        [
         "回→迴",
@@ -15536,8 +15521,8 @@
         40
        ],
        [
-        "松→鬆",
-        36
+        "梁→樑",
+        39
        ],
        [
         "余→餘",
@@ -15810,14 +15795,14 @@
        "title": "中華職業棒球大聯盟",
        "source": "这支中华队以中职球员为主体，因此吃到了明显的国际赛红利，观众人数和票房收入亦连带回温，加上2002年超级新人“阿甘” 蔡仲南 选择中职婉拒台湾大联盟，中职在他加入后的该年场均，是两联盟对抗6年期间中职新高，且是对方的2倍。",
        "reference": "這支中華隊以中職球員為主體，因此吃到了明顯的國際賽紅利，觀眾人數和票房收入亦連帶回溫，加上2002年超級新人「阿甘」 蔡仲南 選擇中職婉拒台灣大聯盟，中職在他加入後的該年場均，是兩聯盟對抗6年期間中職新高，且是對方的2倍。",
-       "candidate": "這支中華隊以中職球員爲主體，因此吃到了明顯的國際賽紅利，觀衆人數和票房收入亦連帶回溫，加上2002年超級新人「阿甘」 蔡仲南 選擇中職婉拒臺灣大聯盟，中職在他加入後的該年場均，是兩聯盟對抗6年期間中職新高，且是對方的2倍。",
+       "candidate": "這支中華隊以中職球員爲主體，因此喫到了明顯的國際賽紅利，觀衆人數和票房收入亦連帶回溫，加上2002年超級新人「阿甘」 蔡仲南 選擇中職婉拒臺灣大聯盟，中職在他加入後的該年場均，是兩聯盟對抗6年期間中職新高，且是對方的2倍。",
        "counts": {
         "converted": 34,
-        "kept": 74,
+        "kept": 73,
         "wrong": 2,
         "why:wording differs": 2,
-        "over_other": 1,
-        "why:candidate keeps Traditional": 1
+        "over_other": 2,
+        "why:candidate keeps Traditional": 2
        }
       },
       {
@@ -15850,38 +15835,38 @@
     },
     "liber-taiwan": {
      "rows": 18653,
-     "exact": 12603,
-     "exact_rate": 0.6756553905537983,
+     "exact": 12642,
+     "exact_rate": 0.6777462070444432,
      "short_rows": 7544,
-     "short_exact": 6260,
-     "short_exact_rate": 0.8297985153764581,
+     "short_exact": 6272,
+     "short_exact_rate": 0.8313891834570519,
      "counts": {
-      "kept": 752443,
-      "converted": 175248,
-      "candidate_traditional": 208317,
+      "kept": 752483,
+      "converted": 175259,
+      "candidate_traditional": 208271,
       "reference_traditional": 202524,
       "source_traditional": 19422,
-      "candidate_simplified": 2323,
+      "candidate_simplified": 2372,
       "reference_simplified": 7952,
       "code_units": 947315,
-      "over_other": 7135,
-      "why:candidate keeps Traditional": 7265,
-      "why:wording differs": 8136,
-      "wrong": 8750,
-      "missed": 2903,
-      "why:reference keeps Traditional": 484,
+      "over_other": 7095,
+      "why:candidate keeps Traditional": 7213,
+      "why:wording differs": 8144,
+      "wrong": 8745,
+      "missed": 2897,
+      "why:reference keeps Traditional": 483,
       "over_correct": 41
      },
-     "positions": 962405,
-     "error_positions": 18788,
-     "error_rate": 0.019521926839532213,
-     "core_error_positions": 18788,
-     "core_error_rate": 0.019521926839532213,
+     "positions": 962360,
+     "error_positions": 18737,
+     "error_rate": 0.019469844964462364,
+     "core_error_positions": 18737,
+     "core_error_rate": 0.019469844964462364,
      "wording_positions": 0,
-     "candidate_traditional_per_1k": 219.90256672806828,
+     "candidate_traditional_per_1k": 219.8540084343645,
      "reference_traditional_per_1k": 213.78738856663307,
      "source_traditional_per_1k": 20.502156093801958,
-     "candidate_residue_per_1k": 2.4521938320410843,
+     "candidate_residue_per_1k": 2.5039189709864194,
      "reference_residue_per_1k": 8.394251120271504,
      "top_pairs": {
       "wrong": [
@@ -16091,7 +16076,7 @@
       "over_other": [
        [
         "台→臺",
-        3112
+        3111
        ],
        [
         "布→佈",
@@ -16106,12 +16091,12 @@
         92
        ],
        [
-        "周→週",
-        78
-       ],
-       [
         "里→裡",
         77
+       ],
+       [
+        "周→週",
+        60
        ],
        [
         "台→臺灣",
@@ -16154,10 +16139,6 @@
         38
        ],
        [
-        "松→鬆",
-        36
-       ],
-       [
         "余→餘",
         35
        ],
@@ -16187,6 +16168,10 @@
        ],
        [
         "“→「",
+        31
+       ],
+       [
+        "”→」",
         31
        ]
       ]
@@ -16458,38 +16443,38 @@
     },
     "liber-hongkong": {
      "rows": 18653,
-     "exact": 10050,
-     "exact_rate": 0.5387873264354259,
+     "exact": 10076,
+     "exact_rate": 0.5401812040958559,
      "short_rows": 7544,
-     "short_exact": 5628,
-     "short_exact_rate": 0.7460233297985154,
+     "short_exact": 5637,
+     "short_exact_rate": 0.7472163308589608,
      "counts": {
-      "kept": 756303,
-      "converted": 163500,
-      "candidate_traditional": 197253,
+      "kept": 756362,
+      "converted": 163502,
+      "candidate_traditional": 197184,
       "reference_traditional": 202524,
       "source_traditional": 19422,
-      "candidate_simplified": 12822,
+      "candidate_simplified": 12894,
       "reference_simplified": 7952,
       "code_units": 946518,
-      "missed": 11193,
-      "over_other": 2930,
-      "why:wording differs": 11334,
-      "why:candidate keeps Traditional": 3669,
+      "missed": 11191,
+      "over_other": 2871,
+      "why:wording differs": 11347,
+      "why:candidate keeps Traditional": 3598,
       "wrong": 12208,
-      "why:reference keeps Traditional": 135,
+      "why:reference keeps Traditional": 134,
       "over_correct": 386
      },
-     "positions": 961658,
-     "error_positions": 26331,
-     "error_rate": 0.02738083601446668,
-     "core_error_positions": 26331,
-     "core_error_rate": 0.02738083601446668,
+     "positions": 961599,
+     "error_positions": 26270,
+     "error_rate": 0.027319079990723784,
+     "core_error_positions": 26270,
+     "core_error_rate": 0.027319079990723784,
      "wording_positions": 0,
-     "candidate_traditional_per_1k": 208.39857245187096,
+     "candidate_traditional_per_1k": 208.32567367973985,
      "reference_traditional_per_1k": 213.96740474032188,
      "source_traditional_per_1k": 20.519419598993363,
-     "candidate_residue_per_1k": 13.546493569060493,
+     "candidate_residue_per_1k": 13.622561853023397,
      "reference_residue_per_1k": 8.401319362125179,
      "top_pairs": {
       "wrong": [
@@ -16547,7 +16532,7 @@
        ],
        [
         "麵→麪",
-        65
+        66
        ],
        [
         "廈→樓",
@@ -16714,16 +16699,12 @@
         93
        ],
        [
-        "周→週",
-        78
-       ],
-       [
         "里→裏",
         78
        ],
        [
-        "梁→樑",
-        65
+        "周→週",
+        61
        ],
        [
         "說→説",
@@ -16750,8 +16731,8 @@
         40
        ],
        [
-        "松→鬆",
-        36
+        "梁→樑",
+        39
        ],
        [
         "余→餘",
@@ -16795,6 +16776,10 @@
        ],
        [
         "发→發",
+        26
+       ],
+       [
+        "邓→鄧",
         26
        ]
       ]

@@ -4,10 +4,10 @@
   "opencc_entries": 810,
   "kept_from_opencc": 772,
   "overridden": 4,
-  "added": 103,
+  "added": 120,
   "dropped": 38,
   "no_op_dropped": 2,
-  "entries": 870,
+  "entries": 887,
   "rejected": 42
  },
  "hk2s": {
@@ -15,10 +15,10 @@
   "opencc_entries": 79,
   "kept_from_opencc": 78,
   "overridden": 0,
-  "added": 103,
+  "added": 120,
   "dropped": 1,
   "no_op_dropped": 1,
-  "entries": 181,
+  "entries": 198,
   "rejected": 1
  }
 }
