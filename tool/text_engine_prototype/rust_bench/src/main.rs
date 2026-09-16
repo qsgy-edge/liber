@@ -18,7 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use liber_text::{Anchor, Direction, IndexOptions, convert, index_file, read_window};
+use liber_text::{Anchor, ConvertTarget, Direction, IndexOptions, convert, convert_to, index_file, read_window};
 
 /// The process's peak resident set size, from the operating system's own
 /// counters. Windows: `GetProcessMemoryInfo(...).PeakWorkingSetSize`. Linux:
@@ -202,20 +202,46 @@ fn main() {
             let simplified_path = json_field(&parameters, "simplified").expect("simplified");
             let traditional = fs::read_to_string(traditional_path).expect("cannot read the text");
             let simplified = fs::read_to_string(simplified_path).expect("cannot read the text");
+            // Cold: the first call parses the embedded tables (lazily, once per
+            // process) and sorts every trie bucket, so it is the load cost plus
+            // one conversion. Warm: the same conversion with the tables in place.
             let start = Instant::now();
-            let to_simplified = convert(&traditional, Direction::TraditionalToSimplified);
-            let t2s_micros = start.elapsed().as_micros();
+            let to_simplified = liber_text::convert_to(&traditional, ConvertTarget::SimplifiedMainland);
+            let cold_t2s_micros = start.elapsed().as_micros();
             let start = Instant::now();
-            let to_traditional = convert(&simplified, Direction::SimplifiedToTraditional);
-            let s2t_micros = start.elapsed().as_micros();
+            let _ = liber_text::convert_to(&traditional, ConvertTarget::SimplifiedMainland);
+            let warm_t2s_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let to_traditional = liber_text::convert_to(&simplified, ConvertTarget::TraditionalGeneric);
+            let warm_generic_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = liber_text::convert_to(&simplified, ConvertTarget::TraditionalTaiwan);
+            let warm_taiwan_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = liber_text::convert_to(&simplified, ConvertTarget::TraditionalHongKong);
+            let warm_hong_kong_micros = start.elapsed().as_micros();
+            // The character-only paths, which `java.t2s`/`java.s2t` call.
+            let start = Instant::now();
+            let _ = convert(&traditional, Direction::TraditionalToSimplified);
+            let warm_t2s_characters_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = convert(&simplified, Direction::SimplifiedToTraditional);
+            let warm_s2t_characters_micros = start.elapsed().as_micros();
             format!(
-                "\"t2s_code_units\":{},\"s2t_code_units\":{},\"t2s_micros\":{},\"s2t_micros\":{},\"t2s_changed\":{},\"s2t_changed\":{}",
+                "\"t2s_code_units\":{},\"s2t_code_units\":{},\"t2s_micros\":{},\"s2t_micros\":{},\"t2s_changed\":{},\"s2t_changed\":{},\"cold_t2s_micros\":{},\"warm_t2s_micros\":{},\"warm_generic_micros\":{},\"warm_taiwan_micros\":{},\"warm_hong_kong_micros\":{},\"warm_t2s_characters_micros\":{},\"warm_s2t_characters_micros\":{}",
                 traditional.encode_utf16().count(),
                 simplified.encode_utf16().count(),
-                t2s_micros,
-                s2t_micros,
+                warm_t2s_micros,
+                warm_generic_micros,
                 u8::from(to_simplified != traditional),
                 u8::from(to_traditional != simplified),
+                cold_t2s_micros,
+                warm_t2s_micros,
+                warm_generic_micros,
+                warm_taiwan_micros,
+                warm_hong_kong_micros,
+                warm_t2s_characters_micros,
+                warm_s2t_characters_micros,
             )
         }
         other => {
