@@ -10,6 +10,58 @@ use std::{
 const WASI_SDK_VERSION_MAJOR: usize = 24;
 const WASI_SDK_VERSION_MINOR: usize = 0;
 
+/// The interrupt poll quantum ADR 0009 settles for the whole runtime. The
+/// pinned QuickJS sources poll once per 10 000 interpreter or libregexp steps;
+/// the build copy polls five times as often so a deadline is noticed sooner.
+const POLL_QUANTUM: &str = "1000";
+
+/// The two definitions the build copy replaces, each of which must occur
+/// exactly once. A QuickJS bump that moves or renumbers either define fails the
+/// build here instead of silently restoring the pinned 10 000.
+fn poll_quantum_patches() -> [(&'static str, String, String); 2] {
+    [
+        (
+            "quickjs.c",
+            "JS_INTERRUPT_COUNTER_INIT 10000".to_string(),
+            format!("JS_INTERRUPT_COUNTER_INIT {POLL_QUANTUM}"),
+        ),
+        (
+            "libregexp.c",
+            "INTERRUPT_COUNTER_INIT 10000".to_string(),
+            format!("INTERRUPT_COUNTER_INIT {POLL_QUANTUM}"),
+        ),
+    ]
+}
+
+/// Replaces both poll constants in the build copy and asserts each replacement
+/// happened, so the two defines cannot drift apart from this build script.
+fn patch_poll_quantum(out_dir: &Path) {
+    for (file, pinned, patched) in poll_quantum_patches() {
+        let path = out_dir.join(file);
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("cannot read the build copy of {file}: {error}"));
+        assert_eq!(
+            source.matches(&pinned).count(),
+            1,
+            "{file} does not carry exactly one `{pinned}`; update poll_quantum_patches() \
+             for this QuickJS revision"
+        );
+        let patched_source = source.replace(&pinned, &patched);
+        assert_eq!(
+            patched_source.matches(&pinned).count(),
+            0,
+            "{file} still carries `{pinned}` after the poll-quantum patch"
+        );
+        assert_eq!(
+            patched_source.matches(&patched).count(),
+            1,
+            "{file} does not carry exactly one `{patched}` after the poll-quantum patch"
+        );
+        fs::write(&path, patched_source)
+            .unwrap_or_else(|error| panic!("cannot write the build copy of {file}: {error}"));
+    }
+}
+
 fn download_wasi_sdk() -> PathBuf {
     let mut wasi_sdk_dir: PathBuf = env::var("OUT_DIR").unwrap().into();
     wasi_sdk_dir.push("wasi-sdk");
@@ -207,13 +259,8 @@ fn main() {
         fs::copy(src_dir.join(file), out_dir.join(file))
             .expect("Unable to copy source; try 'git submodule update --init'");
     }
-    // Keep the frozen QuickJS source untouched; append the local accessor to
-    // the build copy so its private layout is checked by the C compiler.
-    println!("cargo:rerun-if-changed=liber_stack.inc");
-    let mut engine = fs::read_to_string(out_dir.join("quickjs.c")).unwrap();
-    engine.push_str("\n");
-    engine.push_str(&fs::read_to_string("liber_stack.inc").unwrap());
-    fs::write(out_dir.join("quickjs.c"), engine).unwrap();
+    // Keep the frozen QuickJS sources untouched; only the build copy is patched.
+    patch_poll_quantum(out_dir);
     println!("cargo:rerun-if-changed=quickjs.bind.h");
     fs::copy("quickjs.bind.h", out_dir.join("quickjs.bind.h")).expect("Unable to copy source");
 

@@ -49,7 +49,7 @@ Future<void> main(List<String> args) async {
   const library = 'var __probe = {n: 0}; // runtime limits probe';
 
   switch (caseName) {
-    // A pure interpreter loop under a Dart-held deadline.
+    // A pure interpreter loop under the Rust-held deadline.
     case 'deadline-basic':
       {
         final runtime = InProcessSourceScriptRuntime(jsLib: library);
@@ -90,20 +90,32 @@ Future<void> main(List<String> args) async {
           'overshootMs': overshoot(outcome, timeout),
         };
         checks['heavyLoopBodyTimedOut'] = outcome.category == 'timeout';
-        checks['heavyLoopBodyOvershootOver50Ms'] = overshoot(outcome, timeout) > 50;
+        // The pinned 10 000 quantum measured 1 942.1 ms of overshoot on this
+        // row; the shipped 1 000 quantum brings it under a tenth of a second.
+        checks['heavyLoopBodyOvershootUnder100Ms'] = overshoot(outcome, timeout) < 100;
       }
       break;
 
     // One long C-level call contains no interrupt poll at all, so the caller
-    // waits for the whole call and only then learns it exceeded the deadline.
+    // waits for the whole call and only then learns it exceeded the deadline. The
+    // post-call loop is there so the poll happens as soon as the call returns;
+    // without it the execution can end without the interpreter polling again and
+    // the deadline is never reported. The payload needs a heap above the
+    // runtime's default budget: the parsed array alone costs about 128 MB, and a
+    // heap limit would turn this row into the memory row instead of the
+    // single-call row.
     case 'deadline-single-native-call':
       {
-        final runtime = InProcessSourceScriptRuntime(jsLib: library);
+        final runtime = InProcessSourceScriptRuntime(
+          jsLib: library,
+          memoryLimitBytes: 512 * 1024 * 1024,
+        );
         await run(runtime, '1 + 1', timeout: const Duration(seconds: 2));
-        final timeout = const Duration(milliseconds: 200);
+        final timeout = const Duration(milliseconds: 100);
         final outcome = await run(
           runtime,
-          "JSON.parse('[' + '1,'.repeat(4000000) + '1]').length",
+          "var n = JSON.parse('[' + '1,'.repeat(8000000) + '1]').length; "
+          'for (var i = 0; i < 2000; i++) n += 0; n',
           timeout: timeout,
         );
         measurements['run'] = {
@@ -112,8 +124,7 @@ Future<void> main(List<String> args) async {
           'overshootMs': overshoot(outcome, timeout),
         };
         checks['singleNativeCallReportedTimeout'] = outcome.category == 'timeout';
-        checks['singleNativeCallPassedDeadline'] =
-            outcome.milliseconds > 800;
+        checks['singleNativeCallPassedDeadline'] = outcome.milliseconds > 120;
         final followUp =
             await run(runtime, '5 + 5', timeout: const Duration(seconds: 2));
         checks['followUpWorks'] = followUp.category == 'success';
@@ -177,15 +188,19 @@ Future<void> main(List<String> args) async {
           'overshootMs': overshoot(outcome, timeout),
         };
         checks['oomRetryReportedTimeout'] = outcome.category == 'timeout';
-        checks['oomRetryPassedDeadline'] = outcome.milliseconds > 1000;
+        // The pinned 10 000 quantum let this row run 1 367.2 ms past a 300 ms
+        // deadline through the product; the shipped 1 000 quantum does not.
+        checks['oomRetryOvershootUnder500Ms'] = overshoot(outcome, timeout) < 500;
         final followUp =
             await run(runtime, '4 + 4', timeout: const Duration(seconds: 5));
         checks['followUpWorks'] = followUp.category == 'success';
       }
       break;
 
-    // A script suspended in a synchronous host call: the fiber is parked, and
-    // the deadline has to reach it through the suspension.
+    // A script suspended in a synchronous host call: the outer wait is parked,
+    // and the deadline has to reach it through the suspension. Nothing on the
+    // Dart side ends this call — the budget went in with the scope and the Rust
+    // clock both ends the wait and tears the host request down.
     case 'deadline-host-call':
       {
         final held = Completer<void>();
@@ -228,7 +243,9 @@ Future<void> main(List<String> args) async {
       }
       break;
 
-    // The deadline is a Dart timer: a blocked isolate delays it.
+    // The deadline is Rust's: the Dart isolate below is blocked for longer than
+    // the deadline, so no Dart timer could fire during it, and the execution is
+    // over before the isolate gets the event loop back.
     case 'deadline-isolate-blocked':
       {
         final runtime = InProcessSourceScriptRuntime(jsLib: library);
@@ -236,21 +253,27 @@ Future<void> main(List<String> args) async {
         const timeout = Duration(milliseconds: 100);
         final pending = run(runtime, 'while(true) {}', timeout: timeout);
         await Future<void>.delayed(const Duration(milliseconds: 30));
-        final watch = Stopwatch()..start();
         final until = DateTime.now().add(const Duration(milliseconds: 400));
         while (DateTime.now().isBefore(until)) {
-          // Deliberately block the isolate the Dart timer would need.
+          // Deliberately block the isolate the old Dart timer would have needed.
         }
+        final afterUnblock = Stopwatch()..start();
         final outcome = await pending;
         measurements['run'] = {
           'category': outcome.category,
           'deadlineMs': timeout.inMilliseconds,
           'blockedIsolateMs': 400,
+          'clock': 'rust',
           'measuredMs': outcome.milliseconds,
-          'elapsedAfterUnblockMs': watch.elapsedMicroseconds / 1000,
+          'elapsedAfterUnblockMs': afterUnblock.elapsedMicroseconds / 1000,
         };
         checks['blockedIsolateStillTimedOut'] = outcome.category == 'timeout';
-        checks['deadlineWaitedForTheIsolate'] = outcome.milliseconds > 350;
+        checks['dartIsolateReallyBlocked'] = outcome.milliseconds > 350;
+        // The execution had already ended when the isolate came back: no Dart
+        // timer had to run for it.
+        checks['deadlineEnforcedWhileIsolateBlocked'] =
+            (measurements['run']! as Map)['elapsedAfterUnblockMs']! as double <
+            100;
       }
       break;
 

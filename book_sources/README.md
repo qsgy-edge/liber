@@ -169,9 +169,12 @@ fvm dart run tool/broker_lifecycle_regression.dart $dll
 ## 已提交状态与请求语义切片（2026-09-15）
 
 上一节记录的是未提交 candidate。当前 `master` 已包含该切片，并由五平台 CI
-（`.github/workflows/ci.yml` + `tool/ci_runtime.py`）门禁：Windows 15 条命令、
-Linux/macOS 各 10 条，含 6 个 `broker_gate_regression` 模式、`fiber/scoped/nested_runtime_gate`
-与两份冻结差分；runtime 命令的日志出现 Dart VM crash marker 即判失败（即使进程退出 0）。
+（`.github/workflows/ci.yml` + `tool/ci_runtime.py`）门禁：Windows、Linux、macOS
+跑**同一份**门禁清单——runtime/host/broker 门禁、6 个 `broker_gate_regression` 模式、
+`scoped_runtime_gate`/`nested_runtime_gate`、HTML 适配器与两份冻结差分；清单只有一份，
+见 `tool/ci_runtime.py`。runtime 命令的日志出现 Dart VM crash marker 即判失败（即使进程退出 0）。
+`fiber_runtime_gate` 已随 ADR 0009（#25）删除：Windows fiber 调度器不再存在，
+它的断言在票面三张表里逐条记录为保留 / 重新推导 / 删除，见 #25 的评论。
 
 本轮产品改动：
 

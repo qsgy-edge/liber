@@ -142,7 +142,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       }
     }
 
-    var timedOut = false;
     Future<void> close() => closing ??= engine!.close().then<void>(
       (_) {},
       onError: (Object e, StackTrace s) {
@@ -150,10 +149,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       },
     );
     final unlisten = token.listen(interruptExecution);
-    final timer = Timer(timeout, () {
-      timedOut = true;
-      token.cancel();
-    });
     _active++;
     try {
       token.throwIfCancelled();
@@ -250,7 +245,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         }
       }
 
-      executionId = await engine.createScopedExecution();
+      // The deadline clock is Rust's (ADR 0009): the budget goes in with the
+      // scope, Rust compares it inside the interrupt closure and on the parked
+      // host wait, and it ends the execution whether or not this isolate gets
+      // back to its event loop. `cancellation` still stops an execution early.
+      executionId = await engine.createScopedExecution(
+        deadlineMs: BigInt.from(timeout.inMilliseconds),
+      );
       if (token.isCancelled) interruptExecution();
       session.starts[executionId] = (request) {
         // Never throw through FRB's non-fallible callback ABI.
@@ -281,11 +282,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       }
       return result;
     } catch (error) {
-      if (timedOut) throw const SourceScriptError('timeout');
+      // The Rust clock reports its own deadline as `JsError_Timeout`; this is
+      // the category the pipeline saw when a Dart `Timer` held the clock.
+      if (error is JsError_Timeout) throw const SourceScriptError('timeout');
       if (token.isCancelled) throw const SourceScriptError('cancelled');
       throw hostFailure ?? _classify(error);
     } finally {
-      timer.cancel();
       unsubscribe?.call();
       unlisten();
       final keepSession = jsLib.isNotEmpty && engine != null && !engine.closed;

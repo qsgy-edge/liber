@@ -1,11 +1,11 @@
 {
-  "library": "D:\\GithubRepositories\\Flutter\\liber-3\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
+  "library": "D:\\GithubRepositories\\Flutter\\liber-25\\packages\\fjs\\libfjs\\target\\release\\fjs.dll",
   "cases": {
     "deadline-basic": {
       "case": "deadline-basic",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 6.886,
+      "seconds": 5.317,
       "checks": {
         "interpreterLoopTimedOut": true,
         "interpreterLoopOvershootUnder50Ms": true,
@@ -16,20 +16,20 @@
           {
             "deadlineMs": 100,
             "category": "timeout",
-            "measuredMs": 115.27,
-            "overshootMs": 15.269999999999996
+            "measuredMs": 104.126,
+            "overshootMs": 4.126000000000005
           },
           {
             "deadlineMs": 200,
             "category": "timeout",
-            "measuredMs": 206.855,
-            "overshootMs": 6.85499999999999
+            "measuredMs": 200.33,
+            "overshootMs": 0.3300000000000125
           },
           {
             "deadlineMs": 500,
             "category": "timeout",
-            "measuredMs": 514.074,
-            "overshootMs": 14.073999999999955
+            "measuredMs": 499.972,
+            "overshootMs": -0.02800000000002001
           }
         ]
       },
@@ -39,16 +39,16 @@
       "case": "deadline-heavy-loop-body",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 7.572,
+      "seconds": 4.39,
       "checks": {
         "heavyLoopBodyTimedOut": true,
-        "heavyLoopBodyOvershootOver50Ms": true
+        "heavyLoopBodyOvershootUnder100Ms": true
       },
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 2142.089,
-          "overshootMs": 1942.089
+          "measuredMs": 212.577,
+          "overshootMs": 12.576999999999998
         }
       },
       "status": "pass"
@@ -57,7 +57,7 @@
       "case": "deadline-single-native-call",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 7.381,
+      "seconds": 4.202,
       "checks": {
         "singleNativeCallReportedTimeout": true,
         "singleNativeCallPassedDeadline": true,
@@ -66,8 +66,8 @@
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 1766.789,
-          "overshootMs": 1566.789
+          "measuredMs": 858.81,
+          "overshootMs": 758.81
         }
       },
       "status": "pass"
@@ -76,14 +76,14 @@
       "case": "deadline-uncatchable",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 4.698,
+      "seconds": 3.72,
       "checks": {
         "deadlineUncatchable": true
       },
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 237.032
+          "measuredMs": 235.101
         }
       },
       "status": "pass"
@@ -92,7 +92,7 @@
       "case": "deadline-regex-bomb",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 5.218,
+      "seconds": 4.529,
       "checks": {
         "regexBombTimedOut": true,
         "regexBombOvershootUnder500Ms": true
@@ -100,8 +100,8 @@
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 231.162,
-          "overshootMs": 31.162000000000006
+          "measuredMs": 229.204,
+          "overshootMs": 29.204000000000008
         }
       },
       "status": "pass"
@@ -110,7 +110,7 @@
       "case": "deadline-host-call",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 5.572,
+      "seconds": 3.349,
       "checks": {
         "hostCallTimedOut": true,
         "hostObservedCancellation": true,
@@ -120,8 +120,8 @@
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 235.182,
-          "overshootMs": 35.18199999999999,
+          "measuredMs": 239.482,
+          "overshootMs": 39.482,
           "hostObservedCancellation": true
         }
       },
@@ -131,18 +131,20 @@
       "case": "deadline-isolate-blocked",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 4.932,
+      "seconds": 3.379,
       "checks": {
         "blockedIsolateStillTimedOut": true,
-        "deadlineWaitedForTheIsolate": true
+        "dartIsolateReallyBlocked": true,
+        "deadlineEnforcedWhileIsolateBlocked": true
       },
       "measurements": {
         "run": {
           "category": "timeout",
           "deadlineMs": 100,
           "blockedIsolateMs": 400,
-          "measuredMs": 443.066,
-          "elapsedAfterUnblockMs": 407.666
+          "clock": "rust",
+          "measuredMs": 437.103,
+          "elapsedAfterUnblockMs": 3.317
         }
       },
       "status": "pass"
@@ -151,17 +153,17 @@
       "case": "deadline-oom-retry-loop",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 6.352,
+      "seconds": 4.158,
       "checks": {
         "oomRetryReportedTimeout": true,
-        "oomRetryPassedDeadline": true,
+        "oomRetryOvershootUnder500Ms": true,
         "followUpWorks": true
       },
       "measurements": {
         "run": {
           "category": "timeout",
-          "measuredMs": 1667.214,
-          "overshootMs": 1367.214
+          "measuredMs": 340.566,
+          "overshootMs": 40.565999999999974
         }
       },
       "status": "pass"
@@ -170,7 +172,7 @@
       "case": "memory-limit-alloc-loop",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 4.714,
+      "seconds": 4.833,
       "checks": {
         "heapLimitReported": true,
         "bothRunsSameCategory": true,
@@ -181,16 +183,16 @@
         "runs": {
           "first": {
             "category": "js",
-            "measuredMs": 228.308
+            "measuredMs": 56.982
           },
           "second": {
             "category": "js",
-            "measuredMs": 120.52
+            "measuredMs": 20.474
           },
-          "rssBaseline": 248819712,
-          "rssAfterFirst": 252006400,
-          "rssAfterSecond": 251854848,
-          "rssGrowthBytes": 3035136
+          "rssBaseline": 250904576,
+          "rssAfterFirst": 253009920,
+          "rssAfterSecond": 252956672,
+          "rssGrowthBytes": 2052096
         }
       },
       "status": "pass"
@@ -199,7 +201,7 @@
       "case": "memory-limit-huge-allocation",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 4.616,
+      "seconds": 3.986,
       "checks": {
         "hugeAllocationRejected": true,
         "hugeAllocationReturnedFast": true,
@@ -208,8 +210,8 @@
       "measurements": {
         "run": {
           "category": "js",
-          "measuredMs": 65.074,
-          "rssGrowthBytes": 5914624
+          "measuredMs": 37.439,
+          "rssGrowthBytes": -11468800
         }
       },
       "status": "pass"
@@ -218,7 +220,7 @@
       "case": "stack-depth",
       "timedOut": false,
       "exitCode": 0,
-      "seconds": 4.053,
+      "seconds": 2.846,
       "checks": {
         "stackOverflowReturned": true,
         "followUpWorks": true
@@ -226,7 +228,7 @@
       "measurements": {
         "run": {
           "category": "js",
-          "measuredMs": 63.236
+          "measuredMs": 36.991
         }
       },
       "status": "pass"

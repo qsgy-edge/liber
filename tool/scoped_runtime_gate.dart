@@ -97,6 +97,14 @@ Future<void> main(List<String> args) async {
     checks['childCompletesDespiteParentCancel'] = await inner == 40;
     checks['parentCancels'] = await outer == 'error:cancelled';
     checks['stateSurvivesParentCancel'] = await run('state.n') == 40;
+    // A completion that arrives while a nested execution owns the thread is
+    // delivered when the outer wait resumes instead of being lost. The frozen
+    // reader could also complete the *outer* execution first, because it resumes
+    // two independently parked scopes in any order; the one execution model
+    // cannot, so `firstCompletesWhileSecondHeld` is deleted here (it is not a
+    // gate-detectable behavior any more) and that single observation is recorded
+    // as `notCompared` by tool/state_oracle_compare.dart on every desktop
+    // platform. ADR 0009 removed the per-execution stacks that made it possible.
     prepare('early');
     prepare('late');
     final early = run('${call('early')};state.n');
@@ -104,16 +112,10 @@ Future<void> main(List<String> args) async {
     final late = run('${call('late')};state.n');
     await waiting['late']!.future.timeout(const Duration(seconds: 2));
     releases['early']!.complete();
-    var earlyFinished = false;
-    try {
-      await early.timeout(const Duration(seconds: 2));
-      earlyFinished = true;
-    } on TimeoutException {
-      /* The unrelated second request remains held. */
-    }
-    checks['firstCompletesWhileSecondHeld'] = earlyFinished;
     releases['late']!.complete();
-    await Future.wait([early, late]);
+    final nestedResults = await Future.wait([early, late]);
+    checks['deferredCompletionDelivered'] =
+        nestedResults[0] == 40 && nestedResults[1] == 40;
 
     // Raw scoped-execution battery: host cancel callbacks, queued submission and
     // reservation/discard/close interleavings that the product-level checks
@@ -163,7 +165,13 @@ Future<void> main(List<String> args) async {
         },
       );
 
-      // Cancelling one suspended scope releases its own host request only.
+      // Cancelling a parked scope releases its own host request only. The
+      // nested scope is parked inside the outer one, so the one execution model
+      // fixes the completion order: the outer scope settles when the nested one
+      // returns. Two independently parked root scopes were the fiber path's, are
+      // gone with it (ADR 0009), and `firstCompletesWhileSecondHeld` is the only
+      // observation the differential contract recorded for them — it stays visible
+      // as `notCompared` in tool/state_oracle_compare.dart.
       final alphaId = await reserveScoped();
       final alphaCall = runScoped(alphaId, 'fjs.bridge_call("alpha")');
       final alphaRequest = await enterScoped('alpha');
@@ -173,6 +181,8 @@ Future<void> main(List<String> args) async {
       checks['scopedCancelAccepted'] = await cancelScopedExecutionGlobal(
         id: alphaId,
       );
+      await completeScoped(betaRequest, 'beta');
+      final betaResult = await betaCall.timeout(const Duration(seconds: 3));
       final alphaResult = await alphaCall.timeout(const Duration(seconds: 3));
       await settleNativeCancels(1);
       checks['scopedCancelReturnsCancelled'] = alphaResult is JsError_Cancelled;
@@ -180,8 +190,7 @@ Future<void> main(List<String> args) async {
       checks['scopedCancelTargetsOwnRequest'] =
           nativeCancels.contains(alphaRequest) &&
           !nativeCancels.contains(betaRequest);
-      await completeScoped(betaRequest, 'beta');
-      checks['scopedCancelKeepsOtherScopeRunning'] = await betaCall == 'beta';
+      checks['nestedKeepsRunningWhileOuterCancelled'] = betaResult == 'beta';
 
       // A scope submitted while another one owns the JS thread is queued;
       // cancelling it before it starts must skip its script entirely.
@@ -237,6 +246,15 @@ Future<void> main(List<String> args) async {
       checks['closeUnwindsInflightScope'] = closingResult is JsError_Cancelled;
       checks['closeInvokesHostCancelForInflight'] =
           closeError == null && nativeCancels.contains(closingRequest);
+      // Re-derived from the deleted fiber gate's `lateCompletionRejected`
+      // against a single in-flight scope: after close() unwound it, the host
+      // completion that arrives afterwards is refused.
+      try {
+        await completeScoped(closingRequest, 'late');
+        checks['lateCompletionRejected'] = false;
+      } on JsError_Bridge {
+        checks['lateCompletionRejected'] = true;
+      }
       final reservationAfterClose = await scopedEngine
           .createScopedExecution()
           .then<Object?>((id) => id, onError: (Object error) => error);
@@ -301,6 +319,142 @@ Future<void> main(List<String> args) async {
       checks['interleavedCloseSucceeds'] = interleavedClose == null;
     } finally {
       if (!interleavedEngine.closed) await interleavedEngine.close();
+    }
+
+    // Kept and re-derived from the deleted Windows fiber gate. `heapLimitEnforced`
+    // and `afterGcUsable` only ever needed one scope, and the "both stacks"
+    // pressure row becomes the nested form: a queued execution runs while
+    // another scope is parked in a host call, and the parked scope's Rust and JS
+    // values survive it. `firstNativeExceptionStack`,
+    // `secondNativeExceptionStack` and `closeUnwindsBothStacks` are deleted —
+    // two simultaneously suspended stacks are impossible on the one execution
+    // path, single-scope exception-stack coverage stays with `runtime_gate`, and
+    // `closeUnwindsInflightScope`/`closeInvokesHostCancelForInflight` above cover
+    // the one-scope close form.
+    final nestedEngine = await JsEngine.create(
+      builtins: JsBuiltinOptions.none(),
+      runtimeOptions: JsEngineRuntimeOptions(
+        memoryLimit: BigInt.from(16 * 1024 * 1024),
+        gcThreshold: BigInt.one,
+      ),
+    );
+    final nestedEntered = <String, Completer<BigInt>>{};
+    Future<Object?> runNested(String source) async {
+      final id = await nestedEngine.createScopedExecution();
+      return nestedEngine
+          .evalScoped(id: id, source: source)
+          .then<Object?>(
+            (value) => value.value,
+            onError: (Object error) => error,
+          );
+    }
+
+    Future<BigInt> enterNested(String key) {
+      final completer = Completer<BigInt>();
+      nestedEntered[key] = completer;
+      return completer.future.timeout(const Duration(seconds: 3));
+    }
+
+    Future<void> releaseNested(BigInt id, String answer) =>
+        completeBridgeRequestGlobal(
+          id: id,
+          result: JsResult.ok(JsValue.string(answer)),
+        );
+    try {
+      await nestedEngine.initBroker(
+        start: (request) {
+          final completer = nestedEntered[request.value.value as String];
+          if (completer != null && !completer.isCompleted) {
+            completer.complete(request.id);
+          }
+        },
+        cancel: (id) async {},
+      );
+      final cycle = runNested(
+        '(()=>{let x={tag:73};x.self=x;fjs.bridge_call("cycle");return x.self===x&&x.tag===73})()',
+      );
+      final cycleRequest = await enterNested('cycle');
+      // Unreachable self-cycles cannot be reclaimed by reference counting
+      // alone. The allocated array slots exceed the entire 16 MiB heap budget,
+      // so this only completes if the queued execution really runs nested
+      // inside the parked one.
+      final pressure = await runNested(
+        '(()=>{for(let i=0;i<20000;i++){let x={data:new Array(256).fill(i)};x.self=x;}return 42})()',
+      );
+      checks['nestedAllocationPressureCompletes'] = pressure == 42;
+      await releaseNested(cycleRequest, 'ok');
+      checks['nestedScopeValuesSurvive'] = await cycle == true;
+      final heapLimit = await runNested(
+        'const blocks=[]; while(true) { blocks.push(new Array(10000).fill(123)); }',
+      );
+      checks['heapLimitEnforced'] = heapLimit is JsError_MemoryLimit;
+      await nestedEngine.runGc();
+      checks['afterGcUsable'] = await runNested('21*2') == 42;
+    } finally {
+      if (!nestedEngine.closed) await nestedEngine.close();
+    }
+
+    // The Rust deadline clock: the budget goes in with the scope, is compared
+    // inside the interrupt closure, and bounds a parked host wait. No Dart timer
+    // participates in any of these rows, so the parked row can only pass from
+    // Rust.
+    final deadlineEngine = await JsEngine.create(
+      builtins: JsBuiltinOptions.none(),
+    );
+    final deadlineEntered = Completer<BigInt>();
+    final deadlineCancels = <BigInt>[];
+    Future<Object?> runScopedWithBudget(String source, BigInt? budgetMs) async {
+      final id = await deadlineEngine.createScopedExecution(
+        deadlineMs: budgetMs,
+      );
+      return deadlineEngine
+          .evalScoped(id: id, source: source)
+          .then<Object?>(
+            (value) => value.value,
+            onError: (Object error) => error,
+          );
+    }
+
+    try {
+      await deadlineEngine.initBroker(
+        start: (request) {
+          if (!deadlineEntered.isCompleted) deadlineEntered.complete(request.id);
+        },
+        cancel: (id) async {
+          deadlineCancels.add(id);
+        },
+      );
+      checks['deadlineStopsTightLoop'] =
+          await runScopedWithBudget('while(true){}', BigInt.from(150))
+              is JsError_Timeout;
+      checks['deadlineStopsRegexBacktrack'] =
+          await runScopedWithBudget(
+                r"/(a+)+$/.test('a'.repeat(64) + '!')",
+                BigInt.from(150),
+              )
+              is JsError_Timeout;
+      final parked = runScopedWithBudget(
+        'fjs.bridge_call("parked")',
+        BigInt.from(150),
+      );
+      final parkedRequest = await deadlineEntered.future.timeout(
+        const Duration(seconds: 3),
+      );
+      final parkedResult = await parked.timeout(const Duration(seconds: 3));
+      final deadlineCancelWait = DateTime.now().add(const Duration(seconds: 2));
+      while (deadlineCancels.isEmpty &&
+          DateTime.now().isBefore(deadlineCancelWait)) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      checks['deadlineTearsDownParkedHostWait'] = parkedResult is JsError_Timeout;
+      checks['deadlineTearsDownParkedHostRequest'] =
+          deadlineCancels.contains(parkedRequest);
+      checks['deadlineEngineUsableAfterwards'] =
+          await runScopedWithBudget('6*7', BigInt.from(2000)) == 42;
+      checks['executionWithoutBudgetRuns'] =
+          await runScopedWithBudget('7*6', null) == 42;
+    } finally {
+      if (!deadlineEngine.closed) await deadlineEngine.close();
     }
 
     final pass = checks.values.every((value) => value);

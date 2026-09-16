@@ -15,6 +15,7 @@ precompiled_binaries:
     - libfjs/cargokit.yaml
     - libfjs/src
     - libfjs/src/frb_generated.rs
+    - libfjs/vendor
     - pubspec.yaml
     - darwin/fjs/Package.swift
     - lib/src/frb/frb_generated.dart

@@ -17,7 +17,14 @@
  * failed run means the instrument misbehaved. The `findings` object carries
  * the verdicts themselves.
  */
+#if defined(_WIN32)
 #include <windows.h>
+#else
+/* Only the monotonic clock differs by platform: the probes read it through
+ * `timer_init`/`now_ms` so the same case list runs on every destination. */
+#define _POSIX_C_SOURCE 200809L
+#include <time.h>
+#endif
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -26,8 +33,14 @@
 
 #include "quickjs.h"
 
+#if defined(_WIN32)
 static LARGE_INTEGER g_frequency;
 static LARGE_INTEGER g_origin;
+
+static void timer_init(void) {
+  QueryPerformanceFrequency(&g_frequency);
+  QueryPerformanceCounter(&g_origin);
+}
 
 static double now_ms(void) {
   LARGE_INTEGER counter;
@@ -35,6 +48,18 @@ static double now_ms(void) {
   return (double)(counter.QuadPart - g_origin.QuadPart) * 1000.0 /
          (double)g_frequency.QuadPart;
 }
+#else
+static struct timespec g_origin;
+
+static void timer_init(void) { clock_gettime(CLOCK_MONOTONIC, &g_origin); }
+
+static double now_ms(void) {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (double)(now.tv_sec - g_origin.tv_sec) * 1000.0 +
+         (double)(now.tv_nsec - g_origin.tv_nsec) / 1000000.0;
+}
+#endif
 
 /* Mirrors the product's interrupt closure: QuickJS polls it from the
  * interpreter and from libregexp, and returning 1 raises the uncatchable
@@ -206,8 +231,7 @@ static bool is_interrupted(const Observation *observation) {
 }
 
 int main(void) {
-  QueryPerformanceFrequency(&g_frequency);
-  QueryPerformanceCounter(&g_origin);
+  timer_init();
   const size_t mib = 1024 * 1024;
 
   JSRuntime *rt = JS_NewRuntime();

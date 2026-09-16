@@ -6,6 +6,27 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/js_source_runtime.dart';
 
+/// Observations the one execution model cannot reproduce, on **every** desktop
+/// platform by construction — it is a property of the execution model, not a
+/// Windows quirk, so the set is one set and does not vary by platform.
+///
+/// `firstCompletesWhileSecondHeld` holds a scope parked in HTTP, starts a second
+/// scope (which runs nested inside the parked one), waits for that second scope
+/// to park as well, and then asks whether the first scope completes while the
+/// second is still parked. The frozen reader does, because it resumes
+/// independently parked scopes in any order. The one execution model cannot: the
+/// nested wait owns the OS thread, so the outer parked wait is not polled until
+/// the inner scope returns (ADR 0009, which removes the per-execution stacks).
+/// The golden is executed evidence from the frozen APK and is not rewritten; the
+/// observation stays in the report as `notCompared` with its reason instead.
+const notComparedFiberOnly = <String, String>{
+  'firstCompletesWhileSecondHeld':
+      'the one execution model has no two independently parked scopes (ADR '
+      '0009), so the outer parked wait is not polled while the nested one is '
+      'parked; nothing else in this scenario is excluded — every other '
+      'observation and the request order stay compared.',
+};
+
 Future<void> main(List<String> args) async {
   if (args.length != 3) throw ArgumentError('DLL golden output');
   final fixture =
@@ -152,6 +173,7 @@ Future<void> main(List<String> args) async {
       throw StateError('Observation coverage mismatch');
     }
     for (final entry in expected.entries) {
+      if (notComparedFiberOnly.containsKey(entry.key)) continue;
       final actual = values[entry.key];
       final equal = numericFields.contains(entry.key)
           ? num.tryParse('${entry.value}') != null &&
@@ -173,7 +195,7 @@ Future<void> main(List<String> args) async {
       });
     }
     final report = {
-      'platform': 'windows',
+      'platform': Platform.operatingSystem,
       'baselineCommit': fixture['baselineCommit'],
       'golden': args[1],
       'values': values,
@@ -183,6 +205,18 @@ Future<void> main(List<String> args) async {
       'notRun': expanded
           ? <String>[]
           : ['firstCompletesWhileSecondHeld: absent from selected golden'],
+      // Not a per-run flag: the same named set applies wherever this harness
+      // runs, so a platform cannot pass by quietly not comparing this row.
+      'notCompared': [
+        for (final row in notComparedFiberOnly.entries)
+          if (expected.containsKey(row.key))
+            {
+              'field': row.key,
+              'expected': expected[row.key],
+              'actual': values[row.key],
+              'reason': row.value,
+            },
+      ],
       'differences': differences,
     };
     await File(

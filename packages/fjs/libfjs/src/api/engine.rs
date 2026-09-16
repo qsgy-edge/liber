@@ -48,6 +48,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, Notify};
 
 /// Type alias for the bridge callback function.
@@ -212,8 +213,15 @@ struct ScopedExecution {
     owner: u64,
     submitted: AtomicBool,
     cancelled: AtomicBool,
+    /// Absolute deadline in milliseconds since [`DEADLINE_EPOCH`], or
+    /// [`NO_DEADLINE`]. It is an integer rather than an `Instant` because the
+    /// interrupt closure compares it on the JavaScript thread without a lock.
+    deadline: AtomicU64,
+    /// Set when the Rust clock, not the host, stopped this execution.
+    deadline_hit: AtomicBool,
+    /// The budget the deadline was derived from, carried into the error.
+    timeout_ms: u64,
     wake: Notify,
-    scheduler_wake: Arc<Notify>,
 }
 struct ScopedCommand {
     scope: Arc<ScopedExecution>,
@@ -221,6 +229,57 @@ struct ScopedCommand {
     reply: oneshot::Sender<Result<JsValue, JsError>>,
 }
 static NEXT_EXECUTION: AtomicU64 = AtomicU64::new(1);
+/// Scoped executions created without a per-execution budget.
+const NO_DEADLINE: u64 = u64::MAX;
+/// Base for the lock-free deadline comparison above.
+static DEADLINE_EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
+
+/// Milliseconds since [`DEADLINE_EPOCH`].
+fn deadline_millis() -> u64 {
+    DEADLINE_EPOCH
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64
+}
+
+impl ScopedExecution {
+    /// Whether the Rust clock has reached this scope's deadline.
+    fn deadline_expired(&self) -> bool {
+        let deadline = self.deadline.load(Ordering::Acquire);
+        deadline != NO_DEADLINE && deadline_millis() >= deadline
+    }
+
+    /// Time left before the deadline; `None` when the scope has none.
+    fn remaining(&self) -> Option<Duration> {
+        let deadline = self.deadline.load(Ordering::Acquire);
+        (deadline != NO_DEADLINE)
+            .then(|| Duration::from_millis(deadline.saturating_sub(deadline_millis())))
+    }
+
+    /// Records that the Rust clock stopped this execution. A host cancellation
+    /// that arrived first keeps its own reason; the clock never overrides it.
+    fn mark_deadline(&self) -> bool {
+        if self.cancelled.load(Ordering::Acquire) {
+            return false;
+        }
+        self.deadline_hit.store(true, Ordering::Release);
+        true
+    }
+
+    /// The error a stopped execution reports: the Rust deadline first, then
+    /// host cancellation, so neither can be reported as a result.
+    fn stop_error(&self, closed: bool) -> Option<JsError> {
+        if self.deadline_hit.load(Ordering::Acquire) {
+            return Some(JsError::timeout(
+                "Scoped execution deadline exceeded",
+                self.timeout_ms,
+            ));
+        }
+        (self.cancelled.load(Ordering::Acquire) || closed)
+            .then(|| JsError::cancelled("Execution cancelled"))
+    }
+}
+
 static EXECUTIONS: OnceLock<Mutex<HashMap<u64, Arc<ScopedExecution>>>> = OnceLock::new();
 fn executions() -> &'static Mutex<HashMap<u64, Arc<ScopedExecution>>> {
     EXECUTIONS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -230,20 +289,31 @@ pub fn cancel_scoped_execution_global(id: u64) -> bool {
     let scope = executions().lock().unwrap().get(&id).cloned();
     let Some(scope) = scope else { return false; };
     scope.cancelled.store(true, Ordering::Release);
-    let cancelled = {
-        let mut registry = broker_pending().lock().unwrap();
-        let ids = registry.iter().filter_map(|(request_id, entry)|
-            (entry.execution_id == Some(id)).then_some(*request_id)).collect::<Vec<_>>();
-        ids.into_iter().filter_map(|request_id| registry.remove(&request_id)
-            .map(|entry| (request_id, entry.starter, entry.cancel))).collect::<Vec<_>>()
-    };
-    for (request_id, starter, cancel) in cancelled {
-        starter.abort();
-        crate::runtime::executor::spawn_js(async move { let _ = cancel(request_id).await; });
-    }
+    abort_execution_requests(id);
     scope.wake.notify_one();
-    scope.scheduler_wake.notify_one();
     true
+}
+
+/// Aborts every in-flight host request one execution owns the way a
+/// cancellation does: the starter is aborted and the host's cancel callback is
+/// notified, so a parked HTTP or WebView request is torn down instead of being
+/// left running with no reader.
+fn abort_execution_requests(execution_id: u64) {
+    let removed = {
+        let mut registry = broker_pending().lock().unwrap();
+        let ids = registry
+            .iter()
+            .filter_map(|(request_id, entry)|
+                (entry.execution_id == Some(execution_id)).then_some(*request_id))
+            .collect::<Vec<_>>();
+        ids.into_iter()
+            .filter_map(|request_id| registry.remove(&request_id).map(|entry| (request_id, entry)))
+            .collect::<Vec<_>>()
+    };
+    for (request_id, entry) in removed {
+        entry.starter.abort();
+        crate::runtime::executor::spawn_js(async move { let _ = (entry.cancel)(request_id).await; });
+    }
 }
 /// Release a reservation that was never submitted.
 pub fn discard_scoped_execution_global(id: u64) {
@@ -254,8 +324,13 @@ pub fn discard_scoped_execution_global(id: u64) {
 }
 fn run_scoped(ctx: &rquickjs::Ctx<'_>, state: &Arc<BrokerBridgeState>, command: ScopedCommand) {
     let scope = command.scope;
+    // A scope queued past its deadline starts stopped instead of running its
+    // script first and reporting the deadline afterwards.
+    if scope.deadline_expired() { scope.mark_deadline(); }
     state.active.lock().unwrap().push(scope.clone());
-    let result = if scope.cancelled.load(Ordering::Acquire) || state.closed.load(Ordering::Acquire) {
+    let refused = scope.deadline_hit.load(Ordering::Acquire)
+        || scope.cancelled.load(Ordering::Acquire) || state.closed.load(Ordering::Acquire);
+    let result = if refused {
         Err(JsError::cancelled("Execution cancelled"))
     } else {
         ctx.eval::<rquickjs::Value, _>(command.source)
@@ -266,66 +341,16 @@ fn run_scoped(ctx: &rquickjs::Ctx<'_>, state: &Arc<BrokerBridgeState>, command: 
     };
     state.active.lock().unwrap().pop();
     executions().lock().unwrap().remove(&scope.id);
-    let result = if scope.cancelled.load(Ordering::Acquire) || state.closed.load(Ordering::Acquire) { Err(JsError::cancelled("Execution cancelled")) } else { result };
+    let result = scope.stop_error(state.closed.load(Ordering::Acquire)).map(Err).unwrap_or(result);
     let _ = command.reply.send(result);
 }
 
-#[cfg(windows)]
-fn run_fiber_scheduler(ctx: &rquickjs::Ctx<'_>, state: &Arc<BrokerBridgeState>) -> Result<(), JsError> {
-    use crate::runtime::fibers::{Scheduler, Fiber};
-    struct Live<'a> {
-        fiber: Fiber<'a>,
-        scope: Arc<ScopedExecution>,
-        active: Vec<Arc<ScopedExecution>>,
-        depth: u64,
-    }
-    let runtime = unsafe {rquickjs::qjs::JS_GetRuntime(ctx.as_raw().as_ptr())};
-    let scheduler = unsafe {Scheduler::new(runtime)}.map_err(|e|JsError::bridge(e.to_string()))?;
-    let mut live: Vec<Live<'_>> = Vec::new();
-    let mut failure = None;
-    loop {
-        while failure.is_none() && live.len() < 64 {
-            let command = state.executions.lock().unwrap().commands.pop_front();
-            let Some(command) = command else {break};
-            let scope = command.scope.clone();
-            match scheduler.create(||run_scoped(ctx,state,command)) {
-                Ok(fiber) => live.push(Live{fiber,scope,active:Vec::new(),depth:0}),
-                Err(error) => {
-                    executions().lock().unwrap().remove(&scope.id);
-                    failure=Some(JsError::bridge(error.to_string()));
-                }
-            }
-        }
-        if failure.is_some() {
-            state.closed.store(true,Ordering::Release);
-            for task in &live {task.scope.cancelled.store(true,Ordering::Release);}
-        }
-        for task in &mut live {
-            if task.fiber.done(){continue;}
-            *state.active.lock().unwrap()=std::mem::take(&mut task.active);
-            state.depth.store(task.depth,Ordering::Relaxed);
-            scheduler.resume(&mut task.fiber);
-            task.active=std::mem::take(&mut *state.active.lock().unwrap());
-            task.depth=state.depth.swap(0,Ordering::Relaxed);
-            if task.fiber.failed(){
-                executions().lock().unwrap().remove(&task.scope.id);
-                failure=Some(JsError::bridge("Execution fiber panicked"));
-            }
-        }
-        live.retain(|task|!task.fiber.done());
-        if live.is_empty() {
-            let mut queue=state.executions.lock().unwrap();
-            if queue.commands.is_empty() || failure.is_some() {
-                queue.running=false;
-                return match failure {Some(error)=>Err(error),None=>Ok(())};
-            }
-            continue;
-        }
-        if failure.is_some(){continue;}
-        if live.len()<64 && !state.executions.lock().unwrap().commands.is_empty(){continue;}
-        // Notify retains a permit if completion/cancellation occurred while
-        // another stack was running. Only this actor consumes it.
-        tokio::runtime::Handle::current().block_on(state.wake.notified());
+/// Sleeps until a scoped execution's Rust deadline; never completes when the
+/// execution has none, so the select arm stays inert.
+async fn deadline_timeout(scope: &Option<Arc<ScopedExecution>>) {
+    match scope.as_ref().and_then(|scope| scope.remaining()) {
+        Some(remaining) => tokio::time::sleep(remaining).await,
+        None => std::future::pending::<()>().await,
     }
 }
 
@@ -904,8 +929,10 @@ impl JsEngine {
         });
         let interrupt_state = state.clone();
         resources.runtime.install_execution_interrupt(move || {
-            interrupt_state.active.lock().unwrap().last()
-                .is_some_and(|scope| scope.cancelled.load(Ordering::Acquire))
+            interrupt_state.active.lock().unwrap().last().is_some_and(|scope| {
+                if scope.cancelled.load(Ordering::Acquire) { return true; }
+                scope.deadline_expired() && scope.mark_deadline()
+            })
         }).await;
         // Publish ownership before setup can yield, so close also owns init races.
         resources.broker.lock().unwrap().replace(state.clone());
@@ -948,7 +975,12 @@ impl JsEngine {
     }
 
     /// Reserve a host-only execution capability bound to this engine.
-    pub fn create_scoped_execution(&self) -> Result<u64, JsError> {
+    ///
+    /// `deadline_ms` is the per-execution budget the Rust clock enforces: it is
+    /// compared inside the interrupt closure and bounds a parked host wait, so
+    /// the deadline does not depend on the host's timer being punctual. `None`
+    /// leaves the execution without a deadline.
+    pub fn create_scoped_execution(&self, deadline_ms: Option<u64>) -> Result<u64, JsError> {
         let resources = self.resources()?;
         let state = resources.broker.lock().unwrap().clone().ok_or_else(|| JsError::bridge("Broker not initialized"))?;
         let mut registry = executions().lock().unwrap();
@@ -956,7 +988,12 @@ impl JsEngine {
         let id = NEXT_EXECUTION.fetch_add(1, Ordering::Relaxed);
         registry.insert(id, Arc::new(ScopedExecution {
             id, owner: state.owner, submitted: AtomicBool::new(false),
-            cancelled: AtomicBool::new(false), wake: Notify::new(), scheduler_wake: state.wake.clone(),
+            cancelled: AtomicBool::new(false), deadline_hit: AtomicBool::new(false),
+            deadline: AtomicU64::new(match deadline_ms {
+                Some(timeout_ms) => deadline_millis().saturating_add(timeout_ms),
+                None => NO_DEADLINE,
+            }),
+            timeout_ms: deadline_ms.unwrap_or(0), wake: Notify::new(),
         }));
         Ok(id)
     }
@@ -986,10 +1023,6 @@ impl JsEngine {
             tokio::spawn(async move {
                 let state = driver_state.clone();
                 let outcome: Result<(), JsError> = resources.context.with_js(async move |ctx| {
-                    #[cfg(windows)]
-                    { tokio::task::block_in_place(|| run_fiber_scheduler(&ctx, &state)) }
-                    #[cfg(not(windows))]
-                    {
                     loop {
                         let next = {
                             let mut queue = state.executions.lock().unwrap();
@@ -1000,7 +1033,6 @@ impl JsEngine {
                         match next { Some(command) => run_scoped(&ctx, &state, command), None => break }
                     }
                     Ok(())
-                    }
                 }).await;
                 if let Err(error) = outcome {
                     let mut queue = driver_state.executions.lock().unwrap();
@@ -2033,37 +2065,6 @@ fn new_broker_bridge_call<'js>(
         let start = start.clone();
         let shutdown = shutdown.clone();
         let state = state.clone();
-        #[cfg(windows)]
-        if crate::runtime::fibers::active() {
-            tokio::spawn(Abortable::new(async move {
-                let result = AssertUnwindSafe(async { start(BridgeRequest { id, value, execution_id }).await }).catch_unwind().await;
-                if result.is_err(){let _=complete_bridge_request_global(id,JsResult::Err(JsError::bridge("Host start callback failed")));}
-            },registration));
-            loop {
-                if shutdown.requested() || state.closed.load(Ordering::Acquire) || scope.as_ref().is_some_and(|s|s.cancelled.load(Ordering::Acquire)) {
-                    // The starter only acknowledges dispatch; let its FRB reply
-                    // settle rather than aborting that reply during cancellation.
-                    broker_pending().lock().unwrap().remove(&id);
-                    return Err(rquickjs::Error::new_from_js_message("bridge","JsValue","Execution cancelled"));
-                }
-                match receiver.try_recv() {
-                    Ok(JsResult::Ok(value))=>return Ok(value),
-                    Ok(JsResult::Err(error))=>return Err(rquickjs::Error::new_from_js_message("bridge","JsValue",error.to_string())),
-                    Err(oneshot::error::TryRecvError::Closed)=>return Err(rquickjs::Error::new_from_js_message("bridge","JsValue","Bridge request closed")),
-                    Err(oneshot::error::TryRecvError::Empty)=>{},
-                }
-                if let Ok(command)=commands.try_recv(){
-                    let result=call_ctx.eval::<rquickjs::Value,_>(command.source).and_then(|value|{
-                        if value.is_promise(){return Err(rquickjs::Error::new_from_js_message("Promise","JsValue","Nested host evaluation must be synchronous"));}
-                        JsValue::from_js(&call_ctx,value)
-                    }).catch(&call_ctx).map_err(|error|JsError::from_caught(&call_ctx,error));
-                    let result=if shutdown.requested(){Err(shutdown.error())}else{result};
-                    let _=command.reply.send(result);
-                    continue;
-                }
-                crate::runtime::fibers::suspend();
-            }
-        }
         tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(async move {
             tokio::spawn(Abortable::new(async move {
                 let result = AssertUnwindSafe(async { start(BridgeRequest { id, value, execution_id }).await })
@@ -2080,6 +2081,13 @@ fn new_broker_bridge_call<'js>(
                 tokio::select! {
                     biased;
                     _ = async { match &scope { Some(s) => s.wake.notified().await, None => std::future::pending::<()>().await } } => { continue; }
+                    _ = deadline_timeout(&scope) => {
+                        // The Rust clock owns the deadline, so a parked host wait
+                        // ends here even when no completion arrives; the requests
+                        // this execution owns are torn down with it.
+                        if let Some(scope) = &scope { scope.mark_deadline(); abort_execution_requests(scope.id); }
+                        return Err(rquickjs::Error::new_from_js_message("bridge", "JsValue", "Execution deadline exceeded"));
+                    }
                     _ = state.wake.notified() => {
                         let command = {
                             let mut queue = state.executions.lock().unwrap();

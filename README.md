@@ -44,8 +44,8 @@ Early and Windows-first. What runs on `master` today:
 Not covered yet, and deliberately visible rather than implied:
 
 - Only Windows integrates the runtime and the application. Android, iOS, macOS,
-  and Linux currently compile the native library; their runtime rows are
-  `not-run`.
+  and Linux compile the native library and run the shared runtime gates in CI,
+  but their limits and WebView rows are `not-run`.
 - The frozen four-stage differential corpus, the security boundary for
   untrusted sources, and the request/JS capabilities listed in
   [`docs/compatibility/book-source-capability-matrix.md`](docs/compatibility/book-source-capability-matrix.md)
@@ -57,7 +57,7 @@ Not covered yet, and deliberately visible rather than implied:
 | Path | Contents |
 |---|---|
 | `lib/` | Flutter application, domain contracts, local library, migration importer, and the source pipelines |
-| `packages/fjs/` | Vendored `fjs` package, FRB glue, and the `libfjs` Rust crate with the Windows fiber scheduler |
+| `packages/fjs/` | Vendored `fjs` package, FRB glue, and the `libfjs` Rust crate with the shared runtime (ADR 0009) |
 | `tool/` | Gate runners, oracle comparison scripts, frozen oracle evidence, and live-source helpers |
 | `test/`, `integration_test/` | Dart and Flutter tests |
 | `docs/compatibility/` | The compatibility baseline, the differential contract, the migration contract, the capability inventory, and the runtime-component survey |
