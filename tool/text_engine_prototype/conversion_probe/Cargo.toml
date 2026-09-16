@@ -6,6 +6,7 @@ publish = false
 description = "THROWAWAY: measure Chinese conversion tables against the frozen baseline (ticket #19)"
 
 [dependencies]
+liber_text = { path = "../../../packages/fjs/liber_text" }
 ferrous-opencc = { version = "0.4", default-features = false, features = ["t2s-conversion", "s2t-conversion"] }
 serde_json = "1"
 

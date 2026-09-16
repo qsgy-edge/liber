@@ -67,6 +67,41 @@ punctuation conversion undone (`「」` stays `「」` instead of becoming `“�
 `吃` → `喫`, `擡` → `抬`), and its data is compiled into a third-party crate
 rather than readable in this repository. ADR 0009 records the decision.
 
+## Accuracy: is the 繁体→简体 output right, not just "like the frozen reader"
+
+The conversion decision above was measured as *agreement with the frozen reader*.
+That is a compatibility number, not a quality one. The follow-up question — "is the
+Simplified text actually right for a reader who only reads Simplified, word choice
+included" — is measured by three more scripts, all re-runnable:
+
+```bash
+python tool/text_engine_prototype/make_eval_gold.py            # gold sets (needs the page cache)
+conversion_probe/target/release/eval.exe   D:/liber-probe/text-engine/eval/gold-wikipedia.jsonl   packages/fjs/liber_text/assets/hanlp-tc D:/liber-probe/text-engine/opencc-dict   D:/liber-probe/text-engine/eval/out-wikipedia
+python tool/text_engine_prototype/score_eval.py
+```
+
+- **Two gold sets.** `gold-opencc.jsonl` is OpenCC's own hand-made cases filtered
+  to the directions that end in Simplified (174 rows: `t2s` 56, `tw2s` 33, `hk2s`
+  22, `tw2sp` 54, `hk2sp` 9, Apache-2.0) — dense in the hard spots, and OpenCC's
+  own opinion, so it flatters the candidates built from OpenCC's tables.
+  `gold-wikipedia.jsonl` is 18 658 sentences from 45 zh.wikipedia articles rendered
+  `variant=zh-tw` and `variant=zh-cn`, aligned line by line and sentence by
+  sentence (CC BY-SA 4.0, kept out of the repository; hashes in
+  `evidence/gold-manifest.json`). Neither set is an authority: the second is
+  MediaWiki's conversion tables' opinion, and it itself leaves 20.5 Traditional
+  characters per 1 000 behind — 57× the shipped implementation's 0.36 — because
+  its renderer is not a complete character conversion.
+- **Nine candidates**: the frozen oracle, the shipped implementation, the HanLP
+  tables with and without the exclude list, HanLP plus OpenCC's Taiwan and Hong
+  Kong phrase lists (each phrase's value mapped through the character table
+  first), and ferrous-opencc's four configurations. `hanlp+exclude` is a control
+  and reproduces the shipped implementation exactly on every row.
+- **The scorer** reports sentence-level exact matches, errors split into missed /
+  wrong / over-converted, and — with no reference involved — how many characters
+  in the output are still Traditional, which is what the reader actually sees.
+  `evidence/eval-report.md` has the tables and the frequent disagreements;
+  `evidence/eval-report.json` has per-row samples.
+
 ## What was measured
 
 `verify.py` runs one phase per process — peak RSS is a process number, so a
