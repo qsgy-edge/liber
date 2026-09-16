@@ -15,7 +15,13 @@ import 'store/space_store.dart';
 import 'store/workspace.dart';
 
 void main() {
-  runApp(const LiberApp());
+  // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens a different installation
+  // directory instead of `%APPDATA%\Liber`: a review run drives the real app
+  // without the operator's own library underneath it.
+  const workspace = String.fromEnvironment('LIBER_WORKSPACE_ROOT');
+  runApp(
+    LiberApp(workspaceRoot: workspace.isEmpty ? null : Directory(workspace)),
+  );
 }
 
 class LiberApp extends StatelessWidget {
