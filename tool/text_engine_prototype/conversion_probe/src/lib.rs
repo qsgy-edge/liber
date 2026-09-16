@@ -13,12 +13,15 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
+/// One trie entry: the key to match and the value to write.
+type Entry = (Vec<u16>, Vec<u16>);
+
 /// A text table exactly as `DictionaryFactory.loadDictionary` reads it: one
 /// `key=value` per line, `#` starts a comment, a key and value that are both one
 /// UTF-16 unit form the character map, everything else the longest-match trie.
 pub struct Table {
     pub char_map: HashMap<u16, u16>,
-    pub by_first: HashMap<u16, Vec<(Vec<u16>, Vec<u16>)>>,
+    pub by_first: HashMap<u16, Vec<Entry>>,
     pub max_len: usize,
 }
 
@@ -27,7 +30,7 @@ impl Table {
         let text = fs::read_to_string(path)
             .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
         let mut char_map = HashMap::new();
-        let mut by_first: HashMap<u16, Vec<(Vec<u16>, Vec<u16>)>> = HashMap::new();
+        let mut by_first: HashMap<u16, Vec<Entry>> = HashMap::new();
         let mut max_len = 2usize;
         for line in text.lines() {
             if line.is_empty() || line.starts_with('#') {
@@ -47,7 +50,7 @@ impl Table {
         }
         for entries in by_first.values_mut() {
             // Longest first, so the first match is the longest match.
-            entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+            entries.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
         }
         Table {
             char_map,
@@ -71,7 +74,7 @@ impl Table {
             entries.push((key, value));
             // Longest first, so the first match in `convert` is the longest one;
             // equal-length entries keep the order they were added in.
-            entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+            entries.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
         }
     }
 

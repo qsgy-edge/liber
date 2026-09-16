@@ -93,7 +93,7 @@ fn main() {
     load_phrases(&mut phrases, &phrases_dir.join("TWPhrasesRev.txt"));
     load_phrases(&mut phrases, &phrases_dir.join("HKPhrasesRev.txt"));
     let mut regional_added = 0usize;
-    for (_, entries) in phrases.by_first.iter() {
+    for entries in phrases.by_first.values() {
         for (key, value) in entries {
             let key = String::from_utf16_lossy(key);
             let value = String::from_utf16_lossy(value);
@@ -112,7 +112,10 @@ fn main() {
     let opencc_tw2s = opencc("tw2s");
     let opencc_tw2sp = opencc("tw2sp");
 
-    let candidates: Vec<(&str, Box<dyn Fn(&str) -> String>)> = vec![
+    /// One candidate: a name and the conversion it applies.
+    type Candidate<'a> = (&'a str, Box<dyn Fn(&str) -> String + 'a>);
+
+    let candidates: Vec<Candidate> = vec![
         (
             "liber-now",
             Box::new(|text| convert(text, Direction::TraditionalToSimplified)),
