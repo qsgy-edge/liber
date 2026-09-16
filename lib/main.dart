@@ -5,6 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'domain/contracts.dart';
+import 'local/local_reader.dart';
+import 'local/local_reader_page.dart';
+import 'local/reader_engine.dart';
 import 'source/book_source_service.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
@@ -135,6 +138,27 @@ class _LiberHomePageState extends State<LiberHomePage> {
     if (mounted) setState(() => _folderEntries = entries);
   }
 
+  /// Opens a local book in the paged reader.
+  ///
+  /// The reader writes the five-field progress record through the library, so
+  /// the shelf's cached offset is re-read when the page comes back.
+  Future<void> _openLocalBook(LocalBook book) async {
+    final library = _library;
+    if (library == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => LocalReaderPage(
+          reader: LocalReader(
+            engine: const NativeReaderEngine(),
+            library: library,
+            book: book,
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   /// Re-reads what the shelf and the migration page list: a source trial, a
   /// backup import or a newly admitted file can all have added rows.
   Future<void> _refreshShelfViews() async {
@@ -180,26 +204,14 @@ class _LiberHomePageState extends State<LiberHomePage> {
         spaceMessage: _spaceMessage,
         onRunSource: _runControlledSource,
         trace: _trace,
-        onOpenBook: (book) async {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => _ReaderPage(
-                book: book,
-                onOffsetChanged: (offset) async {
-                  await library?.updateOffset(book.id, offset);
-                  if (mounted) setState(() {});
-                },
-              ),
-            ),
-          );
-          if (mounted) setState(() {});
-        },
+        onOpenBook: _openLocalBook,
       ),
       _LocalLibraryPage(
         service: library,
         entries: _folderEntries,
         books: library?.books ?? const <LocalBook>[],
         message: _libraryMessage,
+        onOpenBook: _openLocalBook,
         onEnterFolder: (path) async {
           final entries = await library?.enterFolder(path);
           if (mounted) {
@@ -487,88 +499,6 @@ class _BookshelfPage extends StatelessWidget {
   }
 }
 
-class _ReaderPage extends StatefulWidget {
-  const _ReaderPage({required this.book, required this.onOffsetChanged});
-
-  final LocalBook book;
-  final ValueChanged<int> onOffsetChanged;
-
-  @override
-  State<_ReaderPage> createState() => _ReaderPageState();
-}
-
-class _ReaderPageState extends State<_ReaderPage> {
-  final TextEditingController _controller = TextEditingController();
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final text = await File(widget.book.path).readAsString();
-      _controller.text = text;
-      final offset = widget.book.textOffset.clamp(0, text.length);
-      _controller.selection = TextSelection.collapsed(offset: offset);
-    } on FileSystemException catch (error) {
-      _error = error.message;
-    } on IOException catch (error) {
-      _error = error.toString();
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.book.title),
-        actions: [
-          FilledButton.icon(
-            onPressed: _loading
-                ? null
-                : () {
-                    widget.onOffsetChanged(_controller.selection.baseOffset);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('阅读位置已保存')));
-                  },
-            icon: const Icon(Icons.bookmark_add),
-            label: const Text('保存位置'),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text('无法读取：$_error'))
-          : Padding(
-              padding: const EdgeInsets.all(24),
-              child: TextField(
-                controller: _controller,
-                readOnly: true,
-                expands: true,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-              ),
-            ),
-    );
-  }
-}
-
 class _StageList extends StatelessWidget {
   const _StageList({required this.current});
 
@@ -634,6 +564,7 @@ class _LocalLibraryPage extends StatelessWidget {
     required this.onScan,
     required this.onAdd,
     required this.onAddEntry,
+    required this.onOpenBook,
   });
 
   /// Null until the space opens; every action below needs it.
@@ -647,6 +578,10 @@ class _LocalLibraryPage extends StatelessWidget {
   final VoidCallback onScan;
   final VoidCallback onAdd;
   final Future<void> Function(FileSystemEntity entry) onAddEntry;
+
+  /// Opens a book already admitted to the shelf, from this page as well as from
+  /// the shelf itself.
+  final ValueChanged<LocalBook> onOpenBook;
 
   @override
   Widget build(BuildContext context) {
@@ -744,6 +679,14 @@ class _LocalLibraryPage extends StatelessWidget {
             ),
           ),
           Text('书架已加入 ${books.length} 本本地书'),
+          for (final book in books)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.menu_book_outlined),
+              title: Text(book.title),
+              subtitle: Text('进度 offset：${book.textOffset}'),
+              onTap: () => onOpenBook(book),
+            ),
         ],
       ),
     );

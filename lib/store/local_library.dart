@@ -5,7 +5,43 @@ import 'package:drift/drift.dart' show Value;
 import '../domain/contracts.dart';
 import 'database.dart';
 import 'ids.dart';
+import 'progress.dart';
 import 'space_store.dart';
+
+/// One local file's stored index: the encoding its windows are read with, the
+/// sparse line-start anchors, and the decoded length and modification time the
+/// change detection compares against (D4/D10).
+///
+/// A file that was never indexed is the empty index: no encoding, no anchors,
+/// no length. Nothing here opens the file.
+class LocalFileIndex {
+  const LocalFileIndex({
+    required this.encoding,
+    required this.anchors,
+    this.textLength,
+    this.modifiedAt,
+  });
+
+  final String encoding;
+  final List<TextIndexAnchor> anchors;
+
+  /// The file's length in code units — cached, so nothing reads a whole file to
+  /// clamp an offset (D4).
+  final int? textLength;
+
+  /// The modification time the index was written against.
+  final int? modifiedAt;
+
+  /// Whether this index still describes the file as [currentModifiedAt] left
+  /// it. The modification time is the cheap check that decides whether the
+  /// anchors, the length and the encoding may be trusted at all; the anchor
+  /// itself is what the reader's first restore tier verifies.
+  bool describes(int currentModifiedAt) =>
+      encoding.isNotEmpty &&
+      anchors.isNotEmpty &&
+      textLength != null &&
+      modifiedAt == currentModifiedAt;
+}
 
 /// The local library: the authorized roots and the files the user admitted
 /// from them, over the space's store.
@@ -203,6 +239,10 @@ class LocalLibrary {
   }
 
   /// Saves a local book's reading position as its progress row.
+  ///
+  /// The coarse writer: what a caller that knows only an offset writes. The
+  /// reader writes the settled five-field record through [saveProgressRecord],
+  /// whose line facts and anchor are what a restore needs.
   Future<void> updateOffset(String bookId, int offset) async {
     await store.putProgress(
       ProgressCompanion(
@@ -215,6 +255,112 @@ class LocalLibrary {
       for (final book in _books)
         book.id == bookId ? book.copyWith(textOffset: offset) : book,
     ];
+  }
+
+  // --- The reader's facts (D4/D10) -----------------------------------------
+
+  /// The five-field record the reader settled on, or null when the book was
+  /// never read. The same row the reader writes, read back on open.
+  Future<ProgressRecord?> progressRecordOf(String bookId) async {
+    final row = await store.progressOf(bookId);
+    if (row == null) return null;
+    return ProgressRecord(
+      textOffset: row.textOffset,
+      lineIndex: row.lineIndex,
+      offsetInLine: row.offsetInLine,
+      textLength: row.textLength,
+      chapterKey: row.chapterKey,
+      chapterIndex: row.chapterIndex,
+      anchor: row.anchor,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  /// Writes the record the reader settled on — every field of it, so a later
+  /// open has the length it was written against and the anchor to restore by —
+  /// and keeps the shelf's cached offset in step.
+  Future<void> saveProgressRecord(String bookId, ProgressRecord record) async {
+    await store.putProgress(
+      ProgressCompanion(
+        bookId: Value(bookId),
+        textOffset: Value(record.textOffset),
+        lineIndex: Value(record.lineIndex),
+        offsetInLine: Value(record.offsetInLine),
+        textLength: Value(record.textLength),
+        chapterKey: Value(record.chapterKey),
+        chapterIndex: Value(record.chapterIndex),
+        anchor: Value(record.anchor),
+        updatedAt: Value(DateTime.now().toUtc().millisecondsSinceEpoch),
+      ),
+    );
+    _books = [
+      for (final book in _books)
+        book.id == bookId ? book.copyWith(textOffset: record.textOffset) : book,
+    ];
+  }
+
+  /// What the store already knows about a local book's file: the index the last
+  /// pass stored. Nothing here opens the file.
+  Future<LocalFileIndex> fileIndex(LocalBook book) async {
+    final relative = book.relativePath ?? '';
+    final file = await store.localFile(book.rootId, relative);
+    final row = await store.bookById(book.id);
+    return LocalFileIndex(
+      encoding: row?.charset ?? '',
+      anchors: await store.textIndexOf(book.rootId, relative),
+      textLength: file?.textLength,
+      modifiedAt: file?.modifiedAt,
+    );
+  }
+
+  /// Stores what one index pass found: the sparse anchors, the decoded length
+  /// and the modification time the change detection compares against, and the
+  /// encoding the windows are read with. This is what makes the next open one
+  /// window read instead of a pass.
+  Future<void> putFileIndex(
+    LocalBook book, {
+    required String encoding,
+    required int codeUnitLength,
+    required int modifiedAt,
+    required List<TextIndexAnchor> anchors,
+  }) async {
+    final relative = book.relativePath ?? '';
+    // The file row first: the anchors reference it (D4's per-file key), and a
+    // failure between the two leaves an index that `describes` rejects rather
+    // than anchors nothing can attribute to a file.
+    await store.putLocalFile(
+      LocalFilesCompanion(
+        rootId: Value(book.rootId),
+        relativePath: Value(relative),
+        textLength: Value(codeUnitLength),
+        modifiedAt: Value(modifiedAt),
+      ),
+    );
+    await store.putTextIndex(book.rootId, relative, anchors);
+    // A local book's detected charset is the encoding its windows are decoded
+    // with, and `books.charset` is that field (D2's field set).
+    await store.setBookCharset(book.id, encoding);
+  }
+
+  /// Flags or clears the relink state of a local book and its file together:
+  /// the flag describes the file behind the book, and D4's change detection —
+  /// the length, the modification time and the anchor — is what sets it here.
+  Future<void> setNeedsRelink(LocalBook book, bool needsRelink) async {
+    final relative = book.relativePath ?? '';
+    final file = await store.localFile(book.rootId, relative);
+    if (file != null && file.needsRelink != needsRelink) {
+      await store.putLocalFile(
+        LocalFilesCompanion(
+          rootId: Value(book.rootId),
+          relativePath: Value(relative),
+          needsRelink: Value(needsRelink),
+        ),
+      );
+    }
+    final row = await store.bookById(book.id);
+    if (row != null && row.needsRelink != needsRelink) {
+      await store.setBookRelink(book.id, needsRelink);
+    }
   }
 
   bool _isSupported(String path) {
