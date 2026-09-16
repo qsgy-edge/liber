@@ -117,14 +117,15 @@ void main() {
   testWidgets(
     'reader saves visible paragraph, restores it, and switches chapters',
     (tester) async {
-      final pipeline = ScriptedPipeline();
       final chapters = [
         SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
         SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
       ];
+      // Each reader owns the pipeline it fetches through, so a remount gets a
+      // fresh one and the replaced reader cancelling its own is the point.
       Widget page(int index, int offset) => MaterialApp(
         home: OnlineReaderPage(
-          pipeline: pipeline,
+          pipeline: ScriptedPipeline(),
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
           bookId: bookId,
           chapters: chapters,
