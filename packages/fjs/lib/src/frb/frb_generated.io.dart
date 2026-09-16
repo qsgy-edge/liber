@@ -9,6 +9,7 @@ import 'api/error.dart';
 import 'api/html.dart';
 import 'api/runtime.dart';
 import 'api/source.dart';
+import 'api/text.dart';
 import 'api/value.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -236,6 +237,15 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   JsValue dco_decode_box_autoadd_js_value(dynamic raw);
 
   @protected
+  TextAnchor dco_decode_box_autoadd_text_anchor(dynamic raw);
+
+  @protected
+  TextIndexOptions dco_decode_box_autoadd_text_index_options(dynamic raw);
+
+  @protected
+  TextWindowRequest dco_decode_box_autoadd_text_window_request(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -341,6 +351,12 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   List<(String, JsValue)> dco_decode_list_record_string_js_value(dynamic raw);
 
   @protected
+  List<TextAnchor> dco_decode_list_text_anchor(dynamic raw);
+
+  @protected
+  List<TextChapter> dco_decode_list_text_chapter(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -372,6 +388,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       dco_decode_opt_box_autoadd_js_script_bytecode_options(dynamic raw);
 
   @protected
+  TextAnchor? dco_decode_opt_box_autoadd_text_anchor(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -388,6 +407,33 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   (String, JsValue) dco_decode_record_string_js_value(dynamic raw);
+
+  @protected
+  TextAnchor dco_decode_text_anchor(dynamic raw);
+
+  @protected
+  TextChapter dco_decode_text_chapter(dynamic raw);
+
+  @protected
+  TextDetection dco_decode_text_detection(dynamic raw);
+
+  @protected
+  TextDirection dco_decode_text_direction(dynamic raw);
+
+  @protected
+  TextEngineError dco_decode_text_engine_error(dynamic raw);
+
+  @protected
+  TextIndex dco_decode_text_index(dynamic raw);
+
+  @protected
+  TextIndexOptions dco_decode_text_index_options(dynamic raw);
+
+  @protected
+  TextWindow dco_decode_text_window(dynamic raw);
+
+  @protected
+  TextWindowRequest dco_decode_text_window_request(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -579,6 +625,17 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   JsValue sse_decode_box_autoadd_js_value(SseDeserializer deserializer);
 
   @protected
+  TextAnchor sse_decode_box_autoadd_text_anchor(SseDeserializer deserializer);
+
+  @protected
+  TextIndexOptions sse_decode_box_autoadd_text_index_options(
+      SseDeserializer deserializer);
+
+  @protected
+  TextWindowRequest sse_decode_box_autoadd_text_window_request(
+      SseDeserializer deserializer);
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -692,6 +749,12 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       SseDeserializer deserializer);
 
   @protected
+  List<TextAnchor> sse_decode_list_text_anchor(SseDeserializer deserializer);
+
+  @protected
+  List<TextChapter> sse_decode_list_text_chapter(SseDeserializer deserializer);
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
@@ -728,6 +791,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           SseDeserializer deserializer);
 
   @protected
+  TextAnchor? sse_decode_opt_box_autoadd_text_anchor(
+      SseDeserializer deserializer);
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -744,6 +811,34 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   (String, JsValue) sse_decode_record_string_js_value(
+      SseDeserializer deserializer);
+
+  @protected
+  TextAnchor sse_decode_text_anchor(SseDeserializer deserializer);
+
+  @protected
+  TextChapter sse_decode_text_chapter(SseDeserializer deserializer);
+
+  @protected
+  TextDetection sse_decode_text_detection(SseDeserializer deserializer);
+
+  @protected
+  TextDirection sse_decode_text_direction(SseDeserializer deserializer);
+
+  @protected
+  TextEngineError sse_decode_text_engine_error(SseDeserializer deserializer);
+
+  @protected
+  TextIndex sse_decode_text_index(SseDeserializer deserializer);
+
+  @protected
+  TextIndexOptions sse_decode_text_index_options(SseDeserializer deserializer);
+
+  @protected
+  TextWindow sse_decode_text_window(SseDeserializer deserializer);
+
+  @protected
+  TextWindowRequest sse_decode_text_window_request(
       SseDeserializer deserializer);
 
   @protected
@@ -956,6 +1051,18 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void sse_encode_box_autoadd_js_value(JsValue self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_text_anchor(
+      TextAnchor self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_text_index_options(
+      TextIndexOptions self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_text_window_request(
+      TextWindowRequest self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -1076,6 +1183,14 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       List<(String, JsValue)> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_text_anchor(
+      List<TextAnchor> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_text_chapter(
+      List<TextChapter> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
@@ -1110,6 +1225,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       JsScriptBytecodeOptions? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_text_anchor(
+      TextAnchor? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
@@ -1129,6 +1248,36 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   void sse_encode_record_string_js_value(
       (String, JsValue) self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_anchor(TextAnchor self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_chapter(TextChapter self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_detection(TextDetection self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_direction(TextDirection self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_engine_error(
+      TextEngineError self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_index(TextIndex self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_index_options(
+      TextIndexOptions self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_window(TextWindow self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_window_request(
+      TextWindowRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

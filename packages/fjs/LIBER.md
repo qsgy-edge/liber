@@ -55,6 +55,17 @@ the new html API the exposed surface is unchanged. The `tool/check_frb_*` script
 that `libfjs/cargokit.yaml` lists as hash inputs are not vendored in this
 repository, so regeneration is the only consistency check here.
 
+`liber_text/` is the second Liber crate in that same native build: the local-file
+text engine (encoding detection through `encoding_rs` and `chardetng`, one-pass
+indexing into sparse byte ↔ code-unit anchors and chapter boundaries, bounded
+window reads, and the frozen reader's `t2s`/`s2t` conversion). `libfjs` depends on
+it by path and exposes `text_*` through `libfjs/src/api/text.rs`; the Dart API is
+`lib/src/frb/api/text.dart`, re-exported from `lib/fjs.dart`. Its own tests are
+independent of the JavaScript runtime:
+`cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml`, and the
+conversion tables it ships are recorded in `liber_text/assets/hanlp-tc/PROVENANCE.md`
+with the decision in ADR 0009.
+
 Build through the package's existing cargokit integration when building Flutter.
 For a native diagnostic build, use `cargo build --release --locked` from
 `libfjs/`, keeping the tested target directory and loaded DLL provenance explicit.

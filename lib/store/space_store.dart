@@ -6,6 +6,12 @@ import 'database.dart';
 import 'ids.dart';
 import 'progress.dart';
 
+/// One line-start anchor the text engine produced: the byte offset, the UTF-16
+/// code-unit offset and the line index of the same position. Named here rather
+/// than imported from the bridge so the store can describe its own rows without
+/// depending on the native library.
+typedef TextIndexAnchor = ({int byteOffset, int codeUnitOffset, int lineIndex});
+
 /// Intent-level access to one space's store.
 ///
 /// The drift tables are the schema; this class is where the contract's rules
@@ -350,6 +356,39 @@ class SpaceStore {
           .get();
 
   // --- Local library -------------------------------------------------------
+
+  /// Replaces a file's sparse index with [anchors] in one transaction.
+  ///
+  /// The index describes one version of a file, so a rebuild replaces it whole:
+  /// a half-written index would let the reader seek to an anchor that describes
+  /// other bytes, and D4's restore tiers assume the anchors and the file agree.
+  /// The read side — the nearest anchor for an offset, and the progress writer
+  /// that fills this table while reading — belongs to #20.
+  Future<void> putTextIndex(
+    String rootId,
+    String relativePath,
+    List<TextIndexAnchor> anchors,
+  ) async {
+    await db.transaction(() async {
+      await (db.delete(db.textIndex)..where(
+            (t) =>
+                t.rootId.equals(rootId) & t.relativePath.equals(relativePath),
+          ))
+          .go();
+      await db.batch(
+        (batch) => batch.insertAll(db.textIndex, [
+          for (final anchor in anchors)
+            TextIndexCompanion.insert(
+              rootId: rootId,
+              relativePath: relativePath,
+              byteOffset: anchor.byteOffset,
+              codeUnitOffset: anchor.codeUnitOffset,
+              lineIndex: anchor.lineIndex,
+            ),
+        ]),
+      );
+    });
+  }
 
   Future<LocalRoot> putLocalRoot(LocalRootsCompanion root) async {
     await db.into(db.localRoots).insertOnConflictUpdate(root);

@@ -1,0 +1,94 @@
+{
+ "commit": "2aac2d7e692632767ae6fd52cf3281881efa00e6",
+ "platform": "Windows-11-10.0.28020-SP0",
+ "library": "D:\\GithubRepositories\\Flutter\\liber-19\\packages\\fjs\\libfjs\\target\\release\\fjs.dll",
+ "librarySha256": "8b2b5e25f13c72d1eba656f8582ef84012f08b4fdcee586e0b6dfe0f3eb03d68",
+ "debugLibrary": "D:\\GithubRepositories\\Flutter\\liber-19\\packages\\fjs\\libfjs\\target\\debug\\fjs.dll",
+ "debugLibrarySha256": "68450aa0c9d9408dc6269e9d5e06fa7ee75afcc6e94d6cc0d1d16fa267439f13",
+ "rustBench": {
+  "path": "D:\\GithubRepositories\\Flutter\\liber-19\\tool\\text_engine_prototype\\rust_bench\\target\\release\\rust_bench.exe",
+  "sha256": "9c00a5348c15a13e088c4ccdc1a7bc8b71555dfa75f7fa0fa12e7fef29a640bf"
+ },
+ "inputs": {
+  "engine-20mb-gbk.txt": {
+   "bytes": 21225732,
+   "encoding": "GBK",
+   "sha256": "3c34793c81e3e19a92986e711c2552f4c8a1b6d4a7dd0a27cdb1e2b277e50c46"
+  },
+  "engine-20mb-utf8.txt": {
+   "bytes": 31739520,
+   "encoding": "UTF-8",
+   "sha256": "d3b9fb6bc4c1d5f73cb136e4c008c853e0a015ace04fc4ad5e99b09014b36582"
+  },
+  "500mb.txt": {
+   "bytes": 524290200,
+   "encoding": "UTF-8",
+   "sha256": "410b0ee6e445bf5f3e7401b88f9d71ed633309ae54d909d9cb802ede8a12225c"
+  },
+  "modern-tw.txt": {
+   "bytes": 2277666,
+   "sha256": "d326487b442b2c741561cfef1987664b6357ae7fb5efc71cfaeff5fbe4eec0fe",
+   "corpusManifestSha256": "d326487b442b2c741561cfef1987664b6357ae7fb5efc71cfaeff5fbe4eec0fe"
+  },
+  "modern-cn.txt": {
+   "bytes": 2275949,
+   "sha256": "d41ba470a803bfbb5ee8d8d811c65de33d3cd216418fd392a7b0701cc9d83ce6",
+   "corpusManifestSha256": "d41ba470a803bfbb5ee8d8d811c65de33d3cd216418fd392a7b0701cc9d83ce6"
+  }
+ },
+ "findings": {
+  "engineAlone": {
+   "index500mbUtf8MedianMs": 608.8,
+   "index500mbUtf8BestMs": 603.3,
+   "index500mbUtf8PeakRssMb": 5.7,
+   "index500mbUtf8FootprintMb": 2.5,
+   "index20mbGbkMedianMs": 383.6,
+   "index20mbGbkPeakRssMb": 6.8,
+   "index20mbUtf8MedianMs": 269.5,
+   "window500mbMedianMs": 1.9,
+   "window500mbFootprintMb": 1.3,
+   "window20mbGbkMedianMs": 0.9,
+   "convertMs": 178.2,
+   "capture": {
+    "phase": "rust-bench-index",
+    "encoding": "UTF-8",
+    "bytes": 524290200,
+    "code_units": 176232000,
+    "anchors": 15964,
+    "chapters": 0,
+    "elapsed_micros": 603274,
+    "baseline_rss_bytes": 4059136,
+    "peak_rss_bytes": 6995968,
+    "platform": "windows",
+    "key": "rust-bench-index-500mb-utf8#1"
+   }
+  },
+  "pureDartStreamingIndex": {
+   "index500mbUtf8Ms": 11569.83,
+   "index500mbUtf8FootprintMb": 20.19921875,
+   "index20mbUtf8Ms": 665.872,
+   "bytePass20mbGbkMs": 34.342,
+   "decode20mbGbkReplacementCharacters": 13085856,
+   "readString20mbGbkError": "FileSystemException: Failed to decode data using encoding 'utf-8', path = 'D:\\liber-probe\\text-engine\\engine-20mb-gbk.txt'",
+   "readString500mbUtf8Ms": 2796.746,
+   "readString500mbUtf8FootprintMb": 817.43359375
+  },
+  "throughTheBridge": {
+   "releaseIndex500mbUtf8Ms": 924.731,
+   "releaseIndex500mbUtf8FootprintMb": 24.44140625,
+   "releaseWindow500mbMs": 9.848,
+   "releaseConvertMs": 296.387,
+   "debugIndex500mbUtf8Ms": 9994.956,
+   "dartDebugVsReleaseFactor": 10.8
+  },
+  "contractTargets": {
+   "passUnderOneSecond500mb": true,
+   "peakUnderFiftyMegabytes500mb": true
+  },
+  "pureDartVsEngine": {
+   "index500mbFactor": 19.0,
+   "index500mbFootprintFactor": 8.1,
+   "readAsStringVsEngineFactor": 4.6
+  }
+ }
+}

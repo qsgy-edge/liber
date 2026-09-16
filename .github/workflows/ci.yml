@@ -96,6 +96,9 @@ jobs:
       - name: HTML adapter tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: cargo test --locked --manifest-path packages/fjs/liber_html/Cargo.toml
+      - name: Text engine tests
+        if: matrix.platform != 'android' && matrix.platform != 'ios'
+        run: cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         with:

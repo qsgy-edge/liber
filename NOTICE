@@ -14,8 +14,16 @@ Third-party components
   Gordon.
 - Dart and Flutter package dependencies: see pubspec.lock for the exact versions
   and each package's own license.
-- Rust crate dependencies of packages/fjs/libfjs: see Cargo.lock; the crate
-  licenses are recorded by the crates themselves.
+- Rust crate dependencies of packages/fjs/libfjs and packages/fjs/liber_text: see
+  their Cargo.lock files; the crate licenses are recorded by the crates
+  themselves.
+- The Chinese conversion tables in packages/fjs/liber_text/assets/hanlp-tc
+  (t2s.txt, s2t.txt): from HanLP 1.x's data/dictionary/tc, Apache-2.0, copyright
+  Hankcs; those files are themselves text conversions of OpenCC's dictionaries
+  (Apache-2.0). assets/hanlp-tc/PROVENANCE.md records the revision and hashes.
+- Legado's `fixT2sDict` word list, reproduced in
+  packages/fjs/liber_text/src/convert.rs as behavioural data: 38 words the frozen
+  reader keeps verbatim.
 
 The Book Source compatibility baseline this project measures against is a
 separate work (Legado, GPL-3.0-or-later). Nothing in this repository is derived

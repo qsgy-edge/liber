@@ -1,0 +1,12 @@
+[package]
+name = "conversion_probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "THROWAWAY: measure Chinese conversion tables against the frozen baseline (ticket #19)"
+
+[dependencies]
+ferrous-opencc = { version = "0.4", default-features = false, features = ["t2s-conversion", "s2t-conversion"] }
+serde_json = "1"
+
+[workspace]

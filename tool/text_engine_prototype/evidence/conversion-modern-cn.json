@@ -1,0 +1,4315 @@
+{
+  "baseline": {
+    "code_units": 983942,
+    "conversion": "quick-transfer-core 0.2.16 (the version the frozen Legado snapshot pins) with Legado's fixT2sDict exclude list for t2s",
+    "oracle": "tool/text_engine_prototype/README.md, BaselineOracle.java",
+    "records": 15388
+  },
+  "candidates": [
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "t2s",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm+exclude",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0005457500099088689,
+      "differing_code_units": 537,
+      "differing_lines": 373,
+      "direction": "t2s",
+      "distinct_hunks": 508,
+      "line_rate": 0.024239667273199896,
+      "name": "hanlp-fmm+exclude",
+      "top_hunks": [
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. “台湾",
+          "count": 2
+        },
+        {
+          "baseline": " 福建咨议局 ",
+          "candidate": " 福建谘议局 ",
+          "count": 2
+        },
+        {
+          "baseline": " 管辖) 乌丘列屿 (13",
+          "candidate": " 管辖) 乌坵列屿 (13",
+          "count": 2
+        },
+        {
+          "baseline": "政体制之创建与变迁 （ ",
+          "candidate": "行政体制之建立与变迁 （ ",
+          "count": 2
+        },
+        {
+          "baseline": "民行政体制之创建与变迁 （",
+          "candidate": "民行政体制之建立与变迁 ",
+          "count": 2
+        },
+        {
+          "baseline": " BRT改革巴士优化专用道3",
+          "candidate": " BRT改革公车优化专用道3",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 中职／裁判员好球带太宽 ",
+          "candidate": " ^ 中职／主审好球带太宽 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 何暖轩. 高铁车",
+          "candidate": " ^ 何煖轩. 高铁车",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运",
+          "candidate": " ^ 建立中运量捷",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运系",
+          "candidate": " ^ 建立中运量捷运系",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 南朝鲜艺人将赴朝鲜",
+          "candidate": " ^ 南韩艺人将赴北韩",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 台中软件园区之都市计",
+          "candidate": " ^ 台中软体园区之都市计",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 存盘副本 . [",
+          "candidate": " ^ 存档副本 . [",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 捷运信号灯系统实务",
+          "candidate": " ^ 捷运号志系统实务",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 新竹市三维育场--首页",
+          "candidate": " ^ 新竹市立体育场--首页",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 杨佩玲. 高铁７",
+          "candidate": " ^ 杨珮玲. 高铁７",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 戴光育",
+          "candidate": " ^ 梁珮绮. 戴光育",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 方沛清",
+          "candidate": " ^ 梁珮绮. 方沛清",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 李锡璋",
+          "candidate": " ^ 梁珮绮. 李锡璋",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 没有圣诞节！五月天",
+          "candidate": " ^ 没有耶诞节！五月天",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 牟玉佩. 捷运到基",
+          "candidate": " ^ 牟玉珮. 捷运到基",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 王, 乾盈 (编).",
+          "candidate": " ^ 王, 干盈 (编).",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 王乾盈. 表面波",
+          "candidate": " ^ 王干盈. 表面波",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 生活短信 南北高速及",
+          "candidate": " ^ 生活简讯 南北高速及",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 电脑软件的介绍 . ",
+          "candidate": " ^ 电脑软体的介绍 . ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 董同和. 厦门方言",
+          "candidate": " ^ 董同龢. 厦门方言",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 董同和、赵荣琅、蓝",
+          "candidate": " ^ 董同龢、赵荣琅、蓝",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 董同和，记台湾的一",
+          "candidate": " ^ 董同龢，记台湾的一",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 鉅亨网新闻中心",
+          "candidate": " ^ 钜亨网新闻中心",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 锺玉珏、朱芳瑶╱综",
+          "candidate": " ^ 锺玉玨、朱芳瑶╱综",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 陈佩琦. 北捷万",
+          "candidate": " ^ 陈珮琦. 北捷万",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 陈佩琦; 孔令琪",
+          "candidate": " ^ 陈珮琦; 孔令琪",
+          "count": 1
+        },
+        {
+          "baseline": " ” 、“ 留 ”（另有后",
+          "candidate": " ” 、“ 畱 ”（另有后",
+          "count": 1
+        },
+        {
+          "baseline": " ”）、 高屋价 问题。",
+          "candidate": " ”）、 高房价 问题。",
+          "count": 1
+        },
+        {
+          "baseline": " 《回归乡土回归传统》 初",
+          "candidate": " 《囘归乡土囘归传统》 初",
+          "count": 1
+        },
+        {
+          "baseline": " 《短信》内湖线 可",
+          "candidate": " 《简讯》内湖线 可",
+          "count": 1
+        },
+        {
+          "baseline": " 《高雄捷运短信》创刊号 ",
+          "candidate": " 《高雄捷运简讯》创刊号 ",
+          "count": 1
+        },
+        {
+          "baseline": " 与斯卡罗人创建的 斯卡罗",
+          "candidate": " 与斯卡罗人建立的 斯卡",
+          "count": 1
+        },
+        {
+          "baseline": " 中央通讯社实时新闻 20",
+          "candidate": " 中央通讯社即时新闻 20",
+          "count": 1
+        },
+        {
+          "baseline": " 中市兴建软件园区 创就业",
+          "candidate": " 中市兴建软体园区 创就业",
+          "count": 1
+        },
+        {
+          "baseline": " 中正国际机场启用 松山改",
+          "candidate": " 中正国际机塲启用 松山改",
+          "count": 1
+        },
+        {
+          "baseline": " 中职裁判员的好球带长期",
+          "candidate": " 中职裁判的好球带长期",
+          "count": 1
+        },
+        {
+          "baseline": " 乌丘 兴化人 ",
+          "candidate": " 乌坵 兴化人 ",
+          "count": 1
+        },
+        {
+          "baseline": " 亚洲最友善自行车城市 . ",
+          "candidate": " 亚洲最友善单车城市 . ",
+          "count": 1
+        },
+        {
+          "baseline": " 交部将创建接管机制 .",
+          "candidate": "案 交部将建立接管机制 .",
+          "count": 1
+        },
+        {
+          "baseline": " 人才、创建裁判员 制度",
+          "candidate": "判 人才、建立裁判 制度 ",
+          "count": 1
+        },
+        {
+          "baseline": " 何时复驶、巴士接驳信息一次",
+          "candidate": " 何时复驶、公车接驳资讯一次",
+          "count": 1
+        },
+        {
+          "baseline": " 冷战 考虑创建的 ARP",
+          "candidate": " 冷战 考虑建立的 AR",
+          "count": 1
+        },
+        {
+          "baseline": " 北市捷运与巴士票 将合一使",
+          "candidate": " 北市捷运与公车票 将合一使",
+          "count": 1
+        },
+        {
+          "baseline": " 双北捷运、巴士月票价格出炉",
+          "candidate": " 双北捷运、公车月票价格出炉",
+          "count": 1
+        },
+        {
+          "baseline": " 台北 城市创建的 历史 ",
+          "candidate": " 台北 城市建立的 历史",
+          "count": 1
+        },
+        {
+          "baseline": " 台湾 创建 政权 。他",
+          "candidate": "在 台湾 建立 政权 。他",
+          "count": 1
+        },
+        {
+          "baseline": " 在 台湾 创建 政权 。",
+          "candidate": " 在 台湾 建立 政权 ",
+          "count": 1
+        },
+        {
+          "baseline": " 娱乐 | 实时 . 即时",
+          "candidate": " 娱乐 | 即时 . 即时",
+          "count": 1
+        },
+        {
+          "baseline": " 宏棋AI数码列车开进北捷",
+          "candidate": " 宏碁AI数位列车开进北捷",
+          "count": 1
+        },
+        {
+          "baseline": " 成大附工 创建于1938",
+          "candidate": " 成大附工 建立于193",
+          "count": 1
+        },
+        {
+          "baseline": " 扎根高雄软件科技园区 .",
+          "candidate": " 扎根高雄软体科技园区 .",
+          "count": 1
+        },
+        {
+          "baseline": " 捷运后续网络 决设屏蔽门",
+          "candidate": " 捷运后续网路 决设月台门",
+          "count": 1
+        },
+        {
+          "baseline": " 新しい日台关系を描いた小",
+          "candidate": " 新しい日台関系を描いた小",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 16
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 12
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 6
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 6
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 5
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 5
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "华",
+          "candidate": "民",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 3
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 3
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 3
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 3
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 3
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 3
+        },
+        {
+          "baseline": "鉅",
+          "candidate": "钜",
+          "count": 3
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 2
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 2
+        },
+        {
+          "baseline": "咨",
+          "candidate": "谘",
+          "count": 2
+        },
+        {
+          "baseline": "回",
+          "candidate": "囘",
+          "count": 2
+        },
+        {
+          "baseline": "法",
+          "candidate": "灋",
+          "count": 2
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 2
+        },
+        {
+          "baseline": "琉",
+          "candidate": "瑠",
+          "count": 2
+        },
+        {
+          "baseline": "璇",
+          "candidate": "璿",
+          "count": 2
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 2
+        },
+        {
+          "baseline": "耕",
+          "candidate": "畊",
+          "count": 2
+        },
+        {
+          "baseline": "背",
+          "candidate": "揹",
+          "count": 2
+        },
+        {
+          "baseline": "霓",
+          "candidate": "蜺",
+          "count": 2
+        },
+        {
+          "baseline": "飙",
+          "candidate": "飚",
+          "count": 2
+        },
+        {
+          "baseline": "乘",
+          "candidate": "乗",
+          "count": 1
+        },
+        {
+          "baseline": "优",
+          "candidate": "佳",
+          "count": 1
+        },
+        {
+          "baseline": "余",
+          "candidate": "庾",
+          "count": 1
+        },
+        {
+          "baseline": "假",
+          "candidate": "叚",
+          "count": 1
+        },
+        {
+          "baseline": "厂",
+          "candidate": "厰",
+          "count": 1
+        },
+        {
+          "baseline": "圣",
+          "candidate": "耶",
+          "count": 1
+        },
+        {
+          "baseline": "基",
+          "candidate": "吉",
+          "count": 1
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 1
+        },
+        {
+          "baseline": "备",
+          "candidate": "俻",
+          "count": 1
+        },
+        {
+          "baseline": "式",
+          "candidate": "序",
+          "count": 1
+        },
+        {
+          "baseline": "总",
+          "candidate": "縂",
+          "count": 1
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 1
+        },
+        {
+          "baseline": "打",
+          "candidate": "列",
+          "count": 1
+        },
+        {
+          "baseline": "扛",
+          "candidate": "摃",
+          "count": 1
+        },
+        {
+          "baseline": "拼",
+          "candidate": "拚",
+          "count": 1
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.001106744433502343,
+      "differing_code_units": 1089,
+      "differing_lines": 601,
+      "direction": "t2s",
+      "distinct_hunks": 1035,
+      "line_rate": 0.039056407590330126,
+      "name": "opencc-t2s+exclude",
+      "top_hunks": [
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " 吴睿人. “台湾高山族杀",
+          "candidate": " 吴叡人. 「台湾高山族杀",
+          "count": 2
+        },
+        {
+          "baseline": " 王鏻 ",
+          "candidate": " 王𬭸 ",
+          "count": 2
+        },
+        {
+          "baseline": " 福建咨议局 ",
+          "candidate": " 福建谘议局 ",
+          "count": 2
+        },
+        {
+          "baseline": " 管辖) 乌丘列屿 (13",
+          "candidate": " 管辖) 乌坵列屿 (13",
+          "count": 2
+        },
+        {
+          "baseline": "^ “TPE”机场不是松山",
+          "candidate": "^ 「TPE」机场不是松山",
+          "count": 2
+        },
+        {
+          "baseline": "“备”、“总”、“关”、“",
+          "candidate": "「备」、「总」、「关」、「",
+          "count": 2
+        },
+        {
+          "baseline": "“观”、“备”、“总”、“",
+          "candidate": "「观」、「备」、「总」、「",
+          "count": 2
+        },
+        {
+          "baseline": "”、“备”、“总”、“关”",
+          "candidate": "」、「备」、「总」、「关」",
+          "count": 2
+        },
+        {
+          "baseline": "”、“总”、“关”、“质”",
+          "candidate": "」、「总」、「关」、「质」",
+          "count": 2
+        },
+        {
+          "baseline": "于防疫人员！” . 中华职",
+          "candidate": "于防疫人员！」 . 中华职",
+          "count": 2
+        },
+        {
+          "baseline": "场 总统府：“荣耀归功于防",
+          "candidate": "场 总统府：「荣耀归功于防",
+          "count": 2
+        },
+        {
+          "baseline": "山族杀人事件”──高一生、",
+          "candidate": "山族杀人事件」──高一生、",
+          "count": 2
+        },
+        {
+          "baseline": "政体制之创建与变迁 （ ",
+          "candidate": "行政体制之建立与变迁 （ ",
+          "count": 2
+        },
+        {
+          "baseline": "民行政体制之创建与变迁 （",
+          "candidate": "民行政体制之建立与变迁 ",
+          "count": 2
+        },
+        {
+          "baseline": "永远的邓丽君”特展─邓丽君",
+          "candidate": "永远的邓丽君」特展─邓丽君",
+          "count": 2
+        },
+        {
+          "baseline": " 2014年“台湾国际游艇",
+          "candidate": " 2014年「台湾国际游艇",
+          "count": 1
+        },
+        {
+          "baseline": " BRT改革巴士优化专用道3",
+          "candidate": " BRT改革公车优化专用道3",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “104 年度",
+          "candidate": " ^ 「104 年度",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Go！Go！",
+          "candidate": " ^ 「Go！Go！",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Yahoo搜",
+          "candidate": " ^ 「Yahoo搜",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “人力资源调查",
+          "candidate": " ^ 「人力资源调查",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “全台首富里”",
+          "candidate": " ^ 「全台首富里」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台中都会区大",
+          "candidate": " ^ 「台中都会区大",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台北捷运”与",
+          "candidate": " ^ 「台北捷运」与",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高",
+          "candidate": " ^ 「台湾」台湾高",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高铁-燕",
+          "candidate": " ^ 「台湾」台湾高铁-燕",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的",
+          "candidate": " ^ 「台湾」名称的",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的由来 ",
+          "candidate": " ^ 「台湾」名称的由来 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名",
+          "candidate": " ^ 「周杰倫日」名",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “哎呦，不错哦",
+          "candidate": " ^ 「哎呦，不错哦",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “大咖天后”献",
+          "candidate": " ^ 「大咖天后」献",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “客家基本法”",
+          "candidate": " ^ 「客家基本法」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “永远的邓丽君",
+          "candidate": " ^ 「永远的邓丽君",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “玩职棒如果能",
+          "candidate": " ^ 「玩职棒如果能",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “看谁比较会带",
+          "candidate": " ^ 「看谁比较会带",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “高铁2.0”",
+          "candidate": " ^ 「高铁2.0」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 〈习称“台湾话”就是",
+          "candidate": " ^ 〈习称「台湾话」就是",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 中职》“看10次都是",
+          "candidate": " ^ 中职》「看10次都是",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 中职／裁判员好球带太宽 ",
+          "candidate": " ^ 中职／主审好球带太宽 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 何暖轩. 高铁车",
+          "candidate": " ^ 何煖轩. 高铁车",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运",
+          "candidate": " ^ 建立中运量捷",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运系",
+          "candidate": " ^ 建立中运量捷运系",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 北市国“邓丽君与庄奴",
+          "candidate": " ^ 北市国「邓丽君与庄奴",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 卓揆：“大南方新硅谷",
+          "candidate": " ^ 卓揆：「大南方新矽谷",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 南朝鲜艺人将赴朝鲜",
+          "candidate": " ^ 南韩艺人将赴北韩",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 参见“台湾省政府功",
+          "candidate": " ^ 参见「台湾省政府功",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 台中软件园区之都市计",
+          "candidate": " ^ 台中软体园区之都市计",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 吃到“长长的菜”好",
+          "candidate": " ^ 吃到「长长的菜」好",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫“头文字D”获",
+          "candidate": " ^ 周杰倫「头文字D」获",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 存盘副本 . [",
+          "candidate": " ^ 存档副本 . [",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 捷运信号灯系统实务",
+          "candidate": " ^ 捷运号志系统实务",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 新竹市三维育场--首页",
+          "candidate": " ^ 新竹市立体育场--首页",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 杨佩玲. 高铁７",
+          "candidate": " ^ 杨珮玲. 高铁７",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 戴光育",
+          "candidate": " ^ 梁珮绮. 戴光育",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 方沛清",
+          "candidate": " ^ 梁珮绮. 方沛清",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁佩绮. 李锡璋",
+          "candidate": " ^ 梁珮绮. 李锡璋",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 比如“观”、“备”",
+          "candidate": " ^ 比如「观」、「备」",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 266
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 266
+        },
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 16
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 12
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 6
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 5
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 5
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "华",
+          "candidate": "民",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 3
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 3
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 3
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 3
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 3
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 3
+        },
+        {
+          "baseline": "鉅",
+          "candidate": "钜",
+          "count": 3
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 2
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 2
+        },
+        {
+          "baseline": "咨",
+          "candidate": "谘",
+          "count": 2
+        },
+        {
+          "baseline": "回",
+          "candidate": "囘",
+          "count": 2
+        },
+        {
+          "baseline": "法",
+          "candidate": "灋",
+          "count": 2
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 2
+        },
+        {
+          "baseline": "琉",
+          "candidate": "瑠",
+          "count": 2
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 2
+        },
+        {
+          "baseline": "耕",
+          "candidate": "畊",
+          "count": 2
+        },
+        {
+          "baseline": "背",
+          "candidate": "揹",
+          "count": 2
+        },
+        {
+          "baseline": "霓",
+          "candidate": "蜺",
+          "count": 2
+        },
+        {
+          "baseline": "飙",
+          "candidate": "飚",
+          "count": 2
+        },
+        {
+          "baseline": "乘",
+          "candidate": "乗",
+          "count": 1
+        },
+        {
+          "baseline": "优",
+          "candidate": "佳",
+          "count": 1
+        },
+        {
+          "baseline": "余",
+          "candidate": "庾",
+          "count": 1
+        },
+        {
+          "baseline": "假",
+          "candidate": "叚",
+          "count": 1
+        },
+        {
+          "baseline": "厂",
+          "candidate": "厰",
+          "count": 1
+        },
+        {
+          "baseline": "圣",
+          "candidate": "耶",
+          "count": 1
+        },
+        {
+          "baseline": "基",
+          "candidate": "吉",
+          "count": 1
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 1
+        },
+        {
+          "baseline": "序",
+          "candidate": "式",
+          "count": 1
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 1
+        },
+        {
+          "baseline": "打",
+          "candidate": "列",
+          "count": 1
+        },
+        {
+          "baseline": "拼",
+          "candidate": "拚",
+          "count": 1
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 1
+        },
+        {
+          "baseline": "星",
+          "candidate": "辛",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0011717872652233256,
+      "differing_code_units": 1153,
+      "differing_lines": 650,
+      "direction": "t2s",
+      "distinct_hunks": 1095,
+      "line_rate": 0.042240707044450224,
+      "name": "opencc-t2s",
+      "top_hunks": [
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 周杰倫 Jay C",
+          "candidate": " ^ 周杰伦 Jay C",
+          "count": 2
+        },
+        {
+          "baseline": " 吴睿人. “台湾高山族杀",
+          "candidate": " 吴叡人. 「台湾高山族杀",
+          "count": 2
+        },
+        {
+          "baseline": " 王鏻 ",
+          "candidate": " 王𬭸 ",
+          "count": 2
+        },
+        {
+          "baseline": " 福建咨议局 ",
+          "candidate": " 福建谘议局 ",
+          "count": 2
+        },
+        {
+          "baseline": " 管辖) 乌丘列屿 (13",
+          "candidate": " 管辖) 乌坵列屿 (13",
+          "count": 2
+        },
+        {
+          "baseline": "^ “TPE”机场不是松山",
+          "candidate": "^ 「TPE」机场不是松山",
+          "count": 2
+        },
+        {
+          "baseline": "“备”、“总”、“关”、“",
+          "candidate": "「备」、「总」、「关」、「",
+          "count": 2
+        },
+        {
+          "baseline": "“观”、“备”、“总”、“",
+          "candidate": "「观」、「备」、「总」、「",
+          "count": 2
+        },
+        {
+          "baseline": "”、“备”、“总”、“关”",
+          "candidate": "」、「备」、「总」、「关」",
+          "count": 2
+        },
+        {
+          "baseline": "”、“总”、“关”、“质”",
+          "candidate": "」、「总」、「关」、「质」",
+          "count": 2
+        },
+        {
+          "baseline": "于防疫人员！” . 中华职",
+          "candidate": "于防疫人员！」 . 中华职",
+          "count": 2
+        },
+        {
+          "baseline": "场 总统府：“荣耀归功于防",
+          "candidate": "场 总统府：「荣耀归功于防",
+          "count": 2
+        },
+        {
+          "baseline": "山族杀人事件”──高一生、",
+          "candidate": "山族杀人事件」──高一生、",
+          "count": 2
+        },
+        {
+          "baseline": "政体制之创建与变迁 （ ",
+          "candidate": "行政体制之建立与变迁 （ ",
+          "count": 2
+        },
+        {
+          "baseline": "民行政体制之创建与变迁 （",
+          "candidate": "民行政体制之建立与变迁 ",
+          "count": 2
+        },
+        {
+          "baseline": "永远的邓丽君”特展─邓丽君",
+          "candidate": "永远的邓丽君」特展─邓丽君",
+          "count": 2
+        },
+        {
+          "baseline": " 2014年“台湾国际游艇",
+          "candidate": " 2014年「台湾国际游艇",
+          "count": 1
+        },
+        {
+          "baseline": " BRT改革巴士优化专用道3",
+          "candidate": " BRT改革公车优化专用道3",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “104 年度",
+          "candidate": " ^ 「104 年度",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Go！Go！",
+          "candidate": " ^ 「Go！Go！",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Yahoo搜",
+          "candidate": " ^ 「Yahoo搜",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “人力资源调查",
+          "candidate": " ^ 「人力资源调查",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “全台首富里”",
+          "candidate": " ^ 「全台首富里」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台中都会区大",
+          "candidate": " ^ 「台中都会区大",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台北捷运”与",
+          "candidate": " ^ 「台北捷运」与",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高",
+          "candidate": " ^ 「台湾」台湾高",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高铁-燕",
+          "candidate": " ^ 「台湾」台湾高铁-燕",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的",
+          "candidate": " ^ 「台湾」名称的",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的由来 ",
+          "candidate": " ^ 「台湾」名称的由来 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名",
+          "candidate": " ^ 「周杰伦日」名",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名曲《以",
+          "candidate": " ^ 「周杰伦日」名曲《以",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “哎呦，不错哦",
+          "candidate": " ^ 「哎呦，不错哦",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “大咖天后”献",
+          "candidate": " ^ 「大咖天后」献",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “客家基本法”",
+          "candidate": " ^ 「客家基本法」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “永远的邓丽君",
+          "candidate": " ^ 「永远的邓丽君",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “玩职棒如果能",
+          "candidate": " ^ 「玩职棒如果能",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “看谁比较会带",
+          "candidate": " ^ 「看谁比较会带",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “高铁2.0”",
+          "candidate": " ^ 「高铁2.0」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 〈习称“台湾话”就是",
+          "candidate": " ^ 〈习称「台湾话」就是",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 中职》“看10次都是",
+          "candidate": " ^ 中职》「看10次都是",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 中职／裁判员好球带太宽 ",
+          "candidate": " ^ 中职／主审好球带太宽 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 何暖轩. 高铁车",
+          "candidate": " ^ 何煖轩. 高铁车",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运",
+          "candidate": " ^ 建立中运量捷",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 创建中运量捷运系",
+          "candidate": " ^ 建立中运量捷运系",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 北市国“邓丽君与庄奴",
+          "candidate": " ^ 北市国「邓丽君与庄奴",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 卓揆：“大南方新硅谷",
+          "candidate": " ^ 卓揆：「大南方新矽谷",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 南朝鲜艺人将赴朝鲜",
+          "candidate": " ^ 南韩艺人将赴北韩",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 参见“台湾省政府功",
+          "candidate": " ^ 参见「台湾省政府功",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 台中软件园区之都市计",
+          "candidate": " ^ 台中软体园区之都市计",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 吃到“长长的菜”好",
+          "candidate": " ^ 吃到「长长的菜」好",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫2022年专",
+          "candidate": " ^ 周杰伦2022年专",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫:拍电影的兴",
+          "candidate": " ^ 周杰伦:拍电影的兴",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫PO女儿温馨",
+          "candidate": " ^ 周杰伦PO女儿温馨",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫“头文字D”获",
+          "candidate": " ^ 周杰伦「头文字D」获",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫与科比合拍广",
+          "candidate": " ^ 周杰伦与科比合拍广",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫太狂！专辑夺",
+          "candidate": " ^ 周杰伦太狂！专辑夺",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 周杰倫好莱坞电影处",
+          "candidate": " ^ 周杰伦好莱坞电影处",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 265
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 265
+        },
+        {
+          "baseline": "倫",
+          "candidate": "伦",
+          "count": 53
+        },
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 16
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 12
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 6
+        },
+        {
+          "baseline": "鳳",
+          "candidate": "凤",
+          "count": 6
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 5
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 5
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "华",
+          "candidate": "民",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 3
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 3
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 3
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 3
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 3
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 3
+        },
+        {
+          "baseline": "鉅",
+          "candidate": "钜",
+          "count": 3
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 2
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 2
+        },
+        {
+          "baseline": "咨",
+          "candidate": "谘",
+          "count": 2
+        },
+        {
+          "baseline": "回",
+          "candidate": "囘",
+          "count": 2
+        },
+        {
+          "baseline": "法",
+          "candidate": "灋",
+          "count": 2
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 2
+        },
+        {
+          "baseline": "琉",
+          "candidate": "瑠",
+          "count": 2
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 2
+        },
+        {
+          "baseline": "耕",
+          "candidate": "畊",
+          "count": 2
+        },
+        {
+          "baseline": "背",
+          "candidate": "揹",
+          "count": 2
+        },
+        {
+          "baseline": "霓",
+          "candidate": "蜺",
+          "count": 2
+        },
+        {
+          "baseline": "飙",
+          "candidate": "飚",
+          "count": 2
+        },
+        {
+          "baseline": "乘",
+          "candidate": "乗",
+          "count": 1
+        },
+        {
+          "baseline": "优",
+          "candidate": "佳",
+          "count": 1
+        },
+        {
+          "baseline": "余",
+          "candidate": "庾",
+          "count": 1
+        },
+        {
+          "baseline": "假",
+          "candidate": "叚",
+          "count": 1
+        },
+        {
+          "baseline": "厂",
+          "candidate": "厰",
+          "count": 1
+        },
+        {
+          "baseline": "圣",
+          "candidate": "耶",
+          "count": 1
+        },
+        {
+          "baseline": "基",
+          "candidate": "吉",
+          "count": 1
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 1
+        },
+        {
+          "baseline": "序",
+          "candidate": "式",
+          "count": 1
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 1
+        },
+        {
+          "baseline": "打",
+          "candidate": "列",
+          "count": 1
+        },
+        {
+          "baseline": "拼",
+          "candidate": "拚",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0017358305715537209,
+      "differing_code_units": 1708,
+      "differing_lines": 959,
+      "direction": "t2s",
+      "distinct_hunks": 1451,
+      "line_rate": 0.062321289316350406,
+      "name": "opencc-tw2sp+exclude",
+      "top_hunks": [
+        {
+          "baseline": " ^ 杨馥菱著：《台湾歌仔",
+          "candidate": " ^ 杨馥菱着：《台湾歌仔",
+          "count": 11
+        },
+        {
+          "baseline": " 影像 ",
+          "candidate": " 图像 ",
+          "count": 5
+        },
+        {
+          "baseline": "15年全球智慧型手机出货1",
+          "candidate": "15年全球智能型手机出货1",
+          "count": 5
+        },
+        {
+          "baseline": " 华埠土官话 ",
+          "candidate": " 华端口土官话 ",
+          "count": 4
+        },
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": "^ 人口统计资料 . 内政部",
+          "candidate": "^ 人口统计数据 . 内政部",
+          "count": 3
+        },
+        {
+          "baseline": "李春晓、张凡著. 《闽台方",
+          "candidate": "李春晓、张凡着. 《闽台方",
+          "count": 3
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 徐丽纱著：《台湾歌仔",
+          "candidate": " ^ 徐丽纱着：《台湾歌仔",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 河原功著，张文薰、林",
+          "candidate": " ^ 河原功着，张文薰、林",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 潘英编著. 《台湾平",
+          "candidate": " ^ 潘英编着. 《台湾平",
+          "count": 2
+        },
+        {
+          "baseline": " 为 动力分散式 电力动车",
+          "candidate": " 为 动力分布式 电力动车",
+          "count": 2
+        },
+        {
+          "baseline": " 吴睿人. “台湾高山族杀",
+          "candidate": " 吴叡人. 「台湾高山族杀",
+          "count": 2
+        },
+        {
+          "baseline": " 王鏻 ",
+          "candidate": " 王𬭸 ",
+          "count": 2
+        },
+        {
+          "baseline": " 福建咨议局 ",
+          "candidate": " 福建谘议局 ",
+          "count": 2
+        },
+        {
+          "baseline": " 管辖) 乌丘列屿 (13",
+          "candidate": " 管辖) 乌坵列屿 (13",
+          "count": 2
+        },
+        {
+          "baseline": "^ “TPE”机场不是松山",
+          "candidate": "^ 「TPE」机场不是松山",
+          "count": 2
+        },
+        {
+          "baseline": "^ 陈俊杰编著. 《埔里开",
+          "candidate": "^ 陈俊杰编着. 《埔里开",
+          "count": 2
+        },
+        {
+          "baseline": "arlgen著，赵元任、罗",
+          "candidate": "arlgen着，赵元任、罗",
+          "count": 2
+        },
+        {
+          "baseline": "“备”、“总”、“关”、“",
+          "candidate": "「备」、「总」、「关」、「",
+          "count": 2
+        },
+        {
+          "baseline": "“观”、“备”、“总”、“",
+          "candidate": "「观」、「备」、「总」、「",
+          "count": 2
+        },
+        {
+          "baseline": "”、“备”、“总”、“关”",
+          "candidate": "」、「备」、「总」、「关」",
+          "count": 2
+        },
+        {
+          "baseline": "”、“总”、“关”、“质”",
+          "candidate": "」、「总」、「关」、「质」",
+          "count": 2
+        },
+        {
+          "baseline": "三方协力挤压抬升的造山运动",
+          "candidate": "三方协力挤压擡升的造山运动",
+          "count": 2
+        },
+        {
+          "baseline": "于防疫人员！” . 中华职",
+          "candidate": "于防疫人员！」 . 中华职",
+          "count": 2
+        },
+        {
+          "baseline": "产业暨创新智慧生活服务中心",
+          "candidate": "产业暨创新智能生活服务中心",
+          "count": 2
+        },
+        {
+          "baseline": "各气象站气候资料 . 中央气",
+          "candidate": "各气象站气候数据 . 中央气",
+          "count": 2
+        },
+        {
+          "baseline": "含有内容需登入查看的页面 ",
+          "candidate": "含有内容需登录查看的页面 ",
+          "count": 2
+        },
+        {
+          "baseline": "场 总统府：“荣耀归功于防",
+          "candidate": "场 总统府：「荣耀归功于防",
+          "count": 2
+        },
+        {
+          "baseline": "客家人口基础资料调查研究 (",
+          "candidate": "客家人口基础数据调查研究 (",
+          "count": 2
+        },
+        {
+          "baseline": "山族杀人事件”──高一生、",
+          "candidate": "山族杀人事件」──高一生、",
+          "count": 2
+        },
+        {
+          "baseline": "影像处理与多工运算能力。 ",
+          "candidate": "图像处理与多任务运算能力。 ",
+          "count": 2
+        },
+        {
+          "baseline": "性能，尤其是影像处理与多工",
+          "candidate": "性能，尤其是图像处理与多任",
+          "count": 2
+        },
+        {
+          "baseline": "易行政诉讼程序及交通裁决案",
+          "candidate": "行政诉讼进程及交通裁决案",
+          "count": 2
+        },
+        {
+          "baseline": "永远的邓丽君”特展─邓丽君",
+          "candidate": "永远的邓丽君」特展─邓丽君",
+          "count": 2
+        },
+        {
+          "baseline": "简易行政诉讼程序及交通裁",
+          "candidate": "简易行政诉讼进程及交通裁决",
+          "count": 2
+        },
+        {
+          "baseline": "部教育统计查询网 . [ ",
+          "candidate": "部教育统计查找网 . [ ",
+          "count": 2
+        },
+        {
+          "baseline": " (MIH智慧电能自动车开",
+          "candidate": " (MIH智能电能自动车开",
+          "count": 1
+        },
+        {
+          "baseline": " - 就是鸟部落格转载自中国时",
+          "candidate": " - 就是鸟博客转载自中国时",
+          "count": 1
+        },
+        {
+          "baseline": " 2014年“台湾国际游艇",
+          "candidate": " 2014年「台湾国际游艇",
+          "count": 1
+        },
+        {
+          "baseline": " BRT改革巴士优化专用道3",
+          "candidate": " BRT改革公车优化专用道3",
+          "count": 1
+        },
+        {
+          "baseline": " Linux核心 的 操",
+          "candidate": " Linux内核 的 操作",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “104 年度",
+          "candidate": " ^ 「104 年度",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Go！Go！",
+          "candidate": " ^ 「Go！Go！",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Yahoo搜",
+          "candidate": " ^ 「Yahoo搜",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “人力资源调查",
+          "candidate": " ^ 「人力资源调查",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “全台首富里”",
+          "candidate": " ^ 「全台首富里」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台中都会区大",
+          "candidate": " ^ 「台中都会区大",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台北捷运”与",
+          "candidate": " ^ 「台北捷运」与",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高",
+          "candidate": " ^ 「台湾」台湾高",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高铁-燕",
+          "candidate": " ^ 「台湾」台湾高铁-燕",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的",
+          "candidate": " ^ 「台湾」名称的",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的由来 ",
+          "candidate": " ^ 「台湾」名称的由来 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名",
+          "candidate": " ^ 「周杰倫日」名",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “哎呦，不错哦",
+          "candidate": " ^ 「哎呦，不错哦",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “大咖天后”献",
+          "candidate": " ^ 「大咖天后」献",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “客家基本法”",
+          "candidate": " ^ 「客家基本法」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “永远的邓丽君",
+          "candidate": " ^ 「永远的邓丽君",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “玩职棒如果能",
+          "candidate": " ^ 「玩职棒如果能",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 267
+        },
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 265
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 124
+        },
+        {
+          "baseline": "慧",
+          "candidate": "能",
+          "count": 40
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 33
+        },
+        {
+          "baseline": "件",
+          "candidate": "档",
+          "count": 30
+        },
+        {
+          "baseline": "影",
+          "candidate": "图",
+          "count": 21
+        },
+        {
+          "baseline": "群",
+          "candidate": "区",
+          "count": 14
+        },
+        {
+          "baseline": "者",
+          "candidate": "户",
+          "count": 13
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 12
+        },
+        {
+          "baseline": "通",
+          "candidate": "信",
+          "count": 11
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 9
+        },
+        {
+          "baseline": "标",
+          "candidate": "针",
+          "count": 9
+        },
+        {
+          "baseline": "询",
+          "candidate": "找",
+          "count": 8
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "奈",
+          "candidate": "纳",
+          "count": 6
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 6
+        },
+        {
+          "baseline": "援",
+          "candidate": "持",
+          "count": 6
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 5
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 5
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "华",
+          "candidate": "民",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "码",
+          "candidate": "字",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "元",
+          "candidate": "组",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "讯",
+          "candidate": "信",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 3
+        },
+        {
+          "baseline": "鉅",
+          "candidate": "钜",
+          "count": 3
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 2
+        },
+        {
+          "baseline": "停",
+          "candidate": "禁",
+          "count": 2
+        },
+        {
+          "baseline": "入",
+          "candidate": "录",
+          "count": 2
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 2
+        },
+        {
+          "baseline": "咨",
+          "candidate": "谘",
+          "count": 2
+        },
+        {
+          "baseline": "回",
+          "candidate": "囘",
+          "count": 2
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 2
+        },
+        {
+          "baseline": "散",
+          "candidate": "布",
+          "count": 2
+        },
+        {
+          "baseline": "法",
+          "candidate": "灋",
+          "count": 2
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 2
+        },
+        {
+          "baseline": "琉",
+          "candidate": "瑠",
+          "count": 2
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 2
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 2
+        },
+        {
+          "baseline": "耕",
+          "candidate": "畊",
+          "count": 2
+        },
+        {
+          "baseline": "背",
+          "candidate": "揹",
+          "count": 2
+        },
+        {
+          "baseline": "行",
+          "candidate": "进",
+          "count": 2
+        },
+        {
+          "baseline": "长",
+          "candidate": "官",
+          "count": 2
+        },
+        {
+          "baseline": "霓",
+          "candidate": "蜺",
+          "count": 2
+        },
+        {
+          "baseline": "飙",
+          "candidate": "飚",
+          "count": 2
+        },
+        {
+          "baseline": "乘",
+          "candidate": "乗",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0018527044098023613,
+      "differing_code_units": 1823,
+      "differing_lines": 1027,
+      "direction": "t2s",
+      "distinct_hunks": 1538,
+      "line_rate": 0.06674031713023135,
+      "name": "opencc-tw2sp",
+      "top_hunks": [
+        {
+          "baseline": " ^ 杨馥菱著：《台湾歌仔",
+          "candidate": " ^ 杨馥菱着：《台湾歌仔",
+          "count": 11
+        },
+        {
+          "baseline": " 影像 ",
+          "candidate": " 图像 ",
+          "count": 5
+        },
+        {
+          "baseline": "15年全球智慧型手机出货1",
+          "candidate": "15年全球智能型手机出货1",
+          "count": 5
+        },
+        {
+          "baseline": " 华埠土官话 ",
+          "candidate": " 华端口土官话 ",
+          "count": 4
+        },
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": "^ 人口统计资料 . 内政部",
+          "candidate": "^ 人口统计数据 . 内政部",
+          "count": 3
+        },
+        {
+          "baseline": "李春晓、张凡著. 《闽台方",
+          "candidate": "李春晓、张凡着. 《闽台方",
+          "count": 3
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 周杰倫 Jay C",
+          "candidate": " ^ 周杰伦 Jay C",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 徐丽纱著：《台湾歌仔",
+          "candidate": " ^ 徐丽纱着：《台湾歌仔",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 河原功著，张文薰、林",
+          "candidate": " ^ 河原功着，张文薰、林",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 潘英编著. 《台湾平",
+          "candidate": " ^ 潘英编着. 《台湾平",
+          "count": 2
+        },
+        {
+          "baseline": " 为 动力分散式 电力动车",
+          "candidate": " 为 动力分布式 电力动车",
+          "count": 2
+        },
+        {
+          "baseline": " 吴睿人. “台湾高山族杀",
+          "candidate": " 吴叡人. 「台湾高山族杀",
+          "count": 2
+        },
+        {
+          "baseline": " 王鏻 ",
+          "candidate": " 王𬭸 ",
+          "count": 2
+        },
+        {
+          "baseline": " 福建咨议局 ",
+          "candidate": " 福建谘议局 ",
+          "count": 2
+        },
+        {
+          "baseline": " 管辖) 乌丘列屿 (13",
+          "candidate": " 管辖) 乌坵列屿 (13",
+          "count": 2
+        },
+        {
+          "baseline": "^ “TPE”机场不是松山",
+          "candidate": "^ 「TPE」机场不是松山",
+          "count": 2
+        },
+        {
+          "baseline": "^ 陈俊杰编著. 《埔里开",
+          "candidate": "^ 陈俊杰编着. 《埔里开",
+          "count": 2
+        },
+        {
+          "baseline": "arlgen著，赵元任、罗",
+          "candidate": "arlgen着，赵元任、罗",
+          "count": 2
+        },
+        {
+          "baseline": "“备”、“总”、“关”、“",
+          "candidate": "「备」、「总」、「关」、「",
+          "count": 2
+        },
+        {
+          "baseline": "“观”、“备”、“总”、“",
+          "candidate": "「观」、「备」、「总」、「",
+          "count": 2
+        },
+        {
+          "baseline": "”、“备”、“总”、“关”",
+          "candidate": "」、「备」、「总」、「关」",
+          "count": 2
+        },
+        {
+          "baseline": "”、“总”、“关”、“质”",
+          "candidate": "」、「总」、「关」、「质」",
+          "count": 2
+        },
+        {
+          "baseline": "三方协力挤压抬升的造山运动",
+          "candidate": "三方协力挤压擡升的造山运动",
+          "count": 2
+        },
+        {
+          "baseline": "于防疫人员！” . 中华职",
+          "candidate": "于防疫人员！」 . 中华职",
+          "count": 2
+        },
+        {
+          "baseline": "产业暨创新智慧生活服务中心",
+          "candidate": "产业暨创新智能生活服务中心",
+          "count": 2
+        },
+        {
+          "baseline": "各气象站气候资料 . 中央气",
+          "candidate": "各气象站气候数据 . 中央气",
+          "count": 2
+        },
+        {
+          "baseline": "含有内容需登入查看的页面 ",
+          "candidate": "含有内容需登录查看的页面 ",
+          "count": 2
+        },
+        {
+          "baseline": "场 总统府：“荣耀归功于防",
+          "candidate": "场 总统府：「荣耀归功于防",
+          "count": 2
+        },
+        {
+          "baseline": "客家人口基础资料调查研究 (",
+          "candidate": "客家人口基础数据调查研究 (",
+          "count": 2
+        },
+        {
+          "baseline": "山族杀人事件”──高一生、",
+          "candidate": "山族杀人事件」──高一生、",
+          "count": 2
+        },
+        {
+          "baseline": "影像处理与多工运算能力。 ",
+          "candidate": "图像处理与多任务运算能力。 ",
+          "count": 2
+        },
+        {
+          "baseline": "性能，尤其是影像处理与多工",
+          "candidate": "性能，尤其是图像处理与多任",
+          "count": 2
+        },
+        {
+          "baseline": "易行政诉讼程序及交通裁决案",
+          "candidate": "行政诉讼进程及交通裁决案",
+          "count": 2
+        },
+        {
+          "baseline": "永远的邓丽君”特展─邓丽君",
+          "candidate": "永远的邓丽君」特展─邓丽君",
+          "count": 2
+        },
+        {
+          "baseline": "简易行政诉讼程序及交通裁",
+          "candidate": "简易行政诉讼进程及交通裁决",
+          "count": 2
+        },
+        {
+          "baseline": "部教育统计查询网 . [ ",
+          "candidate": "部教育统计查找网 . [ ",
+          "count": 2
+        },
+        {
+          "baseline": " (MIH智慧电能自动车开",
+          "candidate": " (MIH智能电能自动车开",
+          "count": 1
+        },
+        {
+          "baseline": " , 编. 整合基隆、汐东捷",
+          "candidate": " , 编. 集成基隆、汐东捷",
+          "count": 1
+        },
+        {
+          "baseline": " - 就是鸟部落格转载自中国时",
+          "candidate": " - 就是鸟博客转载自中国时",
+          "count": 1
+        },
+        {
+          "baseline": " 2014年“台湾国际游艇",
+          "candidate": " 2014年「台湾国际游艇",
+          "count": 1
+        },
+        {
+          "baseline": " BRT改革巴士优化专用道3",
+          "candidate": " BRT改革公车优化专用道3",
+          "count": 1
+        },
+        {
+          "baseline": " Linux核心 的 操",
+          "candidate": " Linux内核 的 操作",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “104 年度",
+          "candidate": " ^ 「104 年度",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Go！Go！",
+          "candidate": " ^ 「Go！Go！",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “Yahoo搜",
+          "candidate": " ^ 「Yahoo搜",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “人力资源调查",
+          "candidate": " ^ 「人力资源调查",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “全台首富里”",
+          "candidate": " ^ 「全台首富里」",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台中都会区大",
+          "candidate": " ^ 「台中都会区大",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台北捷运”与",
+          "candidate": " ^ 「台北捷运」与",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高",
+          "candidate": " ^ 「台湾」台湾高",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”台湾高铁-燕",
+          "candidate": " ^ 「台湾」台湾高铁-燕",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的",
+          "candidate": " ^ 「台湾」名称的",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “台湾”名称的由来 ",
+          "candidate": " ^ 「台湾」名称的由来 ",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名",
+          "candidate": " ^ 「周杰伦日」名",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “周杰倫日”名曲《以",
+          "candidate": " ^ 「周杰伦日」名曲《以",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “哎呦，不错哦",
+          "candidate": " ^ 「哎呦，不错哦",
+          "count": 1
+        },
+        {
+          "baseline": " ^ “大咖天后”献",
+          "candidate": " ^ 「大咖天后」献",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 266
+        },
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 264
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 124
+        },
+        {
+          "baseline": "倫",
+          "candidate": "伦",
+          "count": 53
+        },
+        {
+          "baseline": "慧",
+          "candidate": "能",
+          "count": 40
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 33
+        },
+        {
+          "baseline": "件",
+          "candidate": "档",
+          "count": 30
+        },
+        {
+          "baseline": "影",
+          "candidate": "图",
+          "count": 21
+        },
+        {
+          "baseline": "群",
+          "candidate": "区",
+          "count": 14
+        },
+        {
+          "baseline": "者",
+          "candidate": "户",
+          "count": 13
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 12
+        },
+        {
+          "baseline": "通",
+          "candidate": "信",
+          "count": 11
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 9
+        },
+        {
+          "baseline": "标",
+          "candidate": "针",
+          "count": 9
+        },
+        {
+          "baseline": "询",
+          "candidate": "找",
+          "count": 8
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "奈",
+          "candidate": "纳",
+          "count": 6
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 6
+        },
+        {
+          "baseline": "援",
+          "candidate": "持",
+          "count": 6
+        },
+        {
+          "baseline": "鳳",
+          "candidate": "凤",
+          "count": 6
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 5
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 5
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "华",
+          "candidate": "民",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "码",
+          "candidate": "字",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "元",
+          "candidate": "组",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "讯",
+          "candidate": "信",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 3
+        },
+        {
+          "baseline": "鉅",
+          "candidate": "钜",
+          "count": 3
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 2
+        },
+        {
+          "baseline": "停",
+          "candidate": "禁",
+          "count": 2
+        },
+        {
+          "baseline": "入",
+          "candidate": "录",
+          "count": 2
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 2
+        },
+        {
+          "baseline": "咨",
+          "candidate": "谘",
+          "count": 2
+        },
+        {
+          "baseline": "回",
+          "candidate": "囘",
+          "count": 2
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 2
+        },
+        {
+          "baseline": "散",
+          "candidate": "布",
+          "count": 2
+        },
+        {
+          "baseline": "法",
+          "candidate": "灋",
+          "count": 2
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 2
+        },
+        {
+          "baseline": "琉",
+          "candidate": "瑠",
+          "count": 2
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 2
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 2
+        },
+        {
+          "baseline": "耕",
+          "candidate": "畊",
+          "count": 2
+        },
+        {
+          "baseline": "背",
+          "candidate": "揹",
+          "count": 2
+        },
+        {
+          "baseline": "行",
+          "candidate": "进",
+          "count": 2
+        },
+        {
+          "baseline": "长",
+          "candidate": "官",
+          "count": 2
+        },
+        {
+          "baseline": "霓",
+          "candidate": "蜺",
+          "count": 2
+        }
+      ],
+      "total_code_units": 983967,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "s2t",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 983941,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.00021241111001574282,
+      "differing_code_units": 209,
+      "differing_lines": 122,
+      "direction": "s2t",
+      "distinct_hunks": 190,
+      "line_rate": 0.00792825578372758,
+      "name": "hanlp-fmm",
+      "top_hunks": [
+        {
+          "baseline": " World』s Top ",
+          "candidate": " World’s Top ",
+          "count": 9
+        },
+        {
+          "baseline": " World』s Bigg",
+          "candidate": " World’s Bigg",
+          "count": 5
+        },
+        {
+          "baseline": " 註音 ",
+          "candidate": " 注音 ",
+          "count": 4
+        },
+        {
+          "baseline": "Taiwan』s gove",
+          "candidate": "Taiwan’s gove",
+          "count": 2
+        },
+        {
+          "baseline": "vernor』s offi",
+          "candidate": "vernor’s offi",
+          "count": 2
+        },
+        {
+          "baseline": " It!!!『藍｜BLUE",
+          "candidate": " It!!!‘藍｜BLUE",
+          "count": 1
+        },
+        {
+          "baseline": " Women』s Base",
+          "candidate": " Women’s Base",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 李梁堅. 高雄市",
+          "candidate": " ^ 李樑堅. 高雄市",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁敬彥. 周杰",
+          "candidate": " ^ 樑敬彥. 周杰",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁燕蕙. 富士",
+          "candidate": " ^ 樑燕蕙. 富士",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 戴光",
+          "candidate": " ^ 樑珮綺. 戴光",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 方沛",
+          "candidate": " ^ 樑珮綺. 方沛",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 李錫",
+          "candidate": " ^ 樑珮綺. 李錫",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號調號之",
+          "candidate": " ^ 注音符號調號之",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號（U+",
+          "candidate": " ^ 注音符號（U+",
+          "count": 1
+        },
+        {
+          "baseline": " fong 『great ",
+          "candidate": " fong ‘great ",
+          "count": 1
+        },
+        {
+          "baseline": " women』s badm",
+          "candidate": " women’s badm",
+          "count": 1
+        },
+        {
+          "baseline": " world』s best",
+          "candidate": " world’s best",
+          "count": 1
+        },
+        {
+          "baseline": " 「註音」二字意謂",
+          "candidate": " 「注音」二字意謂",
+          "count": 1
+        },
+        {
+          "baseline": " 」改成「 抵觸 」 。",
+          "candidate": " 」改成「 牴觸 」 。",
+          "count": 1
+        },
+        {
+          "baseline": " ㄧㄣ（我愛註音） （ 頁",
+          "candidate": " ㄧㄣ（我愛注音） （ 頁",
+          "count": 1
+        },
+        {
+          "baseline": " 三民主義 』在大陸實行的",
+          "candidate": " 三民主義 ’在大陸實行的",
+          "count": 1
+        },
+        {
+          "baseline": " 主條目： 註音輸入法 ",
+          "candidate": " 主條目： 注音輸入法 ",
+          "count": 1
+        },
+        {
+          "baseline": " 之子 鄭如梁 於 道光 ",
+          "candidate": " 之子 鄭如樑 於 道光 ",
+          "count": 1
+        },
+        {
+          "baseline": " 印有 註音 符號、 ",
+          "candidate": " 印有 注音 符號、 ",
+          "count": 1
+        },
+        {
+          "baseline": " 張正男. 註音符號與華語",
+          "candidate": " 張正男. 注音符號與華語",
+          "count": 1
+        },
+        {
+          "baseline": " 捷運高架橋梁結構設計與施",
+          "candidate": " 捷運高架橋樑結構設計與施",
+          "count": 1
+        },
+        {
+          "baseline": " 梁珮綺. 李亨",
+          "candidate": " 樑珮綺. 李亨",
+          "count": 1
+        },
+        {
+          "baseline": " 沈君帆; 梁建裕. 「 ",
+          "candidate": " 沈君帆; 樑建裕. 「 ",
+          "count": 1
+        },
+        {
+          "baseline": " 福佬話 ，『二小』是 原",
+          "candidate": " 福佬話 ，‘二小’是 原",
+          "count": 1
+        },
+        {
+          "baseline": " 纔是最早的『臺灣話』！」",
+          "candidate": " 纔是最早的‘臺灣話’！」",
+          "count": 1
+        },
+        {
+          "baseline": " 莊富安; 梁玉立. 蕭萬",
+          "candidate": " 莊富安; 樑玉立. 蕭萬",
+          "count": 1
+        },
+        {
+          "baseline": " 註音->IPA",
+          "candidate": " 注音->IPA",
+          "count": 1
+        },
+        {
+          "baseline": " 註音「一」（/",
+          "candidate": " 注音「一」（/",
+          "count": 1
+        },
+        {
+          "baseline": " 註音的正體（黑",
+          "candidate": " 注音的正體（黑",
+          "count": 1
+        },
+        {
+          "baseline": " 註音聲調採用 ",
+          "candidate": " 注音聲調採用 ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音與拼音系統",
+          "candidate": " 注音與拼音系統",
+          "count": 1
+        },
+        {
+          "baseline": " 註音輸入法 ",
+          "candidate": " 注音輸入法 ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音轉換工具 ",
+          "candidate": " 注音轉換工具 ",
+          "count": 1
+        },
+        {
+          "baseline": " 通梁線 ",
+          "candidate": " 通樑線 ",
+          "count": 1
+        },
+        {
+          "baseline": " 陳俊宏; 梁志全; 汪彥",
+          "candidate": " 陳俊宏; 樑志全; 汪彥",
+          "count": 1
+        },
+        {
+          "baseline": " 黃旭昇. 梁君棣 , 編",
+          "candidate": " 黃旭昇. 樑君棣 , 編",
+          "count": 1
+        },
+        {
+          "baseline": ". 原39個註音符號 吳稚",
+          "candidate": ". 原39個注音符號 吳稚",
+          "count": 1
+        },
+        {
+          "baseline": "Gould)』」。 Mic",
+          "candidate": "Gould)’」。 Mic",
+          "count": 1
+        },
+        {
+          "baseline": "L 語言內，註音漢字的功能",
+          "candidate": "L 語言內，注音漢字的功能",
+          "count": 1
+        },
+        {
+          "baseline": "Taipei』s Bubb",
+          "candidate": "Taipei’s Bubb",
+          "count": 1
+        },
+        {
+          "baseline": "Taiwan』s Tai ",
+          "candidate": "Taiwan’s Tai ",
+          "count": 1
+        },
+        {
+          "baseline": "] TSMC』s 2nm ",
+          "candidate": "] TSMC’s 2nm ",
+          "count": 1
+        },
+        {
+          "baseline": "] ）和濁雙唇塞音 [b]",
+          "candidate": "] ）和濁雙脣塞音 [b]",
+          "count": 1
+        },
+        {
+          "baseline": "aphene』s unus",
+          "candidate": "aphene’s unus",
+          "count": 1
+        },
+        {
+          "baseline": "e It！ 『擁抱』公益演",
+          "candidate": "e It！ ‘擁抱’公益演",
+          "count": 1
+        },
+        {
+          "baseline": "g life』s dear",
+          "candidate": "g life’s dear",
+          "count": 1
+        },
+        {
+          "baseline": "ricane』, from",
+          "candidate": "ricane’, from",
+          "count": 1
+        },
+        {
+          "baseline": "rlwind』; infl",
+          "candidate": "rlwind’; infl",
+          "count": 1
+        },
+        {
+          "baseline": "t wind』 ",
+          "candidate": "t wind’ ",
+          "count": 1
+        },
+        {
+          "baseline": "tufan 『hurric",
+          "candidate": "tufan ‘hurric",
+          "count": 1
+        },
+        {
+          "baseline": "t！ 『擁抱』公益演唱會」",
+          "candidate": "t！ ‘擁抱’公益演唱會」",
+          "count": 1
+        },
+        {
+          "baseline": "uffan 『typhoo",
+          "candidate": "uffan ‘typhoo",
+          "count": 1
+        },
+        {
+          "baseline": "yphon 『whirlw",
+          "candidate": "yphon ‘whirlw",
+          "count": 1
+        },
+        {
+          "baseline": "yphoon』 (16–1",
+          "candidate": "yphoon’ (16–1",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 73
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 46
+        },
+        {
+          "baseline": "註",
+          "candidate": "注",
+          "count": 46
+        },
+        {
+          "baseline": "梁",
+          "candidate": "樑",
+          "count": 25
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 8
+        },
+        {
+          "baseline": "簽",
+          "candidate": "籤",
+          "count": 4
+        },
+        {
+          "baseline": "僵",
+          "candidate": "殭",
+          "count": 1
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 1
+        },
+        {
+          "baseline": "抵",
+          "candidate": "牴",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983941,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.005890597098809787,
+      "differing_code_units": 5796,
+      "differing_lines": 1394,
+      "direction": "s2t",
+      "distinct_hunks": 5639,
+      "line_rate": 0.09059007018455939,
+      "name": "opencc-s2t",
+      "top_hunks": [
+        {
+          "baseline": "(消歧義) 」。 ",
+          "candidate": "(消歧義) ”。 ",
+          "count": 10
+        },
+        {
+          "baseline": " World』s Top ",
+          "candidate": " World’s Top ",
+          "count": 9
+        },
+        {
+          "baseline": " ^ 「中華民國各省",
+          "candidate": " ^ “中華民國各省",
+          "count": 7
+        },
+        {
+          "baseline": "行政區域代碼」自2005年",
+          "candidate": "行政區域代碼”自2005年",
+          "count": 7
+        },
+        {
+          "baseline": "舉 ，各「裏」得票分佈。 ",
+          "candidate": "舉 ，各“裏”得票分佈。 ",
+          "count": 6
+        },
+        {
+          "baseline": "長選舉 ，各「裏」得票分佈",
+          "candidate": "長選舉 ，各“裏”得票分佈",
+          "count": 6
+        },
+        {
+          "baseline": " World』s Bigg",
+          "candidate": " World’s Bigg",
+          "count": 5
+        },
+        {
+          "baseline": " 小吃 ",
+          "candidate": " 小喫 ",
+          "count": 5
+        },
+        {
+          "baseline": "kytrax「世界機場大獎",
+          "candidate": "kytrax“世界機場大獎",
+          "count": 5
+        },
+        {
+          "baseline": "文學年鑑》的「文學團體」名",
+          "candidate": "文學年鑑》的“文學團體”名",
+          "count": 5
+        },
+        {
+          "baseline": "的「文學團體」名錄。 ",
+          "candidate": "的“文學團體”名錄。 ",
+          "count": 5
+        },
+        {
+          "baseline": " 臺南小吃 ",
+          "candidate": " 臺南小喫 ",
+          "count": 4
+        },
+        {
+          "baseline": " 註音 ",
+          "candidate": " 注音 ",
+          "count": 4
+        },
+        {
+          "baseline": "學活動基金會」名錄。 ",
+          "candidate": "學活動基金會”名錄。 ",
+          "count": 4
+        },
+        {
+          "baseline": "文學年鑑》的「文學活動基金",
+          "candidate": "文學年鑑》的“文學活動基金",
+          "count": 4
+        },
+        {
+          "baseline": "臺灣文學館，「2007臺灣",
+          "candidate": "臺灣文學館，“2007臺灣",
+          "count": 4
+        },
+        {
+          "baseline": " 臺灣小吃 ",
+          "candidate": " 臺灣小喫 ",
+          "count": 3
+        },
+        {
+          "baseline": "ournal」, no. ",
+          "candidate": "ournal”, no. ",
+          "count": 3
+        },
+        {
+          "baseline": "世界機場大獎」3,000萬",
+          "candidate": "世界機場大獎”3,000萬",
+          "count": 3
+        },
+        {
+          "baseline": "市轄區各「裏」得票分佈。 ",
+          "candidate": "市轄區各“裏”得票分佈。 ",
+          "count": 3
+        },
+        {
+          "baseline": "編號「711」之公臺灣黑熊",
+          "candidate": "編號“711”之公臺灣黑熊",
+          "count": 3
+        },
+        {
+          "baseline": " , 「客家」─ 誤會的歷",
+          "candidate": " , “客家”─ 誤會的歷",
+          "count": 2
+        },
+        {
+          "baseline": " 沙縣小吃 ",
+          "candidate": " 沙縣小喫 ",
+          "count": 2
+        },
+        {
+          "baseline": " 閩浙贛人民遊擊縱隊 ",
+          "candidate": " 閩浙贛人民游擊縱隊 ",
+          "count": 2
+        },
+        {
+          "baseline": " 閩浙贛遊擊縱隊 ",
+          "candidate": " 閩浙贛游擊縱隊 ",
+          "count": 2
+        },
+        {
+          "baseline": ".E 、 丁當 、 蕭敬騰",
+          "candidate": ".E 、 丁噹 、 蕭敬騰",
+          "count": 2
+        },
+        {
+          "baseline": "017 林俊杰 、 玖壹壹",
+          "candidate": "017 林俊傑 、 玖壹壹",
+          "count": 2
+        },
+        {
+          "baseline": "2 聯合頒發「香港金曲（男",
+          "candidate": "2 聯合頒發“香港金曲（男",
+          "count": 2
+        },
+        {
+          "baseline": "4）. , 「客家」─ 誤",
+          "candidate": "4）. , “客家”─ 誤",
+          "count": 2
+        },
+        {
+          "baseline": "6樓公開： 「客家」─ 誤",
+          "candidate": "6樓公開： “客家”─ 誤",
+          "count": 2
+        },
+        {
+          "baseline": "Ching.「Admini",
+          "candidate": "Ching.“Admini",
+          "count": 2
+        },
+        {
+          "baseline": "Taiwan』s gove",
+          "candidate": "Taiwan’s gove",
+          "count": 2
+        },
+        {
+          "baseline": "ecture」, 「Fu ",
+          "candidate": "ecture”, “Fu ",
+          "count": 2
+        },
+        {
+          "baseline": "in 、 丁當 、 張惠妹",
+          "candidate": "in 、 丁噹 、 張惠妹",
+          "count": 2
+        },
+        {
+          "baseline": "in 、 丁當 、 田馥甄",
+          "candidate": "in 、 丁噹 、 田馥甄",
+          "count": 2
+        },
+        {
+          "baseline": "n 、 林俊杰 、 周杰倫",
+          "candidate": "n 、 林俊傑 、 周杰倫",
+          "count": 2
+        },
+        {
+          "baseline": "nicode「注音符號擴展",
+          "candidate": "nicode“注音符號擴展",
+          "count": 2
+        },
+        {
+          "baseline": "ournal」, no.1",
+          "candidate": "ournal”, no.1",
+          "count": 2
+        },
+        {
+          "baseline": "ure」, 「Fu Jen",
+          "candidate": "ure”, “Fu Jen",
+          "count": 2
+        },
+        {
+          "baseline": "vernor』s offi",
+          "candidate": "vernor’s offi",
+          "count": 2
+        },
+        {
+          "baseline": "「番」、「蕃」等歧視性的稱",
+          "candidate": "“番”、“蕃”等歧視性的稱",
+          "count": 2
+        },
+        {
+          "baseline": "三方協力擠壓擡升的造山運動",
+          "candidate": "三方協力擠壓抬升的造山運動",
+          "count": 2
+        },
+        {
+          "baseline": "中，正式承認「原住民族」的",
+          "candidate": "中，正式承認“原住民族”的",
+          "count": 2
+        },
+        {
+          "baseline": "二項更規定：「國家應依民族",
+          "candidate": "二項更規定：“國家應依民族",
+          "count": 2
+        },
+        {
+          "baseline": "以法律定之。」，成爲原住民",
+          "candidate": "以法律定之。”，成爲原住民",
+          "count": 2
+        },
+        {
+          "baseline": "作家作品目錄」搜尋系統。 ",
+          "candidate": "作家作品目錄”搜尋系統。 ",
+          "count": 2
+        },
+        {
+          "baseline": "依林 、 丁當 、 方大同",
+          "candidate": "依林 、 丁噹 、 方大同",
+          "count": 2
+        },
+        {
+          "baseline": "倫 、 林俊杰 2020 ",
+          "candidate": "倫 、 林俊傑 2020 ",
+          "count": 2
+        },
+        {
+          "baseline": "創新機構名單」裏，鴻海爲臺",
+          "candidate": "創新機構名單”裏，鴻海爲臺",
+          "count": 2
+        },
+        {
+          "baseline": "原住民普遍以「臺灣族」自稱",
+          "candidate": "原住民普遍以“臺灣族”自稱",
+          "count": 2
+        },
+        {
+          "baseline": "反對 軍管 」的牌子並演唱",
+          "candidate": "反對 軍管 ”的牌子並演唱",
+          "count": 2
+        },
+        {
+          "baseline": "回紅白歌合戰」。 ",
+          "candidate": "回紅白歌合戰”。 ",
+          "count": 2
+        },
+        {
+          "baseline": "好好想見到你」Mayday",
+          "candidate": "好好想見到你”Mayday",
+          "count": 2
+        },
+        {
+          "baseline": "字標準字體 」。 ",
+          "candidate": "字標準字體 ”。 ",
+          "count": 2
+        },
+        {
+          "baseline": "安》每年發佈「全球百大創新",
+          "candidate": "安》每年發佈“全球百大創新",
+          "count": 2
+        },
+        {
+          "baseline": "族語言及文化」；第十二項更",
+          "candidate": "族語言及文化”；第十二項更",
+          "count": 2
+        },
+        {
+          "baseline": "最佳男運動員」。 ",
+          "candidate": "最佳男運動員”。 ",
+          "count": 2
+        },
+        {
+          "baseline": "林 、 林俊杰 、 田馥甄",
+          "candidate": "林 、 林俊傑 、 田馥甄",
+          "count": 2
+        },
+        {
+          "baseline": "浩 、 林俊杰 、 楊丞琳",
+          "candidate": "浩 、 林俊傑 、 楊丞琳",
+          "count": 2
+        },
+        {
+          "baseline": "煎只是臺灣小吃嗎？有許多福",
+          "candidate": "煎只是臺灣小喫嗎？有許多福",
+          "count": 2
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "「",
+          "candidate": "“",
+          "count": 2677
+        },
+        {
+          "baseline": "」",
+          "candidate": "”",
+          "count": 2664
+        },
+        {
+          "baseline": "吃",
+          "candidate": "喫",
+          "count": 84
+        },
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 71
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 46
+        },
+        {
+          "baseline": "註",
+          "candidate": "注",
+          "count": 45
+        },
+        {
+          "baseline": "鬆",
+          "candidate": "松",
+          "count": 29
+        },
+        {
+          "baseline": "迴",
+          "candidate": "回",
+          "count": 16
+        },
+        {
+          "baseline": "杰",
+          "candidate": "傑",
+          "count": 15
+        },
+        {
+          "baseline": "當",
+          "candidate": "噹",
+          "count": 14
+        },
+        {
+          "baseline": "溪",
+          "candidate": "谿",
+          "count": 12
+        },
+        {
+          "baseline": "擡",
+          "candidate": "抬",
+          "count": 9
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 8
+        },
+        {
+          "baseline": "遊",
+          "candidate": "游",
+          "count": 8
+        },
+        {
+          "baseline": "裏",
+          "candidate": "里",
+          "count": 7
+        },
+        {
+          "baseline": "制",
+          "candidate": "製",
+          "count": 5
+        },
+        {
+          "baseline": "髮",
+          "candidate": "發",
+          "count": 5
+        },
+        {
+          "baseline": "簽",
+          "candidate": "籤",
+          "count": 4
+        },
+        {
+          "baseline": "余",
+          "candidate": "餘",
+          "count": 2
+        },
+        {
+          "baseline": "慄",
+          "candidate": "栗",
+          "count": 2
+        },
+        {
+          "baseline": "於",
+          "candidate": "于",
+          "count": 2
+        },
+        {
+          "baseline": "機",
+          "candidate": "幾",
+          "count": 2
+        },
+        {
+          "baseline": "涌",
+          "candidate": "湧",
+          "count": 2
+        },
+        {
+          "baseline": "僵",
+          "candidate": "殭",
+          "count": 1
+        },
+        {
+          "baseline": "出",
+          "candidate": "齣",
+          "count": 1
+        },
+        {
+          "baseline": "占",
+          "candidate": "佔",
+          "count": 1
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 1
+        },
+        {
+          "baseline": "抵",
+          "candidate": "牴",
+          "count": 1
+        },
+        {
+          "baseline": "沄",
+          "candidate": "澐",
+          "count": 1
+        },
+        {
+          "baseline": "臺",
+          "candidate": "台",
+          "count": 1
+        },
+        {
+          "baseline": "薰",
+          "candidate": "燻",
+          "count": 1
+        },
+        {
+          "baseline": "跖",
+          "candidate": "蹠",
+          "count": 1
+        },
+        {
+          "baseline": "里",
+          "candidate": "裏",
+          "count": 1
+        },
+        {
+          "baseline": "阪",
+          "candidate": "坂",
+          "count": 1
+        },
+        {
+          "baseline": "鮎",
+          "candidate": "鯰",
+          "count": 1
+        }
+      ],
+      "total_code_units": 983941,
+      "total_lines": 15388
+    }
+  ],
+  "exclude_cases": [
+    {
+      "baseline_t2s": "槃",
+      "hanlp_t2s": "槃",
+      "opencc_t2s": "槃",
+      "opencc_t2s+exclude": "槃",
+      "opencc_tw2sp": "槃",
+      "opencc_tw2sp+exclude": "槃",
+      "word": "槃"
+    },
+    {
+      "baseline_t2s": "划槳",
+      "hanlp_t2s": "划槳",
+      "opencc_t2s": "划桨",
+      "opencc_t2s+exclude": "划槳",
+      "opencc_tw2sp": "划桨",
+      "opencc_tw2sp+exclude": "划槳",
+      "word": "划槳"
+    },
+    {
+      "baseline_t2s": "列根",
+      "hanlp_t2s": "列根",
+      "opencc_t2s": "列根",
+      "opencc_t2s+exclude": "列根",
+      "opencc_tw2sp": "列根",
+      "opencc_tw2sp+exclude": "列根",
+      "word": "列根"
+    },
+    {
+      "baseline_t2s": "雪梨",
+      "hanlp_t2s": "雪梨",
+      "opencc_t2s": "雪梨",
+      "opencc_t2s+exclude": "雪梨",
+      "opencc_tw2sp": "雪梨",
+      "opencc_tw2sp+exclude": "雪梨",
+      "word": "雪梨"
+    },
+    {
+      "baseline_t2s": "雪糕",
+      "hanlp_t2s": "雪糕",
+      "opencc_t2s": "雪糕",
+      "opencc_t2s+exclude": "雪糕",
+      "opencc_tw2sp": "雪糕",
+      "opencc_tw2sp+exclude": "雪糕",
+      "word": "雪糕"
+    },
+    {
+      "baseline_t2s": "零錢",
+      "hanlp_t2s": "零錢",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零錢",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零錢",
+      "word": "零錢"
+    },
+    {
+      "baseline_t2s": "零钱",
+      "hanlp_t2s": "零钱",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零钱",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零钱",
+      "word": "零钱"
+    },
+    {
+      "baseline_t2s": "離線",
+      "hanlp_t2s": "離線",
+      "opencc_t2s": "离线",
+      "opencc_t2s+exclude": "離線",
+      "opencc_tw2sp": "脱机",
+      "opencc_tw2sp+exclude": "離線",
+      "word": "離線"
+    },
+    {
+      "baseline_t2s": "碟片",
+      "hanlp_t2s": "碟片",
+      "opencc_t2s": "碟片",
+      "opencc_t2s+exclude": "碟片",
+      "opencc_tw2sp": "盘片",
+      "opencc_tw2sp+exclude": "碟片",
+      "word": "碟片"
+    },
+    {
+      "baseline_t2s": "模組",
+      "hanlp_t2s": "模組",
+      "opencc_t2s": "模组",
+      "opencc_t2s+exclude": "模組",
+      "opencc_tw2sp": "模块",
+      "opencc_tw2sp+exclude": "模組",
+      "word": "模組"
+    },
+    {
+      "baseline_t2s": "桌球",
+      "hanlp_t2s": "桌球",
+      "opencc_t2s": "桌球",
+      "opencc_t2s+exclude": "桌球",
+      "opencc_tw2sp": "桌球",
+      "opencc_tw2sp+exclude": "桌球",
+      "word": "桌球"
+    },
+    {
+      "baseline_t2s": "案頭",
+      "hanlp_t2s": "案頭",
+      "opencc_t2s": "案头",
+      "opencc_t2s+exclude": "案頭",
+      "opencc_tw2sp": "案头",
+      "opencc_tw2sp+exclude": "案頭",
+      "word": "案頭"
+    },
+    {
+      "baseline_t2s": "機車",
+      "hanlp_t2s": "機車",
+      "opencc_t2s": "机车",
+      "opencc_t2s+exclude": "機車",
+      "opencc_tw2sp": "机车",
+      "opencc_tw2sp+exclude": "機車",
+      "word": "機車"
+    },
+    {
+      "baseline_t2s": "電漿",
+      "hanlp_t2s": "電漿",
+      "opencc_t2s": "电浆",
+      "opencc_t2s+exclude": "電漿",
+      "opencc_tw2sp": "电浆",
+      "opencc_tw2sp+exclude": "電漿",
+      "word": "電漿"
+    },
+    {
+      "baseline_t2s": "鳳梨",
+      "hanlp_t2s": "鳳梨",
+      "opencc_t2s": "凤梨",
+      "opencc_t2s+exclude": "鳳梨",
+      "opencc_tw2sp": "凤梨",
+      "opencc_tw2sp+exclude": "鳳梨",
+      "word": "鳳梨"
+    },
+    {
+      "baseline_t2s": "魔戒",
+      "hanlp_t2s": "魔戒",
+      "opencc_t2s": "魔戒",
+      "opencc_t2s+exclude": "魔戒",
+      "opencc_tw2sp": "魔戒",
+      "opencc_tw2sp+exclude": "魔戒",
+      "word": "魔戒"
+    },
+    {
+      "baseline_t2s": "載入",
+      "hanlp_t2s": "載入",
+      "opencc_t2s": "载入",
+      "opencc_t2s+exclude": "載入",
+      "opencc_tw2sp": "加载",
+      "opencc_tw2sp+exclude": "載入",
+      "word": "載入"
+    },
+    {
+      "baseline_t2s": "菲林",
+      "hanlp_t2s": "菲林",
+      "opencc_t2s": "菲林",
+      "opencc_t2s+exclude": "菲林",
+      "opencc_tw2sp": "菲林",
+      "opencc_tw2sp+exclude": "菲林",
+      "word": "菲林"
+    },
+    {
+      "baseline_t2s": "整合",
+      "hanlp_t2s": "整合",
+      "opencc_t2s": "整合",
+      "opencc_t2s+exclude": "整合",
+      "opencc_tw2sp": "集成",
+      "opencc_tw2sp+exclude": "整合",
+      "word": "整合"
+    },
+    {
+      "baseline_t2s": "變數",
+      "hanlp_t2s": "變數",
+      "opencc_t2s": "变数",
+      "opencc_t2s+exclude": "變數",
+      "opencc_tw2sp": "变量",
+      "opencc_tw2sp+exclude": "變數",
+      "word": "變數"
+    },
+    {
+      "baseline_t2s": "路易斯",
+      "hanlp_t2s": "路易斯",
+      "opencc_t2s": "路易斯",
+      "opencc_t2s+exclude": "路易斯",
+      "opencc_tw2sp": "路易斯",
+      "opencc_tw2sp+exclude": "路易斯",
+      "word": "路易斯"
+    },
+    {
+      "baseline_t2s": "非同步",
+      "hanlp_t2s": "非同步",
+      "opencc_t2s": "非同步",
+      "opencc_t2s+exclude": "非同步",
+      "opencc_tw2sp": "异步",
+      "opencc_tw2sp+exclude": "非同步",
+      "word": "非同步"
+    },
+    {
+      "baseline_t2s": "出租车",
+      "hanlp_t2s": "出租车",
+      "opencc_t2s": "出租车",
+      "opencc_t2s+exclude": "出租车",
+      "opencc_tw2sp": "出租车",
+      "opencc_tw2sp+exclude": "出租车",
+      "word": "出租车"
+    },
+    {
+      "baseline_t2s": "周杰倫",
+      "hanlp_t2s": "周杰倫",
+      "opencc_t2s": "周杰伦",
+      "opencc_t2s+exclude": "周杰倫",
+      "opencc_tw2sp": "周杰伦",
+      "opencc_tw2sp+exclude": "周杰倫",
+      "word": "周杰倫"
+    },
+    {
+      "baseline_t2s": "马铃薯",
+      "hanlp_t2s": "马铃薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "马铃薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "马铃薯",
+      "word": "马铃薯"
+    },
+    {
+      "baseline_t2s": "馬鈴薯",
+      "hanlp_t2s": "馬鈴薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "馬鈴薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "馬鈴薯",
+      "word": "馬鈴薯"
+    },
+    {
+      "baseline_t2s": "機械人",
+      "hanlp_t2s": "機械人",
+      "opencc_t2s": "机械人",
+      "opencc_t2s+exclude": "機械人",
+      "opencc_tw2sp": "机械人",
+      "opencc_tw2sp+exclude": "機械人",
+      "word": "機械人"
+    },
+    {
+      "baseline_t2s": "電單車",
+      "hanlp_t2s": "電單車",
+      "opencc_t2s": "电单车",
+      "opencc_t2s+exclude": "電單車",
+      "opencc_tw2sp": "电单车",
+      "opencc_tw2sp+exclude": "電單車",
+      "word": "電單車"
+    },
+    {
+      "baseline_t2s": "電扶梯",
+      "hanlp_t2s": "電扶梯",
+      "opencc_t2s": "电扶梯",
+      "opencc_t2s+exclude": "電扶梯",
+      "opencc_tw2sp": "电扶梯",
+      "opencc_tw2sp+exclude": "電扶梯",
+      "word": "電扶梯"
+    },
+    {
+      "baseline_t2s": "音效卡",
+      "hanlp_t2s": "音效卡",
+      "opencc_t2s": "音效卡",
+      "opencc_t2s+exclude": "音效卡",
+      "opencc_tw2sp": "声卡",
+      "opencc_tw2sp+exclude": "音效卡",
+      "word": "音效卡"
+    },
+    {
+      "baseline_t2s": "飆車族",
+      "hanlp_t2s": "飆車族",
+      "opencc_t2s": "飙车族",
+      "opencc_t2s+exclude": "飆車族",
+      "opencc_tw2sp": "飙车族",
+      "opencc_tw2sp+exclude": "飆車族",
+      "word": "飆車族"
+    },
+    {
+      "baseline_t2s": "點陣圖",
+      "hanlp_t2s": "點陣圖",
+      "opencc_t2s": "点阵图",
+      "opencc_t2s+exclude": "點陣圖",
+      "opencc_tw2sp": "位图",
+      "opencc_tw2sp+exclude": "點陣圖",
+      "word": "點陣圖"
+    },
+    {
+      "baseline_t2s": "個入球",
+      "hanlp_t2s": "個入球",
+      "opencc_t2s": "个入球",
+      "opencc_t2s+exclude": "個入球",
+      "opencc_tw2sp": "个入球",
+      "opencc_tw2sp+exclude": "個入球",
+      "word": "個入球"
+    },
+    {
+      "baseline_t2s": "顆進球",
+      "hanlp_t2s": "顆進球",
+      "opencc_t2s": "颗进球",
+      "opencc_t2s+exclude": "顆進球",
+      "opencc_tw2sp": "颗进球",
+      "opencc_tw2sp+exclude": "顆進球",
+      "word": "顆進球"
+    },
+    {
+      "baseline_t2s": "魔獸紀元",
+      "hanlp_t2s": "魔獸紀元",
+      "opencc_t2s": "魔兽纪元",
+      "opencc_t2s+exclude": "魔獸紀元",
+      "opencc_tw2sp": "魔兽纪元",
+      "opencc_tw2sp+exclude": "魔獸紀元",
+      "word": "魔獸紀元"
+    },
+    {
+      "baseline_t2s": "高空彈跳",
+      "hanlp_t2s": "高空彈跳",
+      "opencc_t2s": "高空弹跳",
+      "opencc_t2s+exclude": "高空彈跳",
+      "opencc_tw2sp": "蹦极",
+      "opencc_tw2sp+exclude": "高空彈跳",
+      "word": "高空彈跳"
+    },
+    {
+      "baseline_t2s": "铁达尼号",
+      "hanlp_t2s": "铁达尼号",
+      "opencc_t2s": "铁达尼号",
+      "opencc_t2s+exclude": "铁达尼号",
+      "opencc_tw2sp": "铁达尼号",
+      "opencc_tw2sp+exclude": "铁达尼号",
+      "word": "铁达尼号"
+    },
+    {
+      "baseline_t2s": "魔鬼終結者",
+      "hanlp_t2s": "魔鬼終結者",
+      "opencc_t2s": "魔鬼终结者",
+      "opencc_t2s+exclude": "魔鬼終結者",
+      "opencc_tw2sp": "魔鬼终结者",
+      "opencc_tw2sp+exclude": "魔鬼終結者",
+      "word": "魔鬼終結者"
+    },
+    {
+      "baseline_t2s": "純文字檔案",
+      "hanlp_t2s": "純文字檔案",
+      "opencc_t2s": "纯文字档案",
+      "opencc_t2s+exclude": "純文字檔案",
+      "opencc_tw2sp": "纯文字文件",
+      "opencc_tw2sp+exclude": "純文字檔案",
+      "word": "純文字檔案"
+    }
+  ],
+  "note": "Conversion-table measurement for ticket #19; see README.md for re-running it."
+}

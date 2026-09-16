@@ -86,6 +86,9 @@ export 'src/frb/api/engine.dart';
 // HTML rule adapter (Liber)
 export 'src/frb/api/html.dart';
 
+// Text engine: encodings, indexing, window reads, Chinese conversion (Liber)
+export 'src/frb/api/text.dart';
+
 // Error handling
 export 'src/frb/api/error.dart';
 

@@ -22,6 +22,7 @@ pub mod html;
 pub mod module;
 pub mod runtime;
 pub mod source;
+pub mod text;
 pub mod value;
 
 // Re-export main types for convenience
@@ -31,6 +32,11 @@ pub use html::{
     HtmlJobFailure, HtmlJobOutcome, HtmlJobOutput, HtmlRuleJob, html_analyze,
 };
 pub use error::{JsError, JsResult};
+pub use text::{
+    TextAnchor, TextChapter, TextDetection, TextDirection, TextEngineError, TextIndex,
+    TextIndexOptions, TextWindow, TextWindowRequest, text_convert, text_default_options,
+    text_detect_encoding, text_index_file, text_read_window,
+};
 pub use module::{DynamicModuleLoader, DynamicModuleResolver, GlobalAttachment, ModuleBuilder};
 pub use runtime::{JsAsyncContext, JsAsyncRuntime, JsContext, JsRuntime, MemoryUsage};
 pub use source::{

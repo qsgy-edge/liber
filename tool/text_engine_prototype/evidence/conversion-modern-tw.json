@@ -1,0 +1,4220 @@
+{
+  "baseline": {
+    "code_units": 984494,
+    "conversion": "quick-transfer-core 0.2.16 (the version the frozen Legado snapshot pins) with Legado's fixT2sDict exclude list for t2s",
+    "oracle": "tool/text_engine_prototype/README.md, BaselineOracle.java",
+    "records": 15388
+  },
+  "candidates": [
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "t2s",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm+exclude",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.007977196396542876,
+      "differing_code_units": 7850,
+      "differing_lines": 3847,
+      "direction": "t2s",
+      "distinct_hunks": 2545,
+      "line_rate": 0.25,
+      "name": "hanlp-fmm+exclude",
+      "top_hunks": [
+        {
+          "baseline": "份 ，存于 因特网文件馆 ）",
+          "candidate": "份 ，存于 网际网路档案",
+          "count": 377
+        },
+        {
+          "baseline": " （ 页面存盘备份 ，存于",
+          "candidate": " （ 页面存档备份 ，存于",
+          "count": 376
+        },
+        {
+          "baseline": "原始内容 存盘 于2025",
+          "candidate": "原始内容 存档 于2025",
+          "count": 250
+        },
+        {
+          "baseline": "原始内容 存盘 于2020",
+          "candidate": "原始内容 存档 于2020",
+          "count": 194
+        },
+        {
+          "baseline": "原始内容 存盘 于2023",
+          "candidate": "原始内容 存档 于2023",
+          "count": 185
+        },
+        {
+          "baseline": "原始内容 存盘 于2021",
+          "candidate": "原始内容 存档 于2021",
+          "count": 166
+        },
+        {
+          "baseline": "原始内容 存盘 于2024",
+          "candidate": "原始内容 存档 于2024",
+          "count": 137
+        },
+        {
+          "baseline": "原始内容 存盘 于2022",
+          "candidate": "原始内容 存档 于2022",
+          "count": 130
+        },
+        {
+          "baseline": "原始内容 存盘 于2026",
+          "candidate": "原始内容 存档 于2026",
+          "count": 126
+        },
+        {
+          "baseline": "原始内容 存盘 于2017",
+          "candidate": "原始内容 存档 于2017",
+          "count": 119
+        },
+        {
+          "baseline": "原始内容 存盘 (PDF)",
+          "candidate": "原始内容 存档 (PDF)",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2018",
+          "candidate": "原始内容 存档 于2018",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2019",
+          "candidate": "原始内容 存档 于2019",
+          "count": 96
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） ",
+          "candidate": " ，存于 网际网路档案馆 ） ",
+          "count": 96
+        },
+        {
+          "baseline": "原始内容 存盘 于2016",
+          "candidate": "原始内容 存档 于2016",
+          "count": 83
+        },
+        {
+          "baseline": "原始内容 存盘于2017-",
+          "candidate": "原始内容 存档于2017-",
+          "count": 76
+        },
+        {
+          "baseline": "原始内容 存盘 于2015",
+          "candidate": "原始内容 存档 于2015",
+          "count": 62
+        },
+        {
+          "baseline": "原始内容 存盘于2011-",
+          "candidate": "原始内容 存档于2011-",
+          "count": 38
+        },
+        {
+          "baseline": "原始内容 存盘于2013-",
+          "candidate": "原始内容 存档于2013-",
+          "count": 37
+        },
+        {
+          "baseline": "原始内容 存盘 于2014",
+          "candidate": "原始内容 存档 于2014",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘于2021-",
+          "candidate": "原始内容 存档于2021-",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘 于2013",
+          "candidate": "原始内容 存档 于2013",
+          "count": 34
+        },
+        {
+          "baseline": "原始内容 存盘于2015-",
+          "candidate": "原始内容 存档于2015-",
+          "count": 34
+        },
+        {
+          "baseline": "件馆 的 存盘 ，存盘日期",
+          "candidate": "案馆 的 存档 ，存档日期",
+          "count": 33
+        },
+        {
+          "baseline": "原始内容 存盘于2016-",
+          "candidate": "原始内容 存档于2016-",
+          "count": 32
+        },
+        {
+          "baseline": "原始内容 存盘于2022-",
+          "candidate": "原始内容 存档于2022-",
+          "count": 31
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） （繁",
+          "candidate": " ，存于 网际网路档案馆 ） （繁",
+          "count": 31
+        },
+        {
+          "baseline": "原始内容 存盘于2014-",
+          "candidate": "原始内容 存档于2014-",
+          "count": 27
+        },
+        {
+          "baseline": "原始内容 存盘于2012-",
+          "candidate": "原始内容 存档于2012-",
+          "count": 24
+        },
+        {
+          "baseline": "原始内容 存盘于2018-",
+          "candidate": "原始内容 存档于2018-",
+          "count": 21
+        },
+        {
+          "baseline": "原始内容 存盘于2025-",
+          "candidate": "原始内容 存档于2025-",
+          "count": 20
+        },
+        {
+          "baseline": "原始内容 存盘 于2011",
+          "candidate": "原始内容 存档 于2011",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘于2007-",
+          "candidate": "原始内容 存档于2007-",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘 于2007",
+          "candidate": "原始内容 存档 于2007",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2009-",
+          "candidate": "原始内容 存档于2009-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2020-",
+          "candidate": "原始内容 存档于2020-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2019-",
+          "candidate": "原始内容 存档于2019-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘于2024-",
+          "candidate": "原始内容 存档于2024-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘 于2012",
+          "candidate": "原始内容 存档 于2012",
+          "count": 13
+        },
+        {
+          "baseline": "原始内容 存盘 于2010",
+          "candidate": "原始内容 存档 于2010",
+          "count": 11
+        },
+        {
+          "baseline": "原始内容 存盘 于2009",
+          "candidate": "原始内容 存档 于2009",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2008-",
+          "candidate": "原始内容 存档于2008-",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2010-",
+          "candidate": "原始内容 存档于2010-",
+          "count": 9
+        },
+        {
+          "baseline": "原始内容 存盘 于2008",
+          "candidate": "原始内容 存档 于2008",
+          "count": 8
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）林务局",
+          "candidate": " ，存于 网际网路档案馆 ）林务局",
+          "count": 8
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2012",
+          "candidate": " 存档 ，存档日期2012",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2011-",
+          "candidate": "PDF) 存档于2011-",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2022-",
+          "candidate": "PDF) 存档于2022-",
+          "count": 7
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）台南市",
+          "candidate": " ，存于 网际网路档案馆 ）台南市",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2017-",
+          "candidate": "PDF) 存档于2017-",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） -（",
+          "candidate": " ，存于 网际网路档案馆 ） -（",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）, 新",
+          "candidate": " ，存于 网际网路档案馆 ）, 新",
+          "count": 6
+        },
+        {
+          "baseline": "贵新闻文件数码资料馆. 联",
+          "candidate": "贵新闻档案数位资料馆. 联",
+          "count": 6
+        },
+        {
+          "baseline": "运动珍贵新闻文件数码资料馆.",
+          "candidate": "运动珍贵新闻档案数位资料馆.",
+          "count": 6
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2007",
+          "candidate": " 存档 ，存档日期2007",
+          "count": 5
+        },
+        {
+          "baseline": " 意大利电信 ",
+          "candidate": " 义大利电信 ",
+          "count": 5
+        },
+        {
+          "baseline": " 瞻博网络 ",
+          "candidate": " 瞻博网路 ",
+          "count": 5
+        },
+        {
+          "baseline": "元，组别8（因特网）为15亿",
+          "candidate": "元，组别8（网际网路）为",
+          "count": 5
+        },
+        {
+          "baseline": "别8（因特网）为15亿美",
+          "candidate": "，组别8（网际网路）为15亿美",
+          "count": 5
+        },
+        {
+          "baseline": "制造 因特网 软件 电信",
+          "candidate": "体 制造 网际网路 软体 电信",
+          "count": 5
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "盘",
+          "candidate": "档",
+          "count": 2926
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 156
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 119
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 93
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 53
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 48
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 47
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 43
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 35
+        },
+        {
+          "baseline": "硅",
+          "candidate": "矽",
+          "count": 25
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 21
+        },
+        {
+          "baseline": "它",
+          "candidate": "牠",
+          "count": 19
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 19
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 17
+        },
+        {
+          "baseline": "华",
+          "candidate": "国",
+          "count": 17
+        },
+        {
+          "baseline": "本",
+          "candidate": "型",
+          "count": 17
+        },
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 16
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 15
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 15
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 14
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 12
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "像",
+          "candidate": "影",
+          "count": 12
+        },
+        {
+          "baseline": "能",
+          "candidate": "慧",
+          "count": 12
+        },
+        {
+          "baseline": "守",
+          "candidate": "规",
+          "count": 11
+        },
+        {
+          "baseline": "台",
+          "candidate": "撞",
+          "count": 10
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "樂",
+          "candidate": "乐",
+          "count": 10
+        },
+        {
+          "baseline": "爾",
+          "candidate": "尔",
+          "count": 10
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 10
+        },
+        {
+          "baseline": "新",
+          "candidate": "纽",
+          "count": 9
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 9
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 8
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 7
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 7
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "队",
+          "candidate": "团",
+          "count": 7
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 6
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "带",
+          "candidate": "频",
+          "count": 6
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "昵",
+          "candidate": "暱",
+          "count": 5
+        },
+        {
+          "baseline": "概",
+          "candidate": "机",
+          "count": 5
+        },
+        {
+          "baseline": "肖",
+          "candidate": "萧",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "日",
+          "candidate": "庆",
+          "count": 4
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 4
+        },
+        {
+          "baseline": "词",
+          "candidate": "辞",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "里",
+          "candidate": "芮",
+          "count": 4
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 4
+        },
+        {
+          "baseline": "拼",
+          "candidate": "拚",
+          "count": 3
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 3
+        }
+      ],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.013988039286421998,
+      "differing_code_units": 13765,
+      "differing_lines": 4811,
+      "direction": "t2s",
+      "distinct_hunks": 8301,
+      "line_rate": 0.31264621783207697,
+      "name": "opencc-t2s+exclude",
+      "top_hunks": [
+        {
+          "baseline": "份 ，存于 因特网文件馆 ）",
+          "candidate": "份 ，存于 网际网路档案",
+          "count": 377
+        },
+        {
+          "baseline": " （ 页面存盘备份 ，存于",
+          "candidate": " （ 页面存档备份 ，存于",
+          "count": 376
+        },
+        {
+          "baseline": "原始内容 存盘 于2025",
+          "candidate": "原始内容 存档 于2025",
+          "count": 250
+        },
+        {
+          "baseline": "原始内容 存盘 于2020",
+          "candidate": "原始内容 存档 于2020",
+          "count": 194
+        },
+        {
+          "baseline": "原始内容 存盘 于2023",
+          "candidate": "原始内容 存档 于2023",
+          "count": 185
+        },
+        {
+          "baseline": "原始内容 存盘 于2021",
+          "candidate": "原始内容 存档 于2021",
+          "count": 166
+        },
+        {
+          "baseline": "原始内容 存盘 于2024",
+          "candidate": "原始内容 存档 于2024",
+          "count": 137
+        },
+        {
+          "baseline": "原始内容 存盘 于2022",
+          "candidate": "原始内容 存档 于2022",
+          "count": 130
+        },
+        {
+          "baseline": "原始内容 存盘 于2026",
+          "candidate": "原始内容 存档 于2026",
+          "count": 126
+        },
+        {
+          "baseline": "原始内容 存盘 于2017",
+          "candidate": "原始内容 存档 于2017",
+          "count": 119
+        },
+        {
+          "baseline": "原始内容 存盘 (PDF)",
+          "candidate": "原始内容 存档 (PDF)",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2018",
+          "candidate": "原始内容 存档 于2018",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2019",
+          "candidate": "原始内容 存档 于2019",
+          "count": 96
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） ",
+          "candidate": " ，存于 网际网路档案馆 ） ",
+          "count": 96
+        },
+        {
+          "baseline": "原始内容 存盘 于2016",
+          "candidate": "原始内容 存档 于2016",
+          "count": 83
+        },
+        {
+          "baseline": "原始内容 存盘于2017-",
+          "candidate": "原始内容 存档于2017-",
+          "count": 76
+        },
+        {
+          "baseline": "原始内容 存盘 于2015",
+          "candidate": "原始内容 存档 于2015",
+          "count": 62
+        },
+        {
+          "baseline": "原始内容 存盘于2011-",
+          "candidate": "原始内容 存档于2011-",
+          "count": 38
+        },
+        {
+          "baseline": "原始内容 存盘于2013-",
+          "candidate": "原始内容 存档于2013-",
+          "count": 37
+        },
+        {
+          "baseline": "原始内容 存盘 于2014",
+          "candidate": "原始内容 存档 于2014",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘于2021-",
+          "candidate": "原始内容 存档于2021-",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘 于2013",
+          "candidate": "原始内容 存档 于2013",
+          "count": 34
+        },
+        {
+          "baseline": "原始内容 存盘于2015-",
+          "candidate": "原始内容 存档于2015-",
+          "count": 34
+        },
+        {
+          "baseline": "件馆 的 存盘 ，存盘日期",
+          "candidate": "案馆 的 存档 ，存档日期",
+          "count": 33
+        },
+        {
+          "baseline": "原始内容 存盘于2016-",
+          "candidate": "原始内容 存档于2016-",
+          "count": 32
+        },
+        {
+          "baseline": "原始内容 存盘于2022-",
+          "candidate": "原始内容 存档于2022-",
+          "count": 31
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） （繁",
+          "candidate": " ，存于 网际网路档案馆 ） （繁",
+          "count": 31
+        },
+        {
+          "baseline": "原始内容 存盘于2014-",
+          "candidate": "原始内容 存档于2014-",
+          "count": 27
+        },
+        {
+          "baseline": "原始内容 存盘于2012-",
+          "candidate": "原始内容 存档于2012-",
+          "count": 24
+        },
+        {
+          "baseline": "原始内容 存盘于2018-",
+          "candidate": "原始内容 存档于2018-",
+          "count": 21
+        },
+        {
+          "baseline": "原始内容 存盘于2025-",
+          "candidate": "原始内容 存档于2025-",
+          "count": 20
+        },
+        {
+          "baseline": "原始内容 存盘 于2011",
+          "candidate": "原始内容 存档 于2011",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘于2007-",
+          "candidate": "原始内容 存档于2007-",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘 于2007",
+          "candidate": "原始内容 存档 于2007",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2009-",
+          "candidate": "原始内容 存档于2009-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2020-",
+          "candidate": "原始内容 存档于2020-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2019-",
+          "candidate": "原始内容 存档于2019-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘于2024-",
+          "candidate": "原始内容 存档于2024-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘 于2012",
+          "candidate": "原始内容 存档 于2012",
+          "count": 13
+        },
+        {
+          "baseline": "原始内容 存盘 于2010",
+          "candidate": "原始内容 存档 于2010",
+          "count": 11
+        },
+        {
+          "baseline": "(消歧义) ”。 ",
+          "candidate": "(消歧义) 」。 ",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘 于2009",
+          "candidate": "原始内容 存档 于2009",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2008-",
+          "candidate": "原始内容 存档于2008-",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2010-",
+          "candidate": "原始内容 存档于2010-",
+          "count": 9
+        },
+        {
+          "baseline": "原始内容 存盘 于2008",
+          "candidate": "原始内容 存档 于2008",
+          "count": 8
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）林务局",
+          "candidate": " ，存于 网际网路档案馆 ）林务局",
+          "count": 8
+        },
+        {
+          "baseline": " ^ “中华民国各省",
+          "candidate": " ^ 「中华民国各省",
+          "count": 7
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2012",
+          "candidate": " 存档 ，存档日期2012",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2011-",
+          "candidate": "PDF) 存档于2011-",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2022-",
+          "candidate": "PDF) 存档于2022-",
+          "count": 7
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）台南市",
+          "candidate": " ，存于 网际网路档案馆 ）台南市",
+          "count": 7
+        },
+        {
+          "baseline": "行政区域代码”自2005年",
+          "candidate": "行政区域代码」自2005年",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2017-",
+          "candidate": "PDF) 存档于2017-",
+          "count": 6
+        },
+        {
+          "baseline": "举 ，各“里”得票分布。 ",
+          "candidate": "举 ，各「里」得票分布。 ",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） -（",
+          "candidate": " ，存于 网际网路档案馆 ） -（",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）, 新",
+          "candidate": " ，存于 网际网路档案馆 ）, 新",
+          "count": 6
+        },
+        {
+          "baseline": "贵新闻文件数码资料馆. 联",
+          "candidate": "贵新闻档案数位资料馆. 联",
+          "count": 6
+        },
+        {
+          "baseline": "运动珍贵新闻文件数码资料馆.",
+          "candidate": "运动珍贵新闻档案数位资料馆.",
+          "count": 6
+        },
+        {
+          "baseline": "长选举 ，各“里”得票分布",
+          "candidate": "长选举 ，各「里」得票分布",
+          "count": 6
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2007",
+          "candidate": " 存档 ，存档日期2007",
+          "count": 5
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "盘",
+          "candidate": "档",
+          "count": 2926
+        },
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 2908
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 2893
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 154
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 119
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 92
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 53
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 48
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 45
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 42
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 35
+        },
+        {
+          "baseline": "硅",
+          "candidate": "矽",
+          "count": 25
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 21
+        },
+        {
+          "baseline": "序",
+          "candidate": "式",
+          "count": 21
+        },
+        {
+          "baseline": "它",
+          "candidate": "牠",
+          "count": 19
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 19
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 17
+        },
+        {
+          "baseline": "华",
+          "candidate": "国",
+          "count": 17
+        },
+        {
+          "baseline": "本",
+          "candidate": "型",
+          "count": 17
+        },
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 15
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 15
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 15
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "像",
+          "candidate": "影",
+          "count": 12
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 11
+        },
+        {
+          "baseline": "守",
+          "candidate": "规",
+          "count": 11
+        },
+        {
+          "baseline": "能",
+          "candidate": "慧",
+          "count": 11
+        },
+        {
+          "baseline": "台",
+          "candidate": "撞",
+          "count": 10
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "樂",
+          "candidate": "乐",
+          "count": 10
+        },
+        {
+          "baseline": "爾",
+          "candidate": "尔",
+          "count": 10
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 10
+        },
+        {
+          "baseline": "新",
+          "candidate": "纽",
+          "count": 9
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 9
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 8
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 7
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 7
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "队",
+          "candidate": "团",
+          "count": 7
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "带",
+          "candidate": "频",
+          "count": 6
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "概",
+          "candidate": "机",
+          "count": 5
+        },
+        {
+          "baseline": "肖",
+          "candidate": "萧",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "日",
+          "candidate": "庆",
+          "count": 4
+        },
+        {
+          "baseline": "昵",
+          "candidate": "暱",
+          "count": 4
+        },
+        {
+          "baseline": "词",
+          "candidate": "辞",
+          "count": 4
+        },
+        {
+          "baseline": "赫",
+          "candidate": "哈",
+          "count": 4
+        },
+        {
+          "baseline": "里",
+          "candidate": "芮",
+          "count": 4
+        }
+      ],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.014320337785997735,
+      "differing_code_units": 14092,
+      "differing_lines": 4896,
+      "direction": "t2s",
+      "distinct_hunks": 8598,
+      "line_rate": 0.3181700025994281,
+      "name": "opencc-t2s",
+      "top_hunks": [
+        {
+          "baseline": "份 ，存于 因特网文件馆 ）",
+          "candidate": "份 ，存于 网际网路档案",
+          "count": 377
+        },
+        {
+          "baseline": " （ 页面存盘备份 ，存于",
+          "candidate": " （ 页面存档备份 ，存于",
+          "count": 376
+        },
+        {
+          "baseline": "原始内容 存盘 于2025",
+          "candidate": "原始内容 存档 于2025",
+          "count": 250
+        },
+        {
+          "baseline": "原始内容 存盘 于2020",
+          "candidate": "原始内容 存档 于2020",
+          "count": 194
+        },
+        {
+          "baseline": "原始内容 存盘 于2023",
+          "candidate": "原始内容 存档 于2023",
+          "count": 185
+        },
+        {
+          "baseline": "原始内容 存盘 于2021",
+          "candidate": "原始内容 存档 于2021",
+          "count": 166
+        },
+        {
+          "baseline": "原始内容 存盘 于2024",
+          "candidate": "原始内容 存档 于2024",
+          "count": 137
+        },
+        {
+          "baseline": "原始内容 存盘 于2022",
+          "candidate": "原始内容 存档 于2022",
+          "count": 130
+        },
+        {
+          "baseline": "原始内容 存盘 于2026",
+          "candidate": "原始内容 存档 于2026",
+          "count": 126
+        },
+        {
+          "baseline": "原始内容 存盘 于2017",
+          "candidate": "原始内容 存档 于2017",
+          "count": 119
+        },
+        {
+          "baseline": "原始内容 存盘 (PDF)",
+          "candidate": "原始内容 存档 (PDF)",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2018",
+          "candidate": "原始内容 存档 于2018",
+          "count": 105
+        },
+        {
+          "baseline": "原始内容 存盘 于2019",
+          "candidate": "原始内容 存档 于2019",
+          "count": 96
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） ",
+          "candidate": " ，存于 网际网路档案馆 ） ",
+          "count": 96
+        },
+        {
+          "baseline": "原始内容 存盘 于2016",
+          "candidate": "原始内容 存档 于2016",
+          "count": 83
+        },
+        {
+          "baseline": "原始内容 存盘于2017-",
+          "candidate": "原始内容 存档于2017-",
+          "count": 76
+        },
+        {
+          "baseline": "原始内容 存盘 于2015",
+          "candidate": "原始内容 存档 于2015",
+          "count": 62
+        },
+        {
+          "baseline": "原始内容 存盘于2011-",
+          "candidate": "原始内容 存档于2011-",
+          "count": 38
+        },
+        {
+          "baseline": "原始内容 存盘于2013-",
+          "candidate": "原始内容 存档于2013-",
+          "count": 37
+        },
+        {
+          "baseline": "原始内容 存盘 于2014",
+          "candidate": "原始内容 存档 于2014",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘于2021-",
+          "candidate": "原始内容 存档于2021-",
+          "count": 36
+        },
+        {
+          "baseline": "原始内容 存盘 于2013",
+          "candidate": "原始内容 存档 于2013",
+          "count": 34
+        },
+        {
+          "baseline": "原始内容 存盘于2015-",
+          "candidate": "原始内容 存档于2015-",
+          "count": 34
+        },
+        {
+          "baseline": "件馆 的 存盘 ，存盘日期",
+          "candidate": "案馆 的 存档 ，存档日期",
+          "count": 33
+        },
+        {
+          "baseline": "原始内容 存盘于2016-",
+          "candidate": "原始内容 存档于2016-",
+          "count": 32
+        },
+        {
+          "baseline": "原始内容 存盘于2022-",
+          "candidate": "原始内容 存档于2022-",
+          "count": 31
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） （繁",
+          "candidate": " ，存于 网际网路档案馆 ） （繁",
+          "count": 31
+        },
+        {
+          "baseline": "原始内容 存盘于2014-",
+          "candidate": "原始内容 存档于2014-",
+          "count": 27
+        },
+        {
+          "baseline": "原始内容 存盘于2012-",
+          "candidate": "原始内容 存档于2012-",
+          "count": 24
+        },
+        {
+          "baseline": "原始内容 存盘于2018-",
+          "candidate": "原始内容 存档于2018-",
+          "count": 21
+        },
+        {
+          "baseline": "原始内容 存盘于2025-",
+          "candidate": "原始内容 存档于2025-",
+          "count": 20
+        },
+        {
+          "baseline": "原始内容 存盘 于2011",
+          "candidate": "原始内容 存档 于2011",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘于2007-",
+          "candidate": "原始内容 存档于2007-",
+          "count": 19
+        },
+        {
+          "baseline": "原始内容 存盘 于2007",
+          "candidate": "原始内容 存档 于2007",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2009-",
+          "candidate": "原始内容 存档于2009-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2020-",
+          "candidate": "原始内容 存档于2020-",
+          "count": 18
+        },
+        {
+          "baseline": "原始内容 存盘于2019-",
+          "candidate": "原始内容 存档于2019-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘于2024-",
+          "candidate": "原始内容 存档于2024-",
+          "count": 14
+        },
+        {
+          "baseline": "原始内容 存盘 于2012",
+          "candidate": "原始内容 存档 于2012",
+          "count": 13
+        },
+        {
+          "baseline": "原始内容 存盘 于2010",
+          "candidate": "原始内容 存档 于2010",
+          "count": 11
+        },
+        {
+          "baseline": "(消歧义) ”。 ",
+          "candidate": "(消歧义) 」。 ",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘 于2009",
+          "candidate": "原始内容 存档 于2009",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2008-",
+          "candidate": "原始内容 存档于2008-",
+          "count": 10
+        },
+        {
+          "baseline": "原始内容 存盘于2010-",
+          "candidate": "原始内容 存档于2010-",
+          "count": 9
+        },
+        {
+          "baseline": "原始内容 存盘 于2008",
+          "candidate": "原始内容 存档 于2008",
+          "count": 8
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）林务局",
+          "candidate": " ，存于 网际网路档案馆 ）林务局",
+          "count": 8
+        },
+        {
+          "baseline": " ^ “中华民国各省",
+          "candidate": " ^ 「中华民国各省",
+          "count": 7
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2012",
+          "candidate": " 存档 ，存档日期2012",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2011-",
+          "candidate": "PDF) 存档于2011-",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2022-",
+          "candidate": "PDF) 存档于2022-",
+          "count": 7
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）台南市",
+          "candidate": " ，存于 网际网路档案馆 ）台南市",
+          "count": 7
+        },
+        {
+          "baseline": "行政区域代码”自2005年",
+          "candidate": "行政区域代码」自2005年",
+          "count": 7
+        },
+        {
+          "baseline": "PDF) 存盘于2017-",
+          "candidate": "PDF) 存档于2017-",
+          "count": 6
+        },
+        {
+          "baseline": "举 ，各“里”得票分布。 ",
+          "candidate": "举 ，各「里」得票分布。 ",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ） -（",
+          "candidate": " ，存于 网际网路档案馆 ） -（",
+          "count": 6
+        },
+        {
+          "baseline": "存于 因特网文件馆 ）, 新",
+          "candidate": " ，存于 网际网路档案馆 ）, 新",
+          "count": 6
+        },
+        {
+          "baseline": "贵新闻文件数码资料馆. 联",
+          "candidate": "贵新闻档案数位资料馆. 联",
+          "count": 6
+        },
+        {
+          "baseline": "运动珍贵新闻文件数码资料馆.",
+          "candidate": "运动珍贵新闻档案数位资料馆.",
+          "count": 6
+        },
+        {
+          "baseline": "长选举 ，各“里”得票分布",
+          "candidate": "长选举 ，各「里」得票分布",
+          "count": 6
+        },
+        {
+          "baseline": " 存盘 ，存盘日期2007",
+          "candidate": " 存档 ，存档日期2007",
+          "count": 5
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "盘",
+          "candidate": "档",
+          "count": 2926
+        },
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 2905
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 2891
+        },
+        {
+          "baseline": "倫",
+          "candidate": "伦",
+          "count": 241
+        },
+        {
+          "baseline": "络",
+          "candidate": "路",
+          "count": 154
+        },
+        {
+          "baseline": "芯",
+          "candidate": "晶",
+          "count": 119
+        },
+        {
+          "baseline": "件",
+          "candidate": "体",
+          "count": 92
+        },
+        {
+          "baseline": "码",
+          "candidate": "位",
+          "count": 53
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 48
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 45
+        },
+        {
+          "baseline": "鳳",
+          "candidate": "凤",
+          "count": 45
+        },
+        {
+          "baseline": "盘",
+          "candidate": "碟",
+          "count": 42
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 35
+        },
+        {
+          "baseline": "硅",
+          "candidate": "矽",
+          "count": 25
+        },
+        {
+          "baseline": "信",
+          "candidate": "讯",
+          "count": 21
+        },
+        {
+          "baseline": "序",
+          "candidate": "式",
+          "count": 21
+        },
+        {
+          "baseline": "它",
+          "candidate": "牠",
+          "count": 19
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 19
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 17
+        },
+        {
+          "baseline": "华",
+          "candidate": "国",
+          "count": 17
+        },
+        {
+          "baseline": "本",
+          "candidate": "型",
+          "count": 17
+        },
+        {
+          "baseline": "体",
+          "candidate": "型",
+          "count": 15
+        },
+        {
+          "baseline": "意",
+          "candidate": "义",
+          "count": 15
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 15
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "像",
+          "candidate": "影",
+          "count": 12
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 11
+        },
+        {
+          "baseline": "守",
+          "candidate": "规",
+          "count": 11
+        },
+        {
+          "baseline": "能",
+          "candidate": "慧",
+          "count": 11
+        },
+        {
+          "baseline": "台",
+          "candidate": "撞",
+          "count": 10
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "樂",
+          "candidate": "乐",
+          "count": 10
+        },
+        {
+          "baseline": "爾",
+          "candidate": "尔",
+          "count": 10
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 10
+        },
+        {
+          "baseline": "新",
+          "candidate": "纽",
+          "count": 9
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 9
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 8
+        },
+        {
+          "baseline": "組",
+          "candidate": "组",
+          "count": 8
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 7
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 7
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "队",
+          "candidate": "团",
+          "count": 7
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "带",
+          "candidate": "频",
+          "count": 6
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "嵩",
+          "candidate": "崧",
+          "count": 5
+        },
+        {
+          "baseline": "概",
+          "candidate": "机",
+          "count": 5
+        },
+        {
+          "baseline": "肖",
+          "candidate": "萧",
+          "count": 5
+        },
+        {
+          "baseline": "電",
+          "candidate": "电",
+          "count": 5
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 4
+        },
+        {
+          "baseline": "关",
+          "candidate": "関",
+          "count": 4
+        },
+        {
+          "baseline": "场",
+          "candidate": "塲",
+          "count": 4
+        },
+        {
+          "baseline": "埯",
+          "candidate": "垵",
+          "count": 4
+        },
+        {
+          "baseline": "日",
+          "candidate": "庆",
+          "count": 4
+        }
+      ],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.010850003302660928,
+      "differing_code_units": 10677,
+      "differing_lines": 3147,
+      "direction": "t2s",
+      "distinct_hunks": 8508,
+      "line_rate": 0.20451000779828438,
+      "name": "opencc-tw2sp+exclude",
+      "top_hunks": [
+        {
+          "baseline": "份 ，存于 因特网文件馆 ）",
+          "candidate": "份 ，存于 互联网文件馆 ）",
+          "count": 377
+        },
+        {
+          "baseline": " . 中央通讯社. 202",
+          "candidate": " . 中央通信社. 202",
+          "count": 40
+        },
+        {
+          "baseline": " . 中央通讯社. 201",
+          "candidate": " . 中央通信社. 201",
+          "count": 18
+        },
+        {
+          "baseline": " ^ 杨馥菱著：《台湾歌仔",
+          "candidate": " ^ 杨馥菱着：《台湾歌仔",
+          "count": 11
+        },
+        {
+          "baseline": "(消歧义) ”。 ",
+          "candidate": "(消歧义) 」。 ",
+          "count": 10
+        },
+        {
+          "baseline": " ^ “中华民国各省",
+          "candidate": " ^ 「中华民国各省",
+          "count": 7
+        },
+        {
+          "baseline": "行政区域代码”自2005年",
+          "candidate": "行政区域代码」自2005年",
+          "count": 7
+        },
+        {
+          "baseline": " . 中央通讯社 . 20",
+          "candidate": " . 中央通信社 . 20",
+          "count": 6
+        },
+        {
+          "baseline": "举 ，各“里”得票分布。 ",
+          "candidate": "举 ，各「里」得票分布。 ",
+          "count": 6
+        },
+        {
+          "baseline": "北: 中央通讯社. 202",
+          "candidate": "北: 中央通信社. 202",
+          "count": 6
+        },
+        {
+          "baseline": "贵新闻文件数码资料馆. 联合报",
+          "candidate": "贵新闻文件数字数据馆. 联合报",
+          "count": 6
+        },
+        {
+          "baseline": "长选举 ，各“里”得票分布",
+          "candidate": "长选举 ，各「里」得票分布",
+          "count": 6
+        },
+        {
+          "baseline": " 影像 ",
+          "candidate": " 图像 ",
+          "count": 5
+        },
+        {
+          "baseline": " 查看 原始资料 。 ",
+          "candidate": " 查看 原始数据 。 ",
+          "count": 5
+        },
+        {
+          "baseline": " 资料储存 咨询 和",
+          "candidate": " 数据保存 咨询 和",
+          "count": 5
+        },
+        {
+          "baseline": "15年全球智慧型手机出货1",
+          "candidate": "15年全球智能型手机出货1",
+          "count": 5
+        },
+        {
+          "baseline": "kytrax“世界机场大奖",
+          "candidate": "kytrax「世界机场大奖",
+          "count": 5
+        },
+        {
+          "baseline": "元，组别8（因特网）为15亿",
+          "candidate": "元，组别8（互联网）为15亿",
+          "count": 5
+        },
+        {
+          "baseline": "北捷运路网总营运长度来到1",
+          "candidate": "北捷运路网总首席运营官度来到",
+          "count": 5
+        },
+        {
+          "baseline": "导体 制造 因特网 软件 电",
+          "candidate": "导体 制造 互联网 软件 电",
+          "count": 5
+        },
+        {
+          "baseline": "文学年鉴》的“文学团体”名",
+          "candidate": "文学年鉴》的「文学团体」名",
+          "count": 5
+        },
+        {
+          "baseline": "的“文学团体”名录。 ",
+          "candidate": "的「文学团体」名录。 ",
+          "count": 5
+        },
+        {
+          "baseline": " 信息科技主题 ",
+          "candidate": " 信息技术主题 ",
+          "count": 4
+        },
+        {
+          "baseline": " 华埠土官话 ",
+          "candidate": " 华端口土官话 ",
+          "count": 4
+        },
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": " 朝鲜文 ",
+          "candidate": " 韩文 ",
+          "count": 4
+        },
+        {
+          "baseline": "台湾文学馆，“2007台湾",
+          "candidate": "台湾文学馆，「2007台湾",
+          "count": 4
+        },
+        {
+          "baseline": "学活动基金会”名录。 ",
+          "candidate": "学活动基金会」名录。 ",
+          "count": 4
+        },
+        {
+          "baseline": "文学年鉴》的“文学活动基金",
+          "candidate": "文学年鉴》的「文学活动基金",
+          "count": 4
+        },
+        {
+          "baseline": " 朝鲜语 ",
+          "candidate": " 韩语 ",
+          "count": 3
+        },
+        {
+          "baseline": " 机场联络轨道交通 ",
+          "candidate": " 机场联系轨道交通 ",
+          "count": 3
+        },
+        {
+          "baseline": " 诺基亚通讯 ",
+          "candidate": " 诺基亚通信 ",
+          "count": 3
+        },
+        {
+          "baseline": "-14） –透过Amazo",
+          "candidate": "-14） –通过Amazo",
+          "count": 3
+        },
+        {
+          "baseline": "-25） –透过tw.ne",
+          "candidate": "-25） –通过tw.ne",
+          "count": 3
+        },
+        {
+          "baseline": "^ 人口统计资料 . 内政部",
+          "candidate": "^ 人口统计数据 . 内政部",
+          "count": 3
+        },
+        {
+          "baseline": "ournal”, no. ",
+          "candidate": "ournal」, no. ",
+          "count": 3
+        },
+        {
+          "baseline": "世界机场大奖”3,000万",
+          "candidate": "世界机场大奖」3,000万",
+          "count": 3
+        },
+        {
+          "baseline": "为当地检察官执行检察事务之",
+          "candidate": "为当地检察官运行检察事务之",
+          "count": 3
+        },
+        {
+          "baseline": "关，同时负责执行中央机关委",
+          "candidate": "关，同时负责运行中央机关委",
+          "count": 3
+        },
+        {
+          "baseline": "华职棒大联盟全球信息网. 202",
+          "candidate": "华职棒大联盟万维网. 202",
+          "count": 3
+        },
+        {
+          "baseline": "台北市: 前卫出版社. 1",
+          "candidate": "台北市: 前衞出版社. 1",
+          "count": 3
+        },
+        {
+          "baseline": "型电脑 网络装置 （ 英语 ",
+          "candidate": "型电脑 网络设备 （ 英语 ",
+          "count": 3
+        },
+        {
+          "baseline": "市辖区各“里”得票分布。 ",
+          "candidate": "市辖区各「里」得票分布。 ",
+          "count": 3
+        },
+        {
+          "baseline": "李春晓、张凡著. 《闽台方",
+          "candidate": "李春晓、张凡着. 《闽台方",
+          "count": 3
+        },
+        {
+          "baseline": "编号“711”之公台湾黑熊",
+          "candidate": "编号「711」之公台湾黑熊",
+          "count": 3
+        },
+        {
+          "baseline": " . 中央通讯社. 200",
+          "candidate": " . 中央通信社. 200",
+          "count": 2
+        },
+        {
+          "baseline": " . 司法院全球信息网. 202",
+          "candidate": " . 司法院万维网. 202",
+          "count": 2
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 徐丽纱著：《台湾歌仔",
+          "candidate": " ^ 徐丽纱着：《台湾歌仔",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 杰威爾音樂. 【 ",
+          "candidate": " ^ 杰威尔音乐. 【 ",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 河原功著，张文薰、林",
+          "candidate": " ^ 河原功着，张文薰、林",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 潘英编著. 《台湾平",
+          "candidate": " ^ 潘英编着. 《台湾平",
+          "count": 2
+        },
+        {
+          "baseline": " 。允许使用者通过手指头或",
+          "candidate": "备 。允许用户通过手指头或",
+          "count": 2
+        },
+        {
+          "baseline": " 为 动力分散式 电联车 ",
+          "candidate": " 为 动力分布式 电联车 ",
+          "count": 2
+        },
+        {
+          "baseline": " 九三炮战 ",
+          "candidate": " 九三砲战 ",
+          "count": 2
+        },
+        {
+          "baseline": " 信息科技 ",
+          "candidate": " 信息技术 ",
+          "count": 2
+        },
+        {
+          "baseline": " 六一九炮战 ",
+          "candidate": " 六一九砲战 ",
+          "count": 2
+        },
+        {
+          "baseline": " 吴睿人. “台湾高山族杀",
+          "candidate": " 吴叡人. 「台湾高山族杀",
+          "count": 2
+        },
+        {
+          "baseline": " 市区巴士 ",
+          "candidate": " 市区公车 ",
+          "count": 2
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 2904
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 2900
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 325
+        },
+        {
+          "baseline": "透",
+          "candidate": "通",
+          "count": 134
+        },
+        {
+          "baseline": "讯",
+          "candidate": "信",
+          "count": 122
+        },
+        {
+          "baseline": "慧",
+          "candidate": "能",
+          "count": 71
+        },
+        {
+          "baseline": "执",
+          "candidate": "运",
+          "count": 54
+        },
+        {
+          "baseline": "奈",
+          "candidate": "纳",
+          "count": 50
+        },
+        {
+          "baseline": "码",
+          "candidate": "字",
+          "count": 49
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 48
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 45
+        },
+        {
+          "baseline": "者",
+          "candidate": "户",
+          "count": 37
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 36
+        },
+        {
+          "baseline": "标",
+          "candidate": "针",
+          "count": 25
+        },
+        {
+          "baseline": "援",
+          "candidate": "持",
+          "count": 23
+        },
+        {
+          "baseline": "效",
+          "candidate": "性",
+          "count": 23
+        },
+        {
+          "baseline": "元",
+          "candidate": "组",
+          "count": 22
+        },
+        {
+          "baseline": "影",
+          "candidate": "图",
+          "count": 21
+        },
+        {
+          "baseline": "询",
+          "candidate": "找",
+          "count": 21
+        },
+        {
+          "baseline": "它",
+          "candidate": "牠",
+          "count": 19
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 19
+        },
+        {
+          "baseline": "华",
+          "candidate": "国",
+          "count": 17
+        },
+        {
+          "baseline": "储",
+          "candidate": "保",
+          "count": 16
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 15
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 15
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 14
+        },
+        {
+          "baseline": "群",
+          "candidate": "区",
+          "count": 14
+        },
+        {
+          "baseline": "阶",
+          "candidate": "端",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "长",
+          "candidate": "官",
+          "count": 12
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 11
+        },
+        {
+          "baseline": "守",
+          "candidate": "规",
+          "count": 11
+        },
+        {
+          "baseline": "台",
+          "candidate": "撞",
+          "count": 10
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "樂",
+          "candidate": "乐",
+          "count": 10
+        },
+        {
+          "baseline": "爾",
+          "candidate": "尔",
+          "count": 10
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 10
+        },
+        {
+          "baseline": "件",
+          "candidate": "档",
+          "count": 9
+        },
+        {
+          "baseline": "建",
+          "candidate": "置",
+          "count": 9
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 9
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 9
+        },
+        {
+          "baseline": "胶",
+          "candidate": "料",
+          "count": 9
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 7
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 7
+        },
+        {
+          "baseline": "传",
+          "candidate": "发",
+          "count": 7
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 7
+        },
+        {
+          "baseline": "萤",
+          "candidate": "屏",
+          "count": 7
+        },
+        {
+          "baseline": "西",
+          "candidate": "公",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "通",
+          "candidate": "信",
+          "count": 7
+        },
+        {
+          "baseline": "队",
+          "candidate": "团",
+          "count": 7
+        },
+        {
+          "baseline": "位",
+          "candidate": "地",
+          "count": 6
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        },
+        {
+          "baseline": "定",
+          "candidate": "置",
+          "count": 6
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 5
+        },
+        {
+          "baseline": "信",
+          "candidate": "消",
+          "count": 5
+        }
+      ],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.011267662884696486,
+      "differing_code_units": 11088,
+      "differing_lines": 3278,
+      "direction": "t2s",
+      "distinct_hunks": 8845,
+      "line_rate": 0.21302313491031974,
+      "name": "opencc-tw2sp",
+      "top_hunks": [
+        {
+          "baseline": "份 ，存于 因特网文件馆 ）",
+          "candidate": "份 ，存于 互联网文件馆 ）",
+          "count": 377
+        },
+        {
+          "baseline": " . 中央通讯社. 202",
+          "candidate": " . 中央通信社. 202",
+          "count": 40
+        },
+        {
+          "baseline": " . 中央通讯社. 201",
+          "candidate": " . 中央通信社. 201",
+          "count": 18
+        },
+        {
+          "baseline": " ^ 杨馥菱著：《台湾歌仔",
+          "candidate": " ^ 杨馥菱着：《台湾歌仔",
+          "count": 11
+        },
+        {
+          "baseline": "(消歧义) ”。 ",
+          "candidate": "(消歧义) 」。 ",
+          "count": 10
+        },
+        {
+          "baseline": " ^ “中华民国各省",
+          "candidate": " ^ 「中华民国各省",
+          "count": 7
+        },
+        {
+          "baseline": "行政区域代码”自2005年",
+          "candidate": "行政区域代码」自2005年",
+          "count": 7
+        },
+        {
+          "baseline": " . 中央通讯社 . 20",
+          "candidate": " . 中央通信社 . 20",
+          "count": 6
+        },
+        {
+          "baseline": "举 ，各“里”得票分布。 ",
+          "candidate": "举 ，各「里」得票分布。 ",
+          "count": 6
+        },
+        {
+          "baseline": "北: 中央通讯社. 202",
+          "candidate": "北: 中央通信社. 202",
+          "count": 6
+        },
+        {
+          "baseline": "贵新闻文件数码资料馆. 联合报",
+          "candidate": "贵新闻文件数字数据馆. 联合报",
+          "count": 6
+        },
+        {
+          "baseline": "长选举 ，各“里”得票分布",
+          "candidate": "长选举 ，各「里」得票分布",
+          "count": 6
+        },
+        {
+          "baseline": " 影像 ",
+          "candidate": " 图像 ",
+          "count": 5
+        },
+        {
+          "baseline": " 查看 原始资料 。 ",
+          "candidate": " 查看 原始数据 。 ",
+          "count": 5
+        },
+        {
+          "baseline": " 资料储存 咨询 和",
+          "candidate": " 数据保存 咨询 和",
+          "count": 5
+        },
+        {
+          "baseline": "15年全球智慧型手机出货1",
+          "candidate": "15年全球智能型手机出货1",
+          "count": 5
+        },
+        {
+          "baseline": "kytrax“世界机场大奖",
+          "candidate": "kytrax「世界机场大奖",
+          "count": 5
+        },
+        {
+          "baseline": "元，组别8（因特网）为15亿",
+          "candidate": "元，组别8（互联网）为15亿",
+          "count": 5
+        },
+        {
+          "baseline": "北捷运路网总营运长度来到1",
+          "candidate": "北捷运路网总首席运营官度来到",
+          "count": 5
+        },
+        {
+          "baseline": "导体 制造 因特网 软件 电",
+          "candidate": "导体 制造 互联网 软件 电",
+          "count": 5
+        },
+        {
+          "baseline": "文学年鉴》的“文学团体”名",
+          "candidate": "文学年鉴》的「文学团体」名",
+          "count": 5
+        },
+        {
+          "baseline": "的“文学团体”名录。 ",
+          "candidate": "的「文学团体」名录。 ",
+          "count": 5
+        },
+        {
+          "baseline": " 信息科技主题 ",
+          "candidate": " 信息技术主题 ",
+          "count": 4
+        },
+        {
+          "baseline": " 华埠土官话 ",
+          "candidate": " 华端口土官话 ",
+          "count": 4
+        },
+        {
+          "baseline": " 历史演进 汉语别称 ",
+          "candidate": " 历史演化 汉语别称 ",
+          "count": 4
+        },
+        {
+          "baseline": " 朝鲜文 ",
+          "candidate": " 韩文 ",
+          "count": 4
+        },
+        {
+          "baseline": " 鳳梨酥 ",
+          "candidate": " 凤梨酥 ",
+          "count": 4
+        },
+        {
+          "baseline": "台湾文学馆，“2007台湾",
+          "candidate": "台湾文学馆，「2007台湾",
+          "count": 4
+        },
+        {
+          "baseline": "学活动基金会”名录。 ",
+          "candidate": "学活动基金会」名录。 ",
+          "count": 4
+        },
+        {
+          "baseline": "文学年鉴》的“文学活动基金",
+          "candidate": "文学年鉴》的「文学活动基金",
+          "count": 4
+        },
+        {
+          "baseline": "杰 、 周杰倫 、 梁静茹",
+          "candidate": "杰 、 周杰伦 、 梁静茹",
+          "count": 4
+        },
+        {
+          "baseline": " 朝鲜语 ",
+          "candidate": " 韩语 ",
+          "count": 3
+        },
+        {
+          "baseline": " 机场联络轨道交通 ",
+          "candidate": " 机场联系轨道交通 ",
+          "count": 3
+        },
+        {
+          "baseline": " 诺基亚通讯 ",
+          "candidate": " 诺基亚通信 ",
+          "count": 3
+        },
+        {
+          "baseline": "-14） –透过Amazo",
+          "candidate": "-14） –通过Amazo",
+          "count": 3
+        },
+        {
+          "baseline": "-25） –透过tw.ne",
+          "candidate": "-25） –通过tw.ne",
+          "count": 3
+        },
+        {
+          "baseline": "^ 人口统计资料 . 内政部",
+          "candidate": "^ 人口统计数据 . 内政部",
+          "count": 3
+        },
+        {
+          "baseline": "ournal”, no. ",
+          "candidate": "ournal」, no. ",
+          "count": 3
+        },
+        {
+          "baseline": "世界机场大奖”3,000万",
+          "candidate": "世界机场大奖」3,000万",
+          "count": 3
+        },
+        {
+          "baseline": "为当地检察官执行检察事务之",
+          "candidate": "为当地检察官运行检察事务之",
+          "count": 3
+        },
+        {
+          "baseline": "关，同时负责执行中央机关委",
+          "candidate": "关，同时负责运行中央机关委",
+          "count": 3
+        },
+        {
+          "baseline": "华职棒大联盟全球信息网. 202",
+          "candidate": "华职棒大联盟万维网. 202",
+          "count": 3
+        },
+        {
+          "baseline": "台北市: 前卫出版社. 1",
+          "candidate": "台北市: 前衞出版社. 1",
+          "count": 3
+        },
+        {
+          "baseline": "型电脑 网络装置 （ 英语 ",
+          "candidate": "型电脑 网络设备 （ 英语 ",
+          "count": 3
+        },
+        {
+          "baseline": "妹 、 周杰倫 、 蔡依林",
+          "candidate": "妹 、 周杰伦 、 蔡依林",
+          "count": 3
+        },
+        {
+          "baseline": "市辖区各“里”得票分布。 ",
+          "candidate": "市辖区各「里」得票分布。 ",
+          "count": 3
+        },
+        {
+          "baseline": "李春晓、张凡著. 《闽台方",
+          "candidate": "李春晓、张凡着. 《闽台方",
+          "count": 3
+        },
+        {
+          "baseline": "编号“711”之公台湾黑熊",
+          "candidate": "编号「711」之公台湾黑熊",
+          "count": 3
+        },
+        {
+          "baseline": " . 中央通讯社. 200",
+          "candidate": " . 中央通信社. 200",
+          "count": 2
+        },
+        {
+          "baseline": " . 司法院全球信息网. 202",
+          "candidate": " . 司法院万维网. 202",
+          "count": 2
+        },
+        {
+          "baseline": " ^ “TPE”机场",
+          "candidate": " ^ 「TPE」机场",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 吴睿人. “台湾",
+          "candidate": " ^ 吴叡人. 「台湾",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 周杰倫 Jay C",
+          "candidate": " ^ 周杰伦 Jay C",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 徐丽纱著：《台湾歌仔",
+          "candidate": " ^ 徐丽纱着：《台湾歌仔",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 杰威爾音樂. 【 ",
+          "candidate": " ^ 杰威尔音乐. 【 ",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 河原功著，张文薰、林",
+          "candidate": " ^ 河原功着，张文薰、林",
+          "count": 2
+        },
+        {
+          "baseline": " ^ 潘英编著. 《台湾平",
+          "candidate": " ^ 潘英编着. 《台湾平",
+          "count": 2
+        },
+        {
+          "baseline": " 。允许使用者通过手指头或",
+          "candidate": "备 。允许用户通过手指头或",
+          "count": 2
+        },
+        {
+          "baseline": " 为 动力分散式 电联车 ",
+          "candidate": " 为 动力分布式 电联车 ",
+          "count": 2
+        },
+        {
+          "baseline": " 九三炮战 ",
+          "candidate": " 九三砲战 ",
+          "count": 2
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 2901
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 2898
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 325
+        },
+        {
+          "baseline": "倫",
+          "candidate": "伦",
+          "count": 240
+        },
+        {
+          "baseline": "透",
+          "candidate": "通",
+          "count": 133
+        },
+        {
+          "baseline": "讯",
+          "candidate": "信",
+          "count": 122
+        },
+        {
+          "baseline": "慧",
+          "candidate": "能",
+          "count": 71
+        },
+        {
+          "baseline": "执",
+          "candidate": "运",
+          "count": 54
+        },
+        {
+          "baseline": "奈",
+          "candidate": "纳",
+          "count": 50
+        },
+        {
+          "baseline": "码",
+          "candidate": "字",
+          "count": 49
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 48
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 45
+        },
+        {
+          "baseline": "鳳",
+          "candidate": "凤",
+          "count": 45
+        },
+        {
+          "baseline": "者",
+          "candidate": "户",
+          "count": 37
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 36
+        },
+        {
+          "baseline": "标",
+          "candidate": "针",
+          "count": 25
+        },
+        {
+          "baseline": "援",
+          "candidate": "持",
+          "count": 23
+        },
+        {
+          "baseline": "效",
+          "candidate": "性",
+          "count": 23
+        },
+        {
+          "baseline": "元",
+          "candidate": "组",
+          "count": 21
+        },
+        {
+          "baseline": "影",
+          "candidate": "图",
+          "count": 21
+        },
+        {
+          "baseline": "询",
+          "candidate": "找",
+          "count": 21
+        },
+        {
+          "baseline": "它",
+          "candidate": "牠",
+          "count": 19
+        },
+        {
+          "baseline": "换",
+          "candidate": "转",
+          "count": 19
+        },
+        {
+          "baseline": "华",
+          "candidate": "国",
+          "count": 17
+        },
+        {
+          "baseline": "储",
+          "candidate": "保",
+          "count": 16
+        },
+        {
+          "baseline": "灯",
+          "candidate": "志",
+          "count": 15
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 15
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 14
+        },
+        {
+          "baseline": "群",
+          "candidate": "区",
+          "count": 14
+        },
+        {
+          "baseline": "阶",
+          "candidate": "端",
+          "count": 14
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 12
+        },
+        {
+          "baseline": "长",
+          "candidate": "官",
+          "count": 12
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 11
+        },
+        {
+          "baseline": "守",
+          "candidate": "规",
+          "count": 11
+        },
+        {
+          "baseline": "台",
+          "candidate": "撞",
+          "count": 10
+        },
+        {
+          "baseline": "屋",
+          "candidate": "房",
+          "count": 10
+        },
+        {
+          "baseline": "樂",
+          "candidate": "乐",
+          "count": 10
+        },
+        {
+          "baseline": "爾",
+          "candidate": "尔",
+          "count": 10
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 10
+        },
+        {
+          "baseline": "件",
+          "candidate": "档",
+          "count": 9
+        },
+        {
+          "baseline": "建",
+          "candidate": "置",
+          "count": 9
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 9
+        },
+        {
+          "baseline": "研",
+          "candidate": "硏",
+          "count": 9
+        },
+        {
+          "baseline": "胶",
+          "candidate": "料",
+          "count": 9
+        },
+        {
+          "baseline": "組",
+          "candidate": "块",
+          "count": 8
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 7
+        },
+        {
+          "baseline": "习",
+          "candidate": "惯",
+          "count": 7
+        },
+        {
+          "baseline": "传",
+          "candidate": "发",
+          "count": 7
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 7
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 7
+        },
+        {
+          "baseline": "棋",
+          "candidate": "碁",
+          "count": 7
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 7
+        },
+        {
+          "baseline": "萤",
+          "candidate": "屏",
+          "count": 7
+        },
+        {
+          "baseline": "西",
+          "candidate": "公",
+          "count": 7
+        },
+        {
+          "baseline": "进",
+          "candidate": "化",
+          "count": 7
+        },
+        {
+          "baseline": "通",
+          "candidate": "信",
+          "count": 7
+        },
+        {
+          "baseline": "队",
+          "candidate": "团",
+          "count": 7
+        },
+        {
+          "baseline": "位",
+          "candidate": "地",
+          "count": 6
+        },
+        {
+          "baseline": "卫",
+          "candidate": "衞",
+          "count": 6
+        },
+        {
+          "baseline": "和",
+          "candidate": "龢",
+          "count": 6
+        }
+      ],
+      "total_code_units": 984055,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "s2t",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 984494,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.00022752804994240696,
+      "differing_code_units": 224,
+      "differing_lines": 151,
+      "direction": "s2t",
+      "distinct_hunks": 201,
+      "line_rate": 0.009812841174941514,
+      "name": "hanlp-fmm",
+      "top_hunks": [
+        {
+          "baseline": " World』s Top ",
+          "candidate": " World’s Top ",
+          "count": 9
+        },
+        {
+          "baseline": " World』s Bigg",
+          "candidate": " World’s Bigg",
+          "count": 5
+        },
+        {
+          "baseline": " 呂梁片 ",
+          "candidate": " 呂樑片 ",
+          "count": 4
+        },
+        {
+          "baseline": " 註音 ",
+          "candidate": " 注音 ",
+          "count": 4
+        },
+        {
+          "baseline": "Taiwan』s gove",
+          "candidate": "Taiwan’s gove",
+          "count": 2
+        },
+        {
+          "baseline": "icode「註音符號擴展」",
+          "candidate": "icode「注音符號擴展」",
+          "count": 2
+        },
+        {
+          "baseline": "vernor』s offi",
+          "candidate": "vernor’s offi",
+          "count": 2
+        },
+        {
+          "baseline": "央研究院的橋梁 (tert",
+          "candidate": "央研究院的橋樑 (tert",
+          "count": 2
+        },
+        {
+          "baseline": "音字母名稱為註音符號及推行",
+          "candidate": "音字母名稱為注音符號及推行",
+          "count": 2
+        },
+        {
+          "baseline": " Women』s Base",
+          "candidate": " Women’s Base",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁偉銘. 盼以",
+          "candidate": " ^ 樑偉銘. 盼以",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁偉銘. 籃球",
+          "candidate": " ^ 樑偉銘. 籃球",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁敬彥. 周杰",
+          "candidate": " ^ 樑敬彥. 周杰",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁燕蕙. 富士",
+          "candidate": " ^ 樑燕蕙. 富士",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 戴光",
+          "candidate": " ^ 樑珮綺. 戴光",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 方沛",
+          "candidate": " ^ 樑珮綺. 方沛",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 梁珮綺. 李錫",
+          "candidate": " ^ 樑珮綺. 李錫",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號調號之",
+          "candidate": " ^ 注音符號調號之",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號（U+",
+          "candidate": " ^ 注音符號（U+",
+          "count": 1
+        },
+        {
+          "baseline": " women』s badm",
+          "candidate": " women’s badm",
+          "count": 1
+        },
+        {
+          "baseline": " world』s best",
+          "candidate": " world’s best",
+          "count": 1
+        },
+        {
+          "baseline": " 「註音」二字意謂",
+          "candidate": " 「注音」二字意謂",
+          "count": 1
+        },
+        {
+          "baseline": " 」改成「 抵觸 」 。",
+          "candidate": " 」改成「 牴觸 」 。",
+          "count": 1
+        },
+        {
+          "baseline": " ㄧㄣ（我愛註音） （ 頁",
+          "candidate": " ㄧㄣ（我愛注音） （ 頁",
+          "count": 1
+        },
+        {
+          "baseline": " 主條目： 註音輸入法 ",
+          "candidate": " 主條目： 注音輸入法 ",
+          "count": 1
+        },
+        {
+          "baseline": " 之子 鄭如梁 於 道光 ",
+          "candidate": " 之子 鄭如樑 於 道光 ",
+          "count": 1
+        },
+        {
+          "baseline": " 人們還把註音符號運用到",
+          "candidate": " 人們還把注音符號運用到",
+          "count": 1
+        },
+        {
+          "baseline": " 印有 註音 符號、 ",
+          "candidate": " 印有 注音 符號、 ",
+          "count": 1
+        },
+        {
+          "baseline": " 參見： 註音符號 (U",
+          "candidate": " 參見： 注音符號 (U",
+          "count": 1
+        },
+        {
+          "baseline": " 國語註音符號手冊 ",
+          "candidate": " 國語注音符號手冊 ",
+          "count": 1
+        },
+        {
+          "baseline": " 張正男. 註音符號與華語",
+          "candidate": " 張正男. 注音符號與華語",
+          "count": 1
+        },
+        {
+          "baseline": " 後，一直以註音符號為 國",
+          "candidate": " 後，一直以注音符號為 國",
+          "count": 1
+        },
+        {
+          "baseline": " 捷運高架橋梁結構設計與施",
+          "candidate": " 捷運高架橋樑結構設計與施",
+          "count": 1
+        },
+        {
+          "baseline": " 日本 。 梁啓超 及 康",
+          "candidate": " 日本 。 樑啓超 及 康",
+          "count": 1
+        },
+        {
+          "baseline": " 梁珮綺. 李亨",
+          "candidate": " 樑珮綺. 李亨",
+          "count": 1
+        },
+        {
+          "baseline": " 沈君帆; 梁建裕. 「 ",
+          "candidate": " 沈君帆; 樑建裕. 「 ",
+          "count": 1
+        },
+        {
+          "baseline": " 漢語拼音與註音符號基本規",
+          "candidate": " 漢語拼音與注音符號基本規",
+          "count": 1
+        },
+        {
+          "baseline": " 潮汕註音符號 ",
+          "candidate": " 潮汕注音符號 ",
+          "count": 1
+        },
+        {
+          "baseline": " 粵語註音符號 ",
+          "candidate": " 粵語注音符號 ",
+          "count": 1
+        },
+        {
+          "baseline": " 與 聯外橋梁 。",
+          "candidate": " 與 聯外橋樑 。",
+          "count": 1
+        },
+        {
+          "baseline": " 莊富安; 梁玉立. 蕭萬",
+          "candidate": " 莊富安; 樑玉立. 蕭萬",
+          "count": 1
+        },
+        {
+          "baseline": " 蘇州註音符號 ",
+          "candidate": " 蘇州注音符號 ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音->IPA",
+          "candidate": " 注音->IPA",
+          "count": 1
+        },
+        {
+          "baseline": " 註音「一」（/",
+          "candidate": " 注音「一」（/",
+          "count": 1
+        },
+        {
+          "baseline": " 註音的正體（黑",
+          "candidate": " 注音的正體（黑",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號 （ ",
+          "candidate": " 注音符號 （ ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號 ，原",
+          "candidate": " 注音符號 ，原",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號主方案",
+          "candidate": " 注音符號主方案",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號的電腦",
+          "candidate": " 注音符號的電腦",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號與 漢",
+          "candidate": " 注音符號與 漢",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號與漢語",
+          "candidate": " 注音符號與漢語",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號訴求系",
+          "candidate": " 注音符號訴求系",
+          "count": 1
+        },
+        {
+          "baseline": " 註音符號音節列",
+          "candidate": " 注音符號音節列",
+          "count": 1
+        },
+        {
+          "baseline": " 註音聲調採用 ",
+          "candidate": " 注音聲調採用 ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音與拼音系統",
+          "candidate": " 注音與拼音系統",
+          "count": 1
+        },
+        {
+          "baseline": " 註音輸入法 ",
+          "candidate": " 注音輸入法 ",
+          "count": 1
+        },
+        {
+          "baseline": " 註音轉換工具 ",
+          "candidate": " 注音轉換工具 ",
+          "count": 1
+        },
+        {
+          "baseline": " 車耀先 《註音符號講義》",
+          "candidate": " 車耀先 《注音符號講義》",
+          "count": 1
+        },
+        {
+          "baseline": " 通梁線 ",
+          "candidate": " 通樑線 ",
+          "count": 1
+        },
+        {
+          "baseline": " 閩語註音符號 ",
+          "candidate": " 閩語注音符號 ",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "註",
+          "candidate": "注",
+          "count": 138
+        },
+        {
+          "baseline": "梁",
+          "candidate": "樑",
+          "count": 46
+        },
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 30
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 6
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 2
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 1
+        },
+        {
+          "baseline": "抵",
+          "candidate": "牴",
+          "count": 1
+        }
+      ],
+      "total_code_units": 984494,
+      "total_lines": 15388
+    },
+    {
+      "code_unit_rate": 0.00037379608204824,
+      "differing_code_units": 368,
+      "differing_lines": 250,
+      "direction": "s2t",
+      "distinct_hunks": 332,
+      "line_rate": 0.01624642578632701,
+      "name": "opencc-s2t",
+      "top_hunks": [
+        {
+          "baseline": " World』s Top ",
+          "candidate": " World’s Top ",
+          "count": 9
+        },
+        {
+          "baseline": " World』s Bigg",
+          "candidate": " World’s Bigg",
+          "count": 5
+        },
+        {
+          "baseline": " 小吃 ",
+          "candidate": " 小喫 ",
+          "count": 5
+        },
+        {
+          "baseline": " 臺南小吃 ",
+          "candidate": " 臺南小喫 ",
+          "count": 4
+        },
+        {
+          "baseline": " 註音 ",
+          "candidate": " 注音 ",
+          "count": 4
+        },
+        {
+          "baseline": " 臺灣小吃 ",
+          "candidate": " 臺灣小喫 ",
+          "count": 3
+        },
+        {
+          "baseline": " , 「客家」─ 誤會的歷",
+          "candidate": " , “客家”─ 誤會的歷",
+          "count": 2
+        },
+        {
+          "baseline": " 沙縣小吃 ",
+          "candidate": " 沙縣小喫 ",
+          "count": 2
+        },
+        {
+          "baseline": "4）. , 「客家」─ 誤",
+          "candidate": "4）. , “客家”─ 誤",
+          "count": 2
+        },
+        {
+          "baseline": "6樓公開： 「客家」─ 誤",
+          "candidate": "6樓公開： “客家”─ 誤",
+          "count": 2
+        },
+        {
+          "baseline": "Taiwan』s gove",
+          "candidate": "Taiwan’s gove",
+          "count": 2
+        },
+        {
+          "baseline": "icode「註音符號擴展」",
+          "candidate": "icode「注音符號擴展」",
+          "count": 2
+        },
+        {
+          "baseline": "vernor』s offi",
+          "candidate": "vernor’s offi",
+          "count": 2
+        },
+        {
+          "baseline": "三方協力擠壓擡升的造山運動",
+          "candidate": "三方協力擠壓抬升的造山運動",
+          "count": 2
+        },
+        {
+          "baseline": "煎只是臺灣小吃嗎？有許多福",
+          "candidate": "煎只是臺灣小喫嗎？有許多福",
+          "count": 2
+        },
+        {
+          "baseline": "開： 「客家」─ 誤會的歷",
+          "candidate": "開： “客家”─ 誤會的歷",
+          "count": 2
+        },
+        {
+          "baseline": "音字母名稱為註音符號及推行",
+          "candidate": "音字母名稱為注音符號及推行",
+          "count": 2
+        },
+        {
+          "baseline": "餐廳、街頭小吃獲得必比登推",
+          "candidate": "餐廳、街頭小喫獲得必比登推",
+          "count": 2
+        },
+        {
+          "baseline": " (「Bob」) Elli",
+          "candidate": " (“Bob”) Elli",
+          "count": 1
+        },
+        {
+          "baseline": " Women』s Base",
+          "candidate": " Women’s Base",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 「TSMC-U",
+          "candidate": " ^ “TSMC-U",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 「我不怕千萬人",
+          "candidate": " ^ “我不怕千萬人",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 「繁體字應納入",
+          "candidate": " ^ “繁體字應納入",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 吃到「長長的菜",
+          "candidate": " ^ 喫到「長長的菜",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 國臺辦迴應富士康被查",
+          "candidate": " ^ 國臺辦回應富士康被查",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 從「於 / 於」",
+          "candidate": " ^ 從“於 / 於”",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 李若鬆. 高速鐵路",
+          "candidate": " ^ 李若松. 高速鐵路",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號調號之",
+          "candidate": " ^ 注音符號調號之",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 註音符號（U+",
+          "candidate": " ^ 注音符號（U+",
+          "count": 1
+        },
+        {
+          "baseline": " ^ 謝志鬆. 高鐵通車",
+          "candidate": " ^ 謝志松. 高鐵通車",
+          "count": 1
+        },
+        {
+          "baseline": " women』s badm",
+          "candidate": " women’s badm",
+          "count": 1
+        },
+        {
+          "baseline": " world』s best",
+          "candidate": " world’s best",
+          "count": 1
+        },
+        {
+          "baseline": " 。 臺灣小吃 的特色是就",
+          "candidate": " 。 臺灣小喫 的特色是就",
+          "count": 1
+        },
+        {
+          "baseline": " 。牠們也會吃下其死亡幼鳥",
+          "candidate": " 。牠們也會喫下其死亡幼鳥",
+          "count": 1
+        },
+        {
+          "baseline": " 「註音」二字意謂",
+          "candidate": " 「注音」二字意謂",
+          "count": 1
+        },
+        {
+          "baseline": " 」改成「 抵觸 」 。",
+          "candidate": " 」改成「 牴觸 」 。",
+          "count": 1
+        },
+        {
+          "baseline": " ㄧㄣ（我愛註音） （ 頁",
+          "candidate": " ㄧㄣ（我愛注音） （ 頁",
+          "count": 1
+        },
+        {
+          "baseline": " 主條目： 註音輸入法 ",
+          "candidate": " 主條目： 注音輸入法 ",
+          "count": 1
+        },
+        {
+          "baseline": " 人們還把註音符號運用到",
+          "candidate": " 人們還把注音符號運用到",
+          "count": 1
+        },
+        {
+          "baseline": " 則鬆話 ",
+          "candidate": " 則松話 ",
+          "count": 1
+        },
+        {
+          "baseline": " 印有 註音 符號、 ",
+          "candidate": " 印有 注音 符號、 ",
+          "count": 1
+        },
+        {
+          "baseline": " 參見： 註音符號 (U",
+          "candidate": " 參見： 注音符號 (U",
+          "count": 1
+        },
+        {
+          "baseline": " 古琴 萬壑鬆 。 ",
+          "candidate": " 古琴 萬壑松 。 ",
+          "count": 1
+        },
+        {
+          "baseline": " 和 臺灣小吃 ",
+          "candidate": " 和 臺灣小喫 ",
+          "count": 1
+        },
+        {
+          "baseline": " 國語註音符號手冊 ",
+          "candidate": " 國語注音符號手冊 ",
+          "count": 1
+        },
+        {
+          "baseline": " 小吃 甜品 ",
+          "candidate": " 小喫 甜品 ",
+          "count": 1
+        },
+        {
+          "baseline": " 廣東省 臺山市 赤溪半",
+          "candidate": " 廣東省 台山市 赤溪半",
+          "count": 1
+        },
+        {
+          "baseline": " 張正男. 註音符號與華語",
+          "candidate": " 張正男. 注音符號與華語",
+          "count": 1
+        },
+        {
+          "baseline": " 張良澤；高阪嘉玲. 日治",
+          "candidate": " 張良澤；高坂嘉玲. 日治",
+          "count": 1
+        },
+        {
+          "baseline": " 後，一直以註音符號為 國",
+          "candidate": " 後，一直以注音符號為 國",
+          "count": 1
+        },
+        {
+          "baseline": " 想買房得不吃不喝逾15年",
+          "candidate": " 想買房得不喫不喝逾15年",
+          "count": 1
+        },
+        {
+          "baseline": " 慄蘇語 ",
+          "candidate": " 栗蘇語 ",
+          "count": 1
+        },
+        {
+          "baseline": " 曲牌【風入鬆】，是著名代",
+          "candidate": " 曲牌【風入松】，是著名代",
+          "count": 1
+        },
+        {
+          "baseline": " 森山鬆之助 設計的",
+          "candidate": " 森山松之助 設計的",
+          "count": 1
+        },
+        {
+          "baseline": " 漢語拼音與註音符號基本規",
+          "candidate": " 漢語拼音與注音符號基本規",
+          "count": 1
+        },
+        {
+          "baseline": " 潮汕註音符號 ",
+          "candidate": " 潮汕注音符號 ",
+          "count": 1
+        },
+        {
+          "baseline": " 環保 意識擡頭及解決 都",
+          "candidate": " 環保 意識抬頭及解決 都",
+          "count": 1
+        },
+        {
+          "baseline": " 白巖鬆 ：「如果有",
+          "candidate": " 白巖松 ：「如果有",
+          "count": 1
+        },
+        {
+          "baseline": " 粵語註音符號 ",
+          "candidate": " 粵語注音符號 ",
+          "count": 1
+        },
+        {
+          "baseline": " 臺北的小吃可分為市集攤",
+          "candidate": " 臺北的小喫可分為市集攤",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "註",
+          "candidate": "注",
+          "count": 138
+        },
+        {
+          "baseline": "吃",
+          "candidate": "喫",
+          "count": 82
+        },
+        {
+          "baseline": "鬆",
+          "candidate": "松",
+          "count": 44
+        },
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 30
+        },
+        {
+          "baseline": "「",
+          "candidate": "“",
+          "count": 22
+        },
+        {
+          "baseline": "」",
+          "candidate": "”",
+          "count": 22
+        },
+        {
+          "baseline": "擡",
+          "candidate": "抬",
+          "count": 9
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 6
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 2
+        },
+        {
+          "baseline": "慄",
+          "candidate": "栗",
+          "count": 2
+        },
+        {
+          "baseline": "溪",
+          "candidate": "谿",
+          "count": 2
+        },
+        {
+          "baseline": "裏",
+          "candidate": "里",
+          "count": 2
+        },
+        {
+          "baseline": "迴",
+          "candidate": "回",
+          "count": 2
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 1
+        },
+        {
+          "baseline": "抵",
+          "candidate": "牴",
+          "count": 1
+        },
+        {
+          "baseline": "臺",
+          "candidate": "台",
+          "count": 1
+        },
+        {
+          "baseline": "遊",
+          "candidate": "游",
+          "count": 1
+        },
+        {
+          "baseline": "阪",
+          "candidate": "坂",
+          "count": 1
+        }
+      ],
+      "total_code_units": 984494,
+      "total_lines": 15388
+    }
+  ],
+  "exclude_cases": [
+    {
+      "baseline_t2s": "槃",
+      "hanlp_t2s": "槃",
+      "opencc_t2s": "槃",
+      "opencc_t2s+exclude": "槃",
+      "opencc_tw2sp": "槃",
+      "opencc_tw2sp+exclude": "槃",
+      "word": "槃"
+    },
+    {
+      "baseline_t2s": "划槳",
+      "hanlp_t2s": "划槳",
+      "opencc_t2s": "划桨",
+      "opencc_t2s+exclude": "划槳",
+      "opencc_tw2sp": "划桨",
+      "opencc_tw2sp+exclude": "划槳",
+      "word": "划槳"
+    },
+    {
+      "baseline_t2s": "列根",
+      "hanlp_t2s": "列根",
+      "opencc_t2s": "列根",
+      "opencc_t2s+exclude": "列根",
+      "opencc_tw2sp": "列根",
+      "opencc_tw2sp+exclude": "列根",
+      "word": "列根"
+    },
+    {
+      "baseline_t2s": "雪梨",
+      "hanlp_t2s": "雪梨",
+      "opencc_t2s": "雪梨",
+      "opencc_t2s+exclude": "雪梨",
+      "opencc_tw2sp": "雪梨",
+      "opencc_tw2sp+exclude": "雪梨",
+      "word": "雪梨"
+    },
+    {
+      "baseline_t2s": "雪糕",
+      "hanlp_t2s": "雪糕",
+      "opencc_t2s": "雪糕",
+      "opencc_t2s+exclude": "雪糕",
+      "opencc_tw2sp": "雪糕",
+      "opencc_tw2sp+exclude": "雪糕",
+      "word": "雪糕"
+    },
+    {
+      "baseline_t2s": "零錢",
+      "hanlp_t2s": "零錢",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零錢",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零錢",
+      "word": "零錢"
+    },
+    {
+      "baseline_t2s": "零钱",
+      "hanlp_t2s": "零钱",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零钱",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零钱",
+      "word": "零钱"
+    },
+    {
+      "baseline_t2s": "離線",
+      "hanlp_t2s": "離線",
+      "opencc_t2s": "离线",
+      "opencc_t2s+exclude": "離線",
+      "opencc_tw2sp": "脱机",
+      "opencc_tw2sp+exclude": "離線",
+      "word": "離線"
+    },
+    {
+      "baseline_t2s": "碟片",
+      "hanlp_t2s": "碟片",
+      "opencc_t2s": "碟片",
+      "opencc_t2s+exclude": "碟片",
+      "opencc_tw2sp": "盘片",
+      "opencc_tw2sp+exclude": "碟片",
+      "word": "碟片"
+    },
+    {
+      "baseline_t2s": "模組",
+      "hanlp_t2s": "模組",
+      "opencc_t2s": "模组",
+      "opencc_t2s+exclude": "模組",
+      "opencc_tw2sp": "模块",
+      "opencc_tw2sp+exclude": "模組",
+      "word": "模組"
+    },
+    {
+      "baseline_t2s": "桌球",
+      "hanlp_t2s": "桌球",
+      "opencc_t2s": "桌球",
+      "opencc_t2s+exclude": "桌球",
+      "opencc_tw2sp": "桌球",
+      "opencc_tw2sp+exclude": "桌球",
+      "word": "桌球"
+    },
+    {
+      "baseline_t2s": "案頭",
+      "hanlp_t2s": "案頭",
+      "opencc_t2s": "案头",
+      "opencc_t2s+exclude": "案頭",
+      "opencc_tw2sp": "案头",
+      "opencc_tw2sp+exclude": "案頭",
+      "word": "案頭"
+    },
+    {
+      "baseline_t2s": "機車",
+      "hanlp_t2s": "機車",
+      "opencc_t2s": "机车",
+      "opencc_t2s+exclude": "機車",
+      "opencc_tw2sp": "机车",
+      "opencc_tw2sp+exclude": "機車",
+      "word": "機車"
+    },
+    {
+      "baseline_t2s": "電漿",
+      "hanlp_t2s": "電漿",
+      "opencc_t2s": "电浆",
+      "opencc_t2s+exclude": "電漿",
+      "opencc_tw2sp": "电浆",
+      "opencc_tw2sp+exclude": "電漿",
+      "word": "電漿"
+    },
+    {
+      "baseline_t2s": "鳳梨",
+      "hanlp_t2s": "鳳梨",
+      "opencc_t2s": "凤梨",
+      "opencc_t2s+exclude": "鳳梨",
+      "opencc_tw2sp": "凤梨",
+      "opencc_tw2sp+exclude": "鳳梨",
+      "word": "鳳梨"
+    },
+    {
+      "baseline_t2s": "魔戒",
+      "hanlp_t2s": "魔戒",
+      "opencc_t2s": "魔戒",
+      "opencc_t2s+exclude": "魔戒",
+      "opencc_tw2sp": "魔戒",
+      "opencc_tw2sp+exclude": "魔戒",
+      "word": "魔戒"
+    },
+    {
+      "baseline_t2s": "載入",
+      "hanlp_t2s": "載入",
+      "opencc_t2s": "载入",
+      "opencc_t2s+exclude": "載入",
+      "opencc_tw2sp": "加载",
+      "opencc_tw2sp+exclude": "載入",
+      "word": "載入"
+    },
+    {
+      "baseline_t2s": "菲林",
+      "hanlp_t2s": "菲林",
+      "opencc_t2s": "菲林",
+      "opencc_t2s+exclude": "菲林",
+      "opencc_tw2sp": "菲林",
+      "opencc_tw2sp+exclude": "菲林",
+      "word": "菲林"
+    },
+    {
+      "baseline_t2s": "整合",
+      "hanlp_t2s": "整合",
+      "opencc_t2s": "整合",
+      "opencc_t2s+exclude": "整合",
+      "opencc_tw2sp": "集成",
+      "opencc_tw2sp+exclude": "整合",
+      "word": "整合"
+    },
+    {
+      "baseline_t2s": "變數",
+      "hanlp_t2s": "變數",
+      "opencc_t2s": "变数",
+      "opencc_t2s+exclude": "變數",
+      "opencc_tw2sp": "变量",
+      "opencc_tw2sp+exclude": "變數",
+      "word": "變數"
+    },
+    {
+      "baseline_t2s": "路易斯",
+      "hanlp_t2s": "路易斯",
+      "opencc_t2s": "路易斯",
+      "opencc_t2s+exclude": "路易斯",
+      "opencc_tw2sp": "路易斯",
+      "opencc_tw2sp+exclude": "路易斯",
+      "word": "路易斯"
+    },
+    {
+      "baseline_t2s": "非同步",
+      "hanlp_t2s": "非同步",
+      "opencc_t2s": "非同步",
+      "opencc_t2s+exclude": "非同步",
+      "opencc_tw2sp": "异步",
+      "opencc_tw2sp+exclude": "非同步",
+      "word": "非同步"
+    },
+    {
+      "baseline_t2s": "出租车",
+      "hanlp_t2s": "出租车",
+      "opencc_t2s": "出租车",
+      "opencc_t2s+exclude": "出租车",
+      "opencc_tw2sp": "出租车",
+      "opencc_tw2sp+exclude": "出租车",
+      "word": "出租车"
+    },
+    {
+      "baseline_t2s": "周杰倫",
+      "hanlp_t2s": "周杰倫",
+      "opencc_t2s": "周杰伦",
+      "opencc_t2s+exclude": "周杰倫",
+      "opencc_tw2sp": "周杰伦",
+      "opencc_tw2sp+exclude": "周杰倫",
+      "word": "周杰倫"
+    },
+    {
+      "baseline_t2s": "马铃薯",
+      "hanlp_t2s": "马铃薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "马铃薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "马铃薯",
+      "word": "马铃薯"
+    },
+    {
+      "baseline_t2s": "馬鈴薯",
+      "hanlp_t2s": "馬鈴薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "馬鈴薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "馬鈴薯",
+      "word": "馬鈴薯"
+    },
+    {
+      "baseline_t2s": "機械人",
+      "hanlp_t2s": "機械人",
+      "opencc_t2s": "机械人",
+      "opencc_t2s+exclude": "機械人",
+      "opencc_tw2sp": "机械人",
+      "opencc_tw2sp+exclude": "機械人",
+      "word": "機械人"
+    },
+    {
+      "baseline_t2s": "電單車",
+      "hanlp_t2s": "電單車",
+      "opencc_t2s": "电单车",
+      "opencc_t2s+exclude": "電單車",
+      "opencc_tw2sp": "电单车",
+      "opencc_tw2sp+exclude": "電單車",
+      "word": "電單車"
+    },
+    {
+      "baseline_t2s": "電扶梯",
+      "hanlp_t2s": "電扶梯",
+      "opencc_t2s": "电扶梯",
+      "opencc_t2s+exclude": "電扶梯",
+      "opencc_tw2sp": "电扶梯",
+      "opencc_tw2sp+exclude": "電扶梯",
+      "word": "電扶梯"
+    },
+    {
+      "baseline_t2s": "音效卡",
+      "hanlp_t2s": "音效卡",
+      "opencc_t2s": "音效卡",
+      "opencc_t2s+exclude": "音效卡",
+      "opencc_tw2sp": "声卡",
+      "opencc_tw2sp+exclude": "音效卡",
+      "word": "音效卡"
+    },
+    {
+      "baseline_t2s": "飆車族",
+      "hanlp_t2s": "飆車族",
+      "opencc_t2s": "飙车族",
+      "opencc_t2s+exclude": "飆車族",
+      "opencc_tw2sp": "飙车族",
+      "opencc_tw2sp+exclude": "飆車族",
+      "word": "飆車族"
+    },
+    {
+      "baseline_t2s": "點陣圖",
+      "hanlp_t2s": "點陣圖",
+      "opencc_t2s": "点阵图",
+      "opencc_t2s+exclude": "點陣圖",
+      "opencc_tw2sp": "位图",
+      "opencc_tw2sp+exclude": "點陣圖",
+      "word": "點陣圖"
+    },
+    {
+      "baseline_t2s": "個入球",
+      "hanlp_t2s": "個入球",
+      "opencc_t2s": "个入球",
+      "opencc_t2s+exclude": "個入球",
+      "opencc_tw2sp": "个入球",
+      "opencc_tw2sp+exclude": "個入球",
+      "word": "個入球"
+    },
+    {
+      "baseline_t2s": "顆進球",
+      "hanlp_t2s": "顆進球",
+      "opencc_t2s": "颗进球",
+      "opencc_t2s+exclude": "顆進球",
+      "opencc_tw2sp": "颗进球",
+      "opencc_tw2sp+exclude": "顆進球",
+      "word": "顆進球"
+    },
+    {
+      "baseline_t2s": "魔獸紀元",
+      "hanlp_t2s": "魔獸紀元",
+      "opencc_t2s": "魔兽纪元",
+      "opencc_t2s+exclude": "魔獸紀元",
+      "opencc_tw2sp": "魔兽纪元",
+      "opencc_tw2sp+exclude": "魔獸紀元",
+      "word": "魔獸紀元"
+    },
+    {
+      "baseline_t2s": "高空彈跳",
+      "hanlp_t2s": "高空彈跳",
+      "opencc_t2s": "高空弹跳",
+      "opencc_t2s+exclude": "高空彈跳",
+      "opencc_tw2sp": "蹦极",
+      "opencc_tw2sp+exclude": "高空彈跳",
+      "word": "高空彈跳"
+    },
+    {
+      "baseline_t2s": "铁达尼号",
+      "hanlp_t2s": "铁达尼号",
+      "opencc_t2s": "铁达尼号",
+      "opencc_t2s+exclude": "铁达尼号",
+      "opencc_tw2sp": "铁达尼号",
+      "opencc_tw2sp+exclude": "铁达尼号",
+      "word": "铁达尼号"
+    },
+    {
+      "baseline_t2s": "魔鬼終結者",
+      "hanlp_t2s": "魔鬼終結者",
+      "opencc_t2s": "魔鬼终结者",
+      "opencc_t2s+exclude": "魔鬼終結者",
+      "opencc_tw2sp": "魔鬼终结者",
+      "opencc_tw2sp+exclude": "魔鬼終結者",
+      "word": "魔鬼終結者"
+    },
+    {
+      "baseline_t2s": "純文字檔案",
+      "hanlp_t2s": "純文字檔案",
+      "opencc_t2s": "纯文字档案",
+      "opencc_t2s+exclude": "純文字檔案",
+      "opencc_tw2sp": "纯文字文件",
+      "opencc_tw2sp+exclude": "純文字檔案",
+      "word": "純文字檔案"
+    }
+  ],
+  "note": "Conversion-table measurement for ticket #19; see README.md for re-running it."
+}

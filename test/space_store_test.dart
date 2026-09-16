@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/workspace.dart';
@@ -169,5 +169,51 @@ void main() {
     expect(rules.single.scopeContent, isTrue);
     expect(rules.single.scopeTitle, isFalse);
     await reopened.close();
+  });
+
+  test('本地文件索引整份替换，不碰同根下的其它文件', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    await store.putLocalRoot(
+      LocalRootsCompanion.insert(id: 'root-1', displayName: 'D:\\Novels'),
+    );
+    for (final path in ['三國演義.txt', '紅樓夢.txt']) {
+      await store.putLocalFile(
+        LocalFilesCompanion.insert(rootId: 'root-1', relativePath: path),
+      );
+    }
+
+    await store.putTextIndex('root-1', '三國演義.txt', [
+      (byteOffset: 0, codeUnitOffset: 0, lineIndex: 0),
+      (byteOffset: 7598, codeUnitOffset: 2544, lineIndex: 8),
+    ]);
+    await store.putTextIndex('root-1', '紅樓夢.txt', [
+      (byteOffset: 0, codeUnitOffset: 0, lineIndex: 0),
+    ]);
+    // The file was edited and re-indexed: the old anchors describe bytes that
+    // no longer exist, so the rebuild replaces them instead of adding to them.
+    await store.putTextIndex('root-1', '三國演義.txt', [
+      (byteOffset: 0, codeUnitOffset: 0, lineIndex: 0),
+      (byteOffset: 9521, codeUnitOffset: 3197, lineIndex: 16),
+    ]);
+
+    final rows = await (store.db.select(store.db.textIndex)..orderBy([
+          (t) => OrderingTerm(expression: t.relativePath),
+          (t) => OrderingTerm(expression: t.byteOffset),
+        ]))
+        .get();
+    expect(
+      rows.map(
+        (row) =>
+            '${row.rootId}/${row.relativePath}'
+            '@${row.byteOffset}:${row.codeUnitOffset}:${row.lineIndex}',
+      ),
+      [
+        'root-1/三國演義.txt@0:0:0',
+        'root-1/三國演義.txt@9521:3197:16',
+        'root-1/紅樓夢.txt@0:0:0',
+      ],
+    );
+    await workspace.close();
   });
 }

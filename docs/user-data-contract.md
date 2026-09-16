@@ -167,6 +167,13 @@ Relational, never a mask:
   (`lib/main.dart:376-384`) do.
 - **Decoding happens off the UI thread** (`Isolate.run`/`compute`), and only the open book's
   window stays in memory.
+- **Executed (2026-09-16, ADR 0009 and `tool/text_engine_prototype/`):** the Rust engine
+  indexes the same 500 MB file in **609 ms** with a **5.7 MB** peak RSS and a 2.5 MB
+  footprint, against **11.6 s / 20 MB** for a pure-Dart streaming index over it and the
+  2.8 s / 817 MB `File.readAsString()` row above (reproduced). A window of 20 000 code units
+  at offset 100 000 000 comes back in **1.9 ms** without reading the file. The 20 MB GBK file
+  indexes in 384 ms; `dart:convert` cannot decode it at all. Windows only, page-cache-warm;
+  the other four platforms are built but unmeasured.
 - **Not decided here:** content-cache retention, prefetch depth (both stay in the map's fog).
 
 ### D5 — Storage engine and layout *decided: SQLite, one database per space*
@@ -268,11 +275,14 @@ window decoding. Dart asks for a window and receives text; the index lands in `t
 *Cost:* one more build artifact in a repository that already builds one — the `fjs` crate,
 through `cargokit`, for all five platforms — plus the codegen step for a new API surface.
 
-*First evidence:* a bounded benchmark on a 20 MB GBK file and on the 500 MB file, comparing
-the Rust engine against a pure-Dart streaming index on pass time and peak RSS, with the
-target of a 500 MB pass under ~1 s and peak RSS under ~50 MB. The benchmark does not gate
-the decision — the encoding argument stands on its own — it validates the throughput claim
-and decides whether Dart-side work stays necessary at all.
+*First evidence, executed (2026-09-16):* the bounded benchmark on the 20 MB GBK file and on
+the 500 MB file, comparing the Rust engine against a pure-Dart streaming index on pass time
+and peak RSS. The engine met both targets — 609 ms and 5.7 MB for 500 MB, one pass, with a
+15 964-entry sparse index — and the pure-Dart row came in 19× slower with an 8× larger
+footprint, so Dart-side indexing is not needed for a book to open. The GBK file is the row
+that cannot exist on the Dart side at all: `dart:convert` refuses it, and its lossy path
+produces 13.1 M replacement characters. Numbers, hashes and re-run steps:
+`tool/text_engine_prototype/`.
 
 ## 4. Out of this contract
 

@@ -1,0 +1,24 @@
+[package]
+name = "liber_text"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+description = "Encoding detection, one-pass indexing, window decoding and Chinese conversion for Liber's local files"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# The Encoding Standard implementation Firefox uses, identical on all five
+# platforms; `dart:convert` decodes only UTF-8, Latin-1 and ASCII.
+encoding_rs = "0.8"
+# Firefox's own encoding detector, for the files whose encoding no byte order
+# mark and no UTF-8 validity check settles (GBK against Big5 above all).
+chardetng = "1"
+# The frozen TXT chapter rules use lookbehind, and Dart's RegExp has none.
+# `liber_html` already builds on the same engine.
+fancy-regex = "0.17"
+
+[workspace]

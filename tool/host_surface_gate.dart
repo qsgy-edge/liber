@@ -37,6 +37,8 @@ const expectedMembers = <String>[
   'java.hexDecodeToString',
   'java.hexDecodeToByteArray',
   'java.encodeURI',
+  'java.t2s',
+  'java.s2t',
   'java.htmlFormat',
   'java.timeFormat',
   'java.timeFormatUTC',
@@ -219,6 +221,9 @@ Future<void> main(List<String> args) async {
         hexBytes: java.hexDecodeToByteArray("00ff").join(","),
         encodeUri: java.encodeURI("我 a*b"),
         encodeUriNonAsciiCharset: java.encodeURI("a", "GBK"),
+        t2s: java.t2s("　　「你這是什麼意思？」他問道。"),
+        t2sExcluded: java.t2s("魔戒三部曲、桌球選手、雪梨歌劇院。"),
+        s2t: java.s2t("龙应台的小说在台湾很受欢迎。"),
         htmlFormat: java.htmlFormat("<div>一<br>二<p>三</p><img src=\\"/i.png\\"></div>"),
         timeFormatUtc: java.timeFormatUTC(0, "yyyy-MM-dd HH:mm", 8),
         uuid: java.randomUUID().length,
@@ -242,6 +247,11 @@ Future<void> main(List<String> args) async {
     checks['hexDecodeBytes'] = decoded['hexBytes'] == '0,-1';
     checks['encodeUri'] = decoded['encodeUri'] == '%E6%88%91+a*b';
     checks['encodeUriUnknownCharset'] = decoded['encodeUriNonAsciiCharset'] == '';
+    // The conversion is the reader's conversion: the same tables, including
+    // Legado's exclude list (魔戒 stays 魔戒 although the table knows 指环王).
+    checks['t2s'] = decoded['t2s'] == '　　“你这是什么意思？”他问道。';
+    checks['t2sExcluded'] = decoded['t2sExcluded'] == '魔戒三部曲、桌球选手、雪梨歌剧院。';
+    checks['s2t'] = decoded['s2t'] == '龍應臺的小說在臺灣很受歡迎。';
     checks['htmlFormat'] =
         decoded['htmlFormat'] ==
         '\u3000\u3000\u4e00\n\u3000\u3000\u4e8c\n\u3000\u3000\u4e09\n\u3000\u3000<img src="/i.png">';

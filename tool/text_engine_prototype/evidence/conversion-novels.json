@@ -1,0 +1,4230 @@
+{
+  "baseline": {
+    "code_units": 887324,
+    "conversion": "quick-transfer-core 0.2.16 (the version the frozen Legado snapshot pins) with Legado's fixT2sDict exclude list for t2s",
+    "oracle": "tool/text_engine_prototype/README.md, BaselineOracle.java",
+    "records": 5352
+  },
+  "candidates": [
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "t2s",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm+exclude",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.002096058058554396,
+      "differing_code_units": 1860,
+      "differing_lines": 869,
+      "direction": "t2s",
+      "distinct_hunks": 1810,
+      "line_rate": 0.1623692077727952,
+      "name": "hanlp-fmm+exclude",
+      "top_hunks": [
+        {
+          "baseline": "　却说魏主曹睿设朝，近臣奏",
+          "candidate": "　却说魏主曹叡设朝，近臣奏",
+          "count": 2
+        },
+        {
+          "baseline": " ‘伤哉龙受困，",
+          "candidate": " 『伤哉龙受困，",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。",
+          "candidate": " ↑ 匵：同“椟”。",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“琅琊太守单子春",
+          "candidate": " 　　“瑯琊太守单子春",
+          "count": 1
+        },
+        {
+          "baseline": " 　　不堤防李傕之侄李",
+          "candidate": " 　　不隄防李傕之姪李",
+          "count": 1
+        },
+        {
+          "baseline": " 　　且说孙乾匹马入冀州见",
+          "candidate": " 　　且说孙干匹马入冀州见",
+          "count": 1
+        },
+        {
+          "baseline": " 　　傕侄李暹引兵围住",
+          "candidate": " 　　傕姪李暹引兵围住",
+          "count": 1
+        },
+        {
+          "baseline": " 　　先说孙乾回见玄德，言",
+          "candidate": " 　　先说孙干回见玄德，言",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿之后毛氏，乃",
+          "candidate": " 　　却说曹叡之后毛氏，乃",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿闻孙权分兵三",
+          "candidate": " 　　却说曹叡闻孙权分兵三",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁",
+          "candidate": " 　　珪曰：“前者袁",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙乾见绍不肯发兵",
+          "candidate": " 　　孙干见绍不肯发兵",
+          "count": 1
+        },
+        {
+          "baseline": " 　　恪字符逊，身长七尺",
+          "candidate": " 　　恪字元逊，身长七尺",
+          "count": 1
+        },
+        {
+          "baseline": " 　　惇挺枪来迎。两马相",
+          "candidate": " 　　惇挺鎗来迎。两马相",
+          "count": 1
+        },
+        {
+          "baseline": " 　　时孙乾已回。玄德复",
+          "candidate": " 　　时孙干已回。玄德复",
+          "count": 1
+        },
+        {
+          "baseline": " 　　曹睿览毕，大惊失",
+          "candidate": " 　　曹叡览毕，大惊失",
+          "count": 1
+        },
+        {
+          "baseline": " 　　皓字符宗，大帝孙权",
+          "candidate": " 　　皓字元宗，大帝孙权",
+          "count": 1
+        },
+        {
+          "baseline": " 　　睿病渐危，急令",
+          "candidate": " 　　叡病渐危，急令",
+          "count": 1
+        },
+        {
+          "baseline": " 　　睿览表怒曰：“",
+          "candidate": " 　　叡览表怒曰：“",
+          "count": 1
+        },
+        {
+          "baseline": " 　　睿览讫，乃谓多",
+          "candidate": " 　　叡览讫，乃谓多",
+          "count": 1
+        },
+        {
+          "baseline": " 　　表上，睿不省，只催督",
+          "candidate": " 　　表上，叡不省，只催督",
+          "count": 1
+        },
+        {
+          "baseline": " 　　郄说张飞饮了数",
+          "candidate": " 　　郤说张飞饮了数",
+          "count": 1
+        },
+        {
+          "baseline": " 　　魏主曹睿闻知，即召司",
+          "candidate": " 　　魏主曹叡闻知，即召司",
+          "count": 1
+        },
+        {
+          "baseline": " 丕睿芳髦才及奂，",
+          "candidate": " 丕叡芳髦才及奂，",
+          "count": 1
+        },
+        {
+          "baseline": " 吟成豆蔻才犹艳，睡",
+          "candidate": " 吟成荳蔻才犹艳，睡",
+          "count": 1
+        },
+        {
+          "baseline": " 城内才看红焰吐，水边又遇",
+          "candidate": " 城内才看红燄吐，水边又遇",
+          "count": 1
+        },
+        {
+          "baseline": " 奸雄亦不兼容恕，枉自图",
+          "candidate": " 奸雄亦不相容恕，枉自图",
+          "count": 1
+        },
+        {
+          "baseline": " 惯养强生笑你痴，菱",
+          "candidate": " 惯养娇生笑你痴，菱",
+          "count": 1
+        },
+        {
+          "baseline": " 托孤既尽殷勤礼，报国还倾",
+          "candidate": " 托孤既尽慇懃礼，报国还倾",
+          "count": 1
+        },
+        {
+          "baseline": " 数万阴兵绕定军，致令钟",
+          "candidate": " 数万阴兵遶定军，致令钟",
+          "count": 1
+        },
+        {
+          "baseline": " 曹瞒凶殘世所无，伏完",
+          "candidate": " 曹瞒凶残世所无，伏完",
+          "count": 1
+        },
+        {
+          "baseline": " 玉在椟 中求善价，",
+          "candidate": " 玉在匵 中求善价，",
+          "count": 1
+        },
+        {
+          "baseline": " 绕树三匝，无枝",
+          "candidate": " 遶树三匝，无枝",
+          "count": 1
+        },
+        {
+          "baseline": " 虎斤弦响弓开处，",
+          "candidate": " 虎觔弦响弓开处，",
+          "count": 1
+        },
+        {
+          "baseline": " 诗 》云：‘乃眷西顾。’",
+          "candidate": " 诗 》云：『乃眷西顾。』",
+          "count": 1
+        },
+        {
+          "baseline": " 诗 》云：‘天步艰难。’",
+          "candidate": " 诗 》云：『天步艰难。』",
+          "count": 1
+        },
+        {
+          "baseline": " 诗 》云：‘鹤鸣于九皋，",
+          "candidate": " 诗 》云：『鹤鸣于九皋，",
+          "count": 1
+        },
+        {
+          "baseline": " 谷口风狂烈焰飘，何期骤雨",
+          "candidate": " 谷口风狂烈燄飘，何期骤雨",
+          "count": 1
+        },
+        {
+          "baseline": " 豆蔻开花三月三",
+          "candidate": " 荳蔻开花三月三",
+          "count": 1
+        },
+        {
+          "baseline": " 霞绡云幄任铺陈，隔巷蟆更",
+          "candidate": " 霞绡云幄任舖陈，隔巷蟆更",
+          "count": 1
+        },
+        {
+          "baseline": "‘一人一口酥’，岂敢违丞相",
+          "candidate": "『一人一口酥』，岂敢违丞相",
+          "count": 1
+        },
+        {
+          "baseline": "‘东头一个汉’，乃应光武旺",
+          "candidate": "『东头一个汉』，乃应光武旺",
+          "count": 1
+        },
+        {
+          "baseline": "‘乃眷西顾。’以此推之，头",
+          "candidate": "『乃眷西顾。』以此推之，头",
+          "count": 1
+        },
+        {
+          "baseline": "‘二郎游五岳’。”薛姨妈道",
+          "candidate": "『二郎游五岳』。”薛姨妈道",
+          "count": 1
+        },
+        {
+          "baseline": "‘仲尼不死。’融赞衡曰：‘",
+          "candidate": "『仲尼不死。』融赞衡曰：『",
+          "count": 1
+        },
+        {
+          "baseline": "‘似我何如？’衡曰：‘汝似",
+          "candidate": "『似我何如？』衡曰：『汝似",
+          "count": 1
+        },
+        {
+          "baseline": "‘侯门深似海’，我是个什么",
+          "candidate": "『侯门深似海』，我是个什么",
+          "count": 1
+        },
+        {
+          "baseline": "‘八门金锁阵’也。八门者：",
+          "candidate": "『八门金锁阵』也。八门者：",
+          "count": 1
+        },
+        {
+          "baseline": "‘内有飞物。’人皆笑之。佗",
+          "candidate": "『内有飞物。』人皆笑之。佗",
+          "count": 1
+        },
+        {
+          "baseline": "‘军半渡可击’？今云长半渡",
+          "candidate": "『军半渡可击』？今云长半渡",
+          "count": 1
+        },
+        {
+          "baseline": "‘刀’下‘用’也。今头上用",
+          "candidate": "『刀』下『用』也。今头上用",
+          "count": 1
+        },
+        {
+          "baseline": "‘卿何以汗？’毓对曰：‘战",
+          "candidate": "『卿何以汗？』毓对曰：『战",
+          "count": 1
+        },
+        {
+          "baseline": "‘唇亡则齿寒’。臣料司马昭",
+          "candidate": "『唇亡则齿寒』。臣料司马昭",
+          "count": 1
+        },
+        {
+          "baseline": "‘地雷’，一炮中藏九炮，三",
+          "candidate": "『地雷』，一砲中藏九砲，三",
+          "count": 1
+        },
+        {
+          "baseline": "‘天步艰难。’无足何能步？",
+          "candidate": "『天步艰难。』无足何能步？",
+          "count": 1
+        },
+        {
+          "baseline": "‘太师杀我！’儒慌赶入园中",
+          "candidate": "『太师杀我！』儒慌赶入园中",
+          "count": 1
+        },
+        {
+          "baseline": "‘姐姐’妹妹’字样，或可解",
+          "candidate": "『姐姐』妹妹』字样，或可解",
+          "count": 1
+        },
+        {
+          "baseline": "‘平蛮指掌图’。今敢献与明",
+          "candidate": "『平蛮指掌图』。今敢献与明",
+          "count": 1
+        },
+        {
+          "baseline": "‘幺爱三四五’了。”宝玉笑",
+          "candidate": "『幺爱三四五』了。”宝玉笑",
+          "count": 1
+        },
+        {
+          "baseline": "‘强宾不压主’，请使君勿疑",
+          "candidate": "『强宾不压主』，请使君勿疑",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 428
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 426
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 150
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 134
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 80
+        },
+        {
+          "baseline": "侄",
+          "candidate": "姪",
+          "count": 63
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 43
+        },
+        {
+          "baseline": "枪",
+          "candidate": "鎗",
+          "count": 43
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 32
+        },
+        {
+          "baseline": "圭",
+          "candidate": "珪",
+          "count": 31
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 31
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 28
+        },
+        {
+          "baseline": "幡",
+          "candidate": "旛",
+          "count": 25
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 20
+        },
+        {
+          "baseline": "焰",
+          "candidate": "燄",
+          "count": 17
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 16
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 16
+        },
+        {
+          "baseline": "藤",
+          "candidate": "籐",
+          "count": 14
+        },
+        {
+          "baseline": "郄",
+          "candidate": "郤",
+          "count": 13
+        },
+        {
+          "baseline": "札",
+          "candidate": "劄",
+          "count": 11
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 9
+        },
+        {
+          "baseline": "蒙",
+          "candidate": "朦",
+          "count": 7
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 6
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 5
+        },
+        {
+          "baseline": "疏",
+          "candidate": "疎",
+          "count": 5
+        },
+        {
+          "baseline": "衔",
+          "candidate": "啣",
+          "count": 5
+        },
+        {
+          "baseline": "仇",
+          "candidate": "雠",
+          "count": 4
+        },
+        {
+          "baseline": "勖",
+          "candidate": "勗",
+          "count": 4
+        },
+        {
+          "baseline": "幕",
+          "candidate": "幙",
+          "count": 4
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 4
+        },
+        {
+          "baseline": "豆",
+          "candidate": "荳",
+          "count": 4
+        },
+        {
+          "baseline": "仿",
+          "candidate": "倣",
+          "count": 3
+        },
+        {
+          "baseline": "强",
+          "candidate": "娇",
+          "count": 3
+        },
+        {
+          "baseline": "呂",
+          "candidate": "吕",
+          "count": 2
+        },
+        {
+          "baseline": "夭",
+          "candidate": "殀",
+          "count": 2
+        },
+        {
+          "baseline": "敕",
+          "candidate": "勅",
+          "count": 2
+        },
+        {
+          "baseline": "椟",
+          "candidate": "匵",
+          "count": 2
+        },
+        {
+          "baseline": "欢",
+          "candidate": "懽",
+          "count": 2
+        },
+        {
+          "baseline": "熙",
+          "candidate": "煕",
+          "count": 2
+        },
+        {
+          "baseline": "璇",
+          "candidate": "璿",
+          "count": 2
+        },
+        {
+          "baseline": "睹",
+          "candidate": "覩",
+          "count": 2
+        },
+        {
+          "baseline": "碇",
+          "candidate": "矴",
+          "count": 2
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 2
+        },
+        {
+          "baseline": "绁",
+          "candidate": "絏",
+          "count": 2
+        },
+        {
+          "baseline": "藁",
+          "candidate": "槁",
+          "count": 2
+        },
+        {
+          "baseline": "载",
+          "candidate": "传",
+          "count": 2
+        },
+        {
+          "baseline": "飘",
+          "candidate": "飃",
+          "count": 2
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 1
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 1
+        },
+        {
+          "baseline": "什",
+          "candidate": "甚",
+          "count": 1
+        },
+        {
+          "baseline": "仙",
+          "candidate": "僊",
+          "count": 1
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 1
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 1
+        },
+        {
+          "baseline": "制",
+          "candidate": "位",
+          "count": 1
+        },
+        {
+          "baseline": "勉",
+          "candidate": "沔",
+          "count": 1
+        },
+        {
+          "baseline": "华",
+          "candidate": "中",
+          "count": 1
+        },
+        {
+          "baseline": "妒",
+          "candidate": "妬",
+          "count": 1
+        },
+        {
+          "baseline": "恫",
+          "candidate": "痌",
+          "count": 1
+        },
+        {
+          "baseline": "拓",
+          "candidate": "搨",
+          "count": 1
+        },
+        {
+          "baseline": "拼",
+          "candidate": "拚",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.02465798192431653,
+      "differing_code_units": 21881,
+      "differing_lines": 2682,
+      "direction": "t2s",
+      "distinct_hunks": 22383,
+      "line_rate": 0.5011210762331838,
+      "name": "opencc-t2s+exclude",
+      "top_hunks": [
+        {
+          "baseline": "如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "，如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "“此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "　却说魏主曹睿设朝，近臣奏",
+          "candidate": "　却说魏主曹叡设朝，近臣奏",
+          "count": 2
+        },
+        {
+          "baseline": "。鸳鸯又道：“有了一副。左",
+          "candidate": "。鸳鸯又道：「有了一副。左",
+          "count": 2
+        },
+        {
+          "baseline": "不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "，何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”孔明笑曰：“",
+          "candidate": "，如之奈何？」孔明笑曰：「",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”懿曰：“臣已",
+          "candidate": "，如之奈何？」懿曰：「臣已",
+          "count": 2
+        },
+        {
+          "baseline": "，自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，非英雄也。”玄德曰：“有",
+          "candidate": "，非英雄也。」玄德曰：「有",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“只须如此如此",
+          "candidate": "？」孔明曰：「只须如此如此",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“司马懿善能用",
+          "candidate": "？」孔明曰：「司马懿善能用",
+          "count": 2
+        },
+        {
+          "baseline": " ‘伤哉龙受困，",
+          "candidate": " 『伤哉龙受困，",
+          "count": 1
+        },
+        {
+          "baseline": " “呜呼公瑾，不",
+          "candidate": " 「呜呼公瑾，不",
+          "count": 1
+        },
+        {
+          "baseline": " “族弟刘璋，再",
+          "candidate": " 「族弟刘璋，再",
+          "count": 1
+        },
+        {
+          "baseline": " “汉军师中郎将",
+          "candidate": " 「汉军师中郎将",
+          "count": 1
+        },
+        {
+          "baseline": " “瑜以凡才，荷",
+          "candidate": " 「瑜以凡才，荷",
+          "count": 1
+        },
+        {
+          "baseline": " “益州从事臣王",
+          "candidate": " 「益州从事臣王",
+          "count": 1
+        },
+        {
+          "baseline": " “罪将姜维百拜",
+          "candidate": " 「罪将姜维百拜",
+          "count": 1
+        },
+        {
+          "baseline": " “近闻东吴令人",
+          "candidate": " 「近闻东吴令人",
+          "count": 1
+        },
+        {
+          "baseline": " “适承钧教，安",
+          "candidate": " 「适承钧教，安",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。",
+          "candidate": " ↑ 匵：同「椟」。",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。 ",
+          "candidate": " ↑ 匵：同「椟」。 ",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“一日出郊闲行",
+          "candidate": " 　　「一日出郊闲行",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“乡中有老妇失",
+          "candidate": " 　　「乡中有老妇失",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“前东吴破祖时",
+          "candidate": " 　　「前东吴破祖时",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“后有居民郭恩",
+          "candidate": " 　　「后有居民郭恩",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“安平太守王基",
+          "candidate": " 　　「安平太守王基",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“琅琊太守单子春",
+          "candidate": " 　　「瑯琊太守单子春",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“老人留辂在家",
+          "candidate": " 　　「老人留辂在家",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“赵颜归问管辂",
+          "candidate": " 　　「赵颜归问管辂",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“馆陶令诸葛原",
+          "candidate": " 　　「馆陶令诸葛原",
+          "count": 1
+        },
+        {
+          "baseline": " 　　不堤防李傕之侄李",
+          "candidate": " 　　不隄防李傕之姪李",
+          "count": 1
+        },
+        {
+          "baseline": " 　　且说孙乾匹马入冀州见",
+          "candidate": " 　　且说孙干匹马入冀州见",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云曰：“夫人受难，云",
+          "candidate": " 　　云曰：「夫人受难，云",
+          "count": 1
+        },
+        {
+          "baseline": " 　　傕侄李暹引兵围住",
+          "candidate": " 　　傕姪李暹引兵围住",
+          "count": 1
+        },
+        {
+          "baseline": " 　　先说孙乾回见玄德，言",
+          "candidate": " 　　先说孙干回见玄德，言",
+          "count": 1
+        },
+        {
+          "baseline": " 　　公曰：“兄言三便，吾",
+          "candidate": " 　　公曰：「兄言三便，吾",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿之后毛氏，乃",
+          "candidate": " 　　却说曹叡之后毛氏，乃",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿闻孙权分兵三",
+          "candidate": " 　　却说曹叡闻孙权分兵三",
+          "count": 1
+        },
+        {
+          "baseline": " 　　嘉曰：“刘项之不敌，",
+          "candidate": " 　　嘉曰：「刘项之不敌，",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁",
+          "candidate": " 　　珪曰：「前者袁",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁公路以",
+          "candidate": " 　　珪曰：「前者袁公路以",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙乾见绍不肯发兵",
+          "candidate": " 　　孙干见绍不肯发兵",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙綝遣宗正孙楷、",
+          "candidate": " 　　孙𬘭遣宗正孙楷、",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宠曰：“瓒与绍战不利",
+          "candidate": " 　　宠曰：「瓒与绍战不利",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宫曰：“方今天下诸侯",
+          "candidate": " 　　宫曰：「方今天下诸侯",
+          "count": 1
+        },
+        {
+          "baseline": " 　　布曰：“非公则此关休",
+          "candidate": " 　　布曰：「非公则此关休",
+          "count": 1
+        },
+        {
+          "baseline": " 　　恪字符逊，身长七尺",
+          "candidate": " 　　恪字元逊，身长七尺",
+          "count": 1
+        },
+        {
+          "baseline": " 　　惇挺枪来迎。两马相",
+          "candidate": " 　　惇挺鎗来迎。两马相",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“凡用火攻，必",
+          "candidate": " 　　操曰：「凡用火攻，必",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“吾与东吴旦夕",
+          "candidate": " 　　操曰：「吾与东吴旦夕",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“吾自当山东诸",
+          "candidate": " 　　操曰：「吾自当山东诸",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“天报应我，当",
+          "candidate": " 　　操曰：「天报应我，当",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“比公若何？”",
+          "candidate": " 　　操曰：「比公若何？」",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 9907
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 9075
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 412
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 398
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 125
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 99
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 80
+        },
+        {
+          "baseline": "侄",
+          "candidate": "姪",
+          "count": 62
+        },
+        {
+          "baseline": "枪",
+          "candidate": "鎗",
+          "count": 43
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 34
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 32
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 31
+        },
+        {
+          "baseline": "圭",
+          "candidate": "珪",
+          "count": 28
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 28
+        },
+        {
+          "baseline": "幡",
+          "candidate": "旛",
+          "count": 25
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 19
+        },
+        {
+          "baseline": "焰",
+          "candidate": "燄",
+          "count": 17
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 16
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 16
+        },
+        {
+          "baseline": "藤",
+          "candidate": "籐",
+          "count": 14
+        },
+        {
+          "baseline": "郄",
+          "candidate": "郤",
+          "count": 12
+        },
+        {
+          "baseline": "札",
+          "candidate": "劄",
+          "count": 11
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 9
+        },
+        {
+          "baseline": "蒙",
+          "candidate": "朦",
+          "count": 7
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 6
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 5
+        },
+        {
+          "baseline": "疏",
+          "candidate": "疎",
+          "count": 5
+        },
+        {
+          "baseline": "衔",
+          "candidate": "啣",
+          "count": 5
+        },
+        {
+          "baseline": "仇",
+          "candidate": "雠",
+          "count": 4
+        },
+        {
+          "baseline": "勖",
+          "candidate": "勗",
+          "count": 4
+        },
+        {
+          "baseline": "幕",
+          "candidate": "幙",
+          "count": 4
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 4
+        },
+        {
+          "baseline": "豆",
+          "candidate": "荳",
+          "count": 4
+        },
+        {
+          "baseline": "仿",
+          "candidate": "倣",
+          "count": 3
+        },
+        {
+          "baseline": "强",
+          "candidate": "娇",
+          "count": 3
+        },
+        {
+          "baseline": "呂",
+          "candidate": "吕",
+          "count": 2
+        },
+        {
+          "baseline": "夭",
+          "candidate": "殀",
+          "count": 2
+        },
+        {
+          "baseline": "敕",
+          "candidate": "勅",
+          "count": 2
+        },
+        {
+          "baseline": "椟",
+          "candidate": "匵",
+          "count": 2
+        },
+        {
+          "baseline": "欢",
+          "candidate": "懽",
+          "count": 2
+        },
+        {
+          "baseline": "熙",
+          "candidate": "煕",
+          "count": 2
+        },
+        {
+          "baseline": "睹",
+          "candidate": "覩",
+          "count": 2
+        },
+        {
+          "baseline": "碇",
+          "candidate": "矴",
+          "count": 2
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 2
+        },
+        {
+          "baseline": "绁",
+          "candidate": "絏",
+          "count": 2
+        },
+        {
+          "baseline": "藁",
+          "candidate": "槁",
+          "count": 2
+        },
+        {
+          "baseline": "载",
+          "candidate": "传",
+          "count": 2
+        },
+        {
+          "baseline": "飘",
+          "candidate": "飃",
+          "count": 2
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 1
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 1
+        },
+        {
+          "baseline": "什",
+          "candidate": "甚",
+          "count": 1
+        },
+        {
+          "baseline": "仙",
+          "candidate": "僊",
+          "count": 1
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 1
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 1
+        },
+        {
+          "baseline": "制",
+          "candidate": "位",
+          "count": 1
+        },
+        {
+          "baseline": "勉",
+          "candidate": "沔",
+          "count": 1
+        },
+        {
+          "baseline": "华",
+          "candidate": "中",
+          "count": 1
+        },
+        {
+          "baseline": "吣",
+          "candidate": "唚",
+          "count": 1
+        },
+        {
+          "baseline": "复",
+          "candidate": "覆",
+          "count": 1
+        },
+        {
+          "baseline": "妒",
+          "candidate": "妬",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.02466023575018594,
+      "differing_code_units": 21883,
+      "differing_lines": 2682,
+      "direction": "t2s",
+      "distinct_hunks": 22385,
+      "line_rate": 0.5011210762331838,
+      "name": "opencc-t2s",
+      "top_hunks": [
+        {
+          "baseline": "如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "，如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "“此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "　却说魏主曹睿设朝，近臣奏",
+          "candidate": "　却说魏主曹叡设朝，近臣奏",
+          "count": 2
+        },
+        {
+          "baseline": "。鸳鸯又道：“有了一副。左",
+          "candidate": "。鸳鸯又道：「有了一副。左",
+          "count": 2
+        },
+        {
+          "baseline": "不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "，何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”孔明笑曰：“",
+          "candidate": "，如之奈何？」孔明笑曰：「",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”懿曰：“臣已",
+          "candidate": "，如之奈何？」懿曰：「臣已",
+          "count": 2
+        },
+        {
+          "baseline": "，自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，非英雄也。”玄德曰：“有",
+          "candidate": "，非英雄也。」玄德曰：「有",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“只须如此如此",
+          "candidate": "？」孔明曰：「只须如此如此",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“司马懿善能用",
+          "candidate": "？」孔明曰：「司马懿善能用",
+          "count": 2
+        },
+        {
+          "baseline": " ‘伤哉龙受困，",
+          "candidate": " 『伤哉龙受困，",
+          "count": 1
+        },
+        {
+          "baseline": " “呜呼公瑾，不",
+          "candidate": " 「呜呼公瑾，不",
+          "count": 1
+        },
+        {
+          "baseline": " “族弟刘璋，再",
+          "candidate": " 「族弟刘璋，再",
+          "count": 1
+        },
+        {
+          "baseline": " “汉军师中郎将",
+          "candidate": " 「汉军师中郎将",
+          "count": 1
+        },
+        {
+          "baseline": " “瑜以凡才，荷",
+          "candidate": " 「瑜以凡才，荷",
+          "count": 1
+        },
+        {
+          "baseline": " “益州从事臣王",
+          "candidate": " 「益州从事臣王",
+          "count": 1
+        },
+        {
+          "baseline": " “罪将姜维百拜",
+          "candidate": " 「罪将姜维百拜",
+          "count": 1
+        },
+        {
+          "baseline": " “近闻东吴令人",
+          "candidate": " 「近闻东吴令人",
+          "count": 1
+        },
+        {
+          "baseline": " “适承钧教，安",
+          "candidate": " 「适承钧教，安",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。",
+          "candidate": " ↑ 匵：同「椟」。",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。 ",
+          "candidate": " ↑ 匵：同「椟」。 ",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“一日出郊闲行",
+          "candidate": " 　　「一日出郊闲行",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“乡中有老妇失",
+          "candidate": " 　　「乡中有老妇失",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“前东吴破祖时",
+          "candidate": " 　　「前东吴破祖时",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“后有居民郭恩",
+          "candidate": " 　　「后有居民郭恩",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“安平太守王基",
+          "candidate": " 　　「安平太守王基",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“琅琊太守单子春",
+          "candidate": " 　　「瑯琊太守单子春",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“老人留辂在家",
+          "candidate": " 　　「老人留辂在家",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“赵颜归问管辂",
+          "candidate": " 　　「赵颜归问管辂",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“馆陶令诸葛原",
+          "candidate": " 　　「馆陶令诸葛原",
+          "count": 1
+        },
+        {
+          "baseline": " 　　不堤防李傕之侄李",
+          "candidate": " 　　不隄防李傕之姪李",
+          "count": 1
+        },
+        {
+          "baseline": " 　　且说孙乾匹马入冀州见",
+          "candidate": " 　　且说孙干匹马入冀州见",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云曰：“夫人受难，云",
+          "candidate": " 　　云曰：「夫人受难，云",
+          "count": 1
+        },
+        {
+          "baseline": " 　　傕侄李暹引兵围住",
+          "candidate": " 　　傕姪李暹引兵围住",
+          "count": 1
+        },
+        {
+          "baseline": " 　　先说孙乾回见玄德，言",
+          "candidate": " 　　先说孙干回见玄德，言",
+          "count": 1
+        },
+        {
+          "baseline": " 　　公曰：“兄言三便，吾",
+          "candidate": " 　　公曰：「兄言三便，吾",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿之后毛氏，乃",
+          "candidate": " 　　却说曹叡之后毛氏，乃",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿闻孙权分兵三",
+          "candidate": " 　　却说曹叡闻孙权分兵三",
+          "count": 1
+        },
+        {
+          "baseline": " 　　嘉曰：“刘项之不敌，",
+          "candidate": " 　　嘉曰：「刘项之不敌，",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁",
+          "candidate": " 　　珪曰：「前者袁",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁公路以",
+          "candidate": " 　　珪曰：「前者袁公路以",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙乾见绍不肯发兵",
+          "candidate": " 　　孙干见绍不肯发兵",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙綝遣宗正孙楷、",
+          "candidate": " 　　孙𬘭遣宗正孙楷、",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宠曰：“瓒与绍战不利",
+          "candidate": " 　　宠曰：「瓒与绍战不利",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宫曰：“方今天下诸侯",
+          "candidate": " 　　宫曰：「方今天下诸侯",
+          "count": 1
+        },
+        {
+          "baseline": " 　　布曰：“非公则此关休",
+          "candidate": " 　　布曰：「非公则此关休",
+          "count": 1
+        },
+        {
+          "baseline": " 　　恪字符逊，身长七尺",
+          "candidate": " 　　恪字元逊，身长七尺",
+          "count": 1
+        },
+        {
+          "baseline": " 　　惇挺枪来迎。两马相",
+          "candidate": " 　　惇挺鎗来迎。两马相",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“凡用火攻，必",
+          "candidate": " 　　操曰：「凡用火攻，必",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“吾与东吴旦夕",
+          "candidate": " 　　操曰：「吾与东吴旦夕",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“吾自当山东诸",
+          "candidate": " 　　操曰：「吾自当山东诸",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“天报应我，当",
+          "candidate": " 　　操曰：「天报应我，当",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“比公若何？”",
+          "candidate": " 　　操曰：「比公若何？」",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 9907
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 9075
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 412
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 398
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 125
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 99
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 80
+        },
+        {
+          "baseline": "侄",
+          "candidate": "姪",
+          "count": 62
+        },
+        {
+          "baseline": "枪",
+          "candidate": "鎗",
+          "count": 43
+        },
+        {
+          "baseline": "实",
+          "candidate": "即",
+          "count": 34
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 32
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 31
+        },
+        {
+          "baseline": "圭",
+          "candidate": "珪",
+          "count": 28
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 28
+        },
+        {
+          "baseline": "幡",
+          "candidate": "旛",
+          "count": 25
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 19
+        },
+        {
+          "baseline": "焰",
+          "candidate": "燄",
+          "count": 17
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 16
+        },
+        {
+          "baseline": "符",
+          "candidate": "元",
+          "count": 16
+        },
+        {
+          "baseline": "藤",
+          "candidate": "籐",
+          "count": 14
+        },
+        {
+          "baseline": "郄",
+          "candidate": "郤",
+          "count": 12
+        },
+        {
+          "baseline": "札",
+          "candidate": "劄",
+          "count": 11
+        },
+        {
+          "baseline": "兼",
+          "candidate": "相",
+          "count": 9
+        },
+        {
+          "baseline": "蒙",
+          "candidate": "朦",
+          "count": 7
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 6
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 5
+        },
+        {
+          "baseline": "疏",
+          "candidate": "疎",
+          "count": 5
+        },
+        {
+          "baseline": "衔",
+          "candidate": "啣",
+          "count": 5
+        },
+        {
+          "baseline": "仇",
+          "candidate": "雠",
+          "count": 4
+        },
+        {
+          "baseline": "勖",
+          "candidate": "勗",
+          "count": 4
+        },
+        {
+          "baseline": "幕",
+          "candidate": "幙",
+          "count": 4
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 4
+        },
+        {
+          "baseline": "豆",
+          "candidate": "荳",
+          "count": 4
+        },
+        {
+          "baseline": "仿",
+          "candidate": "倣",
+          "count": 3
+        },
+        {
+          "baseline": "强",
+          "candidate": "娇",
+          "count": 3
+        },
+        {
+          "baseline": "呂",
+          "candidate": "吕",
+          "count": 2
+        },
+        {
+          "baseline": "夭",
+          "candidate": "殀",
+          "count": 2
+        },
+        {
+          "baseline": "敕",
+          "candidate": "勅",
+          "count": 2
+        },
+        {
+          "baseline": "椟",
+          "candidate": "匵",
+          "count": 2
+        },
+        {
+          "baseline": "欢",
+          "candidate": "懽",
+          "count": 2
+        },
+        {
+          "baseline": "熙",
+          "candidate": "煕",
+          "count": 2
+        },
+        {
+          "baseline": "睹",
+          "candidate": "覩",
+          "count": 2
+        },
+        {
+          "baseline": "碇",
+          "candidate": "矴",
+          "count": 2
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 2
+        },
+        {
+          "baseline": "绁",
+          "candidate": "絏",
+          "count": 2
+        },
+        {
+          "baseline": "藁",
+          "candidate": "槁",
+          "count": 2
+        },
+        {
+          "baseline": "载",
+          "candidate": "传",
+          "count": 2
+        },
+        {
+          "baseline": "飘",
+          "candidate": "飃",
+          "count": 2
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 1
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 1
+        },
+        {
+          "baseline": "什",
+          "candidate": "甚",
+          "count": 1
+        },
+        {
+          "baseline": "仙",
+          "candidate": "僊",
+          "count": 1
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 1
+        },
+        {
+          "baseline": "元",
+          "candidate": "母",
+          "count": 1
+        },
+        {
+          "baseline": "制",
+          "candidate": "位",
+          "count": 1
+        },
+        {
+          "baseline": "勉",
+          "candidate": "沔",
+          "count": 1
+        },
+        {
+          "baseline": "华",
+          "candidate": "中",
+          "count": 1
+        },
+        {
+          "baseline": "吣",
+          "candidate": "唚",
+          "count": 1
+        },
+        {
+          "baseline": "复",
+          "candidate": "覆",
+          "count": 1
+        },
+        {
+          "baseline": "妒",
+          "candidate": "妬",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.02721720119903536,
+      "differing_code_units": 24152,
+      "differing_lines": 3213,
+      "direction": "t2s",
+      "distinct_hunks": 24522,
+      "line_rate": 0.6003363228699552,
+      "name": "opencc-tw2sp+exclude",
+      "top_hunks": [
+        {
+          "baseline": " 返回页首",
+          "candidate": " 返回页眉",
+          "count": 160
+        },
+        {
+          "baseline": " 返回页首 ",
+          "candidate": " 返回页眉 ",
+          "count": 40
+        },
+        {
+          "baseline": "如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "，如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "“此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "　却说魏主曹睿设朝，近臣奏",
+          "candidate": "　却说魏主曹叡设朝，近臣奏",
+          "count": 2
+        },
+        {
+          "baseline": "。鸳鸯又道：“有了一副。左",
+          "candidate": "。鸳鸯又道：「有了一副。左",
+          "count": 2
+        },
+        {
+          "baseline": "不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "，何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”孔明笑曰：“",
+          "candidate": "，如之奈何？」孔明笑曰：「",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”懿曰：“臣已",
+          "candidate": "，如之奈何？」懿曰：「臣已",
+          "count": 2
+        },
+        {
+          "baseline": "，自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，非英雄也。”玄德曰：“有",
+          "candidate": "，非英雄也。」玄德曰：「有",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“只须如此如此",
+          "candidate": "？」孔明曰：「只须如此如此",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“司马懿善能用",
+          "candidate": "？」孔明曰：「司马懿善能用",
+          "count": 2
+        },
+        {
+          "baseline": " ‘伤哉龙受困，",
+          "candidate": " 『伤哉龙受困，",
+          "count": 1
+        },
+        {
+          "baseline": " “呜呼公瑾，不",
+          "candidate": " 「呜呼公瑾，不",
+          "count": 1
+        },
+        {
+          "baseline": " “族弟刘璋，再",
+          "candidate": " 「族弟刘璋，再",
+          "count": 1
+        },
+        {
+          "baseline": " “汉军师中郎将",
+          "candidate": " 「汉军师中郎将",
+          "count": 1
+        },
+        {
+          "baseline": " “瑜以凡才，荷",
+          "candidate": " 「瑜以凡才，荷",
+          "count": 1
+        },
+        {
+          "baseline": " “益州从事臣王",
+          "candidate": " 「益州从事臣王",
+          "count": 1
+        },
+        {
+          "baseline": " “罪将姜维百拜",
+          "candidate": " 「罪将姜维百拜",
+          "count": 1
+        },
+        {
+          "baseline": " “近闻东吴令人",
+          "candidate": " 「近闻东吴令人",
+          "count": 1
+        },
+        {
+          "baseline": " “适承钧教，安",
+          "candidate": " 「适承钧教，安",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。",
+          "candidate": " ↑ 匵：同「椟」。",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。 ",
+          "candidate": " ↑ 匵：同「椟」。 ",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“一日出郊闲行",
+          "candidate": " 　　「一日出郊闲行",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“乡中有老妇失",
+          "candidate": " 　　「乡中有老妇失",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“前东吴破祖时",
+          "candidate": " 　　「前东吴破祖时",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“后有居民郭恩",
+          "candidate": " 　　「后有居民郭恩",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“安平太守王基",
+          "candidate": " 　　「安平太守王基",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“琅琊太守单子春",
+          "candidate": " 　　「瑯琊太守单子春",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“老人留辂在家",
+          "candidate": " 　　「老人留辂在家",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“赵颜归问管辂",
+          "candidate": " 　　「赵颜归问管辂",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“馆陶令诸葛原",
+          "candidate": " 　　「馆陶令诸葛原",
+          "count": 1
+        },
+        {
+          "baseline": " 　　不堤防李傕之侄李",
+          "candidate": " 　　不隄防李傕之姪李",
+          "count": 1
+        },
+        {
+          "baseline": " 　　且说孙乾匹马入冀州见",
+          "candidate": " 　　且说孙干匹马入冀州见",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云曰：“夫人受难，云",
+          "candidate": " 　　云曰：「夫人受难，云",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云长引数骑东冲西突",
+          "candidate": " 　　云长参数骑东冲西突",
+          "count": 1
+        },
+        {
+          "baseline": " 　　傕侄李暹引兵围住",
+          "candidate": " 　　傕姪李暹引兵围住",
+          "count": 1
+        },
+        {
+          "baseline": " 　　先说孙乾回见玄德，言",
+          "candidate": " 　　先说孙干回见玄德，言",
+          "count": 1
+        },
+        {
+          "baseline": " 　　公曰：“兄言三便，吾",
+          "candidate": " 　　公曰：「兄言三便，吾",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿之后毛氏，乃",
+          "candidate": " 　　却说曹叡之后毛氏，乃",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿闻孙权分兵三",
+          "candidate": " 　　却说曹叡闻孙权分兵三",
+          "count": 1
+        },
+        {
+          "baseline": " 　　嘉曰：“刘项之不敌，",
+          "candidate": " 　　嘉曰：「刘项之不敌，",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁",
+          "candidate": " 　　珪曰：「前者袁",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁公路以",
+          "candidate": " 　　珪曰：「前者袁公路以",
+          "count": 1
+        },
+        {
+          "baseline": " 　　大家说著，往前迈步正",
+          "candidate": " 　　大家说着，往前迈步正",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙乾见绍不肯发兵",
+          "candidate": " 　　孙干见绍不肯发兵",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙綝遣宗正孙楷、",
+          "candidate": " 　　孙𬘭遣宗正孙楷、",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宝玉站著，只管发起呆",
+          "candidate": " 　　宝玉站着，只管发起呆",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宠曰：“瓒与绍战不利",
+          "candidate": " 　　宠曰：「瓒与绍战不利",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宫曰：“方今天下诸侯",
+          "candidate": " 　　宫曰：「方今天下诸侯",
+          "count": 1
+        },
+        {
+          "baseline": " 　　布曰：“非公则此关休",
+          "candidate": " 　　布曰：「非公则此关休",
+          "count": 1
+        },
+        {
+          "baseline": " 　　惇挺枪来迎。两马相",
+          "candidate": " 　　惇挺鎗来迎。两马相",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“凡用火攻，必",
+          "candidate": " 　　操曰：「凡用火攻，必",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 9898
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 9084
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 2013
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 412
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 395
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 124
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 99
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 79
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 72
+        },
+        {
+          "baseline": "引",
+          "candidate": "参",
+          "count": 66
+        },
+        {
+          "baseline": "侄",
+          "candidate": "姪",
+          "count": 62
+        },
+        {
+          "baseline": "枪",
+          "candidate": "鎗",
+          "count": 43
+        },
+        {
+          "baseline": "首",
+          "candidate": "眉",
+          "count": 40
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 33
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 32
+        },
+        {
+          "baseline": "圭",
+          "candidate": "珪",
+          "count": 28
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 28
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 28
+        },
+        {
+          "baseline": "幡",
+          "candidate": "旛",
+          "count": 25
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 19
+        },
+        {
+          "baseline": "焰",
+          "candidate": "燄",
+          "count": 17
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 15
+        },
+        {
+          "baseline": "藤",
+          "candidate": "籐",
+          "count": 14
+        },
+        {
+          "baseline": "郄",
+          "candidate": "郤",
+          "count": 12
+        },
+        {
+          "baseline": "札",
+          "candidate": "劄",
+          "count": 11
+        },
+        {
+          "baseline": "蒙",
+          "candidate": "朦",
+          "count": 7
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 6
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 5
+        },
+        {
+          "baseline": "疏",
+          "candidate": "疎",
+          "count": 5
+        },
+        {
+          "baseline": "衔",
+          "candidate": "啣",
+          "count": 5
+        },
+        {
+          "baseline": "仇",
+          "candidate": "雠",
+          "count": 4
+        },
+        {
+          "baseline": "勖",
+          "candidate": "勗",
+          "count": 4
+        },
+        {
+          "baseline": "幕",
+          "candidate": "幙",
+          "count": 4
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 4
+        },
+        {
+          "baseline": "豆",
+          "candidate": "荳",
+          "count": 4
+        },
+        {
+          "baseline": "仿",
+          "candidate": "倣",
+          "count": 3
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 3
+        },
+        {
+          "baseline": "强",
+          "candidate": "娇",
+          "count": 3
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 3
+        },
+        {
+          "baseline": "行",
+          "candidate": "进",
+          "count": 3
+        },
+        {
+          "baseline": "传",
+          "candidate": "发",
+          "count": 2
+        },
+        {
+          "baseline": "呂",
+          "candidate": "吕",
+          "count": 2
+        },
+        {
+          "baseline": "夭",
+          "candidate": "殀",
+          "count": 2
+        },
+        {
+          "baseline": "敕",
+          "candidate": "勅",
+          "count": 2
+        },
+        {
+          "baseline": "椟",
+          "candidate": "匵",
+          "count": 2
+        },
+        {
+          "baseline": "欢",
+          "candidate": "懽",
+          "count": 2
+        },
+        {
+          "baseline": "熙",
+          "candidate": "煕",
+          "count": 2
+        },
+        {
+          "baseline": "睹",
+          "candidate": "覩",
+          "count": 2
+        },
+        {
+          "baseline": "碇",
+          "candidate": "矴",
+          "count": 2
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 2
+        },
+        {
+          "baseline": "绁",
+          "candidate": "絏",
+          "count": 2
+        },
+        {
+          "baseline": "藁",
+          "candidate": "槁",
+          "count": 2
+        },
+        {
+          "baseline": "载",
+          "candidate": "传",
+          "count": 2
+        },
+        {
+          "baseline": "飘",
+          "candidate": "飃",
+          "count": 2
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 1
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 1
+        },
+        {
+          "baseline": "什",
+          "candidate": "甚",
+          "count": 1
+        },
+        {
+          "baseline": "仙",
+          "candidate": "僊",
+          "count": 1
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 1
+        },
+        {
+          "baseline": "入",
+          "candidate": "录",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.027220581937839484,
+      "differing_code_units": 24155,
+      "differing_lines": 3213,
+      "direction": "t2s",
+      "distinct_hunks": 24524,
+      "line_rate": 0.6003363228699552,
+      "name": "opencc-tw2sp",
+      "top_hunks": [
+        {
+          "baseline": " 返回页首",
+          "candidate": " 返回页眉",
+          "count": 160
+        },
+        {
+          "baseline": " 返回页首 ",
+          "candidate": " 返回页眉 ",
+          "count": 40
+        },
+        {
+          "baseline": "如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "，如之奈何？”",
+          "candidate": "，如之奈何？」",
+          "count": 3
+        },
+        {
+          "baseline": "“此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "　却说魏主曹睿设朝，近臣奏",
+          "candidate": "　却说魏主曹叡设朝，近臣奏",
+          "count": 2
+        },
+        {
+          "baseline": "。鸳鸯又道：“有了一副。左",
+          "candidate": "。鸳鸯又道：「有了一副。左",
+          "count": 2
+        },
+        {
+          "baseline": "不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "此计大妙！”",
+          "candidate": "「此计大妙！」",
+          "count": 2
+        },
+        {
+          "baseline": "自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，不可有误。”",
+          "candidate": "，不可有误。」",
+          "count": 2
+        },
+        {
+          "baseline": "，何足道哉！”",
+          "candidate": "，何足道哉！」",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”孔明笑曰：“",
+          "candidate": "，如之奈何？」孔明笑曰：「",
+          "count": 2
+        },
+        {
+          "baseline": "，如之奈何？”懿曰：“臣已",
+          "candidate": "，如之奈何？」懿曰：「臣已",
+          "count": 2
+        },
+        {
+          "baseline": "，自有定议。”",
+          "candidate": "，自有定议。」",
+          "count": 2
+        },
+        {
+          "baseline": "，非英雄也。”玄德曰：“有",
+          "candidate": "，非英雄也。」玄德曰：「有",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“只须如此如此",
+          "candidate": "？」孔明曰：「只须如此如此",
+          "count": 2
+        },
+        {
+          "baseline": "？”孔明曰：“司马懿善能用",
+          "candidate": "？」孔明曰：「司马懿善能用",
+          "count": 2
+        },
+        {
+          "baseline": " ‘伤哉龙受困，",
+          "candidate": " 『伤哉龙受困，",
+          "count": 1
+        },
+        {
+          "baseline": " “呜呼公瑾，不",
+          "candidate": " 「呜呼公瑾，不",
+          "count": 1
+        },
+        {
+          "baseline": " “族弟刘璋，再",
+          "candidate": " 「族弟刘璋，再",
+          "count": 1
+        },
+        {
+          "baseline": " “汉军师中郎将",
+          "candidate": " 「汉军师中郎将",
+          "count": 1
+        },
+        {
+          "baseline": " “瑜以凡才，荷",
+          "candidate": " 「瑜以凡才，荷",
+          "count": 1
+        },
+        {
+          "baseline": " “益州从事臣王",
+          "candidate": " 「益州从事臣王",
+          "count": 1
+        },
+        {
+          "baseline": " “罪将姜维百拜",
+          "candidate": " 「罪将姜维百拜",
+          "count": 1
+        },
+        {
+          "baseline": " “近闻东吴令人",
+          "candidate": " 「近闻东吴令人",
+          "count": 1
+        },
+        {
+          "baseline": " “适承钧教，安",
+          "candidate": " 「适承钧教，安",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。",
+          "candidate": " ↑ 匵：同「椟」。",
+          "count": 1
+        },
+        {
+          "baseline": " ↑ 椟：同“椟”。 ",
+          "candidate": " ↑ 匵：同「椟」。 ",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“一日出郊闲行",
+          "candidate": " 　　「一日出郊闲行",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“乡中有老妇失",
+          "candidate": " 　　「乡中有老妇失",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“前东吴破祖时",
+          "candidate": " 　　「前东吴破祖时",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“后有居民郭恩",
+          "candidate": " 　　「后有居民郭恩",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“安平太守王基",
+          "candidate": " 　　「安平太守王基",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“琅琊太守单子春",
+          "candidate": " 　　「瑯琊太守单子春",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“老人留辂在家",
+          "candidate": " 　　「老人留辂在家",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“赵颜归问管辂",
+          "candidate": " 　　「赵颜归问管辂",
+          "count": 1
+        },
+        {
+          "baseline": " 　　“馆陶令诸葛原",
+          "candidate": " 　　「馆陶令诸葛原",
+          "count": 1
+        },
+        {
+          "baseline": " 　　不堤防李傕之侄李",
+          "candidate": " 　　不隄防李傕之姪李",
+          "count": 1
+        },
+        {
+          "baseline": " 　　且说孙乾匹马入冀州见",
+          "candidate": " 　　且说孙干匹马入冀州见",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云曰：“夫人受难，云",
+          "candidate": " 　　云曰：「夫人受难，云",
+          "count": 1
+        },
+        {
+          "baseline": " 　　云长引数骑东冲西突",
+          "candidate": " 　　云长参数骑东冲西突",
+          "count": 1
+        },
+        {
+          "baseline": " 　　傕侄李暹引兵围住",
+          "candidate": " 　　傕姪李暹引兵围住",
+          "count": 1
+        },
+        {
+          "baseline": " 　　先说孙乾回见玄德，言",
+          "candidate": " 　　先说孙干回见玄德，言",
+          "count": 1
+        },
+        {
+          "baseline": " 　　公曰：“兄言三便，吾",
+          "candidate": " 　　公曰：「兄言三便，吾",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿之后毛氏，乃",
+          "candidate": " 　　却说曹叡之后毛氏，乃",
+          "count": 1
+        },
+        {
+          "baseline": " 　　却说曹睿闻孙权分兵三",
+          "candidate": " 　　却说曹叡闻孙权分兵三",
+          "count": 1
+        },
+        {
+          "baseline": " 　　嘉曰：“刘项之不敌，",
+          "candidate": " 　　嘉曰：「刘项之不敌，",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁",
+          "candidate": " 　　珪曰：「前者袁",
+          "count": 1
+        },
+        {
+          "baseline": " 　　圭曰：“前者袁公路以",
+          "candidate": " 　　珪曰：「前者袁公路以",
+          "count": 1
+        },
+        {
+          "baseline": " 　　大家说著，往前迈步正",
+          "candidate": " 　　大家说着，往前迈步正",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙乾见绍不肯发兵",
+          "candidate": " 　　孙干见绍不肯发兵",
+          "count": 1
+        },
+        {
+          "baseline": " 　　孙綝遣宗正孙楷、",
+          "candidate": " 　　孙𬘭遣宗正孙楷、",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宝玉站著，只管发起呆",
+          "candidate": " 　　宝玉站着，只管发起呆",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宠曰：“瓒与绍战不利",
+          "candidate": " 　　宠曰：「瓒与绍战不利",
+          "count": 1
+        },
+        {
+          "baseline": " 　　宫曰：“方今天下诸侯",
+          "candidate": " 　　宫曰：「方今天下诸侯",
+          "count": 1
+        },
+        {
+          "baseline": " 　　布曰：“非公则此关休",
+          "candidate": " 　　布曰：「非公则此关休",
+          "count": 1
+        },
+        {
+          "baseline": " 　　惇挺枪来迎。两马相",
+          "candidate": " 　　惇挺鎗来迎。两马相",
+          "count": 1
+        },
+        {
+          "baseline": " 　　操曰：“凡用火攻，必",
+          "candidate": " 　　操曰：「凡用火攻，必",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "“",
+          "candidate": "「",
+          "count": 9898
+        },
+        {
+          "baseline": "”",
+          "candidate": "」",
+          "count": 9084
+        },
+        {
+          "baseline": "著",
+          "candidate": "着",
+          "count": 2013
+        },
+        {
+          "baseline": "’",
+          "candidate": "』",
+          "count": 412
+        },
+        {
+          "baseline": "‘",
+          "candidate": "『",
+          "count": 395
+        },
+        {
+          "baseline": "乾",
+          "candidate": "干",
+          "count": 124
+        },
+        {
+          "baseline": "睿",
+          "candidate": "叡",
+          "count": 99
+        },
+        {
+          "baseline": "炮",
+          "candidate": "砲",
+          "count": 79
+        },
+        {
+          "baseline": "抬",
+          "candidate": "擡",
+          "count": 72
+        },
+        {
+          "baseline": "引",
+          "candidate": "参",
+          "count": 66
+        },
+        {
+          "baseline": "侄",
+          "candidate": "姪",
+          "count": 62
+        },
+        {
+          "baseline": "枪",
+          "candidate": "鎗",
+          "count": 43
+        },
+        {
+          "baseline": "首",
+          "candidate": "眉",
+          "count": 40
+        },
+        {
+          "baseline": "么",
+          "candidate": "幺",
+          "count": 33
+        },
+        {
+          "baseline": "绕",
+          "candidate": "遶",
+          "count": 32
+        },
+        {
+          "baseline": "圭",
+          "candidate": "珪",
+          "count": 28
+        },
+        {
+          "baseline": "堤",
+          "candidate": "隄",
+          "count": 28
+        },
+        {
+          "baseline": "铺",
+          "candidate": "舖",
+          "count": 28
+        },
+        {
+          "baseline": "幡",
+          "candidate": "旛",
+          "count": 25
+        },
+        {
+          "baseline": "琅",
+          "candidate": "瑯",
+          "count": 19
+        },
+        {
+          "baseline": "焰",
+          "candidate": "燄",
+          "count": 17
+        },
+        {
+          "baseline": "住",
+          "candidate": "房",
+          "count": 15
+        },
+        {
+          "baseline": "藤",
+          "candidate": "籐",
+          "count": 14
+        },
+        {
+          "baseline": "郄",
+          "candidate": "郤",
+          "count": 12
+        },
+        {
+          "baseline": "札",
+          "candidate": "劄",
+          "count": 11
+        },
+        {
+          "baseline": "蒙",
+          "candidate": "朦",
+          "count": 7
+        },
+        {
+          "baseline": "联",
+          "candidate": "连",
+          "count": 6
+        },
+        {
+          "baseline": "捶",
+          "candidate": "搥",
+          "count": 5
+        },
+        {
+          "baseline": "疏",
+          "candidate": "疎",
+          "count": 5
+        },
+        {
+          "baseline": "衔",
+          "candidate": "啣",
+          "count": 5
+        },
+        {
+          "baseline": "仇",
+          "candidate": "雠",
+          "count": 4
+        },
+        {
+          "baseline": "勖",
+          "candidate": "勗",
+          "count": 4
+        },
+        {
+          "baseline": "幕",
+          "candidate": "幙",
+          "count": 4
+        },
+        {
+          "baseline": "暖",
+          "candidate": "煖",
+          "count": 4
+        },
+        {
+          "baseline": "豆",
+          "candidate": "荳",
+          "count": 4
+        },
+        {
+          "baseline": "仿",
+          "candidate": "倣",
+          "count": 3
+        },
+        {
+          "baseline": "寻",
+          "candidate": "索",
+          "count": 3
+        },
+        {
+          "baseline": "强",
+          "candidate": "娇",
+          "count": 3
+        },
+        {
+          "baseline": "络",
+          "candidate": "系",
+          "count": 3
+        },
+        {
+          "baseline": "行",
+          "candidate": "进",
+          "count": 3
+        },
+        {
+          "baseline": "传",
+          "candidate": "发",
+          "count": 2
+        },
+        {
+          "baseline": "呂",
+          "candidate": "吕",
+          "count": 2
+        },
+        {
+          "baseline": "夭",
+          "candidate": "殀",
+          "count": 2
+        },
+        {
+          "baseline": "敕",
+          "candidate": "勅",
+          "count": 2
+        },
+        {
+          "baseline": "椟",
+          "candidate": "匵",
+          "count": 2
+        },
+        {
+          "baseline": "欢",
+          "candidate": "懽",
+          "count": 2
+        },
+        {
+          "baseline": "熙",
+          "candidate": "煕",
+          "count": 2
+        },
+        {
+          "baseline": "睹",
+          "candidate": "覩",
+          "count": 2
+        },
+        {
+          "baseline": "碇",
+          "candidate": "矴",
+          "count": 2
+        },
+        {
+          "baseline": "站",
+          "candidate": "月",
+          "count": 2
+        },
+        {
+          "baseline": "绁",
+          "candidate": "絏",
+          "count": 2
+        },
+        {
+          "baseline": "藁",
+          "candidate": "槁",
+          "count": 2
+        },
+        {
+          "baseline": "载",
+          "candidate": "传",
+          "count": 2
+        },
+        {
+          "baseline": "飘",
+          "candidate": "飃",
+          "count": 2
+        },
+        {
+          "baseline": "丘",
+          "candidate": "坵",
+          "count": 1
+        },
+        {
+          "baseline": "享",
+          "candidate": "用",
+          "count": 1
+        },
+        {
+          "baseline": "什",
+          "candidate": "甚",
+          "count": 1
+        },
+        {
+          "baseline": "仙",
+          "candidate": "僊",
+          "count": 1
+        },
+        {
+          "baseline": "佩",
+          "candidate": "珮",
+          "count": 1
+        },
+        {
+          "baseline": "入",
+          "candidate": "录",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887380,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.0,
+      "differing_code_units": 0,
+      "differing_lines": 0,
+      "direction": "s2t",
+      "distinct_hunks": 0,
+      "line_rate": 0.0,
+      "name": "jar-fmm",
+      "top_hunks": [],
+      "top_substitutions": [],
+      "total_code_units": 887324,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.0007776189982464128,
+      "differing_code_units": 690,
+      "differing_lines": 194,
+      "direction": "s2t",
+      "distinct_hunks": 679,
+      "line_rate": 0.03624813153961136,
+      "name": "hanlp-fmm",
+      "top_hunks": [
+        {
+          "baseline": " 　　梁畿先行，懿在",
+          "candidate": " 　　樑畿先行，懿在",
+          "count": 1
+        },
+        {
+          "baseline": " 河北棟梁皆折斷，本初",
+          "candidate": " 河北棟樑皆折斷，本初",
+          "count": 1
+        },
+        {
+          "baseline": " 畫梁春盡落香塵，",
+          "candidate": " 畫樑春盡落香塵，",
+          "count": 1
+        },
+        {
+          "baseline": " 當下，奶娘來請問黛玉之",
+          "candidate": " 當下，奶孃來請問黛玉之",
+          "count": 1
+        },
+        {
+          "baseline": "。『秦人舊舍』說避亂之意，",
+          "candidate": "。‘秦人舊舍’說避亂之意，",
+          "count": 1
+        },
+        {
+          "baseline": "。什麼『奶奶』『爺爺』的一大",
+          "candidate": "。什麼‘奶奶’‘爺爺’的一大",
+          "count": 1
+        },
+        {
+          "baseline": "。他又說，他『醫學淺薄，本",
+          "candidate": "。他又說，他‘醫學淺薄，本",
+          "count": 1
+        },
+        {
+          "baseline": "。嵩曰：「張梁、張寶勢窮力",
+          "candidate": "。嵩曰：「張樑、張寶勢窮力",
+          "count": 1
+        },
+        {
+          "baseline": "。我那裏敢提『三妹妹』三個",
+          "candidate": "。我那裏敢提‘三妹妹’三個",
+          "count": 1
+        },
+        {
+          "baseline": "。王爺亦云：『若是別的戲子",
+          "candidate": "。王爺亦云：‘若是別的戲子",
+          "count": 1
+        },
+        {
+          "baseline": "。竟是『瀉玉』二字妙。」賈",
+          "candidate": "。竟是‘瀉玉’二字妙。」賈",
+          "count": 1
+        },
+        {
+          "baseline": "。老太太說：『我正想個積古",
+          "candidate": "。老太太說：‘我正想個積古",
+          "count": 1
+        },
+        {
+          "baseline": "。若說『內人』『外人』這些混",
+          "candidate": "。若說‘內人’‘外人’這些混",
+          "count": 1
+        },
+        {
+          "baseline": "。趙雲亦放過梁虔入上邽城去",
+          "candidate": "。趙雲亦放過樑虔入上邽城去",
+          "count": 1
+        },
+        {
+          "baseline": "「『崇光泛彩』方妙。」賈政",
+          "candidate": "「‘崇光泛彩’方妙。」賈政",
+          "count": 1
+        },
+        {
+          "baseline": "「一個叫趙天梁，一個叫趙天",
+          "candidate": "「一個叫趙天樑，一個叫趙天",
+          "count": 1
+        },
+        {
+          "baseline": "「什麼『暖香』？」黛玉點頭",
+          "candidate": "「什麼‘暖香’？」黛玉點頭",
+          "count": 1
+        },
+        {
+          "baseline": "「你如果再提『上學』兩個字",
+          "candidate": "「你如果再提‘上學’兩個字",
+          "count": 1
+        },
+        {
+          "baseline": "「你忙什麼！『金簪子掉在井",
+          "candidate": "「你忙什麼！‘金簪子掉在井",
+          "count": 1
+        },
+        {
+          "baseline": "「你看真了是『庚黃』？」薛",
+          "candidate": "「你看真了是‘庚黃’？」薛",
+          "count": 1
+        },
+        {
+          "baseline": "「好個『在望』！又暗合『杏",
+          "candidate": "「好個‘在望’！又暗合‘杏",
+          "count": 1
+        },
+        {
+          "baseline": "「有用『瀉玉』二字，則莫若",
+          "candidate": "「有用‘瀉玉’二字，則莫若",
+          "count": 1
+        },
+        {
+          "baseline": "「老夫人縊於梁間。」徐庶慌",
+          "candidate": "「老夫人縊於樑間。」徐庶慌",
+          "count": 1
+        },
+        {
+          "baseline": "「舊詩有云：『紅杏梢頭掛酒",
+          "candidate": "「舊詩有云：‘紅杏梢頭掛酒",
+          "count": 1
+        },
+        {
+          "baseline": "「請他，他說『侯門公府，必",
+          "candidate": "「請他，他說‘侯門公府，必",
+          "count": 1
+        },
+        {
+          "baseline": "「雙雙燕子語梁間。」鴛鴦道",
+          "candidate": "「雙雙燕子語樑間。」鴛鴦道",
+          "count": 1
+        },
+        {
+          "baseline": "「難道『淇水』『睢園』不是古",
+          "candidate": "「難道‘淇水’‘睢園’不是古",
+          "count": 1
+        },
+        {
+          "baseline": "」一客道：「『蕉鶴』二字最",
+          "candidate": "」一客道：「‘蕉鶴’二字最",
+          "count": 1
+        },
+        {
+          "baseline": "」寶玉道：「『綠蠟』可有出",
+          "candidate": "」寶玉道：「‘綠蠟’可有出",
+          "count": 1
+        },
+        {
+          "baseline": "」平兒笑道：』多喝了又把我",
+          "candidate": "」平兒笑道：’多喝了又把我",
+          "count": 1
+        },
+        {
+          "baseline": "」彩霞咬著嘴唇，向賈環頭上",
+          "candidate": "」彩霞咬著嘴脣，向賈環頭上",
+          "count": 1
+        },
+        {
+          "baseline": "」每人一個奶娘並一個丫頭照",
+          "candidate": "」每人一個奶孃並一個丫頭照",
+          "count": 1
+        },
+        {
+          "baseline": "」湘雲道：「『偕誰隱』，『",
+          "candidate": "」湘雲道：「‘偕誰隱’，‘",
+          "count": 1
+        },
+        {
+          "baseline": "」遂設宴待了梁畿，送出城外",
+          "candidate": "」遂設宴待了樑畿，送出城外",
+          "count": 1
+        },
+        {
+          "baseline": "『何處秋』，『蠟屐遠來』，",
+          "candidate": "‘何處秋’，‘蠟屐遠來’，",
+          "count": 1
+        },
+        {
+          "baseline": "『偕誰隱』，『為底遲』，真",
+          "candidate": "‘偕誰隱’，‘為底遲’，真",
+          "count": 1
+        },
+        {
+          "baseline": "『傾國傾城貌』。」林黛玉聽",
+          "candidate": "‘傾國傾城貌’。」林黛玉聽",
+          "count": 1
+        },
+        {
+          "baseline": "『君子防不然』，不如這會子",
+          "candidate": "‘君子防不然’，不如這會子",
+          "count": 1
+        },
+        {
+          "baseline": "『坐山觀虎鬥』，『借劍殺人",
+          "candidate": "‘坐山觀虎鬥’，‘借劍殺人",
+          "count": 1
+        },
+        {
+          "baseline": "『多愁多病身』，你就是那『",
+          "candidate": "‘多愁多病身’，你就是那‘",
+          "count": 1
+        },
+        {
+          "baseline": "『寶』似『玉』。」因問：「",
+          "candidate": "‘寶’似‘玉’。」因問：「",
+          "count": 1
+        },
+        {
+          "baseline": "『怡紅院』，『浣葛山莊』，",
+          "candidate": "‘怡紅院’，‘浣葛山莊’，",
+          "count": 1
+        },
+        {
+          "baseline": "『昨夜雨』，『今朝霜』，都",
+          "candidate": "‘昨夜雨’，‘今朝霜’，都",
+          "count": 1
+        },
+        {
+          "baseline": "『曲徑通幽處』這句舊詩在上",
+          "candidate": "‘曲徑通幽處’這句舊詩在上",
+          "count": 1
+        },
+        {
+          "baseline": "『樹倒猢猻散』的俗語，豈不",
+          "candidate": "‘樹倒猢猻散’的俗語，豈不",
+          "count": 1
+        },
+        {
+          "baseline": "『瀟湘館』，『蘅蕪苑』二處",
+          "candidate": "‘瀟湘館’，‘蘅蕪苑’二處",
+          "count": 1
+        },
+        {
+          "baseline": "『玉』字改作『蠟』字就是了",
+          "candidate": "‘玉’字改作‘蠟’字就是了",
+          "count": 1
+        },
+        {
+          "baseline": "『登高必跌重』。如今我們家",
+          "candidate": "‘登高必跌重’。如今我們家",
+          "count": 1
+        },
+        {
+          "baseline": "『秋無跡』，『夢有知』這幾",
+          "candidate": "‘秋無跡’，‘夢有知’這幾",
+          "count": 1
+        },
+        {
+          "baseline": "『秋無跡』，『夢有知』，把",
+          "candidate": "‘秋無跡’，‘夢有知’，把",
+          "count": 1
+        },
+        {
+          "baseline": "『科頭坐』，『抱膝吟』，竟",
+          "candidate": "‘科頭坐’，‘抱膝吟’，竟",
+          "count": 1
+        },
+        {
+          "baseline": "『翠離披』，『秋無跡』，『",
+          "candidate": "‘翠離披’，‘秋無跡’，‘",
+          "count": 1
+        },
+        {
+          "baseline": "『誰去偷米？』一耗便接令去",
+          "candidate": "‘誰去偷米？’一耗便接令去",
+          "count": 1
+        },
+        {
+          "baseline": "『誰去偷豆？』又一耗接令去",
+          "candidate": "‘誰去偷豆？’又一耗接令去",
+          "count": 1
+        },
+        {
+          "baseline": "『誰家種』，『何處秋』，『",
+          "candidate": "‘誰家種’，‘何處秋’，‘",
+          "count": 1
+        },
+        {
+          "baseline": "『都是些陰陽』，難道還有個",
+          "candidate": "‘都是些陰陽’，難道還有個",
+          "count": 1
+        },
+        {
+          "baseline": "『金淡泊』，『翠離披』，『",
+          "candidate": "‘金淡泊’，‘翠離披’，‘",
+          "count": 1
+        },
+        {
+          "baseline": "』。如今莫若『杏簾在望』四",
+          "candidate": "’。如今莫若‘杏簾在望’四",
+          "count": 1
+        },
+        {
+          "baseline": "』之作，全套『黃鶴樓』，只",
+          "candidate": "’之作，全套‘黃鶴樓’，只",
+          "count": 1
+        },
+        {
+          "baseline": "』二奶奶說：『大遠的，難為",
+          "candidate": "’二奶奶說：‘大遠的，難為",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 270
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 269
+        },
+        {
+          "baseline": "梁",
+          "candidate": "樑",
+          "count": 83
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 33
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 12
+        },
+        {
+          "baseline": "于",
+          "candidate": "於",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887324,
+      "total_lines": 5352
+    },
+    {
+      "code_unit_rate": 0.0085560629488214,
+      "differing_code_units": 7592,
+      "differing_lines": 685,
+      "direction": "s2t",
+      "distinct_hunks": 7695,
+      "line_rate": 0.1279895366218236,
+      "name": "opencc-s2t",
+      "top_hunks": [
+        {
+          "baseline": "。還有什麼？」",
+          "candidate": "。還有什麼？”",
+          "count": 2
+        },
+        {
+          "baseline": "聽了，笑道：「是了，是了，",
+          "candidate": "聽了，笑道：“是了，是了，",
+          "count": 2
+        },
+        {
+          "baseline": "還有什麼？」",
+          "candidate": "。還有什麼？”",
+          "count": 2
+        },
+        {
+          "baseline": " 　　卻說張鬆到了許都館驛",
+          "candidate": " 　　卻說張松到了許都館驛",
+          "count": 1
+        },
+        {
+          "baseline": " 　　張鬆回益州，先見",
+          "candidate": " 　　張松回益州，先見",
+          "count": 1
+        },
+        {
+          "baseline": " 　　權吃了一驚，問曰",
+          "candidate": " 　　權喫了一驚，問曰",
+          "count": 1
+        },
+        {
+          "baseline": " 　　當下張鬆欲辭回。修曰",
+          "candidate": " 　　當下張松欲辭回。修曰",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鬆於袖中取出一",
+          "candidate": " 　　松於袖中取出一",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鬆曰：「某非賣",
+          "candidate": " 　　松曰：「某非賣",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鬆歸館舍，連夜",
+          "candidate": " 　　松歸館舍，連夜",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鬆看畢，問曰：",
+          "candidate": " 　　松看畢，問曰：",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鬆觀其人，單眉",
+          "candidate": " 　　松觀其人，單眉",
+          "count": 1
+        },
+        {
+          "baseline": " 　　鳳姐吃畢飯，就有寧",
+          "candidate": " 　　鳳姐喫畢飯，就有寧",
+          "count": 1
+        },
+        {
+          "baseline": " 「世外仙源」匾",
+          "candidate": " “世外仙源”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「世外仙源」匾額",
+          "candidate": " “世外仙源”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「凝暉鐘瑞」匾",
+          "candidate": " “凝暉鐘瑞”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「凝暉鐘瑞」匾額",
+          "candidate": " “凝暉鐘瑞”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「大觀園」園之",
+          "candidate": " “大觀園”園之",
+          "count": 1
+        },
+        {
+          "baseline": " 「大觀園」園之名，「有",
+          "candidate": " “大觀園”園之名，“有",
+          "count": 1
+        },
+        {
+          "baseline": " 「尤氏女獨請王",
+          "candidate": " “尤氏女獨請王",
+          "count": 1
+        },
+        {
+          "baseline": " 「文章造化」匾",
+          "candidate": " “文章造化”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「文章造化」匾額",
+          "candidate": " “文章造化”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「文采風流」匾",
+          "candidate": " “文采風流”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「文采風流」匾額",
+          "candidate": " “文采風流”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「曠性怡情」匾",
+          "candidate": " “曠性怡情”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「曠性怡情」匾額",
+          "candidate": " “曠性怡情”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「萬象爭輝」匾",
+          "candidate": " “萬象爭輝”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「萬象爭輝」匾額",
+          "candidate": " “萬象爭輝”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 「顧恩思義」匾",
+          "candidate": " “顧恩思義”匾",
+          "count": 1
+        },
+        {
+          "baseline": " 「顧恩思義」匾額",
+          "candidate": " “顧恩思義”匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 一時吃畢，賈母等都",
+          "candidate": " 一時喫畢，賈母等都",
+          "count": 1
+        },
+        {
+          "baseline": " 一時吃過飯，寶玉一",
+          "candidate": " 一時喫過飯，寶玉一",
+          "count": 1
+        },
+        {
+          "baseline": " 佳蕙道：「你這一程子心",
+          "candidate": " 佳蕙道：“你這一程子心",
+          "count": 1
+        },
+        {
+          "baseline": " 古廟杉鬆巢水鶴，歲時",
+          "candidate": " 古廟杉松巢水鶴，歲時",
+          "count": 1
+        },
+        {
+          "baseline": " 吃了飯點戲時，",
+          "candidate": " 喫了飯點戲時，",
+          "count": 1
+        },
+        {
+          "baseline": " 吃畢晚飯，因天",
+          "candidate": " 喫畢晚飯，因天",
+          "count": 1
+        },
+        {
+          "baseline": " 唱畢笑道：「你喝一壇子罷",
+          "candidate": " 唱畢笑道：“你喝一壇子罷",
+          "count": 1
+        },
+        {
+          "baseline": " 大學 》。」黛玉笑道：「",
+          "candidate": " 大學 》。”黛玉笑道：“",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉吃了半碗茶，忽",
+          "candidate": " 寶玉喫了半碗茶，忽",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉笑道：「你提起鞋來，",
+          "candidate": " 寶玉笑道：“你提起鞋來，",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉笑道：「凡我說一句，",
+          "candidate": " 寶玉笑道：“凡我說一句，",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉笑道：「妹妹，你說好",
+          "candidate": " 寶玉笑道：“妹妹，你說好",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉笑道：「聽我說來：如",
+          "candidate": " 寶玉笑道：“聽我說來：如",
+          "count": 1
+        },
+        {
+          "baseline": " 寶玉聽了「出嫁」二字，",
+          "candidate": " 寶玉聽了“出嫁”二字，",
+          "count": 1
+        },
+        {
+          "baseline": " 探春道：「只是原系我起",
+          "candidate": " 探春道：“只是原系我起",
+          "count": 1
+        },
+        {
+          "baseline": " 李紈笑道：「到底是蘅蕪君",
+          "candidate": " 李紈笑道：“到底是蘅蕪君",
+          "count": 1
+        },
+        {
+          "baseline": " 李紈道：「就是這樣好。",
+          "candidate": " 李紈道：“就是這樣好。",
+          "count": 1
+        },
+        {
+          "baseline": " 林黛玉擡身就走。寶釵",
+          "candidate": " 林黛玉抬身就走。寶釵",
+          "count": 1
+        },
+        {
+          "baseline": " 王夫人道：「前日聽見你大",
+          "candidate": " 王夫人道：“前日聽見你大",
+          "count": 1
+        },
+        {
+          "baseline": " 當下，奶娘來請問黛玉之",
+          "candidate": " 當下，奶孃來請問黛玉之",
+          "count": 1
+        },
+        {
+          "baseline": " 茗煙因問：「二爺為何不看",
+          "candidate": " 茗煙因問：“二爺為何不看",
+          "count": 1
+        },
+        {
+          "baseline": " 茶未吃了，只見一個",
+          "candidate": " 茶未喫了，只見一個",
+          "count": 1
+        },
+        {
+          "baseline": " 薛蟠笑道：「你提畫兒，我",
+          "candidate": " 薛蟠笑道：“你提畫兒，我",
+          "count": 1
+        },
+        {
+          "baseline": " 薛蟠道：「我可要說了：",
+          "candidate": " 薛蟠道：“我可要說了：",
+          "count": 1
+        },
+        {
+          "baseline": " 襲人道：「再不可毀僧謗",
+          "candidate": " 襲人道：“再不可毀僧謗",
+          "count": 1
+        },
+        {
+          "baseline": " 襲人道：「第二件，你真",
+          "candidate": " 襲人道：“第二件，你真",
+          "count": 1
+        },
+        {
+          "baseline": " 賈妃乃問：「此殿何無匾額",
+          "candidate": " 賈妃乃問：“此殿何無匾額",
+          "count": 1
+        },
+        {
+          "baseline": " 賈政問道：「你道友二人在",
+          "candidate": " 賈政問道：“你道友二人在",
+          "count": 1
+        },
+        {
+          "baseline": " 賈政因問：「跟寶玉的是誰",
+          "candidate": " 賈政因問：“跟寶玉的是誰",
+          "count": 1
+        },
+        {
+          "baseline": " 賈政笑道：「倒是此處有些",
+          "candidate": " 賈政笑道：“倒是此處有些",
+          "count": 1
+        }
+      ],
+      "top_substitutions": [
+        {
+          "baseline": "」",
+          "candidate": "”",
+          "count": 2984
+        },
+        {
+          "baseline": "「",
+          "candidate": "“",
+          "count": 2982
+        },
+        {
+          "baseline": "吃",
+          "candidate": "喫",
+          "count": 573
+        },
+        {
+          "baseline": "』",
+          "candidate": "’",
+          "count": 263
+        },
+        {
+          "baseline": "『",
+          "candidate": "‘",
+          "count": 260
+        },
+        {
+          "baseline": "鬆",
+          "candidate": "松",
+          "count": 159
+        },
+        {
+          "baseline": "擡",
+          "candidate": "抬",
+          "count": 68
+        },
+        {
+          "baseline": "娘",
+          "candidate": "孃",
+          "count": 33
+        },
+        {
+          "baseline": "出",
+          "candidate": "齣",
+          "count": 12
+        },
+        {
+          "baseline": "唇",
+          "candidate": "脣",
+          "count": 12
+        },
+        {
+          "baseline": "唸",
+          "candidate": "念",
+          "count": 8
+        },
+        {
+          "baseline": "裏",
+          "candidate": "里",
+          "count": 8
+        },
+        {
+          "baseline": "薰",
+          "candidate": "燻",
+          "count": 3
+        },
+        {
+          "baseline": "念",
+          "candidate": "唸",
+          "count": 2
+        },
+        {
+          "baseline": "涌",
+          "candidate": "湧",
+          "count": 2
+        },
+        {
+          "baseline": "鬥",
+          "candidate": "斗",
+          "count": 2
+        },
+        {
+          "baseline": "于",
+          "candidate": "於",
+          "count": 1
+        },
+        {
+          "baseline": "周",
+          "candidate": "週",
+          "count": 1
+        },
+        {
+          "baseline": "慄",
+          "candidate": "栗",
+          "count": 1
+        },
+        {
+          "baseline": "揹",
+          "candidate": "背",
+          "count": 1
+        },
+        {
+          "baseline": "檯",
+          "candidate": "臺",
+          "count": 1
+        }
+      ],
+      "total_code_units": 887324,
+      "total_lines": 5352
+    }
+  ],
+  "exclude_cases": [
+    {
+      "baseline_t2s": "槃",
+      "hanlp_t2s": "槃",
+      "opencc_t2s": "槃",
+      "opencc_t2s+exclude": "槃",
+      "opencc_tw2sp": "槃",
+      "opencc_tw2sp+exclude": "槃",
+      "word": "槃"
+    },
+    {
+      "baseline_t2s": "划槳",
+      "hanlp_t2s": "划槳",
+      "opencc_t2s": "划桨",
+      "opencc_t2s+exclude": "划槳",
+      "opencc_tw2sp": "划桨",
+      "opencc_tw2sp+exclude": "划槳",
+      "word": "划槳"
+    },
+    {
+      "baseline_t2s": "列根",
+      "hanlp_t2s": "列根",
+      "opencc_t2s": "列根",
+      "opencc_t2s+exclude": "列根",
+      "opencc_tw2sp": "列根",
+      "opencc_tw2sp+exclude": "列根",
+      "word": "列根"
+    },
+    {
+      "baseline_t2s": "雪梨",
+      "hanlp_t2s": "雪梨",
+      "opencc_t2s": "雪梨",
+      "opencc_t2s+exclude": "雪梨",
+      "opencc_tw2sp": "雪梨",
+      "opencc_tw2sp+exclude": "雪梨",
+      "word": "雪梨"
+    },
+    {
+      "baseline_t2s": "雪糕",
+      "hanlp_t2s": "雪糕",
+      "opencc_t2s": "雪糕",
+      "opencc_t2s+exclude": "雪糕",
+      "opencc_tw2sp": "雪糕",
+      "opencc_tw2sp+exclude": "雪糕",
+      "word": "雪糕"
+    },
+    {
+      "baseline_t2s": "零錢",
+      "hanlp_t2s": "零錢",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零錢",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零錢",
+      "word": "零錢"
+    },
+    {
+      "baseline_t2s": "零钱",
+      "hanlp_t2s": "零钱",
+      "opencc_t2s": "零钱",
+      "opencc_t2s+exclude": "零钱",
+      "opencc_tw2sp": "零钱",
+      "opencc_tw2sp+exclude": "零钱",
+      "word": "零钱"
+    },
+    {
+      "baseline_t2s": "離線",
+      "hanlp_t2s": "離線",
+      "opencc_t2s": "离线",
+      "opencc_t2s+exclude": "離線",
+      "opencc_tw2sp": "脱机",
+      "opencc_tw2sp+exclude": "離線",
+      "word": "離線"
+    },
+    {
+      "baseline_t2s": "碟片",
+      "hanlp_t2s": "碟片",
+      "opencc_t2s": "碟片",
+      "opencc_t2s+exclude": "碟片",
+      "opencc_tw2sp": "盘片",
+      "opencc_tw2sp+exclude": "碟片",
+      "word": "碟片"
+    },
+    {
+      "baseline_t2s": "模組",
+      "hanlp_t2s": "模組",
+      "opencc_t2s": "模组",
+      "opencc_t2s+exclude": "模組",
+      "opencc_tw2sp": "模块",
+      "opencc_tw2sp+exclude": "模組",
+      "word": "模組"
+    },
+    {
+      "baseline_t2s": "桌球",
+      "hanlp_t2s": "桌球",
+      "opencc_t2s": "桌球",
+      "opencc_t2s+exclude": "桌球",
+      "opencc_tw2sp": "桌球",
+      "opencc_tw2sp+exclude": "桌球",
+      "word": "桌球"
+    },
+    {
+      "baseline_t2s": "案頭",
+      "hanlp_t2s": "案頭",
+      "opencc_t2s": "案头",
+      "opencc_t2s+exclude": "案頭",
+      "opencc_tw2sp": "案头",
+      "opencc_tw2sp+exclude": "案頭",
+      "word": "案頭"
+    },
+    {
+      "baseline_t2s": "機車",
+      "hanlp_t2s": "機車",
+      "opencc_t2s": "机车",
+      "opencc_t2s+exclude": "機車",
+      "opencc_tw2sp": "机车",
+      "opencc_tw2sp+exclude": "機車",
+      "word": "機車"
+    },
+    {
+      "baseline_t2s": "電漿",
+      "hanlp_t2s": "電漿",
+      "opencc_t2s": "电浆",
+      "opencc_t2s+exclude": "電漿",
+      "opencc_tw2sp": "电浆",
+      "opencc_tw2sp+exclude": "電漿",
+      "word": "電漿"
+    },
+    {
+      "baseline_t2s": "鳳梨",
+      "hanlp_t2s": "鳳梨",
+      "opencc_t2s": "凤梨",
+      "opencc_t2s+exclude": "鳳梨",
+      "opencc_tw2sp": "凤梨",
+      "opencc_tw2sp+exclude": "鳳梨",
+      "word": "鳳梨"
+    },
+    {
+      "baseline_t2s": "魔戒",
+      "hanlp_t2s": "魔戒",
+      "opencc_t2s": "魔戒",
+      "opencc_t2s+exclude": "魔戒",
+      "opencc_tw2sp": "魔戒",
+      "opencc_tw2sp+exclude": "魔戒",
+      "word": "魔戒"
+    },
+    {
+      "baseline_t2s": "載入",
+      "hanlp_t2s": "載入",
+      "opencc_t2s": "载入",
+      "opencc_t2s+exclude": "載入",
+      "opencc_tw2sp": "加载",
+      "opencc_tw2sp+exclude": "載入",
+      "word": "載入"
+    },
+    {
+      "baseline_t2s": "菲林",
+      "hanlp_t2s": "菲林",
+      "opencc_t2s": "菲林",
+      "opencc_t2s+exclude": "菲林",
+      "opencc_tw2sp": "菲林",
+      "opencc_tw2sp+exclude": "菲林",
+      "word": "菲林"
+    },
+    {
+      "baseline_t2s": "整合",
+      "hanlp_t2s": "整合",
+      "opencc_t2s": "整合",
+      "opencc_t2s+exclude": "整合",
+      "opencc_tw2sp": "集成",
+      "opencc_tw2sp+exclude": "整合",
+      "word": "整合"
+    },
+    {
+      "baseline_t2s": "變數",
+      "hanlp_t2s": "變數",
+      "opencc_t2s": "变数",
+      "opencc_t2s+exclude": "變數",
+      "opencc_tw2sp": "变量",
+      "opencc_tw2sp+exclude": "變數",
+      "word": "變數"
+    },
+    {
+      "baseline_t2s": "路易斯",
+      "hanlp_t2s": "路易斯",
+      "opencc_t2s": "路易斯",
+      "opencc_t2s+exclude": "路易斯",
+      "opencc_tw2sp": "路易斯",
+      "opencc_tw2sp+exclude": "路易斯",
+      "word": "路易斯"
+    },
+    {
+      "baseline_t2s": "非同步",
+      "hanlp_t2s": "非同步",
+      "opencc_t2s": "非同步",
+      "opencc_t2s+exclude": "非同步",
+      "opencc_tw2sp": "异步",
+      "opencc_tw2sp+exclude": "非同步",
+      "word": "非同步"
+    },
+    {
+      "baseline_t2s": "出租车",
+      "hanlp_t2s": "出租车",
+      "opencc_t2s": "出租车",
+      "opencc_t2s+exclude": "出租车",
+      "opencc_tw2sp": "出租车",
+      "opencc_tw2sp+exclude": "出租车",
+      "word": "出租车"
+    },
+    {
+      "baseline_t2s": "周杰倫",
+      "hanlp_t2s": "周杰倫",
+      "opencc_t2s": "周杰伦",
+      "opencc_t2s+exclude": "周杰倫",
+      "opencc_tw2sp": "周杰伦",
+      "opencc_tw2sp+exclude": "周杰倫",
+      "word": "周杰倫"
+    },
+    {
+      "baseline_t2s": "马铃薯",
+      "hanlp_t2s": "马铃薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "马铃薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "马铃薯",
+      "word": "马铃薯"
+    },
+    {
+      "baseline_t2s": "馬鈴薯",
+      "hanlp_t2s": "馬鈴薯",
+      "opencc_t2s": "马铃薯",
+      "opencc_t2s+exclude": "馬鈴薯",
+      "opencc_tw2sp": "马铃薯",
+      "opencc_tw2sp+exclude": "馬鈴薯",
+      "word": "馬鈴薯"
+    },
+    {
+      "baseline_t2s": "機械人",
+      "hanlp_t2s": "機械人",
+      "opencc_t2s": "机械人",
+      "opencc_t2s+exclude": "機械人",
+      "opencc_tw2sp": "机械人",
+      "opencc_tw2sp+exclude": "機械人",
+      "word": "機械人"
+    },
+    {
+      "baseline_t2s": "電單車",
+      "hanlp_t2s": "電單車",
+      "opencc_t2s": "电单车",
+      "opencc_t2s+exclude": "電單車",
+      "opencc_tw2sp": "电单车",
+      "opencc_tw2sp+exclude": "電單車",
+      "word": "電單車"
+    },
+    {
+      "baseline_t2s": "電扶梯",
+      "hanlp_t2s": "電扶梯",
+      "opencc_t2s": "电扶梯",
+      "opencc_t2s+exclude": "電扶梯",
+      "opencc_tw2sp": "电扶梯",
+      "opencc_tw2sp+exclude": "電扶梯",
+      "word": "電扶梯"
+    },
+    {
+      "baseline_t2s": "音效卡",
+      "hanlp_t2s": "音效卡",
+      "opencc_t2s": "音效卡",
+      "opencc_t2s+exclude": "音效卡",
+      "opencc_tw2sp": "声卡",
+      "opencc_tw2sp+exclude": "音效卡",
+      "word": "音效卡"
+    },
+    {
+      "baseline_t2s": "飆車族",
+      "hanlp_t2s": "飆車族",
+      "opencc_t2s": "飙车族",
+      "opencc_t2s+exclude": "飆車族",
+      "opencc_tw2sp": "飙车族",
+      "opencc_tw2sp+exclude": "飆車族",
+      "word": "飆車族"
+    },
+    {
+      "baseline_t2s": "點陣圖",
+      "hanlp_t2s": "點陣圖",
+      "opencc_t2s": "点阵图",
+      "opencc_t2s+exclude": "點陣圖",
+      "opencc_tw2sp": "位图",
+      "opencc_tw2sp+exclude": "點陣圖",
+      "word": "點陣圖"
+    },
+    {
+      "baseline_t2s": "個入球",
+      "hanlp_t2s": "個入球",
+      "opencc_t2s": "个入球",
+      "opencc_t2s+exclude": "個入球",
+      "opencc_tw2sp": "个入球",
+      "opencc_tw2sp+exclude": "個入球",
+      "word": "個入球"
+    },
+    {
+      "baseline_t2s": "顆進球",
+      "hanlp_t2s": "顆進球",
+      "opencc_t2s": "颗进球",
+      "opencc_t2s+exclude": "顆進球",
+      "opencc_tw2sp": "颗进球",
+      "opencc_tw2sp+exclude": "顆進球",
+      "word": "顆進球"
+    },
+    {
+      "baseline_t2s": "魔獸紀元",
+      "hanlp_t2s": "魔獸紀元",
+      "opencc_t2s": "魔兽纪元",
+      "opencc_t2s+exclude": "魔獸紀元",
+      "opencc_tw2sp": "魔兽纪元",
+      "opencc_tw2sp+exclude": "魔獸紀元",
+      "word": "魔獸紀元"
+    },
+    {
+      "baseline_t2s": "高空彈跳",
+      "hanlp_t2s": "高空彈跳",
+      "opencc_t2s": "高空弹跳",
+      "opencc_t2s+exclude": "高空彈跳",
+      "opencc_tw2sp": "蹦极",
+      "opencc_tw2sp+exclude": "高空彈跳",
+      "word": "高空彈跳"
+    },
+    {
+      "baseline_t2s": "铁达尼号",
+      "hanlp_t2s": "铁达尼号",
+      "opencc_t2s": "铁达尼号",
+      "opencc_t2s+exclude": "铁达尼号",
+      "opencc_tw2sp": "铁达尼号",
+      "opencc_tw2sp+exclude": "铁达尼号",
+      "word": "铁达尼号"
+    },
+    {
+      "baseline_t2s": "魔鬼終結者",
+      "hanlp_t2s": "魔鬼終結者",
+      "opencc_t2s": "魔鬼终结者",
+      "opencc_t2s+exclude": "魔鬼終結者",
+      "opencc_tw2sp": "魔鬼终结者",
+      "opencc_tw2sp+exclude": "魔鬼終結者",
+      "word": "魔鬼終結者"
+    },
+    {
+      "baseline_t2s": "純文字檔案",
+      "hanlp_t2s": "純文字檔案",
+      "opencc_t2s": "纯文字档案",
+      "opencc_t2s+exclude": "純文字檔案",
+      "opencc_tw2sp": "纯文字文件",
+      "opencc_tw2sp+exclude": "純文字檔案",
+      "word": "純文字檔案"
+    }
+  ],
+  "note": "Conversion-table measurement for ticket #19; see README.md for re-running it."
+}

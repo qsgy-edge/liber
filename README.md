@@ -29,6 +29,15 @@ Early and Windows-first. What runs on `master` today:
   library (`packages/fjs`), with a cancellable host bridge, byte and heap caps,
   and an allowlisted host surface. See
   [`packages/fjs/LIBER.md`](packages/fjs/LIBER.md).
+- **A Rust text engine** (`packages/fjs/liber_text`, same native library as the
+  runtime and the HTML adapter) for local files: encoding detection (GBK, GB18030,
+  Big5 — the encodings `dart:convert` cannot read), one-pass indexing into sparse
+  byte ↔ code-unit anchors and chapter boundaries, bounded window reads, and the
+  reader's `t2s`/`s2t` conversion, which the Book Source host surface's
+  `java.t2s`/`java.s2t` share. Measured on a 500 MB TXT: 609 ms and 5.7 MB peak
+  RSS, against 11.6 s for a pure-Dart pass and 2.8 s / 817 MB for the whole-file
+  read it replaces. See [`tool/text_engine_prototype/`](tool/text_engine_prototype/README.md)
+  and [ADR 0009](docs/adr/0009-convert-chinese-with-hanlp-tables.md).
 - **Automated gates** for that slice, including frozen differentials against an
   Android-generated golden (see below).
 
@@ -71,6 +80,7 @@ flutter pub get --enforce-lockfile
 flutter run -d windows          # the application
 flutter test test               # shared tests
 dart analyze lib test integration_test tool
+cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml
 ```
 
 `pubspec.lock` records the host each package came from. This project resolves

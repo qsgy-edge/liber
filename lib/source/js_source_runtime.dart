@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:fjs/fjs.dart';
 
 import '../domain/contracts.dart';
+import '../local/text_engine.dart';
 import 'native_library.dart';
 import 'source_host_dispatcher.dart';
 import 'source_http_uri.dart';
@@ -204,6 +205,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = _handleLog(payload);
           } else if (method == 'url') {
             answer = _handleUrl(payload);
+          } else if (method == 'convert') {
+            answer = _handleConvert(payload);
           } else if (method == 'request') {
             answer = await _dispatch(host, payload, request.id, input, token);
           } else if (method == 'ajax') {
@@ -332,6 +335,30 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         return value;
       default:
         throw const SourceScriptError('host-method', 'state op refused');
+    }
+  }
+
+  /// Frozen `JsExtensions.t2s`/`s2t`, which call `ChineseUtils`. Both go through
+  /// the same tables the reader converts with (ADR 0009), so a Book Source rule
+  /// and the reader never disagree about a character.
+  ///
+  /// Synchronous on purpose: the frozen `java.t2s` returns a string a rule uses
+  /// on the spot, and the bridge's conversion call is synchronous too.
+  Object? _handleConvert(Object? payload) {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid convert call');
+    }
+    final text = payload['text'];
+    if (text is! String) {
+      throw const SourceScriptError('host-input', 'invalid convert text');
+    }
+    switch (payload['direction']) {
+      case 't2s':
+        return TextEngine.t2s(text);
+      case 's2t':
+        return TextEngine.s2t(text);
+      default:
+        throw const SourceScriptError('host-method', 'convert direction refused');
     }
   }
 
@@ -819,6 +846,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (enc && String(enc).toUpperCase() !== 'UTF-8') return '';
       return encodeUriJava(String(text));
     },
+    t2s: text => call('convert', {direction:'t2s', text:String(text)}),
+    s2t: text => call('convert', {direction:'s2t', text:String(text)}),
     htmlFormat: html => htmlFormat(String(html)),
     timeFormat: time => formatTime(new Date(Number(time)), 'yyyy-MM-dd HH:mm:ss', 0),
     timeFormatUTC: (time, format, sh) => formatTime(new Date(Number(time)), String(format), Number(sh) || 0),

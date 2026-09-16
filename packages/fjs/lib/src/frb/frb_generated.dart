@@ -9,6 +9,7 @@ import 'api/error.dart';
 import 'api/html.dart';
 import 'api/runtime.dart';
 import 'api/source.dart';
+import 'api/text.dart';
 import 'api/value.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -76,7 +77,7 @@ class LibFjs extends BaseEntrypoint<LibFjsApi, LibFjsApiImpl, LibFjsWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 1146666900;
+  int get rustContentHash => -171211977;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -528,6 +529,19 @@ abstract class LibFjsApi extends BaseApi {
   bool crateApiValueJsValueIsString({required JsValue that});
 
   String crateApiValueJsValueTypeName({required JsValue that});
+
+  String crateApiTextTextConvert(
+      {required String text, required TextDirection direction});
+
+  TextIndexOptions crateApiTextTextDefaultOptions();
+
+  Future<TextDetection> crateApiTextTextDetectEncoding({required String path});
+
+  Future<TextIndex> crateApiTextTextIndexFile(
+      {required String path, required TextIndexOptions options});
+
+  Future<TextWindow> crateApiTextTextReadWindow(
+      {required TextWindowRequest request});
 
   RustArcIncrementStrongCountFnType
       get rust_arc_increment_strong_count_JsAsyncContext;
@@ -4682,6 +4696,130 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         argNames: ["that"],
       );
 
+  @override
+  String crateApiTextTextConvert(
+      {required String text, required TextDirection direction}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(text, serializer);
+        sse_encode_text_direction(direction, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 156)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTextTextConvertConstMeta,
+      argValues: [text, direction],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextConvertConstMeta => const TaskConstMeta(
+        debugName: "text_convert",
+        argNames: ["text", "direction"],
+      );
+
+  @override
+  TextIndexOptions crateApiTextTextDefaultOptions() {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 157)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_text_index_options,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTextTextDefaultOptionsConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextDefaultOptionsConstMeta =>
+      const TaskConstMeta(
+        debugName: "text_default_options",
+        argNames: [],
+      );
+
+  @override
+  Future<TextDetection> crateApiTextTextDetectEncoding({required String path}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 158, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_text_detection,
+        decodeErrorData: sse_decode_text_engine_error,
+      ),
+      constMeta: kCrateApiTextTextDetectEncodingConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextDetectEncodingConstMeta =>
+      const TaskConstMeta(
+        debugName: "text_detect_encoding",
+        argNames: ["path"],
+      );
+
+  @override
+  Future<TextIndex> crateApiTextTextIndexFile(
+      {required String path, required TextIndexOptions options}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        sse_encode_box_autoadd_text_index_options(options, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 159, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_text_index,
+        decodeErrorData: sse_decode_text_engine_error,
+      ),
+      constMeta: kCrateApiTextTextIndexFileConstMeta,
+      argValues: [path, options],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextIndexFileConstMeta => const TaskConstMeta(
+        debugName: "text_index_file",
+        argNames: ["path", "options"],
+      );
+
+  @override
+  Future<TextWindow> crateApiTextTextReadWindow(
+      {required TextWindowRequest request}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_box_autoadd_text_window_request(request, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 160, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_text_window,
+        decodeErrorData: sse_decode_text_engine_error,
+      ),
+      constMeta: kCrateApiTextTextReadWindowConstMeta,
+      argValues: [request],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextReadWindowConstMeta => const TaskConstMeta(
+        debugName: "text_read_window",
+        argNames: ["request"],
+      );
+
   Future<void> Function(int, dynamic)
       encode_DartFn_Inputs_bridge_request_Output_js_result_AnyhowException(
           FutureOr<JsResult> Function(BridgeRequest) raw) {
@@ -5194,6 +5332,24 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  TextAnchor dco_decode_box_autoadd_text_anchor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_text_anchor(raw);
+  }
+
+  @protected
+  TextIndexOptions dco_decode_box_autoadd_text_index_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_text_index_options(raw);
+  }
+
+  @protected
+  TextWindowRequest dco_decode_box_autoadd_text_window_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_text_window_request(raw);
+  }
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -5680,6 +5836,18 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  List<TextAnchor> dco_decode_list_text_anchor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_text_anchor).toList();
+  }
+
+  @protected
+  List<TextChapter> dco_decode_list_text_chapter(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_text_chapter).toList();
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
@@ -5746,6 +5914,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  TextAnchor? dco_decode_opt_box_autoadd_text_anchor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_text_anchor(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
@@ -5785,6 +5959,142 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     return (
       dco_decode_String(arr[0]),
       dco_decode_js_value(arr[1]),
+    );
+  }
+
+  @protected
+  TextAnchor dco_decode_text_anchor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TextAnchor(
+      byteOffset: dco_decode_i_64(arr[0]),
+      codeUnitOffset: dco_decode_i_64(arr[1]),
+      lineIndex: dco_decode_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  TextChapter dco_decode_text_chapter(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return TextChapter(
+      title: dco_decode_String(arr[0]),
+      byteOffset: dco_decode_i_64(arr[1]),
+      codeUnitOffset: dco_decode_i_64(arr[2]),
+      lineIndex: dco_decode_i_64(arr[3]),
+    );
+  }
+
+  @protected
+  TextDetection dco_decode_text_detection(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return TextDetection(
+      encoding: dco_decode_String(arr[0]),
+      bom: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
+  TextDirection dco_decode_text_direction(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TextDirection.values[raw as int];
+  }
+
+  @protected
+  TextEngineError dco_decode_text_engine_error(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return TextEngineError_Io(
+          dco_decode_String(raw[1]),
+        );
+      case 1:
+        return TextEngineError_UnknownEncoding(
+          dco_decode_String(raw[1]),
+        );
+      case 2:
+        return TextEngineError_UnsupportedEncoding(
+          dco_decode_String(raw[1]),
+        );
+      case 3:
+        return TextEngineError_AnchorTooFar(
+          scannedBytes: dco_decode_i_64(raw[1]),
+          limit: dco_decode_i_64(raw[2]),
+        );
+      case 4:
+        return TextEngineError_OffsetOutOfRange(
+          offset: dco_decode_i_64(raw[1]),
+          codeUnitLength: dco_decode_i_64(raw[2]),
+        );
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  TextIndex dco_decode_text_index(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return TextIndex(
+      encoding: dco_decode_String(arr[0]),
+      byteLength: dco_decode_i_64(arr[1]),
+      codeUnitLength: dco_decode_i_64(arr[2]),
+      anchors: dco_decode_list_text_anchor(arr[3]),
+      chapters: dco_decode_list_text_chapter(arr[4]),
+      ignoredRules: dco_decode_list_String(arr[5]),
+    );
+  }
+
+  @protected
+  TextIndexOptions dco_decode_text_index_options(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TextIndexOptions(
+      anchorStrideBytes: dco_decode_i_64(arr[0]),
+      tocRules: dco_decode_list_String(arr[1]),
+      maxScanBytes: dco_decode_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  TextWindow dco_decode_text_window(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return TextWindow(
+      text: dco_decode_String(arr[0]),
+      codeUnitOffset: dco_decode_i_64(arr[1]),
+      byteOffset: dco_decode_i_64(arr[2]),
+      lineIndex: dco_decode_i_64(arr[3]),
+      atEnd: dco_decode_bool(arr[4]),
+    );
+  }
+
+  @protected
+  TextWindowRequest dco_decode_text_window_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return TextWindowRequest(
+      path: dco_decode_String(arr[0]),
+      encoding: dco_decode_String(arr[1]),
+      anchor: dco_decode_opt_box_autoadd_text_anchor(arr[2]),
+      codeUnitOffset: dco_decode_i_64(arr[3]),
+      maxCodeUnits: dco_decode_i_64(arr[4]),
+      maxScanBytes: dco_decode_i_64(arr[5]),
     );
   }
 
@@ -6137,6 +6447,26 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   JsValue sse_decode_box_autoadd_js_value(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_js_value(deserializer));
+  }
+
+  @protected
+  TextAnchor sse_decode_box_autoadd_text_anchor(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_text_anchor(deserializer));
+  }
+
+  @protected
+  TextIndexOptions sse_decode_box_autoadd_text_index_options(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_text_index_options(deserializer));
+  }
+
+  @protected
+  TextWindowRequest sse_decode_box_autoadd_text_window_request(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_text_window_request(deserializer));
   }
 
   @protected
@@ -6658,6 +6988,30 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  List<TextAnchor> sse_decode_list_text_anchor(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TextAnchor>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_text_anchor(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<TextChapter> sse_decode_list_text_chapter(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TextChapter>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_text_chapter(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -6766,6 +7120,18 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  TextAnchor? sse_decode_opt_box_autoadd_text_anchor(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_text_anchor(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -6827,6 +7193,142 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     var var_field0 = sse_decode_String(deserializer);
     var var_field1 = sse_decode_js_value(deserializer);
     return (var_field0, var_field1);
+  }
+
+  @protected
+  TextAnchor sse_decode_text_anchor(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_byteOffset = sse_decode_i_64(deserializer);
+    var var_codeUnitOffset = sse_decode_i_64(deserializer);
+    var var_lineIndex = sse_decode_i_64(deserializer);
+    return TextAnchor(
+        byteOffset: var_byteOffset,
+        codeUnitOffset: var_codeUnitOffset,
+        lineIndex: var_lineIndex);
+  }
+
+  @protected
+  TextChapter sse_decode_text_chapter(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_title = sse_decode_String(deserializer);
+    var var_byteOffset = sse_decode_i_64(deserializer);
+    var var_codeUnitOffset = sse_decode_i_64(deserializer);
+    var var_lineIndex = sse_decode_i_64(deserializer);
+    return TextChapter(
+        title: var_title,
+        byteOffset: var_byteOffset,
+        codeUnitOffset: var_codeUnitOffset,
+        lineIndex: var_lineIndex);
+  }
+
+  @protected
+  TextDetection sse_decode_text_detection(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_encoding = sse_decode_String(deserializer);
+    var var_bom = sse_decode_bool(deserializer);
+    return TextDetection(encoding: var_encoding, bom: var_bom);
+  }
+
+  @protected
+  TextDirection sse_decode_text_direction(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TextDirection.values[inner];
+  }
+
+  @protected
+  TextEngineError sse_decode_text_engine_error(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_field0 = sse_decode_String(deserializer);
+        return TextEngineError_Io(var_field0);
+      case 1:
+        var var_field0 = sse_decode_String(deserializer);
+        return TextEngineError_UnknownEncoding(var_field0);
+      case 2:
+        var var_field0 = sse_decode_String(deserializer);
+        return TextEngineError_UnsupportedEncoding(var_field0);
+      case 3:
+        var var_scannedBytes = sse_decode_i_64(deserializer);
+        var var_limit = sse_decode_i_64(deserializer);
+        return TextEngineError_AnchorTooFar(
+            scannedBytes: var_scannedBytes, limit: var_limit);
+      case 4:
+        var var_offset = sse_decode_i_64(deserializer);
+        var var_codeUnitLength = sse_decode_i_64(deserializer);
+        return TextEngineError_OffsetOutOfRange(
+            offset: var_offset, codeUnitLength: var_codeUnitLength);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  TextIndex sse_decode_text_index(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_encoding = sse_decode_String(deserializer);
+    var var_byteLength = sse_decode_i_64(deserializer);
+    var var_codeUnitLength = sse_decode_i_64(deserializer);
+    var var_anchors = sse_decode_list_text_anchor(deserializer);
+    var var_chapters = sse_decode_list_text_chapter(deserializer);
+    var var_ignoredRules = sse_decode_list_String(deserializer);
+    return TextIndex(
+        encoding: var_encoding,
+        byteLength: var_byteLength,
+        codeUnitLength: var_codeUnitLength,
+        anchors: var_anchors,
+        chapters: var_chapters,
+        ignoredRules: var_ignoredRules);
+  }
+
+  @protected
+  TextIndexOptions sse_decode_text_index_options(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_anchorStrideBytes = sse_decode_i_64(deserializer);
+    var var_tocRules = sse_decode_list_String(deserializer);
+    var var_maxScanBytes = sse_decode_i_64(deserializer);
+    return TextIndexOptions(
+        anchorStrideBytes: var_anchorStrideBytes,
+        tocRules: var_tocRules,
+        maxScanBytes: var_maxScanBytes);
+  }
+
+  @protected
+  TextWindow sse_decode_text_window(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_text = sse_decode_String(deserializer);
+    var var_codeUnitOffset = sse_decode_i_64(deserializer);
+    var var_byteOffset = sse_decode_i_64(deserializer);
+    var var_lineIndex = sse_decode_i_64(deserializer);
+    var var_atEnd = sse_decode_bool(deserializer);
+    return TextWindow(
+        text: var_text,
+        codeUnitOffset: var_codeUnitOffset,
+        byteOffset: var_byteOffset,
+        lineIndex: var_lineIndex,
+        atEnd: var_atEnd);
+  }
+
+  @protected
+  TextWindowRequest sse_decode_text_window_request(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_encoding = sse_decode_String(deserializer);
+    var var_anchor = sse_decode_opt_box_autoadd_text_anchor(deserializer);
+    var var_codeUnitOffset = sse_decode_i_64(deserializer);
+    var var_maxCodeUnits = sse_decode_i_64(deserializer);
+    var var_maxScanBytes = sse_decode_i_64(deserializer);
+    return TextWindowRequest(
+        path: var_path,
+        encoding: var_encoding,
+        anchor: var_anchor,
+        codeUnitOffset: var_codeUnitOffset,
+        maxCodeUnits: var_maxCodeUnits,
+        maxScanBytes: var_maxScanBytes);
   }
 
   @protected
@@ -7225,6 +7727,27 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   void sse_encode_box_autoadd_js_value(JsValue self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_js_value(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_text_anchor(
+      TextAnchor self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_text_anchor(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_text_index_options(
+      TextIndexOptions self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_text_index_options(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_text_window_request(
+      TextWindowRequest self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_text_window_request(self, serializer);
   }
 
   @protected
@@ -7666,6 +8189,26 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  void sse_encode_list_text_anchor(
+      List<TextAnchor> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_text_anchor(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_text_chapter(
+      List<TextChapter> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_text_chapter(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -7763,6 +8306,17 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_text_anchor(
+      TextAnchor? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_text_anchor(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -7821,6 +8375,109 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.$1, serializer);
     sse_encode_js_value(self.$2, serializer);
+  }
+
+  @protected
+  void sse_encode_text_anchor(TextAnchor self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.byteOffset, serializer);
+    sse_encode_i_64(self.codeUnitOffset, serializer);
+    sse_encode_i_64(self.lineIndex, serializer);
+  }
+
+  @protected
+  void sse_encode_text_chapter(TextChapter self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.title, serializer);
+    sse_encode_i_64(self.byteOffset, serializer);
+    sse_encode_i_64(self.codeUnitOffset, serializer);
+    sse_encode_i_64(self.lineIndex, serializer);
+  }
+
+  @protected
+  void sse_encode_text_detection(TextDetection self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.encoding, serializer);
+    sse_encode_bool(self.bom, serializer);
+  }
+
+  @protected
+  void sse_encode_text_direction(TextDirection self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_text_engine_error(
+      TextEngineError self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case TextEngineError_Io(field0: final field0):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(field0, serializer);
+      case TextEngineError_UnknownEncoding(field0: final field0):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(field0, serializer);
+      case TextEngineError_UnsupportedEncoding(field0: final field0):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(field0, serializer);
+      case TextEngineError_AnchorTooFar(
+          scannedBytes: final scannedBytes,
+          limit: final limit
+        ):
+        sse_encode_i_32(3, serializer);
+        sse_encode_i_64(scannedBytes, serializer);
+        sse_encode_i_64(limit, serializer);
+      case TextEngineError_OffsetOutOfRange(
+          offset: final offset,
+          codeUnitLength: final codeUnitLength
+        ):
+        sse_encode_i_32(4, serializer);
+        sse_encode_i_64(offset, serializer);
+        sse_encode_i_64(codeUnitLength, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_text_index(TextIndex self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.encoding, serializer);
+    sse_encode_i_64(self.byteLength, serializer);
+    sse_encode_i_64(self.codeUnitLength, serializer);
+    sse_encode_list_text_anchor(self.anchors, serializer);
+    sse_encode_list_text_chapter(self.chapters, serializer);
+    sse_encode_list_String(self.ignoredRules, serializer);
+  }
+
+  @protected
+  void sse_encode_text_index_options(
+      TextIndexOptions self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.anchorStrideBytes, serializer);
+    sse_encode_list_String(self.tocRules, serializer);
+    sse_encode_i_64(self.maxScanBytes, serializer);
+  }
+
+  @protected
+  void sse_encode_text_window(TextWindow self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.text, serializer);
+    sse_encode_i_64(self.codeUnitOffset, serializer);
+    sse_encode_i_64(self.byteOffset, serializer);
+    sse_encode_i_64(self.lineIndex, serializer);
+    sse_encode_bool(self.atEnd, serializer);
+  }
+
+  @protected
+  void sse_encode_text_window_request(
+      TextWindowRequest self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_String(self.encoding, serializer);
+    sse_encode_opt_box_autoadd_text_anchor(self.anchor, serializer);
+    sse_encode_i_64(self.codeUnitOffset, serializer);
+    sse_encode_i_64(self.maxCodeUnits, serializer);
+    sse_encode_i_64(self.maxScanBytes, serializer);
   }
 
   @protected
