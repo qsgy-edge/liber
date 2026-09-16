@@ -95,4 +95,49 @@ void main() {
     expect(await other.entry(sourceRef, 'cache.key'), isNull);
     await workspace.close();
   });
+
+  test('the saveTime deadline is one rule on the write and read paths', () async {
+    var now = 1000;
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+      clock: () => now,
+    );
+    await state.putEntry('s', 'permanent', 'p', saveTime: 0);
+    await state.putEntry('s', 'timed', 't', saveTime: 1);
+    // A `saveTime` of 0 has no deadline, and a deadline still ahead is a hit.
+    expect(await state.entry('s', 'permanent'), 'p');
+    expect(await state.entry('s', 'timed'), 't');
+    // Reaching the deadline makes the same entry a miss, and the miss removes
+    // the row instead of leaving it to be read again.
+    now = 2000;
+    expect(await state.entry('s', 'timed'), isNull);
+    final rows = await store.db.select(store.db.sourceEntries).get();
+    expect(rows.map((row) => row.key), ['permanent']);
+    await workspace.close();
+  });
+
+  test('a row that expired while the space was closed is not read back', () async {
+    var now = 1000;
+    var workspace = await Workspace.open(root: root);
+    var store = await workspace.openSpace();
+    final before = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+      clock: () => now,
+    );
+    await before.putEntry('s', 'timed', 't', saveTime: 1);
+    await workspace.close();
+
+    now = 5000;
+    workspace = await Workspace.open(root: root);
+    store = await workspace.openSpace();
+    final after = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+      clock: () => now,
+    );
+    expect(await after.entry('s', 'timed'), isNull);
+    expect(await store.db.select(store.db.sourceEntries).get(), isEmpty);
+    await workspace.close();
+  });
 }
