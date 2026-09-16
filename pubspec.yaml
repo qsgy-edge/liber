@@ -44,6 +44,16 @@ dependencies:
   drift: ^2.35.0
   sqlite3: ^3.5.2
 
+  # The registrable-domain key ADR 0011 §3 gives cookies. `public_suffix` is the
+  # public suffix list algorithm itself (MIT, pure Dart, every platform the
+  # product claims) over the list snapshot generated into
+  # `lib/source/public_suffix_list.dart`, whose header records the list's own
+  # VERSION and COMMIT. It was verified against the list before it was added:
+  # wildcard rules (`foo.bar.ck`), exception rules (`www.ck`, `city.kobe.jp`),
+  # private-domain suffixes (`foo.blogspot.com`) and unknown labels all answer as
+  # Guava's `getEffectiveTldPlusOne` does.
+  public_suffix: ^3.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

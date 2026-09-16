@@ -5,6 +5,7 @@ import 'package:liber/store/database.dart';
 
 import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v1.dart' as v1;
+import 'generated_migrations/schema_v2.dart' as v2;
 
 /// The generated migration tests: the schemas in `drift_schemas/` are the
 /// released versions, `drift_dev schema steps` turns them into the upgrade
@@ -132,6 +133,21 @@ void main() {
     expect(progress.offsetInLine, 4);
     expect(progress.textLength, 500);
     expect(progress.anchor, '正文开头');
+    await database.close();
+    schema.close();
+  });
+
+  test('v2 → v3 建立宿主表层，两张表从空开始', () async {
+    final schema = await verifier.schemaAt(2);
+    final old = v2.DatabaseAtV2(schema.newConnection());
+    await old.close();
+
+    final database = SpaceDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(database, 3);
+    // The host surface had no persistence in v2, so the step creates the two
+    // tables and carries nothing over (ADR 0011 §3).
+    expect(await database.select(database.sourceCookies).get(), isEmpty);
+    expect(await database.select(database.sourceEntries).get(), isEmpty);
     await database.close();
     schema.close();
   });

@@ -110,7 +110,10 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
       result = null;
     });
     try {
-      final output = await JsonSourcePipeline(HttpSourceTransport()).run(
+      final output = await JsonSourcePipeline(
+        HttpSourceTransport(),
+        hostState: widget.service.hostState,
+      ).run(
         sources[selected!],
         keyword.text.trim(),
         (state) {

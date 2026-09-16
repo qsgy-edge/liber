@@ -207,3 +207,15 @@ Future<void> migrateToV2(Migrator m, Schema2 schema) async {
   );
   await m.database.customStatement('DROP TABLE text_index_v1');
 }
+
+/// v2 → v3: the host surface's state gets its tables (ADR 0011 §3) — the cookie
+/// jar and the per-source entries (`cache.*` values and the `java.put`/
+/// `java.get` variables).
+///
+/// A v2 database holds no such state: the jar was process-lifetime and the
+/// cache map was static, so there is nothing to carry over and the two tables
+/// start empty. A source fills them as it runs, and a restart finds them.
+Future<void> migrateToV3(Migrator m, Schema3 schema) async {
+  await m.createTable(schema.sourceCookies);
+  await m.createTable(schema.sourceEntries);
+}

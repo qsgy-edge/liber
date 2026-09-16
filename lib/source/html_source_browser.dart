@@ -55,7 +55,11 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     super.initState();
     pipeline =
         widget.pipeline ??
-        HtmlSourcePipeline(widget.source, HttpSourceTransport());
+        HtmlSourcePipeline(
+          widget.source,
+          HttpSourceTransport(),
+          hostState: widget.service.hostState,
+        );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(start());
     });
@@ -184,7 +188,11 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     // runs next. Disposing this page must never cancel work the reader still
     // holds.
     final readerPipeline = pipeline;
-    pipeline = HtmlSourcePipeline(widget.source, readerPipeline.transport);
+    pipeline = HtmlSourcePipeline(
+      widget.source,
+      readerPipeline.transport,
+      hostState: widget.service.hostState,
+    );
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => OnlineReaderPage(

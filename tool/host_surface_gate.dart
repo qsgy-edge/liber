@@ -98,13 +98,13 @@ Future<void> main(List<String> args) async {
     final runtime = InProcessSourceScriptRuntime(
       dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
     );
-    Future<Object?> run(String script, {Map<String, Object?>? state}) =>
+    Future<Object?> run(String script, {String? sourceKey}) =>
         runtime.evaluate(
           source: script,
           input: {
-            'sourceKey': origin,
+            'sourceKey': sourceKey ?? origin,
             'source': {
-              'bookSourceUrl': origin,
+              'bookSourceUrl': sourceKey ?? origin,
               'bookSourceName': '契约源',
               'bookSourceGroup': 'group',
             },
@@ -115,7 +115,6 @@ Future<void> main(List<String> args) async {
             'headers': const <String, String>{},
           },
           timeout: const Duration(seconds: 15),
-          state: state,
         );
 
     // 1. Every allowlisted member exists.
@@ -151,13 +150,19 @@ Future<void> main(List<String> args) async {
           'string',
         ]);
 
-    // 3. Rule state survives evaluations that share one analysis state.
-    final state = <String, Object?>{};
-    await run('java.put("token", "abc"); cache.put("shared", java.get("token"))', state: state);
-    final stateRead = await run('java.get("token") + "|" + cache.get("shared")', state: state);
-    checks['ruleStateSharedAcrossEvaluations'] = stateRead == 'abc|abc';
-    final freshState = await run('java.get("token")', state: <String, Object?>{});
-    checks['ruleStateIsPerAnalysis'] = freshState == '';
+    // 3. Rule state is the source's own persistent variables, not one
+    //    analysis's: it survives an evaluation that shares nothing with the last
+    //    one, and no other source reads it (ADR 0011 §3, #21).
+    await run(
+      'java.put("token", "abc"); cache.put("shared", java.get("token"))',
+    );
+    final stateRead = await run('java.get("token") + "|" + cache.get("shared")');
+    checks['ruleStatePersistsForItsSource'] = stateRead == 'abc|abc';
+    final otherSource = await run(
+      'java.get("token")',
+      sourceKey: '$origin/other-source',
+    );
+    checks['ruleStateIsOwnedByItsSource'] = otherSource == '';
     // The frozen runtime overloads `java.get`: one argument reads rule state,
     // two send an HTTP GET. Both paths stay reachable.
     final httpGet = await run('java.get(${jsonEncode('$origin/echo')}, {}).code()');

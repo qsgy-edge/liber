@@ -4,7 +4,9 @@ import 'package:drift/drift.dart' show Value;
 
 import '../source/html_source_pipeline.dart';
 import '../source/json_source_pipeline.dart' show SourceChapter;
+import '../source/source_host_state.dart';
 import 'database.dart';
+import 'host_state.dart';
 import 'ids.dart';
 import 'space_store.dart';
 
@@ -97,6 +99,15 @@ class ShelfService {
   ShelfService(this.store);
 
   final SpaceStore store;
+
+  /// The space's host surface (ADR 0011 §3), which the pages that run a source
+  /// hand to their pipeline: one state per space, so a source's cookies, cache
+  /// entries and variables are the same across analyses and survive a restart.
+  /// It lives here because this is the one handle on a space the pages already
+  /// hold.
+  late final SourceHostState hostState = SourceHostState(
+    persistence: SpaceHostStatePersistence(store),
+  );
 
   Future<void> close() => store.close();
 

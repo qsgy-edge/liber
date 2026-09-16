@@ -368,6 +368,51 @@ class Settings extends Table {
   Set<Column> get primaryKey => {bookId, key};
 }
 
+/// The cookies one space's sources hold, keyed the way the frozen baseline keys
+/// them: the registrable domain (eTLD+1) of the site a cookie was set for, or
+/// the IP literal itself (ADR 0011 §3).
+///
+/// `writerRef` names the source that wrote a pair when a source wrote it — that
+/// is how a source may still read and send a pair under another site's key —
+/// while a pair no source wrote belongs to the site itself and every source of
+/// that site sees it.
+@DataClassName('StoredCookie')
+class SourceCookies extends Table {
+  TextColumn get domain => text()();
+
+  TextColumn get name => text()();
+
+  TextColumn get value => text()();
+
+  TextColumn get writerRef => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {domain, name};
+}
+
+/// What one source's scripts wrote for themselves: `cache.*` entries and the
+/// per-source variables `java.put`/`java.get` share with `source.put`/
+/// `source.get` (ADR 0011 §3).
+///
+/// `sourceRef` is the owning source, so another source neither reads nor
+/// overwrites the row; `value` is JSON text because a cache value is any JSON
+/// value; `expiresAt` is the deadline a `saveTime` produces, and 0 means the
+/// entry does not expire, which is how the frozen `CacheManager` reads a
+/// `saveTime` of 0.
+@DataClassName('StoredSourceEntry')
+class SourceEntries extends Table {
+  TextColumn get sourceRef => text()();
+
+  TextColumn get key => text()();
+
+  TextColumn get value => text().nullable()();
+
+  IntColumn get expiresAt => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {sourceRef, key};
+}
+
 @DriftDatabase(
   tables: [
     Sources,
@@ -381,6 +426,8 @@ class Settings extends Table {
     LocalRoots,
     LocalFiles,
     Settings,
+    SourceCookies,
+    SourceEntries,
   ],
 )
 class SpaceDatabase extends _$SpaceDatabase {
@@ -396,7 +443,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 2;
+  static const latestVersion = 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -411,7 +458,13 @@ class SpaceDatabase extends _$SpaceDatabase {
       // snapshots in `drift_schemas/` by `drift_dev schema steps`. Data work a
       // step needs runs before it, while the old shape is still in place.
       if (from < 2) await mergeDuplicateNaturalKeys(m);
-      await stepByStep(from1To2: migrateToV2)(m, from, to);
+      // v2 → v3 only creates the host-surface tables (ADR 0011 §3): there is no
+      // old shape to migrate data out of, so the step is the generated one.
+      await stepByStep(from1To2: migrateToV2, from2To3: migrateToV3)(
+        m,
+        from,
+        to,
+      );
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
