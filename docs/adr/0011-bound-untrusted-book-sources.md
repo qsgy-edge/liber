@@ -61,6 +61,34 @@ is observed exploiting the residual, or if sources ever run unattended or in bat
 at a user's request, isolation returns as its own decision with the child-process and state-sharing costs
 above. The rejected alternative is a design document with no implementation behind it.
 
+**Amendment (2026-09-16, re-measured after #25 landed on `master`).** The three bullets above — and the
+"seconds per execution" in the residual — were written before the poll-quantum change and the Rust clock were
+in the tree, from earlier probe runs. The shipped evidence is authoritative:
+`tool/runtime_limits_prototype/evidence/`, re-recorded on merge commit `93ba246` with
+`python tool/runtime_limits_prototype/verify.py <release fjs.dll> <bundle debug fjs.dll>` (manifest
+`status: pass`, `failures: []`, `deadlineIsHardBound: false`).
+
+| Shape, with its own deadline | Overshoot, engine probe / product probe |
+|---|---|
+| interpreter loop, 1/10/100/500 ms deadlines | 0.0/0.0/0.0/0.0 ms; 0.9–7.6 ms through the product |
+| regexp backtracking, 200 ms; regex bomb through the product | 0.1 ms; 29 ms |
+| allocation loop, 100 ms | 66.7 ms (one interrupt poll in the whole run) |
+| a loop body dominated by one native call, 100 ms | **819 ms**; 90 ms through the product |
+| one long C-level call, 100 ms | 267 ms and **not interrupted** — the call runs to completion; 1.56 s through the product |
+| catch-and-retry loop at the heap limit (8 MiB heap, `new Array(200000).fill(0)`), 300 ms | **21.6 s and 30.0 s in two runs** (one interrupt poll); 92 ms through the product for the same shape |
+
+So "12.7 ms for the heavy loop and 407 ms for the catch-and-retry loop" understates the engine-side retry loop
+by two orders of magnitude, and the residual this ADR accepts is **up to tens of seconds of one engine thread in
+the worst measured shape**, not fractions of a second. The decision does not change — isolation stays unbuilt for
+the reasons above, the blast radius stays one engine thread and its heap cap, cancellation and closing an
+analysis still apply, and the reopen condition stands as written — but the cost recorded here is the measured
+one.
+
+The quantum is now measured on both sides of its trade-off: the retry loop's worst overshoot is 2 123 ms at
+10 000, 240 ms at 1 000 (ADR 0009's choice, and #25's) and 57 ms at 256, while the probe's throughput loop
+takes 1 008 ms / 1 044 ms / 1 885 ms at those three settings. 1 000 is a deliberate midpoint; 256 buys a 4×
+smaller worst case for roughly 1.8× less throughput.
+
 ## 2. The file and download family is deferred, and fails with a name, not a `TypeError`
 
 The baseline's file family is a real sandbox: `getFile` resolves a relative path against the app's external
