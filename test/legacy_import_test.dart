@@ -307,6 +307,9 @@ void main() {
     final first = await legacy.run(store);
     final before = await store.shelf(kind: 'network');
     final beforeAll = await store.shelf();
+    final ordersBefore = {
+      for (final book in beforeAll) book.id: book.bookOrder,
+    };
     expect(
       before.map((book) => book.bookOrder).toSet(),
       hasLength(before.length),
@@ -354,13 +357,23 @@ void main() {
     expect(second.imported, isTrue);
     expect(second.books, first.books + 1);
     expect(second.sources, 0, reason: '书源按 URL 匹配，不再重复计数');
-    // Nothing was lost: the same rows, in the file's own order, plus the new one.
+    // Nothing was lost: the same rows, the new one appended.
     expect((await store.bookById(network.id))!.title, '斗破苍穹');
     expect(
       (await store.shelf(kind: 'network')).map((book) => book.title),
-      ['斗破苍穹', '未上架的书', '三号书', 'Book'],
-      reason: '书架顺序就是文件里的记录顺序，导入留下的书排在后面',
+      ['斗破苍穹', '未上架的书', 'Book', '三号书'],
+      reason: '已有书留在原来的位置，新书排到最后',
     );
+    // A delta moves nothing the store has already positioned: only a book it
+    // creates takes a new place.
+    for (final book in await store.shelf()) {
+      if (!ordersBefore.containsKey(book.id)) continue;
+      expect(
+        book.bookOrder,
+        ordersBefore[book.id],
+        reason: '${book.title} 的位置不该被 delta 改写',
+      );
+    }
     expect(
       (await store.shelf()).length,
       beforeAll.length + 2,

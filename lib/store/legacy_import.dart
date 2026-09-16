@@ -255,7 +255,7 @@ class LegacyImport {
           ),
           // The retired file's own record order is the shelf order the JSON
           // store had; nothing in it stored a position as a field.
-          bookOrder: Value(await store.nextBookOrder()),
+          bookOrder: Value(await _position(store, existing)),
           raw: Value(jsonEncode(record['book'])),
         ),
       );
@@ -408,20 +408,20 @@ class LegacyImport {
       final title = _string(entry['title'], fallback: relative);
       final exists = path.isNotEmpty && await File(path).exists();
       if (!exists) missing++;
-      // The legacy id is the root plus the path inside it, so the same file
-      // keeps the same id without trusting a stale absolute path.
-      final id = '$rootId::$relative'.toLowerCase();
+      // The natural key is the root plus the path inside it; a book the store
+      // does not have yet gets a minted id, like every other book (D2).
       final existing = await store.localBook(rootId, relative);
+      final id = existing?.id ?? mintId('book');
       await store.putBook(
         BooksCompanion(
-          id: Value(existing?.id ?? id),
+          id: Value(id),
           kind: const Value('local'),
           title: Value(title),
           rootId: Value(rootId),
           relativePath: Value(relative),
           format: Value(format),
           needsRelink: Value(!exists),
-          bookOrder: Value(await store.nextBookOrder()),
+          bookOrder: Value(await _position(store, existing)),
           raw: Value(jsonEncode(entry)),
         ),
       );
@@ -435,14 +435,14 @@ class LegacyImport {
           format: Value(format),
           modifiedAt: Value(stat?.modified.millisecondsSinceEpoch),
           needsRelink: Value(!exists),
-          bookId: Value(existing?.id ?? id),
+          bookId: Value(id),
         ),
       );
       localFiles++;
 
       final advanced = await store.saveProgress(
         ProgressCompanion.insert(
-          bookId: existing?.id ?? id,
+          bookId: id,
           textOffset: Value(_int(entry['textOffset'])),
           updatedAt: Value(now),
         ),
@@ -490,13 +490,14 @@ class LegacyImport {
       if (legacyId.isEmpty) continue;
       final id = 'legacy-$legacyId';
       final needsRelink = entry['needsRelink'] == true;
+      final existing = await store.bookById(id);
       await store.putBook(
         BooksCompanion(
           id: Value(id),
           kind: Value(needsRelink ? 'local' : 'network'),
           title: Value(_string(entry['title'], fallback: legacyId)),
           needsRelink: Value(needsRelink),
-          bookOrder: Value(await store.nextBookOrder()),
+          bookOrder: Value(await _position(store, existing)),
           raw: Value(jsonEncode(entry)),
         ),
       );
@@ -554,16 +555,27 @@ class LegacyImport {
 /// Imports a Legado backup JSON — what the 迁移 page's file picker hands over —
 /// into the space.
 ///
-/// The backup's shape is the migration contract's (`bookSources` / `bookshelf` /
-/// `bookProgress`); it merges by the same natural keys the one-time import uses,
-/// and nothing of ours is written beside the space database to hold it.
+/// The input is a Legado export, not Liber's own interchange envelope (the
+/// envelope in `docs/compatibility/legado-data-migration-contract.md` is still
+/// unimplemented): sources come from `bookSources` / `bookSource`, books from
+/// `books` / `bookshelf` and progress from `progress` / `bookProgress`, which is
+/// what the retired `MigrationService` accepted.
+///
+/// Books merge on the backup's own key, because a Legado bookshelf entry carries
+/// no `sourceRef` to match `(sourceRef, sourceBookUrl)` on: the deterministic
+/// `legacy-<key>` id keeps a re-import from duplicating a book, and an entry
+/// without any key at all is reported rather than given an unstable one. A local
+/// entry keeps its Android path in `raw` and in that key, which migration
+/// contract rule 4 has not replaced yet. Nothing of ours is written beside the
+/// space database to hold any of it.
 class LegadoBackupImport {
   LegadoBackupImport(this.store);
 
   final SpaceStore store;
 
-  /// Parses [jsonText] and merges it into the space. Throws [FormatException]
-  /// when the file is not a Legado backup object.
+  /// Parses [jsonText] and merges it into the space in one transaction, so a
+  /// failure cannot leave half a backup behind. Throws [FormatException] when
+  /// the file is not a Legado backup object.
   Future<MigrationImportRecord> importJson(String jsonText) async {
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map<String, dynamic>) {
@@ -578,42 +590,51 @@ class LegadoBackupImport {
     if (progress.isEmpty) losses.add('未发现阅读进度数据');
 
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    for (final raw in sources.whereType<Map>()) {
-      final data = Map<String, dynamic>.from(raw);
-      await store.putSourceJson(
-        data,
-        fallbackId:
-            '${data['bookSourceUrl'] ?? data['bookSourceName'] ?? data.hashCode}',
-      );
-    }
-    for (final raw in books.whereType<Map>()) {
-      final data = Map<String, dynamic>.from(raw);
-      final legacyId =
-          '${data['bookUrl'] ?? data['bookId'] ?? data['name'] ?? data.hashCode}';
-      final id = 'legacy-$legacyId';
-      final needsRelink =
-          '${data['bookUrl'] ?? ''}'.startsWith('file:') ||
-          '${data['bookPath'] ?? ''}'.isNotEmpty;
-      final existing = await store.bookById(id);
-      await store.putBook(
-        BooksCompanion(
-          id: Value(id),
-          kind: Value(needsRelink ? 'local' : 'network'),
-          title: Value('${data['name'] ?? data['bookName'] ?? '未命名书籍'}'),
-          needsRelink: Value(needsRelink),
-          shelved: Value(existing?.shelved ?? true),
-          bookOrder: Value(existing?.bookOrder ?? await store.nextBookOrder()),
-          raw: Value(jsonEncode(data)),
-        ),
-      );
-      await store.saveProgress(
-        ProgressCompanion.insert(
-          bookId: id,
-          textOffset: Value(_backupProgress(progress, legacyId)),
-          updatedAt: Value(now),
-        ),
-      );
-    }
+    await store.db.transaction(() async {
+      for (final raw in sources.whereType<Map>()) {
+        final data = Map<String, dynamic>.from(raw);
+        final url = _string(data['bookSourceUrl']);
+        final name = _string(data['bookSourceName']);
+        if (url.isEmpty && name.isEmpty) {
+          losses.add('一条书源既没有 URL 也没有名字，已跳过');
+          continue;
+        }
+        await store.putSourceJson(data, fallbackId: url.isEmpty ? name : null);
+      }
+      for (final raw in books.whereType<Map>()) {
+        final data = Map<String, dynamic>.from(raw);
+        final legacyId = _string(
+          data['bookUrl'] ?? data['bookId'] ?? data['name'],
+        );
+        if (legacyId.isEmpty) {
+          losses.add('一条书架记录没有 bookUrl/bookId/name，已跳过');
+          continue;
+        }
+        final id = 'legacy-$legacyId';
+        final needsRelink =
+            '${data['bookUrl'] ?? ''}'.startsWith('file:') ||
+            '${data['bookPath'] ?? ''}'.isNotEmpty;
+        final existing = await store.bookById(id);
+        await store.putBook(
+          BooksCompanion(
+            id: Value(id),
+            kind: Value(needsRelink ? 'local' : 'network'),
+            title: Value('${data['name'] ?? data['bookName'] ?? '未命名书籍'}'),
+            needsRelink: Value(needsRelink),
+            shelved: Value(existing?.shelved ?? true),
+            bookOrder: Value(await _position(store, existing)),
+            raw: Value(jsonEncode(data)),
+          ),
+        );
+        await store.saveProgress(
+          ProgressCompanion.insert(
+            bookId: id,
+            textOffset: Value(_backupProgress(progress, legacyId)),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+    });
     return MigrationImportRecord(
       sourceCount: sources.length,
       bookCount: books.length,
@@ -639,6 +660,18 @@ class LegadoBackupImport {
     }
     return const <dynamic>[];
   }
+}
+
+/// The position an imported record takes.
+///
+/// A book the store never positioned takes the next free one — counting from 1,
+/// because 0 is what a row the store never positioned has — and a book the
+/// store already placed keeps its place, so a restored backup appends what is
+/// new instead of reordering the shelf.
+Future<int> _position(SpaceStore store, ShelfBook? existing) async {
+  if (existing != null && existing.bookOrder != 0) return existing.bookOrder;
+  final next = await store.nextBookOrder();
+  return next == 0 ? 1 : next;
 }
 
 /// The three files were written by this product, so a damaged one is reported

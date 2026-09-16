@@ -272,11 +272,47 @@ void main() {
 
   test('迁移留下的没有书源的书只出现在已迁移书籍里', () async {
     await store.putBook(BooksCompanion.insert(id: 'legacy-x', title: '迁移书'));
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'local-x',
+        kind: const Value('local'),
+        title: '本地书',
+        rootId: const Value(r'c:\library'),
+        relativePath: const Value('book.txt'),
+      ),
+    );
     await shelf.add(source, book('A', title: '甲'), chapters('A'));
 
-    expect((await shelf.migratedBooks()).map((entry) => entry.title), ['迁移书']);
+    expect(
+      (await shelf.migratedBooks()).map((entry) => entry.title),
+      ['迁移书'],
+      reason: '本地库的书有自己的列表，不是迁移留下的孤儿',
+    );
     expect((await shelf.onlineShelf()).map((entry) => entry.title), ['甲']);
     expect(await shelf.find(sourceUrl, bookUrl('A')), isNotNull);
     expect(await shelf.find(sourceUrl, bookUrl('没有的书')), isNull);
+  });
+
+  test('加入书架不覆盖空间里已有的书源', () async {
+    await store.putSourceJson({
+      'bookSourceUrl': sourceUrl,
+      'bookSourceName': 'Example',
+      'enabled': false,
+      'customOrder': 7,
+      'bookSourceGroup': '精选',
+    });
+
+    // A source object that arrived from a file carries no `enabled`, and the
+    // shelf's job is the book, not the source row.
+    await shelf.add(
+      {'bookSourceUrl': sourceUrl, 'bookSourceName': 'Example'},
+      book('A'),
+      chapters('A'),
+    );
+    final stored = (await store.sourceByUrl(sourceUrl))!;
+    expect(stored.enabled, isFalse, reason: '用户停用的书源不被重新启用');
+    expect(stored.customOrder, 7);
+    expect(stored.groupNames, '["精选"]');
+    expect((await entryOf('A')).sourceJson['bookSourceName'], 'Example');
   });
 }

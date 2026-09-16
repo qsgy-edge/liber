@@ -22,7 +22,7 @@ void defaultAppTest(Directory Function() root) {
 /// background isolate — so it needs `runAsync`; `pumpAndSettle` in the fake
 /// zone would wait for frames that never come.
 void spaceStoreTest(Directory Function() root) {
-  testWidgets('迁移页报告旧数据导入结果，第二次启动不重复导入', (tester) async {
+  testWidgets('迁移页报告旧数据导入结果，原文件退休后书架仍从空间读取', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
       await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
@@ -39,8 +39,30 @@ void spaceStoreTest(Directory Function() root) {
       expect(find.textContaining('书源 2'), findsOneWidget);
       expect(find.textContaining('上次阅读'), findsOneWidget, reason: '损失要写出来');
 
-      // The second launch reopens the same space, finds the record and imports
-      // nothing again.
+      // The old files are renamed aside rather than deleted, and the shelf that
+      // no longer reads them shows what the import carried over.
+      final home = workspaceRoot;
+      expect(
+        File(
+          '${home.path}${Platform.pathSeparator}online_reading.json',
+        ).existsSync(),
+        isFalse,
+        reason: '原文件不再留在安装目录',
+      );
+      expect(
+        File(
+          '${home.path}${Platform.pathSeparator}legacy'
+          '${Platform.pathSeparator}online_reading.json',
+        ).existsSync(),
+        isTrue,
+      );
+      await tester.tap(find.text('书架'));
+      await tester.pump();
+      await _waitFor(tester, find.text('斗破苍穹'));
+      expect(find.text('斗破苍穹'), findsOneWidget);
+
+      // Nothing reads the JSON files any more: the second launch opens the same
+      // space with them already gone and the shelf is still there.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
@@ -51,6 +73,10 @@ void spaceStoreTest(Directory Function() root) {
 
       expect(find.textContaining('本次未重复导入'), findsOneWidget);
       expect(find.textContaining('本次导入旧数据'), findsNothing);
+      await tester.tap(find.text('书架'));
+      await tester.pump();
+      await _waitFor(tester, find.text('斗破苍穹'));
+      expect(find.text('斗破苍穹'), findsOneWidget);
 
       // Unmounting the app is what releases the space, and the directory can
       // only be deleted once that happened.

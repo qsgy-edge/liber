@@ -59,7 +59,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
   ShelfService? _shelf;
   LocalLibrary? _library;
   List<FileSystemEntity> _folderEntries = const <FileSystemEntity>[];
-  List<ShelfEntry> _migratedBooks = const <ShelfEntry>[];
+  List<ShelfEntry> _importedBooks = const <ShelfEntry>[];
   List<ImportedBookSource> _sources = const <ImportedBookSource>[];
   MigrationImportRecord? _migrationResult;
   String? _libraryMessage;
@@ -89,11 +89,20 @@ class _LiberHomePageState extends State<LiberHomePage> {
       final store = await workspace.openSpace(Workspace.defaultSpaceId);
       final shelf = ShelfService(store);
       final library = LocalLibrary(store);
-      final report = await LegacyImport(
-        home: workspace.root,
-      ).run(store, force: true, retireOriginals: true);
+      // Importing is best effort: the space is open whether or not the retired
+      // files could be merged, and a failure there must not cost the reader the
+      // library that is already in the store.
+      LegacyImportReport? report;
+      String? importError;
+      try {
+        report = await LegacyImport(
+          home: workspace.root,
+        ).run(store, force: true, retireOriginals: true);
+      } on Object catch (error) {
+        importError = '旧数据导入失败：$error';
+      }
       await library.load();
-      final migrated = await shelf.migratedBooks();
+      final imported = await shelf.migratedBooks();
       final sources = await shelf.sources();
       final path = workspace.databaseFile(store.spaceId).path;
       if (!mounted) return;
@@ -103,8 +112,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
         _library = library;
         _spaceImport = report;
         _spaceStorePath = path;
-        _migratedBooks = migrated;
+        _importedBooks = imported;
         _sources = sources;
+        if (importError != null) _spaceMessage = importError;
       });
       await _refreshFolder();
     } on Object catch (error) {
@@ -119,11 +129,19 @@ class _LiberHomePageState extends State<LiberHomePage> {
     if (mounted) setState(() => _folderEntries = entries);
   }
 
-  Future<void> _refreshSources() async {
+  /// Re-reads what the shelf and the migration page list: a source trial, a
+  /// backup import or a newly admitted file can all have added rows.
+  Future<void> _refreshShelfViews() async {
     final shelf = _shelf;
     if (shelf == null) return;
     final sources = await shelf.sources();
-    if (mounted) setState(() => _sources = sources);
+    final imported = await shelf.migratedBooks();
+    if (!mounted) return;
+    setState(() {
+      _sources = sources;
+      _importedBooks = imported;
+      _onlineRevision++;
+    });
   }
 
   Future<void> _runControlledSource() async {
@@ -150,7 +168,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
       _BookshelfPage(
         run: _run,
         localBooks: library?.books ?? const <LocalBook>[],
-        importedBooks: _migratedBooks,
+        importedBooks: _importedBooks,
         onlineRevision: _onlineRevision,
         shelf: shelf,
         spaceMessage: _spaceMessage,
@@ -248,7 +266,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
               _migrationResult = result;
               _migrationMessage = '导入预览完成';
             });
-            await _refreshSources();
+            await _refreshShelfViews();
           } on FormatException catch (error) {
             if (mounted) setState(() => _migrationMessage = error.message);
           }
@@ -270,7 +288,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
                       ),
                     );
                     if (mounted) setState(() => _onlineRevision++);
-                    await _refreshSources();
+                    await _refreshShelfViews();
                   },
             icon: const Icon(Icons.travel_explore),
             label: const Text('书源试读'),

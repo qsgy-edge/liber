@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../domain/contracts.dart';
 import 'database.dart';
+import 'ids.dart';
 import 'space_store.dart';
 
 /// The local library: the authorized roots and the files the user admitted
@@ -76,9 +77,8 @@ class LocalLibrary {
       ),
     );
     await store.putSetting(activeRootKey, id);
-    // Re-authorizing is the relink, and it is per file: a file that is back
-    // where it was is usable again, a file that is still gone stays flagged
-    // (D4), and both facts are in the store rather than in this session.
+    // The relink is per file, and both the file's flag and the book's are facts
+    // of the store rather than of this session.
     for (final file in await store.localFilesOf(id)) {
       final restored = File(_absolute(root, file.relativePath));
       final stat = await restored.exists() ? await restored.stat() : null;
@@ -153,12 +153,14 @@ class LocalLibrary {
   /// Admits files to the shelf: the `books` row the shelf lists, plus the
   /// `local_files` row the reader resolves the path from.
   ///
-  /// The natural key is the root and the path inside it, so the same file is
-  /// never admitted twice.
+  /// The natural key — the root and the path inside it — is what a re-add and
+  /// the import match on, and it is the only thing they match on: the id is
+  /// minted (D2), so a file that is only different in case is a different book
+  /// rather than the same row rewritten.
   Future<List<LocalBook>> addFiles(Iterable<FileSystemEntity> entries) async {
     final root = _root;
     if (root == null) return const <LocalBook>[];
-    final added = <LocalBook>[];
+    final addedIds = <String>{};
     for (final entry in entries) {
       if (entry is! File || !_isSupported(entry.path)) continue;
       final path = entry.absolute.path;
@@ -166,12 +168,13 @@ class LocalLibrary {
       if (relative == null) continue;
       if (await store.localBook(root.id, relative) != null) continue;
       final format = path.toLowerCase().endsWith('.md') ? 'markdown' : 'txt';
-      final id = '${root.id}::$relative'.toLowerCase();
+      final title = path.split(Platform.pathSeparator).last;
+      final id = mintId('book');
       await store.putBook(
         BooksCompanion.insert(
           id: id,
           kind: const Value('local'),
-          title: path.split(Platform.pathSeparator).last,
+          title: title,
           rootId: Value(root.id),
           relativePath: Value(relative),
           format: Value(format),
@@ -189,20 +192,14 @@ class LocalLibrary {
           bookId: Value(id),
         ),
       );
-      added.add(
-        LocalBook(
-          id: id,
-          rootId: root.id,
-          path: path,
-          title: path.split(Platform.pathSeparator).last,
-          textOffset: 0,
-          relativePath: relative,
-          format: format,
-        ),
-      );
+      addedIds.add(id);
     }
-    if (added.isNotEmpty) _books = await _readBooks(await _rootsById());
-    return added;
+    if (addedIds.isEmpty) return const <LocalBook>[];
+    _books = await _readBooks(await _rootsById());
+    return [
+      for (final book in _books)
+        if (addedIds.contains(book.id)) book,
+    ];
   }
 
   /// Saves a local book's reading position as its progress row.

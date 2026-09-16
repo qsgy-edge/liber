@@ -115,10 +115,16 @@ class ShelfService {
   Future<List<ShelfEntry>> onlineShelf() async =>
       _entries(await store.shelf(kind: 'network', hasSource: true));
 
-  /// The rows a legacy import left behind. They carry a title and a position
-  /// and nothing that could open them, so the shelf lists them as records.
-  Future<List<ShelfEntry>> migratedBooks() async =>
-      _entries(await store.shelf(hasSource: false));
+  /// The shelf rows nothing can open: no source resolves them, and the local
+  /// library does not own them either. They carry a title and a position and
+  /// nothing else, so the shelf lists them as the records they are.
+  Future<List<ShelfEntry>> migratedBooks() async {
+    final local = {for (final book in await store.localBooks()) book.id};
+    final rows = (await store.shelf(
+      hasSource: false,
+    )).where((book) => !local.contains(book.id)).toList();
+    return _entries(rows);
+  }
 
   /// The book a source URL and book URL resolve to (D2's natural key), or null
   /// when the space does not have it.
@@ -128,8 +134,9 @@ class ShelfService {
   }
 
   /// What "continue reading" resumes: the position written last. The JSON
-  /// store's single `last` pointer had no equivalent column, and D6 recorded
-  /// that as a loss; the timestamp the reader already writes answers it.
+  /// store's single `last` pointer has no column of its own — #18's import
+  /// reports that as a loss — but the timestamp the reader writes answers the
+  /// same question.
   Future<ShelfEntry?> lastRead() async {
     final progress = await store.latestProgress();
     if (progress == null) return null;
@@ -234,7 +241,14 @@ class ShelfService {
     HtmlBook book, {
     required bool shelved,
   }) async {
-    final sourceRow = await store.putSourceJson(source);
+    // A source the space already knows stays as it is: the shelf's job is the
+    // book, and an object that arrived from a file must not re-enable a source
+    // the user turned off (D7's flags are the product's).
+    final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
+    final existingSource = sourceUrl.isEmpty
+        ? null
+        : await store.sourceByUrl(sourceUrl);
+    final sourceRow = existingSource ?? await store.putSourceJson(source);
     final bookUrl = '${book.url}';
     final existing = await store.bookByNaturalKey(
       sourceRow.bookSourceUrl,

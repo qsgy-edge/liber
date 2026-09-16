@@ -32,7 +32,7 @@ Out of scope: UI reproduction, bookshelf/sync semantics, migration format, diffe
 
 Frozen side (read-only, no execution): `data/entities/BookSource.kt`, `data/entities/BaseSource.kt`, `data/entities/rule/{SearchRule,ExploreRule,BookInfoRule,TocRule,ContentRule,ReviewRule}.kt`, `model/analyzeRule/{AnalyzeRule,RuleAnalyzer,AnalyzeByJSoup,AnalyzeByXPath,AnalyzeByJSonPath,AnalyzeUrl}.kt`, `help/JsExtensions.kt`, `help/http/{HttpHelper,OkHttpUtils,CookieStore,CookieManager}.kt`, `model/webBook/{WebBook,BookChapterList,BookContent}.kt`.
 
-Product side: `lib/source/{html_rule_adapter,native_library,json_source_rules,html_source_pipeline,json_source_pipeline,source_url_rules,js_source_runtime,source_host_dispatcher,http_source_transport,online_reader_page,online_reading_store}.dart`, plus the gates in `tool/`.
+Product side: `lib/source/{html_rule_adapter,native_library,json_source_rules,html_source_pipeline,json_source_pipeline,source_url_rules,js_source_runtime,source_host_dispatcher,http_source_transport,online_reader_page}.dart`, plus the space store under `lib/store/` and the gates in `tool/`.
 
 Runtime observation: `tool/source_triage.dart` runs each source of one exported file through the four stages and reports stage outcomes only. It never logs headers, tokens, URLs, or response bodies.
 

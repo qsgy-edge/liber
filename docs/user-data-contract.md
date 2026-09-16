@@ -41,6 +41,12 @@ Three stores, three identity schemes (`jsonEncode([bookSourceUrl, bookUrl])`, a 
 absolute path, and `bookUrl ?? bookId ?? name ?? hashCode`), and only one of them carries a
 version field.
 
+**Storage note (2026-09-16).** The three files above stopped being the live store in ticket
+#24: the shelf, the local library and the migration page read and write the space's database,
+the three files were imported into the default space once and renamed aside under `legacy\`,
+and their readers are gone. This table and the code citations below record what the contract
+was written against; D1–D9 describe the store that replaced it.
+
 ## 3. Decisions
 
 ### D1 — One store or three, and one space owning everything *decided: the space owns everything, sources included*

@@ -74,4 +74,33 @@ void main() {
     expect(await store.allSources(), isEmpty);
     expect(await store.shelf(), isEmpty);
   });
+
+  test('没有 URL 的书源与没有键的书都有确定性的身份，无名的记录被报告', () async {
+    const partial = '''
+    {
+      "bookSources": [{"bookSourceName": "No URL source"}],
+      "bookshelf": [{"name": "只有名字的书"}, {}],
+      "bookProgress": []
+    }
+    ''';
+    final first = await LegadoBackupImport(store).importJson(partial);
+    expect(
+      first.losses.any((loss) => loss.contains('已跳过')),
+      isTrue,
+      reason: '一条没有 bookUrl/bookId/name 的记录被报告',
+    );
+    expect(
+      (await store.sourceByUrl('No URL source'))!.name,
+      'No URL source',
+      reason: '没有 URL 的书源按名字落库',
+    );
+    expect((await store.bookById('legacy-只有名字的书'))!.title, '只有名字的书');
+    expect(await store.shelf(), hasLength(1));
+
+    // The same file again: the same book, not a second one — the id is derived
+    // from the backup's own key, never from a value that changes per run.
+    await LegadoBackupImport(store).importJson(partial);
+    expect(await store.shelf(), hasLength(1));
+    expect(await store.allSources(), hasLength(1));
+  });
 }

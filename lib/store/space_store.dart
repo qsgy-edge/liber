@@ -40,7 +40,8 @@ class SpaceStore {
     Map<String, dynamic> source, {
     String? fallbackId,
   }) {
-    final url = '${source['bookSourceUrl'] ?? fallbackId ?? ''}';
+    final declared = '${source['bookSourceUrl'] ?? ''}';
+    final url = declared.isEmpty ? (fallbackId ?? '') : declared;
     return putSource(
       SourcesCompanion.insert(
         bookSourceUrl: url,
@@ -125,7 +126,7 @@ class SpaceStore {
   /// (all / local / ungrouped / update-error) are queries, not rows (D3).
   ///
   /// [hasSource] narrows to the books a Book Source can open (`true`) or to the
-  /// rows a legacy import left behind, which nothing can open (`false`).
+  /// rows no source resolves (`false`).
   Future<List<ShelfBook>> shelf({
     String? kind,
     bool? hasSource,
@@ -149,8 +150,9 @@ class SpaceStore {
     return query.get();
   }
 
-  /// Membership is a flag, not a deletion: removing a book keeps its row, its
-  /// chapters and its progress (D2/D3).
+  /// Shelf membership is a flag, not a deletion: removing a book keeps its
+  /// row, its chapters and its progress (D2's `shelved`; the JSON store kept
+  /// the record's position for the same reason).
   Future<void> setShelved(String bookId, bool shelved) async {
     await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
       BooksCompanion(shelved: Value(shelved)),
