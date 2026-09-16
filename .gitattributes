@@ -1,0 +1,7 @@
+# Byte-exact data is read for its bytes, not for its lines. The text engine's
+# fixtures are the reader's hand-computed byte and code-unit offsets, and its
+# tables are the conversion data a provenance note pins; without this a Windows
+# checkout with core.autocrlf=true turns every LF into CRLF and the offsets come
+# out one byte per line too large (measured: +74 and +23 on the two fixtures).
+packages/fjs/liber_text/tests/data/** text eol=lf
+packages/fjs/liber_text/assets/** text eol=lf
