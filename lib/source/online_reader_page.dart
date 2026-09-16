@@ -163,6 +163,10 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
 
   @override
   void dispose() {
+    // The reader owns the pipeline it fetches through: it is the analysis whose
+    // cancellation token this page must end when it leaves, and the page that
+    // handed the pipeline over has already replaced its own.
+    widget.pipeline.cancel();
     scroll.dispose();
     super.dispose();
   }

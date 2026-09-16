@@ -33,9 +33,13 @@ class HtmlSourceBrowser extends StatefulWidget {
 }
 
 class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
-  late final pipeline =
-      widget.pipeline ??
-      HtmlSourcePipeline(widget.source, HttpSourceTransport());
+  /// The pipeline this page runs its analyses on.
+  ///
+  /// One pipeline carries one analysis, so this is not `final`: when the reader
+  /// takes the pipeline over for its chapter fetch, this page opens a fresh one
+  /// for whatever it runs next.
+  late HtmlSourcePipeline pipeline;
+
   bool inShelf = false;
   List<HtmlBook> hits = [];
   HtmlBook? selected;
@@ -49,6 +53,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   @override
   void initState() {
     super.initState();
+    pipeline =
+        widget.pipeline ??
+        HtmlSourcePipeline(widget.source, HttpSourceTransport());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(start());
     });
@@ -72,7 +79,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
             busy = false;
           });
         } else {
-          await details(hit);
+          await _details(hit);
         }
         if (!mounted || error != null) return;
         final savedUrl = entry.chapterKey;
@@ -101,7 +108,21 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     }
   }
 
+  /// Starts one book analysis, unless one already owns the pipeline.
+  ///
+  /// One pipeline carries one analysis — `_page`, `_ruleState`, `_bookOptions`
+  /// and the cancellation token are fields, not per-call arguments — so a
+  /// second `details()` while one is in flight would overwrite them under the
+  /// first. The call is ignored instead of disabled at each entry: a search
+  /// row and 更新目录 both come through here, and `busy` already replaces the
+  /// whole body with the spinner while an analysis runs, so an ignored call is
+  /// the only thing an entry could offer at that moment.
   Future<void> details(HtmlBook hit) async {
+    if (busy) return;
+    await _details(hit);
+  }
+
+  Future<void> _details(HtmlBook hit) async {
     setState(() {
       busy = true;
       error = null;
@@ -157,10 +178,17 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         (await widget.service.find(sourceUrl, '${book.url}'))?.id ??
         await widget.service.ensureBook(widget.source, book);
     if (!mounted) return;
+    // Ownership rule: whoever runs an analysis owns its pipeline. The reader
+    // runs the chapter fetch through this one, so it takes it over and cancels
+    // it in its own dispose; this page opens a fresh pipeline for whatever it
+    // runs next. Disposing this page must never cancel work the reader still
+    // holds.
+    final readerPipeline = pipeline;
+    pipeline = HtmlSourcePipeline(widget.source, readerPipeline.transport);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => OnlineReaderPage(
-          pipeline: pipeline,
+          pipeline: readerPipeline,
           book: book,
           bookId: bookId,
           chapters: chapters,
