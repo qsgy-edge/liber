@@ -10,14 +10,18 @@
 //! a book source's or a local file's Traditional text has to read as mainland
 //! Simplified, word choice included.
 //!
-//! * `liber-now` — the shipped implementation (`liber_text`, HanLP 1.x tables
-//!   plus Legado's exclude list).
-//! * `hanlp`, `hanlp+exclude` — the same tables through this crate's matcher,
-//!   with and without the exclude list. `hanlp+exclude` is the control that must
-//!   equal `liber-now`; if it does not, the matcher has drifted from the crate.
-//! * `hanlp+tw+hk` — HanLP's tables plus OpenCC's Taiwan and Hong Kong phrase
-//!   lists (`TWPhrasesRev.txt`, `HKPhrasesRev.txt`, Apache-2.0), and the exclude
-//!   list on top. One table, one pass: the phrases are just longer entries, and
+//! * `liber-now` — the shipped reading conversion (`liber_text`): HanLP 1.x
+//!   character tables plus the phrase tables in `assets/phrases/` (OpenCC's
+//!   regional wording after the corpus audit and the hand decisions) and the
+//!   reduced exclude list. This is `convert_to(..., SimplifiedMainland)`.
+//! * `hanlp`, `hanlp+exclude` — the same character tables through this crate's
+//!   matcher, with and without the *frozen* exclude list. `hanlp+exclude` against
+//!   the crate's character-only `convert` is the control: those two must agree,
+//!   because the reading conversion deliberately adds the phrase tables.
+//! * `hanlp+tw+hk` — HanLP's character tables plus OpenCC's Taiwan and Hong Kong
+//!   phrase lists (`TWPhrasesRev.txt`, `HKPhrasesRev.txt`, Apache-2.0) unedited,
+//!   and the frozen exclude list on top: what adopting OpenCC's list without the
+//!   audit would have shipped.
 //!   each phrase's value is mapped through the character table first so it comes
 //!   out Simplified.
 //! * `opencc-t2s`, `opencc-t2s+exclude`, `opencc-tw2s`, `opencc-tw2sp` —
@@ -27,7 +31,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use conversion_probe::{convert_opencc, convert_opencc_excluded, opencc, to_text, Table, EXCLUDE};
-use liber_text::{convert, Direction};
+use liber_text::{ConvertTarget, Direction, convert, convert_to};
 use serde_json::Value;
 
 /// Reads an OpenCC dictionary: `key<TAB>value(s)`, `#` comments, several values
@@ -118,7 +122,7 @@ fn main() {
     let candidates: Vec<Candidate> = vec![
         (
             "liber-now",
-            Box::new(|text| convert(text, Direction::TraditionalToSimplified)),
+            Box::new(|text| convert_to(text, ConvertTarget::SimplifiedMainland)),
         ),
         (
             "hanlp",
@@ -166,12 +170,14 @@ fn main() {
         println!("  {}", path.display());
     }
 
-    // The control: the crate's own implementation against this matcher's copy.
+    // The control: the character-only path of the crate against this matcher's
+    // copy of the same tables. The reading conversion is deliberately different
+    // (it has the phrase tables), so it is not the control.
     let mut differences = 0usize;
     let mut shown = 0usize;
     for row in &rows {
         let source = row["source"].as_str().unwrap();
-        let shipped = convert(source, Direction::TraditionalToSimplified);
+        let shipped = to_text(&convert(&source, Direction::TraditionalToSimplified).encode_utf16().collect::<Vec<u16>>());
         let matcher = to_text(&hanlp.convert(&utf16(source)));
         if shipped != matcher {
             differences += 1;

@@ -26,6 +26,7 @@ use std::path::Path;
 use conversion_probe::{
     convert_opencc, convert_opencc_excluded, opencc, rate, to_text, Report, Table, EXCLUDE,
 };
+use liber_text::{ConvertTarget, convert_to};
 use serde_json::{json, Value};
 
 fn main() {
@@ -65,6 +66,7 @@ fn main() {
     let opencc_s2t = opencc("s2t");
 
     let mut reports: Vec<Report> = vec![
+        Report::new("liber-reading", "t2s"),
         Report::new("jar-fmm+exclude", "t2s"),
         Report::new("hanlp-fmm+exclude", "t2s"),
         Report::new("opencc-t2s+exclude", "t2s"),
@@ -99,6 +101,7 @@ fn main() {
         let baseline_t2s: Vec<u16> = record["t2s"].as_str().unwrap().encode_utf16().collect();
         let baseline_s2t: Vec<u16> = record["s2t"].as_str().unwrap().encode_utf16().collect();
         let conversions: Vec<Vec<u16>> = vec![
+            utf16(&convert_to(&to_text(&source), ConvertTarget::SimplifiedMainland)),
             jar_t2s.convert(&source),
             hanlp_t2s.convert(&source),
             convert_opencc_excluded(&opencc_t2s, &source),
@@ -163,4 +166,8 @@ fn main() {
             report.hunk_counts.len(),
         );
     }
+}
+
+fn utf16(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
 }

@@ -102,6 +102,49 @@ python tool/text_engine_prototype/score_eval.py
   `evidence/eval-report.md` has the tables and the frequent disagreements;
   `evidence/eval-report.json` has per-row samples.
 
+
+### From the audit to the shipped tables
+
+The evaluation says *where* the shipped conversion is wrong; two more scripts act
+on it, and both are re-runnable:
+
+```bash
+python tool/text_engine_prototype/audit_phrases.py --min-total 2   # what the reference says per entry
+python tool/text_engine_prototype/build_phrases.py                 # tables + rejection list + report
+```
+
+- `audit_phrases.py` takes every entry of OpenCC's Taiwan/Hong Kong phrase lists
+  (and Legado's exclude list) and counts, at every occurrence in the reference
+  corpus, whether the mainland rendering *matches* the entry, *differs* from it,
+  or *keeps* the Taiwan word. The report is what the hand decisions were made on;
+  the counts land in `eval-report.json`.
+- `phrase_decisions.tsv` is the hand answer — `drop`, `override`, `add`, each with
+  its reason — and `build_phrases.py` turns OpenCC's tables plus those decisions
+  into `packages/fjs/liber_text/assets/phrases/{tw2s,hk2s}.txt`, the
+  `*-rejected.tsv` lists and a `build-report.json`. The crate embeds the results,
+  so `cargo test` fails when a table moves without its fixture.
+
+What the audit changed, against the 18 658-sentence Wikipedia set: of OpenCC's 810
+Taiwan entries, 224 occur in the corpus; 38 were dropped and 3 overridden
+because the reference disagreed in nearly every occurrence (存檔 → 存盘 2 926
+times against 存档, 建立 → 创建 79/79 against 建立, 核心 → 内核 45/45, 執行 →
+运行, 新增 → 添加, 啟用 → 激活, 資料 → 数据, 通訊 → 通信, 指標 → 指针, 查詢 →
+查找, and 檔案 → 文件 split into its compounds). 79 entries were added
+(檔案館 → 档案馆, 智慧型 → 智能型, 著 → 着, 公尺 → 米, 『』 → ‘’, …). The reading
+conversion then measures:
+
+| | shipped reading conversion | previous implementation | OpenCC's list unedited |
+|---|---|---|---|
+| sentence-level exact | **72.8 %** | 68.8 % | 64.8 % |
+| error positions | **1.01 %** | 1.71 % | 1.92 % |
+| converted by the reference, left Traditional | **1 969** | 4 530 | 3 003 |
+| Traditional characters left per 1 000 | 0.06 | 0.36 | 0.36 |
+
+The remaining misses are mostly wording where the two references differ among
+themselves (資訊 → 信息 against the reference's 资讯), alignment noise on long
+sentences, and the `著`/`着` particle in verb+著 compounds the table has not
+listed yet.
+
 ## What was measured
 
 `verify.py` runs one phase per process — peak RSS is a process number, so a

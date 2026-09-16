@@ -1,0 +1,130 @@
+# Decisions taken by hand on top of OpenCC's TWPhrasesRev / HKPhrasesRev, after
+# the corpus audit (tool/text_engine_prototype/audit_phrases.py). Every entry that
+# is not listed here keeps OpenCC's value.
+#
+# action	key	value	reason
+#   drop	    the phrase is not used (it was wrong, redundant, or protects wording a mainland reader reads fine)
+#   override	the phrase is used, with a different target than OpenCC's
+#   add	    a phrase OpenCC does not carry (or carries in the other direction)
+#
+# The audit's counts are in evidence/eval-report.json and the audit run's output;
+# "kept" below means the Wikipedia zh-cn reference left OpenCC's key unchanged.
+
+drop	建立		OpenCC 建立→创建; the reference keeps 建立 in 79/79 cases and 建立 is the mainland word
+drop	核心		OpenCC 核心→内核; the reference keeps 核心 in 45/45, and 核心 is right outside kernel talk
+drop	新增		OpenCC 新增→添加; the reference keeps 新增 in 32/32
+drop	整合		OpenCC 整合→集成; the reference keeps 整合 in 25/33, and 整合 is the mainland word too
+drop	宣告		OpenCC 宣告→声明; 宣告 is ordinary mainland usage
+drop	影像		OpenCC 影像→图像; 影像 is ordinary mainland usage (medical, film, imaging)
+drop	程序		OpenCC 程序→进程; 程序 already is the mainland word for a program ( Taiwanese program is 程式, which the table maps separately)
+drop	文件		OpenCC 文件→文档; 文件 is the mainland word; 文档 is only sometimes right
+drop	元件		OpenCC 元件→组件; 元件 is the mainland word for a component in electronics
+drop	通訊		OpenCC 通訊→通信; the mainland word is 通讯 (中央通讯社), 通信 only in telecoms
+drop	啟用		OpenCC 啟用→激活; the mainland word for enabling is 启用, not 激活
+drop	執行		OpenCC 執行→运行; the mainland word is 执行 (執行秘書 → 执行秘书)
+drop	指標		OpenCC 指標→指针; 指標 is 指标, and 指针 is a different word (a pointer)
+drop	查詢		OpenCC 查詢→查找; the mainland word is 查询
+drop	台積電		characters alone already give 台积电; the phrase adds a 台→臺 normalisation no one needs
+drop	台積公司		same
+drop	智慧		OpenCC 智慧→智能 over-reaches; replaced by the two phrase entries added below
+drop	影片		OpenCC 影片→视频; 影片 is ordinary mainland usage, so leave it
+drop	資料		OpenCC 資料→数据; the mainland word is 资料 (数据库 is handled by its own entry)
+drop	區域性		OpenCC 區域性→局部; 区域性 and 局部 are different ideas
+drop	序列		OpenCC 序列→串行; sequence and serial are different ideas
+drop	數字		identity entry; the character table already gives 数字
+drop	高級		identity entry; the character table already gives 高级
+drop	社區		identity entry; the character table already gives 社区
+drop	數據		identity entry; the character table already gives 数据
+drop	方程式		identity entry
+drop	地址		identity entry
+drop	模擬		identity entry; the character table already gives 模拟
+drop	循環		identity entry; the character table already gives 循环
+drop	進程		identity entry; the character table already gives 进程
+drop	對象		identity entry; the character table already gives 对象
+drop	宏		identity entry
+drop	消息		identity entry
+drop	通道		identity entry
+drop	支持者		identity entry
+drop	檔案		OpenCC 檔案→文件 is right for compound nouns and wrong for 檔案館 etc.; split into the entries added below
+override	儲存	存储	儲存 is 存储 in the mainland, not 保存
+override	存檔	存档	存档 is the mainland word; OpenCC maps 存檔 to 存盘 (2 925 of 2 926 occurrences disagree with the reference)
+override	離線	离线	Offline is 离线 in the mainland; 脱机 is dated
+add	檔案館	档案馆	the mainland word is 档案馆 (互联网档案馆), not 文件馆
+add	檔案系統	文件系统	the mainland word is 文件系统
+add	檔案伺服器	文件服务器	the mainland word is 文件服务器
+add	檔案名稱	文件名	the mainland word is 文件名
+add	純文字檔案	纯文本文件	the mainland term for a plain text file
+add	智慧型	智能型	智能型 is the mainland adjective (智慧城市 stays 智慧)
+add	智慧型手機	智能手机	the mainland word is 智能手机
+add	機車	摩托车	Taiwanese 機車 is a motorcycle; the character table only gives 机车
+add	電單車	摩托车	Hong Kong usage, same thing
+add	桌球	乒乓球	Taiwanese 桌球 is table tennis; mainland 桌球 means billiards
+add	鐵達尼號	泰坦尼克号	the mainland film title
+add	魔鬼終結者	终结者	the mainland film title
+add	高空彈跳	蹦极	the mainland word is 蹦极
+add	音效卡	声卡	the mainland word is 声卡
+add	點陣圖	位图	the mainland word is 位图
+add	案頭	桌面	the mainland word is 桌面
+add	非同步	异步	the mainland word is 异步 (non-blocking I/O, async callbacks)
+add	變數	变量	Taiwanese 變數 is a variable; 变数 is not the mainland term in programming
+add	電扶梯	自动扶梯	the mainland word is 自动扶梯
+add	飆車族	飙车族	the mainland word (character-level 飆 → 飙 would give 飙车族, kept for clarity)
+add	魔獸紀元	魔兽世界	the mainland game title
+add	雪梨	悉尼	the mainland city name
+add	著手	着手	Taiwanese 著手 is the mainland 着手
+add	著急	着急	Taiwanese 著急 is the mainland 着急
+add	著火	着火	Taiwanese 著火 is the mainland 着火
+add	公尺	米	Taiwanese 公尺 is the mainland 米
+add	公分	厘米	Taiwanese 公分 is the mainland 厘米
+add	公釐	毫米	Taiwanese 公釐 is the mainland 毫米
+add	透過	通过	Taiwanese 透過 is the mainland 通过
+add	部份	部分	Taiwan writes 部份, the mainland 部分
+add	計劃	计划	Taiwan writes 計劃, the mainland 计划
+add	計畫	计划	Taiwan writes 計畫, the mainland 计划
+add	『	‘	Taiwan uses 『』 for inner quotes, the mainland ‘’; 「」 is kept in both
+add	睡著	睡着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	接著	接着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	跟著	跟着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	沿著	沿着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	藉著	藉着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	本著	本着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	憑著	憑着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	為著	為着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	看著	看着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	想著	想着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	說著	說着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	做著	做着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	帶著	帶着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	等著	等着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	記著	記着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	留著	留着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	用著	用着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	坐著	坐着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	躺著	躺着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	忙著	忙着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	試著	試着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	笑著	笑着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	哭著	哭着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	走著	走着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	跑著	跑着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	開著	開着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	關著	關着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	穿著	穿着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	拿著	拿着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	放著	放着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	掛著	掛着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	亮著	亮着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	硬著	硬着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	慢著	慢着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	急著	急着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	死著	死着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	活著	活着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	讀著	讀着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	寫著	寫着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	聽著	聽着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	找著	找着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	買著	買着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	賣著	賣着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	算著	算着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	盼著	盼着	Taiwanese 著 as the progressive particle; the mainland writes 着
+add	著	着	Taiwanese 著 is the mainland 着 (the zhe/zhao/zhuo readings); the zhù words are protected in the crate exclude list

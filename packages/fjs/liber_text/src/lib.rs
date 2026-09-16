@@ -36,7 +36,7 @@
 mod convert;
 mod scan;
 
-pub use convert::{Direction, convert};
+pub use convert::{ConvertTarget, Direction, convert, convert_to};
 pub use scan::{
     Anchor, Chapter, Index, IndexOptions, TextError, Window, detect_encoding, index_file,
     read_window,

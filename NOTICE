@@ -22,8 +22,14 @@ Third-party components
   Hankcs; those files are themselves text conversions of OpenCC's dictionaries
   (Apache-2.0). assets/hanlp-tc/PROVENANCE.md records the revision and hashes.
 - Legado's `fixT2sDict` word list, reproduced in
-  packages/fjs/liber_text/src/convert.rs as behavioural data: 38 words the frozen
-  reader keeps verbatim.
+  packages/fjs/liber_text/src/convert.rs as behavioural data: the words the frozen
+  reader keeps verbatim. The list was reduced to the words where conversion is
+  wrong rather than merely different (see ADR 0009's revision note).
+- The phrase tables in packages/fjs/liber_text/assets/phrases: derived from
+  OpenCC's `TWPhrasesRev.txt` / `HKPhrasesRev.txt` (Apache-2.0, copyright
+  BYVoid and contributors) with the corpus audit's corrections and additions
+  recorded in tool/text_engine_prototype/phrase_decisions.tsv. See the README
+  next to the tables.
 
 The Book Source compatibility baseline this project measures against is a
 separate work (Legado, GPL-3.0-or-later). Nothing in this repository is derived

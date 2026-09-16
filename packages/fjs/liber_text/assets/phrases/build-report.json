@@ -1,0 +1,24 @@
+{
+ "tw2s": {
+  "source": "TWPhrasesRev.txt",
+  "opencc_entries": 810,
+  "kept_from_opencc": 772,
+  "overridden": 3,
+  "added": 79,
+  "dropped": 38,
+  "no_op_dropped": 2,
+  "entries": 846,
+  "rejected": 41
+ },
+ "hk2s": {
+  "source": "HKPhrasesRev.txt",
+  "opencc_entries": 79,
+  "kept_from_opencc": 78,
+  "overridden": 0,
+  "added": 79,
+  "dropped": 1,
+  "no_op_dropped": 1,
+  "entries": 157,
+  "rejected": 1
+ }
+}

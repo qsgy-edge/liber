@@ -24,7 +24,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 FIXTURE = ROOT / 'packages/fjs/liber_text/assets/conversion_fixtures.tsv'
-PROBE_T2S = 'hanlp-fmm+exclude:t2s'
+PROBE_T2S = 'liber-reading:t2s'
 PROBE_S2T = 'hanlp-fmm:s2t'
 HEADER = """# Chinese conversion fixtures for packages/fjs/liber_text.
 #
@@ -35,11 +35,13 @@ HEADER = """# Chinese conversion fixtures for packages/fjs/liber_text.
 #
 # direction<TAB>input<TAB>this product<TAB>frozen baseline<TAB>note
 #
-# An empty note means the two agree; `divergence` means they do not, and the
-# row is one of ADR 0009's measured divergences: either the frozen reader's
-# merged phrase table turns a Taiwan word into its mainland equivalent and this
-# product converts only the characters (存檔 -> 存盘 against -> 存档), or the
-# frozen table keeps a character this product converts (乾).
+# An empty note means the two agree; `divergence` means they do not. The product
+# column is this crate's reading conversion (`convert_to(..., SimplifiedMainland)`:
+# characters plus regional wording), the baseline column is the frozen reader.
+# Every `divergence` row records a deliberate difference, not a defect: the
+# frozen table turns Taiwan words into mainland ones and keeps a mainland reader's
+# words (存檔 -> 存盘) where this product follows the mainland reference (-> 存档),
+# and it keeps a character this product converts (乾).
 """
 
 

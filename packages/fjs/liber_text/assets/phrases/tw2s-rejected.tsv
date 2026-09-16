@@ -1,0 +1,42 @@
+# action	key	value	reason
+drop	元件	组件	OpenCC 元件→组件; 元件 is the mainland word for a component in electronics
+drop	區域性	局部	OpenCC 區域性→局部; 区域性 and 局部 are different ideas
+drop	台積公司	台积公司	same
+drop	台積電	台积电	characters alone already give 台积电; the phrase adds a 台→臺 normalisation no one needs
+drop	司法程序	司法程序	no-op: identity in Simplified
+drop	啟用	激活	OpenCC 啟用→激活; the mainland word for enabling is 启用, not 激活
+drop	地址	地址	identity entry
+drop	執行	运行	OpenCC 執行→运行; the mainland word is 执行 (執行秘書 → 执行秘书)
+drop	宏	宏	identity entry
+drop	宣告	声明	OpenCC 宣告→声明; 宣告 is ordinary mainland usage
+drop	對象	对象	identity entry; the character table already gives 对象
+drop	序列	串行	OpenCC 序列→串行; sequence and serial are different ideas
+drop	建立	创建	OpenCC 建立→创建; the reference keeps 建立 in 79/79 cases and 建立 is the mainland word
+drop	影像	图像	OpenCC 影像→图像; 影像 is ordinary mainland usage (medical, film, imaging)
+drop	影片	视频	OpenCC 影片→视频; 影片 is ordinary mainland usage, so leave it
+drop	循環	循环	identity entry; the character table already gives 循环
+drop	指標	指针	OpenCC 指標→指针; 指標 is 指标, and 指针 is a different word (a pointer)
+drop	支持者	支持者	identity entry
+drop	整合	集成	OpenCC 整合→集成; the reference keeps 整合 in 25/33, and 整合 is the mainland word too
+drop	數字	数字	identity entry; the character table already gives 数字
+drop	數據	数据	identity entry; the character table already gives 数据
+drop	文件	文档	OpenCC 文件→文档; 文件 is the mainland word; 文档 is only sometimes right
+drop	新增	添加	OpenCC 新增→添加; the reference keeps 新增 in 32/32
+drop	方程式	方程式	identity entry
+drop	智慧	智能	OpenCC 智慧→智能 over-reaches; replaced by the two phrase entries added below
+drop	查詢	查找	OpenCC 查詢→查找; the mainland word is 查询
+drop	核心	内核	OpenCC 核心→内核; the reference keeps 核心 in 45/45, and 核心 is right outside kernel talk
+drop	模擬	模拟	identity entry; the character table already gives 模拟
+drop	檔案	文件	OpenCC 檔案→文件 is right for compound nouns and wrong for 檔案館 etc.; split into the entries added below
+drop	消息	消息	identity entry
+drop	社區	社区	identity entry; the character table already gives 社区
+drop	程序	进程	OpenCC 程序→进程; 程序 already is the mainland word for a program ( Taiwanese program is 程式, which the table maps separately)
+drop	資料	数据	OpenCC 資料→数据; the mainland word is 资料 (数据库 is handled by its own entry)
+drop	通訊	通信	OpenCC 通訊→通信; the mainland word is 通讯 (中央通讯社), 通信 only in telecoms
+drop	通道	通道	identity entry
+drop	進程	进程	identity entry; the character table already gives 进程
+drop	阿莫西林	阿莫西林	no-op: identity in Simplified
+drop	高級	高级	identity entry; the character table already gives 高级
+override	儲存	存储	was 保存: 儲存 is 存储 in the mainland, not 保存
+override	存檔	存档	was 存盘: 存档 is the mainland word; OpenCC maps 存檔 to 存盘 (2 925 of 2 926 occurrences disagree with the reference)
+override	離線	离线	was 脱机: Offline is 离线 in the mainland; 脱机 is dated

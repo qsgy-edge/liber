@@ -138,8 +138,14 @@ def score_row(row: dict, output: str, character_map: dict) -> dict:
             counts['why:' + classify(expected, actual, character_map)] += 1
             pairs['wrong'][f'{expected}→{actual}'] += 1
             continue
-        # Only the candidate changed this position.
-        if character_map.get(character) == actual:
+        # Only the candidate changed this position. If it wrote something free of
+        # Traditional characters where the source had a Traditional one, it is
+        # converting further than the reference rather than disagreeing (a phrase
+        # mapping such as 計畫 → 计划 lands here, as it should).
+        if character_map.get(character) == actual or (
+            character in character_map
+            and not any(part in character_map for part in actual)
+        ):
             counts['over_correct'] += 1
         else:
             counts['over_other'] += 1

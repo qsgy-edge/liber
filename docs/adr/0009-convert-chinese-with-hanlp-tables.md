@@ -94,3 +94,40 @@ See `docs/compatibility/book-source-capability-matrix.md` for the `t2s`/`s2t`
 row this changes, and `tool/text_engine_prototype/` for the harnesses, the raw
 reports and the re-run steps. Provenance: ticket #19, with the frozen-oracle
 harness kept beside the other retired ones in `liber-archive`.
+
+## Revision (2026-09-16): accuracy, not parity
+
+The decision above was made against one criterion: agreement with the frozen
+reader. The product's actual criterion is different — a reader who only reads
+Simplified should get *mainland* Simplified, wording included — and measuring
+that (an accuracy harness, `tool/text_engine_prototype/`, and the two reference
+sets it scores against) showed the parity criterion had been hiding a real gap:
+HanLP's character tables leave 硬碟, 滑鼠, 伺服器, 網際網路 and 資訊 in the text,
+because those are wording differences, not character differences.
+
+So the tables are now:
+
+1. HanLP 1.x `tc` characters, unchanged (`assets/hanlp-tc/`);
+2. **plus** `assets/phrases/tw2s.txt` and `hk2s.txt`: OpenCC's `TWPhrasesRev` /
+   `HKPhrasesRev` (Apache-2.0) minus 38 entries the corpus audit disagreed with,
+   plus 3 overrides and 79 additions (檔案館 → 档案馆, 存檔 → 存档, 智慧型 →
+   智能型, 著 → 着 and so on). The audit, the decisions and the build are all
+   re-runnable scripts; see `assets/phrases/README.md`;
+3. **minus** an exclude list reduced from Legado's 38 protected words to the ones
+   where converting is *wrong* rather than merely different: 槃 (涅槃), 魔戒, and
+   the zhù words (著作, 著名, 显著 …) that keep 著 in the mainland.
+
+The result against the Wikipedia reference set (18 658 sentences, `zh-tw` against
+its `zh-cn` rendering), per 1 000 code units of output: Traditional characters
+left **0.06** (the reference itself leaves 20.5, the previous implementation
+0.36), sentence-level exact matches **72.8 %** (was 68.8 %), error positions
+**1.01 %** (was 1.71 %), and positions the reference converts but this product
+leaves as Traditional **1 969** (was 4 530). OpenCC's own hand-made cases agree on
+50.6 % of rows at a 5.6 % error rate (was 40.8 % / 12.2 %).
+
+Two consequences worth stating plainly. First, the frozen reader's `t2s` is no
+longer the reference behaviour: the character-only path (`java.t2s`, which Book
+Source rules call) stays as it was, but the reader's conversion deliberately
+differs. Second, the remaining disagreements are mostly wording choices where no
+standard exists (資訊 → 信息 against the reference's 资讯); the harness reports
+them rather than scoring them as errors.

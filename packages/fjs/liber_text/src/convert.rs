@@ -10,64 +10,90 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Which direction to convert.
+/// Which direction to convert, as characters only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// Traditional to Simplified (`java.t2s`, the reader's 简体 setting).
+    /// Traditional to Simplified characters (`java.t2s`). No regional wording:
+    /// a Book Source rule uses this to normalise text before matching, and
+    /// rewriting its words would change what the rule matches.
     TraditionalToSimplified,
-    /// Simplified to Traditional (`java.s2t`, the reader's 繁體 setting).
+    /// Simplified to Traditional characters (`java.s2t`).
     SimplifiedToTraditional,
 }
 
-/// Words Legado keeps verbatim in `t2s`, in its own order
-/// (`io.legado.app.utils.ChineseUtils.fixT2sDict`). Each one is the identity
-/// mapping the frozen library installs, which is what makes e.g. 魔戒 stay 魔戒
-/// although the table would turn it into 指环王.
+/// What a reader wants the text to look like, wording included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConvertTarget {
+    /// Mainland Simplified: characters plus mainland wording (硬碟 → 硬盘,
+    /// 滑鼠 → 鼠标). This is the reading target for a 简体 reader.
+    SimplifiedMainland,
+    /// Traditional characters as they are, without a regional norm.
+    TraditionalGeneric,
+    /// Traditional characters in the Taiwan norm and with Taiwan wording.
+    TraditionalTaiwan,
+    /// Traditional characters in the Hong Kong norm and with Hong Kong wording.
+    TraditionalHongKong,
+}
+
+/// Words kept verbatim in character conversion.
+///
+/// The frozen reader protects 38 words from `t2s` (`io.legado.app.utils.ChineseUtils`,
+/// `fixT2sDict`), most of them Taiwanese wording: measuring that list against a
+/// mainland reference showed the reference converts nearly all of them, and that
+/// keeping them is what leaves 硬碟 and 滑鼠 in a Simplified text. What is left
+/// here are the words where converting is *wrong*, not merely different:
+///
+/// * 槃 — 涅槃 keeps its 槃; the table would write 涅盘;
+/// * 魔戒 — the mainland title of the novel is 魔戒, not 指环王;
+/// * the zhù words below — the phrase table maps 著 to 着 (Taiwanese 著 is the
+///   mainland 着), but 著作, 著名, 显著 and their relatives keep 著 in the
+///   mainland too, so they are protected from that mapping. The zhuó words
+///   (著手 → 着手, 著眼 → 着眼, 著色 → 着色) are *not* protected: they are 着 in
+///   the mainland.
+///
+/// Everything else moved to the phrase table (`assets/phrases/`, OpenCC plus the
+/// hand decisions in `tool/text_engine_prototype/phrase_decisions.tsv`) or is
+/// left to the character table.
 pub const T2S_EXCLUDE: &[&str] = &[
     "槃",
-    "划槳",
-    "列根",
-    "雪梨",
-    "雪糕",
-    "零錢",
-    "零钱",
-    "離線",
-    "碟片",
-    "模組",
-    "桌球",
-    "案頭",
-    "機車",
-    "電漿",
-    "鳳梨",
     "魔戒",
-    "載入",
-    "菲林",
-    "整合",
-    "變數",
-    "路易斯",
-    "非同步",
-    "出租车",
-    "周杰倫",
-    "马铃薯",
-    "馬鈴薯",
-    "機械人",
-    "電單車",
-    "電扶梯",
-    "音效卡",
-    "飆車族",
-    "點陣圖",
-    "個入球",
-    "顆進球",
-    "魔獸紀元",
-    "高空彈跳",
-    "铁达尼号",
-    "魔鬼終結者",
-    "純文字檔案",
+    "著作",
+    "著名",
+    "著者",
+    "著述",
+    "著錄",
+    "著録",
+    "著譯",
+    "著译",
+    "著稱",
+    "著称",
+    "編著",
+    "编著",
+    "譯著",
+    "译著",
+    "論著",
+    "论著",
+    "原著",
+    "巨著",
+    "名著",
+    "專著",
+    "专著",
+    "顯著",
+    "显著",
+    "卓著",
+    "昭著",
+    "遺著",
+    "遗著",
 ];
 
 /// The embedded tables, as NUL-free UTF-8 text.
 const T2S_TABLE: &str = include_str!("../assets/hanlp-tc/t2s.txt");
 const S2T_TABLE: &str = include_str!("../assets/hanlp-tc/s2t.txt");
+/// Regional wording on top of the character table: Taiwan and Hong Kong words as
+/// a mainland reader expects them. Built by `tool/text_engine_prototype/build_phrases.py`
+/// from OpenCC's `TWPhrasesRev`/`HKPhrasesRev` (Apache-2.0) plus hand decisions.
+const TW_PHRASES: &str = include_str!("../assets/phrases/tw2s.txt");
+const HK_PHRASES: &str = include_str!("../assets/phrases/hk2s.txt");
 
 /// A conversion table in the shape the frozen `DictionaryFactory` builds: a
 /// character map for one-unit entries and a trie of longer entries.
@@ -119,6 +145,17 @@ impl Table {
         }
     }
 
+    /// Folds another table into this one, keeping the longest match first.
+    fn merge(&mut self, other: Table) {
+        self.char_map.extend(other.char_map);
+        for (first, entries) in other.by_first {
+            let target = self.by_first.entry(first).or_default();
+            target.extend(entries);
+            target.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
+        }
+        self.max_len = self.max_len.max(other.max_len);
+    }
+
     /// `BasicDictionary.remove`: a one-unit word leaves the character map; a
     /// longer one enters the trie mapping to itself, so the whole word survives.
     fn exclude(&mut self, word: &str) {
@@ -165,10 +202,26 @@ impl Table {
     }
 }
 
+fn t2s_characters() -> &'static Table {
+    static TABLE: OnceLock<Table> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut table = Table::parse(T2S_TABLE);
+        for word in T2S_EXCLUDE {
+            table.exclude(word);
+        }
+        table
+    })
+}
+
+/// The reading table: characters plus regional wording. The phrases are longer
+/// entries in the same table, so a phrase wins over the character-by-character
+/// mapping, and the exclude list still wins over both.
 fn t2s() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
     TABLE.get_or_init(|| {
         let mut table = Table::parse(T2S_TABLE);
+        table.merge(Table::parse(TW_PHRASES));
+        table.merge(Table::parse(HK_PHRASES));
         for word in T2S_EXCLUDE {
             table.exclude(word);
         }
@@ -189,8 +242,26 @@ fn s2t() -> &'static Table {
 /// the same text as the same chapter converted inside its file.
 pub fn convert(text: &str, direction: Direction) -> String {
     let table = match direction {
-        Direction::TraditionalToSimplified => t2s(),
+        Direction::TraditionalToSimplified => t2s_characters(),
         Direction::SimplifiedToTraditional => s2t(),
+    };
+    let units: Vec<u16> = text.encode_utf16().collect();
+    String::from_utf16_lossy(&table.convert(&units))
+}
+
+/// Converts `text` to what [ConvertTarget] asks for, wording included.
+///
+/// The character-only [convert] stays as it is, because a Book Source rule calls
+/// it to normalise text and must not have its words rewritten; this is the path
+/// the reader uses.
+pub fn convert_to(text: &str, target: ConvertTarget) -> String {
+    let table = match target {
+        ConvertTarget::SimplifiedMainland => t2s(),
+        // The Traditional targets are the next slice: OpenCC's Taiwan and Hong
+        // Kong norm and wording tables are not wired in yet.
+        ConvertTarget::TraditionalGeneric
+        | ConvertTarget::TraditionalTaiwan
+        | ConvertTarget::TraditionalHongKong => s2t(),
     };
     let units: Vec<u16> = text.encode_utf16().collect();
     String::from_utf16_lossy(&table.convert(&units))
@@ -223,21 +294,48 @@ mod tests {
         // 槃 is excluded on its own, but 盤 is not excluded and still converts.
         assert_eq!(t2s_of("涅槃"), "涅槃");
         assert_eq!(t2s_of("棋盤"), "棋盘");
-        // 雪糕 is excluded, 雪 is not.
-        assert_eq!(t2s_of("雪糕"), "雪糕");
-        assert_eq!(t2s_of("下雪"), "下雪");
-        // 魔戒 is excluded; 魔鬼終結者 is excluded too, 魔 alone is not.
+        // 魔戒 is excluded and stays; 魔 on its own still converts.
         assert_eq!(t2s_of("魔戒"), "魔戒");
-        assert_eq!(t2s_of("魔鬼終結者"), "魔鬼終結者");
         assert_eq!(t2s_of("惡魔"), "恶魔");
     }
 
-    /// The measured fixture: every row is one input line, what the frozen
-    /// baseline produced for it, and what this product's tables produce. Rows
-    /// where the two differ are marked `divergence` by the generator, so a table
-    /// or matcher change that moves the output — and a divergence that appeared or
-    /// disappeared — fails the test and shows up as a fixture diff instead of
-    /// shipping silently.
+    /// The reading conversion: characters plus regional wording, which is what a
+    /// 简体 reader needs and what the phrase tables in `assets/phrases/` are for.
+    #[test]
+    fn reading_conversion_maps_regional_wording() {
+        let reading = |text| convert_to(text, ConvertTarget::SimplifiedMainland);
+        assert_eq!(reading("硬碟"), "硬盘");
+        assert_eq!(reading("滑鼠"), "鼠标");
+        assert_eq!(reading("伺服器"), "服务器");
+        assert_eq!(reading("網際網路檔案館"), "互联网档案馆");
+        assert_eq!(reading("頁面存檔備份"), "页面存档备份");
+        assert_eq!(reading("在寮國的伺服器的硬碟"), "在老挝的服务器的硬盘");
+        assert_eq!(
+            reading("這個軟體裡有一套軟體動物的資料庫"),
+            "这个软件里有一套软体动物的数据库"
+        );
+        // Words the frozen exclude list protected against mainland wording.
+        assert_eq!(reading("周杰倫"), "周杰伦");
+        assert_eq!(reading("鳳梨"), "凤梨");
+        assert_eq!(reading("非同步"), "异步");
+        // Words it protected because converting them would be wrong stay.
+        assert_eq!(reading("涅槃"), "涅槃");
+        assert_eq!(reading("魔戒"), "魔戒");
+        // A phrase entry beats the character-by-character mapping, and the
+        // character-only path keeps its wording for the host surface.
+        assert_eq!(reading("網際網路"), "互联网");
+        assert_eq!(
+            convert("網際網路", Direction::TraditionalToSimplified),
+            "网际网路"
+        );
+    }
+
+    /// The measured fixture: every row is one input line, what this crate's
+    /// reading conversion produces for it, and what the frozen baseline produces.
+    /// Rows where the two differ are marked `divergence` by the generator, so a
+    /// table or matcher change that moves the output — and a divergence that
+    /// appeared or disappeared — fails the test and shows up as a fixture diff
+    /// instead of shipping silently.
     const FIXTURE: &str = include_str!("../assets/conversion_fixtures.tsv");
 
     #[test]
@@ -253,15 +351,17 @@ mod tests {
                 failures.push(format!("第 {} 行不是 5 列", number + 1));
                 continue;
             };
-            let direction = match *direction {
-                "t2s" => Direction::TraditionalToSimplified,
-                "s2t" => Direction::SimplifiedToTraditional,
+            // `t2s` rows are the reading conversion: characters plus regional
+            // wording, which is what the product shows a reader. `s2t` rows are
+            // still the character path.
+            let actual = match *direction {
+                "t2s" => convert_to(input, ConvertTarget::SimplifiedMainland),
+                "s2t" => convert(input, Direction::SimplifiedToTraditional),
                 other => {
                     failures.push(format!("第 {} 行的方向 {other} 未知", number + 1));
                     continue;
                 }
             };
-            let actual = convert(input, direction);
             if actual != *expected {
                 failures.push(format!(
                     "第 {} 行 {input}：表产出 {actual:?}，期望 {expected:?}",
@@ -291,10 +391,11 @@ mod tests {
             failures.join("\n")
         );
         assert!(agreements > 0, "fixture 里没有与冻结基线一致的行");
-        // Eight rows diverge with the tables measured in ADR 0009; a different
-        // number is a different product and the ADR has to say so.
+        // Nine rows diverge with the tables measured in ADR 0009 and the phrase
+        // tables added afterwards; a different number is a different product and
+        // the ADR has to say so.
         assert_eq!(
-            divergences, 8,
+            divergences, 10,
             "与冻结基线的差异行数变了，需要更新 ADR 0009"
         );
     }
