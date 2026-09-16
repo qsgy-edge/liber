@@ -2,13 +2,15 @@
 
 **Status:** accepted for Windows (2026-09-15); its execution deadline and heap
 limit are measured on Windows by ticket #3 (2026-09-16); the five-platform
-adapter boundary is still open (#4)
+adapter boundary and the execution model are settled by ADR 0009 (2026-09-16),
+which removes the per-execution stacks (fibers) this decision originally chose.
 
-Source JavaScript executes in-process in the vendored `fjs`/QuickJS runtime whose
-Windows scheduler runs each execution on its own stack (a fiber), so a script
-blocked in a synchronous host call can be suspended and cancelled from another
-Dart isolate, and cancellation unblocks the suspended script instead of only
-rejecting a future result. Host access is an allowlisted surface with byte caps
+Source JavaScript executes in-process in the vendored `fjs`/QuickJS runtime. A
+script blocked in a synchronous host call parks on its thread and is served by a
+nested wait loop, so a cancellation from another Dart isolate ends that call with
+an error the script cannot swallow instead of only rejecting a future result;
+ADR 0009 removed the per-execution stacks this decision first described. Host
+access is an allowlisted surface with byte caps
 on script and host I/O. An asynchronous Promise wrapper cannot reproduce the
 baseline's synchronous host contract, and `flutter_js 0.8.7` was rejected as the
 shared candidate after its Windows self-checks showed no enforceable native
@@ -22,6 +24,10 @@ execution timeout, a failing Dart memory binding, and ambient
 - **Wrap host calls in Promises or `async`.** Rejected: the baseline's rule
   JavaScript receives host values synchronously, and a wrapper changes every
   rule's control flow.
+- **One stack per execution (a fiber), taken for Windows here.** Rejected by ADR
+  0009 once the five-platform boundary was settled: what it adds is not
+  source-observable, and the Windows path exists only by patching the pinned
+  QuickJS sources (`liber_stack.inc`) and carrying a second scheduler.
 - **One worker process or isolate per source as the default.** Rejected as the
   default: it cannot share the process-wide, source-visible state the
   differential contract compares. It remains available as an isolation option.
@@ -62,7 +68,7 @@ script cannot swallow the deadline: the gap is overshoot, never escape.
 and a deliberately blocked isolate delayed a 100 ms deadline to 443 ms. Moving
 the clock into Rust — a per-scope deadline compared inside the interrupt closure
 the broker already installs — is additive and removes that dependency, while
-leaving the poll-quantum gap.
+leaving the poll-quantum gap. ADR 0009 takes it, with the quantum at 1 000/1 000.
 
 **The poll quantum is the in-process lever.** Rebuilding patched copies of the
 pinned sources with both constants at 1 000 and 256 cut the worst measured
@@ -86,10 +92,13 @@ cannot do is bound a single C-level call or a loop dominated by native work
 between polls, so a *hard* execution bound needs process isolation with an
 OS-level kill — the "one worker process or isolate per source" option stays
 available for exactly that, and the choice belongs to the security boundary
-(#5). Every non-Windows runtime row is still `not-run`, and each platform's
+(#5). Every non-Windows *limits* row — heap, deadline, interrupt overshoot — is still
+`not-run`, while the shared runtime gates do run on Linux and macOS in CI, and each platform's
 binding must re-verify the interrupt behaviour when it exists. Closing an engine
 cancels its in-flight host calls by design, and a global `dispose` is
-deliberately not used per engine close.
+deliberately not used per engine close. ADR 0009 settles what this decision left
+open: one runtime for all five platforms, the removal of the fiber path, and the
+Rust-side deadline clock.
 
 See `packages/fjs/LIBER.md`,
 `docs/compatibility/five-platform-runtime-components.md`, and
