@@ -7,7 +7,6 @@
 //! non-BMP character is two units, and whether a table entry goes to the
 //! character map or the trie depends on that count.
 
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Which direction to convert, as characters only.
@@ -87,23 +86,113 @@ const ST_PHRASES: &str = include_str!("../assets/phrases/st-phrases.txt");
 /// character map for one-unit entries and a trie of longer entries.
 /// Longer entries, grouped by their first unit and ordered longest first, so the
 /// first match at a position is the longest match.
-type TrieIndex = HashMap<u16, Vec<(Vec<u16>, Vec<u16>)>>;
-
+/// A conversion table: single-unit entries in one flat array, longer entries in a
+/// prefix trie walked one unit at a time.
+///
+/// The first implementation copied the frozen `DictionaryFactory`'s shape, a hash
+/// of first-unit buckets whose entries were scanned longest-first. That is fine
+/// for the 4 468 characters HanLP's `t2s` table carries and slow for the ~101 000
+/// entries the Simplified-to-Traditional direction now has, where a common first
+/// character like 一 or 不 has hundreds of entries under it: the scan cost tracked
+/// the bucket, and every position in a chapter paid it. A trie makes a match a
+/// walk of at most `max_len` steps no matter how many entries share a first unit,
+/// and the longest match is simply the last value seen on the way down.
 struct Table {
-    char_map: HashMap<u16, u16>,
-    by_first: TrieIndex,
-    /// The longest key in the trie; a match never reaches past it.
+    nodes: Vec<Node>,
+    /// One slot per UTF-16 unit; 0 means "no mapping" (U+0000 is never a key).
+    characters: Vec<u16>,
+    /// The longest key in the trie; a walk never goes deeper.
     max_len: usize,
 }
 
+/// A node's children. Most nodes have a handful, where scanning a small vector
+/// beats a hash map's allocation; the root has one child per first unit in the
+/// table (thousands), where scanning would dominate every match — so a node
+/// switches to a hash map once it has more than `SPARSE_LIMIT` children.
+enum Children {
+    Sparse(Vec<(u16, u32)>),
+    Dense(std::collections::HashMap<u16, u32>),
+}
+
+impl Default for Children {
+    fn default() -> Self {
+        Children::Sparse(Vec::new())
+    }
+}
+
+const SPARSE_LIMIT: usize = 12;
+
+impl Children {
+    fn get(&self, unit: u16) -> Option<u32> {
+        match self {
+            Children::Sparse(entries) => entries
+                .iter()
+                .find(|(child, _)| *child == unit)
+                .map(|(_, node)| *node),
+            Children::Dense(entries) => entries.get(&unit).copied(),
+        }
+    }
+
+    fn insert(&mut self, unit: u16, node: u32) {
+        match self {
+            Children::Sparse(entries) => {
+                entries.push((unit, node));
+                if entries.len() > SPARSE_LIMIT {
+                    let mut dense = std::collections::HashMap::with_capacity(entries.len() * 2);
+                    for (child, node) in entries.drain(..) {
+                        dense.insert(child, node);
+                    }
+                    *self = Children::Dense(dense);
+                }
+            }
+            Children::Dense(entries) => {
+                entries.insert(unit, node);
+            }
+        }
+    }
+
+    fn for_each(&self, mut visit: impl FnMut(u16, u32)) {
+        match self {
+            Children::Sparse(entries) => {
+                for &(unit, node) in entries {
+                    visit(unit, node);
+                }
+            }
+            Children::Dense(entries) => {
+                for (&unit, &node) in entries {
+                    visit(unit, node);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct Node {
+    children: Children,
+    /// The value of an entry that ends here, if one does.
+    value: Option<Vec<u16>>,
+}
+
+const ROOT: u32 = 0;
+
 impl Table {
+    /// The frozen implementation uses a hash of first-unit buckets and scans the
+    /// bucket, which is fine for the 4 468 characters it ships and slow for the
+    /// 101 000 entries this crate now carries.
+    fn empty() -> Table {
+        Table {
+            nodes: vec![Node::default()],
+            characters: vec![0u16; u16::MAX as usize + 1],
+            max_len: 1,
+        }
+    }
+
     /// Reads `key=value` lines the way `DictionaryFactory.loadDictionary` does:
     /// `#` comments and empty lines are dropped, a line without `=` is skipped,
-    /// one-unit key and value go to the character map, anything else to the trie.
+    /// one-unit key and value go to the character array, anything else to the trie.
     fn parse(text: &str) -> Table {
-        let mut char_map = HashMap::new();
-        let mut by_first: TrieIndex = HashMap::new();
-        let mut max_len = 2usize;
+        let mut table = Table::empty();
         for line in text.lines() {
             if line.is_empty() || line.starts_with('#') {
                 continue;
@@ -111,80 +200,139 @@ impl Table {
             let Some((key, value)) = line.split_once('=') else {
                 continue;
             };
-            let key: Vec<u16> = key.encode_utf16().collect();
-            let value: Vec<u16> = value.encode_utf16().collect();
-            if key.is_empty() || value.is_empty() {
-                continue;
-            }
-            if key.len() == 1 && value.len() == 1 {
-                char_map.insert(key[0], value[0]);
-            } else {
-                max_len = max_len.max(key.len());
-                by_first.entry(key[0]).or_default().push((key, value));
-            }
+            table.insert_if_absent(key, value);
         }
-        for entries in by_first.values_mut() {
-            entries.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
+        table
+    }
+
+    /// Adds one `key=value` mapping unless the key is already there. Entries are
+    /// merged in the order the tables are read and the first one wins, which is
+    /// what makes merging OpenCC's tables *under* HanLP's keep HanLP's choices.
+    fn insert_if_absent(&mut self, key: &str, value: &str) {
+        let key: Vec<u16> = key.encode_utf16().collect();
+        let value: Vec<u16> = value.encode_utf16().collect();
+        self.insert(&key, value, false);
+    }
+
+    /// Adds one mapping, replacing whatever was there. Exclusion uses this: a
+    /// protected word has to win over a table entry of its own length.
+    fn insert_forced(&mut self, key: &str, value: &str) {
+        let key: Vec<u16> = key.encode_utf16().collect();
+        let value: Vec<u16> = value.encode_utf16().collect();
+        self.insert(&key, value, true);
+    }
+
+    fn insert(&mut self, key: &[u16], value: Vec<u16>, force: bool) {
+        if key.is_empty() || value.is_empty() {
+            return;
         }
-        Table {
-            char_map,
-            by_first,
-            max_len,
+        if key.len() == 1 && value.len() == 1 {
+            // A one-unit pair is a character mapping, not a phrase.
+            self.characters[key[0] as usize] = value[0];
+            return;
+        }
+        self.max_len = self.max_len.max(key.len());
+        let mut node = ROOT;
+        for &unit in key {
+            node = match self.nodes[node as usize].children.get(unit) {
+                Some(child) => child,
+                None => {
+                    self.nodes.push(Node::default());
+                    let child = (self.nodes.len() - 1) as u32;
+                    self.nodes[node as usize].children.insert(unit, child);
+                    child
+                }
+            };
+        }
+        if force || self.nodes[node as usize].value.is_none() {
+            self.nodes[node as usize].value = Some(value);
         }
     }
 
-    /// Folds another table into this one, keeping the longest match first.
+    /// Every entry in the trie, as (key, value), for merging one table into
+    /// another. Runs once per table at startup, so the clones do not matter.
+    fn entries(&self) -> Vec<(Vec<u16>, Vec<u16>)> {
+        let mut out = Vec::new();
+        let mut stack: Vec<(u32, Vec<u16>)> = vec![(ROOT, Vec::new())];
+        while let Some((index, prefix)) = stack.pop() {
+            if let Some(value) = &self.nodes[index as usize].value {
+                out.push((prefix.clone(), value.clone()));
+            }
+            let mut next_nodes: Vec<(u32, Vec<u16>)> = Vec::new();
+            self.nodes[index as usize].children.for_each(|unit, child| {
+                let mut next = prefix.clone();
+                next.push(unit);
+                next_nodes.push((child, next));
+            });
+            stack.extend(next_nodes);
+        }
+        out
+    }
+
+    /// Folds another table into this one: the other table's character mappings
+    /// win (that is what `HashMap::extend` did in the first implementation, so it
+    /// is the behaviour the fixtures and the gold sets were measured against),
+    /// and its trie entries are added only where this table has no key of its own
+    /// (the first table read wins, which is what merging OpenCC's tables *under*
+    /// HanLP's relies on).
     fn merge(&mut self, other: Table) {
-        self.char_map.extend(other.char_map);
-        for (first, entries) in other.by_first {
-            let target = self.by_first.entry(first).or_default();
-            target.extend(entries);
-            target.sort_by_key(|entry| std::cmp::Reverse(entry.0.len()));
+        for (index, mapped) in other.characters.iter().enumerate() {
+            if *mapped != 0 {
+                self.characters[index] = *mapped;
+            }
+        }
+        for (key, value) in other.entries() {
+            self.insert(&key, value, false);
         }
         self.max_len = self.max_len.max(other.max_len);
     }
 
-    /// `BasicDictionary.remove`: a one-unit word leaves the character map; a
-    /// longer one enters the trie mapping to itself, so the whole word survives.
+    /// `BasicDictionary.remove`: a one-unit word stops mapping; a longer one
+    /// enters the trie mapping to itself, so the whole word survives conversion.
     fn exclude(&mut self, word: &str) {
-        let word: Vec<u16> = word.encode_utf16().collect();
-        if word.len() == 1 {
-            self.char_map.remove(&word[0]);
+        let units: Vec<u16> = word.encode_utf16().collect();
+        if units.len() == 1 {
+            self.characters[units[0] as usize] = 0;
         } else {
-            self.max_len = self.max_len.max(word.len());
-            self.by_first
-                .entry(word[0])
-                .or_default()
-                .insert(0, (word.clone(), word));
+            self.insert_forced(word, word);
         }
     }
 
-    /// `BasicDictionary.convert`: longest table match at each position, else one
-    /// character through the character map.
+    fn child(&self, node: u32, unit: u16) -> Option<u32> {
+        self.nodes[node as usize].children.get(unit)
+    }
+
+    /// One pass over `input`: at each position the longest trie entry that
+    /// matches, else the character mapping, else the unit itself.
     fn convert(&self, input: &[u16]) -> Vec<u16> {
         let mut out = Vec::with_capacity(input.len());
         let mut at = 0usize;
         while at < input.len() {
-            let limit = at + self.max_len.min(input.len() - at);
-            let mut matched: Option<&(Vec<u16>, Vec<u16>)> = None;
-            if let Some(entries) = self.by_first.get(&input[at]) {
-                for entry in entries {
-                    if entry.0.len() <= limit - at && entry.0[..] == input[at..at + entry.0.len()] {
-                        matched = Some(entry);
-                        break;
+            let limit = (at + self.max_len).min(input.len());
+            let mut node = ROOT;
+            let mut cursor = at;
+            let mut best: Option<(usize, &Vec<u16>)> = None;
+            while cursor < limit {
+                match self.child(node, input[cursor]) {
+                    Some(next) => {
+                        node = next;
+                        cursor += 1;
+                        if let Some(value) = &self.nodes[node as usize].value {
+                            best = Some((cursor, value));
+                        }
                     }
+                    None => break,
                 }
             }
-            match matched {
-                Some((key, value)) => {
-                    out.extend_from_slice(value);
-                    at += key.len();
-                }
-                None => {
-                    out.push(*self.char_map.get(&input[at]).unwrap_or(&input[at]));
-                    at += 1;
-                }
+            if let Some((end, value)) = best {
+                out.extend_from_slice(value);
+                at = end;
+                continue;
             }
+            let unit = input[at];
+            let mapped = self.characters[unit as usize];
+            out.push(if mapped != 0 { mapped } else { unit });
+            at += 1;
         }
         out
     }

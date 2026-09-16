@@ -202,9 +202,25 @@ fn main() {
             let simplified_path = json_field(&parameters, "simplified").expect("simplified");
             let traditional = fs::read_to_string(traditional_path).expect("cannot read the text");
             let simplified = fs::read_to_string(simplified_path).expect("cannot read the text");
-            // Cold: the first call parses the embedded tables (lazily, once per
-            // process) and sorts every trie bucket, so it is the load cost plus
-            // one conversion. Warm: the same conversion with the tables in place.
+            // Load every table first, so the timings below are conversion and the
+            // load figures are the cost of parsing the embedded tables once per
+            // process (they are lazy, so the first call pays for them).
+            let warm_up = "这段文字很短。";
+            let start = Instant::now();
+            let _ = liber_text::convert_to(warm_up, ConvertTarget::SimplifiedMainland);
+            let load_t2s_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = liber_text::convert_to(warm_up, ConvertTarget::TraditionalGeneric);
+            let load_generic_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = liber_text::convert_to(warm_up, ConvertTarget::TraditionalTaiwan);
+            let load_taiwan_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = liber_text::convert_to(warm_up, ConvertTarget::TraditionalHongKong);
+            let load_hong_kong_micros = start.elapsed().as_micros();
+            let start = Instant::now();
+            let _ = convert(warm_up, Direction::TraditionalToSimplified);
+            let load_t2s_characters_micros = start.elapsed().as_micros();
             let start = Instant::now();
             let to_simplified = liber_text::convert_to(&traditional, ConvertTarget::SimplifiedMainland);
             let cold_t2s_micros = start.elapsed().as_micros();
@@ -228,7 +244,7 @@ fn main() {
             let _ = convert(&simplified, Direction::SimplifiedToTraditional);
             let warm_s2t_characters_micros = start.elapsed().as_micros();
             format!(
-                "\"t2s_code_units\":{},\"s2t_code_units\":{},\"t2s_micros\":{},\"s2t_micros\":{},\"t2s_changed\":{},\"s2t_changed\":{},\"cold_t2s_micros\":{},\"warm_t2s_micros\":{},\"warm_generic_micros\":{},\"warm_taiwan_micros\":{},\"warm_hong_kong_micros\":{},\"warm_t2s_characters_micros\":{},\"warm_s2t_characters_micros\":{}",
+                "\"t2s_code_units\":{},\"s2t_code_units\":{},\"t2s_micros\":{},\"s2t_micros\":{},\"t2s_changed\":{},\"s2t_changed\":{},\"cold_t2s_micros\":{},\"warm_t2s_micros\":{},\"warm_generic_micros\":{},\"warm_taiwan_micros\":{},\"warm_hong_kong_micros\":{},\"warm_t2s_characters_micros\":{},\"warm_s2t_characters_micros\":{},\"load_t2s_micros\":{},\"load_generic_micros\":{},\"load_taiwan_micros\":{},\"load_hong_kong_micros\":{},\"load_t2s_characters_micros\":{}",
                 traditional.encode_utf16().count(),
                 simplified.encode_utf16().count(),
                 warm_t2s_micros,
@@ -242,6 +258,11 @@ fn main() {
                 warm_hong_kong_micros,
                 warm_t2s_characters_micros,
                 warm_s2t_characters_micros,
+                load_t2s_micros,
+                load_generic_micros,
+                load_taiwan_micros,
+                load_hong_kong_micros,
+                load_t2s_characters_micros,
             )
         }
         other => {

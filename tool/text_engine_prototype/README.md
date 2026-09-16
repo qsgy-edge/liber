@@ -164,36 +164,41 @@ listed yet.
 ## Conversion cost (measured 2026-09-16, Windows, release)
 
 `rust_bench convert <params.json> <result.json>` with `modern-tw.txt` /
-`modern-cn.txt` (999 881 / 999 329 code units) reports the reading paths and the
-character-only paths in one process; `evidence/convert-profile.json` holds six
-runs (three per corpus). Medians of the three large-corpus runs:
+`modern-cn.txt` (999 881 / 999 329 code units) reports every path, with the tables
+pre-loaded so the timings are conversion and the `load_*` figures are the lazy
+parse. `evidence/convert-profile.json` holds six runs (three per corpus); medians
+of the three large-corpus runs, and what the previous matcher cost:
 
-| path | median | per 1 000 code units | per 5 000-unit chapter |
-|---|---|---|---|
-| cold `t2s` (first call, parses the embedded tables) | 43.2 ms | 0.043 ms | 0.22 ms + 2 ms once |
-| warm `t2s` (reading path, phrase tables included) | **42.2 ms** | 0.042 ms | **0.21 ms** |
-| warm `s2t` generic | **230.2 ms** | 0.230 ms | 1.15 ms |
-| warm `s2t` Taiwan (second pass added) | 265.6 ms | 0.266 ms | 1.33 ms |
-| warm `s2t` Hong Kong | 343.6 ms | 0.344 ms | 1.72 ms |
-| warm `java.s2t` (character-only, same table) | 307.4 ms | 0.307 ms | 1.54 ms |
+| path | trie (now) | bucket scan (before) | per 1 000 units | per 5 000-unit chapter |
+|---|---|---|---|---|
+| t2s (reading path, phrase tables included) | **31.5 ms** | 42.2 ms | 0.032 ms | 0.16 ms |
+| `java.t2s` (character-only) | 29.2 ms | 42.7 ms | 0.029 ms | 0.15 ms |
+| s2t generic | **49.3 ms** | 230.2 ms | 0.049 ms | 0.25 ms |
+| s2t Taiwan (second pass added) | 80.7 ms | 265.6 ms | 0.081 ms | 0.40 ms |
+| s2t Hong Kong | 71.1 ms | 343.6 ms | 0.071 ms | 0.36 ms |
+| `java.s2t` (character-only) | 45.8 ms | 307.4 ms | 0.046 ms | 0.23 ms |
 
-The spread between runs is the machine, not the code (the max column is 1.5-1.8×
-the min). On the one-line corpus, where every number is table loading only: cold
-`t2s` 1.96 ms, `s2t` generic 32.6 ms (it parses ~101 000 entries), Taiwan 0.25 ms,
-Hong Kong 0.05 ms, and the whole table set costs about **14.8 MB** of RSS.
+Table load once per process (`load_*`, from the one-line corpus): t2s 2.6 ms,
+s2t 68-76 ms for ~101 000 entries, Taiwan 0.34 ms, Hong Kong 0.09 ms, and the
+tables cost about **27 MB** of RSS — 12 MB more than the bucket matcher, which is
+the price of the trie's nodes and the speed above. Run-to-run spread on the large
+corpus is the machine (roughly 1.5×).
 
-So: conversion is Rust, one pass is far below a frame for a chapter, and the only
-expensive path is the Traditional direction, whose character table is twenty times
-larger than the Simplified one (HanLP's 52 834 entries plus OpenCC's 49 238
-phrases against 4 468 characters plus 870 phrases). The matcher scans the bucket
-of entries sharing a first character, longest first, so the cost tracks the
-bucket size. If a whole-book conversion or an export path ever needs it, the
-levers in order of payoff are a real prefix trie or a two-character index (a
-bucket of hundreds becomes a walk of two or three steps, plausibly 3-10× on
-`s2t`), building the tables at compile time instead of parsing them on first use
-(33 ms once), and sharding a long text across threads. None of that is needed for
-reading: a chapter converts in about a millisecond, on the same thread the reader
-already uses for indexing.
+The first implementation copied the frozen `DictionaryFactory`: a hash of
+first-unit buckets whose entries were scanned longest-first, so the cost tracked
+how many entries shared a first character — hundreds for a character like 一 once
+OpenCC's 49 238 phrases were merged in. The matcher is now a prefix trie walked
+one unit at a time, and a node switches from a small vector to a hash map past
+twelve children, which matters because the root has one child per first unit in
+the table. Comments and behaviour are unchanged: the crate's fixtures and all four
+gold sets reproduce the same numbers as before the rewrite (73.3 % exact / 1.00 %
+error on the Wikipedia set, 56.0 % on OpenCC's cases), and the bucket matcher
+still lives in the probe as the independent control.
+
+What a whole-book conversion would still want, if that need ever appears: sharding
+a long text across threads (4-8×), and building the tables at compile time to drop
+the 68 ms first-use parse. Reading needs neither — a chapter converts in less than
+half a millisecond.
 
 ## What was measured
 
