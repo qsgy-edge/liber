@@ -121,7 +121,8 @@ Relational, never a mask:
   authoritative absolute code-unit offset, ADR 0006's semantics), `line_index` +
   `offset_in_line` (display and tolerant restore), `text_length` (percentage fallback),
   `chapter_key`/`chapter_index` (TOC navigation and migration alignment, when chaptered),
-  and `anchor` (the first ~32 code units of the current line, hashed). `(chapterIndex,
+  and `anchor` (the first ≤32 code units of the current line, stored verbatim so the tolerant
+  tiers can compare it as a prefix — corrected 2026-09-16, see below). `(chapterIndex,
   textOffset)` comparison decides "advances only" and the timestamp breaks ties. The line
   fields cost nothing extra: the sparse index used for window lookup is already anchored at
   line starts.
@@ -146,7 +147,14 @@ Relational, never a mask:
 - *Compared with the frozen baseline:* it stores `durChapterIndex` + `durChapterPos`
   (`Book.kt:96,99`) — coarse anchor plus fine offset — but its chapter index drifts when the
   TOC changes, which the migration contract works around by only ever advancing progress.
-  This record keeps the coarse anchor as a stable `chapter_key` and adds the anchor hash.
+  This record keeps the coarse anchor as a stable `chapter_key` and adds the line's own
+  prefix as the fine anchor.
+- *Correction (2026-09-16).* The anchor is the line's first ≤32 code units **verbatim**, not a
+  hash: the near tier relocates it within ±N lines and the search tier finds it in the file,
+  and neither can compare a digest. `docs/user-data-contract.md` D4 and ADR 0007 carried the
+  word "hashed"; the implementation (`LocalReader.anchorOf`, `anchorMatches`) is the
+  behaviour the tiers need and the text above is what they implement. Recorded here because
+  a spec that says "hash" would justify a future format breaking the anchor comparison.
 - Chapters are always a list, never "no chapters": a local TXT/Markdown file without a
   chaptering rule is one implicit chapter spanning the file. This is the seam that lets
   regex chaptering (`txtTocRule`'s job) arrive later without changing progress or the

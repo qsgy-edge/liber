@@ -30,7 +30,10 @@ groups by name.
 
 **Progress is a five-field record and the reader pages.** The authoritative value stays the
 absolute code-unit offset (ADR 0006), joined by a line index, an offset in line, the text
-length, the chapter key, and an anchor hash; restore is tiered (exact, near, search,
+length, the chapter key, and the line's own prefix as the anchor *(corrected 2026-09-16: earlier
+revisions of this ADR and D4 called that field a hash, which no tier can compare — it is the
+line's first ≤32 code units stored verbatim; `docs/user-data-contract.md` D4 carries the same
+correction)*; restore is tiered (exact, near, search,
 fallback) because a local file can be edited, re-encoded, or replaced, and the same facts
 feed `needsRelink`. The reader renders a bounded window: measured layout cost is linear in
 code units (0.7 µs each at 1 M) but memory is not (≈250 bytes per code unit — 20 M code
