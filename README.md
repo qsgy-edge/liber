@@ -37,7 +37,7 @@ Early and Windows-first. What runs on `master` today:
   `java.t2s`/`java.s2t` share. Measured on a 500 MB TXT: 609 ms and 5.7 MB peak
   RSS, against 11.6 s for a pure-Dart pass and 2.8 s / 817 MB for the whole-file
   read it replaces. See [`tool/text_engine_prototype/`](tool/text_engine_prototype/README.md)
-  and [ADR 0009](docs/adr/0009-convert-chinese-with-hanlp-tables.md).
+  and [ADR 0010](docs/adr/0010-convert-chinese-with-hanlp-tables.md).
 - **Automated gates** for that slice, including frozen differentials against an
   Android-generated golden (see below).
 
