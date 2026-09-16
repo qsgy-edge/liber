@@ -173,6 +173,15 @@ class SpaceStore {
     );
   }
 
+  /// Stores the charset a local book's file was detected as: the encoding its
+  /// windows are decoded with (`books.charset`, D2's field set). An update like
+  /// the relink flag's, because the file is indexed after the book is admitted.
+  Future<void> setBookCharset(String bookId, String charset) async {
+    await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
+      BooksCompanion(charset: Value(charset)),
+    );
+  }
+
   /// The next free position: `bookOrder` is one int per book per space (D3),
   /// and a book added to the shelf goes to the end of it.
   Future<int> nextBookOrder() async {
@@ -291,9 +300,10 @@ class SpaceStore {
   ///
   /// [saveProgress]'s forward-only rule is the *merge* rule (D6's import, D4's
   /// migration alignment); a reader that went back a chapter still has to find
-  /// itself there when it reopens the book. Columns this build does not write
-  /// (the line index, the line offsets, the text length and the anchor, #20's
-  /// five-field writer) keep their values.
+  /// itself there when it reopens the book. A companion that leaves a column out
+  /// keeps that column's value, which is how the reader's five-field writer
+  /// (`LocalLibrary.saveProgressRecord`) and the coarse offset writer
+  /// (`LocalLibrary.updateOffset`) can both write this row.
   Future<void> putProgress(ProgressCompanion progress) =>
       db.into(db.progress).insertOnConflictUpdate(progress);
 
@@ -362,8 +372,7 @@ class SpaceStore {
   /// The index describes one version of a file, so a rebuild replaces it whole:
   /// a half-written index would let the reader seek to an anchor that describes
   /// other bytes, and D4's restore tiers assume the anchors and the file agree.
-  /// The read side — the nearest anchor for an offset, and the progress writer
-  /// that fills this table while reading — belongs to #20.
+  /// [textIndexOf] is the read side the reader seeks with.
   Future<void> putTextIndex(
     String rootId,
     String relativePath,
@@ -390,6 +399,31 @@ class SpaceStore {
     });
   }
 
+  /// The sparse anchors of one local file, in file order — the seek the reader
+  /// and the restore tiers do (D4). [putTextIndex] is the same rows' other half.
+  Future<List<TextIndexAnchor>> textIndexOf(
+    String rootId,
+    String relativePath,
+  ) async {
+    final rows =
+        await (db.select(db.textIndex)
+              ..where(
+                (t) =>
+                    t.rootId.equals(rootId) &
+                    t.relativePath.equals(relativePath),
+              )
+              ..orderBy([(t) => OrderingTerm(expression: t.byteOffset)]))
+            .get();
+    return [
+      for (final row in rows)
+        (
+          byteOffset: row.byteOffset,
+          codeUnitOffset: row.codeUnitOffset,
+          lineIndex: row.lineIndex,
+        ),
+    ];
+  }
+
   Future<LocalRoot> putLocalRoot(LocalRootsCompanion root) async {
     await db.into(db.localRoots).insertOnConflictUpdate(root);
     final stored = db.select(db.localRoots)
@@ -412,6 +446,14 @@ class SpaceStore {
 
   Future<List<LocalFile>> localFilesOf(String rootId) =>
       (db.select(db.localFiles)..where((f) => f.rootId.equals(rootId))).get();
+
+  /// One local file by its natural key.
+  Future<LocalFile?> localFile(String rootId, String relativePath) =>
+      (db.select(db.localFiles)..where(
+            (f) =>
+                f.rootId.equals(rootId) & f.relativePath.equals(relativePath),
+          ))
+          .getSingleOrNull();
 
   // --- Settings ------------------------------------------------------------
 
