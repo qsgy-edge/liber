@@ -2,79 +2,32 @@
   "status": "pass",
   "platform": "windows",
   "scope": "windows only; every other platform stays not-run until this file runs there",
-  "recordedAt": "2026-09-16T21:41:10+0800",
-  "repositoryHead": "6f915dc0f1ec96ddeca8441ed75720ec0a7789cc",
-  "repositoryBranch": "wayfinder/25",
+  "recordedAt": "2026-09-16T22:10:34+0800",
+  "repositoryHead": "93ba2460edf1b5c3e4ac7d8910264fbff1e4aa30",
+  "repositoryBranch": "master",
   "uncommittedChanges": [
-    "M .github/workflows/ci.yml",
-    " M README.md",
-    " M book_sources/README.md",
-    " M docs/adr/0009-share-one-runtime-across-the-five-platforms.md",
-    " M docs/compatibility/book-source-differential-contract.md",
-    " M lib/source/js_source_runtime.dart",
-    " M packages/fjs/LIBER.md",
-    " M packages/fjs/lib/src/frb/api/engine.dart",
-    " M packages/fjs/lib/src/frb/api/engine.freezed.dart",
-    " M packages/fjs/lib/src/frb/api/error.dart",
-    " M packages/fjs/lib/src/frb/api/error.freezed.dart",
-    " M packages/fjs/lib/src/frb/api/html.dart",
-    " M packages/fjs/lib/src/frb/api/runtime.dart",
-    " M packages/fjs/lib/src/frb/api/source.dart",
-    " M packages/fjs/lib/src/frb/api/source.freezed.dart",
-    " M packages/fjs/lib/src/frb/api/text.dart",
-    " M packages/fjs/lib/src/frb/api/text.freezed.dart",
-    " M packages/fjs/lib/src/frb/api/value.dart",
-    " M packages/fjs/lib/src/frb/api/value.freezed.dart",
-    " M packages/fjs/lib/src/frb/frb_generated.dart",
-    " M packages/fjs/lib/src/frb/frb_generated.io.dart",
-    " M packages/fjs/lib/src/frb/frb_generated.web.dart",
-    " M packages/fjs/libfjs/cargokit.yaml",
-    " M packages/fjs/libfjs/src/api/engine.rs",
-    " M packages/fjs/libfjs/src/frb_generated.rs",
-    "D  packages/fjs/libfjs/src/runtime/fibers.rs",
-    " M packages/fjs/libfjs/src/runtime/mod.rs",
-    " M packages/fjs/libfjs/vendor/rquickjs-sys/LIBER.md",
-    " M packages/fjs/libfjs/vendor/rquickjs-sys/build.rs",
-    "D  packages/fjs/libfjs/vendor/rquickjs-sys/liber_stack.inc",
-    " M tool/ci_runtime.py",
-    "D  tool/fiber_runtime_gate.dart",
-    " M tool/nested_oracle_compare.dart",
-    " M tool/runtime_limits_prototype/README.md",
-    "D  tool/runtime_limits_prototype/build.ps1",
-    " M tool/runtime_limits_prototype/evidence/gates.log",
-    " M tool/runtime_limits_prototype/evidence/manifest.json",
+    "M tool/runtime_limits_prototype/evidence/gates.log",
     " M tool/runtime_limits_prototype/evidence/windows-native.json",
     " M tool/runtime_limits_prototype/evidence/windows-product.json",
-    " M tool/runtime_limits_prototype/evidence/windows-quantum.json",
-    " M tool/runtime_limits_prototype/native_probe.c",
-    " M tool/runtime_limits_prototype/product_probe.dart",
-    " M tool/runtime_limits_prototype/quantum_probe.c",
-    " M tool/runtime_limits_prototype/verify.py",
-    " M tool/scoped_runtime_gate.dart",
-    " M tool/state_oracle_compare.dart",
-    " M windows/flutter/generated_plugin_registrant.cc",
-    " M windows/flutter/generated_plugin_registrant.h",
-    " M windows/flutter/generated_plugins.cmake",
-    "?? .scratch/",
-    "?? tool/__pycache__/"
+    " M tool/runtime_limits_prototype/evidence/windows-quantum.json"
   ],
   "libraries": {
     "release": {
-      "path": "D:\\GithubRepositories\\Flutter\\liber-25\\packages\\fjs\\libfjs\\target\\release\\fjs.dll",
-      "sha256": "fe854f8c727d98ba0621aa4d3ab93f246755b814b22a476d0a8d1c989c96fcbd",
+      "path": "D:\\GithubRepositories\\Flutter\\liber\\packages\\fjs\\libfjs\\target\\release\\fjs.dll",
+      "sha256": "50f3eb77efc716f4063c88179243b35b413c69a2ee57056207fd1e8bd464d1d4",
       "bytes": 20070912,
-      "mtime": "2026-09-16T21:01:36"
+      "mtime": "2026-09-16T22:01:07"
     },
     "gates": {
-      "path": "D:\\GithubRepositories\\Flutter\\liber-25\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
-      "sha256": "3189f661ffb29a600cce6e71c50d4ec451ed8c159cafc30eb8949ebab6815751",
-      "bytes": 51892736,
-      "mtime": "2026-09-16T21:04:40"
+      "path": "D:\\GithubRepositories\\Flutter\\liber\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
+      "sha256": "1def19b352a9f26c18d018b6cddefab7ebe39eb34ec7cb99afbbfe2f6b175cc0",
+      "bytes": 51896320,
+      "mtime": "2026-09-16T21:51:32"
     }
   },
   "nativeProbe": {
     "path": "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-runtime-limits-prototype\\native_probe.exe",
-    "sha256": "62eb2f28a9b713cce08767599fce4435eeee0792b2500e48e8701675e3857d6a"
+    "sha256": "0ade74a9709683fd9c4b54051819be608cf1b4baa0742e28cdc113ce380c5200"
   },
   "engines": {
     "quickjs": "QuickJS 0.15.1 (pinned vendored sources)",
@@ -99,234 +52,234 @@
     },
     {
       "path": "tool/runtime_limits_prototype/verify.py",
-      "sha256": "b1291737d12bfaece48bb5bc70221c8ce7995d7ee3b762e6f10b3775db676277"
+      "sha256": "7210a9ebc6acdf50f8e8d28303e9d6def122f6a114003446f77148219f760c5e"
     },
     {
       "path": "tool/ci_runtime.py",
-      "sha256": "b1d10823d0237ae43acbb7e4e931658f4bdaf287c0c3c3745e9867c9435e113a"
+      "sha256": "138f60b4473fcafaf81ce4c7a019ab261f1609a8bf7890d83408826bf4158535"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.c",
-      "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+      "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.c",
-      "sha256": "0e36603ef85787abbdc2a659ff177e27666770131ff17d14c836cab801e7235e"
+      "sha256": "d1e7c4280e1948a25310aaa80aedc273b6fe12322964965f9025ba1800f2c14d"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.c",
-      "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+      "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c",
-      "sha256": "52cdce6397574396624f6ab4bdb5eb19c228614d8f3b96688928da476ca0a9cb"
+      "sha256": "ce9a95d3c011f255c1facb7d4361c71209e71ba58d84acd3281a755d0686a285"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-array-fromasync.h",
-      "sha256": "8cde76ef2cd41c2e405d2124f0acd5f9b4afe0e9f06f3ae1ab1c2c3af557056d"
+      "sha256": "15f09db08ed753b453344344cfcb83c375aa72022d8ba1ef0260b78c22197c51"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip-keyed.h",
-      "sha256": "7e3b04746f3a6e2fe795914f0a586222143e1f71348b419115b6a7f82812553c"
+      "sha256": "6b8ef36145ca4a748aacff7a832d967fb9a1f56728c5a31c71cbe52cbdf8b5ec"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/builtin-iterator-zip.h",
-      "sha256": "84b6f7ee40d3444158f5ae1188d5879cd134de8bc550c2c2b9ba87c8539b2700"
+      "sha256": "f818521cee10517ec639ec753aed795d3230b0d868be2be35a8a81f3732f12c4"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/cutils.h",
-      "sha256": "5e774b902bab848498b1d62cff1a2a5928d96f61e1927617f934319a146161e5"
+      "sha256": "b93331edd1bf86e1c0b516657d0b16b95bba5f24d799d9824df16f903173b5c2"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/dtoa.h",
-      "sha256": "ae28bfa866c399886ab092624f7f70edee7336e030a67f30139661416465c7bc"
+      "sha256": "1c4a4540c0038632c8a4c225472fbc21bd476fb35c4da4a857a11965b58231b9"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp-opcode.h",
-      "sha256": "85cf61681e3ed4008f7e34990d5e0eda5bc030419920c4a57f2d4090a154b3c1"
+      "sha256": "c5ee518885eb6e720537b6df5565ddc2bcaadbda512f3fc072adc96fb24a7648"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libregexp.h",
-      "sha256": "6baa9353bf3b73091e725bfdf82718e659d731b67facde7e485e3dd2fb67d96f"
+      "sha256": "991adcaedb0e0ab653811f7f6e1244a23a7454dff6ce647b518df9a22201c122"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode-table.h",
-      "sha256": "35a8d6647ae3959c6075ebdc874544d0c6d270701d0c83239141aba99c6e0ac9"
+      "sha256": "391d664bacefef239c4349d338c59bf6aa70128f23b105bb5c052db48a14c439"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/libunicode.h",
-      "sha256": "0848ba7cd1a6ef17a04bebf44e3b1d461bcdcc7570ea18d157a5970620ea394b"
+      "sha256": "70f9f38b1cd10186d22e30d5f604465f4747662701f3310e089e5749060f4d4f"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/list.h",
-      "sha256": "f3a1ff3c435342de26c5f55c10b95fce32a7072e4e2955239ff335857b00fead"
+      "sha256": "cb6e24e8ee54bccdd66234fe54cd702d1160b9841db2b9b9adeb5003afe301d5"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-atom.h",
-      "sha256": "5c29549f2b25ae8ef9f35d1f3fb3031b1e5133da1a62c8becaac9daa67dd1b7d"
+      "sha256": "66654ae6533d15073ea527979c453709d7ed83162142c656095a10dcef737a60"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-c-atomics.h",
-      "sha256": "9e01ec23bd13086b950b7bf0481b6f50bcdc99d4527e740c35de8eb8d852aedc"
+      "sha256": "29883c742a5c512278fce54d19b1b9af949006e1d7dfc9ffa2e0946b184d8c5c"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs-opcode.h",
-      "sha256": "7a0c83c43dff3d3732f0aeac21d23cbe63acf5a77cda73e0b97d848be88f1ec9"
+      "sha256": "0054b0c45fd091afa308c3fb93b5862e0b071235918d3d73e413d23fce388bbc"
     },
     {
       "path": "packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.h",
-      "sha256": "665b36f22e3658ff16f8a45c12c95ea27e912dcad98df127b6af9af1117281ba"
+      "sha256": "e407f69c89f806dde1ad7f86801e4116d1bbe9e35c0941669acd3ca04278b517"
     }
   ],
   "evidenceHashes": [
     {
       "path": "tool/runtime_limits_prototype/evidence/manifest.json",
-      "sha256": "9283b42c26b769d1e60fd3165ab1f932bc6109d564b4e14ee7cdbfe10f22b252"
+      "sha256": "b3dbcc0209907f5319f74dacc7c3f30faff4ca2689461bb441279f5e06364c95"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-native.json",
-      "sha256": "da94dc9944d4be00e8668e794d1bd4d41df015516398e19c296a2d6285484685"
+      "sha256": "fd40dfb4fd9cdd9a420699812727aa826e0000337cea070a5f884b59e57dbafb"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-product.json",
-      "sha256": "e653e71ee6a8d8b8aea63b5949cd97204ddbea78e429ea827d9d9d6ca720ae64"
+      "sha256": "08291dffa52a219670dbf6ec8034e60ef1e3c42ad7f8f872daaf93ac5bc47ad1"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-quantum.json",
-      "sha256": "80f7f174e0b1179c1c7afb66a0e178e3532e2b76a5f183a74292ed3e6d58ee1d"
+      "sha256": "88d22d07bb8deb6ac6fe878c486a526abdc4ea5a64801063d6c0588ec1adcc40"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/gates.log",
-      "sha256": "2a12d55b9dc32b01ccc98366fc6be39c0a9106e5208b8778e809a47b415e8144"
+      "sha256": "d9d7a8126233f1469524f1f27fbdaad31cc9689818c3aae54e99b1e458c4d4cc"
     }
   ],
   "gates": {
     "runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.586
+      "seconds": 7.279
     },
     "runtime_host_integration": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.697
+      "seconds": 8.654
     },
     "host_surface_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.333
+      "seconds": 7.029
     },
     "broker_lifecycle_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.624
+      "seconds": 4.707
     },
     "broker_loader_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 2.835
+      "seconds": 6.025
     },
     "scoped_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 6.986
+      "seconds": 8.808
     },
     "nested_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.193
+      "seconds": 6.928
     },
     "html-adapter": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.17
+      "seconds": 5.509
     },
     "broker_gate_regression-queued-close": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.232
+      "seconds": 3.66
     },
     "broker_gate_regression-throw-start": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 2.731
+      "seconds": 6.382
     },
     "broker_gate_regression-throw-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.045
+      "seconds": 3.788
     },
     "broker_gate_regression-same-runtime-nested": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.372
+      "seconds": 4.491
     },
     "broker_gate_regression-same-runtime-queued-release": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 2.996
+      "seconds": 3.638
     },
     "broker_gate_regression-same-runtime-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.935
+      "seconds": 4.376
     },
     "state-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 6.236
+      "seconds": 5.705
     },
     "nested-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.491
+      "seconds": 4.451
     }
   },
   "findings": {
     "heapLimitEnforced": true,
     "deadlineInterruptsInterpreterWork": true,
     "deadlineIsHardBound": false,
-    "deadlineHeavyLoopBodyOvershootMs": 311.5,
-    "deadlineOomRetryOvershootMs": 21593.1,
-    "deadlineSingleNativeCallMeasuredMs": 189.6,
+    "deadlineHeavyLoopBodyOvershootMs": 819.0,
+    "deadlineOomRetryOvershootMs": 30017.1,
+    "deadlineSingleNativeCallMeasuredMs": 367.1,
     "deadlineSingleNativeCallInterrupted": false,
     "quantumSensitivity": {
       "10000": {
-        "heavyLoopWorstOvershootMs": 430.23,
-        "allocationLoopWorstOvershootMs": 83.32,
-        "oomRetryWorstOvershootMs": 1919.86,
-        "throughputLoopFastestMs": 1038.81,
-        "throughputOnlyFastestMs": 1016.04
+        "heavyLoopWorstOvershootMs": 466.91,
+        "allocationLoopWorstOvershootMs": 99.58,
+        "oomRetryWorstOvershootMs": 2122.96,
+        "throughputLoopFastestMs": 1007.98,
+        "throughputOnlyFastestMs": 1019.41
       },
       "1000": {
-        "heavyLoopWorstOvershootMs": 8.01,
-        "allocationLoopWorstOvershootMs": 19.24,
-        "oomRetryWorstOvershootMs": 277.44,
-        "throughputLoopFastestMs": 994.09,
-        "throughputOnlyFastestMs": 1002.93
+        "heavyLoopWorstOvershootMs": 14.56,
+        "allocationLoopWorstOvershootMs": 27.67,
+        "oomRetryWorstOvershootMs": 239.61,
+        "throughputLoopFastestMs": 1044.35,
+        "throughputOnlyFastestMs": 1693.89
       },
       "256": {
-        "heavyLoopWorstOvershootMs": 14.68,
-        "allocationLoopWorstOvershootMs": 23.95,
-        "oomRetryWorstOvershootMs": 36.14,
-        "throughputLoopFastestMs": 977.94,
-        "throughputOnlyFastestMs": 985.38
+        "heavyLoopWorstOvershootMs": 4.98,
+        "allocationLoopWorstOvershootMs": 15.92,
+        "oomRetryWorstOvershootMs": 57.23,
+        "throughputLoopFastestMs": 1884.96,
+        "throughputOnlyFastestMs": 1793.71
       }
     }
   },
   "measured": {
     "productDeadlineBasicOvershootMs": [
-      4.126000000000005,
-      0.3300000000000125,
-      -0.02800000000002001
+      7.644999999999996,
+      0.9039999999999964,
+      1.0819999999999936
     ],
-    "productHeavyLoopOvershootMs": 12.576999999999998,
-    "productSingleNativeCallMeasuredMs": 858.81,
-    "productOomRetryOvershootMs": 40.565999999999974,
-    "productHostCallOvershootMs": 39.482,
-    "productIsolateBlockedMeasuredMs": 437.103,
-    "productIsolateBlockedElapsedAfterUnblockMs": 3.317,
-    "productRssGrowthOverHeapLimitBytes": 2052096
+    "productHeavyLoopOvershootMs": 90.28800000000001,
+    "productSingleNativeCallMeasuredMs": 1557.449,
+    "productOomRetryOvershootMs": 92.209,
+    "productHostCallOvershootMs": 73.81799999999998,
+    "productIsolateBlockedMeasuredMs": 453.153,
+    "productIsolateBlockedElapsedAfterUnblockMs": 5.146,
+    "productRssGrowthOverHeapLimitBytes": 2646016
   },
   "failures": []
 }

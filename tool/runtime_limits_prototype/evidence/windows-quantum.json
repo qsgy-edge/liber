@@ -8,7 +8,7 @@
           "deadlineMs": 100,
           "repeats": 3,
           "fastestMs": 100.02,
-          "medianMs": 100.02,
+          "medianMs": 100.03,
           "slowestMs": 100.04,
           "worstOvershootMs": 0.04,
           "interruptedInEverySample": true
@@ -16,45 +16,45 @@
         "heavyLoopBody": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 519.01,
-          "medianMs": 520.98,
-          "slowestMs": 530.23,
-          "worstOvershootMs": 430.23,
+          "fastestMs": 520.47,
+          "medianMs": 538.21,
+          "slowestMs": 566.91,
+          "worstOvershootMs": 466.91,
           "interruptedInEverySample": true
         },
         "allocationLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 169.6,
-          "medianMs": 178.7,
-          "slowestMs": 183.32,
-          "worstOvershootMs": 83.32,
+          "fastestMs": 170.43,
+          "medianMs": 173.61,
+          "slowestMs": 199.58,
+          "worstOvershootMs": 99.58,
           "interruptedInEverySample": true
         },
         "regexpBacktracking": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.09,
-          "medianMs": 100.11,
-          "slowestMs": 100.15,
-          "worstOvershootMs": 0.15,
+          "fastestMs": 100.04,
+          "medianMs": 100.1,
+          "slowestMs": 100.13,
+          "worstOvershootMs": 0.13,
           "interruptedInEverySample": true
         },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 1582.84,
-          "medianMs": 1591.35,
-          "slowestMs": 2219.86,
-          "worstOvershootMs": 1919.86,
+          "fastestMs": 1597.99,
+          "medianMs": 1606.55,
+          "slowestMs": 2422.96,
+          "worstOvershootMs": 2122.96,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 1038.81,
-          "medianMs": 1179.46,
-          "slowestMs": 1282.44,
+          "fastestMs": 1007.98,
+          "medianMs": 1015.31,
+          "slowestMs": 1056.88,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -62,9 +62,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 1016.04,
-        "medianMs": 1097.0,
-        "slowestMs": 1184.78,
+        "fastestMs": 1019.41,
+        "medianMs": 1037.28,
+        "slowestMs": 1084.56,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },
@@ -91,11 +91,11 @@
         },
         {
           "path": "libunicode.c",
-          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+          "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702"
         },
         {
           "path": "dtoa.c",
-          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+          "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af"
         }
       ]
     },
@@ -107,52 +107,52 @@
           "repeats": 3,
           "fastestMs": 100.02,
           "medianMs": 100.02,
-          "slowestMs": 100.04,
-          "worstOvershootMs": 0.04,
+          "slowestMs": 100.03,
+          "worstOvershootMs": 0.03,
           "interruptedInEverySample": true
         },
         "heavyLoopBody": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 103.36,
-          "medianMs": 104.62,
-          "slowestMs": 108.01,
-          "worstOvershootMs": 8.01,
+          "fastestMs": 106.98,
+          "medianMs": 109.65,
+          "slowestMs": 114.56,
+          "worstOvershootMs": 14.56,
           "interruptedInEverySample": true
         },
         "allocationLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 115.98,
-          "medianMs": 116.29,
-          "slowestMs": 119.24,
-          "worstOvershootMs": 19.24,
+          "fastestMs": 109.94,
+          "medianMs": 118.09,
+          "slowestMs": 127.67,
+          "worstOvershootMs": 27.67,
           "interruptedInEverySample": true
         },
         "regexpBacktracking": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.03,
+          "fastestMs": 100.02,
           "medianMs": 100.03,
-          "slowestMs": 100.03,
-          "worstOvershootMs": 0.03,
+          "slowestMs": 100.04,
+          "worstOvershootMs": 0.04,
           "interruptedInEverySample": true
         },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 304.1,
-          "medianMs": 365.01,
-          "slowestMs": 577.44,
-          "worstOvershootMs": 277.44,
+          "fastestMs": 523.04,
+          "medianMs": 536.53,
+          "slowestMs": 539.61,
+          "worstOvershootMs": 239.61,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 994.09,
-          "medianMs": 1012.45,
-          "slowestMs": 1055.42,
+          "fastestMs": 1044.35,
+          "medianMs": 1084.82,
+          "slowestMs": 2242.7,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -160,9 +160,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 1002.93,
-        "medianMs": 1016.25,
-        "slowestMs": 1040.23,
+        "fastestMs": 1693.89,
+        "medianMs": 1791.78,
+        "slowestMs": 1936.5,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },
@@ -189,11 +189,11 @@
         },
         {
           "path": "libunicode.c",
-          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+          "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702"
         },
         {
           "path": "dtoa.c",
-          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+          "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af"
         }
       ]
     },
@@ -212,45 +212,45 @@
         "heavyLoopBody": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 101.3,
-          "medianMs": 113.72,
-          "slowestMs": 114.68,
-          "worstOvershootMs": 14.68,
+          "fastestMs": 100.75,
+          "medianMs": 102.63,
+          "slowestMs": 104.98,
+          "worstOvershootMs": 4.98,
           "interruptedInEverySample": true
         },
         "allocationLoop": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 111.92,
-          "medianMs": 111.95,
-          "slowestMs": 123.95,
-          "worstOvershootMs": 23.95,
+          "fastestMs": 113.16,
+          "medianMs": 115.76,
+          "slowestMs": 115.92,
+          "worstOvershootMs": 15.92,
           "interruptedInEverySample": true
         },
         "regexpBacktracking": {
           "deadlineMs": 100,
           "repeats": 3,
-          "fastestMs": 100.02,
-          "medianMs": 100.02,
-          "slowestMs": 100.03,
-          "worstOvershootMs": 0.03,
+          "fastestMs": 100.03,
+          "medianMs": 100.03,
+          "slowestMs": 100.04,
+          "worstOvershootMs": 0.04,
           "interruptedInEverySample": true
         },
         "oomRetryLoop": {
           "deadlineMs": 300,
           "repeats": 3,
-          "fastestMs": 300.88,
-          "medianMs": 314.5,
-          "slowestMs": 336.14,
-          "worstOvershootMs": 36.14,
+          "fastestMs": 328.1,
+          "medianMs": 341.67,
+          "slowestMs": 357.23,
+          "worstOvershootMs": 57.23,
           "interruptedInEverySample": true
         },
         "throughputLoop": {
           "deadlineMs": 0,
           "repeats": 9,
-          "fastestMs": 977.94,
-          "medianMs": 1016.17,
-          "slowestMs": 1162.69,
+          "fastestMs": 1884.96,
+          "medianMs": 1919.69,
+          "slowestMs": 2115.71,
           "worstOvershootMs": 0.0,
           "interruptedInEverySample": false
         }
@@ -258,9 +258,9 @@
       "throughputOnly": {
         "deadlineMs": 0,
         "repeats": 9,
-        "fastestMs": 985.38,
-        "medianMs": 1004.75,
-        "slowestMs": 1064.86,
+        "fastestMs": 1793.71,
+        "medianMs": 1936.33,
+        "slowestMs": 2136.29,
         "worstOvershootMs": 0.0,
         "interruptedInEverySample": false
       },
@@ -287,11 +287,11 @@
         },
         {
           "path": "libunicode.c",
-          "sha256": "374159232a90e4981cc3f96d941d5ea138e1f35508b0e5f838a79ff175d350b6"
+          "sha256": "62bfe07a00c297d62cf89d2a147f1d0cd0e90ae7c8058e0fabb66e896950a702"
         },
         {
           "path": "dtoa.c",
-          "sha256": "ecfd6fa900b6d7f80d6f00d33dfe6cb4e0552ddbe256f0e7cca502ede455f9b6"
+          "sha256": "a8d2cf2d04db406e0c16acdd95ab0e709d309902865722f41dac07a1ba5676af"
         }
       ]
     }

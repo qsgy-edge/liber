@@ -11,7 +11,7 @@ Running build hooks...Running build hooks...
 
 Running build hooks...Running build hooks...
 ===== broker_lifecycle_regression (exit 0) =====
-{"case":"init-close-64","pass":true,"initSucceeded":0,"initCancelled":0,"initRejected":64}
+{"case":"init-close-64","pass":true,"initSucceeded":1,"initCancelled":0,"initRejected":63}
 {"case":"forged-cancel","pass":true}
 {"case":"unrelated-background-error-retained","pass":true}
 {"case":"native-heap-limit","pass":true,"resultType":"JsError_MemoryLimit"}
@@ -27,7 +27,6 @@ Running build hooks...Running build hooks...
 Running build hooks...Running build hooks...
 ===== nested_runtime_gate (exit 0) =====
 {"status":"pass","checks":{"nestedSharedClosure":true,"subsequentSharedClosure":true,"sameLibraryAcrossInstances":true,"freshOuterBindings":true,"assignmentShadowsLibrary":true,"libraryDoesNotCaptureBindings":true,"freshNestedBindings":true,"twoLevelHostCalls":true,"xmlJsBlock":true,"outerResumes":true,"nestedErrorBeforeIo":true,"caughtNestedErrorKeepsLibrary":true,"nestedLoopCancelled":true,"afterCancellationKeepsState":true,"libraryInitCancelled":true,"sequentialCounter":true,"concurrentCallsKeepState":true,"jsonFourStagesWithNestedLibrary":true},"requests":["/1","/true","/address","/final","/4","/5","/14","/search","/book","/toc","/content"]}
-Drop DartOpaque after closing the port, thus the object will be leaked forever.
 
 Running build hooks...Running build hooks...
 ===== html-adapter (exit 0) =====
@@ -43,10 +42,10 @@ Running build hooks...Running build hooks...
 {"case":"throw-start","pass":true,"result":"Type error: TypeError: Error converting from js 'bridge' into type 'JsValue': Bridge error: Host start callback failed\n    at <eval> (eval_script:1:4)","settledOnlyAfterClose":false}
 
 Running build hooks...Running build hooks...
-thread 'fjs-js' (65136) panicked at src\frb_generated.rs:7317:23:
+thread 'fjs-js' (62100) panicked at src\frb_generated.rs:7317:23:
 Dart throws exception but Rust side assume it is not failable: Bad state: test-start-failure
 
-#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber-25/tool/broker_gate_regression.dart:161:34)
+#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber/tool/broker_gate_regression.dart:161:34)
 #1      LibFjsApiImpl.encode_DartFn_Inputs_bridge_request_Output_unit_AnyhowException.<anonymous closure> (package:fjs/src/frb/frb_generated.dart:4866:34)
 #2      Function._apply (dart:core-patch/function_patch.dart:11:71)
 #3      Function.apply (dart:core-patch/function_patch.dart:38:12)
@@ -141,10 +140,10 @@ Error in dart_fn_handle_output when sending message for call_id 1: Dart2RustMess
 {"case":"throw-cancel","pass":true,"result":"Cancelled: JavaScript engine was closed","closeError":"Bridge error: Host cancellation callback failed after runtime shutdown"}
 
 Running build hooks...Running build hooks...
-thread 'tokio-rt-worker' (37540) panicked at src\frb_generated.rs:7387:23:
+thread 'tokio-rt-worker' (59584) panicked at src\frb_generated.rs:7387:23:
 Dart throws exception but Rust side assume it is not failable: Bad state: test-cancel-failure
 
-#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber-25/tool/broker_gate_regression.dart:165:35)
+#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber/tool/broker_gate_regression.dart:165:35)
 #1      LibFjsApiImpl.encode_DartFn_Inputs_u_64_Output_unit_AnyhowException.<anonymous closure> (package:fjs/src/frb/frb_generated.dart:4932:34)
 #2      Function._apply (dart:core-patch/function_patch.dart:11:71)
 #3      Function.apply (dart:core-patch/function_patch.dart:38:12)
