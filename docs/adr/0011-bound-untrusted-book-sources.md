@@ -89,6 +89,11 @@ The quantum is now measured on both sides of its trade-off: the retry loop's wor
 takes 1 008 ms / 1 044 ms / 1 885 ms at those three settings. 1 000 is a deliberate midpoint; 256 buys a 4×
 smaller worst case for roughly 1.8× less throughput.
 
+The corrected residual was put to the operator with these numbers on 2026-09-16 and **accepted as the cost of
+staying in process**: the quantum stays at 1 000, and lowering it is explicitly *not* the answer to the 20–30 s
+shape — that shape is native-dominated, so it polls about once per iteration whatever the quantum is, and only a
+process boundary would bound it. The reopen condition above is unchanged.
+
 ## 2. The file and download family is deferred, and fails with a name, not a `TypeError`
 
 The baseline's file family is a real sandbox: `getFile` resolves a relative path against the app's external
