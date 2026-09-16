@@ -99,6 +99,14 @@ jobs:
       - name: Text engine tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml
+      # The crate the whole source runtime depends on carried a failing test that
+      # no job ran (ticket #34). The host target is the matrix target on every
+      # desktop job, so this test build reuses the native build from "Build
+      # native runtime" above instead of compiling the same dependency graph for
+      # the host a second time.
+      - name: Runtime tests
+        if: matrix.platform != 'android' && matrix.platform != 'ios'
+        run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         with:
