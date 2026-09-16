@@ -26,6 +26,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
+  # pubspec.lock records the host every package came from, and this project
+  # resolves against the mirror; the runners reach both it and its storage host
+  # (probed 2026-09-16). A run without this variable rewrites all 105 `url:`
+  # lines and then fails `flutter pub get --enforce-lockfile`.
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
 
 jobs:
   platform:
