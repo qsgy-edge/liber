@@ -63,21 +63,61 @@ async fn runtime_and_context_from_create() -> (JsAsyncRuntime, JsAsyncContext) {
     (runtime, context)
 }
 
+/// QuickJS's own default JS stack budget (`JS_DEFAULT_STACK_SIZE` in this
+/// revision's `quickjs.h`), the value both runtime constructors deliberately
+/// replace with `ASYNC_MAX_STACK_SIZE`.
+const QUICKJS_DEFAULT_STACK_SIZE: usize = 1024 * 1024;
+
+/// The two async constructors apply the same execution budget, and that budget
+/// is the executor thread's JS allowance (three quarters of its stack), not
+/// QuickJS's own default.
+///
+/// The probe stops at a byte count of C stack, not at a build-independent frame
+/// count: this unoptimized profile spends roughly 14 KiB per JavaScript call, so
+/// the default budget stops at 431 frames against 70 for QuickJS's own default.
+/// A fixed frame count would assert a property of the build instead of the
+/// constructors', so the test compares the two constructors with each other and
+/// the shared default with a configured limit.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn async_runtime_constructors_apply_same_generous_stack_default() {
     let (_new_runtime, new_context) = runtime_and_context_from_new().await;
     let (_created_runtime, created_context) = runtime_and_context_from_create().await;
 
-    let new_result = probe_depth(&new_context, 500).await;
-    let created_result = probe_depth(&created_context, 500).await;
+    let new_result = probe_depth(&new_context, 100_000).await;
+    let created_result = probe_depth(&created_context, 100_000).await;
 
     assert!(
-        new_result.0,
-        "new() runtime should reach depth 500 by default, got {new_result:?}"
+        !new_result.0 && new_result.2 == "RangeError",
+        "the default budget should stop runaway recursion with a catchable \
+         RangeError, got {new_result:?}"
     );
     assert!(
-        created_result.0,
-        "create() runtime should reach depth 500 by default, got {created_result:?}"
+        !created_result.0 && created_result.2 == "RangeError",
+        "the default budget should stop runaway recursion with a catchable \
+         RangeError, got {created_result:?}"
+    );
+    // The executor anchors QuickJS's stack top when it enters an execution, so
+    // the two probes can land one frame apart; a smaller default in either
+    // constructor shows up as hundreds of frames, not one.
+    assert!(
+        new_result.1.abs_diff(created_result.1) <= 1,
+        "new() and create() should spend the same default budget, got \
+         {new_result:?} and {created_result:?}"
+    );
+
+    let (limited_runtime, limited_context) = runtime_and_context_from_new().await;
+    limited_runtime
+        .set_max_stack_size(QUICKJS_DEFAULT_STACK_SIZE)
+        .await;
+    let limited_result = probe_depth(&limited_context, 100_000).await;
+
+    assert_eq!(limited_result.2, "RangeError");
+    assert!(
+        new_result.1 >= 4 * limited_result.1,
+        "the default budget is the executor thread's allowance ({} bytes), far \
+         above QuickJS's own {QUICKJS_DEFAULT_STACK_SIZE}-byte default: \
+         {new_result:?} vs {limited_result:?}",
+        crate::runtime::stack::ASYNC_MAX_STACK_SIZE
     );
 }
 
