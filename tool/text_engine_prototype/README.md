@@ -3,31 +3,37 @@
 **Verdict, on Windows, with the inputs in the page cache.** The engine the ticket
 asks for exists (`packages/fjs/liber_text`, behind the same `cargokit`/FRB native
 library as the JavaScript runtime and the HTML adapter) and the numbers it was
-asked to beat are beaten:
+asked to beat are beaten. The values below are the committed run
+(`evidence/manifest.json`); each engine row ran three times, so its spread is
+visible, and a second run of the whole file earlier the same day was faster
+across the board (609 ms for the 500 MB pass, 11.6 s for the Dart pass) — the
+spread is the machine, not the engine.
 
 | Row | Pass time | Peak RSS | Footprint |
 |---|---|---|---|
-| **Engine, 500 MB UTF-8** (release, no Dart in the process) | **609 ms** (603/609/617) | 5.7 MB | **2.5 MB** |
-| Engine, 20 MB GBK | 384 ms (347/384/385) | 6.8 MB | 2.9 MB |
-| Engine, 31.7 MB UTF-8 (the GBK text's twin) | 270 ms | 6.8 MB | 2.8 MB |
-| Window read, 20 000 units at offset 100 000 000 of the 500 MB file | **1.9 ms** | 5.2 MB | 1.3 MB |
-| Pure-Dart streaming index, same 500 MB file | 11 570 ms | 267 MB | 20.2 MB |
-| `File.readAsString()`, same 500 MB file | 2 797 ms | **1 060 MB** | 817 MB |
-| The engine through the bridge (release DLL, Dart process) | 925 ms | 270 MB | 24.4 MB |
-| …through the bridge (debug DLL, what `flutter run` loads) | 9 995 ms | | 10.8× slower |
+| **Engine, 500 MB UTF-8** (release, no Dart in the process) | **977 ms** (921 / 977 / 1012) | 6.7 MB | **2.8 MB** |
+| Engine, 20 MB GBK | 537 ms (537 / 542 / 537) | 6.8 MB | 2.9 MB |
+| Engine, 31.7 MB UTF-8 (the GBK text's twin) | 415 ms | 6.8 MB | 2.8 MB |
+| Window read, 20 000 units at offset 100 000 000 of the 500 MB file | **2.5 ms** | 5.2 MB | 1.3 MB |
+| Pure-Dart streaming index, same 500 MB file | 15 613 ms | 272 MB | 23.4 MB |
+| `File.readAsString()`, same 500 MB file | 3 553 ms | **1 085 MB** | 832 MB |
+| The engine through the bridge (release DLL, Dart process) | 1 370 ms | 271 MB | 23.0 MB |
+| …through the bridge (debug DLL, what `flutter run` loads) | 12 162 ms | | 8.9× slower |
 
 Targets from `docs/user-data-contract.md` D4/D10: a 500 MB pass under ~1 s and
-peak RSS under ~50 MB. **Both hold for the engine itself** (609 ms, 5.7 MB); the
-Dart-side rows show why the work left Dart: the pure-Dart pass is 19× slower and
-the decode the reader does today costs 817 MB more than the file it reads. The
-`File.readAsString()` row reproduces the contract's existing measurement (2.9 s,
-≈ 1 GB) on this machine.
+peak RSS under ~50 MB. **Both hold for the engine itself** (977 ms at the median
+of three runs, 6.7 MB of a 50 MB budget); the Dart-side rows show why the work
+left Dart: the pure-Dart pass is 16× slower and the decode the reader does today
+allocates 832 MB more than the file it reads. That `File.readAsString()` row is
+the contract's existing measurement — 2.9 s and ≈ 1 GB — reproduced on this
+machine (3.6 s, 1.09 GB). The bridge row is the product's real path and pays a
+further ~0.4 s to hand 15 964 anchors across FRB.
 
 **The encoding argument is now a measured row, not a claim.** `dart:convert` has
 no GBK decoder: `File.readAsStringSync()` on the 20 MB GBK file fails with
 `FileSystemException: Failed to decode data using encoding 'utf-8'`, and decoding
 it with `allowMalformed` produces **13 085 856 replacement characters**. The
-engine indexes the same file in 384 ms and a window read returns its text.
+engine indexes the same file in 537 ms and a window read returns its text.
 
 **The conversion decision (A or B) is A: HanLP 1.x's `tc` tables plus Legado's
 exclude list.** The measured difference from the frozen reader, as a share of the
@@ -162,6 +168,7 @@ reports, are committed.
   `tests/data/chaptered_book.txt` and none in the wiki corpus, which has no
   chapter headings; no claim is made about TXT files whose headings need the
   disabled default rules (回/部/篇/场/话) or a user's own rule.
-- **Conversion timing in the app.** The measured conversion row is ~90 ns per
-  code unit (1 M units per direction in 178 ms), i.e. sub-millisecond for the few
-  thousand units of a chapter, but no reader has converted a chapter yet.
+- **Conversion timing in the app.** The measured conversion row is ~120 ns per
+  code unit (1 M units per direction in 242 ms, both directions in one process),
+  i.e. well under a millisecond for the few thousand units of a chapter, but no
+  reader has converted a chapter yet.

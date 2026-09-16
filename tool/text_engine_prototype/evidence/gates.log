@@ -1,136 +1,136 @@
 $ cargo build --release --manifest-path D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\Cargo.toml
-exit=0 wall=0.27s
-stderr:     Finished `release` profile [optimized] target(s) in 0.12s
+exit=0 wall=0.31s
+stderr:     Finished `release` profile [optimized] target(s) in 0.17s
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-1.json
-exit=0 wall=0.65s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":603274,"baseline_rss_bytes":4059136,"peak_rss_bytes":6995968,"platform":"windows"}
+exit=0 wall=1.11s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":921432,"baseline_rss_bytes":4059136,"peak_rss_bytes":6848512,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-2.json
-exit=0 wall=0.65s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":608814,"baseline_rss_bytes":4059136,"peak_rss_bytes":6901760,"platform":"windows"}
+exit=0 wall=1.01s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":977262,"baseline_rss_bytes":4046848,"peak_rss_bytes":6709248,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-500mb-utf8-3.json
-exit=0 wall=0.66s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":616963,"baseline_rss_bytes":3325952,"peak_rss_bytes":5935104,"platform":"windows"}
+exit=0 wall=1.05s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"elapsed_micros":1011930,"baseline_rss_bytes":4050944,"peak_rss_bytes":6987776,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-1.json
-exit=0 wall=0.44s
-{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":384857,"baseline_rss_bytes":4063232,"peak_rss_bytes":7053312,"platform":"windows"}
+exit=0 wall=0.59s
+{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":537212,"baseline_rss_bytes":4034560,"peak_rss_bytes":7204864,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-2.json
-exit=0 wall=0.42s
-{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":383584,"baseline_rss_bytes":4055040,"peak_rss_bytes":7106560,"platform":"windows"}
+exit=0 wall=0.58s
+{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":541901,"baseline_rss_bytes":4046848,"peak_rss_bytes":7102464,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-gbk-3.json
-exit=0 wall=0.38s
-{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":346841,"baseline_rss_bytes":4071424,"peak_rss_bytes":7135232,"platform":"windows"}
+exit=0 wall=0.57s
+{"phase":"rust-bench-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"elapsed_micros":537293,"baseline_rss_bytes":4050944,"peak_rss_bytes":7114752,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-1.json
-exit=0 wall=0.31s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":266305,"baseline_rss_bytes":4059136,"peak_rss_bytes":7028736,"platform":"windows"}
+exit=0 wall=0.47s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":435650,"baseline_rss_bytes":4067328,"peak_rss_bytes":6889472,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-2.json
-exit=0 wall=0.30s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":269487,"baseline_rss_bytes":4059136,"peak_rss_bytes":7024640,"platform":"windows"}
+exit=0 wall=0.45s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":414660,"baseline_rss_bytes":4063232,"peak_rss_bytes":7122944,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe index D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-index-20mb-utf8-3.json
-exit=0 wall=0.31s
-{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":272321,"baseline_rss_bytes":4063232,"peak_rss_bytes":7114752,"platform":"windows"}
+exit=0 wall=0.44s
+{"phase":"rust-bench-index","encoding":"UTF-8","bytes":31739520,"code_units":10711920,"anchors":954,"chapters":0,"elapsed_micros":412627,"baseline_rss_bytes":4050944,"peak_rss_bytes":6914048,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-1.json
-exit=0 wall=0.04s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":2018,"baseline_rss_bytes":4063232,"peak_rss_bytes":5414912,"platform":"windows"}
+exit=0 wall=0.05s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":3669,"baseline_rss_bytes":4034560,"peak_rss_bytes":5394432,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-2.json
-exit=0 wall=0.04s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":1821,"baseline_rss_bytes":4059136,"peak_rss_bytes":5419008,"platform":"windows"}
+exit=0 wall=0.03s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":2468,"baseline_rss_bytes":4059136,"peak_rss_bytes":5410816,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-500mb-3.json
-exit=0 wall=0.04s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":1863,"baseline_rss_bytes":4063232,"peak_rss_bytes":5423104,"platform":"windows"}
+exit=0 wall=0.03s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":1250000,"elapsed_micros":2452,"baseline_rss_bytes":4050944,"peak_rss_bytes":5410816,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-1.json
-exit=0 wall=0.06s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":985,"baseline_rss_bytes":4042752,"peak_rss_bytes":4681728,"platform":"windows"}
+exit=0 wall=0.04s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":1276,"baseline_rss_bytes":4050944,"peak_rss_bytes":4685824,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-2.json
-exit=0 wall=0.04s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":908,"baseline_rss_bytes":4067328,"peak_rss_bytes":4706304,"platform":"windows"}
+exit=0 wall=0.03s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":1197,"baseline_rss_bytes":4071424,"peak_rss_bytes":4726784,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe window D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-window-20mb-gbk-3.json
-exit=0 wall=0.04s
-{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":903,"baseline_rss_bytes":4055040,"peak_rss_bytes":4689920,"platform":"windows"}
+exit=0 wall=0.03s
+{"phase":"rust-bench-window","code_units":20000,"at_end":false,"line_index":30257,"elapsed_micros":1154,"baseline_rss_bytes":4030464,"peak_rss_bytes":4669440,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe convert D:\liber-probe\text-engine\bench\rust-rust-bench-convert-1.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-convert-1.json
-exit=0 wall=0.23s
-{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":39671,"s2t_micros":131012,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":187484,"baseline_rss_bytes":4055040,"peak_rss_bytes":27320320,"platform":"windows"}
+exit=0 wall=0.29s
+{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":44858,"s2t_micros":177915,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":242490,"baseline_rss_bytes":4055040,"peak_rss_bytes":28184576,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe convert D:\liber-probe\text-engine\bench\rust-rust-bench-convert-2.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-convert-2.json
-exit=0 wall=0.21s
-{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":36644,"s2t_micros":128099,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":178198,"baseline_rss_bytes":4075520,"peak_rss_bytes":27197440,"platform":"windows"}
+exit=0 wall=0.27s
+{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":49078,"s2t_micros":179888,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":242730,"baseline_rss_bytes":4030464,"peak_rss_bytes":27447296,"platform":"windows"}
 
 $ D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\rust_bench\target\release\rust_bench.exe convert D:\liber-probe\text-engine\bench\rust-rust-bench-convert-3.params.json D:\liber-probe\text-engine\bench\rust-rust-bench-convert-3.json
-exit=0 wall=0.21s
-{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":38747,"s2t_micros":125310,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":177248,"baseline_rss_bytes":4063232,"peak_rss_bytes":26976256,"platform":"windows"}
+exit=0 wall=0.27s
+{"phase":"rust-bench-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":48748,"s2t_micros":177899,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":241874,"baseline_rss_bytes":4038656,"peak_rss_bytes":27025408,"platform":"windows"}
 
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-index D:\liber-probe\text-engine\bench\dart-index-big.params.json D:\liber-probe\text-engine\bench\dart-index-big.json
-exit=0 wall=16.07s
-{"phase":"dart-index","bytes":524290200,"code_units":176232000,"lines":2202900,"anchors":15964,"elapsed_micros":11569830,"baseline_rss_bytes":258211840,"peak_rss_bytes":279392256,"platform":"windows"}
+exit=0 wall=21.38s
+{"phase":"dart-index","bytes":524290200,"code_units":176232000,"lines":2202900,"anchors":15964,"elapsed_micros":15613454,"baseline_rss_bytes":252280832,"peak_rss_bytes":276766720,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-index D:\liber-probe\text-engine\bench\dart-index-20utf8.params.json D:\liber-probe\text-engine\bench\dart-index-20utf8.json
-exit=0 wall=8.73s
-{"phase":"dart-index","bytes":31739520,"code_units":10711920,"lines":64213,"anchors":954,"elapsed_micros":665872,"baseline_rss_bytes":281686016,"peak_rss_bytes":284246016,"platform":"windows"}
+exit=0 wall=5.71s
+{"phase":"dart-index","bytes":31739520,"code_units":10711920,"lines":64213,"anchors":954,"elapsed_micros":946769,"baseline_rss_bytes":277266432,"peak_rss_bytes":283942912,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-bytes D:\liber-probe\text-engine\bench\dart-bytes-20gbk.params.json D:\liber-probe\text-engine\bench\dart-bytes-20gbk.json
-exit=0 wall=7.49s
-{"phase":"dart-bytes","bytes":21225732,"lines":64212,"anchors":641,"elapsed_micros":34342,"baseline_rss_bytes":281006080,"peak_rss_bytes":282275840,"platform":"windows"}
+exit=0 wall=4.64s
+{"phase":"dart-bytes","bytes":21225732,"lines":64212,"anchors":641,"elapsed_micros":55349,"baseline_rss_bytes":256290816,"peak_rss_bytes":281710592,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-decode D:\liber-probe\text-engine\bench\dart-decode-20gbk.params.json D:\liber-probe\text-engine\bench\dart-decode-20gbk.json
-exit=0 wall=5.15s
-{"phase":"dart-decode","code_units":17489568,"replacement_characters":13085856,"elapsed_micros":777675,"baseline_rss_bytes":250503168,"peak_rss_bytes":347222016,"platform":"windows"}
+exit=0 wall=5.11s
+{"phase":"dart-decode","code_units":17489568,"replacement_characters":13085856,"elapsed_micros":745372,"baseline_rss_bytes":254214144,"peak_rss_bytes":346578944,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-read-string D:\liber-probe\text-engine\bench\dart-read-string-20gbk.params.json D:\liber-probe\text-engine\bench\dart-read-string-20gbk.json
-exit=0 wall=4.73s
-{"phase":"dart-read-string","error":"FileSystemException: Failed to decode data using encoding 'utf-8', path = 'D:\\liber-probe\\text-engine\\engine-20mb-gbk.txt'","elapsed_micros":0,"baseline_rss_bytes":258482176,"peak_rss_bytes":294023168,"platform":"windows"}
+exit=0 wall=4.22s
+{"phase":"dart-read-string","error":"FileSystemException: Failed to decode data using encoding 'utf-8', path = 'D:\\liber-probe\\text-engine\\engine-20mb-gbk.txt'","elapsed_micros":0,"baseline_rss_bytes":248213504,"peak_rss_bytes":294813696,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll dart-read-string D:\liber-probe\text-engine\bench\dart-read-string-big.params.json D:\liber-probe\text-engine\bench\dart-read-string-big.json
-exit=0 wall=7.05s
-{"phase":"dart-read-string","code_units":176232000,"lines":2202900,"elapsed_micros":2796746,"baseline_rss_bytes":253620224,"peak_rss_bytes":1110761472,"platform":"windows"}
+exit=0 wall=8.07s
+{"phase":"dart-read-string","code_units":176232000,"lines":2202900,"elapsed_micros":3553360,"baseline_rss_bytes":254173184,"peak_rss_bytes":1126182912,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll rust-index D:\liber-probe\text-engine\bench\release-index-big.params.json D:\liber-probe\text-engine\bench\release-index-big.json
-exit=0 wall=4.66s
-{"phase":"rust-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"ignored_rules":0,"elapsed_micros":924731,"baseline_rss_bytes":257785856,"peak_rss_bytes":283414528,"platform":"windows"}
+exit=0 wall=5.66s
+{"phase":"rust-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"ignored_rules":0,"elapsed_micros":1369698,"baseline_rss_bytes":258772992,"peak_rss_bytes":282886144,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll rust-index D:\liber-probe\text-engine\bench\release-index-20gbk.params.json D:\liber-probe\text-engine\bench\release-index-20gbk.json
-exit=0 wall=4.30s
-{"phase":"rust-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"ignored_rules":0,"elapsed_micros":651645,"baseline_rss_bytes":259899392,"peak_rss_bytes":283852800,"platform":"windows"}
+exit=0 wall=5.25s
+{"phase":"rust-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"ignored_rules":0,"elapsed_micros":846486,"baseline_rss_bytes":256311296,"peak_rss_bytes":283348992,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll rust-window D:\liber-probe\text-engine\bench\release-window-big.params.json D:\liber-probe\text-engine\bench\release-window-big.json
-exit=0 wall=3.20s
+exit=0 wall=5.34s
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll rust-window D:\liber-probe\text-engine\bench\release-window-20gbk.params.json D:\liber-probe\text-engine\bench\release-window-20gbk.json
-exit=0 wall=3.51s
+exit=0 wall=4.25s
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\release\fjs.dll rust-convert D:\liber-probe\text-engine\bench\release-convert.params.json D:\liber-probe\text-engine\bench\release-convert.json
-exit=0 wall=4.28s
-{"phase":"rust-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":105368,"s2t_micros":189879,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":296387,"baseline_rss_bytes":280834048,"peak_rss_bytes":290459648,"platform":"windows"}
+exit=0 wall=4.99s
+{"phase":"rust-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":138315,"s2t_micros":268240,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":408179,"baseline_rss_bytes":258060288,"peak_rss_bytes":290627584,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\debug\fjs.dll rust-index D:\liber-probe\text-engine\bench\debug-index-big.params.json D:\liber-probe\text-engine\bench\debug-index-big.json
-exit=0 wall=13.62s
-{"phase":"rust-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"ignored_rules":0,"elapsed_micros":9994956,"baseline_rss_bytes":255381504,"peak_rss_bytes":281899008,"platform":"windows"}
+exit=0 wall=16.39s
+{"phase":"rust-index","encoding":"UTF-8","bytes":524290200,"code_units":176232000,"anchors":15964,"chapters":0,"ignored_rules":0,"elapsed_micros":12161571,"baseline_rss_bytes":254500864,"peak_rss_bytes":283484160,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\debug\fjs.dll rust-index D:\liber-probe\text-engine\bench\debug-index-20gbk.params.json D:\liber-probe\text-engine\bench\debug-index-20gbk.json
-exit=0 wall=7.09s
-{"phase":"rust-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"ignored_rules":0,"elapsed_micros":3419523,"baseline_rss_bytes":258666496,"peak_rss_bytes":282267648,"platform":"windows"}
+exit=0 wall=10.77s
+{"phase":"rust-index","encoding":"GBK","bytes":21225732,"code_units":10711920,"anchors":641,"chapters":0,"ignored_rules":0,"elapsed_micros":5767580,"baseline_rss_bytes":253149184,"peak_rss_bytes":282746880,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\debug\fjs.dll rust-window D:\liber-probe\text-engine\bench\debug-window-big.params.json D:\liber-probe\text-engine\bench\debug-window-big.json
-exit=0 wall=3.64s
+exit=0 wall=5.01s
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\debug\fjs.dll rust-window D:\liber-probe\text-engine\bench\debug-window-20gbk.params.json D:\liber-probe\text-engine\bench\debug-window-20gbk.json
-exit=0 wall=5.11s
+exit=0 wall=4.27s
 stderr: Running build hooks...Running build hooks...
 $ C:\Users\17945\fvm\default\bin\dart.BAT run D:\GithubRepositories\Flutter\liber-19\tool\text_engine_prototype\text_engine_bench.dart D:\GithubRepositories\Flutter\liber-19\packages\fjs\libfjs\target\debug\fjs.dll rust-convert D:\liber-probe\text-engine\bench\debug-convert.params.json D:\liber-probe\text-engine\bench\debug-convert.json
-exit=0 wall=6.33s
-{"phase":"rust-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":754674,"s2t_micros":1106664,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":1862560,"baseline_rss_bytes":251924480,"peak_rss_bytes":294055936,"platform":"windows"}
+exit=0 wall=9.30s
+{"phase":"rust-convert","t2s_code_units":999881,"s2t_code_units":999329,"t2s_micros":958917,"s2t_micros":1400613,"t2s_changed":1,"s2t_changed":1,"elapsed_micros":2361998,"baseline_rss_bytes":251596800,"peak_rss_bytes":293957632,"platform":"windows"}
 stderr: Running build hooks...Running build hooks...
