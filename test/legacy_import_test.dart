@@ -301,6 +301,93 @@ void main() {
     await workspace.close();
   });
 
+  test('强制重跑是合并：自然键匹配、成员资格并集、进度只前进', () async {
+    final (legacy, workspace) = await workspaceWithStores();
+    final store = await workspace.openSpace();
+    final first = await legacy.run(store);
+    final before = await store.shelf(kind: 'network');
+    final beforeAll = await store.shelf();
+    expect(
+      before.map((book) => book.bookOrder).toSet(),
+      hasLength(before.length),
+      reason: '导入按文件里的记录顺序给每本书一个位置，不再都停在默认值',
+    );
+    final network = (await store.bookByNaturalKey(
+      'https://example.test',
+      'https://example.test/book/1',
+    ))!;
+    final history = (await store.bookByNaturalKey(
+      'https://example.test',
+      'https://example.test/book/2',
+    ))!;
+    expect(history.shelved, isFalse);
+
+    // A hand-edited delta: the book read further, the history record that was
+    // taken off the shelf comes back, and a book nobody had emerges.
+    final online = File('${home.path}/online_reading.json');
+    final state =
+        jsonDecode(await online.readAsString()) as Map<String, dynamic>;
+    final records = (state['records'] as List).cast<Map<String, dynamic>>();
+    records.first['textOffset'] = 300;
+    records[1]['shelved'] = true;
+    records.add({
+      'source': LegacyHome.source,
+      'book': {
+        'url': 'https://example.test/book/3',
+        'title': '三号书',
+        'author': '',
+        'intro': '',
+        'cover': '',
+        'kind': '',
+      },
+      'chapterUrl': '',
+      'chapterName': '',
+      'textOffset': 0,
+      'chapters': [
+        {'name': '第一章', 'url': 'https://example.test/book/3/1'},
+      ],
+      'shelved': true,
+    });
+    await online.writeAsString(jsonEncode(state));
+
+    final second = await legacy.run(store, force: true);
+    expect(second.imported, isTrue);
+    expect(second.books, first.books + 1);
+    expect(second.sources, 0, reason: '书源按 URL 匹配，不再重复计数');
+    // Nothing was lost: the same rows, in the file's own order, plus the new one.
+    expect((await store.bookById(network.id))!.title, '斗破苍穹');
+    expect(
+      (await store.shelf(kind: 'network')).map((book) => book.title),
+      ['斗破苍穹', '未上架的书', '三号书', 'Book'],
+      reason: '书架顺序就是文件里的记录顺序，导入留下的书排在后面',
+    );
+    expect(
+      (await store.shelf()).length,
+      beforeAll.length + 2,
+      reason: '本地书与迁移书还在，加上一本重新上架的和一本新的',
+    );
+    // Progress only advanced.
+    expect((await store.progressOf(network.id))!.textOffset, 300);
+    // Membership unions: the record that came back is shelved again.
+    expect((await store.bookById(history.id))!.shelved, isTrue);
+    expect((await store.progressOf(history.id))!.textOffset, 7);
+    await workspace.close();
+  });
+
+  test('原文件已经被移走时，重跑报告空间里记下的那次导入', () async {
+    final (legacy, workspace) = await workspaceWithStores();
+    final store = await workspace.openSpace();
+    final first = await legacy.run(store, force: true, retireOriginals: true);
+    expect(first.retired, hasLength(3), reason: '三份原文件都改名到 legacy/');
+
+    final second = await legacy.run(store, force: true, retireOriginals: true);
+    expect(second.imported, isFalse, reason: '没有文件可导入就是空操作');
+    expect(second.importedAt, first.importedAt, reason: '报告空间记下的那次导入');
+    expect(second.summary(), first.summary());
+    expect(second.retired, isEmpty);
+    await workspace.close();
+  });
+
   test('没有旧文件时不写导入记录，旧文件出现了仍然会导入', () async {
     final legacy = LegacyImport(home: home);
     final workspace = await Workspace.open(root: root);
@@ -315,6 +402,36 @@ void main() {
     final report = await legacy.run(store);
     expect(report.imported, isTrue, reason: '后来出现的旧文件仍然要导入');
     expect(report.books, 2);
+    await workspace.close();
+  });
+
+  test('退休过的文件再出现时另存一份，不覆盖上一次的副本', () async {
+    final (legacy, workspace) = await workspaceWithStores();
+    final store = await workspace.openSpace();
+    final first = await legacy.run(store, force: true, retireOriginals: true);
+    expect(first.retired, hasLength(3));
+
+    // The user restores the backup this build just retired: merging it and
+    // retiring it again must not throw away the earlier copy.
+    final restored = await LegacyHome(home).writeOnlineReading();
+    final second = await legacy.run(store, force: true, retireOriginals: true);
+    expect(second.retired, hasLength(1));
+    expect(second.retired.single, startsWith('online_reading.json'));
+    expect(
+      second.retired.single,
+      isNot('online_reading.json'),
+      reason: '先退休的那份还占着原名',
+    );
+    expect(await restored.exists(), isFalse);
+    final retired = [
+      for (final file in Directory('${home.path}/legacy').listSync())
+        if (file is File) file.uri.pathSegments.last,
+    ];
+    expect(
+      retired.where((name) => name.startsWith('online_reading.json')),
+      hasLength(2),
+      reason: '先退休的那份还在，新副本另有名字',
+    );
     await workspace.close();
   });
 

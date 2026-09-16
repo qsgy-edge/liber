@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import 'database.dart';
@@ -27,6 +29,52 @@ class SpaceStore {
     await db.into(db.sources).insertOnConflictUpdate(source);
     return (await sourceByUrl(source.bookSourceUrl.value))!;
   }
+
+  /// Stores a Book Source the way Legado hands it over: the typed fields this
+  /// product reads, plus the whole object in `raw`, so fields this build does
+  /// not know survive a round trip (D7).
+  ///
+  /// [fallbackId] keys a source that arrived without a `bookSourceUrl` — an
+  /// import's own record id, as D7's key has to be the source's URL.
+  Future<BookSource> putSourceJson(
+    Map<String, dynamic> source, {
+    String? fallbackId,
+  }) {
+    final url = '${source['bookSourceUrl'] ?? fallbackId ?? ''}';
+    return putSource(
+      SourcesCompanion.insert(
+        bookSourceUrl: url,
+        name: '${source['bookSourceName'] ?? url}',
+        groupNames: Value(jsonEncode(_groupNames(source['bookSourceGroup']))),
+        type: Value(_legacyInt(source['bookSourceType'])),
+        customOrder: Value(_legacyInt(source['customOrder'])),
+        enabled: Value(source['enabled'] as bool? ?? true),
+        enabledExplore: Value(source['enabledExplore'] as bool? ?? true),
+        lastUpdateTime: Value(_legacyInt(source['lastUpdateTime'])),
+        raw: Value(jsonEncode(source)),
+      ),
+    );
+  }
+
+  /// Legado joins a source's groups into a `HashSet` and serializes that
+  /// comma-joined, so the order is not meaningful and duplicates are not
+  /// either.
+  static List<String> _groupNames(Object? value) {
+    final names = switch (value) {
+      String joined => joined.split(','),
+      List<Object?> list => list.map((entry) => '$entry'),
+      _ => const <String>[],
+    };
+    return names
+        .map((name) => name.trim())
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// A Legado field read as an int: its JSON is not typed consistently.
+  static int _legacyInt(Object? value) =>
+      value is num ? value.toInt() : int.tryParse('${value ?? ''}') ?? 0;
 
   Future<BookSource?> sourceByUrl(String bookSourceUrl) => (db.select(
     db.sources,
@@ -75,9 +123,18 @@ class SpaceStore {
 
   /// The shelf view: shelved books in space order. The synthetic views
   /// (all / local / ungrouped / update-error) are queries, not rows (D3).
-  Future<List<ShelfBook>> shelf({String? kind, bool ungrouped = false}) {
+  ///
+  /// [hasSource] narrows to the books a Book Source can open (`true`) or to the
+  /// rows a legacy import left behind, which nothing can open (`false`).
+  Future<List<ShelfBook>> shelf({
+    String? kind,
+    bool? hasSource,
+    bool ungrouped = false,
+  }) {
     final query = db.select(db.books)..where((b) => b.shelved.equals(true));
     if (kind != null) query.where((b) => b.kind.equals(kind));
+    if (hasSource == true) query.where((b) => b.sourceRef.isNotNull());
+    if (hasSource == false) query.where((b) => b.sourceRef.isNull());
     if (ungrouped) {
       query.where(
         (b) => b.id.isNotInQuery(
@@ -91,6 +148,47 @@ class SpaceStore {
     ]);
     return query.get();
   }
+
+  /// Membership is a flag, not a deletion: removing a book keeps its row, its
+  /// chapters and its progress (D2/D3).
+  Future<void> setShelved(String bookId, bool shelved) async {
+    await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
+      BooksCompanion(shelved: Value(shelved)),
+    );
+  }
+
+  /// Flags or clears a book's relink state: the flag describes the file behind
+  /// the book, so it is an update of a row that is already there (D4).
+  Future<void> setBookRelink(String bookId, bool needsRelink) async {
+    await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
+      BooksCompanion(needsRelink: Value(needsRelink)),
+    );
+  }
+
+  /// The next free position: `bookOrder` is one int per book per space (D3),
+  /// and a book added to the shelf goes to the end of it.
+  Future<int> nextBookOrder() async {
+    final position = db.books.bookOrder.max();
+    final row = await (db.selectOnly(
+      db.books,
+    )..addColumns([position])).getSingle();
+    return (row.read(position) ?? -1) + 1;
+  }
+
+  /// The local files admitted to the shelf, in the order they were added.
+  Future<List<ShelfBook>> localBooks() =>
+      (db.select(db.books)
+            ..where(
+              (b) =>
+                  b.kind.equals('local') &
+                  b.rootId.isNotNull() &
+                  b.relativePath.isNotNull(),
+            )
+            ..orderBy([
+              (b) => OrderingTerm(expression: b.bookOrder),
+              (b) => OrderingTerm(expression: b.id),
+            ]))
+          .get();
 
   // --- Groups (D3) ---------------------------------------------------------
 
@@ -166,6 +264,30 @@ class SpaceStore {
   Future<ReadingProgress?> progressOf(String bookId) => (db.select(
     db.progress,
   )..where((p) => p.bookId.equals(bookId))).getSingleOrNull();
+
+  /// The most recently written position in the space: what "continue reading"
+  /// resumes, where the JSON store kept a single `last` pointer.
+  Future<ReadingProgress?> latestProgress() =>
+      (db.select(db.progress)
+            ..orderBy([
+              (p) => OrderingTerm(
+                expression: p.updatedAt,
+                mode: OrderingMode.desc,
+              ),
+              (p) => OrderingTerm(expression: p.bookId),
+            ])
+            ..limit(1))
+          .getSingleOrNull();
+
+  /// The live writer's write: where the reader is, going back included.
+  ///
+  /// [saveProgress]'s forward-only rule is the *merge* rule (D6's import, D4's
+  /// migration alignment); a reader that went back a chapter still has to find
+  /// itself there when it reopens the book. Columns this build does not write
+  /// (the line index, the line offsets, the text length and the anchor, #20's
+  /// five-field writer) keep their values.
+  Future<void> putProgress(ProgressCompanion progress) =>
+      db.into(db.progress).insertOnConflictUpdate(progress);
 
   /// Forward-only: `(chapterIndex, textOffset)` decides whether the incoming
   /// record advances, and the timestamp breaks ties. Returns whether it was
