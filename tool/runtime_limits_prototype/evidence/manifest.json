@@ -2,11 +2,18 @@
   "status": "pass",
   "platform": "windows",
   "scope": "windows only; every other platform stays not-run until this file runs there",
-  "recordedAt": "2026-09-16T22:10:34+0800",
-  "repositoryHead": "93ba2460edf1b5c3e4ac7d8910264fbff1e4aa30",
+  "recordedAt": "2026-09-17T01:00:02+0800",
+  "repositoryHead": "1795443cd9308fd61b5dffafb8142ea3c4a16412",
   "repositoryBranch": "master",
   "uncommittedChanges": [
-    "M tool/runtime_limits_prototype/evidence/gates.log",
+    "M drift_schemas/drift_schema_v3.json",
+    " M lib/store/database.g.dart",
+    " M lib/store/schema_versions.dart",
+    " M test/generated_migrations/schema.dart",
+    " M test/generated_migrations/schema_v1.dart",
+    " M test/generated_migrations/schema_v2.dart",
+    " M test/generated_migrations/schema_v3.dart",
+    " M tool/runtime_limits_prototype/evidence/gates.log",
     " M tool/runtime_limits_prototype/evidence/windows-native.json",
     " M tool/runtime_limits_prototype/evidence/windows-product.json",
     " M tool/runtime_limits_prototype/evidence/windows-quantum.json"
@@ -27,7 +34,7 @@
   },
   "nativeProbe": {
     "path": "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-runtime-limits-prototype\\native_probe.exe",
-    "sha256": "0ade74a9709683fd9c4b54051819be608cf1b4baa0742e28cdc113ce380c5200"
+    "sha256": "2074f5d7026792baaa409c860ada75be7594587325b506b06d9cfcd1ce43f323"
   },
   "engines": {
     "quickjs": "QuickJS 0.15.1 (pinned vendored sources)",
@@ -134,152 +141,152 @@
   "evidenceHashes": [
     {
       "path": "tool/runtime_limits_prototype/evidence/manifest.json",
-      "sha256": "b3dbcc0209907f5319f74dacc7c3f30faff4ca2689461bb441279f5e06364c95"
+      "sha256": "ccf2aa3f908319829b08d9a7cf399394d93316986a0b25f731b3d29a8d6a91a5"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-native.json",
-      "sha256": "fd40dfb4fd9cdd9a420699812727aa826e0000337cea070a5f884b59e57dbafb"
+      "sha256": "2a7ad7cc61590e8c70ab5a9d8bb3b891ca3757e34d88d888a10bb7c05fa61986"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-product.json",
-      "sha256": "08291dffa52a219670dbf6ec8034e60ef1e3c42ad7f8f872daaf93ac5bc47ad1"
+      "sha256": "df96781b5bc54fd25a13f64d1d329f7f13085d9284a115d67b11614124208c25"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-quantum.json",
-      "sha256": "88d22d07bb8deb6ac6fe878c486a526abdc4ea5a64801063d6c0588ec1adcc40"
+      "sha256": "fe1c0fc7ed230b46dd644713c0fdc2e97e81e00be6110a384230e6925eb4ffa2"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/gates.log",
-      "sha256": "d9d7a8126233f1469524f1f27fbdaad31cc9689818c3aae54e99b1e458c4d4cc"
+      "sha256": "d4b39ac88aac21b9eebe5dbdd6423b64d1055e85f42ee0104bd3fc136133377f"
     }
   ],
   "gates": {
     "runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 7.279
+      "seconds": 3.645
     },
     "runtime_host_integration": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 8.654
+      "seconds": 4.54
     },
     "host_surface_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 7.029
+      "seconds": 4.818
     },
     "broker_lifecycle_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.707
+      "seconds": 3.229
     },
     "broker_loader_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 6.025
+      "seconds": 2.898
     },
     "scoped_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 8.808
+      "seconds": 7.032
     },
     "nested_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 6.928
+      "seconds": 5.063
     },
     "html-adapter": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 5.509
+      "seconds": 5.191
     },
     "broker_gate_regression-queued-close": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.66
+      "seconds": 3.664
     },
     "broker_gate_regression-throw-start": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 6.382
+      "seconds": 3.182
     },
     "broker_gate_regression-throw-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.788
+      "seconds": 3.108
     },
     "broker_gate_regression-same-runtime-nested": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.491
+      "seconds": 3.193
     },
     "broker_gate_regression-same-runtime-queued-release": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.638
+      "seconds": 3.217
     },
     "broker_gate_regression-same-runtime-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.376
+      "seconds": 4.667
     },
     "state-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 5.705
+      "seconds": 5.782
     },
     "nested-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.451
+      "seconds": 4.194
     }
   },
   "findings": {
     "heapLimitEnforced": true,
     "deadlineInterruptsInterpreterWork": true,
     "deadlineIsHardBound": false,
-    "deadlineHeavyLoopBodyOvershootMs": 819.0,
-    "deadlineOomRetryOvershootMs": 30017.1,
-    "deadlineSingleNativeCallMeasuredMs": 367.1,
+    "deadlineHeavyLoopBodyOvershootMs": 381.6,
+    "deadlineOomRetryOvershootMs": 22001.1,
+    "deadlineSingleNativeCallMeasuredMs": 213.8,
     "deadlineSingleNativeCallInterrupted": false,
     "quantumSensitivity": {
       "10000": {
-        "heavyLoopWorstOvershootMs": 466.91,
-        "allocationLoopWorstOvershootMs": 99.58,
-        "oomRetryWorstOvershootMs": 2122.96,
-        "throughputLoopFastestMs": 1007.98,
-        "throughputOnlyFastestMs": 1019.41
+        "heavyLoopWorstOvershootMs": 587.22,
+        "allocationLoopWorstOvershootMs": 92.61,
+        "oomRetryWorstOvershootMs": 1983.0,
+        "throughputLoopFastestMs": 1038.28,
+        "throughputOnlyFastestMs": 1043.28
       },
       "1000": {
-        "heavyLoopWorstOvershootMs": 14.56,
-        "allocationLoopWorstOvershootMs": 27.67,
-        "oomRetryWorstOvershootMs": 239.61,
-        "throughputLoopFastestMs": 1044.35,
-        "throughputOnlyFastestMs": 1693.89
+        "heavyLoopWorstOvershootMs": 33.74,
+        "allocationLoopWorstOvershootMs": 27.79,
+        "oomRetryWorstOvershootMs": 256.25,
+        "throughputLoopFastestMs": 1089.18,
+        "throughputOnlyFastestMs": 1059.64
       },
       "256": {
-        "heavyLoopWorstOvershootMs": 4.98,
-        "allocationLoopWorstOvershootMs": 15.92,
-        "oomRetryWorstOvershootMs": 57.23,
-        "throughputLoopFastestMs": 1884.96,
-        "throughputOnlyFastestMs": 1793.71
+        "heavyLoopWorstOvershootMs": 12.75,
+        "allocationLoopWorstOvershootMs": 11.95,
+        "oomRetryWorstOvershootMs": 64.08,
+        "throughputLoopFastestMs": 1077.16,
+        "throughputOnlyFastestMs": 1060.75
       }
     }
   },
   "measured": {
     "productDeadlineBasicOvershootMs": [
-      7.644999999999996,
-      0.9039999999999964,
-      1.0819999999999936
+      5.1200000000000045,
+      1.1059999999999945,
+      0.7810000000000059
     ],
-    "productHeavyLoopOvershootMs": 90.28800000000001,
-    "productSingleNativeCallMeasuredMs": 1557.449,
-    "productOomRetryOvershootMs": 92.209,
-    "productHostCallOvershootMs": 73.81799999999998,
-    "productIsolateBlockedMeasuredMs": 453.153,
-    "productIsolateBlockedElapsedAfterUnblockMs": 5.146,
-    "productRssGrowthOverHeapLimitBytes": 2646016
+    "productHeavyLoopOvershootMs": 32.21199999999999,
+    "productSingleNativeCallMeasuredMs": 882.638,
+    "productOomRetryOvershootMs": 38.875999999999976,
+    "productHostCallOvershootMs": 50.077,
+    "productIsolateBlockedMeasuredMs": 445.916,
+    "productIsolateBlockedElapsedAfterUnblockMs": 3.771,
+    "productRssGrowthOverHeapLimitBytes": -1802240
   },
   "failures": []
 }

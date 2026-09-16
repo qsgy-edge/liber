@@ -7,11 +7,11 @@ Running build hooks...Running build hooks...
 
 Running build hooks...Running build hooks...
 ===== host_surface_gate (exit 0) =====
-{"status":"pass","checks":{"membersExist":true,"sourceAccessors":true,"ruleStateSharedAcrossEvaluations":true,"ruleStateIsPerAnalysis":true,"httpGetOverload":true,"cacheRoundTrip":true,"cacheDelete":true,"cookieRoundTrip":true,"cookieOnWire":true,"cookieRemoved":true,"serverCookieStored":true,"logReturnValue":true,"logCaptured":true,"base64Encode":true,"base64UrlSafe":true,"base64Decode":true,"base64DecodeToBytes":true,"base64EmptyIsNull":true,"hexEncode":true,"hexDecode":true,"hexDecodeBytes":true,"encodeUri":true,"encodeUriUnknownCharset":true,"t2s":true,"t2sExcluded":true,"s2t":true,"htmlFormat":true,"timeFormatUtc":true,"randomUuid":true,"toNumChapter":true,"toNumChapterUntouched":true,"toUrl":true,"toUrlRelative":true,"strToBytes":true,"base64WrapLines":true,"cookieInUrlRuleRan":true,"cookieInUrlRuleParsed":true},"utilities":{"base64":"5LmmYQ==","base64Wrapped":"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4\neHh4","base64UrlSafe":"w7_Dvg==","base64Decoded":"书a","base64Bytes":"-28,-71,-90,97","base64Null":null,"hex":"e4b9a661","hexDecoded":"书a","hexBytes":"0,-1","encodeUri":"%E6%88%91+a*b","encodeUriNonAsciiCharset":"","t2s":"　　“你这是什么意思？”他问道。","t2sExcluded":"魔戒三部曲、桌球选手、雪梨歌剧院。","s2t":"龍應台的小說在臺灣很受歡迎。","htmlFormat":"　　一\n　　二\n　　三\n　　<img src=\"/i.png\">","timeFormatUtc":"1970-01-01 08:00","uuid":36,"toNumChapter":"第123章","toNumChapterUntouched":"序章","toUrl":"{\"host\":\"a.test\",\"origin\":\"http://a.test\",\"pathname\":\"/b\",\"searchParams\":{\"x\":\"1\",\"y\":\"2\"}}","toUrlRelative":"/c","bytes":"书"},"requests":["GET /echo","GET /echo cookie=a=1; b=2; c=3","GET /set-cookie","GET /search?q=%E7%94%B2"]}
+{"status":"pass","checks":{"membersExist":true,"sourceAccessors":true,"ruleStatePersistsForItsSource":true,"ruleStateIsOwnedByItsSource":true,"httpGetOverload":true,"cacheRoundTrip":true,"cacheDelete":true,"cookieRoundTrip":true,"cookieOnWire":true,"cookieRemoved":true,"serverCookieStored":true,"logReturnValue":true,"logCaptured":true,"base64Encode":true,"base64UrlSafe":true,"base64Decode":true,"base64DecodeToBytes":true,"base64EmptyIsNull":true,"hexEncode":true,"hexDecode":true,"hexDecodeBytes":true,"encodeUri":true,"encodeUriUnknownCharset":true,"t2s":true,"t2sExcluded":true,"s2t":true,"htmlFormat":true,"timeFormatUtc":true,"randomUuid":true,"toNumChapter":true,"toNumChapterUntouched":true,"toUrl":true,"toUrlRelative":true,"strToBytes":true,"base64WrapLines":true,"cookieInUrlRuleRan":true,"cookieInUrlRuleParsed":true},"utilities":{"base64":"5LmmYQ==","base64Wrapped":"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4\neHh4","base64UrlSafe":"w7_Dvg==","base64Decoded":"书a","base64Bytes":"-28,-71,-90,97","base64Null":null,"hex":"e4b9a661","hexDecoded":"书a","hexBytes":"0,-1","encodeUri":"%E6%88%91+a*b","encodeUriNonAsciiCharset":"","t2s":"　　“你这是什么意思？”他问道。","t2sExcluded":"魔戒三部曲、桌球选手、雪梨歌剧院。","s2t":"龍應台的小說在臺灣很受歡迎。","htmlFormat":"　　一\n　　二\n　　三\n　　<img src=\"/i.png\">","timeFormatUtc":"1970-01-01 08:00","uuid":36,"toNumChapter":"第123章","toNumChapterUntouched":"序章","toUrl":"{\"host\":\"a.test\",\"origin\":\"http://a.test\",\"pathname\":\"/b\",\"searchParams\":{\"x\":\"1\",\"y\":\"2\"}}","toUrlRelative":"/c","bytes":"书"},"requests":["GET /echo","GET /echo cookie=a=1; b=2; c=3","GET /set-cookie","GET /search?q=%E7%94%B2"]}
 
 Running build hooks...Running build hooks...
 ===== broker_lifecycle_regression (exit 0) =====
-{"case":"init-close-64","pass":true,"initSucceeded":1,"initCancelled":0,"initRejected":63}
+{"case":"init-close-64","pass":true,"initSucceeded":0,"initCancelled":0,"initRejected":64}
 {"case":"forged-cancel","pass":true}
 {"case":"unrelated-background-error-retained","pass":true}
 {"case":"native-heap-limit","pass":true,"resultType":"JsError_MemoryLimit"}
@@ -42,7 +42,7 @@ Running build hooks...Running build hooks...
 {"case":"throw-start","pass":true,"result":"Type error: TypeError: Error converting from js 'bridge' into type 'JsValue': Bridge error: Host start callback failed\n    at <eval> (eval_script:1:4)","settledOnlyAfterClose":false}
 
 Running build hooks...Running build hooks...
-thread 'fjs-js' (62100) panicked at src\frb_generated.rs:7317:23:
+thread 'fjs-js' (59028) panicked at src\frb_generated.rs:7317:23:
 Dart throws exception but Rust side assume it is not failable: Bad state: test-start-failure
 
 #0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber/tool/broker_gate_regression.dart:161:34)
@@ -140,7 +140,7 @@ Error in dart_fn_handle_output when sending message for call_id 1: Dart2RustMess
 {"case":"throw-cancel","pass":true,"result":"Cancelled: JavaScript engine was closed","closeError":"Bridge error: Host cancellation callback failed after runtime shutdown"}
 
 Running build hooks...Running build hooks...
-thread 'tokio-rt-worker' (59584) panicked at src\frb_generated.rs:7387:23:
+thread 'tokio-rt-worker' (60764) panicked at src\frb_generated.rs:7387:23:
 Dart throws exception but Rust side assume it is not failable: Bad state: test-cancel-failure
 
 #0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber/tool/broker_gate_regression.dart:165:35)
