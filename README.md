@@ -73,6 +73,11 @@ flutter test test               # shared tests
 dart analyze lib test integration_test tool
 ```
 
+`pubspec.lock` records the hosted URL it was resolved from, and this machine sets
+`PUB_HOSTED_URL` to a mirror, so regenerate it with
+`PUB_HOSTED_URL=https://pub.dev flutter pub get` before committing. CI enforces the
+lock against pub.dev and fails every hosted package as changed otherwise.
+
 The desktop gates run against the built native library:
 
 ```bash
