@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "SLICE-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "origin": "http://127.0.0.1:18731",
+  "keyword": "回放",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "capabilityRows": [
+    "A ruleSearch/ruleBookInfo/ruleToc/ruleContent",
+    "B legacy bare selector, `class.`-style class selectors, `@text`/`@href`/`@src`/`@textNodes` extraction, `##` replacement",
+    "C cookie.* session jar reaching the wire (Set-Cookie then Cookie)",
+    "D {{key}}/{{page}} substitution, default request headers, relative URL resolution",
+    "E search -> book information -> table of contents -> content, nextTocUrl and nextContentUrl page chaining"
+  ],
+  "coverageGaps": [
+    "One source only: the corpus cannot observe the per-site cookie visibility rule (ADR 0011 section 3, ticket #21)",
+    "No redirect, non-2xx retry, POST body, WebView, JSON, XPath or rule-level JavaScript row: those belong to #15, #13, #2, #11",
+    "No concurrent pagination or rate-limit row",
+    "No chapter-level variables, login state, explore or reviews",
+    "The scenario stops before a second book and before any failure path"
+  ],
+  "source": {
+    "bookSourceName": "Liber SLICE-01 controlled replay",
+    "bookSourceUrl": "http://127.0.0.1:18731",
+    "bookSourceGroup": "Liber corpus",
+    "bookSourceComment": "Controlled replay corpus fixture; never a live site. See tool/first_slice/README.md.",
+    "bookSourceType": 0,
+    "enabledCookieJar": true,
+    "header": "{\"X-Slice-Corpus\": \"SLICE-01\"}",
+    "searchUrl": "/search?keyword={{key}}&page={{page}}",
+    "ruleSearch": {
+      "bookList": ".result li",
+      "name": "a.0@text",
+      "author": "span.author@text",
+      "kind": "span.kind@text",
+      "bookUrl": "a.0@href"
+    },
+    "ruleBookInfo": {
+      "name": "h1@text",
+      "author": ".info span.author@text",
+      "kind": ".info span.kind@text",
+      "lastChapter": ".info span.last@text",
+      "coverUrl": ".cover@src",
+      "intro": ".intro@text",
+      "tocUrl": ".toc a@href"
+    },
+    "ruleToc": {
+      "chapterList": ".chapters li a",
+      "chapterName": "text",
+      "chapterUrl": "href",
+      "nextTocUrl": ".next@href"
+    },
+    "ruleContent": {
+      "content": ".content@textNodes",
+      "nextContentUrl": ".next-page@href",
+      "replaceRegex": "##（本章未完，请继续阅读）"
+    }
+  },
+  "responses": [
+    {
+      "id": "search-page-1",
+      "method": "GET",
+      "path": "/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "setCookies": [
+        {
+          "name": "sid",
+          "value": "slice01",
+          "path": "/"
+        }
+      ],
+      "body": "<html><body><ul class=\"result\"><li><a href=\"/book/1\">回放之书</a><span class=\"author\">作者甲</span><span class=\"kind\">玄幻</span></li><li><a href=\"/book/2\">另一本书</a><span class=\"author\">作者乙</span><span class=\"kind\">历史</span></li></ul></body></html>"
+    },
+    {
+      "id": "book-1-info",
+      "method": "GET",
+      "path": "/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>回放之书</h1><div class=\"info\"><span class=\"author\">作者甲</span><span class=\"kind\">玄幻</span><span class=\"last\">第三章</span></div><img class=\"cover\" src=\"/cover/1.jpg\"><div class=\"intro\">本地回放的书籍简介。</div><p class=\"toc\"><a href=\"/book/1/toc\">目录</a></p></body></html>"
+    },
+    {
+      "id": "book-1-toc-page-1",
+      "method": "GET",
+      "path": "/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"/book/1/chapter/1\">第一章</a></li><li><a href=\"/book/1/chapter/2\">第二章</a></li></ul><a class=\"next\" href=\"/book/1/toc?page=2\">下一页</a></body></html>"
+    },
+    {
+      "id": "book-1-toc-page-2",
+      "method": "GET",
+      "path": "/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "query": {
+        "page": "2"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"/book/1/chapter/3\">第三章</a></li></ul></body></html>"
+    },
+    {
+      "id": "book-1-chapter-1-page-1",
+      "method": "GET",
+      "path": "/book/1/chapter/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"content\">第一页正文。<br>第二段。<br>（本章未完，请继续阅读）</div><a class=\"next-page\" href=\"/book/1/chapter/1-2\">下一页</a></body></html>"
+    },
+    {
+      "id": "book-1-chapter-1-page-2",
+      "method": "GET",
+      "path": "/book/1/chapter/1-2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"content\">第二页正文。<br>本章结束。</div></body></html>"
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/toc"
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/toc",
+      "query": {
+        "page": "2"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/chapter/1"
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/chapter/1-2"
+    }
+  ],
+  "scenario": [
+    "search the fixture keyword through ruleSearch",
+    "take the first search result through ruleBookInfo",
+    "read the whole table of contents, following nextTocUrl",
+    "read the first chapter through ruleContent, following nextContentUrl and applying replaceRegex"
+  ],
+  "sessionCookie": {
+    "name": "sid",
+    "value": "slice01",
+    "setOn": "/search",
+    "carriedFrom": "/book/1"
+  }
+}

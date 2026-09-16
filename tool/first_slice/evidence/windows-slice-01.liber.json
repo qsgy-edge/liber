@@ -1,0 +1,244 @@
+{
+  "fixtureId": "SLICE-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "platform": "windows",
+  "recordedAt": "2026-09-16T23:26:32.754819",
+  "origin": "http://127.0.0.1:18731",
+  "keyword": "回放",
+  "fixturesPath": "tool/first_slice/fixtures.json",
+  "fixturesSha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
+  "libraryPath": "packages/fjs/libfjs/target/debug/fjs.dll",
+  "librarySha256": "aa9586df2551ef4499d08a5bf54d9a9ce1ebb1de58b0314f5456da1b9348b49e",
+  "oracle": "not-run",
+  "scenario": {
+    "status": "pass",
+    "invariants": [
+      {
+        "id": "analysis-completed",
+        "ok": true,
+        "detail": "every stage returned"
+      },
+      {
+        "id": "four-stage-trace",
+        "ok": true,
+        "detail": "stage order: search > bookInfo > tableOfContents > tableOfContents > content > content"
+      },
+      {
+        "id": "no-undeclared-request",
+        "ok": true,
+        "detail": "every request had a declared response"
+      },
+      {
+        "id": "declared-requests",
+        "ok": true,
+        "detail": "GET /search?keyword=回放&page=1 | GET /book/1 | GET /book/1/toc | GET /book/1/toc?page=2 | GET /book/1/chapter/1 | GET /book/1/chapter/1-2"
+      },
+      {
+        "id": "session-cookie-carried",
+        "ok": true,
+        "detail": "sid=slice01 set on /search and carried from 1 on"
+      },
+      {
+        "id": "source-header-on-every-request",
+        "ok": true,
+        "detail": "X-Slice-Corpus=SLICE-01 on 6 requests"
+      },
+      {
+        "id": "toc-pagination",
+        "ok": true,
+        "detail": "toc pages=2, chapters=3"
+      },
+      {
+        "id": "content-paging",
+        "ok": true,
+        "detail": "content pages=2"
+      }
+    ]
+  },
+  "analysisFailure": null,
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "x-slice-corpus": "SLICE-01",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "x-slice-corpus": "SLICE-01",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "cookie": "sid=slice01",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/toc",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "x-slice-corpus": "SLICE-01",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "cookie": "sid=slice01",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/toc",
+      "query": {
+        "page": "2"
+      },
+      "rawQuery": "page=2",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "x-slice-corpus": "SLICE-01",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "cookie": "sid=slice01",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "x-slice-corpus": "SLICE-01",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "cookie": "sid=slice01",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/book/1/chapter/1-2",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "x-slice-corpus": "SLICE-01",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "cookie": "sid=slice01",
+        "host": "127.0.0.1:18731"
+      },
+      "body": ""
+    }
+  ],
+  "unmatchedRequests": [],
+  "stageTrace": [
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18731/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18731/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18731/book/1/toc"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18731/book/1/toc?page=2"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18731/book/1/chapter/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18731/book/1/chapter/1-2"
+    }
+  ],
+  "stages": {
+    "search": {
+      "results": [
+        {
+          "name": "回放之书",
+          "author": "作者甲",
+          "kind": "玄幻",
+          "bookUrl": "http://127.0.0.1:18731/book/1"
+        },
+        {
+          "name": "另一本书",
+          "author": "作者乙",
+          "kind": "历史",
+          "bookUrl": "http://127.0.0.1:18731/book/2"
+        }
+      ]
+    },
+    "bookInfo": {
+      "name": "回放之书",
+      "author": "作者甲",
+      "kind": "玄幻",
+      "lastChapter": "第三章",
+      "cover": "http://127.0.0.1:18731/cover/1.jpg",
+      "intro": "本地回放的书籍简介。"
+    },
+    "toc": {
+      "pages": 2,
+      "chapters": [
+        {
+          "name": "第一章",
+          "url": "http://127.0.0.1:18731/book/1/chapter/1"
+        },
+        {
+          "name": "第二章",
+          "url": "http://127.0.0.1:18731/book/1/chapter/2"
+        },
+        {
+          "name": "第三章",
+          "url": "http://127.0.0.1:18731/book/1/chapter/3"
+        }
+      ]
+    },
+    "content": {
+      "chapter": "第一章",
+      "pages": 2,
+      "text": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。"
+    }
+  }
+}
