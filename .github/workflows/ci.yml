@@ -153,7 +153,7 @@ jobs:
           echo '### Coverage boundaries' >> "$GITHUB_STEP_SUMMARY"
           echo '- Native compilation is checked for the selected target; a build is not a runtime verdict.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Windows: app build and bounded runtime/differential gates; CI does not perform manual UI review.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Linux/macOS: shared runtime/regression gates and Dart tests. Independent fiber scheduling and product app/WebView integration are not covered.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Linux/macOS: the same shared gate list as Windows (runtime, host surface, HTML adapter, brokers, scoped/nested execution, both frozen differentials) and Dart tests. The product app and WebView integration are not covered, and these platforms limits rows are not-run.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Android/iOS: native cross-build only. App entrypoints, simulator execution and physical-device acceptance are not covered.' >> "$GITHUB_STEP_SUMMARY"
           echo '- No full frozen-Legado compatibility claim follows from a green workflow.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Runtime gate commands fail when their log contains the Dart VM crash marker, even if the process exited 0.' >> "$GITHUB_STEP_SUMMARY"

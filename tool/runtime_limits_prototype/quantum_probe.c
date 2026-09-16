@@ -10,7 +10,14 @@
  * sample so run-to-run variance stays visible. QUANTUM_LABEL is supplied by the
  * build so the record names the constant under test.
  */
+#if defined(_WIN32)
 #include <windows.h>
+#else
+/* Same clock shim as native_probe.c: only the monotonic clock differs by
+ * platform, so the quantum comparison runs on every destination. */
+#define _POSIX_C_SOURCE 200809L
+#include <time.h>
+#endif
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,8 +34,14 @@
 #define THROUGHPUT_REPEATS 9
 #define MAX_REPEATS THROUGHPUT_REPEATS
 
+#if defined(_WIN32)
 static LARGE_INTEGER g_frequency;
 static LARGE_INTEGER g_origin;
+
+static void timer_init(void) {
+  QueryPerformanceFrequency(&g_frequency);
+  QueryPerformanceCounter(&g_origin);
+}
 
 static double now_ms(void) {
   LARGE_INTEGER counter;
@@ -36,6 +49,18 @@ static double now_ms(void) {
   return (double)(counter.QuadPart - g_origin.QuadPart) * 1000.0 /
          (double)g_frequency.QuadPart;
 }
+#else
+static struct timespec g_origin;
+
+static void timer_init(void) { clock_gettime(CLOCK_MONOTONIC, &g_origin); }
+
+static double now_ms(void) {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (double)(now.tv_sec - g_origin.tv_sec) * 1000.0 +
+         (double)(now.tv_nsec - g_origin.tv_nsec) / 1000000.0;
+}
+#endif
 
 typedef struct {
   double deadline_ms;
@@ -120,8 +145,7 @@ static void print_samples(const char *name, const Samples *samples, double deadl
 }
 
 int main(int argc, char **argv) {
-  QueryPerformanceFrequency(&g_frequency);
-  QueryPerformanceCounter(&g_origin);
+  timer_init();
   JSRuntime *runtime = JS_NewRuntime();
   JSContext *context = JS_NewContext(runtime);
   Interrupt interrupt;

@@ -1,8 +1,266 @@
 ===== runtime_gate (exit 0) =====
 {"status":"pass","checks":{"syncEcho":true,"unknownMethodRefused":true,"unknownMethodNoIo":true,"hostErrorSettles":true,"forgedCancellationIsJs":true,"completeInputCapped":true,"hostInputCapped":true,"hostOutputCapped":true,"outputCapped":true,"infiniteLoopTimeout":true,"realHttpCancelled":true,"serverDisconnected":true,"nextExecutionWorks":true}}
 
+Running build hooks...Running build hooks...
+===== runtime_host_integration (exit 0) =====
+{"status":"pass","checks":{"firstBody":true,"cookieOnWire":true,"echoBody":true,"httpErrorStatus":true,"httpErrorBody":true,"multiValueHeaders":true,"exactRequests":true,"htmlOptionMethodAndBody":true,"htmlDynamicHeaderOnWire":true,"htmlOptionHeaderMerged":true,"htmlJsOptionRewroteUrl":true,"htmlSearchParsed":true,"retryOptionRepeatsNon2xx":true,"jsonDynamicHeaderOnWire":true,"jsonStructuredBody":true,"jsonPipelineCompleted":true,"defaultUserAgentOnWire":true,"defaultConnectionHeadersOnWire":true,"declaredUserAgentWins":true,"redirect302DowngradesPostToGet":true,"redirect307KeepsMethodAndBody":true,"rawKeyEncodedOnce":true,"pageListPicksRequestedPage":true},"observed":["/set:","/echo:sid=one","/missing:sid=one","/search:","/retry:","/retry:","/json-search:","/json-details:","/json-chapters:","/json-text:","/search:","/redirect302:","/after:","/redirect307:","/after:","/search:","/search:"]}
 
-===== fiber_runtime_gate (exit 0) =====
-{"status":"pass","checks":{"firstNativeExceptionStack":true,"secondNativeExceptionStack":true,"cyclicAllocationPressureCompletes":true,"suspendedRustAndJsValuesSurvive":true,"heapLimitEnforced":true,"afterGcUsable":true,"closeUnwindsBothStacks":true,"lateCompletionRejected":true},"traceA":"    at alpha (eval_script:1:26)\n    at <eval> (eval_script:1:61)\n","traceB":"    at beta (eval_script:1:25)\n    at <eval> (eval_script:1:60)\n"}
+Running build hooks...Running build hooks...
+===== host_surface_gate (exit 0) =====
+{"status":"pass","checks":{"membersExist":true,"sourceAccessors":true,"ruleStateSharedAcrossEvaluations":true,"ruleStateIsPerAnalysis":true,"httpGetOverload":true,"cacheRoundTrip":true,"cacheDelete":true,"cookieRoundTrip":true,"cookieOnWire":true,"cookieRemoved":true,"serverCookieStored":true,"logReturnValue":true,"logCaptured":true,"base64Encode":true,"base64UrlSafe":true,"base64Decode":true,"base64DecodeToBytes":true,"base64EmptyIsNull":true,"hexEncode":true,"hexDecode":true,"hexDecodeBytes":true,"encodeUri":true,"encodeUriUnknownCharset":true,"t2s":true,"t2sExcluded":true,"s2t":true,"htmlFormat":true,"timeFormatUtc":true,"randomUuid":true,"toNumChapter":true,"toNumChapterUntouched":true,"toUrl":true,"toUrlRelative":true,"strToBytes":true,"base64WrapLines":true,"cookieInUrlRuleRan":true,"cookieInUrlRuleParsed":true},"utilities":{"base64":"5LmmYQ==","base64Wrapped":"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4\neHh4","base64UrlSafe":"w7_Dvg==","base64Decoded":"书a","base64Bytes":"-28,-71,-90,97","base64Null":null,"hex":"e4b9a661","hexDecoded":"书a","hexBytes":"0,-1","encodeUri":"%E6%88%91+a*b","encodeUriNonAsciiCharset":"","t2s":"　　“你这是什么意思？”他问道。","t2sExcluded":"魔戒三部曲、桌球选手、雪梨歌剧院。","s2t":"龍應台的小說在臺灣很受歡迎。","htmlFormat":"　　一\n　　二\n　　三\n　　<img src=\"/i.png\">","timeFormatUtc":"1970-01-01 08:00","uuid":36,"toNumChapter":"第123章","toNumChapterUntouched":"序章","toUrl":"{\"host\":\"a.test\",\"origin\":\"http://a.test\",\"pathname\":\"/b\",\"searchParams\":{\"x\":\"1\",\"y\":\"2\"}}","toUrlRelative":"/c","bytes":"书"},"requests":["GET /echo","GET /echo cookie=a=1; b=2; c=3","GET /set-cookie","GET /search?q=%E7%94%B2"]}
+
+Running build hooks...Running build hooks...
+===== broker_lifecycle_regression (exit 0) =====
+{"case":"init-close-64","pass":true,"initSucceeded":0,"initCancelled":0,"initRejected":64}
+{"case":"forged-cancel","pass":true}
+{"case":"unrelated-background-error-retained","pass":true}
+{"case":"native-heap-limit","pass":true,"resultType":"JsError_MemoryLimit"}
+
+Running build hooks...Running build hooks...
+===== broker_loader_regression (exit 0) =====
+{"case":"ambient-file-import","pass":true,"readControlledMarker":false,"errorType":"JsError_Reference"}
+
+Running build hooks...Running build hooks...
+===== scoped_runtime_gate (exit 0) =====
+{"status":"pass","checks":{"childCancels":true,"parentIoNotCancelled":true,"parentResumesWithSharedState":true,"dartHostObservesChildCancellation":true,"stateSurvivesChildCancel":true,"childIoNotCancelled":true,"childCompletesDespiteParentCancel":true,"parentCancels":true,"stateSurvivesParentCancel":true,"deferredCompletionDelivered":true,"scopedCancelAccepted":true,"scopedCancelReturnsCancelled":true,"scopedCancelInvokesHostCancelOnce":true,"scopedCancelTargetsOwnRequest":true,"nestedKeepsRunningWhileOuterCancelled":true,"queuedScopedCancelAccepted":true,"queuedScopedCancelReturnsCancelled":true,"queuedScopedCancelKeepsRunningScope":true,"queuedScopedCancelSkipsHostCancel":true,"queuedScopedCancelNeverRan":true,"discardedReservationRefused":true,"discardAfterSubmitKeepsExecution":true,"closeUnwindsInflightScope":true,"closeInvokesHostCancelForInflight":true,"lateCompletionRejected":true,"scopedReservationAfterCloseRefused":true,"interleavedCancelAccepted":true,"interleavedCancelReturnsCancelled":true,"interleavedCancelDeliveredOnce":true,"interleavedCloseSucceeds":true,"nestedAllocationPressureCompletes":true,"nestedScopeValuesSurvive":true,"heapLimitEnforced":true,"afterGcUsable":true,"deadlineStopsTightLoop":true,"deadlineStopsRegexBacktrack":true,"deadlineTearsDownParkedHostWait":true,"deadlineTearsDownParkedHostRequest":true,"deadlineEngineUsableAfterwards":true,"executionWithoutBudgetRuns":true}}
+
+Running build hooks...Running build hooks...
+===== nested_runtime_gate (exit 0) =====
+{"status":"pass","checks":{"nestedSharedClosure":true,"subsequentSharedClosure":true,"sameLibraryAcrossInstances":true,"freshOuterBindings":true,"assignmentShadowsLibrary":true,"libraryDoesNotCaptureBindings":true,"freshNestedBindings":true,"twoLevelHostCalls":true,"xmlJsBlock":true,"outerResumes":true,"nestedErrorBeforeIo":true,"caughtNestedErrorKeepsLibrary":true,"nestedLoopCancelled":true,"afterCancellationKeepsState":true,"libraryInitCancelled":true,"sequentialCounter":true,"concurrentCallsKeepState":true,"jsonFourStagesWithNestedLibrary":true},"requests":["/1","/true","/address","/final","/4","/5","/14","/search","/book","/toc","/content"]}
+Drop DartOpaque after closing the port, thus the object will be leaked forever.
+
+Running build hooks...Running build hooks...
+===== html-adapter (exit 0) =====
+Wrote C:\Users\17945\AppData\Local\Temp\liber-runtime-limits-prototype\gates\html-adapter.json
+adapter corpus: pass (35 cases, frozen golden not-run)
+
+Running build hooks...Running build hooks...
+===== broker_gate_regression-queued-close (exit 0) =====
+{"case":"queued-close","pass":true,"queuedDuringCancel":"Cancelled: JavaScript engine was closed","queuedResult":"Cancelled: JavaScript engine was closed","outerResult":"Cancelled: JavaScript engine was closed","closeError":"null","starts":1,"cancels":1}
+
+Running build hooks...Running build hooks...
+===== broker_gate_regression-throw-start (exit 0) =====
+{"case":"throw-start","pass":true,"result":"Type error: TypeError: Error converting from js 'bridge' into type 'JsValue': Bridge error: Host start callback failed\n    at <eval> (eval_script:1:4)","settledOnlyAfterClose":false}
+
+Running build hooks...Running build hooks...
+thread 'fjs-js' (65136) panicked at src\frb_generated.rs:7317:23:
+Dart throws exception but Rust side assume it is not failable: Bad state: test-start-failure
+
+#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber-25/tool/broker_gate_regression.dart:161:34)
+#1      LibFjsApiImpl.encode_DartFn_Inputs_bridge_request_Output_unit_AnyhowException.<anonymous closure> (package:fjs/src/frb/frb_generated.dart:4866:34)
+#2      Function._apply (dart:core-patch/function_patch.dart:11:71)
+#3      Function.apply (dart:core-patch/function_patch.dart:38:12)
+#4      BaseHandler.dartFnInvoke (package:flutter_rust_bridge/src/main_components/handler.dart:48:14)
+#5      DartHandlerPortManager.onData (package:flutter_rust_bridge/src/main_components/port_manager.dart:44:18)
+#6      _RootZone.runUnaryGuarded (dart:async/zone.dart:891:10)
+#7      _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#8      _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#9      _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#10     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#11     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#12     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:192:12)
 
 
+Stack backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: <unknown>
+  20: <unknown>
+  21: <unknown>
+  22: <unknown>
+  23: <unknown>
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: <unknown>
+  35: <unknown>
+  36: <unknown>
+  37: <unknown>
+  38: <unknown>
+  39: <unknown>
+  40: <unknown>
+  41: <unknown>
+  42: <unknown>
+  43: <unknown>
+  44: <unknown>
+  45: <unknown>
+  46: <unknown>
+  47: <unknown>
+  48: <unknown>
+  49: <unknown>
+  50: <unknown>
+  51: <unknown>
+  52: <unknown>
+  53: <unknown>
+  54: <unknown>
+  55: <unknown>
+  56: <unknown>
+  57: <unknown>
+  58: <unknown>
+  59: <unknown>
+  60: <unknown>
+  61: <unknown>
+  62: <unknown>
+  63: <unknown>
+  64: <unknown>
+  65: <unknown>
+  66: <unknown>
+  67: <unknown>
+  68: <unknown>
+  69: BaseThreadInitThunk
+  70: RtlUserThreadStart
+stack backtrace:
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+===== broker_gate_regression-throw-cancel (exit 0) =====
+Error in dart_fn_handle_output when sending message for call_id 1: Dart2RustMessageSse { vec: [0, 0, 0, 0, 0, 0, 0, 0], data_len: 1 }
+{"case":"throw-cancel","pass":true,"result":"Cancelled: JavaScript engine was closed","closeError":"Bridge error: Host cancellation callback failed after runtime shutdown"}
+
+Running build hooks...Running build hooks...
+thread 'tokio-rt-worker' (37540) panicked at src\frb_generated.rs:7387:23:
+Dart throws exception but Rust side assume it is not failable: Bad state: test-cancel-failure
+
+#0      main.<anonymous closure> (file:///D:/GithubRepositories/Flutter/liber-25/tool/broker_gate_regression.dart:165:35)
+#1      LibFjsApiImpl.encode_DartFn_Inputs_u_64_Output_unit_AnyhowException.<anonymous closure> (package:fjs/src/frb/frb_generated.dart:4932:34)
+#2      Function._apply (dart:core-patch/function_patch.dart:11:71)
+#3      Function.apply (dart:core-patch/function_patch.dart:38:12)
+#4      BaseHandler.dartFnInvoke (package:flutter_rust_bridge/src/main_components/handler.dart:48:14)
+#5      DartHandlerPortManager.onData (package:flutter_rust_bridge/src/main_components/port_manager.dart:44:18)
+#6      _RootZone.runUnaryGuarded (dart:async/zone.dart:891:10)
+#7      _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#8      _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#9      _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#10     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#11     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#12     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:192:12)
+
+
+Stack backtrace:
+   0: <unknown>
+   1: <unknown>
+   2: <unknown>
+   3: <unknown>
+   4: <unknown>
+   5: <unknown>
+   6: <unknown>
+   7: <unknown>
+   8: <unknown>
+   9: <unknown>
+  10: <unknown>
+  11: <unknown>
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: <unknown>
+  17: <unknown>
+  18: <unknown>
+  19: <unknown>
+  20: <unknown>
+  21: <unknown>
+  22: <unknown>
+  23: <unknown>
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: <unknown>
+  35: <unknown>
+  36: <unknown>
+  37: <unknown>
+  38: <unknown>
+  39: <unknown>
+  40: <unknown>
+  41: <unknown>
+  42: <unknown>
+  43: <unknown>
+  44: <unknown>
+  45: <unknown>
+  46: <unknown>
+  47: <unknown>
+  48: <unknown>
+  49: <unknown>
+  50: <unknown>
+  51: <unknown>
+  52: <unknown>
+  53: <unknown>
+  54: <unknown>
+  55: <unknown>
+  56: <unknown>
+  57: <unknown>
+  58: <unknown>
+  59: <unknown>
+  60: <unknown>
+  61: <unknown>
+  62: <unknown>
+  63: <unknown>
+  64: <unknown>
+  65: <unknown>
+  66: <unknown>
+  67: <unknown>
+  68: <unknown>
+  69: <unknown>
+  70: <unknown>
+  71: <unknown>
+  72: <unknown>
+  73: <unknown>
+  74: <unknown>
+  75: <unknown>
+  76: <unknown>
+  77: <unknown>
+  78: BaseThreadInitThunk
+  79: RtlUserThreadStart
+stack backtrace:
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+===== broker_gate_regression-same-runtime-nested (exit 0) =====
+{"case":"same-runtime-nested","pass":true,"staleRequestRefused":true,"sequentialSharedClosure":true,"nestedCompletedBeforeClose":true,"outerBeforeClose":42,"nestedAfterClose":42,"outerAfterClose":42,"lateCompletionRejected":false,"callbackFinished":true,"cancelCalls":0,"cleanup":true}
+
+Running build hooks...Running build hooks...
+===== broker_gate_regression-same-runtime-queued-release (exit 0) =====
+{"case":"same-runtime-queued-release","pass":true,"staleRequestRefused":true,"sequentialSharedClosure":true,"nestedCompletedBeforeClose":true,"outerBeforeClose":41,"nestedAfterClose":42,"outerAfterClose":41,"lateCompletionRejected":false,"callbackFinished":true,"cancelCalls":0,"cleanup":true}
+
+Running build hooks...Running build hooks...
+===== broker_gate_regression-same-runtime-cancel (exit 0) =====
+Error in dart_fn_handle_output when sending message for call_id 1: Dart2RustMessageSse { vec: [0, 0, 0, 0, 0, 0, 0, 0], data_len: 1 }
+{"case":"same-runtime-cancel","pass":true,"staleRequestRefused":true,"sequentialSharedClosure":true,"nestedCompletedBeforeClose":false,"outerBeforeClose":"pending","nestedAfterClose":"Cancelled: JavaScript engine was closed","outerAfterClose":"Cancelled: JavaScript engine was closed","lateCompletionRejected":true,"callbackFinished":true,"cancelCalls":1,"cleanup":true}
+
+Running build hooks...Running build hooks...
+===== state-differential (exit 0) =====
+{"platform":"windows","baselineCommit":"14dd24945b2914ce2708b8abaa4ee67ceef892af","golden":"tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json","values":{"secondCompletedWhileFirstHeld":true,"firstResult":"22","secondResult":"22","concurrentFinalState":"22","firstCompletesWhileSecondHeld":false,"cancelResult":"error:cancelled","afterCancelState":"41","lruTouch":"99","lruRetained":"99","lruEvicted":"0"},"requests":["GET /hold","GET /early","GET /late","GET /entered"],"numericComparisonFields":["firstResult","secondResult","concurrentFinalState","afterCancelState","lruTouch","lruRetained","lruEvicted"],"status":"pass","notRun":[],"notCompared":[{"field":"firstCompletesWhileSecondHeld","expected":true,"actual":false,"reason":"the one execution model has no two independently parked scopes (ADR 0009), so the outer parked wait is not polled while the nested one is parked; nothing else in this scenario is excluded — every other observation and the request order stay compared."}],"differences":[]}
+
+Running build hooks...Running build hooks...
+===== nested-differential (exit 0) =====
+{"platform":"windows","baselineCommit":"14dd24945b2914ce2708b8abaa4ee67ceef892af","golden":"tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json","status":"pass","observations":[{"id":"nested-shared","value":"\"1\""},{"id":"subsequent-shared","value":"2"},{"id":"cross-source-shared","value":"3"},{"id":"outer-bindings","value":"[\"outer-key\",7,null,null]"},{"id":"nested-fresh-bindings","value":"\"[null,null,null,null]\""},{"id":"lexical-isolation","value":"\"undefined\""},{"id":"fresh-eval-bindings","value":"\"undefined\""},{"id":"library-binding-isolation","value":"\"undefined\""},{"id":"shadow-library","value":"900"},{"id":"shared-after-shadow","value":"3"},{"id":"nested-caught-error","value":"[true,3]"},{"id":"two-level-host","value":"\"inner\""},{"id":"xml-js","value":"\"4\""},{"id":"at-js","value":"\"5\""},{"id":"connect","value":"\"6\""}],"requests":["GET /value/1","GET /value/[null,null,null,null]","GET /value/undefined","GET /value/inner","GET /value/inner","GET /value/4","GET /value/5","GET /value/6"],"countMatches":true,"requestsMatch":true,"mismatches":[]}
+
+Running build hooks...Running build hooks...

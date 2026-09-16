@@ -27,7 +27,21 @@ the parked call with an error the script cannot swallow, and the interrupt then 
 at its next poll. Per-execution stacks (Windows fibers) are not part of the runtime on any
 platform: what they add — several executions parked at once, resuming in any order — is not
 compared by the differential contract and is not asserted by any gate, so no source can depend
-on it. Concurrent analyses *are* reachable from the product today — a second tap on a search
+on it. **Amendment (2026-09-16, ticket #25's executed evidence): the "not compared by the
+differential contract" clause is wrong — one row does compare it.** The state differential's
+`firstCompletesWhileSecondHeld` releases a scope parked in HTTP and asks whether it completes
+while a second scope is still parked; the frozen baseline does that by resuming independently
+parked scopes, and the one execution model cannot, because the nested wait owns the OS thread.
+Measured after the fiber removal: expected `true`, observed `false`, with every other
+observation of that scenario unchanged (`secondCompletedWhileFirstHeld`, both results, the
+cancel result, the state after cancel, the LRU trio and the request order all match the
+golden). That row is therefore recorded as a known divergence, not a pass — `notCompared` in
+`tool/state_oracle_compare.dart` plus the divergence table in
+`docs/compatibility/book-source-differential-contract.md` — and a platform running that
+harness has its compatibility claim narrowed by exactly this capability (two independently
+parked scopes, resuming in any order) and by nothing else. The rest of the sentence stands: no
+gate asserts the capability.
+Concurrent analyses *are* reachable from the product today — a second tap on a search
 result or on the directory-refresh button while the first analysis runs starts another one on
 the same pipeline and, for a source with a `jsLib`, on the same engine
 (`lib/source/html_source_browser.dart:217, 256`; `lib/source/js_source_runtime.dart:79-93`) — and

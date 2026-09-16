@@ -1,12 +1,21 @@
-"""THROWAWAY: run the runtime-limit probes and record the executed evidence.
+"""Run the runtime-limit probes and record the executed evidence for this platform.
 
-Usage: python tool/runtime_limits_prototype/verify.py [fjs-library.dll]
+Usage: python tool/runtime_limits_prototype/verify.py [release-library] [gate-library]
 
-Writes evidence/windows-native.json, evidence/windows-quantum.json,
-evidence/windows-product.json, evidence/gates.log and evidence/manifest.json
+The rows are the same on every platform; only the native library differs.
+`release-library` is what the product cases and the limit rows load — a release
+build measures what a release build does. `gate-library` is what the shared gate
+list loads, which on Windows is the app bundle's debug DLL.
+
+Writes evidence/<platform>-native.json, evidence/<platform>-quantum.json,
+evidence/<platform>-product.json, evidence/gates.log and evidence/manifest.json
 under this directory. Every probe writes its raw JSON; the manifest adds hashes
-and provenance. A non-zero exit means an observation did not reproduce, not
-that a limit is missing: the verdicts live in manifest.json's `findings`.
+and provenance. A non-zero exit means an observation did not reproduce, not that
+a limit is missing: the verdicts live in manifest.json's `findings`.
+
+Rows for a platform other than the one running this file stay `not-run`; the
+manifest records which platform each file belongs to instead of implying a
+five-platform result.
 """
 import hashlib
 import json
@@ -21,11 +30,21 @@ import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+# Importing the shared gate list must not leave a __pycache__ tree in the
+# repository; the harness only needs the module's constants and helpers.
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT / 'tool'))
+import ci_runtime  # noqa: E402  (one shared gate list, not a second copy)
+
 EVIDENCE = HERE / 'evidence'
 QUICKJS = ROOT / 'packages/fjs/libfjs/vendor/rquickjs-sys/quickjs'
 SCRATCH = pathlib.Path(tempfile.gettempdir()) / 'liber-runtime-limits-prototype'
-COMPILER = shutil.which('gcc') or 'D:/Tool/mingw64/bin/gcc.exe'
-GATES = ('runtime_gate', 'fiber_runtime_gate')
+COMPILER = shutil.which('gcc') or shutil.which('cc') or 'D:/Tool/mingw64/bin/gcc.exe'
+PLATFORM = {'win32': 'windows', 'darwin': 'macos', 'linux': 'linux'}.get(sys.platform)
+if PLATFORM is None:
+    raise SystemExit(f'unsupported platform: {sys.platform}')
+EXE = '.exe' if PLATFORM == 'windows' else ''
+QUICKJS_SOURCES = ('quickjs.c', 'libregexp.c', 'libunicode.c', 'dtoa.c')
 QUANTUMS = (10000, 1000, 256)
 # The catch-and-retry allocation loop deliberately runs far past its deadline.
 CASE_TIMEOUTS = {'deadline-oom-retry-loop': 300}
@@ -48,9 +67,10 @@ QUANTUM_PATCHES = {
     'libregexp.c': (r'#define INTERRUPT_COUNTER_INIT \d+',
                     '#define INTERRUPT_COUNTER_INIT {quantum}'),
 }
-
-
 VENDOR_NOTES = ROOT / 'packages/fjs/libfjs/vendor/rquickjs-sys/LIBER.md'
+# The build copy the product links carries the poll quantum ADR 0009 settles;
+# the vendored files stay pinned at 10 000.
+PRODUCT_QUANTUM = 1000
 
 
 def sha256(path):
@@ -66,11 +86,29 @@ def vendored_revision(label):
     return match.group(1)
 
 
+def default_library(kind):
+    """The native library this platform's probes load, when no path is given."""
+    if PLATFORM == 'windows':
+        release = ROOT / 'packages/fjs/libfjs/target/release/fjs.dll'
+        if kind == 'release':
+            return release
+        # The gates load the app bundle's debug DLL: test/native_library.dart and
+        # the package's own gates resolve that copy before the crate target dir.
+        return ROOT / 'build/windows/x64/runner/Debug/fjs.dll'
+    suffix = 'libfjs.dylib' if PLATFORM == 'macos' else 'libfjs.so'
+    profile = 'release' if kind == 'release' else 'debug'
+    return ROOT / 'packages/fjs/libfjs/target' / profile / suffix
+
+
 def run(command, timeout, cwd=ROOT):
     started = time.monotonic()
     try:
+        # Decode as UTF-8 rather than the console's code page: a probe or a gate
+        # that prints a non-ASCII result must not turn its whole record into None
+        # on a GBK console.
         completed = subprocess.run([str(part) for part in command], cwd=cwd, text=True,
-                                   capture_output=True, timeout=timeout, check=False)
+                                   encoding='utf-8', errors='replace', capture_output=True,
+                                   timeout=timeout, check=False)
         return {'command': [str(part) for part in command], 'exitCode': completed.returncode,
                 'timedOut': False, 'seconds': round(time.monotonic() - started, 3),
                 'stdout': completed.stdout, 'stderr': completed.stderr[-4000:]}
@@ -82,13 +120,19 @@ def run(command, timeout, cwd=ROOT):
                 'stdout': decode(expired.stdout), 'stderr': decode(expired.stderr)}
 
 
-def compile_probe(name, compiler_arguments, output, timeout=900):
-    sources = [QUICKJS / 'quickjs.c', QUICKJS / 'libregexp.c', QUICKJS / 'libunicode.c',
-               QUICKJS / 'dtoa.c']
-    command = [COMPILER, '-std=gnu11', '-D_GNU_SOURCE', '-DWIN32_LEAN_AND_MEAN', '-O1', '-g',
-               '-I', QUICKJS, *compiler_arguments, HERE / name, *sources, '-lws2_32', '-lm',
-               '-o', output]
-    return run(command, timeout=timeout)
+def probe_build(probe, output, optimisation, sources, include, defines=()):
+    """The one probe build recipe; only the platform flags differ.
+
+    Windows needs `WIN32_LEAN_AND_MEAN` and `ws2_32`; both platforms take
+    `_GNU_SOURCE`, the C11 dialect, `-lm` and the pinned source list.
+    """
+    flags = ['-std=gnu11', '-D_GNU_SOURCE', optimisation, '-g']
+    libraries = ['-lm']
+    if PLATFORM == 'windows':
+        flags.append('-DWIN32_LEAN_AND_MEAN')
+        libraries.append('-lws2_32')
+    return [COMPILER, *flags, *defines, '-I', include, HERE / probe,
+            *sources, *libraries, '-o', output]
 
 
 def quantum_table():
@@ -108,13 +152,11 @@ def quantum_table():
             path.write_text(patched, encoding='utf-8', newline='\n')
             patches.append({'file': name, 'pattern': pattern,
                             'replacement': template.format(quantum=quantum)})
-        sources = [work / 'quickjs' / 'quickjs.c', work / 'quickjs' / 'libregexp.c',
-                   work / 'quickjs' / 'libunicode.c', work / 'quickjs' / 'dtoa.c']
+        sources = [work / 'quickjs' / name for name in QUICKJS_SOURCES]
         source_hashes = [{'path': path.name, 'sha256': sha256(path)} for path in sources]
-        executable = work / 'quantum_probe.exe'
-        build = run([COMPILER, '-std=gnu11', '-D_GNU_SOURCE', '-DWIN32_LEAN_AND_MEAN', '-O2',
-                     f'-DQUANTUM_LABEL={quantum}', '-I', work / 'quickjs',
-                     HERE / 'quantum_probe.c', *sources, '-lws2_32', '-lm', '-o', executable],
+        executable = work / f'quantum_probe{EXE}'
+        build = run(probe_build('quantum_probe.c', executable, '-O2', sources,
+                                work / 'quickjs', [f'-DQUANTUM_LABEL={quantum}']),
                     timeout=900)
         if build['exitCode'] != 0:
             raise SystemExit(f'quantum probe build failed for {quantum}:\n{build["stderr"]}')
@@ -134,47 +176,47 @@ def quantum_table():
     return rows
 
 
+def resolve(argument, kind):
+    library = pathlib.Path(argument).resolve() if argument else default_library(kind)
+    return library.resolve(strict=True)
+
+
 def main():
-    library = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else \
-        (ROOT / 'build/windows/x64/runner/Debug/fjs.dll').resolve()
-    library = library.resolve(strict=True)
+    release = resolve(sys.argv[1] if len(sys.argv) > 1 else None, 'release')
+    gates_library = resolve(sys.argv[2] if len(sys.argv) > 2 else None, 'gates')
     EVIDENCE.mkdir(exist_ok=True)
     SCRATCH.mkdir(exist_ok=True)
-    dart = shutil.which('dart')
-    pwsh = shutil.which('pwsh') or shutil.which('powershell')
-    if dart is None or pwsh is None:
-        raise SystemExit('dart and pwsh must be on PATH')
-    # Same spelling trap as tool/ci_runtime.py: PATHEXT hands back '.EXE', and the
-    # build-hooks runner then asks Windows for 'dart.EXE.exe' when the product
-    # probe runs in a package carrying a native build hook.
-    if dart[-4:].lower() == '.exe':
-        dart = dart[:-4] + '.exe'
+    dart = ci_runtime.dart_binary()
 
     failures = []
 
-    # 1. The native probe: the pinned QuickJS sources, no Dart in the way.
-    build = run([pwsh, '-NoProfile', '-File', HERE / 'build.ps1', '-OutputDirectory', SCRATCH],
-                timeout=900)
+    # 1. The native probe: the pinned QuickJS sources, no Dart in the way. Its
+    # quantum is the pinned 10 000, so this file stays the baseline the product
+    # rows are read against.
+    native_executable = SCRATCH / f'native_probe{EXE}'
+    build = run(probe_build('native_probe.c', native_executable, '-O1',
+                            [QUICKJS / name for name in QUICKJS_SOURCES], QUICKJS), timeout=900)
     if build['exitCode'] != 0:
         raise SystemExit('native probe build failed:\n' + build['stderr'] + build['stdout'])
-    probe = run([SCRATCH / 'native_probe.exe'], timeout=900)
-    (EVIDENCE / 'windows-native.json').write_text(probe['stdout'], encoding='utf-8')
+    probe = run([native_executable], timeout=900)
+    (EVIDENCE / f'{PLATFORM}-native.json').write_text(probe['stdout'], encoding='utf-8')
     native = json.loads(probe['stdout'])
     failures += [f'native check failed: {name}' for name, ok in native['checks'].items() if not ok]
 
     # 2. The poll-quantum sensitivity table on patched copies of those sources.
     quantums = quantum_table()
-    (EVIDENCE / 'windows-quantum.json').write_text(
+    (EVIDENCE / f'{PLATFORM}-quantum.json').write_text(
         json.dumps({'note': 'Patched copies of the frozen vendored sources; the vendored '
-                            'files themselves are unchanged.',
+                            'files themselves are unchanged, and the product build copy '
+                            f'carries quantum {PRODUCT_QUANTUM}.',
                     'rows': quantums}, indent=2) + '\n', encoding='utf-8')
 
     # 3. The product probe: one process per case, so an uninterruptible execution is
     # recorded as a kill instead of hanging the run.
-    product = {'library': str(library), 'cases': {}}
+    product = {'library': str(release), 'cases': {}}
     for case in PRODUCT_CASES:
         result = run([dart, 'run', 'tool/runtime_limits_prototype/product_probe.dart',
-                      library, case], timeout=CASE_TIMEOUTS.get(case, 120))
+                      release, case], timeout=CASE_TIMEOUTS.get(case, 120))
         entry = {'case': case, 'timedOut': result['timedOut'], 'exitCode': result['exitCode'],
                  'seconds': result['seconds']}
         try:
@@ -190,25 +232,34 @@ def main():
                      for name, ok in entry.get('checks', {}).items() if not ok]
         print(f'product {case}: {entry.get("status", "no-status")} '
               f'({entry["seconds"]}s)', flush=True)
-    (EVIDENCE / 'windows-product.json').write_text(json.dumps(product, indent=2) + '\n',
-                                                   encoding='utf-8')
+    (EVIDENCE / f'{PLATFORM}-product.json').write_text(json.dumps(product, indent=2) + '\n',
+                                                       encoding='utf-8')
 
-    # 4. The shipped gates that exercise the same engine through this DLL.
+    # 4. The shared gate list on the same native build the app loads. The list
+    # itself lives in tool/ci_runtime.py so the harness and CI cannot drift.
     gates = {}
     gate_log = []
-    for gate in GATES:
-        result = run([dart, 'run', f'tool/{gate}.dart', library], timeout=300)
-        gates[gate] = {'exitCode': result['exitCode'], 'timedOut': result['timedOut'],
+    gate_output = SCRATCH / 'gates'
+    shutil.rmtree(gate_output, ignore_errors=True)
+    gate_output.mkdir(parents=True, exist_ok=True)
+    for name, command in ci_runtime.gate_commands(dart, gates_library, gate_output):
+        result = run(command, timeout=300)
+        gates[name] = {'exitCode': result['exitCode'], 'timedOut': result['timedOut'],
                        'seconds': result['seconds']}
-        gate_log.append(f'===== {gate} (exit {result["exitCode"]}) =====\n'
+        gate_log.append(f'===== {name} (exit {result["exitCode"]}) =====\n'
                         f'{result["stdout"]}\n{result["stderr"]}\n')
         if result['exitCode'] != 0:
-            failures.append(f'gate failed on this library: {gate}')
+            failures.append(f'gate failed on this library: {name}')
     (EVIDENCE / 'gates.log').write_text(''.join(gate_log), encoding='utf-8')
 
     # 5. Provenance and the verdict.
     def git(*arguments):
         return subprocess.check_output(['git', *arguments], cwd=ROOT, text=True).strip()
+
+    def library_record(path):
+        return {'path': str(path), 'sha256': sha256(path), 'bytes': path.stat().st_size,
+                'mtime': time.strftime('%Y-%m-%dT%H:%M:%S',
+                                       time.localtime(path.stat().st_mtime))}
 
     findings = dict(native['findings'])
     findings['quantumSensitivity'] = {
@@ -238,31 +289,36 @@ def main():
             product['cases']['deadline-host-call']['measurements']['run']['overshootMs'],
         'productIsolateBlockedMeasuredMs':
             product['cases']['deadline-isolate-blocked']['measurements']['run']['measuredMs'],
+        'productIsolateBlockedElapsedAfterUnblockMs':
+            product['cases']['deadline-isolate-blocked']['measurements']['run']
+            ['elapsedAfterUnblockMs'],
         'productRssGrowthOverHeapLimitBytes':
             product['cases']['memory-limit-alloc-loop']['measurements']['runs']['rssGrowthBytes'],
     }
     manifest = {
         'status': 'pass' if not failures else 'fail',
-        'scope': 'Windows only; Android, iOS, macOS and Linux remain not-run',
+        'platform': PLATFORM,
+        'scope': f'{PLATFORM} only; every other platform stays not-run until this file runs there',
         'recordedAt': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
         'repositoryHead': git('rev-parse', 'HEAD'),
         'repositoryBranch': git('branch', '--show-current'),
         'uncommittedChanges': git('status', '--short').splitlines(),
-        'library': {'path': str(library), 'sha256': sha256(library),
-                    'bytes': library.stat().st_size,
-                    'mtime': time.strftime('%Y-%m-%dT%H:%M:%S',
-                                           time.localtime(library.stat().st_mtime))},
-        'nativeProbe': {'path': str(SCRATCH / 'native_probe.exe'),
-                        'sha256': sha256(SCRATCH / 'native_probe.exe')},
+        'libraries': {
+            'release': library_record(release),
+            'gates': library_record(gates_library),
+        },
+        'nativeProbe': {'path': str(native_executable), 'sha256': sha256(native_executable)},
         'engines': {'quickjs': native['engine'],
                     'rquickjsRevision': vendored_revision('rquickjs'),
                     'quickjsRevision': vendored_revision('QuickJS'),
                     'revisionSource': str(VENDOR_NOTES.relative_to(ROOT)).replace(os.sep, '/'),
+                    'productPollQuantum': PRODUCT_QUANTUM,
                     'compiler': compiler_version()},
         'sourceHashes': [
             {'path': str(path.relative_to(ROOT)).replace('\\', '/'), 'sha256': sha256(path)}
-            for path in [HERE / 'native_probe.c', HERE / 'quantum_probe.c', HERE / 'build.ps1',
-                         HERE / 'product_probe.dart', HERE / 'verify.py']
+            for path in [HERE / 'native_probe.c', HERE / 'quantum_probe.c',
+                         HERE / 'product_probe.dart', HERE / 'verify.py',
+                         ROOT / 'tool/ci_runtime.py']
             + sorted(QUICKJS.glob('*.c')) + sorted(QUICKJS.glob('*.h'))],
         'evidenceHashes': [
             {'path': str(path.relative_to(ROOT)).replace('\\', '/'), 'sha256': sha256(path)}

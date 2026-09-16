@@ -91,6 +91,22 @@ Cleanup has two distinct assertions:
 
 A non-observable baseline resource leak is therefore not part of the golden equality check. Fixing it remains a pass. If the source-observable baseline effect cannot be reproduced without violating an approved security or data-integrity prohibition, the fixture is `policy-rejected`.
 
+### Known divergences
+
+A divergence is recorded here only when an approved architecture decision makes a
+frozen observation unreproducible. It is not a pass: the affected harness reports
+the observation in its `notCompared` list naming the expected and observed values,
+the platform cannot claim the capability that observation belongs to, and every
+other observation in that scenario stays compared.
+
+| Row | Expected (frozen baseline) | Observed (Liber) | Reason | Mitigation |
+|---|---|---|---|---|
+| `firstCompletesWhileSecondHeld` (`tool/state_oracle_compare.dart`, `state-expanded-golden.json`) | `true` | `false` | ADR 0009 removes the per-execution stacks, so two scopes can no longer be parked independently: a second execution runs nested inside the parked one and the nested wait owns the OS thread, which leaves the outer scope's parked wait unpolled until the nested one returns. The frozen baseline resumes independently parked scopes in any order. | Overlapping analyses are serialized at the product level (#26), and a later chapter prefetch stays serialized rather than concurrent, so no source reaches the interleaved shape this row describes. |
+
+The divergence is a property of the execution model, so the same named set applies
+on every desktop platform that runs the harness; it is not a per-run flag and it
+does not vary by platform.
+
 ### Cookies and state
 
 Cookie comparison follows the frozen baseline's effective behavior, not an idealized browser model. The fixture records:

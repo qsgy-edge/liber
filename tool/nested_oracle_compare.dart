@@ -6,7 +6,7 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 
-/// Runs the exact Android oracle corpus against the Windows destination.
+/// Runs the exact Android oracle corpus against the desktop destination.
 Future<void> main(List<String> args) async {
   if (args.length != 3) {
     throw ArgumentError('Usage: <fjs.dll> <golden.json> <new-result.json>');

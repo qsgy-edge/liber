@@ -12,7 +12,7 @@ import 'source.dart';
 import 'value.dart';
 part 'engine.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `already_loaded_error`, `begin_close`, `begin_init`, `broker_pending`, `close_with_mode`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `executions`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `new_bridge_call`, `new_broker_bridge_call`, `new_cancellable_bridge_call`, `register_fjs_broker`, `register_fjs_cancellable`, `register_fjs`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `run_fiber_scheduler`, `run_scoped`, `take_resources`, `with_foreground_js_result`
+// These functions are ignored because they are not marked as `pub`: `abort_execution_requests`, `already_loaded_error`, `begin_close`, `begin_init`, `broker_pending`, `close_with_mode`, `deadline_expired`, `deadline_millis`, `deadline_timeout`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `executions`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `mark_deadline`, `new_bridge_call`, `new_broker_bridge_call`, `new_cancellable_bridge_call`, `register_fjs_broker`, `register_fjs_cancellable`, `register_fjs`, `remaining`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `run_scoped`, `stop_error`, `take_resources`, `with_foreground_js_result`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BrokerBridgeState`, `BrokerEntry`, `BrokerEval`, `CancellableBridgeState`, `ExecutionQueue`, `JsEngineResources`, `ScopedCommand`, `ScopedExecution`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`, `fmt`, `fmt`
 
@@ -163,7 +163,12 @@ abstract class JsEngine implements RustOpaqueInterface {
           builtins: builtins, modules: modules, runtimeOptions: runtimeOptions);
 
   /// Reserve a host-only execution capability bound to this engine.
-  Future<BigInt> createScopedExecution();
+  ///
+  /// `deadline_ms` is the per-execution budget the Rust clock enforces: it is
+  /// compared inside the interrupt closure and bounds a parked host wait, so
+  /// the deadline does not depend on the host's timer being punctual. `None`
+  /// leaves the execution without a deadline.
+  Future<BigInt> createScopedExecution({BigInt? deadlineMs});
 
   /// Declares a bundle of bytecode-backed modules without executing them.
   ///

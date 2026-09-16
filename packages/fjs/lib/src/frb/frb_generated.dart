@@ -229,7 +229,7 @@ abstract class LibFjsApi extends BaseApi {
       JsEngineRuntimeOptions? runtimeOptions});
 
   Future<BigInt> crateApiEngineJsEngineCreateScopedExecution(
-      {required JsEngine that});
+      {required JsEngine that, BigInt? deadlineMs});
 
   Future<void> crateApiEngineJsEngineDeclareNewBytecodeBundle(
       {required JsEngine that, required JsModuleBytecodeBundle bundle});
@@ -1733,12 +1733,13 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
 
   @override
   Future<BigInt> crateApiEngineJsEngineCreateScopedExecution(
-      {required JsEngine that}) {
+      {required JsEngine that, BigInt? deadlineMs}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsEngine(
             that, serializer);
+        sse_encode_opt_box_autoadd_u_64(deadlineMs, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
             funcId: 41, port: port_);
       },
@@ -1747,7 +1748,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         decodeErrorData: sse_decode_js_error,
       ),
       constMeta: kCrateApiEngineJsEngineCreateScopedExecutionConstMeta,
-      argValues: [that],
+      argValues: [that, deadlineMs],
       apiImpl: this,
     ));
   }
@@ -1755,7 +1756,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   TaskConstMeta get kCrateApiEngineJsEngineCreateScopedExecutionConstMeta =>
       const TaskConstMeta(
         debugName: "JsEngine_create_scoped_execution",
-        argNames: ["that"],
+        argNames: ["that", "deadlineMs"],
       );
 
   @override
@@ -9067,10 +9068,14 @@ class JsEngineImpl extends RustOpaque implements JsEngine {
           that: this, id: id, result: result);
 
   /// Reserve a host-only execution capability bound to this engine.
-  Future<BigInt> createScopedExecution() =>
+  ///
+  /// `deadline_ms` is the per-execution budget the Rust clock enforces: it is
+  /// compared inside the interrupt closure and bounds a parked host wait, so
+  /// the deadline does not depend on the host's timer being punctual. `None`
+  /// leaves the execution without a deadline.
+  Future<BigInt> createScopedExecution({BigInt? deadlineMs}) =>
       LibFjs.instance.api.crateApiEngineJsEngineCreateScopedExecution(
-        that: this,
-      );
+          that: this, deadlineMs: deadlineMs);
 
   /// Declares a bundle of bytecode-backed modules without executing them.
   ///

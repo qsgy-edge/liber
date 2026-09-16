@@ -2065,6 +2065,7 @@ fn wire__crate__api__engine__JsEngine_create_scoped_execution_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsEngine>,
             >>::sse_decode(&mut deserializer);
+            let api_deadline_ms = <Option<u64>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, crate::api::error::JsError>((move || {
@@ -2082,8 +2083,10 @@ fn wire__crate__api__engine__JsEngine_create_scoped_execution_impl(
                         }
                     }
                     let api_that_guard = api_that_guard.unwrap();
-                    let output_ok =
-                        crate::api::engine::JsEngine::create_scoped_execution(&*api_that_guard)?;
+                    let output_ok = crate::api::engine::JsEngine::create_scoped_execution(
+                        &*api_that_guard,
+                        api_deadline_ms,
+                    )?;
                     Ok(output_ok)
                 })())
             }

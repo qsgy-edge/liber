@@ -1,5 +1,3 @@
-#[cfg(windows)]
-pub(crate) mod fibers;
 pub(crate) mod driver;
 pub(crate) mod error_sink;
 pub(crate) mod executor;

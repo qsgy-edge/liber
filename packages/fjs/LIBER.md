@@ -2,8 +2,9 @@
 
 This directory vendors the MIT-licensed fjs package from upstream commit
 `8195d78bc0335045fd62bcf4835c3e889b54c77b`, retaining `LICENSE` and the upstream
-platform/cargokit build integration. It is a candidate until the Liber runtime
-checks and Windows build pass. The product dependency must not point at Temp.
+platform/cargokit build integration. The Liber runtime checks and the Windows
+build pass on this revision, and the product depends on this directory rather
+than on a temporary copy.
 
 The initial synchronous broker and FRB bindings were copied as a matched pair
 from the previously executed Windows experiment. FRB is 2.12.0; the generated
@@ -35,12 +36,26 @@ match for Legado's recursive-eval counter.
 
 The product retains inline jsLib closures in a 16-entry cache keyed by library
 text and memory limit, with fresh bindings for each evaluation. Same-library
-executions are serialized; references are strong until eviction/disposal rather
-than Legado's weak-reference cache. Cancellation evicts the affected engine.
+executions are **not** serialized by that cache: it stores one engine per key and
+only keys eviction on it (`lib/source/js_source_runtime.dart`), so two concurrent
+analyses on one library share one engine and the runtime's one execution model is
+what keeps them from interleaving — the second runs nested inside the first's
+parked wait (ADR 0009, ticket #25). References are strong until eviction/disposal
+rather than Legado's weak-reference cache. Cancellation evicts the affected engine.
+The execution deadline is a per-scope budget held in Rust: it goes in with
+`createScopedExecution(deadlineMs: ...)`, is compared inside the interrupt closure
+the broker installs, and bounds the parked host wait, so the Dart side no longer
+holds a deadline timer (`lib/source/js_source_runtime.dart` maps the Rust
+deadline error to the same `timeout` category as before).
 Remote-library JSON maps, full Rhino globals/Java APIs, dynamic headers and the
 remaining AnalyzeUrl options are not implemented. No full shared-scope or
-frozen-oracle compatibility claim follows from the Windows regression tests.
-Android/iOS/macOS/Linux remain not-run for this revision.
+frozen-oracle compatibility claim follows from the shared gate list: the state
+differential records one row the one execution model cannot reproduce
+(`firstCompletesWhileSecondHeld` — see
+`docs/compatibility/book-source-differential-contract.md` and ADR 0009), and the
+limits rows are per-platform, currently executed on Windows only. Windows runs the
+full list; Linux and macOS run it in CI; Android and iOS cross-build the native
+library and their runtime rows stay `not-run`.
 
 `liber_html/` is a Liber crate inside the same native build: the frozen HTML rule
 adapter (a port of jsoup 1.16.2's selector engine over `html5ever`, plus Legado's
