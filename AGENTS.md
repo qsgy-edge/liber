@@ -21,7 +21,7 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - Keep decision state, executed evidence, and product implementation separate. Verify the active branch, commit, manifest, and source hashes before promoting a result or closing a ticket.
 - Evidence recorded on an unmerged branch stays branch-scoped until it is reviewed and integrated; a shared adapter change requires re-running the affected platform rows.
 - A closed ticket records its answer; it is not proof that dependent gates or the Flutter product are complete. Keep `not-run`, coverage gaps, and policy rejections explicit in aggregate plans.
-- After each runnable migration slice passes its automated checks, launch the Windows app for visual/manual review before starting the next slice.
+- After each runnable migration slice passes its automated checks, review the Windows app in a driven run before starting the next slice: input goes through Dart MCP against a scratch installation directory, never through the operator's keyboard and mouse. See `README.md` → Verification and evidence → Driving the UI for the sequence and for what the driver cannot reach.
 
 <!-- agents-md-author:end wayfinder-migration -->
 

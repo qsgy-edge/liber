@@ -110,6 +110,42 @@ dart run tool/source_triage.dart <path-to-fjs.dll> <exported-sources.json>
 - The delivery notes in [`book_sources/README.md`](book_sources/README.md)
   record what each Windows run measured, and which rows were never executed.
 
+### Driving the UI
+
+The Windows app is reviewed by driving it, not by clicking on the machine's own
+mouse and keyboard. Anything a widget test can express belongs in `test/`
+(`flutter test test` taps the pages in-process, with no window and no input
+devices); what is left over is driven on the real app. `tool/driver_main.dart`
+is a debug-only entrypoint that enables the Flutter Driver extension before the
+app runs, and `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens that
+installation directory instead of `%APPDATA%\Liber`:
+
+```bash
+flutter run -d windows --target tool/driver_main.dart \
+  --dart-define=LIBER_WORKSPACE_ROOT=C:/path/to/scratch
+```
+
+Point the scratch directory at a copy of the installation being reviewed when
+the review needs real data. Nothing in a driven run reads or writes the
+operator's own library, and no input reaches the operator's devices.
+
+With Dart MCP the sequence is `launch_app` (with `target:
+tool/driver_main.dart` and the define) → `dtd connect` → `flutter_driver_command
+get_health`, which must answer `method: ext.flutter.driver` with `status: ok`
+before any input, then `flutter_driver_command tap` with a finder: `ByText`,
+`ByValueKey`, `ByType`, or `ByType` + `Descendant` when only a label repeats.
+`enter_text` needs a field that accepts input, and a page is read back through
+the accessibility tree or a screenshot rather than through the driver.
+
+Three things the driver cannot reach, and who does them instead: a Windows
+folder dialog (`选择根目录` opens one, so the operator picks the folder), a
+caret position (`保存位置` writes the cursor's offset, which the driver does not
+move), and any judgement about how the screen looks.
+
+A driven review is recorded like any other executed evidence: the exact strings
+and rows the app showed, the database rows behind them, and the commands that
+produced them.
+
 ## Compatibility baseline
 
 Book Source compatibility is defined against a local Legado snapshot at commit
