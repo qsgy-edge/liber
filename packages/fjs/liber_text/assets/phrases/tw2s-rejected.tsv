@@ -39,4 +39,5 @@ drop	阿莫西林	阿莫西林	no-op: identity in Simplified
 drop	高級	高级	identity entry; the character table already gives 高级
 override	儲存	存储	was 保存: 儲存 is 存储 in the mainland, not 保存
 override	存檔	存档	was 存盘: 存档 is the mainland word; OpenCC maps 存檔 to 存盘 (2 925 of 2 926 occurrences disagree with the reference)
+override	簡報	简报	was 演示文稿: Taiwanese 簡報 is the mainland 简报; OpenCC wrote 演示文稿, which is stiff
 override	離線	离线	was 脱机: Offline is 离线 in the mainland; 脱机 is dated

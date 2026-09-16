@@ -128,3 +128,28 @@ add	賣著	賣着	Taiwanese 著 as the progressive particle; the mainland writes
 add	算著	算着	Taiwanese 著 as the progressive particle; the mainland writes 着
 add	盼著	盼着	Taiwanese 著 as the progressive particle; the mainland writes 着
 add	著	着	Taiwanese 著 is the mainland 着 (the zhe/zhao/zhuo readings); the zhù words are protected in the crate exclude list
+add	帳戶	账户	the mainland norm is 账户, not 帐户
+add	帳號	账号	the mainland norm is 账号
+add	登機門	登机口	the mainland word is 登机口
+add	電聯車	动车组	Taiwanese 電聯車 is the mainland 动车组
+add	準點	准点	the mainland word is 准点
+override	簡報	简报	Taiwanese 簡報 is the mainland 简报; OpenCC wrote 演示文稿, which is stiff
+add	貍	狸	variant character: the mainland norm is 狸
+add	劄	札	variant character: the mainland norm is 札
+add	箞	札	variant character: the mainland norm is 札
+add	扞	捍	variant character: the mainland norm is 捍
+add	袷	夹	variant character: the mainland norm is 夹
+add	谿	溪	variant character: the mainland norm is 溪
+add	麼	么	Taiwanese 麼 is the mainland 么 (什麼 → 什么)
+add	衹	只	variant character: the mainland norm is 只
+add	乾淨	干净	乾 is gān here, so the mainland writes 干净 (乾隆 qián keeps 乾)
+add	乾杯	干杯	gān again: 干杯
+add	乾燥	干燥	gān again: 干燥
+add	餅乾	饼干	gān again: 饼干
+add	乾脆	干脆	gān again: 干脆
+add	乾洗	干洗	gān again: 干洗
+add	沈默	沉默	沈 is a surname; only the chén words are 沉
+add	沈沒	沉没	chén word
+add	沈澱	沉淀	chén word
+add	沈重	沉重	chén word
+add	沈迷	沉迷	chén word

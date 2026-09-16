@@ -31,7 +31,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use conversion_probe::{convert_opencc, convert_opencc_excluded, opencc, to_text, Table, EXCLUDE};
-use liber_text::{ConvertTarget, Direction, convert, convert_to};
+use liber_text::{convert, convert_to, ConvertTarget, Direction};
 use serde_json::Value;
 
 /// Reads an OpenCC dictionary: `key<TAB>value(s)`, `#` comments, several values
@@ -58,15 +58,34 @@ fn load_phrases(table: &mut Table, path: &Path) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 5 {
-        eprintln!("usage: conversion_eval <gold.jsonl> <hanlp-tc-dir> <opencc-dict-dir> <out-dir>");
+    let mut direction = "t2s";
+    let mut positional: Vec<&String> = Vec::new();
+    let mut index = 1;
+    while index < args.len() {
+        if args[index] == "--direction" && index + 1 < args.len() {
+            direction = if args[index + 1] == "s2t" {
+                "s2t"
+            } else {
+                "t2s"
+            };
+            index += 2;
+            continue;
+        }
+        positional.push(&args[index]);
+        index += 1;
+    }
+    if positional.len() != 4 {
+        eprintln!(
+            "usage: conversion_eval <gold.jsonl> <hanlp-tc-dir> <opencc-dict-dir> <out-dir> \
+             [--direction t2s|s2t]"
+        );
         std::process::exit(2);
     }
     let (gold_path, hanlp_dir, phrases_dir, out_dir) = (
-        &args[1],
-        Path::new(&args[2]),
-        Path::new(&args[3]),
-        PathBuf::from(&args[4]),
+        positional[0],
+        Path::new(positional[1]),
+        Path::new(positional[2]),
+        PathBuf::from(positional[3]),
     );
 
     let rows: Vec<Value> = fs::read_to_string(gold_path)
@@ -115,44 +134,81 @@ fn main() {
     let opencc_t2s = opencc("t2s");
     let opencc_tw2s = opencc("tw2s");
     let opencc_tw2sp = opencc("tw2sp");
+    let opencc_s2t = opencc("s2t");
+    let opencc_s2tw = opencc("s2tw");
+    let opencc_s2twp = opencc("s2twp");
+    let opencc_s2hk = opencc("s2hk");
 
     /// One candidate: a name and the conversion it applies.
     type Candidate<'a> = (&'a str, Box<dyn Fn(&str) -> String + 'a>);
 
-    let candidates: Vec<Candidate> = vec![
-        (
-            "liber-now",
-            Box::new(|text| convert_to(text, ConvertTarget::SimplifiedMainland)),
-        ),
-        (
-            "hanlp",
-            Box::new(|text| to_text(&hanlp_plain.convert(&utf16(text)))),
-        ),
-        (
-            "hanlp+exclude",
-            Box::new(|text| to_text(&hanlp.convert(&utf16(text)))),
-        ),
-        (
-            "hanlp+tw+hk",
-            Box::new(|text| to_text(&hanlp_regional.convert(&utf16(text)))),
-        ),
-        (
-            "opencc-t2s",
-            Box::new(|text| to_text(&convert_opencc(&opencc_t2s, &utf16(text)))),
-        ),
-        (
-            "opencc-t2s+exclude",
-            Box::new(|text| to_text(&convert_opencc_excluded(&opencc_t2s, &utf16(text)))),
-        ),
-        (
-            "opencc-tw2s",
-            Box::new(|text| to_text(&convert_opencc(&opencc_tw2s, &utf16(text)))),
-        ),
-        (
-            "opencc-tw2sp",
-            Box::new(|text| to_text(&convert_opencc(&opencc_tw2sp, &utf16(text)))),
-        ),
-    ];
+    let candidates: Vec<Candidate> = if direction == "s2t" {
+        vec![
+            (
+                "liber-generic",
+                Box::new(|text| convert_to(text, ConvertTarget::TraditionalGeneric)),
+            ),
+            (
+                "liber-taiwan",
+                Box::new(|text| convert_to(text, ConvertTarget::TraditionalTaiwan)),
+            ),
+            (
+                "liber-hongkong",
+                Box::new(|text| convert_to(text, ConvertTarget::TraditionalHongKong)),
+            ),
+            (
+                "opencc-s2t",
+                Box::new(|text| to_text(&convert_opencc(&opencc_s2t, &utf16(text)))),
+            ),
+            (
+                "opencc-s2tw",
+                Box::new(|text| to_text(&convert_opencc(&opencc_s2tw, &utf16(text)))),
+            ),
+            (
+                "opencc-s2twp",
+                Box::new(|text| to_text(&convert_opencc(&opencc_s2twp, &utf16(text)))),
+            ),
+            (
+                "opencc-s2hk",
+                Box::new(|text| to_text(&convert_opencc(&opencc_s2hk, &utf16(text)))),
+            ),
+        ]
+    } else {
+        vec![
+            (
+                "liber-now",
+                Box::new(|text| convert_to(text, ConvertTarget::SimplifiedMainland)),
+            ),
+            (
+                "hanlp",
+                Box::new(|text| to_text(&hanlp_plain.convert(&utf16(text)))),
+            ),
+            (
+                "hanlp+exclude",
+                Box::new(|text| to_text(&hanlp.convert(&utf16(text)))),
+            ),
+            (
+                "hanlp+tw+hk",
+                Box::new(|text| to_text(&hanlp_regional.convert(&utf16(text)))),
+            ),
+            (
+                "opencc-t2s",
+                Box::new(|text| to_text(&convert_opencc(&opencc_t2s, &utf16(text)))),
+            ),
+            (
+                "opencc-t2s+exclude",
+                Box::new(|text| to_text(&convert_opencc_excluded(&opencc_t2s, &utf16(text)))),
+            ),
+            (
+                "opencc-tw2s",
+                Box::new(|text| to_text(&convert_opencc(&opencc_tw2s, &utf16(text)))),
+            ),
+            (
+                "opencc-tw2sp",
+                Box::new(|text| to_text(&convert_opencc(&opencc_tw2sp, &utf16(text)))),
+            ),
+        ]
+    };
 
     fs::create_dir_all(&out_dir).expect("cannot create the output directory");
     for (name, candidate) in &candidates {
@@ -172,12 +228,20 @@ fn main() {
 
     // The control: the character-only path of the crate against this matcher's
     // copy of the same tables. The reading conversion is deliberately different
-    // (it has the phrase tables), so it is not the control.
+    // (it has the phrase tables), so it is not the control. The s2t candidates
+    // have no matcher copy, so the check only runs for the t2s sets.
+    if direction == "s2t" {
+        return;
+    }
     let mut differences = 0usize;
     let mut shown = 0usize;
     for row in &rows {
         let source = row["source"].as_str().unwrap();
-        let shipped = to_text(&convert(&source, Direction::TraditionalToSimplified).encode_utf16().collect::<Vec<u16>>());
+        let shipped = to_text(
+            &convert(&source, Direction::TraditionalToSimplified)
+                .encode_utf16()
+                .collect::<Vec<u16>>(),
+        );
         let matcher = to_text(&hanlp.convert(&utf16(source)));
         if shipped != matcher {
             differences += 1;

@@ -1,6 +1,36 @@
 {
- "note": "Gold sets for the 繁体→简体 accuracy evaluation (ticket #19). Regenerate with tool/text_engine_prototype/make_eval_gold.py.",
+ "note": "Gold sets for the accuracy evaluation of both conversion directions. Regenerate with tool/text_engine_prototype/make_eval_gold.py (and the same script with --direction s2t).",
  "sets": {
+  "gold-opencc-s2t.jsonl": {
+   "rows": 318,
+   "sha256": "b8f5353db11fd01b46bb46e86959c10a5e20981e5e1b16c9441e88384470d5fe",
+   "source": "https://raw.githubusercontent.com/BYVoid/OpenCC/master/test/testcases/testcases.json",
+   "license": "OpenCC is Apache-2.0; these are its own hand-made cases.",
+   "by_config": {
+    "s2t": 106,
+    "s2tw": 66,
+    "s2twp": 85,
+    "s2hk": 52,
+    "s2hkp": 9
+   }
+  },
+  "gold-wikipedia-s2t.jsonl": {
+   "rows": 18653,
+   "sha256": "ef919c9df33ab31d017925d8d2629e97845370df9a208718ccc32dbe8774e580",
+   "source": "zh.wikipedia.org, variant=zh-tw against variant=zh-cn",
+   "license": "CC BY-SA 4.0; kept out of the repository, hashes only.",
+   "stats": {
+    "pages_paired": 45,
+    "pages_unpaired": 0,
+    "pages_line_count_mismatch": 0,
+    "lines_total": 15388,
+    "lines_aligned_exactly": 1911,
+    "lines_sentence_aligned": 15388,
+    "lines_unsplittable": 0,
+    "sentences": 18653,
+    "sentences_identical": 990
+   }
+  },
   "gold-opencc.jsonl": {
    "rows": 174,
    "sha256": "a68ab73d51deb011ad5a74bbc51c7d485415248f7b8000361914e7f4b666201b",

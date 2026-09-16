@@ -25,6 +25,18 @@ OUT = CRATE / 'assets/phrases'
 DEFAULT_DICT = pathlib.Path('D:/liber-probe/text-engine/opencc-dict')
 
 SOURCES = {'tw2s': 'TWPhrasesRev.txt', 'hk2s': 'HKPhrasesRev.txt'}
+# The other direction. `*Phrases` are keyed in Simplified (a mainland word to its
+# Taiwan/Hong Kong wording); `*Variants` are keyed in generic Traditional (a
+# glyph to its Taiwan/Hong Kong norm), so they are a second pass over the
+# character table's output rather than entries in it.
+# `tw.txt` / `hk.txt` are one second pass each, applied to the output of the
+# character table: OpenCC keys both its wording and its glyph tables in
+# Traditional, because in its own pipeline they run after the character
+# conversion (軟件 → 軟體, 裏 → 裡).
+SECOND_PASS = {
+    'tw': ('TWPhrases.txt', 'TWVariants.txt'),
+    'hk': ('HKPhrases.txt', 'HKVariants.txt'),
+}
 
 
 def load_character_map() -> dict[str, str]:
@@ -72,6 +84,25 @@ def main():
     dropped = decisions['drop']
     overridden = decisions['override']
     added = decisions['add']
+
+    # The Traditional targets: OpenCC's tables as they are. They have not been
+    # through a corpus audit yet (no reference set exercises them the way the
+    # Wikipedia pairs exercise 繁→简), so they carry no hand decisions.
+    for name, sources in SECOND_PASS.items():
+        entries = {}
+        for source in sources:
+            # The glyph table first, so a wording entry of the same length wins.
+            for key, value in load_opencc(arguments.dict / source).items():
+                entries.setdefault(key, value)
+        body = (
+            f'# Liber second-pass table: {name} — Traditional to the regional form.\n'
+            "# Built by tool/text_engine_prototype/build_phrases.py from OpenCC's\n"
+            '# ' + ' and '.join(sources) + ' (Apache-2.0), unedited: unlike\n'
+            '# the 繁→简 tables these have not been through the corpus audit. The table\n'
+            "# runs over the character table's output, so its keys are Traditional.\n"
+            + ''.join(f'{key}={value}\n' for key, value in entries.items()))
+        (OUT / f'{name}.txt').write_text(body, encoding='utf-8', newline='\n')
+        print(f'{name}.txt: {len(entries)} entries from {", ".join(sources)}')
 
     report = {}
     for name, source in SOURCES.items():

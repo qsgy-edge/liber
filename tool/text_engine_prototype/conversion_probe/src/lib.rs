@@ -377,6 +377,9 @@ pub fn opencc(config_name: &str) -> ferrous_opencc::OpenCC {
         "hk2s" => BuiltinConfig::Hk2s,
         "tw2sp" => BuiltinConfig::Tw2sp,
         "s2t" => BuiltinConfig::S2t,
+        "s2tw" => BuiltinConfig::S2tw,
+        "s2twp" => BuiltinConfig::S2twp,
+        "s2hk" => BuiltinConfig::S2hk,
         other => panic!("unknown builtin config {other}"),
     };
     ferrous_opencc::OpenCC::from_config(config)

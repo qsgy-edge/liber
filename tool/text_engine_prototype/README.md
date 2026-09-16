@@ -96,11 +96,27 @@ python tool/text_engine_prototype/score_eval.py
   Kong phrase lists (each phrase's value mapped through the character table
   first), and ferrous-opencc's four configurations. `hanlp+exclude` is a control
   and reproduces the shipped implementation exactly on every row.
+- **The same harness runs both directions.** `make_eval_gold.py --direction s2t`
+  builds the mirror sets: the same Wikipedia pairs with `zh-cn` as the source and
+  `zh-tw` as the reference (18 653 sentences), plus OpenCC's `s2t`/`s2tw`/`s2twp`/
+  `s2hk` cases, and `eval.exe --direction s2t` scores the Traditional targets
+  against them. The four sets live in `evidence/gold-manifest.json` with hashes;
+  `gold-manifest.json` merges both runs, so neither direction overwrites the
+  other's record.
 - **The scorer** reports sentence-level exact matches, errors split into missed /
   wrong / over-converted, and — with no reference involved — how many characters
-  in the output are still Traditional, which is what the reader actually sees.
-  `evidence/eval-report.md` has the tables and the frequent disagreements;
-  `evidence/eval-report.json` has per-row samples.
+  in the output are still in the *other* script, which is what the reader actually
+  sees. Two error rates are printed: the strict one, and one that drops *wording
+  variants* (both sides Simplified, only the word differs: 电脑 against 计算机,
+  信息 against 资讯), because mainland usage accepts both and scoring one
+  reference's style as truth would be misleading. `evidence/eval-report.md` has
+  the tables and the frequent disagreements; `evidence/eval-report.json` has
+  per-row samples.
+- **From the evaluation back to the tables**: `suggest_phrases.py` reads the
+  shipped output against the reference and prints the two things a human can act
+  on — the `X著` stems the table is missing, and the word-level pairs where the
+  two sides chose differently (with short-sentence counts, because long-sentence
+  alignments are noisy).
 
 
 ### From the audit to the shipped tables

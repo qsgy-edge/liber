@@ -125,9 +125,21 @@ left **0.06** (the reference itself leaves 20.5, the previous implementation
 leaves as Traditional **1 969** (was 4 530). OpenCC's own hand-made cases agree on
 50.6 % of rows at a 5.6 % error rate (was 40.8 % / 12.2 %).
 
+The Traditional direction was wired the same day and measured against the mirror
+image of the same corpus (the 18 653 sentences as `zh-cn` input against their
+`zh-tw` rendering): `liber_taiwan` 67.6 % sentence-level exact, OpenCC's own
+`s2twp` 61.8 %, `liber_generic` 53.8 %, the frozen reader 53.7 %. Those tables
+(`tw.txt`, `hk.txt`: OpenCC's `TWPhrases`+`TWVariants` and `HKPhrases`+`HKVariants`)
+are unedited and run as a *second pass*, because OpenCC keys them in Traditional —
+its pipeline converts characters first. On OpenCC's own cases the character table
+is the weak link (`opencc-s2t` 49.4 % against `liber_generic` 34.3 %): HanLP's
+`s2t` table lacks variant characters OpenCC's `STCharacters` carries, which is the
+next thing to try for that direction.
+
 Two consequences worth stating plainly. First, the frozen reader's `t2s` is no
 longer the reference behaviour: the character-only path (`java.t2s`, which Book
 Source rules call) stays as it was, but the reader's conversion deliberately
 differs. Second, the remaining disagreements are mostly wording choices where no
-standard exists (資訊 → 信息 against the reference's 资讯); the harness reports
-them rather than scoring them as errors.
+standard exists (資訊 → 信息 against the reference's 资讯, 电脑 against 计算机);
+the harness reports those separately as *wording variants* and prints both error
+rates rather than scoring one community's style as the truth.

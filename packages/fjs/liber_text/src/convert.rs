@@ -68,6 +68,12 @@ const S2T_TABLE: &str = include_str!("../assets/hanlp-tc/s2t.txt");
 /// from OpenCC's `TWPhrasesRev`/`HKPhrasesRev` (Apache-2.0) plus hand decisions.
 const TW_PHRASES: &str = include_str!("../assets/phrases/tw2s.txt");
 const HK_PHRASES: &str = include_str!("../assets/phrases/hk2s.txt");
+/// The other direction, from OpenCC unedited: a second pass over the character
+/// table's output that turns generic Traditional into one place's norm and
+/// wording (裏面 → 裡面, 軟件 → 軟體). Its keys are Traditional because that is
+/// what it sees.
+const TW_SECOND_PASS: &str = include_str!("../assets/phrases/tw.txt");
+const HK_SECOND_PASS: &str = include_str!("../assets/phrases/hk.txt");
 
 /// A conversion table in the shape the frozen `DictionaryFactory` builds: a
 /// character map for one-unit entries and a trie of longer entries.
@@ -208,6 +214,16 @@ fn s2t() -> &'static Table {
     TABLE.get_or_init(|| Table::parse(S2T_TABLE))
 }
 
+fn tw_second_pass() -> &'static Table {
+    static TABLE: OnceLock<Table> = OnceLock::new();
+    TABLE.get_or_init(|| Table::parse(TW_SECOND_PASS))
+}
+
+fn hk_second_pass() -> &'static Table {
+    static TABLE: OnceLock<Table> = OnceLock::new();
+    TABLE.get_or_init(|| Table::parse(HK_SECOND_PASS))
+}
+
 /// Converts `text` in one direction and returns the result.
 ///
 /// Working per string rather than per file is deliberate: the reader converts a
@@ -229,14 +245,17 @@ pub fn convert(text: &str, direction: Direction) -> String {
 /// it to normalise text and must not have its words rewritten; this is the path
 /// the reader uses.
 pub fn convert_to(text: &str, target: ConvertTarget) -> String {
-    let table = match target {
-        ConvertTarget::SimplifiedMainland => t2s(),
-        // The Traditional targets are the next slice: OpenCC's Taiwan and Hong
-        // Kong norm and wording tables are not wired in yet.
-        ConvertTarget::TraditionalGeneric
-        | ConvertTarget::TraditionalTaiwan
-        | ConvertTarget::TraditionalHongKong => s2t(),
-    };
+    match target {
+        ConvertTarget::SimplifiedMainland => run(text, t2s()),
+        ConvertTarget::TraditionalGeneric => run(text, s2t()),
+        // Two passes: characters first, then the regional norm and wording over
+        // the result (the second pass is keyed in Traditional).
+        ConvertTarget::TraditionalTaiwan => run(&run(text, s2t()), tw_second_pass()),
+        ConvertTarget::TraditionalHongKong => run(&run(text, s2t()), hk_second_pass()),
+    }
+}
+
+fn run(text: &str, table: &Table) -> String {
     let units: Vec<u16> = text.encode_utf16().collect();
     String::from_utf16_lossy(&table.convert(&units))
 }
@@ -378,5 +397,34 @@ mod tests {
     fn non_bmp_and_ascii_units_survive() {
         assert_eq!(t2s_of("abc 123 \u{2b748} 測試"), "abc 123 \u{2b748} 测试");
         assert_eq!(s2t_of("abc 123 \u{2b748} 测试"), "abc 123 㑮 測試");
+    }
+}
+
+#[cfg(test)]
+mod traditional_targets {
+    use super::*;
+
+    /// The Traditional targets: characters, then the regional norm and wording.
+    #[test]
+    fn traditional_targets_map_regional_forms() {
+        let generic = |text| convert_to(text, ConvertTarget::TraditionalGeneric);
+        let taiwan = |text| convert_to(text, ConvertTarget::TraditionalTaiwan);
+        let hong_kong = |text| convert_to(text, ConvertTarget::TraditionalHongKong);
+        // Characters: 里 → 裏 in the generic norm, 裡 in Taiwan's.
+        assert_eq!(generic("里面"), "裏面");
+        assert_eq!(taiwan("里面"), "裡面");
+        assert_eq!(hong_kong("里面"), "裏面");
+        // Wording: a mainland word becomes the local one.
+        assert_eq!(taiwan("软件"), "軟體");
+        assert_eq!(hong_kong("软件"), "軟件");
+        assert_eq!(taiwan("U盘"), "隨身碟");
+        assert_eq!(taiwan("鼠标"), "滑鼠");
+        assert_eq!(taiwan("打印机"), "印表機");
+        assert_eq!(taiwan("光盘"), "光碟");
+        assert_eq!(hong_kong("伊利诺伊州"), "伊利諾州");
+        // The character-only path stays generic, because `java.s2t` is what a
+        // Book Source rule calls and it must not choose a place for the reader.
+        assert_eq!(convert("软件", Direction::SimplifiedToTraditional), "軟件");
+        assert_eq!(convert("里面", Direction::SimplifiedToTraditional), "裏面");
     }
 }

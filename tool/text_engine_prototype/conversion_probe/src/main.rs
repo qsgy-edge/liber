@@ -26,7 +26,7 @@ use std::path::Path;
 use conversion_probe::{
     convert_opencc, convert_opencc_excluded, opencc, rate, to_text, Report, Table, EXCLUDE,
 };
-use liber_text::{ConvertTarget, convert_to};
+use liber_text::{convert_to, ConvertTarget};
 use serde_json::{json, Value};
 
 fn main() {
@@ -101,7 +101,10 @@ fn main() {
         let baseline_t2s: Vec<u16> = record["t2s"].as_str().unwrap().encode_utf16().collect();
         let baseline_s2t: Vec<u16> = record["s2t"].as_str().unwrap().encode_utf16().collect();
         let conversions: Vec<Vec<u16>> = vec![
-            utf16(&convert_to(&to_text(&source), ConvertTarget::SimplifiedMainland)),
+            utf16(&convert_to(
+                &to_text(&source),
+                ConvertTarget::SimplifiedMainland,
+            )),
             jar_t2s.convert(&source),
             hanlp_t2s.convert(&source),
             convert_opencc_excluded(&opencc_t2s, &source),

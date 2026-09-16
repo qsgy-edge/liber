@@ -53,6 +53,34 @@ And 34 entries were added: 檔案館 → 档案馆, 檔案系統 → 文件系�
 progressive particle (the zhù words — 著作, 著名, 显著 … — are protected in the
 crate's `T2S_EXCLUDE` instead).
 
+## The other direction: `tw.txt` and `hk.txt`
+
+The Traditional targets need the mirror image, and there the tables are OpenCC's
+unedited (`TWPhrases` + `TWVariants` → `tw.txt`, `HKPhrases` + `HKVariants` →
+`hk.txt`, 859 and 148 entries). They are a *second pass* over the character
+table's output rather than entries in it, because OpenCC keys both tables in
+Traditional — its own pipeline converts characters first and only then applies
+them (軟件 → 軟體, 裏面 → 裡面, 打印機 → 印表機).
+
+They have not been through a corpus audit; the reverse gold sets
+(`gold-wikipedia-s2t.jsonl`: 18 653 sentences rendered `zh-cn` against `zh-tw`;
+`gold-opencc-s2t.jsonl`: OpenCC's `s2t`/`s2tw`/`s2twp`/`s2hk` cases) measure them
+instead, and the numbers say the Taiwan target is the good one:
+
+| candidate | sentence-level exact against the `zh-tw` reference |
+|---|---|
+| `liber_taiwan` (character table + `tw.txt`) | **67.6 %** |
+| OpenCC's `s2twp` | 61.8 % |
+| `liber_hongkong` (character table + `hk.txt`) | 53.9 % |
+| `liber_generic` (character table only) | 53.8 % |
+| the frozen reader | 53.7 % |
+| OpenCC's `s2t` | 50.7 % |
+
+On OpenCC's own cases the character table is the weak link: `opencc-s2t` scores
+49.4 % against `liber_generic`'s 34.3 %, because HanLP's `s2t` table lacks the
+variant characters OpenCC's `STCharacters` carries. Merging the two, or adopting
+OpenCC's for this direction, is the next thing to try.
+
 ## Licence and provenance
 
 OpenCC is Apache-2.0, so a derived table can ship; `NOTICE` records it. The

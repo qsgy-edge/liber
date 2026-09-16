@@ -40,6 +40,15 @@ DIRECTIONS = {
     'hk2sp': ('L2+L3', 'OpenCC hk2sp: Hong Kong phrases and characters to mainland Simplified'),
 }
 
+# The other direction: Simplified in, Traditional (or regional) out.
+DIRECTIONS_S2T = {
+    's2t': ('L2', 'OpenCC s2t: characters only, no regional wording'),
+    's2tw': ('L2+L3', 'OpenCC s2tw: Taiwan glyph norm'),
+    's2twp': ('L2+L3', 'OpenCC s2twp: Taiwan glyph norm and wording'),
+    's2hk': ('L2+L3', 'OpenCC s2hk: Hong Kong glyph norm'),
+    's2hkp': ('L2+L3', 'OpenCC s2hkp: Hong Kong glyph norm and wording'),
+}
+
 SENTENCE_END = '。！？；…'
 
 
@@ -55,13 +64,14 @@ def fetch_testcases(cache: pathlib.Path) -> dict:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def opencc_rows(cache: pathlib.Path) -> list[dict]:
+def opencc_rows(cache: pathlib.Path, direction: str = 't2s') -> list[dict]:
     rows = []
+    table = DIRECTIONS if direction == 't2s' else DIRECTIONS_S2T
     for case in fetch_testcases(cache)['cases']:
         for config, expected in case['expected'].items():
-            if config not in DIRECTIONS:
+            if config not in table:
                 continue
-            layer, note = DIRECTIONS[config]
+            layer, note = table[config]
             rows.append({
                 'id': f"opencc-{case['id']}-{config}",
                 'origin': 'opencc-testcases',
@@ -79,8 +89,14 @@ def split_sentences(line: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
-def wikipedia_rows(pages: pathlib.Path, limit_pages: int | None) -> tuple[list[dict], dict]:
-    """Lines from page pairs that align: same page, `zh-tw` against `zh-cn`."""
+def wikipedia_rows(pages: pathlib.Path, limit_pages: int | None,
+                   direction: str = 't2s') -> tuple[list[dict], dict]:
+    """Lines from page pairs that align: same page, `zh-tw` against `zh-cn`.
+
+    For `t2s` the source is the Taiwan rendering and the reference is the
+    mainland one; for `s2t` the two trade places, which makes the same corpus a
+    reference for Traditional output.
+    """
     by_request: dict[str, dict] = {}
     for path in sorted(pages.glob('*.json')):
         row = json.loads(path.read_text(encoding='utf-8'))
@@ -127,6 +143,8 @@ def wikipedia_rows(pages: pathlib.Path, limit_pages: int | None) -> tuple[list[d
                 stats['lines_unsplittable'] += 1
                 continue
             stats['lines_sentence_aligned'] += 1
+            if direction == 's2t':
+                tw_sentences, cn_sentences = cn_sentences, tw_sentences
             for number, (source, reference) in enumerate(zip(tw_sentences, cn_sentences)):
                 if len(source) < 4:
                     continue
@@ -135,7 +153,7 @@ def wikipedia_rows(pages: pathlib.Path, limit_pages: int | None) -> tuple[list[d
                     stats['sentences_identical'] += 1
                 rows.append({
                     'id': f"wikipedia-{tw.get('revision')}-{index}-{number}",
-                    'origin': 'wikipedia-zh-cn',
+                    'origin': 'wikipedia-zh-cn' if direction == 't2s' else 'wikipedia-zh-tw',
                     'config': 'tw-variant',
                     'layer': 'L2+L3',
                     'note': 'zh.wikipedia.org rendered variant=zh-tw against variant=zh-cn',
@@ -158,36 +176,49 @@ def main():
     parser.add_argument('--pages', type=pathlib.Path, default=DEFAULT_PAGES)
     parser.add_argument('--out', type=pathlib.Path, default=DEFAULT_OUT)
     parser.add_argument('--limit-pages', type=int, default=None)
+    parser.add_argument('--direction', choices=('t2s', 's2t'), default='t2s')
     arguments = parser.parse_args()
+    suffix = '' if arguments.direction == 't2s' else '-s2t'
+    opencc_name = f'gold-opencc{suffix}.jsonl'
+    wikipedia_name = f'gold-wikipedia{suffix}.jsonl' 
     arguments.out.mkdir(parents=True, exist_ok=True)
 
-    opencc = opencc_rows(arguments.out)
-    wikipedia, stats = wikipedia_rows(arguments.pages, arguments.limit_pages)
+    opencc = opencc_rows(arguments.out, arguments.direction)
+    wikipedia, stats = wikipedia_rows(arguments.pages, arguments.limit_pages, arguments.direction)
 
+    manifest_path = arguments.out / 'gold-manifest.json'
+    existing = {}
+    if manifest_path.exists():
+        # The two directions are generated one run each, so merge instead of
+        # overwriting: the manifest is evidence and must describe every set on
+        # disk.
+        existing = json.loads(manifest_path.read_text(encoding='utf-8')).get('sets', {})
     manifest = {
-        'note': 'Gold sets for the 繁体→简体 accuracy evaluation (ticket #19). '
-                'Regenerate with tool/text_engine_prototype/make_eval_gold.py.',
+        'note': 'Gold sets for the accuracy evaluation of both conversion directions. '
+                'Regenerate with tool/text_engine_prototype/make_eval_gold.py '
+                '(and the same script with --direction s2t).',
         'sets': {
-            'gold-opencc.jsonl': {
+            **existing,
+            opencc_name: {
                 'rows': len(opencc),
-                'sha256': write_jsonl(arguments.out / 'gold-opencc.jsonl', opencc),
+                'sha256': write_jsonl(arguments.out / opencc_name, opencc),
                 'source': TESTCASES_URL,
                 'license': 'OpenCC is Apache-2.0; these are its own hand-made cases.',
                 'by_config': {
                     config: sum(1 for row in opencc if row['config'] == config)
-                    for config in DIRECTIONS
+                    for config in (DIRECTIONS if arguments.direction == 't2s' else DIRECTIONS_S2T)
                 },
             },
-            'gold-wikipedia.jsonl': {
+            wikipedia_name: {
                 'rows': len(wikipedia),
-                'sha256': write_jsonl(arguments.out / 'gold-wikipedia.jsonl', wikipedia),
+                'sha256': write_jsonl(arguments.out / wikipedia_name, wikipedia),
                 'source': 'zh.wikipedia.org, variant=zh-tw against variant=zh-cn',
                 'license': 'CC BY-SA 4.0; kept out of the repository, hashes only.',
                 'stats': stats,
             },
         },
     }
-    (arguments.out / 'gold-manifest.json').write_text(
+    manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=1) + '\n', encoding='utf-8', newline='\n')
     print(json.dumps(manifest['sets'], ensure_ascii=False, indent=1))
 
