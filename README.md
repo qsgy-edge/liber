@@ -147,10 +147,12 @@ before any input, then `flutter_driver_command tap` with a finder: `ByText`,
 `enter_text` needs a field that accepts input, and a page is read back through
 the accessibility tree or a screenshot rather than through the driver.
 
-Three things the driver cannot reach, and who does them instead: a Windows
-folder dialog (`选择根目录` opens one, so the operator picks the folder), a
-caret position (`保存位置` writes the cursor's offset, which the driver does not
-move), and any judgement about how the screen looks.
+Four things the driver cannot reach, and who does them instead: a Windows
+folder dialog (`选择根目录` and the trial page's `选择书源 JSON` open one, so the
+operator picks the file, or the store's `sources` row is seeded and the page is
+entered with that source selected), a caret position (`保存位置` writes the
+cursor's offset, which the driver does not move), and any judgement about how
+the screen looks.
 
 A driven review is recorded like any other executed evidence: the exact strings
 and rows the app showed, the database rows behind them, and the commands that

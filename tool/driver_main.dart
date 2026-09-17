@@ -6,6 +6,10 @@
 // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens that installation directory
 // instead of `%APPDATA%\Liber`, so a driven run cannot read or write the
 // operator's own library.
+//
+// Stop a driven run by process, not by the launcher's exit: the debug
+// `liber.exe` outlives the `flutter run` wrapper, and a `dart run` server (the
+// corpus replay on 127.0.0.1:18731) keeps its port through a child process.
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
