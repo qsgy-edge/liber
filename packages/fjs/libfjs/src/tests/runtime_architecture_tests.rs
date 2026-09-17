@@ -1121,32 +1121,8 @@ async fn engine_close_cancels_pending_eval_without_draining_timer_work() {
     // is the observable that close returned before the timer finished. The
     // former `elapsed < 200 ms` budget measured the machine's load, not the
     // engine.
-    let runtime = JsAsyncRuntime::create(Some(JsBuiltinOptions::essential()), None)
-        .await
-        .unwrap();
-    let context = JsAsyncContext::from(&runtime).await.unwrap();
     let (armed_tx, armed_rx) = oneshot::channel::<()>();
-    let armed_tx = std::sync::Mutex::new(Some(armed_tx));
-    context
-        .with_js(async move |ctx| {
-            let armed = rquickjs::Function::new(ctx.clone(), move || {
-                let sender = armed_tx
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .take();
-                if let Some(sender) = sender {
-                    let _ = sender.send(());
-                }
-            })
-            .catch(&ctx)
-            .unwrap();
-            ctx.globals()
-                .set("__fjsPendingEvalArmed", armed)
-                .catch(&ctx)
-                .unwrap();
-        })
-        .await;
-    let engine = Arc::new(JsEngine::new_for_test(runtime, context));
+    let engine = engine_with_host_signals(vec![("__fjsPendingEvalArmed", armed_tx)]).await;
     engine.init_without_bridge().await.unwrap();
 
     let pending_engine = engine.clone();
@@ -1178,13 +1154,60 @@ async fn engine_close_cancels_pending_eval_without_draining_timer_work() {
     );
 }
 
+/// Builds an engine whose context exposes each `(global, sender)` pair as a
+/// zero-argument host function that sends on `sender` when JavaScript calls it.
+///
+/// The close tests below wait on the receiver to learn that JavaScript work is
+/// armed (the timer is created before the signal that reports it) instead of
+/// sleeping into a timing window.
+async fn engine_with_host_signals(globals: Vec<(&str, oneshot::Sender<()>)>) -> Arc<JsEngine> {
+    let runtime = JsAsyncRuntime::create(Some(JsBuiltinOptions::essential()), None)
+        .await
+        .unwrap();
+    let context = JsAsyncContext::from(&runtime).await.unwrap();
+    let globals = globals
+        .into_iter()
+        .map(|(name, sender)| (name.to_string(), std::sync::Mutex::new(Some(sender))))
+        .collect::<Vec<_>>();
+    context
+        .with_js(async move |ctx| {
+            for (name, sender) in globals {
+                let signal = rquickjs::Function::new(ctx.clone(), move || {
+                    let sender = sender
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take();
+                    if let Some(sender) = sender {
+                        let _ = sender.send(());
+                    }
+                })
+                .catch(&ctx)
+                .unwrap();
+                ctx.globals()
+                    .set(name.as_str(), signal)
+                    .catch(&ctx)
+                    .unwrap();
+            }
+        })
+        .await;
+    Arc::new(JsEngine::new_for_test(runtime, context))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn engine_close_gracefully_drains_pending_eval_work() {
-    let engine = Arc::new(
-        JsEngine::create(Some(JsBuiltinOptions::essential()), None, None)
-            .await
-            .unwrap(),
-    );
+    // The pending eval reports its armed timer through a host signal, so
+    // closeGracefully is only called once there is provably work to drain;
+    // "drains" is then asserted causally — the timer callback must have run
+    // before closeGracefully returned — instead of by an elapsed-time budget,
+    // which measured how much of the 80 ms timer a preceding 20 ms sleep had
+    // left.
+    let (armed_tx, armed_rx) = oneshot::channel::<()>();
+    let (fired_tx, mut fired_rx) = oneshot::channel::<()>();
+    let engine = engine_with_host_signals(vec![
+        ("__fjsPendingEvalArmed", armed_tx),
+        ("__fjsPendingEvalTimerFired", fired_tx),
+    ])
+    .await;
     engine.init_without_bridge().await.unwrap();
 
     let pending_engine = engine.clone();
@@ -1193,7 +1216,13 @@ async fn engine_close_gracefully_drains_pending_eval_work() {
             .eval(
                 JsCode::Code(
                     r#"
-                    await new Promise((resolve) => setTimeout(resolve, 80));
+                    const timer = new Promise((resolve) =>
+                        setTimeout(() => {
+                            globalThis.__fjsPendingEvalTimerFired();
+                            resolve();
+                        }, 80));
+                    globalThis.__fjsPendingEvalArmed();
+                    await timer;
                     "done";
                     "#
                     .to_string(),
@@ -1203,15 +1232,13 @@ async fn engine_close_gracefully_drains_pending_eval_work() {
             .await
     });
 
-    tokio::time::sleep(Duration::from_millis(20)).await;
+    armed_rx.await.expect("pending eval should arm its timer");
 
-    let started = Instant::now();
     engine.close_gracefully().await.unwrap();
-    let elapsed = started.elapsed();
 
     assert!(
-        elapsed >= Duration::from_millis(40),
-        "closeGracefully should drain pending timer work, elapsed {elapsed:?}"
+        fired_rx.try_recv().is_ok(),
+        "closeGracefully should drain the pending timer callback before returning"
     );
 
     let result = pending.await.expect("eval task should not panic").unwrap();
@@ -1257,18 +1284,21 @@ async fn engine_close_interrupts_cpu_bound_eval() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn engine_close_cancels_pending_module_call() {
-    let engine = Arc::new(
-        JsEngine::create(Some(JsBuiltinOptions::essential()), None, None)
-            .await
-            .unwrap(),
-    );
+    // Same signal-driven ordering as the pending-eval test above: the call
+    // reports its armed timer through a host signal, so close() runs against a
+    // provably parked call and its Cancelled outcome — not a wall-clock window
+    // around close — proves the call was cancelled rather than drained.
+    let (armed_tx, armed_rx) = oneshot::channel::<()>();
+    let engine = engine_with_host_signals(vec![("__fjsPendingCallArmed", armed_tx)]).await;
     engine.init_without_bridge().await.unwrap();
     engine
         .evaluate_module(JsModule::code(
             "/slow-call".to_string(),
             r#"
             export async function run() {
-              await new Promise((resolve) => setTimeout(resolve, 700));
+              const timer = new Promise((resolve) => setTimeout(resolve, 700));
+              globalThis.__fjsPendingCallArmed();
+              await timer;
               return "done";
             }
             "#
@@ -1284,13 +1314,10 @@ async fn engine_close_cancels_pending_module_call() {
             .await
     });
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    armed_rx.await.expect("pending call should arm its timer");
     engine.close().await.unwrap();
 
-    let result = tokio::time::timeout(Duration::from_millis(200), pending)
-        .await
-        .expect("pending call should be cancelled promptly")
-        .expect("call task should not panic");
+    let result = pending.await.expect("call task should not panic");
     assert!(
         matches!(result, Err(JsError::Cancelled(_))),
         "pending call should be cancelled, got {result:?}"
