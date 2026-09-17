@@ -331,6 +331,19 @@ async fn test_engine_runtime_proxy_methods_fail_while_initializing() {
     let close_engine = engine.clone();
     let close_task = tokio::spawn(async move { close_engine.close().await });
 
+    // Barrier instead of a race: `begin_close` commits CLOSED before close()
+    // touches the runtime, so waiting for `closed()` guarantees that the
+    // released init cannot commit RUNNING first. Yielding to the runtime is
+    // what lets the close task run; the bound only stops a wedged close from
+    // hanging the test.
+    for _ in 0..100_000 {
+        if engine.closed() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(engine.closed(), "close() should commit CLOSED while init is in flight");
+
     release_blocking_init_attachment();
 
     close_task.await.unwrap().unwrap();

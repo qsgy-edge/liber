@@ -1114,11 +1114,39 @@ async fn engine_close_is_idempotent_and_stops_driver() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn engine_close_cancels_pending_eval_without_draining_timer_work() {
-    let engine = Arc::new(
-        JsEngine::create(Some(JsBuiltinOptions::essential()), None, None)
-            .await
-            .unwrap(),
-    );
+    // The evaluation signals the host once its 700 ms timer is armed, so the
+    // test waits for the parked state instead of sleeping into it. "Without
+    // draining" is then asserted causally: a close that drained the timer (or
+    // waited for it) would let the promise resolve with "done", so Cancelled
+    // is the observable that close returned before the timer finished. The
+    // former `elapsed < 200 ms` budget measured the machine's load, not the
+    // engine.
+    let runtime = JsAsyncRuntime::create(Some(JsBuiltinOptions::essential()), None)
+        .await
+        .unwrap();
+    let context = JsAsyncContext::from(&runtime).await.unwrap();
+    let (armed_tx, armed_rx) = oneshot::channel::<()>();
+    let armed_tx = std::sync::Mutex::new(Some(armed_tx));
+    context
+        .with_js(async move |ctx| {
+            let armed = rquickjs::Function::new(ctx.clone(), move || {
+                let sender = armed_tx
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+                if let Some(sender) = sender {
+                    let _ = sender.send(());
+                }
+            })
+            .catch(&ctx)
+            .unwrap();
+            ctx.globals()
+                .set("__fjsPendingEvalArmed", armed)
+                .catch(&ctx)
+                .unwrap();
+        })
+        .await;
+    let engine = Arc::new(JsEngine::new_for_test(runtime, context));
     engine.init_without_bridge().await.unwrap();
 
     let pending_engine = engine.clone();
@@ -1127,7 +1155,9 @@ async fn engine_close_cancels_pending_eval_without_draining_timer_work() {
             .eval(
                 JsCode::Code(
                     r#"
-                    await new Promise((resolve) => setTimeout(resolve, 700));
+                    const timer = new Promise((resolve) => setTimeout(resolve, 700));
+                    globalThis.__fjsPendingEvalArmed();
+                    await timer;
                     "done";
                     "#
                     .to_string(),
@@ -1137,24 +1167,14 @@ async fn engine_close_cancels_pending_eval_without_draining_timer_work() {
             .await
     });
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    armed_rx.await.expect("pending eval should arm its timer");
 
-    let started = Instant::now();
     engine.close().await.unwrap();
-    let elapsed = started.elapsed();
 
-    assert!(
-        elapsed < Duration::from_millis(200),
-        "close should not drain pending timer work, elapsed {elapsed:?}"
-    );
-
-    let result = tokio::time::timeout(Duration::from_millis(200), pending)
-        .await
-        .expect("pending eval should be cancelled promptly")
-        .expect("eval task should not panic");
+    let result = pending.await.expect("eval task should not panic");
     assert!(
         matches!(result, Err(JsError::Cancelled(_))),
-        "pending eval should be cancelled, got {result:?}"
+        "close should cancel the pending eval instead of draining its timer, got {result:?}"
     );
 }
 
@@ -1420,27 +1440,60 @@ async fn engine_close_drops_pending_bridge_future_without_host_release() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() {
+    // Deterministic ordering instead of a sleep: every operation reports
+    // through the bridge once it is provably parked (the eval and the call
+    // report after arming their 700 ms timer, the bridge operation reports
+    // when its host callback is entered), so close() is called only after all
+    // three are in flight. The former `bridge_started` plus 50 ms sleep only
+    // guessed that the eval and call had started, and the per-operation
+    // 250 ms budgets measured scheduling load. Cancellation itself is still
+    // asserted causally: close() requests the runtime shutdown, which resolves
+    // each parked promise as Cancelled instead of letting its timer complete.
     let engine = Arc::new(
         JsEngine::create(Some(JsBuiltinOptions::essential()), None, None)
             .await
             .unwrap(),
     );
+    let (eval_armed_tx, eval_armed_rx) = oneshot::channel::<()>();
+    let eval_armed_tx = Arc::new(std::sync::Mutex::new(Some(eval_armed_tx)));
+    let (call_armed_tx, call_armed_rx) = oneshot::channel::<()>();
+    let call_armed_tx = Arc::new(std::sync::Mutex::new(Some(call_armed_tx)));
     let (bridge_started_tx, bridge_started_rx) = oneshot::channel::<()>();
     let bridge_started_tx = Arc::new(std::sync::Mutex::new(Some(bridge_started_tx)));
 
     engine
         .init({
+            let eval_armed_tx = eval_armed_tx.clone();
+            let call_armed_tx = call_armed_tx.clone();
             let bridge_started_tx = bridge_started_tx.clone();
-            move |_value| {
-                let bridge_started_tx = bridge_started_tx
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .take();
+            move |value| {
+                let name = match &value {
+                    JsValue::String(name) => name.clone(),
+                    _ => String::new(),
+                };
+                let started = match name.as_str() {
+                    "eval-armed" => eval_armed_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take(),
+                    "call-armed" => call_armed_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take(),
+                    _ => bridge_started_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take(),
+                };
                 Box::pin(async move {
-                    if let Some(bridge_started_tx) = bridge_started_tx {
-                        let _ = bridge_started_tx.send(());
+                    if let Some(started) = started {
+                        let _ = started.send(());
                     }
-                    std::future::pending::<JsResult>().await
+                    if name == "mixed" {
+                        std::future::pending::<JsResult>().await
+                    } else {
+                        JsResult::Ok(JsValue::String(name))
+                    }
                 })
             }
         })
@@ -1452,7 +1505,9 @@ async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() 
             "/mixed-close".to_string(),
             r#"
             export async function slow() {
-              await new Promise((resolve) => setTimeout(resolve, 700));
+              const timer = new Promise((resolve) => setTimeout(resolve, 700));
+              await fjs.bridge_call("call-armed");
+              await timer;
               return "call done";
             }
             "#
@@ -1468,7 +1523,9 @@ async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() 
                 .eval(
                     JsCode::Code(
                         r#"
-                        await new Promise((resolve) => setTimeout(resolve, 700));
+                        const timer = new Promise((resolve) => setTimeout(resolve, 700));
+                        await fjs.bridge_call("eval-armed");
+                        await timer;
                         "eval done";
                         "#
                         .to_string(),
@@ -1498,10 +1555,12 @@ async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() 
         })
     };
 
+    eval_armed_rx.await.expect("eval should arm its timer in flight");
+    call_armed_rx.await.expect("call should arm its timer in flight");
     bridge_started_rx
         .await
         .expect("bridge operation should be in flight");
-    tokio::time::sleep(Duration::from_millis(50)).await;
+
     engine.close().await.unwrap();
 
     for (name, task) in [
@@ -1509,9 +1568,8 @@ async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() 
         ("call", call_task),
         ("bridge", bridge_task),
     ] {
-        let result = tokio::time::timeout(Duration::from_millis(250), task)
+        let result = task
             .await
-            .unwrap_or_else(|_| panic!("{name} operation should finish after close"))
             .unwrap_or_else(|error| panic!("{name} task should not panic: {error}"));
         assert!(
             matches!(result, Err(JsError::Cancelled(_))),
