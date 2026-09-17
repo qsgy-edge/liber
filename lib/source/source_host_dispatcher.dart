@@ -154,6 +154,10 @@ class SourceHostDispatcher {
     // §3); a state with nothing to load skips the wait, so an in-process run
     // starts its first request synchronously.
     if (!_hostState.isLoaded) await _hostState.ready();
+    final allowInvalidCertificate = _hostState.allowsInvalidCertificate(
+      _sourceRef,
+      uri.host,
+    );
     final merged = <String, String>{...headers};
     final cookie = _cookieHeader(uri.host);
     if (cookie.isNotEmpty &&
@@ -183,6 +187,8 @@ class SourceHostDispatcher {
         cancellation: cancellation,
         retry: retry,
         maxResponseBytes: maxResponseBytes,
+        sourceRef: _sourceRef,
+        allowInvalidCertificate: allowInvalidCertificate,
       ),
     );
     cancellation?.throwIfCancelled();

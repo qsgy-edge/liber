@@ -10,6 +10,7 @@ import 'js_source_runtime.dart' show SourceHostMessage;
 import 'online_reader_page.dart';
 import 'source_http_uri.dart';
 import 'source_notice.dart';
+import 'source_tls_confirmation.dart';
 
 class HtmlSourceBrowser extends StatefulWidget {
   const HtmlSourceBrowser({
@@ -51,6 +52,35 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   String? error;
 
   String get sourceUrl => '${widget.source['bookSourceUrl'] ?? ''}';
+
+  /// The source's name, shown in the TLS-exception confirmation (ADR 0011 §5).
+  String get sourceName => '${widget.source['bookSourceName'] ?? ''}';
+
+  /// Runs one analysis under ADR 0011 §5's confirmation.
+  ///
+  /// The confirmed retry starts from a fresh pipeline: a failed attempt has
+  /// already consumed this one's per-analysis options (`_bookOptions`) and its
+  /// trace, so retrying through it would repeat the request without them.
+  Future<T> _withTls<T>(Future<T> Function() analysis) {
+    var first = true;
+    return withTlsExceptionConfirmation(
+      context: context,
+      hostState: widget.service.hostState,
+      sourceRef: sourceUrl,
+      sourceName: sourceName,
+      run: () {
+        if (!first) {
+          pipeline = HtmlSourcePipeline(
+            widget.source,
+            pipeline.transport,
+            hostState: widget.service.hostState,
+          );
+        }
+        first = false;
+        return analysis();
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -104,7 +134,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         if (index < 0) throw StateError('原章节已不在目录中，进度仍保留，请选择章节');
         await read(index, entry.textOffset);
       } else {
-        final output = await pipeline.search(widget.keyword);
+        final output = await _withTls(
+          () => pipeline.search(widget.keyword),
+        );
         if (mounted) {
           setState(() {
             hits = output;
@@ -144,7 +176,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       status = '正在读取详情和完整目录';
     });
     try {
-      final (book, items) = await pipeline.details(hit);
+      final (book, items) = await _withTls(() => pipeline.details(hit));
       final existing = await widget.service.find(sourceUrl, '${book.url}');
       if (existing != null) {
         await widget.service.updateCatalog(sourceUrl, book, items);

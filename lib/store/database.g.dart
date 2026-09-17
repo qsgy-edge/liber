@@ -6669,6 +6669,223 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
   }
 }
 
+class $SourceTlsExceptionsTable extends SourceTlsExceptions
+    with TableInfo<$SourceTlsExceptionsTable, StoredTlsException> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SourceTlsExceptionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sourceRefMeta = const VerificationMeta(
+    'sourceRef',
+  );
+  @override
+  late final GeneratedColumn<String> sourceRef = GeneratedColumn<String>(
+    'source_ref',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _hostMeta = const VerificationMeta('host');
+  @override
+  late final GeneratedColumn<String> host = GeneratedColumn<String>(
+    'host',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [sourceRef, host];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'source_tls_exceptions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StoredTlsException> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('source_ref')) {
+      context.handle(
+        _sourceRefMeta,
+        sourceRef.isAcceptableOrUnknown(data['source_ref']!, _sourceRefMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceRefMeta);
+    }
+    if (data.containsKey('host')) {
+      context.handle(
+        _hostMeta,
+        host.isAcceptableOrUnknown(data['host']!, _hostMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_hostMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sourceRef, host};
+  @override
+  StoredTlsException map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StoredTlsException(
+      sourceRef: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_ref'],
+      )!,
+      host: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}host'],
+      )!,
+    );
+  }
+
+  @override
+  $SourceTlsExceptionsTable createAlias(String alias) {
+    return $SourceTlsExceptionsTable(attachedDatabase, alias);
+  }
+}
+
+class StoredTlsException extends DataClass
+    implements Insertable<StoredTlsException> {
+  final String sourceRef;
+  final String host;
+  const StoredTlsException({required this.sourceRef, required this.host});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['source_ref'] = Variable<String>(sourceRef);
+    map['host'] = Variable<String>(host);
+    return map;
+  }
+
+  SourceTlsExceptionsCompanion toCompanion(bool nullToAbsent) {
+    return SourceTlsExceptionsCompanion(
+      sourceRef: Value(sourceRef),
+      host: Value(host),
+    );
+  }
+
+  factory StoredTlsException.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StoredTlsException(
+      sourceRef: serializer.fromJson<String>(json['sourceRef']),
+      host: serializer.fromJson<String>(json['host']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sourceRef': serializer.toJson<String>(sourceRef),
+      'host': serializer.toJson<String>(host),
+    };
+  }
+
+  StoredTlsException copyWith({String? sourceRef, String? host}) =>
+      StoredTlsException(
+        sourceRef: sourceRef ?? this.sourceRef,
+        host: host ?? this.host,
+      );
+  StoredTlsException copyWithCompanion(SourceTlsExceptionsCompanion data) {
+    return StoredTlsException(
+      sourceRef: data.sourceRef.present ? data.sourceRef.value : this.sourceRef,
+      host: data.host.present ? data.host.value : this.host,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StoredTlsException(')
+          ..write('sourceRef: $sourceRef, ')
+          ..write('host: $host')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(sourceRef, host);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StoredTlsException &&
+          other.sourceRef == this.sourceRef &&
+          other.host == this.host);
+}
+
+class SourceTlsExceptionsCompanion extends UpdateCompanion<StoredTlsException> {
+  final Value<String> sourceRef;
+  final Value<String> host;
+  final Value<int> rowid;
+  const SourceTlsExceptionsCompanion({
+    this.sourceRef = const Value.absent(),
+    this.host = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SourceTlsExceptionsCompanion.insert({
+    required String sourceRef,
+    required String host,
+    this.rowid = const Value.absent(),
+  }) : sourceRef = Value(sourceRef),
+       host = Value(host);
+  static Insertable<StoredTlsException> custom({
+    Expression<String>? sourceRef,
+    Expression<String>? host,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sourceRef != null) 'source_ref': sourceRef,
+      if (host != null) 'host': host,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SourceTlsExceptionsCompanion copyWith({
+    Value<String>? sourceRef,
+    Value<String>? host,
+    Value<int>? rowid,
+  }) {
+    return SourceTlsExceptionsCompanion(
+      sourceRef: sourceRef ?? this.sourceRef,
+      host: host ?? this.host,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sourceRef.present) {
+      map['source_ref'] = Variable<String>(sourceRef.value);
+    }
+    if (host.present) {
+      map['host'] = Variable<String>(host.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SourceTlsExceptionsCompanion(')
+          ..write('sourceRef: $sourceRef, ')
+          ..write('host: $host, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$SpaceDatabase extends GeneratedDatabase {
   _$SpaceDatabase(QueryExecutor e) : super(e);
   $SpaceDatabaseManager get managers => $SpaceDatabaseManager(this);
@@ -6685,6 +6902,8 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
   late final $SettingsTable settings = $SettingsTable(this);
   late final $SourceCookiesTable sourceCookies = $SourceCookiesTable(this);
   late final $SourceEntriesTable sourceEntries = $SourceEntriesTable(this);
+  late final $SourceTlsExceptionsTable sourceTlsExceptions =
+      $SourceTlsExceptionsTable(this);
   late final Index booksNaturalKey = Index(
     'books_natural_key',
     'CREATE UNIQUE INDEX books_natural_key ON books (source_ref, source_book_url)',
@@ -6739,6 +6958,7 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     settings,
     sourceCookies,
     sourceEntries,
+    sourceTlsExceptions,
     booksNaturalKey,
     booksLocalKey,
     booksShelfOrder,
@@ -11675,6 +11895,176 @@ typedef $$SourceEntriesTableProcessedTableManager =
       StoredSourceEntry,
       PrefetchHooks Function()
     >;
+typedef $$SourceTlsExceptionsTableCreateCompanionBuilder =
+    SourceTlsExceptionsCompanion Function({
+      required String sourceRef,
+      required String host,
+      Value<int> rowid,
+    });
+typedef $$SourceTlsExceptionsTableUpdateCompanionBuilder =
+    SourceTlsExceptionsCompanion Function({
+      Value<String> sourceRef,
+      Value<String> host,
+      Value<int> rowid,
+    });
+
+class $$SourceTlsExceptionsTableFilterComposer
+    extends Composer<_$SpaceDatabase, $SourceTlsExceptionsTable> {
+  $$SourceTlsExceptionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sourceRef => $composableBuilder(
+    column: $table.sourceRef,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get host => $composableBuilder(
+    column: $table.host,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SourceTlsExceptionsTableOrderingComposer
+    extends Composer<_$SpaceDatabase, $SourceTlsExceptionsTable> {
+  $$SourceTlsExceptionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sourceRef => $composableBuilder(
+    column: $table.sourceRef,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get host => $composableBuilder(
+    column: $table.host,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SourceTlsExceptionsTableAnnotationComposer
+    extends Composer<_$SpaceDatabase, $SourceTlsExceptionsTable> {
+  $$SourceTlsExceptionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sourceRef =>
+      $composableBuilder(column: $table.sourceRef, builder: (column) => column);
+
+  GeneratedColumn<String> get host =>
+      $composableBuilder(column: $table.host, builder: (column) => column);
+}
+
+class $$SourceTlsExceptionsTableTableManager
+    extends
+        RootTableManager<
+          _$SpaceDatabase,
+          $SourceTlsExceptionsTable,
+          StoredTlsException,
+          $$SourceTlsExceptionsTableFilterComposer,
+          $$SourceTlsExceptionsTableOrderingComposer,
+          $$SourceTlsExceptionsTableAnnotationComposer,
+          $$SourceTlsExceptionsTableCreateCompanionBuilder,
+          $$SourceTlsExceptionsTableUpdateCompanionBuilder,
+          (
+            StoredTlsException,
+            BaseReferences<
+              _$SpaceDatabase,
+              $SourceTlsExceptionsTable,
+              StoredTlsException
+            >,
+          ),
+          StoredTlsException,
+          PrefetchHooks Function()
+        > {
+  $$SourceTlsExceptionsTableTableManager(
+    _$SpaceDatabase db,
+    $SourceTlsExceptionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SourceTlsExceptionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SourceTlsExceptionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SourceTlsExceptionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> sourceRef = const Value.absent(),
+                Value<String> host = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SourceTlsExceptionsCompanion(
+                sourceRef: sourceRef,
+                host: host,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String sourceRef,
+                required String host,
+                Value<int> rowid = const Value.absent(),
+              }) => SourceTlsExceptionsCompanion.insert(
+                sourceRef: sourceRef,
+                host: host,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SourceTlsExceptionsTable, StoredTlsException>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$SpaceDatabase,
+                    $SourceTlsExceptionsTable,
+                    StoredTlsException
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SourceTlsExceptionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SpaceDatabase,
+      $SourceTlsExceptionsTable,
+      StoredTlsException,
+      $$SourceTlsExceptionsTableFilterComposer,
+      $$SourceTlsExceptionsTableOrderingComposer,
+      $$SourceTlsExceptionsTableAnnotationComposer,
+      $$SourceTlsExceptionsTableCreateCompanionBuilder,
+      $$SourceTlsExceptionsTableUpdateCompanionBuilder,
+      (
+        StoredTlsException,
+        BaseReferences<
+          _$SpaceDatabase,
+          $SourceTlsExceptionsTable,
+          StoredTlsException
+        >,
+      ),
+      StoredTlsException,
+      PrefetchHooks Function()
+    >;
 
 class $SpaceDatabaseManager {
   final _$SpaceDatabase _db;
@@ -11705,4 +12095,6 @@ class $SpaceDatabaseManager {
       $$SourceCookiesTableTableManager(_db, _db.sourceCookies);
   $$SourceEntriesTableTableManager get sourceEntries =>
       $$SourceEntriesTableTableManager(_db, _db.sourceEntries);
+  $$SourceTlsExceptionsTableTableManager get sourceTlsExceptions =>
+      $$SourceTlsExceptionsTableTableManager(_db, _db.sourceTlsExceptions);
 }

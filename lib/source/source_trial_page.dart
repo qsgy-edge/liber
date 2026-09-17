@@ -10,6 +10,7 @@ import 'html_source_browser.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'json_source_pipeline.dart';
 import 'source_notice.dart';
+import 'source_tls_confirmation.dart';
 
 class SourceTrialPage extends StatefulWidget {
   const SourceTrialPage({
@@ -119,17 +120,23 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
       result = null;
     });
     try {
-      final output = await JsonSourcePipeline(
-        HttpSourceTransport(),
+      final output = await withTlsExceptionConfirmation(
+        context: context,
         hostState: widget.service.hostState,
-        androidId: widget.service.androidId,
-        onHostMessage: _showHostNotice,
-      ).run(
-        sources[selected!],
-        keyword.text.trim(),
-        (state) {
-          if (mounted) setState(() => status = state.message);
-        },
+        sourceRef: '${source['bookSourceUrl'] ?? ''}',
+        sourceName: '${source['bookSourceName'] ?? ''}',
+        run: () => JsonSourcePipeline(
+          HttpSourceTransport(),
+          hostState: widget.service.hostState,
+          androidId: widget.service.androidId,
+          onHostMessage: _showHostNotice,
+        ).run(
+          source,
+          keyword.text.trim(),
+          (state) {
+            if (mounted) setState(() => status = state.message);
+          },
+        ),
       );
       if (mounted) setState(() => result = output);
     } catch (error) {

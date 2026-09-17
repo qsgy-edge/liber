@@ -83,6 +83,12 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
       ..findProxy = (_) => 'DIRECT';
+    if (sourceRequest.allowInvalidCertificate) {
+      // ADR 0011 §5: the user's per-source, per-host exception. This client
+      // serves one `send`, so the callback cannot lower validation for another
+      // source or another host.
+      client.badCertificateCallback = (_, _, _) => true;
+    }
     // Dart fills its default User-Agent before the headers are copied, so
     // configure the client too: an explicit value must survive every hop.
     final headers = withSourceRequestDefaults(sourceRequest.headers);
@@ -113,10 +119,16 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     });
     try {
       return await result.timeout(timeout);
-    } catch (_) {
+    } catch (error) {
       // Closing the client can report an I/O error before the cancellation
       // Future settles. Preserve the explicit cancellation outcome.
       sourceRequest.cancellation?.throwIfCancelled();
+      final failure = sourceTlsFailure(
+        error,
+        sourceRef: sourceRequest.sourceRef,
+        host: uri.host,
+      );
+      if (failure != null) throw failure;
       rethrow;
     } finally {
       unsubscribe?.call();
@@ -256,4 +268,40 @@ class SourceRedirectLimitExceeded implements Exception {
   @override
   String toString() =>
       'Too many follow-up requests: $followUps ($url)';
+}
+
+/// Names [error] as ADR 0011 §5's certificate failure, or returns null when it
+/// is not one.
+///
+/// Dart's `HttpClient` reports a certificate or hostname failure out of
+/// `openUrl`/`request.close` as a `TlsException`, whose subclasses
+/// (`HandshakeException`, `CertificateException`) all satisfy this test.
+SourceTlsCertificateFailure? sourceTlsFailure(
+  Object error, {
+  required String sourceRef,
+  required String host,
+}) {
+  if (error is! TlsException) return null;
+  return SourceTlsCertificateFailure(
+    sourceRef: sourceRef,
+    host: host,
+    reason: _tlsReason(error.message),
+    detail: error.message,
+  );
+}
+
+/// The verification problem in plain words. The transport's message is the
+/// platform's; only the categories a user can act on are named.
+String _tlsReason(String message) {
+  final upper = message.toUpperCase();
+  if (upper.contains('HOSTNAME') || upper.contains('IP ADDRESS MISMATCH')) {
+    return '证书与主机名不匹配';
+  }
+  if (upper.contains('CERTIFICATE') ||
+      upper.contains('SELF-SIGNED') ||
+      upper.contains('SELF SIGNED') ||
+      upper.contains('EXPIRED')) {
+    return '证书无效、过期或不受信任';
+  }
+  return '证书或主机名校验未通过';
 }

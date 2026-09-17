@@ -51,6 +51,40 @@ class SourceIoLimitExceeded implements Exception {
   String toString() => '$direction-cap: source I/O limit exceeded';
 }
 
+/// A source request whose TLS certificate or hostname verification failed
+/// (ADR 0011 §5).
+///
+/// It is a named outcome rather than a generic connection error, so the page
+/// can offer the per-source confirmation and the source log says which source
+/// and which host were rejected. [reason] states the problem in plain words and
+/// [detail] is the transport's own message, kept for the log.
+class SourceTlsCertificateFailure implements Exception {
+  const SourceTlsCertificateFailure({
+    required this.sourceRef,
+    required this.host,
+    required this.reason,
+    this.detail = '',
+  });
+
+  /// The source the request belonged to, empty when no identity was attached.
+  final String sourceRef;
+
+  /// The host whose certificate or hostname failed verification.
+  final String host;
+
+  /// The verification problem in plain words (invalid, expired, untrusted, or
+  /// a hostname mismatch), for the confirmation and the log.
+  final String reason;
+
+  /// The transport's message for the same failure, for the log.
+  final String detail;
+
+  @override
+  String toString() =>
+      'TLS certificate rejected for $host: $reason'
+      '${detail.isEmpty ? '' : ' ($detail)'}';
+}
+
 class SourceHttpRequest {
   const SourceHttpRequest({
     required this.method,
@@ -61,6 +95,8 @@ class SourceHttpRequest {
     this.cancellation,
     this.retry = 0,
     this.maxResponseBytes = 8 * 1024 * 1024,
+    this.sourceRef = '',
+    this.allowInvalidCertificate = false,
   });
   final String method;
   final Uri url;
@@ -68,6 +104,14 @@ class SourceHttpRequest {
   final String? body;
   final bool followRedirects;
   final SourceCancellation? cancellation;
+
+  /// The source this request belongs to, so a certificate failure can name it.
+  final String sourceRef;
+
+  /// Whether this request may continue past a certificate-verification
+  /// failure. ADR 0011 §5's exception is per source and host, resolved by the
+  /// caller that holds the space's state; the default is to validate.
+  final bool allowInvalidCertificate;
 
   /// Extra attempts allowed while the response is not 2xx, matching the
   /// frozen `newCallResponse(retry)` loop.

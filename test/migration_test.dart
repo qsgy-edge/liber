@@ -6,6 +6,7 @@ import 'package:liber/store/database.dart';
 import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v1.dart' as v1;
 import 'generated_migrations/schema_v2.dart' as v2;
+import 'generated_migrations/schema_v3.dart' as v3;
 
 /// The generated migration tests: the schemas in `drift_schemas/` are the
 /// released versions, `drift_dev schema steps` turns them into the upgrade
@@ -148,6 +149,20 @@ void main() {
     // tables and carries nothing over (ADR 0011 §3).
     expect(await database.select(database.sourceCookies).get(), isEmpty);
     expect(await database.select(database.sourceEntries).get(), isEmpty);
+    await database.close();
+    schema.close();
+  });
+
+  test('v3 → v4 建立 TLS 例外表，从空开始', () async {
+    final schema = await verifier.schemaAt(3);
+    final old = v3.DatabaseAtV3(schema.newConnection());
+    await old.close();
+
+    final database = SpaceDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(database, 4);
+    // No v3 database holds a confirmed exception, so the step creates the
+    // table and carries nothing over (ADR 0011 §5).
+    expect(await database.select(database.sourceTlsExceptions).get(), isEmpty);
     await database.close();
     schema.close();
   });

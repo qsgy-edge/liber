@@ -9,6 +9,7 @@ import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
+import 'source_tls_confirmation.dart';
 
 /// Inline online section of the existing bookshelf; the parent owns scrolling.
 ///
@@ -117,7 +118,13 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           onHostMessage: _showHostNotice,
         );
         try {
-          final (book, chapters) = await pipeline.details(entry.htmlBook);
+          final (book, chapters) = await withTlsExceptionConfirmation(
+            context: context,
+            hostState: widget.service.hostState,
+            sourceRef: entry.sourceRef,
+            sourceName: '${source['bookSourceName'] ?? ''}',
+            run: () => pipeline.details(entry.htmlBook),
+          );
           await widget.service.updateCatalog(entry.sourceRef, book, chapters);
         } finally {
           pipeline.cancel();

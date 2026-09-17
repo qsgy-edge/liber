@@ -219,3 +219,11 @@ Future<void> migrateToV3(Migrator m, Schema3 schema) async {
   await m.createTable(schema.sourceCookies);
   await m.createTable(schema.sourceEntries);
 }
+
+/// v3 → v4: the per-source TLS exception table gets its row (ADR 0011 §5).
+///
+/// No v3 database holds an exception — nothing consulted one — so the table
+/// starts empty and a user's confirmation fills it as it is given.
+Future<void> migrateToV4(Migrator m, Schema4 schema) async {
+  await m.createTable(schema.sourceTlsExceptions);
+}

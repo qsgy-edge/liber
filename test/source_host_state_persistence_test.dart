@@ -69,6 +69,43 @@ void main() {
     await reopened.close();
   });
 
+  test('a confirmed TLS exception survives a restart and never spills over',
+      () async {
+    const sourceRef = 'https://www.example.com/book';
+    var workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    await state.allowInvalidCertificate(sourceRef, 'self-signed.example');
+    await workspace.close();
+
+    // The process ends here; the same space file is opened again.
+    workspace = await Workspace.open(root: root);
+    final reopened = SourceHostState(
+      persistence: SpaceHostStatePersistence(await workspace.openSpace()),
+    );
+    await reopened.ready();
+    expect(
+      reopened.allowsInvalidCertificate(sourceRef, 'self-signed.example'),
+      isTrue,
+    );
+    // The stored exception is the pair: another host, and another source on
+    // the same host, both still fail.
+    expect(
+      reopened.allowsInvalidCertificate(sourceRef, 'other.example'),
+      isFalse,
+    );
+    expect(
+      reopened.allowsInvalidCertificate(
+        'https://other.example/book',
+        'self-signed.example',
+      ),
+      isFalse,
+    );
+    await workspace.close();
+  });
+
   test('a second space has its own jar and cache', () async {
     const sourceRef = 'https://www.example.com/book';
     var workspace = await Workspace.open(root: root);

@@ -7,6 +7,7 @@ import 'html_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'json_source_pipeline.dart' show SourceChapter;
 import 'source_notice.dart';
+import 'source_tls_confirmation.dart';
 
 class OnlineReaderPage extends StatefulWidget {
   const OnlineReaderPage({
@@ -101,7 +102,13 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       error = null;
     });
     try {
-      final result = await widget.pipeline.chapter(widget.chapters[next]);
+      final result = await withTlsExceptionConfirmation(
+        context: context,
+        hostState: widget.service.hostState,
+        sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
+        sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
+        run: () => widget.pipeline.chapter(widget.chapters[next]),
+      );
       if (!mounted) return;
       final lines = result.text.split('\n');
       var cursor = 0;
