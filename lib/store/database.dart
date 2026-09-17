@@ -413,6 +413,22 @@ class SourceEntries extends Table {
   Set<Column> get primaryKey => {sourceRef, key};
 }
 
+/// The per-source, per-host TLS exceptions a user has confirmed (ADR 0011 §5).
+///
+/// A row exists only because a person answered the confirmation for that one
+/// source and host; the transport reads it before it decides whether a
+/// certificate-verification failure may be continued past. Keyed by both, so an
+/// exception never applies to another source or another host.
+@DataClassName('StoredTlsException')
+class SourceTlsExceptions extends Table {
+  TextColumn get sourceRef => text()();
+
+  TextColumn get host => text()();
+
+  @override
+  Set<Column> get primaryKey => {sourceRef, host};
+}
+
 @DriftDatabase(
   tables: [
     Sources,
@@ -428,6 +444,7 @@ class SourceEntries extends Table {
     Settings,
     SourceCookies,
     SourceEntries,
+    SourceTlsExceptions,
   ],
 )
 class SpaceDatabase extends _$SpaceDatabase {
@@ -443,7 +460,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 3;
+  static const latestVersion = 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -460,11 +477,12 @@ class SpaceDatabase extends _$SpaceDatabase {
       if (from < 2) await mergeDuplicateNaturalKeys(m);
       // v2 → v3 only creates the host-surface tables (ADR 0011 §3): there is no
       // old shape to migrate data out of, so the step is the generated one.
-      await stepByStep(from1To2: migrateToV2, from2To3: migrateToV3)(
-        m,
-        from,
-        to,
-      );
+      // v3 → v4 only creates the TLS-exception table (ADR 0011 §5), likewise.
+      await stepByStep(
+        from1To2: migrateToV2,
+        from2To3: migrateToV3,
+        from3To4: migrateToV4,
+      )(m, from, to);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

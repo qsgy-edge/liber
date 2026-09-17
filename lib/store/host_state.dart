@@ -6,8 +6,9 @@ import 'space_store.dart';
 
 /// The space's half of the host surface's state (ADR 0011 §3): the cookie jar
 /// and the per-source entries as rows of the same `data.db` the shelf, the
-/// sources and the reading progress live in — not a file beside the store, so a
-/// private space's later encryption covers runtime state as a unit.
+/// sources and the reading progress live in — plus the confirmed TLS
+/// exceptions (ADR 0011 §5) — not a file beside the store, so a private
+/// space's later encryption covers runtime state as a unit.
 ///
 /// Nothing is evicted here: a row stays until the source that owns it writes
 /// over it or deletes it, which is #21's recorded consequence (the baseline's
@@ -90,5 +91,26 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
           (entry) => entry.sourceRef.equals(sourceRef) & entry.key.equals(key),
         ))
         .go();
+  }
+
+  @override
+  Future<List<SourceTlsException>> loadTlsExceptions() async {
+    final rows = await _db.select(_db.sourceTlsExceptions).get();
+    return [
+      for (final row in rows)
+        SourceTlsException(sourceRef: row.sourceRef, host: row.host),
+    ];
+  }
+
+  @override
+  Future<void> saveTlsException(SourceTlsException exception) async {
+    await _db
+        .into(_db.sourceTlsExceptions)
+        .insertOnConflictUpdate(
+          StoredTlsException(
+            sourceRef: exception.sourceRef,
+            host: exception.host,
+          ),
+        );
   }
 }

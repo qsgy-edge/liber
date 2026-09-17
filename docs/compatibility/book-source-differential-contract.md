@@ -251,9 +251,10 @@ divergence is in the differential contract" has something to point at:
 
 - **TLS trust.** The baseline trusts every certificate and every hostname for every source request
   (`HttpHelper.kt:63,65` — `unsafeSSLSocketFactory` plus `unsafeHostnameVerifier`). This product validates by
-default and asks the user once per source on a certificate failure, storing a per-source exception that the
-transport reads afterwards (ADR 0011 §5, ticket #30). A fixture that needs the baseline's trust is
-`policy-rejected` until that exception exists and the user has granted it for the source under test.
+default: a certificate or hostname failure is a named outcome, the user is asked once per source and host, and
+the exception the confirmation stores is what the transport reads afterwards (ADR 0011 §5, #30). A fixture that
+needs the baseline's trust is `policy-rejected` until the user has granted that exception for the source under
+test; no fixture grants one today.
 - **Cookie trimming.** The baseline evicts random pairs from its cookie store to stay at 4 096 characters
   (`CookieStore.kt`); this product bounds the session jar differently and does not reproduce the random
   eviction (ADR 0011 §3).

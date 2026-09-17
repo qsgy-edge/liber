@@ -20,6 +20,10 @@ class JsonSourcePipeline {
   Map<String, String> _activeHeaders = const {};
   final Map<String, String> headers;
 
+  /// The source the run belongs to, set by [run] when it reads the source's
+  /// `bookSourceUrl`: the key the TLS exception is looked up under.
+  String _sourceRef = '';
+
   /// The space's host surface, when the caller has one (ADR 0011 §3): cookies,
   /// cache entries and per-source variables outlive the run. Without one they
   /// live for the process.
@@ -59,6 +63,7 @@ class JsonSourcePipeline {
         throw const FormatException('书源 header 必须是 JSON 字符串或 JS 规则');
       }
       final base = SourceHttpUri.parse(source['bookSourceUrl'] as String);
+      _sourceRef = '$base';
       final runtime = InProcessSourceScriptRuntime(
         jsLib: source['jsLib'] as String? ?? '',
         dispatcher: transport is SourceHttpTransport
@@ -251,6 +256,12 @@ class JsonSourcePipeline {
     );
     final headers = {...merged, ...extra};
     if (transport is SourceHttpTransport) {
+      final state = hostState;
+      // The exception is a persisted row, so a restart must read it before the
+      // request is built; the dispatcher path awaits the same load.
+      if (state != null && !state.isLoaded) await state.ready();
+      final allowInvalidCertificate =
+          state?.allowsInvalidCertificate(_sourceRef, url.host) ?? false;
       final response = await (transport as SourceHttpTransport).send(
         SourceHttpRequest(
           method: method,
@@ -258,6 +269,8 @@ class JsonSourcePipeline {
           headers: headers,
           body: body,
           retry: options.retry,
+          sourceRef: _sourceRef,
+          allowInvalidCertificate: allowInvalidCertificate,
         ),
       );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));

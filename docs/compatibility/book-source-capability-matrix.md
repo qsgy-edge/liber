@@ -138,7 +138,7 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Connection retry, 60 s read/call budgets | `HttpHelper.kt:56-62` | 🟡 30 s request budget, no separate connection-retry parity |
 | Per-source concurrency limit (`ConcurrentRateLimiter`, `concurrentRate`) | `AnalyzeUrl.kt:479`, `JsExtensions.kt:371` | ❌ |
 | Cookie priority and persistence (`setCookie`, `enabledCookieJar`) | `AnalyzeUrl.kt:597-615` | 🟡 persisted per space and scoped to a source's own site group (ADR 0011 §3, #21); no `enabledCookieJar` parity |
-| TLS policy | `HttpHelper.kt:63-65` (unsafe trust) | ⛔ rejected by default, with a per-source user exception (ADR 0011 §5): validation stays the default and a certificate failure asks once for that source, like a browser's "continue (unsafe)"; the divergence stays recorded in the differential contract |
+| TLS policy | `HttpHelper.kt:63-65` (unsafe trust) | 🟡 validation is the default and a certificate or hostname failure is a named outcome carrying the source and the host; the user is asked once per source and host (a browser's "continue (unsafe)"), and the exception the confirmation stores is what the transport reads afterwards (ADR 0011 §5, #30). The baseline's unconditional trust for every source stays rejected; the divergence is recorded in the differential contract |
 | Host reachability | any host the source names | 🟡 any `http`/`https` host, with no private-address filter — a LAN or self-hosted source is a real use, and the filter would remove a capability without removing the leak (ADR 0011 §5) |
 | WebView request path | `BackstageWebView`, `webView*` options | ❌ allowed by policy, not wired yet: executed headlessly through #2's adapter when it lands (ADR 0011 §4) |
 

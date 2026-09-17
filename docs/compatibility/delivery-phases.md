@@ -186,7 +186,7 @@ Caveats, recorded so no later batch treats the list as more than it is:
 | Multi-URL page results and image styling (`imageStyle`) | #14 | `imageStyle` 28 non-empty / 35 present; multi-URL results not independently counted |
 | WebView request path (`webView`, `webViewDelayTime`) | #2 | 18 records mention `webView` (token); `ruleContent.webJs` is present in 12 and empty in all of them |
 | User-confirmed browser and captcha hatches (`startBrowser*`, `getVerificationCode`, `openUrl`) | #32 | 3 / 2 |
-| TLS per-source exception on certificate failure | #30 | (policy row) |
+| TLS per-source exception on certificate failure | #30 | (policy row: validation default, one confirmation per source and host, the stored exception read by the transport) |
 | Named refusals, emulated `androidId`/`getWebViewUA`, bounded logs and toasts | #31 | — |
 | Host-surface cleanup on source delete/re-point; a bound on persisted growth | #36 / #37 | — |
 | HTML extraction device corpus; request-semantics oracle; four-stage oracle | #23 / #15 / #38 | — |
@@ -222,9 +222,10 @@ affected capability:
   reproduced (ADR 0011 §3).
 - `firstCompletesWhileSecondHeld` is `notCompared` for the execution-model
   reason in the differential contract's divergences table.
-- TLS trust stays validated by default with a per-source user exception
-  (ADR 0011 §5; #30), so a fixture needing the baseline's unconditional trust is
-  `policy-rejected` until that exception exists.
+- TLS trust stays validated by default with a per-source, per-host user exception
+  (ADR 0011 §5; #30): a fixture needing the baseline's unconditional trust is
+  `policy-rejected` until the user grants the exception for the source under
+  test, and no fixture grants one.
 
 Naming a divergence is not a pass: the affected observation stays in the
 harness's `notCompared` list and the platform cannot claim the capability it

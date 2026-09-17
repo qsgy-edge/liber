@@ -41,6 +41,16 @@ class SourceCacheEntry {
   final int expiresAt;
 }
 
+/// An accepted TLS exception (ADR 0011 §5): the source and the host whose
+/// invalid certificate the user confirmed continuing with. Keyed by both, so
+/// the exception is the pair and never one of them alone.
+class SourceTlsException {
+  const SourceTlsException({required this.sourceRef, required this.host});
+
+  final String sourceRef;
+  final String host;
+}
+
 /// Where the host surface's state is read and written.
 ///
 /// `lib/store/host_state.dart` implements this over the space's `data.db`; the
@@ -54,11 +64,15 @@ abstract interface class SourceHostStatePersistence {
   Future<List<SourceCacheEntry>> loadCache();
   Future<void> saveCacheEntry(SourceCacheEntry entry);
   Future<void> deleteCacheEntry(String sourceRef, String key);
+
+  Future<List<SourceTlsException>> loadTlsExceptions();
+  Future<void> saveTlsException(SourceTlsException exception);
 }
 
 /// The host surface's state one space's sources share (ADR 0011 §3): the cookie
-/// jar the frozen `CookieStore` keeps, plus the cache entries and per-source
-/// variables whose owner is the source that wrote them.
+/// jar the frozen `CookieStore` keeps, the cache entries and per-source
+/// variables whose owner is the source that wrote them, and the per-source,
+/// per-host TLS exceptions the user confirmed (ADR 0011 §5).
 ///
 /// The live copy is in memory — a script reads a cookie inside one synchronous
 /// JavaScript call — and every mutation is also written through
@@ -82,6 +96,9 @@ class SourceHostState {
 
   /// Entries per source, then per key.
   final Map<String, Map<String, _Entry>> _cache = {};
+
+  /// Accepted TLS exceptions, as `(sourceRef, host)` pairs (ADR 0011 §5).
+  final Set<(String, String)> _tlsExceptions = {};
 
   Future<void>? _reading;
   bool _loaded = false;
@@ -118,6 +135,9 @@ class SourceHostState {
         _decode(entry.value),
         entry.expiresAt,
       );
+    }
+    for (final exception in await persistence.loadTlsExceptions()) {
+      _tlsExceptions.add((exception.sourceRef, exception.host));
     }
     _loaded = true;
   }
@@ -186,6 +206,26 @@ class SourceHostState {
 
   static Object? _decode(String? value) =>
       value == null ? null : jsonDecode(value);
+
+  /// Whether one source may continue past a certificate failure at [host]: the
+  /// stored exception for exactly that pair (ADR 0011 §5).
+  ///
+  /// A synchronous read of the loaded state, which is what the transport's
+  /// decision needs; a caller that has not awaited [ready] must await it first —
+  /// a persistence-backed state that has not loaded yet reports false.
+  bool allowsInvalidCertificate(String sourceRef, String host) =>
+      _tlsExceptions.contains((sourceRef, host));
+
+  /// Remembers the user's confirmation for one source and host, and writes it
+  /// through so the next run reads the same answer. A pair already stored is
+  /// left as it is.
+  Future<void> allowInvalidCertificate(String sourceRef, String host) async {
+    await ready();
+    if (!_tlsExceptions.add((sourceRef, host))) return;
+    await _persistence?.saveTlsException(
+      SourceTlsException(sourceRef: sourceRef, host: host),
+    );
+  }
 
   static int _systemMillis() => DateTime.now().millisecondsSinceEpoch;
 }
