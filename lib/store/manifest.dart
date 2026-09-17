@@ -1,4 +1,18 @@
 import 'dart:convert';
+import 'dart:math';
+
+/// The manifest preference key holding the installation's `androidId`.
+const manifestAndroidIdKey = 'androidId';
+
+/// A fresh installation `androidId`: 16 lowercase hex characters, shaped like
+/// Android's `Settings.Secure.ANDROID_ID` (`AppConst.kt:58-60`) so a source that
+/// parses it is not surprised, but opaque and random so it is never a platform
+/// identifier (ADR 0011 §6). Drawn from a CSPRNG.
+String newAndroidId() {
+  final random = Random.secure();
+  const digits = '0123456789abcdef';
+  return List.generate(16, (_) => digits[random.nextInt(16)]).join();
+}
 
 /// The installation-level `manifest.json`: the space registry, this format's
 /// version, and UI-level preferences (theme, language).
