@@ -35,3 +35,31 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - Keep retired evidence reachable: `git log --oneline archive-master` and `git grep archive-master -- <path>` read the pre-split tree, and `git ls-remote --heads archive` lists what the archive kept.
 
 <!-- agents-md-author:end branch-and-worktree-lifecycle -->
+
+<!-- agents-md-author:begin lane-dispatch -->
+
+## Lane dispatch and the batch loop
+
+- Frontier work is dispatched as lanes: one async `subagent` workflow, one child per ticket, each with its own
+  briefing file beside the handoff. Follow the `subagent-delegation` and `pi-subagents` skills for the mechanics;
+  this section is the project's binding layer on top of them.
+- Give every child an explicit `timeoutMs` (three hours for an implementation lane) and
+  `checkpointBeforeDeadlineMs`; the default 30-minute child deadline kills lanes with uncommitted work.
+- One writer per worktree (see Branch and worktree lifecycle). The main checkout belongs to the controller, and a
+  lane never edits it.
+- A lane commits locally and leaves one evidence comment on its ticket: what changed, the commands it ran with
+  their actual results, the acceptance list checked off, and every divergence and residual risk. It never merges,
+  pushes, or closes the ticket, and it asks the controller through `contact_supervisor` at a boundary instead of
+  improvising.
+- The controller verifies from the raw diff and re-runs the headline numbers itself; a lane's numbers are claims
+  until reproduced.
+- Close a batch in this order: merge `--no-ff` locally with the ticket number in the message, run the
+  verification matrix on the integrated tree, push once, wait for every platform row, then close each ticket
+  with a resolution comment, update the map, open and link the follow-up tickets the lanes proposed, and write
+  the next handoff with the `handoff` skill.
+- A decision ticket gets its own interactive session with a briefing and the `grilling` skill; it never runs as a
+  lane.
+- Handoffs, briefings, and resolution comments reference the artifact (ticket, ADR, document, commit) instead of
+  restating it.
+
+<!-- agents-md-author:end lane-dispatch -->
