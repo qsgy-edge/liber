@@ -342,7 +342,10 @@ async fn test_engine_runtime_proxy_methods_fail_while_initializing() {
         }
         tokio::task::yield_now().await;
     }
-    assert!(engine.closed(), "close() should commit CLOSED while init is in flight");
+    assert!(
+        engine.closed(),
+        "close() should commit CLOSED while init is in flight"
+    );
 
     release_blocking_init_attachment();
 

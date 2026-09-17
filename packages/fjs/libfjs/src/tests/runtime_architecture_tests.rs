@@ -1582,8 +1582,12 @@ async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() 
         })
     };
 
-    eval_armed_rx.await.expect("eval should arm its timer in flight");
-    call_armed_rx.await.expect("call should arm its timer in flight");
+    eval_armed_rx
+        .await
+        .expect("eval should arm its timer in flight");
+    call_armed_rx
+        .await
+        .expect("call should arm its timer in flight");
     bridge_started_rx
         .await
         .expect("bridge operation should be in flight");
