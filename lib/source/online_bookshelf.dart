@@ -7,6 +7,8 @@ import 'book_source_service.dart';
 import 'html_source_browser.dart';
 import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
+import 'js_source_runtime.dart' show SourceHostMessage;
+import 'source_notice.dart';
 
 /// Inline online section of the existing bookshelf; the parent owns scrolling.
 ///
@@ -81,11 +83,20 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                   entry.sourceJson,
                   widget.transport!,
                   hostState: widget.service.hostState,
+                  androidId: widget.service.androidId,
+                  onHostMessage: _showHostNotice,
                 ),
         ),
       ),
     );
     if (mounted) await reload();
+  }
+
+  /// Shows a source's rate-limited `toast`/`longToast` notice on this widget's
+  /// messenger; a disposed widget drops it silently.
+  void _showHostNotice(SourceHostMessage message) {
+    if (!mounted) return;
+    showSourceNotice(context, message);
   }
 
   Future<void> action(String action, ShelfEntry entry) async {
@@ -102,6 +113,8 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           source,
           widget.transport ?? HttpSourceTransport(),
           hostState: widget.service.hostState,
+          androidId: widget.service.androidId,
+          onHostMessage: _showHostNotice,
         );
         try {
           final (book, chapters) = await pipeline.details(entry.htmlBook);

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../store/shelf.dart';
 import 'html_source_pipeline.dart';
+import 'js_source_runtime.dart' show SourceHostMessage;
 import 'json_source_pipeline.dart' show SourceChapter;
+import 'source_notice.dart';
 
 class OnlineReaderPage extends StatefulWidget {
   const OnlineReaderPage({
@@ -42,9 +44,19 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   @override
   void initState() {
     super.initState();
+    // A chapter fetch can toast too; this page owns the pipeline while it is
+    // open, so its notices belong on this page's messenger.
+    widget.pipeline.onHostMessage = _showHostNotice;
     index = widget.chapterIndex;
     scroll.addListener(track);
     unawaited(load(index, widget.textOffset));
+  }
+
+  /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
+  /// disposed page drops it silently.
+  void _showHostNotice(SourceHostMessage message) {
+    if (!mounted) return;
+    showSourceNotice(context, message);
   }
 
   Future<void> save() async {

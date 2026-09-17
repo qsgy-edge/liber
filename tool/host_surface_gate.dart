@@ -9,6 +9,40 @@ import 'package:liber/source/source_host_dispatcher.dart';
 // Exercises the JavaScript host surface a Book Source sees: source accessors,
 // rule state, cookies, cache, logging, and the encoding/utility family. Every
 // member is named in [expectedMembers], so the gate fails when one disappears.
+
+/// The members this slice defers: each refuses by name (ADR 0011 §2/§6) instead
+/// of failing as an undefined JavaScript function. The file and archive family
+/// follows the frozen `JsExtensions.kt` names, including `unArchiveFile` and the
+/// `*ByteArrayContent` forms; the font family follows the ADR's `:791-903` row
+/// (`queryBase64TTF`, `queryTTF`, `replaceFont`). `speakText`/`speakSpeed` are
+/// not here: they are null value bindings in the frozen runtime, not members.
+const deferredMembers = <String>[
+  'java.getFile',
+  'java.readFile',
+  'java.readTxtFile',
+  'java.deleteFile',
+  'java.unzipFile',
+  'java.un7zFile',
+  'java.unrarFile',
+  'java.unArchiveFile',
+  'java.getTxtInFolder',
+  'java.getZipStringContent',
+  'java.getRarStringContent',
+  'java.get7zStringContent',
+  'java.getZipByteArrayContent',
+  'java.getRarByteArrayContent',
+  'java.get7zByteArrayContent',
+  'java.downloadFile',
+  'java.cacheFile',
+  'java.importScript',
+  'java.queryTTF',
+  'java.queryBase64TTF',
+  'java.replaceFont',
+  'cache.getFile',
+  'cache.putFile',
+  'cache.getQueryTTF',
+];
+
 const expectedMembers = <String>[
   'source.getKey',
   'source.getName',
@@ -59,6 +93,9 @@ const expectedMembers = <String>[
   'cache.getDouble',
   'cache.delete',
   'cache.deleteMemory',
+  'java.androidId',
+  'java.getWebViewUA',
+  ...deferredMembers,
 ];
 
 Future<void> main(List<String> args) async {
@@ -93,29 +130,41 @@ Future<void> main(List<String> args) async {
     );
     initialized = true;
     final origin = 'http://127.0.0.1:${server.port}';
+    // A fixed installation id: the app reads the manifest's, the gate injects
+    // one so the answer and its sharing across sources are checkable.
+    const installationId = '0123456789abcdef';
     final checks = <String, bool>{};
 
     final runtime = InProcessSourceScriptRuntime(
       dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
+      androidId: installationId,
     );
-    Future<Object?> run(String script, {String? sourceKey}) =>
-        runtime.evaluate(
-          source: script,
-          input: {
-            'sourceKey': sourceKey ?? origin,
-            'source': {
-              'bookSourceUrl': sourceKey ?? origin,
-              'bookSourceName': '契约源',
-              'bookSourceGroup': 'group',
-            },
-            'key': '甲',
-            'page': 1,
-            'result': null,
-            'baseUrl': origin,
-            'headers': const <String, String>{},
-          },
-          timeout: const Duration(seconds: 15),
-        );
+    Future<Object?> evaluateOn(
+      InProcessSourceScriptRuntime target,
+      String script, {
+      String? sourceKey,
+    }) => target.evaluate(
+      source: script,
+      input: {
+        'sourceKey': sourceKey ?? origin,
+        'source': {
+          'bookSourceUrl': sourceKey ?? origin,
+          'bookSourceName': '契约源',
+          'bookSourceGroup': 'group',
+        },
+        'key': '甲',
+        'page': 1,
+        'result': null,
+        'baseUrl': origin,
+        'headers': const <String, String>{},
+      },
+      timeout: const Duration(seconds: 15),
+    );
+    Future<Object?> run(
+      String script, {
+      String? sourceKey,
+      InProcessSourceScriptRuntime? using,
+    }) => evaluateOn(using ?? runtime, script, sourceKey: sourceKey);
 
     // 1. Every allowlisted member exists.
     final missing = await run(
@@ -278,7 +327,90 @@ Future<void> main(List<String> args) async {
         '${decoded['base64Wrapped']}'.split('\n').length == 2 &&
         '${decoded['base64Wrapped']}'.split('\n').first.length == 76;
 
-    // 8. A rule that uses the blocked sample pattern end to end.
+    // 8. Deferred members refuse by name, into the source log and as a `policy`
+    //    error the caller can report, instead of a `TypeError`.
+    var refusedByName = true;
+    var refusalInLog = true;
+    for (final member in deferredMembers) {
+      final before = runtime.messages.length;
+      SourceScriptError? failure;
+      try {
+        await run('$member("probe")');
+      } on SourceScriptError catch (error) {
+        failure = error;
+      }
+      final logged = runtime.messages
+          .skip(before)
+          .where((message) => message.kind == 'refused')
+          .toList();
+      if (failure == null ||
+          failure.category != 'policy' ||
+          !failure.message.contains(member) ||
+          !failure.message.contains('deferred')) {
+        refusedByName = false;
+      }
+      if (logged.length != 1 || !logged.single.message.contains(member)) {
+        refusalInLog = false;
+      }
+    }
+    checks['deferredMembersRefuse'] = refusedByName;
+    checks['refusalLoggedInSourceLog'] = refusalInLog;
+
+    // 9. The emulated identity is the installation's, shared by two sources; the
+    //    emulated user agent is non-empty and platform-plausible.
+    checks['androidIdIsInstallationValue'] =
+        await run('java.androidId()') == installationId;
+    checks['androidIdSharedBySources'] =
+        await run('java.androidId()', sourceKey: '$origin/other-source') ==
+        installationId;
+    final userAgent = await run('java.getWebViewUA()');
+    checks['webViewUserAgent'] =
+        userAgent is String &&
+        userAgent.isNotEmpty &&
+        userAgent.startsWith('Mozilla/5.0');
+
+    // `speakText`/`speakSpeed` are the frozen `AnalyzeUrl` value bindings, not
+    // members: for a book-source (non-TTS) analysis they are null, and this
+    // slice keeps them null rather than making them throwing functions
+    // (ADR 0011 §6/§7: reading aloud is deferred, not refused).
+    final speakBindings = await run(
+      'JSON.stringify([typeof speakText, speakText === null, '
+      'typeof speakSpeed, speakSpeed === null])',
+    );
+    checks['speakTextAndSpeedStayNull'] =
+        speakBindings == jsonEncode(['object', true, 'object', true]);
+
+    // 10. The log is bounded and a toast is recorded but delivered
+    //     rate-limited (one display per source per window).
+    final bounded = InProcessSourceScriptRuntime(
+      dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
+    );
+    await evaluateOn(
+      bounded,
+      'for (let i = 0; i < ${sourceMessageLogLimit + 50}; i++) '
+      'java.log("m" + i);',
+    );
+    checks['logBounded'] =
+        bounded.messages.length == sourceMessageLogLimit &&
+        bounded.messages.first.message == 'm50' &&
+        bounded.messages.last.message == 'm${sourceMessageLogLimit + 49}';
+
+    final notices = <SourceHostMessage>[];
+    final limited = InProcessSourceScriptRuntime(
+      dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
+      onMessage: (message) => notices.add(message),
+    );
+    await evaluateOn(
+      limited,
+      'java.toast("a"); java.longToast("b"); java.toast("c");',
+    );
+    checks['toastRecorded'] =
+        limited.messages.where((m) => m.kind == 'toast').length == 2 &&
+        limited.messages.where((m) => m.kind == 'longToast').length == 1;
+    checks['toastRateLimited'] =
+        notices.length == 1 && notices.single.message == 'a';
+
+    // 11. A rule that uses the blocked sample pattern end to end.
     final pipeline = HtmlSourcePipeline(
       <String, dynamic>{
         'bookSourceUrl': origin,

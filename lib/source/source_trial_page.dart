@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import '../store/shelf.dart';
 import 'http_source_transport.dart';
 import 'html_source_browser.dart';
+import 'js_source_runtime.dart' show SourceHostMessage;
 import 'json_source_pipeline.dart';
+import 'source_notice.dart';
 
 class SourceTrialPage extends StatefulWidget {
   const SourceTrialPage({
@@ -36,6 +38,13 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
     super.initState();
     sources = widget.sources.map((item) => item.data).toList();
     if (sources.isNotEmpty) selected = 0;
+  }
+
+  /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
+  /// disposed page drops it silently.
+  void _showHostNotice(SourceHostMessage message) {
+    if (!mounted) return;
+    showSourceNotice(context, message);
   }
 
   @override
@@ -113,6 +122,8 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
       final output = await JsonSourcePipeline(
         HttpSourceTransport(),
         hostState: widget.service.hostState,
+        androidId: widget.service.androidId,
+        onHostMessage: _showHostNotice,
       ).run(
         sources[selected!],
         keyword.text.trim(),

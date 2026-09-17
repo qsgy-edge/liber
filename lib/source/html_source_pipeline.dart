@@ -59,10 +59,22 @@ class HtmlSourcePipeline {
     this.transport, {
     this._scriptRuntime,
     this.hostState,
+    this.androidId = '',
+    this.onHostMessage,
   });
   final Map<String, dynamic> source;
   final BookSourceTransport transport;
   final SourceScriptRuntime? _scriptRuntime;
+
+  /// The installation's opaque `androidId` the source's `java.androidId` answers
+  /// with (ADR 0011 §6); empty when the caller has no installation, which is
+  /// what the gates and the tools run with.
+  final String androidId;
+
+  /// Where a source's rate-limited `toast`/`longToast` notices go. Mutable so a
+  /// page a pipeline is handed to — the reader takes the browser's pipeline over
+  /// for its chapter fetch — can point it at its own messenger.
+  void Function(SourceHostMessage message)? onHostMessage;
 
   /// The space's host surface, when the caller has one: the jar, the cache
   /// entries and the per-source variables a source writes outlive this pipeline
@@ -88,6 +100,8 @@ class HtmlSourcePipeline {
         dispatcher: _host,
         hostState: hostState,
         jsLib: source['jsLib'] as String? ?? '',
+        androidId: androidId,
+        onMessage: (message) => onHostMessage?.call(message),
       );
   final trace = <BookSourceTraceEntry>[];
   int tocPages = 0;

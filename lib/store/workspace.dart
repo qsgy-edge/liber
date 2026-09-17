@@ -55,6 +55,18 @@ class Workspace {
 
   File get manifestFile => File(_join(root.path, manifestFileName));
 
+  /// The installation's `androidId` (ADR 0011 §6): generated once on first use
+  /// and kept in the manifest, so it is stable across restarts and shared by
+  /// every source of every space in this installation. It is opaque and random,
+  /// never derived from a platform identifier.
+  Future<String> androidId() async {
+    final existing = manifest.preferences[manifestAndroidIdKey];
+    if (existing is String && existing.isNotEmpty) return existing;
+    final value = newAndroidId();
+    await setPreference(manifestAndroidIdKey, value);
+    return value;
+  }
+
   Directory spaceDirectory(String id) =>
       Directory(_join(root.path, spacesFolderName, id));
 

@@ -96,7 +96,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
     try {
       final workspace = await Workspace.open(root: widget.workspaceRoot);
       final store = await workspace.openSpace(Workspace.defaultSpaceId);
-      final shelf = ShelfService(store);
+      final shelf = ShelfService(store, androidId: await workspace.androidId());
       final library = LocalLibrary(store);
       // Importing is best effort: the space is open whether or not the retired
       // files could be merged, and a failure there must not cost the reader the

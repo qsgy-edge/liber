@@ -15,6 +15,8 @@ class JsonSourcePipeline {
     this.transport, {
     this.headers = const {},
     this.hostState,
+    this.androidId = '',
+    this.onHostMessage,
   });
   final BookSourceTransport transport;
   Map<String, String> _activeHeaders = const {};
@@ -24,6 +26,13 @@ class JsonSourcePipeline {
   /// cache entries and per-source variables outlive the run. Without one they
   /// live for the process.
   final SourceHostState? hostState;
+
+  /// The installation's opaque `androidId` the source's `java.androidId` answers
+  /// with (ADR 0011 §6); empty when the caller has no installation.
+  final String androidId;
+
+  /// Where a source's rate-limited `toast`/`longToast` notices go.
+  void Function(SourceHostMessage message)? onHostMessage;
 
   Future<SourceReadingResult> run(
     Map<String, dynamic> source,
@@ -69,6 +78,8 @@ class JsonSourcePipeline {
               )
             : null,
         hostState: hostState,
+        androidId: androidId,
+        onMessage: (message) => onHostMessage?.call(message),
       );
       Map<String, Object?> scriptInput(Object? result) => {
         'sourceKey': '$base',

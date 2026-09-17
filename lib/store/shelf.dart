@@ -96,9 +96,13 @@ class ShelfEntry {
 /// rewrite-the-whole-file writes became the store's intent-level ones, so a
 /// removal keeps the chapters and the progress instead of editing a document.
 class ShelfService {
-  ShelfService(this.store);
+  ShelfService(this.store, {this.androidId = ''});
 
   final SpaceStore store;
+
+  /// The installation's opaque `androidId` (ADR 0011 §6) the pages hand to a
+  /// source pipeline, read once from the installation manifest.
+  final String androidId;
 
   /// The space's host surface (ADR 0011 §3), which the pages that run a source
   /// hand to their pipeline: one state per space, so a source's cookies, cache

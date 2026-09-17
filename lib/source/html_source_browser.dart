@@ -6,8 +6,10 @@ import '../store/shelf.dart';
 import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
 import 'json_source_pipeline.dart' show SourceChapter;
+import 'js_source_runtime.dart' show SourceHostMessage;
 import 'online_reader_page.dart';
 import 'source_http_uri.dart';
+import 'source_notice.dart';
 
 class HtmlSourceBrowser extends StatefulWidget {
   const HtmlSourceBrowser({
@@ -59,10 +61,19 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           widget.source,
           HttpSourceTransport(),
           hostState: widget.service.hostState,
+          androidId: widget.service.androidId,
+          onHostMessage: _showHostNotice,
         );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(start());
     });
+  }
+
+  /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
+  /// disposed page drops it silently.
+  void _showHostNotice(SourceHostMessage message) {
+    if (!mounted) return;
+    showSourceNotice(context, message);
   }
 
   Future<void> start() async {
@@ -192,6 +203,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       widget.source,
       readerPipeline.transport,
       hostState: widget.service.hostState,
+      androidId: widget.service.androidId,
+      onHostMessage: _showHostNotice,
     );
     await Navigator.of(context).push<void>(
       MaterialPageRoute(

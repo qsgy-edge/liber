@@ -6,6 +6,7 @@ import 'package:fjs/fjs.dart';
 
 import '../domain/contracts.dart';
 import '../local/text_engine.dart';
+import 'http_source_transport.dart' show sourceDefaultUserAgent;
 import 'native_library.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
@@ -35,6 +36,36 @@ class SourceHostMessage {
   final String message;
 }
 
+/// The bound on one source's message log. ADR 0011 §6 says the log is
+/// "bounded" and does not fix a number: 200 is this product's choice. The
+/// newest entries are kept and the oldest dropped, so a runaway `java.log`
+/// loop cannot grow the process's memory; the log is in memory only and
+/// persisted growth is #37's.
+const sourceMessageLogLimit = 200;
+
+/// The minimum interval between the two *displayed* notices of one source
+/// (ADR 0011 §6: `toast`/`longToast` are "shown rate-limited"). Every notice is
+/// recorded in the log; only the user-facing delivery is limited.
+const sourceNoticeWindowMillis = 3000;
+
+/// The rate limit on a source's user-facing notices: at most one delivery per
+/// [windowMillis], so a source that repeats itself cannot flood the user. Every
+/// message is recorded in the log whether or not it is delivered.
+class SourceNoticeLimiter {
+  SourceNoticeLimiter({this.windowMillis = sourceNoticeWindowMillis});
+
+  final int windowMillis;
+  int? _lastDeliveredAt;
+
+  /// Whether a notice that arrives at [nowMillis] may be shown.
+  bool allows(int nowMillis) {
+    final last = _lastDeliveredAt;
+    if (last != null && nowMillis - last < windowMillis) return false;
+    _lastDeliveredAt = nowMillis;
+    return true;
+  }
+}
+
 class SourceScriptError implements Exception {
   const SourceScriptError(this.category, [this.message = '']);
   final String category;
@@ -53,9 +84,23 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.hostCall,
     this.dispatcher,
     this.jsLib = '',
+    this.androidId = '',
+    this.onMessage,
     SourceHostState? hostState,
   }) : _providedState = hostState;
   final String jsLib;
+
+  /// The installation's opaque `androidId` this runtime answers `java.androidId`
+  /// with (ADR 0011 §6), or an empty string when the caller has no installation
+  /// (a gate or a tool). It is never a platform identifier.
+  final String androidId;
+
+  /// Where a user-facing `toast`/`longToast` notice goes, when the caller wants
+  /// to show it. The runtime has already rate-limited the delivery
+  /// ([sourceNoticeWindowMillis]); every message is recorded in [messages]
+  /// whether or not this is called. Defaults to no-op so existing callers are
+  /// untouched.
+  final void Function(SourceHostMessage message)? onMessage;
   final int maxScriptBytes;
   final int maxHostBytes;
   final int maxOutputBytes;
@@ -71,8 +116,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   late final SourceHostState hostState =
       _providedState ?? dispatcher?.hostState ?? SourceHostState();
 
-  /// Messages a source logged or toasted during this runtime's lifetime.
+  /// Messages a source logged or toasted during this runtime's lifetime, newest
+  /// last, capped at [sourceMessageLogLimit] entries.
   final messages = <SourceHostMessage>[];
+
+  final _noticeLimiter = SourceNoticeLimiter();
 
   /// Frozen `CacheManager` storage used to be a process-wide map here; it is
   /// the space's now ([SourceHostState]), which is what makes an entry belong to
@@ -209,6 +257,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = await _handleCookie(payload, cookies);
           } else if (method == 'log') {
             answer = _handleLog(payload);
+          } else if (method == 'identity') {
+            answer = androidId;
+          } else if (method == 'userAgent') {
+            answer = sourceDefaultUserAgent;
+          } else if (method == 'refuse') {
+            throw _handleRefusal(payload);
           } else if (method == 'url') {
             answer = _handleUrl(payload);
           } else if (method == 'convert') {
@@ -243,7 +297,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             result = JsResult.err(error);
           } else {
             hostFailure = _classify(error);
-            result = JsResult.err(JsError.bridge(hostFailure!.category));
+            // A refusal is the source's only view of the policy, so its message
+            // names the member and the policy instead of the bare category; the
+            // reason is also in the source log.
+            result = JsResult.err(
+              hostFailure!.category == 'policy'
+                  ? JsError.bridge(hostFailure!.message)
+                  : JsError.bridge(hostFailure!.category),
+            );
           }
         }
         // Cancellation can win between encoding and native completion.
@@ -496,16 +557,47 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   }
 
   /// Frozen `java.log`/`toast`/`longToast`/`logType`. This product has no source
-  /// debug console, so the messages are recorded for the caller instead.
+  /// debug console, so the messages are recorded for the caller instead; the
+  /// toasts are also shown through [onMessage], rate-limited.
   Object? _handleLog(Object? payload) {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid log call');
     }
     final message = payload['message'];
-    messages.add(
-      SourceHostMessage('${payload['kind'] ?? 'log'}', '$message'),
-    );
+    final kind = '${payload['kind'] ?? 'log'}';
+    _record(SourceHostMessage(kind, '$message'));
+    if (kind == 'toast' || kind == 'longToast') {
+      if (_noticeLimiter.allows(DateTime.now().millisecondsSinceEpoch)) {
+        onMessage?.call(SourceHostMessage(kind, '$message'));
+      }
+    }
     return message;
+  }
+
+  /// A member this slice defers refuses by name (ADR 0011 §2/§6): the reason is
+  /// written into the source's log and the execution fails with a `policy`
+  /// error naming the member, instead of the `TypeError` an undefined member
+  /// would produce.
+  SourceScriptError _handleRefusal(Object? payload) {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid refusal call');
+    }
+    final member = '${payload['member'] ?? 'unknown'}'.trim();
+    final policy = '${payload['policy'] ?? ''}'.trim();
+    final message = policy.isEmpty
+        ? '$member is deferred: this product does not implement it yet '
+              '(ADR 0011)'
+        : '$member is deferred: $policy';
+    _record(SourceHostMessage('refused', message));
+    return SourceScriptError('policy', message);
+  }
+
+  /// Appends one message, dropping the oldest entries past the bound.
+  void _record(SourceHostMessage message) {
+    messages.add(message);
+    if (messages.length > sourceMessageLogLimit) {
+      messages.removeRange(0, messages.length - sourceMessageLogLimit);
+    }
   }
 
   static SourceScriptError _classify(Object error) {
@@ -820,6 +912,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       });
   };
 
+  const refuseFile = member => () => call('refuse', {
+    member: member,
+    policy: 'the file and archive family (ADR 0011 §2)'
+  });
+  const refuseFont = member => () => call('refuse', {
+    member: member,
+    policy: 'font de-obfuscation (ADR 0011 §6)'
+  });
+  const refuseImportScript = () => call('refuse', {
+    member: 'java.importScript',
+    policy: 'the local-path half comes with the file family (ADR 0011 §2) and the remote half with #13'
+  });
+
   const java = Object.freeze({
     connect: (url, headers) => request('connect', url, null, headers),
     ajax: url => call('ajax', String(url)).body,
@@ -865,7 +970,30 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     timeFormatUTC: (time, format, sh) => formatTime(new Date(Number(time)), String(format), Number(sh) || 0),
     randomUUID: () => uuid(),
     toNumChapter: text => (text === null || text === undefined) ? null : toNumChapter(String(text)),
-    toURL: (url, baseUrl) => toUrl(String(url), (baseUrl === undefined || baseUrl === null) ? null : String(baseUrl))
+    toURL: (url, baseUrl) => toUrl(String(url), (baseUrl === undefined || baseUrl === null) ? null : String(baseUrl)),
+    androidId: () => call('identity', null),
+    getWebViewUA: () => call('userAgent', null),
+    getFile: refuseFile('java.getFile'),
+    readFile: refuseFile('java.readFile'),
+    readTxtFile: refuseFile('java.readTxtFile'),
+    deleteFile: refuseFile('java.deleteFile'),
+    unzipFile: refuseFile('java.unzipFile'),
+    un7zFile: refuseFile('java.un7zFile'),
+    unrarFile: refuseFile('java.unrarFile'),
+    unArchiveFile: refuseFile('java.unArchiveFile'),
+    getTxtInFolder: refuseFile('java.getTxtInFolder'),
+    getZipStringContent: refuseFile('java.getZipStringContent'),
+    getRarStringContent: refuseFile('java.getRarStringContent'),
+    get7zStringContent: refuseFile('java.get7zStringContent'),
+    getZipByteArrayContent: refuseFile('java.getZipByteArrayContent'),
+    getRarByteArrayContent: refuseFile('java.getRarByteArrayContent'),
+    get7zByteArrayContent: refuseFile('java.get7zByteArrayContent'),
+    downloadFile: refuseFile('java.downloadFile'),
+    cacheFile: refuseFile('java.cacheFile'),
+    importScript: refuseImportScript,
+    queryTTF: refuseFont('java.queryTTF'),
+    queryBase64TTF: refuseFont('java.queryBase64TTF'),
+    replaceFont: refuseFont('java.replaceFont')
   });
 
   const cookie = Object.freeze({
@@ -887,7 +1015,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getLong: key => numeric(call('cache', {op:'getLong', key:String(key)})),
     getDouble: key => numeric(call('cache', {op:'getDouble', key:String(key)})),
     delete: key => { call('cache', {op:'delete', key:String(key)}); },
-    deleteMemory: key => { call('cache', {op:'deleteMemory', key:String(key)}); }
+    deleteMemory: key => { call('cache', {op:'deleteMemory', key:String(key)}); },
+    getFile: refuseFile('cache.getFile'),
+    putFile: refuseFile('cache.putFile'),
+    getQueryTTF: refuseFont('cache.getQueryTTF')
   });
 
   return {key:null, page:null, book:null, result:null, speakText:null, speakSpeed:null,
