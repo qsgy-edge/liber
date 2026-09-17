@@ -12,17 +12,36 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/space_store.dart';
 
-/// The fixture certificate is a self-signed CA for `localhost` and `127.0.0.1`
-/// (`test/fixtures/tls/`, generated with `openssl req -x509`). A client that
-/// validates it rejects it as untrusted — the certificate failure ADR 0011 §5
-/// is about — and a client that is told to trust it accepts it, which is the
-/// "valid certificate" side of the same server.
-const _certificate = 'test/fixtures/tls/localhost.crt';
-const _privateKey = 'test/fixtures/tls/localhost.key';
+/// The fixture certificates live in `test/fixtures/tls/`, and their exact
+/// generation commands are in that directory's `README.md`. Two servers are
+/// used, one per trust outcome:
+///
+/// * `localhost.crt` is self-signed, so no client trusts it: the certificate
+///   failure ADR 0011 §5 is about, and the server the exception tests use.
+/// * `localhost-signed.crt` is issued by `testca.crt`, the test certificate
+///   authority the "trusts it" test installs as its anchor.
+///
+/// The leaf the client trusts carries a `serverAuth` ExtendedKeyUsage, a
+/// subject alternative name holding both the DNS and the IP form of
+/// `127.0.0.1`, and an 820-day lifetime (under 825), because macOS verifies a
+/// client connection with `Security.framework` — the SDK's
+/// `runtime/bin/security_context_macos.cc` calls
+/// `SecTrustCreateWithCertificates`/`SecTrustSetAnchorCertificates` and reads
+/// `SecTrustGetTrustResult` — and that evaluator enforces Apple's post-2019 TLS
+/// server certificate rules for a certificate issued after 2019-07-01
+/// (<https://support.apple.com/en-us/103769>). BoringSSL, which verifies on
+/// Linux and Windows, enforces none of them, so a fixture that skipped them was
+/// accepted there and rejected on macOS.
+const _selfSignedCertificate = 'test/fixtures/tls/localhost.crt';
+const _selfSignedPrivateKey = 'test/fixtures/tls/localhost.key';
+const _testCaCertificate = 'test/fixtures/tls/testca.crt';
+const _signedCertificate = 'test/fixtures/tls/localhost-signed.crt';
+const _signedPrivateKey = 'test/fixtures/tls/localhost-signed.key';
 
-SecurityContext _serverContext() => SecurityContext()
-  ..useCertificateChain(_certificate)
-  ..usePrivateKey(_privateKey);
+SecurityContext _serverContext(String certificate, String privateKey) =>
+    SecurityContext()
+      ..useCertificateChain(certificate)
+      ..usePrivateKey(privateKey);
 
 class _TlsServer {
   _TlsServer(this._context);
@@ -90,6 +109,7 @@ class _RecordingTransport implements SourceHttpTransport {
 
 void main() {
   late _TlsServer server;
+  late _TlsServer trustedServer;
   late SpaceStore store;
   late SourceHostState state;
 
@@ -97,14 +117,21 @@ void main() {
   const sourceB = 'https://b.test/book';
 
   setUp(() async {
-    server = _TlsServer(_serverContext());
+    server = _TlsServer(
+      _serverContext(_selfSignedCertificate, _selfSignedPrivateKey),
+    );
+    trustedServer = _TlsServer(
+      _serverContext(_signedCertificate, _signedPrivateKey),
+    );
     await server.start();
+    await trustedServer.start();
     store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
     state = SourceHostState(persistence: SpaceHostStatePersistence(store));
   });
 
   tearDown(() async {
     await server.stop();
+    await trustedServer.stop();
     await store.close();
   });
 
@@ -170,10 +197,12 @@ void main() {
   });
 
   test('a certificate the client trusts needs no exception', () async {
-    // The same server certificate, added to this client's trust store, is
-    // valid: the request succeeds without a stored exception, so no
-    // confirmation is ever offered for a valid certificate.
-    final trusted = SecurityContext()..setTrustedCertificates(_certificate);
+    // The certificate authority that issued this server's leaf, installed as
+    // this client's trust anchor, makes the certificate valid: the request
+    // succeeds without a stored exception, so no confirmation is ever offered
+    // for a certificate the client already trusts.
+    final trusted = SecurityContext()
+      ..setTrustedCertificates(_testCaCertificate);
     // The client is built outside the override zone (its constructor reads
     // `HttpOverrides.current`), then reused for every request the transport
     // makes inside it.
@@ -181,7 +210,7 @@ void main() {
     await HttpOverrides.runZoned(() async {
       final response = await dispatcher(
         sourceA,
-      ).get('https://${server.authority}/a');
+      ).get('https://${trustedServer.authority}/a');
       expect(response.statusCode, 200);
       expect(response.body, 'ok');
       expect(state.allowsInvalidCertificate(sourceA, '127.0.0.1'), isFalse);
