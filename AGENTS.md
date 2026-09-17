@@ -43,6 +43,8 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - Frontier work is dispatched as lanes: one async `subagent` workflow, one child per ticket, each with its own
   briefing file beside the handoff. Follow the `subagent-delegation` and `pi-subagents` skills for the mechanics;
   this section is the project's binding layer on top of them.
+- Each briefing names the skills its lane should follow — `diagnosing-bugs` to attribute a failure it meets,
+  `flutter-dart-mcp` for a driven run, `anti-overengineering-review` before adding an abstraction.
 - Give every child an explicit `timeoutMs` (three hours for an implementation lane) and
   `checkpointBeforeDeadlineMs`; the default 30-minute child deadline kills lanes with uncommitted work.
 - One writer per worktree (see Branch and worktree lifecycle). The main checkout belongs to the controller, and a
