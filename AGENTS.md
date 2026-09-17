@@ -56,9 +56,10 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - The controller verifies from the raw diff and re-runs the headline numbers itself; a lane's numbers are claims
   until reproduced.
 - Close a batch in this order: merge `--no-ff` locally with the ticket number in the message, run the
-  verification matrix on the integrated tree, push once, wait for every platform row, then close each ticket
-  with a resolution comment, update the map, open and link the follow-up tickets the lanes proposed, and write
-  the next handoff with the `handoff` skill.
+  verification matrix on the integrated tree plus the gate the batch's claim needs
+  (`docs/compatibility/delivery-phases.md` is the phase/claim ladder), push once, wait for every platform row,
+  then close each ticket with a resolution comment, update the map, open and link the follow-up tickets the
+  lanes proposed, and write the next handoff with the `handoff` skill.
 - A decision ticket gets its own interactive session with a briefing and the `grilling` skill; it never runs as a
   lane. Open that session in a Herdr pane beside the controller, so the operator answers it directly and the
   controller reads the result from the artifact instead of relaying the questions.

@@ -117,6 +117,10 @@ dart run tool/source_triage.dart <path-to-fjs.dll> <exported-sources.json>
   the frozen application's classes.
 - Aggregate compatibility claims must keep `not-run` rows, coverage gaps, and
   policy rejections visible. A green workflow is not a compatibility verdict.
+- The delivery phases and the claim ladder live in
+  [`docs/compatibility/delivery-phases.md`](docs/compatibility/delivery-phases.md):
+  a phase's claim needs its own gate green and every earlier claim still holding,
+  and every claim is per platform (ADR 0002/0009).
 - The delivery notes in [`book_sources/README.md`](book_sources/README.md)
   record what each Windows run measured, and which rows were never executed.
 
