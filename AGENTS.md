@@ -60,7 +60,8 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
   with a resolution comment, update the map, open and link the follow-up tickets the lanes proposed, and write
   the next handoff with the `handoff` skill.
 - A decision ticket gets its own interactive session with a briefing and the `grilling` skill; it never runs as a
-  lane.
+  lane. Open that session in a Herdr pane beside the controller, so the operator answers it directly and the
+  controller reads the result from the artifact instead of relaying the questions.
 - Handoffs, briefings, and resolution comments reference the artifact (ticket, ADR, document, commit) instead of
   restating it.
 
