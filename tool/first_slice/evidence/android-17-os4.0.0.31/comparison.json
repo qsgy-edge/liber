@@ -1,0 +1,171 @@
+{
+  "comparison": "SLICE-01",
+  "golden": "tool/first_slice/evidence/android-17-os4.0.0.31/golden.json",
+  "liber": "tool/first_slice/evidence/windows-slice-01.liber.json",
+  "goldenPlatform": "android",
+  "goldenFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+  "corpus": "tool/first_slice/fixtures.json",
+  "rows": [
+    {
+      "id": "R2",
+      "title": "request trace: method, resolved URL, raw query bytes, order, stage",
+      "status": "pass",
+      "detail": "6 requests on both sides",
+      "differences": []
+    },
+    {
+      "id": "R3",
+      "title": "source-controlled headers and injected request defaults",
+      "status": "fail",
+      "detail": "every header on every request compared, values included",
+      "differences": [
+        {
+          "observation": "requests[0].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        },
+        {
+          "observation": "requests[1].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        },
+        {
+          "observation": "requests[2].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        },
+        {
+          "observation": "requests[3].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        },
+        {
+          "observation": "requests[4].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        },
+        {
+          "observation": "requests[5].headers.accept-encoding",
+          "frozen": "gzip, deflate",
+          "liber": "gzip"
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "title": "session cookie set on search and carried by the five later requests",
+      "status": "pass",
+      "detail": "sid=slice01: 5 of 6 requests carry it on both sides",
+      "differences": []
+    },
+    {
+      "id": "R5",
+      "title": "search output: ordered results, name/author/kind/book URL",
+      "status": "pass",
+      "detail": "2 results compared in order",
+      "differences": []
+    },
+    {
+      "id": "R6",
+      "title": "book information output: name/author/kind/last chapter/cover/intro",
+      "status": "pass",
+      "detail": "6 shared fields compared",
+      "differences": []
+    },
+    {
+      "id": "R7",
+      "title": "table of contents: order, chapter URLs, nextTocUrl pages",
+      "status": "pass",
+      "detail": "3 chapters over 2 pages on both sides",
+      "differences": []
+    },
+    {
+      "id": "R8",
+      "title": "content: page chain, replaceRegex, final text",
+      "status": "fail",
+      "detail": "the two texts are equal once the frozen reader's paragraph indent is removed from the frozen side; the row still fails as observed",
+      "differences": [
+        {
+          "observation": "content.text",
+          "frozen": "　　第一页正文。\n　　第二段。\n　　\n　　第二页正文。\n　　本章结束。",
+          "liber": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。"
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "title": "the scenario's declared request sequence, and no undeclared request",
+      "status": "pass",
+      "detail": "6 declared requests matched on both sides",
+      "differences": []
+    }
+  ],
+  "notCompared": [
+    {
+      "observation": "stages.bookInfo.tocUrl",
+      "reason": "the golden carries the resolved TOC URL the frozen entity holds; the product's book-information evidence shape does not record it. The chapters it leads to are compared by R7, and the TOC request is in R2."
+    },
+    {
+      "observation": "stages.toc.chapters[].url (as stored)",
+      "reason": "the frozen entity stores the raw rule output (a relative path) and resolves it when used; the product stores the resolved URL. The resolved values are what R7 compares (chaptersAbsolute against the Liber url), and the request trace shows both sides resolving to the same URLs."
+    },
+    {
+      "observation": "state.*, cleanup.*, serverErrors",
+      "reason": "frozen-side observations with no counterpart in the Liber evidence: state repeats what R4/R7/R8 compare, and cleanup is this harness's own teardown."
+    },
+    {
+      "observation": "platform, fingerprint, recordedAt",
+      "reason": "provenance of the two runs, recorded in each evidence file and its manifest; not a compatibility observation."
+    }
+  ],
+  "divergences": [
+    {
+      "row": "R3",
+      "observation": "requests[0].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R3",
+      "observation": "requests[1].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R3",
+      "observation": "requests[2].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R3",
+      "observation": "requests[3].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R3",
+      "observation": "requests[4].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R3",
+      "observation": "requests[5].headers.accept-encoding",
+      "frozen": "gzip, deflate",
+      "liber": "gzip"
+    },
+    {
+      "row": "R8",
+      "observation": "content.text",
+      "frozen": "　　第一页正文。\n　　第二段。\n　　\n　　第二页正文。\n　　本章结束。",
+      "liber": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。"
+    }
+  ],
+  "status": "fail",
+  "summary": {
+    "pass": 6,
+    "fail": 2,
+    "notCompared": 4
+  }
+}

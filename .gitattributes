@@ -10,3 +10,10 @@ packages/fjs/liber_text/assets/** text eol=lf
 # evidence directory). Without this a Windows checkout with core.autocrlf=true rewrites
 # the LF bytes the device wrote, and the manifest pins stop matching.
 tool/nested_oracle/evidence/** text eol=lf
+tool/first_slice/evidence/** text eol=lf
+# The SLICE-01 corpus is a compared input: its committed bytes are its identity, and
+# the harness serves an asset copy of them (see the golden's manifest).
+tool/first_slice/fixtures.json text eol=lf
+# The harness serves the corpus out of its assets, so the runner is not shipped;
+# this line keeps the matching-rule reference byte-stable alongside it.
+tool/first_slice/runner.dart text eol=lf
