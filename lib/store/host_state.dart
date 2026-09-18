@@ -188,6 +188,24 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
         .go();
   }
 
+  /// Removes every host-surface row [sourceRef] owns (#36), in one transaction:
+  /// its `source_entries` rows and the `source_cookies` pairs whose
+  /// `writer_ref` is the source. A pair another source of the same site wrote
+  /// keeps its own `writer_ref` and stays (ADR 0011 §3).
+  @override
+  Future<void> deleteSource(String sourceRef) async {
+    await _db.transaction(() async {
+      await (_db.delete(_db.sourceEntries)..where(
+            (entry) => entry.sourceRef.equals(sourceRef),
+          ))
+          .go();
+      await (_db.delete(_db.sourceCookies)..where(
+            (cookie) => cookie.writerRef.equals(sourceRef),
+          ))
+          .go();
+    });
+  }
+
   @override
   Future<List<SourceTlsException>> loadTlsExceptions() async {
     final rows = await _db.select(_db.sourceTlsExceptions).get();
