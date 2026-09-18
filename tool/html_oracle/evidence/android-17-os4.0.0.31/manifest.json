@@ -1,0 +1,144 @@
+{
+  "recordedAt": "2026-09-18T15:28:20Z",
+  "kind": "frozen-html-extraction-corpus",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/23",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "application": {
+      "package": "io.legado.app.debug",
+      "productionRebuilt": false,
+      "installedBytesPulledAndVerified": true,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "sameBytesAsTheRecordedGoldens": true
+    }
+  },
+  "corpus": {
+    "path": "tool/html_oracle/fixtures.json",
+    "sha256": "b1c95af653fa2ecf22e58fbca2581e207a3650ec337cb167ad9ca87109f284e0",
+    "documents": 5,
+    "cases": 35,
+    "bundledInTheHarnessAs": "assets/html-fixtures.json (byte-identical copy, build.ps1)",
+    "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit; the device run below is now the executed row for the rows it covers."
+  },
+  "harness": {
+    "sources": [
+      "tool/nested_oracle/HtmlOracle.java",
+      "tool/nested_oracle/AndroidManifest.xml",
+      "tool/nested_oracle/build.ps1",
+      "tool/html_oracle/fixtures.json"
+    ],
+    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
+    "freshOutputDirectory": "C:/Users/17945/.cache/wayfinder/html-oracle-1789745002",
+    "jdk": "Temurin 17.0.20+8 (portable)",
+    "androidBuildTools": "35.0.1",
+    "androidJar": "platforms/android-35/android.jar",
+    "apkSha256": "5e6507754d2ee941082bca207a9f03025f8180e6aa4542b0e6382d87df1c2de0",
+    "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable; the 2026-09-18 build of these same sources in tool/nested_oracle/evidence/android-17-os4.0.0.31/manifest.json hashed 877a7458f2a573c9b4fa050b5da59ea5aff8b5d4dd9236adae7fdf674d1156b2",
+    "installCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness apk>",
+    "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.HtmlOracle",
+    "reflectionEntryPoint": {
+      "class": "io.legado.app.model.analyzeRule.AnalyzeRule",
+      "constructor": "the fewest-parameter public constructor (RuleDataInterface?, BaseSource?), both arguments null",
+      "setContent": "AnalyzeRule.setContent(Object, String) - AnalyzeRule.kt:80, @JvmOverloads",
+      "getString": "AnalyzeRule.getString(String) - AnalyzeRule.kt:246, @JvmOverloads",
+      "baseUrlArgument": "http://localhost/ (the corpus uses no {{baseUrl}} template and no absolute-URL extraction, so it does not enter any observation)"
+    }
+  },
+  "device": {
+    "serial": "5615f742",
+    "model": "25102RKBEC (Redmi myron)",
+    "androidRelease": "17",
+    "sdk": 37,
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
+  },
+  "oracleRun": {
+    "result": "INSTRUMENTATION_RESULT: stream=Html oracle recorded 35 observations",
+    "observations": 35,
+    "errors": 0,
+    "golden": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json"
+  },
+  "gateRun": {
+    "command": "dart run tool/html_adapter_gate.dart $LIBER_FJS_LIBRARY tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json",
+    "library": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll",
+    "librarySha256": "1def19b352a9f26c18d018b6cddefab7ebe39eb34ec7cb99afbbfe2f6b175cc0",
+    "reportedStatus": "fail",
+    "cases": 35,
+    "expectationMismatches": 0,
+    "frozenMatches": 34,
+    "frozenMismatches": [
+      {
+        "id": "replacement-trailing-field",
+        "rule": "#meta@text##忘语##忘语先生##",
+        "corpusExpected": "作者：忘语先生",
+        "windowsAdapter": "作者：忘语先生",
+        "deviceFrozen": "忘语先生",
+        "finding": "The frozen AnalyzeRule.kt:686 splits the rule on the literal \"##\" and Kotlin's split keeps the trailing empty field, so ruleStrS.size == 4 and AnalyzeRule.kt:695 sets replaceFirst = true. Kotlin 2.1.0 split(\"##\") on this rule returns [#meta@text, 忘语, 忘语先生, \"\"] (verified on this host), so the handset's \"忘语先生\" is the frozen behavior. The Windows adapter (and the source reading behind the corpus expectation) used the Java-split reading of three fields. Owner: the adapter's replacement-field parser; the fixture was not edited (boundary rule)."
+      }
+    ],
+    "report": "tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json"
+  },
+  "promotion": {
+    "deviceConfirmedRows": [
+      "Mode prefixes",
+      "Merge operators &&, ||, %%",
+      "@ chain, .N, !N, N:M and the [i, a:b:c] list form",
+      "Extraction text, textNodes",
+      "Extraction by attribute name (content, data-*)",
+      "Extraction ownText, html, all",
+      "Replacement ##regex and ##regex##replacement",
+      "Legacy sub-syntax text.x@href",
+      "Legacy sub-syntax class.x, tag.x (and id.x, children.x)",
+      "Jsoup CSS extensions"
+    ],
+    "notPromotedRows": [
+      {
+        "row": "Replacement fourth field (replaceFirst)",
+        "reason": "replacement-trailing-field disagrees: device 忘语先生 vs adapter 作者：忘语先生 (finding above)"
+      },
+      {
+        "row": "JSONPath adapter; $1 regex captures; rule-level templates {{js}}, @get:, inline {json}; {{baseUrl}}/{{book.*}} inside rule fields",
+        "reason": "notCompared - outside the 35-case corpus; unchanged from the source-derived status"
+      }
+    ],
+    "noAggregateStatusPromotion": true
+  },
+  "hashes": [
+    {
+      "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
+      "sha256": "627ef1fcd309cae322a2a642df8ee653daa60150d24b0b7074c4d4e065431389"
+    },
+    {
+      "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json",
+      "sha256": "9bae4aa8a25758fd119e516885d6edb4a646b0fc45bcd8f5114c0fe0a997ace6"
+    },
+    {
+      "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/run.log",
+      "sha256": "b5742380d19ae4405282fbbab6409a9296c29c4dc24d5f9fb47ddcca361e08ca"
+    },
+    {
+      "path": "tool/nested_oracle/HtmlOracle.java",
+      "sha256": "128546eb78b44cfa5331b71c712fec6fec96b92d88b6fe4272c27deda1a41645"
+    },
+    {
+      "path": "tool/nested_oracle/AndroidManifest.xml",
+      "sha256": "bb4787670c791a0abc6802e85489b790366154c4910d90cec1ff06db2bfd1583"
+    },
+    {
+      "path": "tool/nested_oracle/build.ps1",
+      "sha256": "b49993136c76a5217a18dc9ff47b999aef49019d51c0f9bf910dea91cb9ee37a"
+    },
+    {
+      "path": "tool/html_oracle/fixtures.json",
+      "sha256": "b1c95af653fa2ecf22e58fbca2581e207a3650ec337cb167ad9ca87109f284e0"
+    }
+  ],
+  "deliberatelyNotDone": [
+    "No fixture expectation was edited (a disagreeing device row is an adapter finding).",
+    "No Rust adapter or product rule-layer change was made to make the row compare equal.",
+    "The WebView (#2), request-semantics (#15) and four-stage (#38) corpora were not touched.",
+    "No aggregate or 'frozen-baseline complete' claim is made; only the named rows promote.",
+    "No simulated input was sent to the handset (adb shell input keyevent is refused on this build)."
+  ]
+}

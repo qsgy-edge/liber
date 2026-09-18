@@ -1,0 +1,72 @@
+# html_oracle / HtmlOracle on the frozen-oracle handset
+# recorded 2026-09-18T15:28:20Z (UTC) by lane #23 (batch 8, wave 1)
+
+== target identity ==
+$ adb -s 5615f742 devices -l
+List of devices attached
+5615f742               device product:myron model:25102RKBEC device:myron transport_id:1
+
+$ adb -s 5615f742 shell getprop ro.build.fingerprint
+Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
+$ adb -s 5615f742 shell getprop ro.build.version.release
+17
+$ adb -s 5615f742 shell getprop ro.build.version.sdk
+37
+$ adb -s 5615f742 shell getprop ro.product.model
+25102RKBEC
+$ adb -s 5615f742 shell getprop ro.serialno
+5615f742
+$ adb -s 5615f742 shell dumpsys package com.google.android.webview | awk "/versionName=/{print; exit}"
+    versionName=154.0.8037.22
+
+== installed packages ==
+$ adb -s 5615f742 shell pm path io.legado.app.debug
+package:/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk
+$ adb -s 5615f742 shell pm path io.liber.oracle.nested
+package:/data/app/~~GWGH87-Uipy23O-hfYYLvw==/io.liber.oracle.nested-FThzeZUTJVVY0ql06CjTlQ==/base.apk
+
+== harness build (fresh output dir, Temurin 17.0.20+8, build-tools 35.0.1) ==
+$ pwsh tool/nested_oracle/build.ps1 -OutputDirectory C:/Users/17945/.cache/wayfinder/html-oracle-1789745002 -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8
+<the -source 8 obsolete warning is non-fatal>
+SHA256  5E6507754D2EE941082BCA207A9F03025F8180E6AA4542B0E6382D87DF1C2DE0  nested-oracle.apk
+
+== install and run ==
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t C:/Users/17945/.cache/wayfinder/html-oracle-1789745002/nested-oracle.apk
+Performing Incremental Install
+Success
+Install command complete in 456 ms
+$ timeout 300 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.HtmlOracle
+INSTRUMENTATION_RESULT: stream=Html oracle recorded 35 observations
+
+INSTRUMENTATION_CODE: -1
+
+== evidence pulled ==
+$ MSYS_NO_PATHCONV=1 adb pull /sdcard/Android/data/io.legado.app.debug/files/html-oracle.json D:/GithubRepositories/Flutter/liber-23/tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json
+/sdcard/Android/data/io.legado.app.debug/files/html-oracle.json: 1 file pulled, 0 skipped. 0.8 MB/s (3213 bytes in 0.004s)
+
+== gate re-run (Windows adapter vs the device golden) ==
+$ export LIBER_FJS_LIBRARY=D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll
+$ dart run tool/html_adapter_gate.dart "$LIBER_FJS_LIBRARY" tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json
+Running build hooks...Wrote tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json
+adapter corpus: fail (35 cases, frozen golden compared)
+  35/35 cases match the corpus expectation; 34/35 device rows match the adapter;
+  frozenMismatches: replacement-trailing-field (frozen "忘语先生", windows "作者：忘语先生")
+
+== why the one disagreement is the frozen behavior, not the harness ==
+The frozen AnalyzeRule.kt:686 splits a rule on the literal "##":
+    val ruleStrS = rule.split("##")
+So "#meta@text##忘语##忘语先生##" has four fields (the fourth empty), and lines 694-695 sets
+replaceFirst = true when ruleStrS.size > 3. Kotlin's split keeps the trailing empty field.
+Same-host check with the frozen build's Kotlin 2.1.0 stdlib:
+$ java -cp <kotlin-stdlib-2.1.0.jar>;. SplitProbe
+size=4 parts=[#meta@text, 忘语, 忘语先生, ]
+The adapter implements the Java-split reading (3 fields, replace-all), so it prints
+"作者：忘语先生"; the handset prints "忘语先生". The row is a finding for the adapter and
+stays out of the promotion; the corpus expectation was not edited.
+
+== hashes ==
+device frozen app installed bytes sha256: cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6
+harness apk sha256:                      5e6507754d2ee941082bca207a9f03025f8180e6aa4542b0e6382d87df1c2de0
+tool/html_oracle/fixtures.json sha256:   b1c95af653fa2ecf22e58fbca2581e207a3650ec337cb167ad9ca87109f284e0
+golden.json sha256:                      627ef1fcd309cae322a2a642df8ee653daa60150d24b0b7074c4d4e065431389
+gate-report.json sha256:                 9bae4aa8a25758fd119e516885d6edb4a646b0fc45bcd8f5114c0fe0a997ace6

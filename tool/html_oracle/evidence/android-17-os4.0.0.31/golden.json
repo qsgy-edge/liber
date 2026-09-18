@@ -1,0 +1,147 @@
+{
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
+  "entryPoint": "AnalyzeRule.getString",
+  "observations": [
+    {
+      "id": "ordered-indices",
+      "value": "B\nD\nA"
+    },
+    {
+      "id": "exclusion-chain",
+      "value": "\/1\n\/2"
+    },
+    {
+      "id": "negative-index",
+      "value": "D"
+    },
+    {
+      "id": "slice-range",
+      "value": "\/ad\n\/2"
+    },
+    {
+      "id": "extraction-text",
+      "value": "第一段 第二段嵌套广告 第三段"
+    },
+    {
+      "id": "extraction-textNodes",
+      "value": "第一段\n第二段\n第三段"
+    },
+    {
+      "id": "extraction-ownText",
+      "value": "第一段 第二段 第三段"
+    },
+    {
+      "id": "extraction-html",
+      "value": "<div class=\"chapter_content\">\n 第一段\n <br>\n 第二段<span>嵌套广告<\/span>\n <br>\n 第三段\n<\/div>"
+    },
+    {
+      "id": "extraction-all",
+      "value": "<div id=\"pages\">\n <a class=\"gr\" href=\"\/toc\/2\">下一页<\/a>\n<\/div>"
+    },
+    {
+      "id": "extraction-attribute-name",
+      "value": "42"
+    },
+    {
+      "id": "extraction-href",
+      "value": "\/toc\/2"
+    },
+    {
+      "id": "escape-at-literal",
+      "value": "作者：忘语"
+    },
+    {
+      "id": "index-list-step",
+      "value": "A\nC"
+    },
+    {
+      "id": "index-list-negative-step",
+      "value": "D\nB"
+    },
+    {
+      "id": "all-keeps-script",
+      "value": "<div id=\"wrapped\">\n <p>正文<\/p>\n <script>var ad=1;<\/script>\n<\/div>"
+    },
+    {
+      "id": "html-drops-script",
+      "value": "<div id=\"wrapped\">\n <p>正文<\/p>\n<\/div>"
+    },
+    {
+      "id": "entity-unescape",
+      "value": "A&B"
+    },
+    {
+      "id": "merge-and",
+      "value": "A\nB\nC\nD\n42"
+    },
+    {
+      "id": "merge-or",
+      "value": "作者：忘语"
+    },
+    {
+      "id": "merge-interleave",
+      "value": "A\n42\nB"
+    },
+    {
+      "id": "legacy-text-sub-syntax",
+      "value": "\/2"
+    },
+    {
+      "id": "legacy-class-sub-syntax",
+      "value": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "legacy-tag-sub-syntax",
+      "value": "A\nB\nC\nD\n嵌套广告"
+    },
+    {
+      "id": "replacement-two-fields",
+      "value": "忘语"
+    },
+    {
+      "id": "replacement-trailing-field",
+      "value": "忘语先生"
+    },
+    {
+      "id": "replacement-first-match",
+      "value": "忘语先生"
+    },
+    {
+      "id": "css-prefix",
+      "value": "\/book\/1\n\/book\/2"
+    },
+    {
+      "id": "css-nth-child",
+      "value": "忽略\n第二章"
+    },
+    {
+      "id": "css-eq",
+      "value": "\/2"
+    },
+    {
+      "id": "css-lt",
+      "value": "忽略\n第一章"
+    },
+    {
+      "id": "css-contains",
+      "value": "\/2"
+    },
+    {
+      "id": "css-has",
+      "value": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "css-matches-own",
+      "value": "\/toc\/2"
+    },
+    {
+      "id": "css-attribute-operator",
+      "value": "书一\n书二"
+    },
+    {
+      "id": "css-not-pseudo",
+      "value": "第一章\n第二章"
+    }
+  ]
+}
