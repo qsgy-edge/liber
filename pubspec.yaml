@@ -44,6 +44,17 @@ dependencies:
   drift: ^2.35.0
   sqlite3: ^3.5.2
 
+  # A Legado full backup is a root-level ZIP
+  # (`docs/compatibility/legado-data-migration-contract.md`, "Full Backup and
+  # Restore"), and reading one is the migration's entry point (#46). `archive` is
+  # the standard pure-Dart ZIP implementation (MIT, one transitive dependency,
+  # `posix`), and it reads the archives other tools produce too: central
+  # directory, ZIP64, stored and deflated entries, data descriptors. The guard
+  # that matters here — rejecting a path-traversal entry and bounding a member's
+  # declared size — is ours either way, and it is written for this input rather
+  # than for ZIPs in general.
+  archive: ^4.3.0
+
   # The registrable-domain key ADR 0011 §3 gives cookies. `public_suffix` is the
   # public suffix list algorithm itself (MIT, pure Dart, every platform the
   # product claims) over the list snapshot generated into

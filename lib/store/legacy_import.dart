@@ -7,6 +7,7 @@ import '../domain/contracts.dart';
 import '../source/html_source_pipeline.dart';
 import 'database.dart';
 import 'ids.dart';
+import 'legado_full_backup.dart';
 import 'space_store.dart';
 import 'workspace.dart';
 
@@ -552,14 +553,42 @@ class LegacyImport {
   static String _fileName(File file) => file.uri.pathSegments.last;
 }
 
+/// Imports what the 迁移 page's file picker handed over.
+///
+/// A real Legado full backup is a ZIP ([LegadoBackupArchive.looksLikeZip]) and
+/// goes through [LegadoFullBackupImport], the adapter
+/// `docs/compatibility/legado-data-migration-contract.md` specifies. Anything
+/// else is read as text: this product's own retired envelope
+/// ([LegadoBackupImport.importJson]), or Legado's lossy UI `books.json`, which
+/// that path refuses by name.
+Future<MigrationImportRecord> importLegadoBackupFile(
+  SpaceStore store,
+  String path,
+) async {
+  final bytes = await File(path).readAsBytes();
+  if (LegadoBackupArchive.looksLikeZip(bytes)) {
+    return LegadoFullBackupImport(
+      store,
+    ).importArchive(LegadoBackupArchive.decode(bytes));
+  }
+  final String text;
+  try {
+    text = utf8.decode(bytes);
+  } on FormatException {
+    throw const FormatException('文件既不是 ZIP 备份，也不是 UTF-8 的 JSON 文本');
+  }
+  return LegadoBackupImport(store).importJson(text);
+}
+
 /// Imports a Legado backup JSON — what the 迁移 page's file picker hands over —
 /// into the space.
 ///
-/// The input is a Legado export, not Liber's own interchange envelope (the
-/// envelope in `docs/compatibility/legado-data-migration-contract.md` is still
-/// unimplemented): sources come from `bookSources` / `bookSource`, books from
-/// `books` / `bookshelf` and progress from `progress` / `bookProgress`, which is
-/// what the retired `MigrationService` accepted.
+/// This is the **retired hand-made envelope**, not a real Legado backup: sources
+/// come from `bookSources` / `bookSource`, books from `books` / `bookshelf` and
+/// progress from `progress` / `bookProgress`, which is what the retired
+/// `MigrationService` accepted. A Legado full backup is a ZIP and belongs to
+/// [LegadoFullBackupImport] instead — it carries the source reference, the group
+/// mask and the local-book key these rules need, and this shape does not.
 ///
 /// Books merge on the backup's own key, because a Legado bookshelf entry carries
 /// no `sourceRef` to match `(sourceRef, sourceBookUrl)` on: the deterministic
@@ -575,10 +604,19 @@ class LegadoBackupImport {
 
   /// Parses [jsonText] and merges it into the space in one transaction, so a
   /// failure cannot leave half a backup behind. Throws [FormatException] when
-  /// the file is not a Legado backup object.
+  /// the file is not a Legado backup object — and when it is Legado's lossy UI
+  /// `books.json` export, which is refused by name rather than as a shape error,
+  /// because the user's next step is to take a full backup instead.
   Future<MigrationImportRecord> importJson(String jsonText) async {
-    final decoded = jsonDecode(jsonText);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(jsonText);
+    } on FormatException catch (error) {
+      throw FormatException('文件不是 JSON：${error.message}');
+    }
     if (decoded is! Map<String, dynamic>) {
+      final lossy = decoded is List ? lossyBooksJsonReason(decoded) : null;
+      if (lossy != null) throw FormatException(lossy);
       throw const FormatException('迁移文件必须是 JSON object');
     }
     final sources = _list(decoded, const ['bookSources', 'bookSource']);
