@@ -7,6 +7,7 @@ import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v1.dart' as v1;
 import 'generated_migrations/schema_v2.dart' as v2;
 import 'generated_migrations/schema_v3.dart' as v3;
+import 'generated_migrations/schema_v4.dart' as v4;
 
 /// The generated migration tests: the schemas in `drift_schemas/` are the
 /// released versions, `drift_dev schema steps` turns them into the upgrade
@@ -163,6 +164,33 @@ void main() {
     // No v3 database holds a confirmed exception, so the step creates the
     // table and carries nothing over (ADR 0011 §5).
     expect(await database.select(database.sourceTlsExceptions).get(), isEmpty);
+    await database.close();
+    schema.close();
+  });
+
+  test('v4 → v5 给 source_entries 加写入时刻，旧行取 0', () async {
+    final schema = await verifier.schemaAt(4);
+    final old = v4.DatabaseAtV4(schema.newConnection());
+    await old
+        .into(old.sourceEntries)
+        .insert(
+          v4.SourceEntriesCompanion.insert(
+            sourceRef: 'https://s',
+            key: 'k',
+            value: const Value('"v"'),
+          ),
+        );
+    await old.close();
+
+    final database = SpaceDatabase(schema.newConnection());
+    await verifier.migrateAndValidate(database, 5);
+    // The row survives, and the order the eviction reads is 0 for a row written
+    // before the column existed — no backfill is invented for a store with no
+    // released users (#37).
+    final row = await database.select(database.sourceEntries).getSingle();
+    expect(row.key, 'k');
+    expect(row.value, '"v"');
+    expect(row.writtenAt, 0);
     await database.close();
     schema.close();
   });

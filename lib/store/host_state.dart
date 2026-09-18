@@ -10,12 +10,29 @@ import 'space_store.dart';
 /// exceptions (ADR 0011 §5) — not a file beside the store, so a private
 /// space's later encryption covers runtime state as a unit.
 ///
-/// Nothing is evicted here: a row stays until the source that owns it writes
-/// over it or deletes it, which is #21's recorded consequence (the baseline's
-/// LRU capacity and its cookie trim are divergences, not mechanisms this store
-/// reproduces).
+/// One source's entries are bounded (#37): [saveCacheEntry] keeps its `cache.*`
+/// entries in one bucket of [cacheEntryLimit] rows and its `java.put`/
+/// `java.get` variables in a second bucket of [variableEntryLimit], and a write
+/// past a bucket's cap evicts that bucket's least recently written rows — the
+/// `source_entries.written_at` order. The frozen baseline's persistent `caches`
+/// table is unbounded and only its in-memory `LruCache` is capped (50 MB, one
+/// global key space, access order), so the cap, the order and the separate
+/// variable bucket are the recorded divergences (differential contract, Policy
+/// divergences). A cookie row is not bounded here; the baseline's 4096-character
+/// trim stays its own recorded divergence.
 class SpaceHostStatePersistence implements SourceHostStatePersistence {
   const SpaceHostStatePersistence(this.store);
+
+  /// The `cache.*` rows one source may keep: the frozen `CacheManager`'s own
+  /// number.
+  static const int cacheEntryLimit = 600;
+
+  /// The `java.put`/`java.get` rows one source may keep. The frozen baseline
+  /// gives them no separate number — they sit in the same unbounded `caches`
+  /// table under `v_<sourceKey>_<key>` (`BaseSource.kt:220-233`) — so this
+  /// bucket reuses the frozen 600 instead of inventing a second number. The two
+  /// buckets are separate, so cache churn never evicts a login variable.
+  static const int variableEntryLimit = 600;
 
   final SpaceStore store;
 
@@ -67,12 +84,19 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
           key: row.key,
           value: row.value,
           expiresAt: row.expiresAt,
+          writtenAt: row.writtenAt,
         ),
     ];
   }
 
+  /// Stores [entry] and keeps its bucket at its cap, and returns the evicted
+  /// keys so a caller holding the same rows in memory can drop them.
+  ///
+  /// Eviction runs on write only: a `cache.get` is a read of the in-memory copy
+  /// and must not turn into a durable write. That is where the order differs
+  /// from the frozen `LruCache`, which promotes an entry on read too.
   @override
-  Future<void> saveCacheEntry(SourceCacheEntry entry) async {
+  Future<List<String>> saveCacheEntry(SourceCacheEntry entry) async {
     await _db
         .into(_db.sourceEntries)
         .insertOnConflictUpdate(
@@ -81,8 +105,79 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
             key: entry.key,
             value: entry.value,
             expiresAt: entry.expiresAt,
+            writtenAt: entry.writtenAt,
           ),
         );
+    return _evictOverflow(
+      entry.sourceRef,
+      isVariable: _isVariable(entry.sourceRef, entry.key),
+    );
+  }
+
+  /// Deletes the least recently written rows that put [sourceRef]'s bucket over
+  /// its cap and returns their keys, oldest first.
+  ///
+  /// A v4 row carries no instant (0) and so is evicted before any v5 write; the
+  /// key breaks a tie between rows written in the same millisecond, so the
+  /// victim set is deterministic.
+  Future<List<String>> _evictOverflow(
+    String sourceRef, {
+    required bool isVariable,
+  }) async {
+    final limit = isVariable ? variableEntryLimit : cacheEntryLimit;
+    final count = _db.sourceEntries.key.count();
+    final total =
+        (await (_db.selectOnly(_db.sourceEntries)
+                  ..addColumns([count])
+                  ..where(
+                    _inBucket(
+                      _db.sourceEntries,
+                      sourceRef,
+                      isVariable: isVariable,
+                    ),
+                  ))
+                .getSingle())
+            .read(count) ??
+        0;
+    final excess = total - limit;
+    if (excess <= 0) return const [];
+    final victims =
+        await (_db.select(_db.sourceEntries)
+              ..where((e) => _inBucket(e, sourceRef, isVariable: isVariable))
+              ..orderBy([
+                (e) => OrderingTerm(expression: e.writtenAt),
+                (e) => OrderingTerm(expression: e.key),
+              ])
+              ..limit(excess))
+            .get();
+    final keys = [for (final row in victims) row.key];
+    await (_db.delete(
+      _db.sourceEntries,
+    )..where((e) => e.sourceRef.equals(sourceRef) & e.key.isIn(keys))).go();
+    return keys;
+  }
+
+  /// The prefix a `java.put`/`java.get` variable is stored under
+  /// (`BaseSource.kt:220-233`), which `js_source_runtime.dart` builds as well: a
+  /// row whose key starts with it is a variable, every other row is a `cache.*`
+  /// entry.
+  static String _variablePrefix(String sourceRef) => 'v_${sourceRef}_';
+
+  static bool _isVariable(String sourceRef, String key) =>
+      key.startsWith(_variablePrefix(sourceRef));
+
+  /// The same classification expressed in SQL, for the count and the ordered
+  /// select: `substr(key, 1, len) = prefix` is startswith (`LIKE` is not used —
+  /// `_` is a wildcard in it and a source ref contains dots, slashes and
+  /// underscores). `key` is never null.
+  static Expression<bool> _inBucket(
+    SourceEntries entries,
+    String sourceRef, {
+    required bool isVariable,
+  }) {
+    final prefix = _variablePrefix(sourceRef);
+    final head = entries.key.substr(1, prefix.length).equals(prefix);
+    return isVariable ? head : head.not();
   }
 
   @override
