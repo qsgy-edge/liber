@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -146,15 +147,11 @@ public final class SliceOracle extends Instrumentation {
                 .put("cleanup", cleanup)
                 .put("analysisFailure", failure == null ? JSONObject.NULL : failure);
             File output = new File(getTargetContext().getExternalFilesDir(null), "slice-oracle.json");
-            try (FileOutputStream stream = new FileOutputStream(output)) {
-                stream.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
-            }
+            // First write, before the teardown: the run's evidence must survive a
+            // host that freezes this process a few seconds in (MIUI does; see the
+            // golden's manifest), so the report exists before replay.close() runs.
+            writeReport(output, report);
             log("report written; failure=" + failure);
-            status.putString("stream", failure == null
-                ? "Slice oracle recorded " + requests.length() + " requests\n"
-                : "Slice oracle failed: " + failure + "\n");
-            finished.set(true);
-            finish(failure == null ? -1 : 1, status);
             stage.set("cleanup");
             cleanup.put("openConnections", replay.openConnections());
             try {
@@ -164,6 +161,16 @@ public final class SliceOracle extends Instrumentation {
                 cleanup.put("serverClosed", false);
                 log("cleanup failed: " + describe(error));
             }
+            // Second write: the first captured cleanup as {}, which reads as an
+            // affirmative clean. Re-serialise now that the values are computed so
+            // the committed golden carries what cleanup actually observed.
+            writeReport(output, report);
+            log("report rewritten with cleanup=" + cleanup);
+            status.putString("stream", failure == null
+                ? "Slice oracle recorded " + requests.length() + " requests\n"
+                : "Slice oracle failed: " + failure + "\n");
+            finished.set(true);
+            finish(failure == null ? -1 : 1, status);
         } catch (Throwable error) {
             status.putString("stream", "Slice oracle harness error: " + describe(error) + "\n");
             log("harness error: " + describe(error));
@@ -324,8 +331,9 @@ public final class SliceOracle extends Instrumentation {
         Method target = null;
         for (Method candidate : owner.getMethods()) {
             // A suspend function whose return type is an inline value class is name
-            // mangled with a hash suffix (kotlin.Result -> getChapterListAwait-IoAF18A),
-            // so the base name is matched as a prefix.
+            // mangled with a hash suffix (kotlin.Result -> getChapterListAwait-BWLJW6A,
+            // the suffix this build observed on the device), so the base name is
+            // matched as a prefix.
             if (!candidate.getName().equals(name)
                     && !candidate.getName().startsWith(name + "-")) {
                 continue;
@@ -407,6 +415,13 @@ public final class SliceOracle extends Instrumentation {
             int read;
             while ((read = input.read(chunk)) > 0) buffer.write(chunk, 0, read);
             return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /** Writes the report; called before and after cleanup so a freeze keeps evidence. */
+    private static void writeReport(File output, JSONObject report) throws IOException, JSONException {
+        try (FileOutputStream stream = new FileOutputStream(output)) {
+            stream.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
         }
     }
 

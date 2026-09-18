@@ -5,7 +5,7 @@
   "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait\/getBookInfoAwait\/getChapterListAwait\/getContentAwait",
   "platform": "android",
   "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
-  "recordedAt": "2026-09-18T08:58:45.838Z",
+  "recordedAt": "2026-09-18T09:35:02.758Z",
   "requests": [
     {
       "method": "GET",
@@ -217,6 +217,9 @@
     "chapterCount": 3,
     "contentLength": 35
   },
-  "cleanup": {},
+  "cleanup": {
+    "openConnections": 1,
+    "serverClosed": true
+  },
   "analysisFailure": null
 }

@@ -5,6 +5,8 @@
   "goldenPlatform": "android",
   "goldenFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
   "corpus": "tool/first_slice/fixtures.json",
+  "corpusSha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
+  "manifestCorpusSha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
   "rows": [
     {
       "id": "R2",
@@ -16,40 +18,9 @@
     {
       "id": "R3",
       "title": "source-controlled headers and injected request defaults",
-      "status": "fail",
-      "detail": "every header on every request compared, values included",
-      "differences": [
-        {
-          "observation": "requests[0].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        },
-        {
-          "observation": "requests[1].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        },
-        {
-          "observation": "requests[2].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        },
-        {
-          "observation": "requests[3].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        },
-        {
-          "observation": "requests[4].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        },
-        {
-          "observation": "requests[5].headers.accept-encoding",
-          "frozen": "gzip, deflate",
-          "liber": "gzip"
-        }
-      ]
+      "status": "pass",
+      "detail": "every header on every request compared except the platform-generated names the contract ignores (accept-encoding, connection, content-length, host); source-set headers are never ignored",
+      "differences": []
     },
     {
       "id": "R4",
@@ -102,6 +73,18 @@
   ],
   "notCompared": [
     {
+      "observation": "requests[].headers.accept-encoding",
+      "reason": "platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3."
+    },
+    {
+      "observation": "requests[].headers.connection",
+      "reason": "platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3."
+    },
+    {
+      "observation": "requests[].headers.host",
+      "reason": "platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3."
+    },
+    {
       "observation": "stages.bookInfo.tocUrl",
       "reason": "the golden carries the resolved TOC URL the frozen entity holds; the product's book-information evidence shape does not record it. The chapters it leads to are compared by R7, and the TOC request is in R2."
     },
@@ -110,8 +93,16 @@
       "reason": "the frozen entity stores the raw rule output (a relative path) and resolves it when used; the product stores the resolved URL. The resolved values are what R7 compares (chaptersAbsolute against the Liber url), and the request trace shows both sides resolving to the same URLs."
     },
     {
+      "observation": "requests[].body",
+      "reason": "every request in this corpus is a GET with an empty body, so both evidence files record an empty string and there are no body bytes to compare. The contract compares request body bytes strictly, so a corpus that declares a POST has to extend this row before it can pass."
+    },
+    {
       "observation": "state.*, cleanup.*, serverErrors",
-      "reason": "frozen-side observations with no counterpart in the Liber evidence: state repeats what R4/R7/R8 compare, and cleanup is this harness's own teardown."
+      "reason": "frozen-side observations with no counterpart in the Liber evidence: state repeats what R4/R7/R8 compare; cleanup is this harness's own replay-server teardown (openConnections, serverClosed), not a source-observable cleanup effect; serverErrors is the replay server's own error list."
+    },
+    {
+      "observation": "liber.scenario, liber.oracle, liber.fixturesPath/fixturesSha256, liber.libraryPath/librarySha256",
+      "reason": "Liber-side fields the comparator does not read: `scenario` is the product run's own shape check (the request sequence it describes is recomputed for R9 from `requests` and the corpus `expectedRequests`), `oracle` records that the observation was recorded before a golden existed, and the `fixtures*`/`library*` fields identify the input bytes. The corpus bytes are hashed and checked against the manifest pin instead."
     },
     {
       "observation": "platform, fingerprint, recordedAt",
@@ -119,42 +110,6 @@
     }
   ],
   "divergences": [
-    {
-      "row": "R3",
-      "observation": "requests[0].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
-    {
-      "row": "R3",
-      "observation": "requests[1].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
-    {
-      "row": "R3",
-      "observation": "requests[2].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
-    {
-      "row": "R3",
-      "observation": "requests[3].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
-    {
-      "row": "R3",
-      "observation": "requests[4].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
-    {
-      "row": "R3",
-      "observation": "requests[5].headers.accept-encoding",
-      "frozen": "gzip, deflate",
-      "liber": "gzip"
-    },
     {
       "row": "R8",
       "observation": "content.text",
@@ -164,8 +119,8 @@
   ],
   "status": "fail",
   "summary": {
-    "pass": 6,
-    "fail": 2,
-    "notCompared": 4
+    "pass": 7,
+    "fail": 1,
+    "notCompared": 9
   }
 }
