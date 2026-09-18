@@ -95,7 +95,12 @@ class ReplaceRuleSet {
     final title = <ReplaceRule>[];
     final content = <ReplaceRule>[];
     for (final rule in rules) {
-      if (_selects(rule, name: bookName, origin: bookOrigin, scopeTitle: true)) {
+      if (_selects(
+        rule,
+        name: bookName,
+        origin: bookOrigin,
+        scopeTitle: true,
+      )) {
         title.add(rule);
       }
       if (_selects(
@@ -369,11 +374,14 @@ class ContentProcessing {
         pattern.multiLine,
         pattern.dotAll,
         pattern.unicode,
-      ]);
+      ], onExit: receive.sendPort);
       final message = await receive.first.timeout(
         _deadlineFor(rule),
         onTimeout: () => const <Object?>['timeout'],
       );
+      if (message == null) {
+        return const _Outcome.error('替换进程意外退出');
+      }
       if (message is! List || message.isEmpty) {
         return const _Outcome.error('替换进程返回了意外结果');
       }
@@ -383,7 +391,9 @@ class ContentProcessing {
         case 'timeout':
           return const _Outcome.timeout();
         default:
-          return _Outcome.error('${message.length > 1 ? message[1] : message.first}');
+          return _Outcome.error(
+            '${message.length > 1 ? message[1] : message.first}',
+          );
       }
     } finally {
       isolate?.kill(priority: Isolate.immediate);
@@ -393,16 +403,9 @@ class ContentProcessing {
 }
 
 class _Outcome {
-  const _Outcome.text(this.text)
-    : timedOut = false,
-      error = null;
-  const _Outcome.timeout()
-    : text = null,
-      timedOut = true,
-      error = null;
-  const _Outcome.error(this.error)
-    : text = null,
-      timedOut = false;
+  const _Outcome.text(this.text) : timedOut = false, error = null;
+  const _Outcome.timeout() : text = null, timedOut = true, error = null;
+  const _Outcome.error(this.error) : text = null, timedOut = false;
   final String? text;
   final bool timedOut;
   final String? error;
@@ -454,5 +457,7 @@ String _javaQuoted(String text) => RegExp.escape(text);
 
 /// The frozen title pattern: the escaped title with every whitespace run
 /// replaced by Java's `\s*`, which in ECMAScript is the ASCII set Java uses.
-String _javaTitlePattern(String title) =>
-    title.split(RegExp(r'\s+')).map(_javaQuoted).join(_javaSpaceStar);
+String _javaTitlePattern(String title) => title
+    .split(RegExp('$_javaSpaceClass+'))
+    .map(_javaQuoted)
+    .join(_javaSpaceStar);

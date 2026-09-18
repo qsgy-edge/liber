@@ -48,7 +48,13 @@ void main() {
     });
 
     test('the flags ECMAScript has no equivalent for are refused', () {
-      for (final pattern in ['(?u)abc', '(?d)^a', '(?U)a', '(?x)a b', '(?u:a)']) {
+      for (final pattern in [
+        '(?u)abc',
+        '(?d)^a',
+        '(?U)a',
+        '(?x)a b',
+        '(?u:a)',
+      ]) {
         final translated = translateJavaPattern(pattern);
         expect(translated.isRunnable, isFalse, reason: pattern);
         expect(translated.refusal, contains('no ECMAScript equivalent'));
@@ -62,7 +68,11 @@ void main() {
       final regex = translated.compile();
       expect(regex.hasMatch('a\tb'), isTrue);
       expect(regex.hasMatch('a b'), isTrue);
-      expect(regex.hasMatch('ahb'), isFalse, reason: 'Dart alone reads \\h as h');
+      expect(
+        regex.hasMatch('ahb'),
+        isFalse,
+        reason: 'Dart alone reads \\h as h',
+      );
       expect(RegExp(r'a\hb').hasMatch('ahb'), isTrue);
     });
 
@@ -88,10 +98,24 @@ void main() {
       expect(translated.compile().hasMatch('a\nb'), isTrue);
     });
 
-    test(r'\A and \z are input anchors, and \R a line break', () {
+    test(r'a dot under a later (?s) keeps matching everything', () {
+      final translated = translateJavaPattern(r'a(?s)b.c');
+      expect(translated.isRunnable, isTrue);
+      expect(translated.compile().hasMatch('ab\nc'), isTrue);
+
+      final scoped = translateJavaPattern(r'(?s:a.b)');
+      expect(scoped.isRunnable, isTrue);
+      expect(scoped.compile().hasMatch('a\nb'), isTrue);
+    });
+
+    test(r'\\A and \\z are input anchors, and \\R a line break', () {
       final anchor = translateJavaPattern(r'\Aab');
       expect(anchor.compile().hasMatch('ab'), isTrue);
-      expect(RegExp(r'\Aab').hasMatch('Aab'), isTrue, reason: 'Dart alone reads \\A as A');
+      expect(
+        RegExp(r'\Aab').hasMatch('Aab'),
+        isTrue,
+        reason: 'Dart alone reads \\A as A',
+      );
       expect(translateJavaPattern(r'ab\z').compile().hasMatch('xab'), isTrue);
       expect(
         translateJavaPattern(r'a\Rb').compile().hasMatch('a\r\nb'),
@@ -112,16 +136,19 @@ void main() {
   });
 
   group('refusals, never mis-applied', () {
-    test('atomic groups and possessive quantifiers are refused by the engine', () {
-      expect(
-        translateJavaPattern(r'(?>a)').refusal,
-        contains('rejects the translated pattern'),
-      );
-      expect(
-        translateJavaPattern(r'a*+').refusal,
-        contains('rejects the translated pattern'),
-      );
-    });
+    test(
+      'atomic groups and possessive quantifiers are refused by the engine',
+      () {
+        expect(
+          translateJavaPattern(r'(?>a)').refusal,
+          contains('rejects the translated pattern'),
+        );
+        expect(
+          translateJavaPattern(r'a*+').refusal,
+          contains('rejects the translated pattern'),
+        );
+      },
+    );
 
     test('class intersection is refused rather than silently re-read', () {
       final translated = translateJavaPattern(r'[a-z&&[^aeiou]]');
@@ -137,6 +164,22 @@ void main() {
       expect(translateJavaPattern(r'a\Z').refusal, contains(r'\Z'));
       expect(translateJavaPattern(r'a\G').refusal, contains(r'\G'));
       expect(translateJavaPattern(r'\cA').refusal, contains(r'\cX'));
+    });
+
+    test(r'Java-only escapes are refused instead of falling through', () {
+      for (final pattern in [
+        r'\p',
+        r'\P',
+        r'\pL',
+        r'\E',
+        r'\X',
+        r'\012',
+        r'\1',
+      ]) {
+        final translated = translateJavaPattern(pattern);
+        expect(translated.isRunnable, isFalse, reason: pattern);
+        expect(translated.refusal, isNotNull, reason: pattern);
+      }
     });
 
     test('a pattern that translates but cannot compile is refused too', () {
