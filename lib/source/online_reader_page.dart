@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../store/shelf.dart';
+import 'content_processing.dart';
 import 'html_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'json_source_pipeline.dart' show SourceChapter;
@@ -42,6 +43,14 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   bool busy = true, tracking = false;
   String? error;
 
+  /// The user's replace rules for this book, applied to the title and the body
+  /// the way the frozen reader applies them. Null while the space is read;
+  /// a book opens with no rules until then.
+  ContentProcessing? processing;
+
+  /// The current chapter's display title, replaced by the title rules.
+  String chapterTitle = '';
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +59,49 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     widget.pipeline.onHostMessage = _showHostNotice;
     index = widget.chapterIndex;
     scroll.addListener(track);
-    unawaited(load(index, widget.textOffset));
+    unawaited(_open());
+  }
+
+  /// Reads this book's replace rules once, then loads the chapter.
+  ///
+  /// The frozen reader keeps one `ContentProcessor` per (name, origin) and
+  /// rebuilds it when the rules change; this page reads the space's ruleset on
+  /// open, which is the same set for as long as the page is. `origin` is the
+  /// source's own URL, which is what a rule's `scope` is matched against.
+  Future<void> _open() async {
+    ContentProcessing? built;
+    try {
+      final rules = await widget.service.store.replaceRules();
+      built = ContentProcessing(
+        rules: ReplaceRuleSet.forBook(
+          rules,
+          bookName: widget.book.title,
+          bookOrigin: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
+        ),
+        bookName: widget.book.title,
+        // The frozen `Book.getUseReplaceRule()` for a text book: the per-book
+        // switch, falling back to a default that is on. The settings field set
+        // is not decided yet (the map's fog), so the frozen default stands.
+        useReplaceRule: true,
+        onNotice: _showRuleNotice,
+        onRuleDisabled: (rule) =>
+            widget.service.store.putReplaceRule(
+              rule.copyWith(isEnabled: false).toCompanion(true),
+            ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => error = '替换规则读取失败：$e');
+    }
+    if (!mounted) return;
+    processing = built;
+    await load(widget.chapterIndex, widget.textOffset);
+  }
+
+  /// Shows a skipped replace rule (a timeout, an unusable pattern, a deferred
+  /// `@js:` replacement) on the page's own notice surface.
+  void _showRuleNotice(String message) {
+    if (!mounted) return;
+    showSourceNotice(context, SourceHostMessage('replace', message));
   }
 
   /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
@@ -110,17 +161,31 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         run: () => widget.pipeline.chapter(widget.chapters[next]),
       );
       if (!mounted) return;
-      final lines = result.text.split('\n');
+      // The frozen reader replaces the text before it reaches the screen: the
+      // chapter's display title (titles) and the body (content rules) — the title
+      // is what `ReadBook.kt:694` computes, the body is what
+      // `ContentProcessor.getContent(..., includeTitle = false)` returns.
+      final chapterName = widget.chapters[next].name;
+      final current = processing;
+      final title = current == null
+          ? chapterName
+          : await current.displayTitle(chapterName);
+      final body = current == null
+          ? result.text
+          : await current.content(result.text, chapterTitle: chapterName);
+      if (!mounted) return;
+      final lines = body.split('\n');
       var cursor = 0;
       final starts = <int>[];
       for (final line in lines) {
         starts.add(cursor);
         cursor += line.length + 1;
       }
-      final anchor = resume.clamp(0, result.text.length);
+      final anchor = resume.clamp(0, body.length);
       final target = starts.lastIndexWhere((start) => start <= anchor);
       setState(() {
         index = next;
+        chapterTitle = title;
         paragraphs = lines;
         offsets = starts;
         keys = List.generate(lines.length, (_) => GlobalKey());
@@ -168,6 +233,10 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
                 itemCount: widget.chapters.length,
                 itemBuilder: (_, i) => ListTile(
                   selected: i == index,
+                  // The frozen table-of-contents list replaces a title only when
+                  // `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`),
+                  // which defaults to false, so the raw titles are what the
+                  // frozen reader lists.
                   title: Text(widget.chapters[i].name),
                   onTap: () => Navigator.pop(context, i),
                 ),
@@ -211,7 +280,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
             // name would contradict the incoming chapter, and the target name
             // would read as if it were already displayed. The line keeps its
             // height so the content area does not jump.
-            busy ? '' : widget.chapters[index].name,
+            busy ? '' : chapterTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
