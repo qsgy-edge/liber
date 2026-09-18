@@ -173,8 +173,9 @@ void main() {
     ]);
 
     // Unsupported rules fail before sending any request: every rule group is
-    // read before the first one.
-    source['ruleContent'] = {'content': '@js:result'};
+    // read before the first one. A `@js:` field is supported now, so the
+    // refused shape is one the JSON reader genuinely cannot run.
+    source['ruleContent'] = {'content': r'@Json:$.a'};
     await expectLater(pipeline.run('x', (_) {}), throwsUnsupportedError);
     expect(paths, hasLength(4));
 

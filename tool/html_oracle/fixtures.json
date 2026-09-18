@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "AnalyzeRule.getString",
-  "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit. The frozen APK run that turns these rows into device goldens is not-run; see README.md.",
+  "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit. The frozen APK run that turns these rows into device goldens is not-run; see README.md. Ticket #11 added the four `path: \"rule\"` cases: their rule carries an `@js:` segment, a `<js>` block, a `{{baseUrl}}` interpolation and the always-null `{{title}}` binding, and the golden must run them through the same `AnalyzeRule.getString` entry with `setContent(html, baseUrl)`, so `baseUrl` is the committed `http://fixture.test` above. The destination side of those cases is the product rule-field path (`lib/source/rule_field.dart` in front of the Rust adapter), not the bare adapter, which is what the `rule` path tells `tool/html_adapter_gate.dart` to run.",
   "documents": {
     "chapter": "<div class=\"info\"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div><script>var ad = 1;</script><style>.ad{}</style><a href=\"/2\">下一页</a><div id=\"meta\" data-id=\"42\">作者：忘语</div>",
     "toc": "<div id=\"list\"><li><a href=\"/ad\">忽略</a></li><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
@@ -10,6 +10,7 @@
     "entity": "<div id=\"code\">A&amp;amp;B</div>",
     "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>"
   },
+  "baseUrl": "http://fixture.test",
   "cases": [
     {
       "id": "ordered-indices",
@@ -220,6 +221,34 @@
       "document": "toc",
       "rule": "@CSS:#list li:not(:first-child)@text",
       "expected": "第一章\n第二章"
+    },
+    {
+      "id": "rule-js-trailing",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text @js: result + '!'",
+      "expected": "作者：忘语!"
+    },
+    {
+      "id": "rule-js-lt-js-block",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text<js>'<' + result + '>'</js>",
+      "expected": "<作者：忘语>"
+    },
+    {
+      "id": "rule-interpolation-base-url",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text@js: '{{baseUrl}}' + result",
+      "expected": "http://fixture.test作者：忘语"
+    },
+    {
+      "id": "rule-interpolation-title-null",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@data-id@js: '[' + '{{title}}' + ']' + result",
+      "expected": "[]42"
     }
   ]
 }

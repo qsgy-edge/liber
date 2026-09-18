@@ -5,6 +5,7 @@ import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'json_source_rules.dart';
 import 'js_source_runtime.dart';
+import 'rule_field.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
@@ -66,6 +67,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// a TOC or chapter URL a rule extracted can still interpolate it.
   String _keyword = '';
 
+  /// The chapter whose title the frozen `AnalyzeRule` binds as `title` while the
+  /// content stage runs; null in every other stage, exactly as `chapter?.title`
+  /// is there. The `book` binding stays the runtime's always-null one.
+  String? _chapterTitle;
+
   /// The frozen `AnalyzeUrl` options one analysis owns: the options a stage's
   /// URL carried, kept for the stage that fetches it, because a book URL and a
   /// chapter URL are handed around without them.
@@ -77,10 +83,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   @override
   final trace = <BookSourceTraceEntry>[];
 
+  late final SourceHostState _hostSurface = hostState ?? SourceHostState();
+
   late final SourceHostDispatcher? _host = transport is SourceHttpTransport
       ? SourceHostDispatcher(
           transport: transport as SourceHttpTransport,
-          hostState: hostState,
+          hostState: _hostSurface,
           sourceRef: _sourceRef,
         )
       : null;
@@ -88,7 +96,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   late final SourceScriptRuntime _runtime = InProcessSourceScriptRuntime(
     jsLib: source['jsLib'] as String? ?? '',
     dispatcher: _host,
-    hostState: hostState,
+    hostState: _hostSurface,
     androidId: androidId,
     onMessage: (message) => onHostMessage?.call(message),
   );
@@ -139,11 +147,80 @@ class JsonSourcePipeline implements BookSourcePipeline {
           'page': _page,
           'baseUrl': '$_base',
           'result': result,
+          'title': _chapterTitle,
           'headers': _activeHeaders,
         },
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
+
+  /// The shared rule-field path's edges for this adapter: the scripts go through
+  /// the runtime the adapter already owns, a value rule is extracted by the
+  /// bounded JSON reader, and `@get:`/`@put:` read and write the source-scoped
+  /// variables `java.get`/`java.put` use.
+  RuleFieldContext get _ruleContext => RuleFieldContext(
+    evaluateScript: (script, result) => _evalJs(script, _keyword, result),
+    extract: (value, rule) async => JsonSourceRules.extract(value, rule),
+    readVariable: _readRuleVariable,
+    writeVariable: _writeRuleVariable,
+  );
+
+  Future<String> _readRuleVariable(String key) async {
+    if (key == 'bookName') return '';
+    if (key == 'title') return _chapterTitle ?? '';
+    final value = await _hostSurface.entry(
+      _sourceRef,
+      sourceRuleVariableKey(_sourceRef, key),
+    );
+    return value is String ? value : '';
+  }
+
+  Future<void> _writeRuleVariable(String key, String value) =>
+      _hostSurface.putEntry(
+        _sourceRef,
+        sourceRuleVariableKey(_sourceRef, key),
+        value,
+      );
+
+  /// One rule field through the shared path: `@js:`/`<js>` split,
+  /// `{{...}}`/`@get:`/`@put:` resolved, then the JSON reader's extraction, then
+  /// the script segments' value.
+  Future<Object?> _field(Object? value, String rule) async {
+    final field = await RuleField.resolve(rule, _ruleContext, content: value);
+    final extracted = field.isScriptOnly
+        ? value
+        : JsonSourceRules.extract(value, field.extractionRule!);
+    return field.apply(extracted);
+  }
+
+  /// One element-list rule (`ruleSearch.bookList`/`ruleToc.chapterList`): the
+  /// `{{...}}`/`@get:` substitution applies, a script does not — an element set
+  /// is not a value this path can hand back, so a script there is refused by
+  /// name instead of being dropped.
+  Future<List<Object?>> _elementList(Object? value, String rule) async {
+    final field = await RuleField.resolve(rule, _ruleContext, content: value);
+    if (field.scripts.isNotEmpty) {
+      throw UnsupportedError('暂不支持列表规则里的 JavaScript：$rule');
+    }
+    return JsonSourceRules.list(value, field.extractionRule!);
+  }
+
+  /// One required value rule.
+  Future<String> _text(Object? value, String rule) async {
+    final result = await _field(value, rule);
+    if (result == null || result.toString().isEmpty) {
+      throw FormatException('Missing JSON value for $rule');
+    }
+    return result.toString();
+  }
+
+  /// One optional value rule: an empty rule or a missing value is an empty
+  /// string. A rule that cannot be run at all still throws, so a broken rule is
+  /// reported instead of disappearing.
+  Future<String> _optional(Object? value, String rule) async {
+    if (rule.trim().isEmpty) return '';
+    return '${await _field(value, rule) ?? ''}';
+  }
 
   Future<String> _expand(String template, String keyword) => expandSourceUrl(
     template,
@@ -261,7 +338,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       }
       if (entry.value is! String) continue;
       if (required.contains(entry.key) && entry.key != 'checkKeyWord') {
-        JsonSourceRules.validate(entry.value as String);
+        // The extraction text of the field: a `@js:`/`<js>` segment is not
+        // validated as JSONPath here, and a broken field is refused before any
+        // request is sent.
+        final extraction = RuleField.extractionText(entry.value as String);
+        if (extraction != null) JsonSourceRules.validate(extraction);
       }
       if (!required.contains(entry.key) &&
           !{
@@ -285,18 +366,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       if (!rules.containsKey(name)) throw FormatException('Missing $key.$name');
     }
     return rules;
-  }
-
-  /// One optional extraction: the rule's value, or an empty string when the
-  /// document does not carry it. A rule that cannot be read at all still
-  /// throws, so a broken rule is reported instead of disappearing.
-  static String _optional(Object? value, String rule) {
-    if (rule.trim().isEmpty) return '';
-    final normalized = rule.split(RegExp(r'\s+@js:')).first.trim();
-    if (normalized.startsWith(r'$')) {
-      return JsonSourceRules.read(value, normalized)?.toString() ?? '';
-    }
-    return JsonSourceRules.template(value, rule);
   }
 
   static Uri _url(Uri base, String path) {
@@ -330,12 +399,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
       url,
       options: options,
     );
-    final found = JsonSourceRules.list(document, search['bookList']!);
+    final found = await _elementList(document, search['bookList']!);
     final books = <HtmlBook>[];
     for (final entry in found) {
       // A book URL is resolved against the search request's own URL, the way the
       // frozen `AnalyzeUrl` chains its stages, and keeps the options it carried
-      // for the details fetch.
+      // for the details fetch. The URL keeps the adapter's existing
+      // `template` + `expandSourceUrl` path: the request-time substitution and
+      // the `,{...}` options are that path's, not the rule-field path's.
       final (bookUrl, bookOptions) = await _request(
         url,
         JsonSourceRules.template(entry, search['bookUrl']!),
@@ -345,9 +416,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       books.add(
         HtmlBook(
           url: bookUrl,
-          title: JsonSourceRules.text(entry, search['name']!),
-          author: _optional(entry, search['author'] ?? ''),
-          kind: _optional(entry, search['kind'] ?? ''),
+          title: await _text(entry, search['name']!),
+          author: await _optional(entry, search['author'] ?? ''),
+          kind: await _optional(entry, search['kind'] ?? ''),
         ),
       );
     }
@@ -368,24 +439,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
       options: _bookOptions.remove(hit.url) ?? const SourceUrlOptions(),
     );
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
-    // read into a subtree of the response.
-    final page =
-        source['ruleBookInfo'] is Map &&
-            (source['ruleBookInfo'] as Map)['init'] is String
-        ? JsonSourceRules.read(
-            document,
-            (source['ruleBookInfo'] as Map)['init'] as String,
-          )
+    // read into a subtree of the response; it is a rule field too, so a `@js:`
+    // or `{{...}}` in it is resolved the same way as every other value rule.
+    final initRule = source['ruleBookInfo'] is Map
+        ? (source['ruleBookInfo'] as Map)['init']
+        : null;
+    final page = initRule is String
+        ? await _field(document, initRule)
         : document;
-    final cover = _optional(page, info['coverUrl'] ?? '');
+    final cover = await _optional(page, info['coverUrl'] ?? '');
     final book = HtmlBook(
       url: hit.url,
-      title: JsonSourceRules.text(page, info['name']!),
-      author: _optional(page, info['author'] ?? ''),
-      intro: _optional(page, info['intro'] ?? ''),
+      title: await _text(page, info['name']!),
+      author: await _optional(page, info['author'] ?? ''),
+      intro: await _optional(page, info['intro'] ?? ''),
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: _optional(page, info['kind'] ?? ''),
-      lastChapter: _optional(page, info['lastChapter'] ?? ''),
+      kind: await _optional(page, info['kind'] ?? ''),
+      lastChapter: await _optional(page, info['lastChapter'] ?? ''),
     );
     final (tocUrl, tocOptions) = await _request(
       hit.url,
@@ -397,13 +467,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
       tocUrl,
       options: tocOptions,
     );
-    final entries = JsonSourceRules.list(listing, toc['chapterList']!);
+    final entries = await _elementList(listing, toc['chapterList']!);
     final chapters = <SourceChapter>[];
+    // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
+    // the approved host surface (#10, ADR 0011), so the rule field cannot run
+    // the script: the adapter reads the JSONPath and decrypts with the source's
+    // own key and iv here. The script is not dropped — it is answered by name.
+    final catEye = toc['chapterUrl']!.contains('@js:java.aesBase64DecodeToString');
     for (final entry in entries) {
-      var chapterUrl = JsonSourceRules.text(entry, toc['chapterUrl']!);
-      // The frozen 猫眼 rule decrypts its chapter path inside the rule itself,
-      // which the bounded rule reader does not run.
-      if (toc['chapterUrl']!.contains('@js:java.aesBase64DecodeToString')) {
+      var chapterUrl = catEye
+          ? (JsonSourceRules.extract(
+                  entry,
+                  RuleField.extractionText(toc['chapterUrl']!) ?? '',
+                )
+                ?.toString() ??
+                '')
+          : await _text(entry, toc['chapterUrl']!);
+      if (catEye) {
         chapterUrl = aesBase64DecodeToString(
           chapterUrl,
           'f041c49714d39908',
@@ -418,7 +498,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _chapterOptions[resolved] = chapterOptions;
       chapters.add(
         SourceChapter(
-          JsonSourceRules.text(entry, toc['chapterName']!),
+          await _text(entry, toc['chapterName']!),
           resolved,
         ),
       );
@@ -432,6 +512,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
     _validate();
     _page = null;
+    _chapterTitle = chapter.name;
     _activeHeaders = await _ensureHeaders();
     final content = _rules('ruleContent', ['content']);
     final document = await _fetch(
@@ -439,7 +520,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       chapter.url,
       options: _chapterOptions.remove(chapter.url) ?? const SourceUrlOptions(),
     );
-    final text = JsonSourceRules.text(document, content['content']!);
+    final text = await _text(document, content['content']!);
     return HtmlChapterBody(text, 1);
   }
 

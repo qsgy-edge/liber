@@ -5,7 +5,18 @@ measured against: five documents (chapter, table of contents, search result, one
 with script/style nodes, one with a double-encoded entity) and one case per
 capability - the ordered and bracket index syntax, the
 `&&`/`||`/`%%` merges, the legacy `class.`/`tag.`/`text.` sub-syntax, every
-extraction operation, and the Jsoup CSS extensions.
+extraction operation, the Jsoup CSS extensions, and (ticket #11) the rule-field
+forms `@js:`, `<js>` and `{{...}}`.
+
+A case may carry `"path": "rule"`: its frozen entry point is
+`AnalyzeRule.getString` over a rule that carries a script, so the destination
+side runs the product's rule-field path (`lib/source/rule_field.dart` in front of
+the Rust adapter) instead of the bare adapter, which deliberately refuses those.
+The four `rule` cases are the ones ticket #11 added; their expectations are
+source reads like every other row here, and their device golden is `not-run`
+until ticket #23 records it. `baseUrl` is the value the device entry must pass to
+`setContent(html, baseUrl)` - the `{{baseUrl}}` row and the always-null
+`{{title}}` row are only meaningful with it.
 
 ## Destination side
 

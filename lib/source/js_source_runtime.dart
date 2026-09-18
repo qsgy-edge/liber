@@ -66,6 +66,14 @@ class SourceNoticeLimiter {
   }
 }
 
+/// The store key one rule variable lives under: the frozen `BaseSource`
+/// variables (`BaseSource.kt:220-233`) that `java.get`/`java.put`,
+/// `source.get`/`source.put` and the rule-field `@get:`/`@put:` all read and
+/// write. One spelling, because a source that writes a variable one way must
+/// read it back the other.
+String sourceRuleVariableKey(String sourceRef, String key) =>
+    'v_${sourceRef}_$key';
+
 class SourceScriptError implements Exception {
   const SourceScriptError(this.category, [this.message = '']);
   final String category;
@@ -403,7 +411,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (key is! String) {
       throw const SourceScriptError('host-input', 'invalid state key');
     }
-    final variable = 'v_${sourceRef}_$key';
+    final variable = sourceRuleVariableKey(sourceRef, key);
     switch (payload['op']) {
       case 'get':
         final value = await hostState.entry(sourceRef, variable);
