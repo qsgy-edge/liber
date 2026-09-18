@@ -8,15 +8,26 @@
 /// inline flags `(?i)`/`(?m)`/`(?mi)` (12+6 rules; Dart throws
 /// `FormatException: Invalid group`), `\h` (7 rules; Dart reads it as a literal
 /// `h`), `\s`/`\S`/`.` whose Java character sets are narrower than ECMAScript's
-/// (silent differences), lookbehind and numbered backreferences (Dart supports
-/// both), `\uXXXX` (supported), atomic groups, possessive quantifiers and
-/// character-class intersection (not expressible).
+/// (silent differences), lookbehind and `\uXXXX` (both supported), atomic
+/// groups, possessive quantifiers and character-class intersection (not
+/// expressible).
 ///
 /// The rule here is the one the product already applies to a member it cannot
 /// run: translate what is faithfully translatable, and otherwise **refuse by
 /// name** rather than mis-apply it — a wrongly-applied replacement would change
 /// a reader's text silently, which is worse than a rule that reports itself as
 /// unsupported.
+///
+/// An escape is copied through only when Java and ECMAScript give it the same
+/// meaning: quoting a non-alphanumeric ASCII character (`\.`, `\\`, `\ `), the
+/// four C escapes `\t \n \r \f`, the class escapes `\d \D \w \W`, `\b` (`\B`
+/// only outside a character class, where both engines read a word boundary),
+/// and a `\uHHHH` or `\xHH` code unit. Every other escape is refused by name:
+/// `\a`, `\N{...}`, `\x{...}`, `\k<...>`, a digit escape (`\0nn` octal and the
+/// numbered back-reference `\1`), a lone `\p`/`\P`, `\E`, `\X`, and any other
+/// letter. Java reserves or rejects several of those, and Dart reads the rest
+/// as a different escape or as a literal, so neither engine's meaning may stand
+/// in for the other's.
 library;
 
 /// One Java pattern as the Dart engine can run it, or the reason it cannot be.
@@ -82,7 +93,8 @@ JavaPattern translateJavaPattern(String pattern) {
       multiLine: multiLine,
       dotAll: dotAll,
     );
-    if (applied.refusal != null) return _refused(translations, applied.refusal!);
+    if (applied.refusal != null)
+      return _refused(translations, applied.refusal!);
     caseSensitive = applied.caseSensitive;
     multiLine = applied.multiLine;
     dotAll = applied.dotAll;
@@ -91,7 +103,15 @@ JavaPattern translateJavaPattern(String pattern) {
   }
   if (offset > 0) body = body.substring(offset);
 
-  // 2. Escapes and character sets whose Java meaning differs from ECMAScript's.
+  // 2. Any remaining unscoped flag group applies to the rest of its enclosing
+  //    group in Java; a scoped group expresses exactly that. This runs before
+  //    the escape pass so every `s` flag is already a scoped `(?s:…)` group
+  //    when the dots are translated (a later `(?s)` widens the dots it covers).
+  final mid = _scopeRemainingFlags(body, translations);
+  if (mid.refusal != null) return _refused(translations, mid.refusal!);
+  body = mid.text;
+
+  // 3. Escapes and character sets whose Java meaning differs from ECMAScript's.
   final translated = _translateEscapes(
     body,
     dotAll: dotAll,
@@ -102,12 +122,6 @@ JavaPattern translateJavaPattern(String pattern) {
   }
   body = translated.text;
   unicode = translated.unicode;
-
-  // 3. Any remaining unscoped flag group applies to the rest of its enclosing
-  //    group in Java; a scoped group expresses exactly that.
-  final mid = _scopeRemainingFlags(body, translations);
-  if (mid.refusal != null) return _refused(translations, mid.refusal!);
-  body = mid.text;
 
   // The translation notes are recorded once per pattern, not per occurrence.
   final unique = <String>[];
@@ -195,7 +209,8 @@ String? expandJavaReplacement(String replacement, RegExpMatch match) {
       continue;
     }
     final digits = StringBuffer();
-    while (look < replacement.length && _isDigit(replacement.codeUnitAt(look))) {
+    while (look < replacement.length &&
+        _isDigit(replacement.codeUnitAt(look))) {
       digits.write(replacement[look]);
       look++;
     }
@@ -212,7 +227,13 @@ bool _isDigit(int codeUnit) => codeUnit >= 0x30 && codeUnit <= 0x39;
 
 /// One `(?flags)` or `(?flags:` group found at [index].
 class _FlagGroup {
-  const _FlagGroup(this.text, this.start, this.end, this.flags, {required this.scoped});
+  const _FlagGroup(
+    this.text,
+    this.start,
+    this.end,
+    this.flags, {
+    required this.scoped,
+  });
   final String text;
   final int start;
   final int end;
@@ -256,8 +277,7 @@ _FlagGroup? _flagGroupAt(String pattern, int index) {
 /// (UNICODE_CHARACTER_CLASS) and `x` (COMMENTS) change the meaning of the whole
 /// pattern and have no ECMAScript equivalent, so they are refused rather than
 /// ignored.
-bool _isFlagChar(String char) =>
-    'idmsuxU-'.contains(char) && char.length == 1;
+bool _isFlagChar(String char) => 'idmsuxU-'.contains(char) && char.length == 1;
 
 const _unsupportedFlags = 'duxU';
 
@@ -314,7 +334,8 @@ class _Text {
 
 // Java's `\h` and `\v` sets (Pattern's documented definitions), as members that
 // can be inlined into an enclosing character class.
-const _horizontalMembers = ' \\t\\u00A0\\u1680\\u180e\\u2000-\\u200a\\u202f\\u205f\\u3000';
+const _horizontalMembers =
+    ' \\t\\u00A0\\u1680\\u180e\\u2000-\\u200a\\u202f\\u205f\\u3000';
 const _verticalMembers = '\\n\\x0B\\f\\r\\x85\\u2028\\u2029';
 
 /// Java's `\s` set, which is the ASCII one unless UNICODE_CHARACTER_CLASS is on.
@@ -333,6 +354,12 @@ _Text _translateEscapes(
   var inClass = false;
   var index = 0;
   var unicode = false;
+  // The `s` flag in force where the cursor is: the expression-level flag the
+  // leading `(?s)` set, changed by each scoped `(?s:…)`/`(?-s:…)` group the
+  // cursor is inside. Java's DOTALL `.` matches every character, which is
+  // exactly ECMAScript's `.` under `s`, so a dot under it is copied as it is.
+  var dotAllHere = dotAll;
+  final dotAllStack = <bool>[];
   while (index < pattern.length) {
     final char = pattern[index];
     if (char == r'\') {
@@ -347,37 +374,74 @@ _Text _translateEscapes(
         case 'h':
           replacement = inClass ? _horizontalMembers : '[$_horizontalMembers]';
         case 'H':
-          if (inClass) return const _Text('', refusal: r'`\H` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\H` inside a character class has no ECMAScript form',
+            );
           replacement = '[^$_horizontalMembers]';
         case 'v':
           replacement = inClass ? _verticalMembers : '[$_verticalMembers]';
         case 'V':
-          if (inClass) return const _Text('', refusal: r'`\V` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\V` inside a character class has no ECMAScript form',
+            );
           replacement = '[^$_verticalMembers]';
         case 'R':
-          if (inClass) return const _Text('', refusal: r'`\R` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\R` inside a character class has no ECMAScript form',
+            );
           replacement = '(?:\\r\\n|[$_verticalMembers])';
         case 's':
           replacement = inClass ? _javaSpaceMembers : '[$_javaSpaceMembers]';
         case 'S':
-          if (inClass) return const _Text('', refusal: r'`\S` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\S` inside a character class has no ECMAScript form',
+            );
           replacement = '[^$_javaSpaceMembers]';
         case 'A':
-          if (inClass) return const _Text('', refusal: r'`\A` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\A` inside a character class has no ECMAScript form',
+            );
           replacement = r'(?<![\s\S])';
         case 'z':
-          if (inClass) return const _Text('', refusal: r'`\z` inside a character class has no ECMAScript form');
+          if (inClass)
+            return const _Text(
+              '',
+              refusal: r'`\z` inside a character class has no ECMAScript form',
+            );
           replacement = r'(?![\s\S])';
         case 'e':
           replacement = '\\x1B';
         case 'Z':
-          return const _Text('', refusal: r'`\Z` (end before a final terminator) has no ECMAScript form');
+          return const _Text(
+            '',
+            refusal:
+                r'`\Z` (end before a final terminator) has no ECMAScript form',
+          );
         case 'G':
-          return const _Text('', refusal: r'`\G` (previous match end) has no ECMAScript form');
+          return const _Text(
+            '',
+            refusal: r'`\G` (previous match end) has no ECMAScript form',
+          );
         case 'Q':
-          return const _Text('', refusal: r'`\Q...\E` quoting is not translated');
+          return const _Text(
+            '',
+            refusal: r'`\Q...\E` quoting is not translated',
+          );
         case 'c':
-          return const _Text('', refusal: r'`\cX` control escapes are not translated');
+          return const _Text(
+            '',
+            refusal: r'`\cX` control escapes are not translated',
+          );
         case 'p':
         case 'P':
           if (pattern.length > index + 2 && pattern[index + 2] == '{') {
@@ -386,6 +450,24 @@ _Text _translateEscapes(
             index += 3;
             continue;
           }
+          return _Text(
+            '',
+            refusal: 'Java `\\$escape` requires a braced Unicode property',
+          );
+        case 'u':
+        case 'x':
+          final width = escape == 'u' ? 4 : 2;
+          final end = index + 2 + width;
+          if (end <= pattern.length &&
+              _isHexDigits(pattern.substring(index + 2, end))) {
+            out.write(pattern.substring(index, end));
+            index = end;
+            continue;
+          }
+          return _Text(
+            '',
+            refusal: 'Java `\\$escape` needs exactly $width hexadecimal digits',
+          );
       }
       if (replacement != null) {
         out.write(replacement);
@@ -393,18 +475,25 @@ _Text _translateEscapes(
         index += 2;
         continue;
       }
-      // Every other escape is either identical in ECMAScript or a literal
-      // character in both engines.
-      out.write(pattern.substring(index, index + 2));
-      index += 2;
-      continue;
+      if (_isIdenticalEscape(escape, inClass: inClass)) {
+        out.write(pattern.substring(index, index + 2));
+        index += 2;
+        continue;
+      }
+      return _Text(
+        '',
+        refusal:
+            'Java `\\$escape` is not translated and has no identical ECMAScript escape',
+      );
     }
     if (inClass) {
       if (char == ']') inClass = false;
       // Java's character-class intersection and subtraction (`[a-z&&[^aeiou]]`);
       // ECMAScript reads `&` literally, which would silently match the wrong
       // characters.
-      if (char == '&' && pattern.length > index + 1 && pattern[index + 1] == '&') {
+      if (char == '&' &&
+          pattern.length > index + 1 &&
+          pattern[index + 1] == '&') {
         return const _Text(
           '',
           refusal:
@@ -421,7 +510,35 @@ _Text _translateEscapes(
       index++;
       continue;
     }
-    if (char == '.' && !dotAll) {
+    if (char == '(') {
+      final group = _flagGroupAt(pattern, index);
+      if (group != null && group.scoped) {
+        final applied = _fold(
+          group,
+          caseSensitive: true,
+          multiLine: false,
+          dotAll: dotAllHere,
+        );
+        if (applied.refusal != null)
+          return _Text('', refusal: applied.refusal!);
+        dotAllStack.add(dotAllHere);
+        dotAllHere = applied.dotAll;
+        out.write(pattern.substring(index, group.end));
+        index = group.end;
+        continue;
+      }
+      dotAllStack.add(dotAllHere);
+      out.write(char);
+      index++;
+      continue;
+    }
+    if (char == ')') {
+      if (dotAllStack.isNotEmpty) dotAllHere = dotAllStack.removeLast();
+      out.write(char);
+      index++;
+      continue;
+    }
+    if (char == '.' && !dotAllHere) {
       out.write(_javaAnyExceptNewline);
       translations.add(
         'Java `.` became $_javaAnyExceptNewline (Java also excludes U+0085)',
@@ -434,6 +551,35 @@ _Text _translateEscapes(
   }
   return _Text(out.toString(), unicode: unicode);
 }
+
+/// The escapes copied through unchanged because Java and ECMAScript read them
+/// the same way: a quoted non-alphanumeric ASCII character (`\.`, `\\`, `\ `),
+/// the four C escapes `\t \n \r \f`, the class escapes `\d \D \w \W`, and
+/// `\b` (a word boundary outside a class, a backspace inside one). `\B` is a
+/// word boundary only outside a class: in one, Java rejects it and ECMAScript
+/// reads a literal `B`. `\uHHHH` and `\xHH` are handled by the caller.
+bool _isIdenticalEscape(String escape, {required bool inClass}) {
+  if (escape.length != 1) return false;
+  final unit = escape.codeUnitAt(0);
+  final asciiLetter =
+      (unit >= 0x41 && unit <= 0x5A) || (unit >= 0x61 && unit <= 0x7A);
+  if (asciiLetter) {
+    return 'tnrfdDwWb'.contains(escape) || (escape == 'B' && !inClass);
+  }
+  final digit = unit >= 0x30 && unit <= 0x39;
+  // Java quotes a non-alphanumeric ASCII punctuation character with a
+  // backslash, and ECMAScript gives those spellings the same literal meaning.
+  // Digits are excluded because Java uses them for backreferences and octal.
+  return unit < 0x80 && !digit;
+}
+
+bool _isHexDigits(String text) => text.codeUnits.every(
+  (unit) =>
+      (unit >= 0x30 && unit <= 0x39) ||
+      (unit >= 0x41 && unit <= 0x46) ||
+      (unit >= 0x61 && unit <= 0x66),
+);
+
 /// Rewrites each remaining unscoped flag group into a scoped one covering the
 /// rest of its enclosing group — Java's own rule for a flag that appears after
 /// the pattern start.

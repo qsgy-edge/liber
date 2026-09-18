@@ -84,17 +84,20 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         // is not decided yet (the map's fog), so the frozen default stands.
         useReplaceRule: true,
         onNotice: _showRuleNotice,
-        onRuleDisabled: (rule) =>
-            widget.service.store.putReplaceRule(
-              rule.copyWith(isEnabled: false).toCompanion(true),
-            ),
+        onRuleDisabled: (rule) => widget.service.store.putReplaceRule(
+          rule.copyWith(isEnabled: false).toCompanion(true),
+        ),
       );
     } catch (e) {
       if (mounted) setState(() => error = '替换规则读取失败：$e');
     }
     if (!mounted) return;
     processing = built;
-    await load(widget.chapterIndex, widget.textOffset);
+    await load(
+      widget.chapterIndex,
+      widget.textOffset,
+      clearError: built != null,
+    );
   }
 
   /// Shows a skipped replace rule (a timeout, an unusable pattern, a deferred
@@ -145,12 +148,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     }
   }
 
-  Future<void> load(int next, int resume) async {
+  Future<void> load(int next, int resume, {bool clearError = true}) async {
     if (next < 0 || next >= widget.chapters.length) return;
     tracking = false;
     setState(() {
       busy = true;
-      error = null;
+      if (clearError) error = null;
     });
     try {
       final result = await withTlsExceptionConfirmation(

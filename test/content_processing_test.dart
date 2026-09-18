@@ -110,14 +110,22 @@ void main() {
 
     test('scope folding is ASCII, as SQLite LIKE is', () async {
       final content = await processing([
-        rule(pattern: '广告', scope: '不科学御兽;HTTP://WWW.BEQEGE.CC', isRegex: false),
+        rule(
+          pattern: '广告',
+          scope: '不科学御兽;HTTP://WWW.BEQEGE.CC',
+          isRegex: false,
+        ),
       ]).content('本章有广告内容', chapterTitle: '第一章');
       expect(content, '本章有内容');
     });
 
     test('excludeScope removes the book, an empty one does not', () async {
       final excluded = await processing([
-        rule(pattern: '广告', excludeScope: '不科学御兽;http://other.test', isRegex: false),
+        rule(
+          pattern: '广告',
+          excludeScope: '不科学御兽;http://other.test',
+          isRegex: false,
+        ),
       ]).content('本章有广告内容', chapterTitle: '第一章');
       expect(excluded, '本章有广告内容');
 
@@ -125,6 +133,17 @@ void main() {
         rule(pattern: '广告', excludeScope: '', isRegex: false),
       ]).content('本章有广告内容', chapterTitle: '第一章');
       expect(empty, '本章有内容');
+    });
+
+    test('excludeScope removes the book by origin too', () async {
+      final content = await processing([
+        rule(
+          pattern: '广告',
+          excludeScope: 'book@http://www.beqege.cc',
+          isRegex: false,
+        ),
+      ]).content('本章有广告内容', chapterTitle: '第一章');
+      expect(content, '本章有广告内容');
     });
 
     test('the two scope columns gate their own path', () async {
@@ -138,10 +157,7 @@ void main() {
         ),
       ]);
       expect(await titleOnly.displayTitle('第1章'), '一1章');
-      expect(
-        await titleOnly.content('正文第1章', chapterTitle: '别的标题'),
-        '正文第1章',
-      );
+      expect(await titleOnly.content('正文第1章', chapterTitle: '别的标题'), '正文第1章');
 
       final contentOnly = processing([
         rule(
@@ -153,24 +169,45 @@ void main() {
         ),
       ]);
       expect(await contentOnly.displayTitle('第1章'), '第1章');
-      expect(
-        await contentOnly.content('正文第1章', chapterTitle: '别的标题'),
-        '内容第1章',
-      );
+      expect(await contentOnly.content('正文第1章', chapterTitle: '别的标题'), '内容第1章');
     });
 
     test('rules run in order, and one order keeps the store order', () async {
       final ordered = await processing([
-        rule(id: 'b', pattern: 'x', replacement: '2', ruleOrder: 5, isRegex: false),
-        rule(id: 'a', pattern: '1', replacement: 'x', ruleOrder: 1, isRegex: false),
+        rule(
+          id: 'b',
+          pattern: 'x',
+          replacement: '2',
+          ruleOrder: 5,
+          isRegex: false,
+        ),
+        rule(
+          id: 'a',
+          pattern: '1',
+          replacement: 'x',
+          ruleOrder: 1,
+          isRegex: false,
+        ),
       ]).content('1', chapterTitle: '别的标题');
       expect(ordered, '2');
 
       // Two rules with the same order: the store's own order decides, so the
       // ('1' -> 'x') rule runs after ('x' -> '2') and '1' stays.
       final stable = await processing([
-        rule(id: 'b', pattern: 'x', replacement: '2', ruleOrder: 5, isRegex: false),
-        rule(id: 'a', pattern: '1', replacement: 'x', ruleOrder: 5, isRegex: false),
+        rule(
+          id: 'b',
+          pattern: 'x',
+          replacement: '2',
+          ruleOrder: 5,
+          isRegex: false,
+        ),
+        rule(
+          id: 'a',
+          pattern: '1',
+          replacement: 'x',
+          ruleOrder: 5,
+          isRegex: false,
+        ),
       ]).content('1', chapterTitle: '别的标题');
       expect(stable, 'x');
     });
@@ -215,33 +252,51 @@ void main() {
       expect(content, '本章有，共20 字');
     });
 
-    test('the replace stage trims every line before the rules see it', () async {
-      final withoutTrim = await processing([
-        rule(pattern: r'^开始', replacement: '起', ruleOrder: 1),
-      ]).content('  开始', chapterTitle: '别的标题');
-      expect(withoutTrim, '起', reason: 'the leading spaces are gone before ^开始');
+    test(
+      'the replace stage trims every line before the rules see it',
+      () async {
+        final withoutTrim = await processing([
+          rule(pattern: r'^开始', replacement: '起', ruleOrder: 1),
+        ]).content('  开始', chapterTitle: '别的标题');
+        expect(
+          withoutTrim,
+          '起',
+          reason: 'the leading spaces are gone before ^开始',
+        );
 
-      final everyLine = await processing([
-        rule(pattern: r'(?m)^开始', replacement: '起', ruleOrder: 1),
-      ]).content('  开始\n   开始', chapterTitle: '别的标题');
-      expect(everyLine, '起\n起');
-    });
+        final everyLine = await processing([
+          rule(pattern: r'(?m)^开始', replacement: '起', ruleOrder: 1),
+        ]).content('  开始\n   开始', chapterTitle: '别的标题');
+        expect(everyLine, '起\n起');
+      },
+    );
 
     test('a duplicated leading title is removed', () async {
-      final content = await processing(const []).content(
-        '第一章 开始\n正文开始。',
-        chapterTitle: '第一章 开始',
-      );
+      final content = await processing(
+        const [],
+      ).content('第一章 开始\n正文开始。', chapterTitle: '第一章 开始');
       expect(content, '正文开始。');
     });
 
-    test('the title pattern tolerates whitespace runs and the book name', () async {
-      final content = await processing(const []).content(
-        '不科学御兽 第一章\n正文。',
-        chapterTitle: '第一章',
-      );
-      expect(content, '正文。');
-    });
+    test(
+      'the title pattern tolerates whitespace runs and the book name',
+      () async {
+        final content = await processing(
+          const [],
+        ).content('不科学御兽 第一章\n正文。', chapterTitle: '第一章');
+        expect(content, '正文。');
+      },
+    );
+
+    test(
+      'the title pattern preserves Java ASCII whitespace semantics',
+      () async {
+        final content = await processing(
+          const [],
+        ).content('第一章　标题\n正文。', chapterTitle: '第一章　标题');
+        expect(content, '正文。');
+      },
+    );
 
     test('the retry uses the content rules to find the title', () async {
       final content = await processing([
@@ -293,22 +348,31 @@ void main() {
     test('a rule past its own deadline is disabled and its text kept', () async {
       final disabled = <String>[];
       final notices = <String>[];
-      final content = await processing([
-        rule(id: 'fast', pattern: 'b', replacement: 'c', ruleOrder: 1),
-        rule(
-          id: 'slow',
-          ruleName: '灾难回溯',
-          pattern: r'(a+)+$',
-          replacement: '',
-          timeoutMillisecond: 200,
-          ruleOrder: 2,
-        ),
-        rule(id: 'after', pattern: 'c', replacement: 'd', ruleOrder: 3, isRegex: false),
-      ], onNotice: notices.add, onRuleDisabled: (rule) async => disabled.add(rule.id))
-          .content('${'a' * 26}b', chapterTitle: '第一章');
+      final content = await processing(
+        [
+          rule(id: 'fast', pattern: 'b', replacement: 'c', ruleOrder: 1),
+          rule(
+            id: 'slow',
+            ruleName: '灾难回溯',
+            pattern: r'(a+)+$',
+            replacement: '',
+            timeoutMillisecond: 200,
+            ruleOrder: 2,
+          ),
+          rule(
+            id: 'after',
+            pattern: 'c',
+            replacement: 'd',
+            ruleOrder: 3,
+            isRegex: false,
+          ),
+        ],
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      ).content('${'a' * 32}b', chapterTitle: '第一章');
       // The fast rule ran, the slow one was killed at its own deadline and left
       // the text as it was, and the rule after it still ran.
-      expect(content, '${'a' * 26}d');
+      expect(content, '${'a' * 32}d');
       expect(disabled, ['slow']);
       expect(notices.single, contains('灾难回溯'));
       expect(notices.single, contains('超时'));
@@ -316,16 +380,16 @@ void main() {
 
     test('a fast rule under its deadline is never reported', () async {
       var disableCalls = 0;
-      final content = await processing([
-        rule(
-          pattern: r'第(\d+)章',
-          replacement: r'第$1章（改）',
-          timeoutMillisecond: 2000,
-        ),
-      ], onRuleDisabled: (rule) async => disableCalls++).content(
-        '正文第1章',
-        chapterTitle: '别的标题',
-      );
+      final content = await processing(
+        [
+          rule(
+            pattern: r'第(\d+)章',
+            replacement: r'第$1章（改）',
+            timeoutMillisecond: 2000,
+          ),
+        ],
+        onRuleDisabled: (rule) async => disableCalls++,
+      ).content('正文第1章', chapterTitle: '别的标题');
       expect(content, '正文第1章（改）');
       expect(disableCalls, 0);
     });
