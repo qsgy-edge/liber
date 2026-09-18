@@ -275,10 +275,10 @@ class _LiberHomePageState extends State<LiberHomePage> {
         spaceImport: _spaceImport,
         spaceStorePath: _spaceStorePath,
         spaceMessage: _spaceMessage,
-        onImport: (jsonText) async {
+        onImportFile: (path) async {
           if (store == null) return;
           try {
-            final result = await LegadoBackupImport(store).importJson(jsonText);
+            final result = await importLegadoBackupFile(store, path);
             if (!mounted) return;
             setState(() {
               _migrationResult = result;
@@ -701,7 +701,7 @@ class _MigrationPage extends StatelessWidget {
     required this.spaceImport,
     required this.spaceStorePath,
     required this.spaceMessage,
-    required this.onImport,
+    required this.onImportFile,
   });
 
   final MigrationImportRecord? result;
@@ -710,7 +710,10 @@ class _MigrationPage extends StatelessWidget {
   final LegacyImportReport? spaceImport;
   final String? spaceStorePath;
   final String? spaceMessage;
-  final ValueChanged<String> onImport;
+
+  /// Called with the picked file's path: the importer reads it, because the two
+  /// accepted containers need different readers (a Legado full backup is a ZIP).
+  final ValueChanged<String> onImportFile;
 
   /// What the one-time import of this installation's own JSON stores did. It
   /// runs by itself on the first launch, so it reports here instead of behind a
@@ -767,7 +770,7 @@ class _MigrationPage extends StatelessWidget {
       children: [
         Text('迁移', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),
-        const Text('选择 JSON 备份文件，先做导入预览并报告无法迁移的数据。'),
+        const Text('选择 Legado 的备份 ZIP（推荐）或 JSON 文件，先做导入预览并报告无法迁移的数据。'),
         const SizedBox(height: 20),
         _spaceCard(context),
         const SizedBox(height: 20),
@@ -777,15 +780,14 @@ class _MigrationPage extends StatelessWidget {
             onPressed: () async {
               final picked = await FilePicker.pickFile(
                 type: FileType.custom,
-                allowedExtensions: ['json'],
+                allowedExtensions: ['zip', 'json'],
               );
               final path = picked?.path;
               if (path == null) return;
-              final jsonText = await File(path).readAsString();
-              onImport(jsonText);
+              onImportFile(path);
             },
             icon: const Icon(Icons.file_open),
-            label: const Text('选择 Legado JSON'),
+            label: const Text('选择 Legado 备份'),
           ),
         ),
         if (message != null) ...[
