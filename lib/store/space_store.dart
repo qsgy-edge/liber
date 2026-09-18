@@ -297,8 +297,9 @@ class SpaceStore {
   /// about it beyond that.
   Future<ShelfGroup> putGroup(GroupsCompanion group) async {
     final name = group.name.value.trim();
-    if (name.isEmpty)
+    if (name.isEmpty) {
       throw ArgumentError.value(group.name.value, 'name', '分组名不能为空');
+    }
     final existing = await groupByName(name);
     final row =
         (existing == null ? group : group.copyWith(id: Value(existing.id)))

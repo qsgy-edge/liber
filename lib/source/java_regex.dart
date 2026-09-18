@@ -93,8 +93,9 @@ JavaPattern translateJavaPattern(String pattern) {
       multiLine: multiLine,
       dotAll: dotAll,
     );
-    if (applied.refusal != null)
+    if (applied.refusal != null) {
       return _refused(translations, applied.refusal!);
+    }
     caseSensitive = applied.caseSensitive;
     multiLine = applied.multiLine;
     dotAll = applied.dotAll;
@@ -374,50 +375,56 @@ _Text _translateEscapes(
         case 'h':
           replacement = inClass ? _horizontalMembers : '[$_horizontalMembers]';
         case 'H':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\H` inside a character class has no ECMAScript form',
             );
+          }
           replacement = '[^$_horizontalMembers]';
         case 'v':
           replacement = inClass ? _verticalMembers : '[$_verticalMembers]';
         case 'V':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\V` inside a character class has no ECMAScript form',
             );
+          }
           replacement = '[^$_verticalMembers]';
         case 'R':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\R` inside a character class has no ECMAScript form',
             );
+          }
           replacement = '(?:\\r\\n|[$_verticalMembers])';
         case 's':
           replacement = inClass ? _javaSpaceMembers : '[$_javaSpaceMembers]';
         case 'S':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\S` inside a character class has no ECMAScript form',
             );
+          }
           replacement = '[^$_javaSpaceMembers]';
         case 'A':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\A` inside a character class has no ECMAScript form',
             );
+          }
           replacement = r'(?<![\s\S])';
         case 'z':
-          if (inClass)
+          if (inClass) {
             return const _Text(
               '',
               refusal: r'`\z` inside a character class has no ECMAScript form',
             );
+          }
           replacement = r'(?![\s\S])';
         case 'e':
           replacement = '\\x1B';
@@ -519,8 +526,9 @@ _Text _translateEscapes(
           multiLine: false,
           dotAll: dotAllHere,
         );
-        if (applied.refusal != null)
+        if (applied.refusal != null) {
           return _Text('', refusal: applied.refusal!);
+        }
         dotAllStack.add(dotAllHere);
         dotAllHere = applied.dotAll;
         out.write(pattern.substring(index, group.end));

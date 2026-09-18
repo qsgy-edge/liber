@@ -80,8 +80,9 @@ Uint8List _rewriteZipUncompressedSize(
     }
     found++;
   }
-  if (found < 2)
+  if (found < 2) {
     throw StateError('ZIP test fixture has no local and central headers');
+  }
   return bytes;
 }
 

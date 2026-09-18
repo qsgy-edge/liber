@@ -140,8 +140,9 @@ class LegadoBackupArchive {
       legadoBackupConfigMember,
     ]) {
       final header = headers[member];
-      if (header != null)
+      if (header != null) {
         members[member] = _readMember(header, memberSizeLimit);
+      }
     }
     return LegadoBackupArchive._(
       members,
