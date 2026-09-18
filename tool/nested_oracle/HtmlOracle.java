@@ -23,13 +23,17 @@ import java.nio.charset.StandardCharsets;
  * and writes the report the corpus names. No Legado class is rebuilt; the entry
  * points are reached by reflection.
  *
+ * <p>The base URL handed to {@code setContent} is the corpus' {@code baseUrl}:
+ * a {@code {{baseUrl}}} rule field only carries the device-side value the
+ * corpus expects when that argument is the committed one (#51).
+ *
  * <p>The report's shape follows {@code NestedOracle}/{@code StateOracle} so
  * {@code tool/html_adapter_gate.dart} can read it against the Liber-side
  * observation.
  */
 public final class HtmlOracle extends Instrumentation {
-    /** Only reachable as a relative-URL base for rule templates the corpus does not use. */
-    private static final String BASE_URL = "http://localhost/";
+    /** Fallback for a corpus without a {@code baseUrl}; relative-URL base only. */
+    private static final String DEFAULT_BASE_URL = "http://localhost/";
 
     @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
 
@@ -43,6 +47,7 @@ public final class HtmlOracle extends Instrumentation {
             JSONObject corpus = new JSONObject(fixture);
             JSONObject documents = corpus.getJSONObject("documents");
             JSONArray cases = corpus.getJSONArray("cases");
+            String baseUrl = corpus.optString("baseUrl", DEFAULT_BASE_URL);
             ClassLoader loader = getTargetContext().getClassLoader();
             Class<?> ruleClass = loader.loadClass("io.legado.app.model.analyzeRule.AnalyzeRule");
             Constructor<?> ctor = null;
@@ -58,7 +63,7 @@ public final class HtmlOracle extends Instrumentation {
                 JSONObject result = new JSONObject().put("id", entry.getString("id"));
                 try {
                     Object rule = ctor.newInstance(new Object[ctor.getParameterCount()]);
-                    setContent.invoke(rule, documents.getString(entry.getString("document")), BASE_URL);
+                    setContent.invoke(rule, documents.getString(entry.getString("document")), baseUrl);
                     result.put("value", getString.invoke(rule, entry.getString("rule")));
                 } catch (InvocationTargetException error) {
                     Throwable cause = error.getCause();
