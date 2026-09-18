@@ -31,10 +31,14 @@
 ///   applied: the frozen engine evaluates JavaScript per match. Only the regex
 ///   branch refuses it; the frozen literal branch inserts the text as it is, and
 ///   so does this one.
-/// - the frozen final paragraph shaping (trim the cutset `<= 0x20` and `　`, drop
-///   empty lines, prefix `ReadBookConfig.paragraphIndent`) is the reader's
-///   rendering, not the text transform: the product's reader draws its own
-///   paragraphs.
+/// - the frozen reader's final paragraph shaping (trim the cutset `<= 0x20` and
+///   `　`, drop empty lines, prefix `ReadBookConfig.paragraphIndent`) is the
+///   reader's rendering, not this transform: the product's reader draws its own
+///   paragraphs. It is a *different* mechanism from the source content stage's
+///   own shaping (`BookContent.kt:135-142`: trim every line, run
+///   `ruleContent.replaceRegex`, prefix every line with a hard-coded `　　` when
+///   the source declares that field), which the HTML pipeline applies to the
+///   content stage's final text before it reaches the reader.
 /// - the frozen `removeSameTitleCache` guard (`ContentProcessor.kt:126-128`)
 ///   depends on the retired on-disk chapter files, which this product has none
 ///   of, so the duplicated-title removal always runs.
