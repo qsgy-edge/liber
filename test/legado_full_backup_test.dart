@@ -49,11 +49,40 @@ Uint8List zipOf(Map<String, Object?> members) {
         ? entry.value as String
         : jsonEncode(entry.value);
     final bytes = utf8.encode(text);
-    archive.addFile(
-      ArchiveFile(entry.key, bytes.length, bytes),
-    );
+    archive.addFile(ArchiveFile(entry.key, bytes.length, bytes));
   }
   return Uint8List.fromList(ZipEncoder().encode(archive));
+}
+
+/// Rewrites the local and central-directory uncompressed-size fields of the
+/// first member. The compressed bytes remain unchanged, so the decoder must
+/// rely on the output sink rather than trusting the header.
+Uint8List _rewriteZipUncompressedSize(
+  Uint8List input, {
+  required int declared,
+}) {
+  final bytes = Uint8List.fromList(input);
+  var found = 0;
+  for (var index = 0; index + 4 <= bytes.length; index++) {
+    final signature =
+        bytes[index] |
+        (bytes[index + 1] << 8) |
+        (bytes[index + 2] << 16) |
+        (bytes[index + 3] << 24);
+    final offset = switch (signature) {
+      0x04034b50 => index + 22,
+      0x02014b50 => index + 24,
+      _ => -1,
+    };
+    if (offset < 0) continue;
+    for (var byte = 0; byte < 4; byte++) {
+      bytes[offset + byte] = (declared >> (byte * 8)) & 0xff;
+    }
+    found++;
+  }
+  if (found < 2)
+    throw StateError('ZIP test fixture has no local and central headers');
+  return bytes;
 }
 
 Map<String, Object?> sourceRow(
@@ -197,15 +226,15 @@ void main() {
       expect(record.sourceCount, 1);
       expect(record.bookCount, 1);
       expect(record.progressCount, 1);
-      expect((await space.store.sourceByUrl('https://source.example'))!.name, '示例源');
+      expect(
+        (await space.store.sourceByUrl('https://source.example'))!.name,
+        '示例源',
+      );
       final book = (await space.store.shelf()).single;
       expect(book.title, '书名');
       expect(book.sourceRef, 'https://source.example');
       expect(book.sourceBookUrl, 'https://source.example/book/1');
-      expect(
-        (await space.store.groupsOf(book.id)).map((g) => g.name),
-        ['藏经阁'],
-      );
+      expect((await space.store.groupsOf(book.id)).map((g) => g.name), ['藏经阁']);
       final progress = (await space.store.progressOf(book.id))!;
       expect(progress.chapterIndex, 12);
       expect(progress.textOffset, 345);
@@ -221,9 +250,7 @@ void main() {
       expect(record.bookCount, 0);
       expect(await space.store.shelf(), isEmpty);
       expect(
-        record.losses.any(
-          (loss) => loss.contains('备份没有 bookshelf.json'),
-        ),
+        record.losses.any((loss) => loss.contains('备份没有 bookshelf.json')),
         isTrue,
         reason: '缺席的成员按空列表报告',
       );
@@ -284,9 +311,7 @@ void main() {
 
     test('声明尺寸过大的条目被拒绝', () async {
       final archive = Archive()
-        ..addFile(
-          ArchiveFile('bookshelf.json', 2, utf8.encode('[]')),
-        )
+        ..addFile(ArchiveFile('bookshelf.json', 2, utf8.encode('[]')))
         ..addFile(
           // A declared size no backup has: refused before it is decoded.
           ArchiveFile('huge.json', 600 * 1024 * 1024, utf8.encode('{}')),
@@ -302,6 +327,24 @@ void main() {
         ),
       );
       expect(await space.store.shelf(), isEmpty);
+    });
+
+    test('声明值被篡改的 ZIP 仍在解压时受上限保护', () async {
+      final zip = backupZip(
+        sources: [sourceRow('https://source.example', '示例源')],
+        config: null,
+      );
+      final lying = _rewriteZipUncompressedSize(zip, declared: 4);
+      await expectLater(
+        () => LegadoBackupArchive.decode(lying, memberSizeLimit: 4),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('解压后过大'),
+          ),
+        ),
+      );
     });
 
     test('读不了的 ZIP 与不是数组的成员给出命名错误', () async {
@@ -363,9 +406,17 @@ void main() {
         }),
       );
       expect(archive.names, contains('BookSource.JSON'));
-      expect(archive.has('bookSource.json'), isFalse, reason: '名字区分大小写，只有分隔符归一化');
+      expect(
+        archive.has('bookSource.json'),
+        isFalse,
+        reason: '名字区分大小写，只有分隔符归一化',
+      );
       expect(archive.has('config.xml'), isTrue);
-      expect(archive.absentMembers, ['bookSource.json', 'bookGroup.json', 'bookshelf.json']);
+      expect(archive.absentMembers, [
+        'bookSource.json',
+        'bookGroup.json',
+        'bookshelf.json',
+      ]);
       expect(archive.unreadMembers, ['replaceRule.json']);
       expect(archive.preferenceCount, 2);
     });
@@ -387,7 +438,9 @@ void main() {
           'totalChapterNum': 7,
           'variable': '{"k":1}',
           'order': -960,
-          'unknownField': {'nested': [1, 2, null]},
+          'unknownField': {
+            'nested': [1, 2, null],
+          },
           'wordCount': '12万字',
         },
       );
@@ -420,21 +473,50 @@ void main() {
       expect(raw, row, reason: '未知字段、null、布尔、大整数与非 ASCII 都原样留在 raw');
     });
 
+    test('空 origin 的网络书重复导入仍保持幂等', () async {
+      final row = networkBook(
+        'https://source.example/book/no-origin',
+        origin: '',
+      );
+      await importBackup(
+        sources: [sourceRow('https://source.example', '示例源')],
+        books: [row],
+      );
+      await importBackup(
+        sources: [sourceRow('https://source.example', '示例源')],
+        books: [row],
+      );
+      expect(await space.store.shelf(), hasLength(1));
+      expect(
+        (await space.store.shelf()).single.sourceRef,
+        isNull,
+        reason: '空 origin 仍是不带书源的自然键，但按 URL 合并',
+      );
+    });
+
     test('同名同作者、不同 bookUrl 的书各自成书（不按名字合并）', () async {
       await importBackup(
         sources: [sourceRow('https://source.example', '示例源')],
         books: [
-          networkBook('https://source.example/book/1', name: '同名书', author: '同一作者'),
-          networkBook('https://source.example/book/2', name: '同名书', author: '同一作者'),
+          networkBook(
+            'https://source.example/book/1',
+            name: '同名书',
+            author: '同一作者',
+          ),
+          networkBook(
+            'https://source.example/book/2',
+            name: '同名书',
+            author: '同一作者',
+          ),
         ],
       );
 
       final shelf = await space.store.shelf();
       expect(shelf, hasLength(2));
-      expect(
-        shelf.map((book) => book.sourceBookUrl).toSet(),
-        {'https://source.example/book/1', 'https://source.example/book/2'},
-      );
+      expect(shelf.map((book) => book.sourceBookUrl).toSet(), {
+        'https://source.example/book/1',
+        'https://source.example/book/2',
+      });
       expect(
         shelf.map((book) => book.id).toSet(),
         hasLength(2),
@@ -453,10 +535,7 @@ void main() {
 
       expect(record.bookCount, 2, reason: '两次写入都算作处理过的记录');
       expect(await space.store.shelf(), hasLength(1));
-      expect(
-        record.losses.any((loss) => loss.contains('重复')),
-        isTrue,
-      );
+      expect(record.losses.any((loss) => loss.contains('重复')), isTrue);
     });
 
     test('本地书不带 Android 路径：相关键与文件名入库、标记重新链接', () async {
@@ -470,9 +549,11 @@ void main() {
             name: '仙凡间',
             originName: 'soushu@仙凡间.txt',
             extra: {
-              'coverUrl': '/storage/emulated/0/Android/data/io.legado.app.debug/files/cover.png',
+              'coverUrl':
+                  '/storage/emulated/0/Android/data/io.legado.app.debug/files/cover.png',
               'customCoverUrl': 'file:///storage/emulated/0/custom.png',
-              'tocUrl': 'content://com.android.externalstorage.documents/tree/primary',
+              'tocUrl':
+                  'content://com.android.externalstorage.documents/tree/primary',
               'durChapterIndex': 3,
               'durChapterPos': 120,
               'durChapterTime': 1650000000000,
@@ -504,7 +585,12 @@ void main() {
         book.coverUrl,
         book.title,
       ].join('\n');
-      for (final forbidden in ['content://', 'file://', '/storage/', 'primary%3A']) {
+      for (final forbidden in [
+        'content://',
+        'file://',
+        '/storage/',
+        'primary%3A',
+      ]) {
         expect(
           everything.contains(forbidden),
           isFalse,
@@ -519,14 +605,39 @@ void main() {
       expect(raw['unknownField'], isNull);
     });
 
+    test('本地书的 originName 也是文件名，只保留末段', () async {
+      await importBackup(
+        books: [
+          localBook(
+            'content://provider/tree/primary',
+            originName: r'C:\Users\operator\secret.txt',
+          ),
+        ],
+      );
+      final book = (await space.store.localBooks()).single;
+      expect(book.relativePath, 'secret.txt');
+      expect(book.relativePath, isNot(contains(r'\')));
+      expect(book.relativePath, isNot(startsWith('/')));
+    });
+
     test('file:// 与 content:// 按本地书处理；相对 URL 与 data: 仍是网络书', () async {
       await importBackup(
         sources: [sourceRow('https://source.example', '示例源')],
         books: [
           // The frozen bit says local, the scheme says nothing.
           localBook('/storage/emulated/0/Book/书.txt', name: '路径本地书'),
+          // A pre-upType row: origin tag makes it local even without bit 256.
+          localBook(
+            '/storage/emulated/0/Book/legacy.txt',
+            name: '旧类型本地书',
+            type: 1,
+          ),
           // The scheme says local, the bit does not.
-          localBook('file:///storage/emulated/0/Book/另一本.txt', name: 'file 本地书', type: 8),
+          localBook(
+            'file:///storage/emulated/0/Book/另一本.txt',
+            name: 'file 本地书',
+            type: 8,
+          ),
           // Neither: relative and data URLs are network keys, not device paths.
           networkBook(
             '/modules/article/search.php?searchkey=x',
@@ -538,26 +649,22 @@ void main() {
       );
 
       final local = await space.store.localBooks();
-      expect(
-        local.map((book) => book.title).toSet(),
-        {'路径本地书', 'file 本地书'},
-      );
-      expect(
-        local.map((book) => book.relativePath).toSet(),
-        {'书.txt', '另一本.txt'},
-      );
+      expect(local.map((book) => book.title).toSet(), {
+        '路径本地书',
+        '旧类型本地书',
+        'file 本地书',
+      });
+      expect(local.map((book) => book.relativePath).toSet(), {
+        '书.txt',
+        'legacy.txt',
+        '另一本.txt',
+      });
       final network = await space.store.shelf(kind: 'network');
-      expect(
-        network.map((book) => book.title).toSet(),
-        {'相对 URL 书', 'data 书'},
-      );
-      expect(
-        network.map((book) => book.sourceBookUrl).toSet(),
-        {
-          '/modules/article/search.php?searchkey=x',
-          'data:;base64,ZnFfaWQ9MQ==,{"type":"x"}',
-        },
-      );
+      expect(network.map((book) => book.title).toSet(), {'相对 URL 书', 'data 书'});
+      expect(network.map((book) => book.sourceBookUrl).toSet(), {
+        '/modules/article/search.php?searchkey=x',
+        'data:;base64,ZnFfaWQ9MQ==,{"type":"x"}',
+      });
     });
 
     test('本地书名缺 originName 时退回 URL 尾段或标题', () async {
@@ -568,11 +675,17 @@ void main() {
             name: '标题',
             originName: '',
           ),
-          localBook('content://provider/tree/primary', name: '只有标题', originName: ''),
+          localBook(
+            'content://provider/tree/primary',
+            name: '只有标题',
+            originName: '',
+          ),
         ],
       );
 
-      final names = (await space.store.localBooks()).map((b) => b.relativePath).toSet();
+      final names = (await space.store.localBooks())
+          .map((b) => b.relativePath)
+          .toSet();
       expect(names, contains('书名.md'));
       expect(names, contains('只有标题'), reason: 'tree-only URI 没有文件名，退回标题');
     });
@@ -580,7 +693,12 @@ void main() {
     test('64 个分组位都能解析，含第 64 位 Long.MIN_VALUE（契约家族 6）', () async {
       final groups = <Map<String, Object?>>[
         for (var bit = 0; bit < 63; bit++)
-          {'groupId': 1 << bit, 'groupName': '组$bit', 'order': bit, 'show': true},
+          {
+            'groupId': 1 << bit,
+            'groupName': '组$bit',
+            'order': bit,
+            'show': true,
+          },
         {'groupId': 1 << 63, 'groupName': '第64位', 'order': 63, 'show': true},
       ];
       await importBackup(
@@ -599,9 +717,12 @@ void main() {
 
       expect(await space.store.allGroups(), hasLength(64));
       Future<List<String>> namesOf(String title) async {
-        final book = (await space.store.shelf()).firstWhere((b) => b.title == title);
-        final names = (await space.store.groupsOf(book.id)).map((g) => g.name).toList()
-          ..sort();
+        final book = (await space.store.shelf()).firstWhere(
+          (b) => b.title == title,
+        );
+        final names = (await space.store.groupsOf(
+          book.id,
+        )).map((g) => g.name).toList()..sort();
         return names;
       }
 
@@ -633,16 +754,19 @@ void main() {
       );
       final book = (await space.store.shelf()).single;
       expect((await space.store.groupsOf(book.id)).map((g) => g.name), ['藏经阁']);
-      expect(
-        record.losses.any((loss) => loss.contains('系统分组')),
-        isTrue,
-      );
+      expect(record.losses.any((loss) => loss.contains('系统分组')), isTrue);
     });
 
     test('分组带顺序与显示开关一起入库', () async {
       await importBackup(
         groups: [
-          {'groupId': 4, 'groupName': '第二', 'order': 9, 'show': false, 'bookSort': 3},
+          {
+            'groupId': 4,
+            'groupName': '第二',
+            'order': 9,
+            'show': false,
+            'bookSort': 3,
+          },
           {'groupId': 2, 'groupName': '第一', 'order': 2, 'show': true},
         ],
         books: [networkBook('https://source.example/a', group: 6)],
@@ -677,7 +801,10 @@ void main() {
 
       await importAt(5, 100, 1000);
       var progress = (await space.store.progressOf(await bookIdOf()))!;
-      expect([progress.chapterIndex, progress.textOffset, progress.updatedAt], [5, 100, 1000]);
+      expect(
+        [progress.chapterIndex, progress.textOffset, progress.updatedAt],
+        [5, 100, 1000],
+      );
 
       await importAt(3, 900, 2000);
       progress = (await space.store.progressOf(await bookIdOf()))!;
@@ -689,11 +816,7 @@ void main() {
 
       await importAt(5, 100, 3000);
       progress = (await space.store.progressOf(await bookIdOf()))!;
-      expect(
-        progress.updatedAt,
-        3000,
-        reason: '同一位置由时间戳分胜负',
-      );
+      expect(progress.updatedAt, 3000, reason: '同一位置由时间戳分胜负');
 
       await importAt(6, 0, 4000);
       progress = (await space.store.progressOf(await bookIdOf()))!;
@@ -731,14 +854,8 @@ void main() {
       final progress = (await space.store.progressOf(read.id))!;
       expect(progress.updatedAt, 9223372036854775807, reason: '64 位毫秒原样落库');
       expect(record.progressCount, 1);
-      expect(
-        record.losses.any((loss) => loss.contains('没有阅读进度')),
-        isTrue,
-      );
-      expect(
-        record.losses.any((loss) => loss.contains('章节名没有等价字段')),
-        isTrue,
-      );
+      expect(record.losses.any((loss) => loss.contains('没有阅读进度')), isTrue);
+      expect(record.losses.any((loss) => loss.contains('章节名没有等价字段')), isTrue);
     });
 
     test('分组按名字合并，成员关系取并集（契约家族 8）', () async {
@@ -749,7 +866,10 @@ void main() {
           {'groupId': 4, 'groupName': '丙', 'order': 3},
         ],
         books: [
-          networkBook('https://source.example/a', group: bits.fold(0, (a, b) => a | b)),
+          networkBook(
+            'https://source.example/a',
+            group: bits.fold(0, (a, b) => a | b),
+          ),
         ],
       );
 
@@ -766,12 +886,16 @@ void main() {
       await importWithGroups([2]);
 
       final groups = await space.store.groupsOf(bookId);
+      expect(groups.map((group) => group.name).toSet(), {
+        '甲',
+        '乙',
+        '本地加的分组',
+      }, reason: '导入只加不减；本地新建的分组留下');
       expect(
-        groups.map((group) => group.name).toSet(),
-        {'甲', '乙', '本地加的分组'},
-        reason: '导入只加不减；本地新建的分组留下',
+        await space.store.allGroups(),
+        hasLength(4),
+        reason: '按名字合并，不重复建组',
       );
-      expect(await space.store.allGroups(), hasLength(4), reason: '按名字合并，不重复建组');
     });
 
     test('书源已存在且内容不同时不替换，并计入报告（契约规则 7）', () async {
@@ -780,7 +904,9 @@ void main() {
           sourceRow(
             'https://source.example',
             '示例源',
-            extra: {'ruleSearch': {'bookList': '旧规则'}},
+            extra: {
+              'ruleSearch': {'bookList': '旧规则'},
+            },
           ),
         ],
       );
@@ -791,22 +917,17 @@ void main() {
           sourceRow(
             'https://source.example',
             '示例源',
-            extra: {'ruleSearch': {'bookList': '新规则'}},
+            extra: {
+              'ruleSearch': {'bookList': '新规则'},
+            },
           ),
         ],
       );
 
       expect(second.sourceCount, 0);
       final source = (await space.store.sourceByUrl('https://source.example'))!;
-      expect(
-        source.raw,
-        contains('旧规则'),
-        reason: '替换需要显式确认，导入不会自己替换',
-      );
-      expect(
-        second.losses.any((loss) => loss.contains('未替换')),
-        isTrue,
-      );
+      expect(source.raw, contains('旧规则'), reason: '替换需要显式确认，导入不会自己替换');
+      expect(second.losses.any((loss) => loss.contains('未替换')), isTrue);
     });
   });
 
@@ -836,7 +957,11 @@ void main() {
           'content://provider/document/primary%3ABook%2F%E6%9C%AC%E5%9C%B0.txt',
           name: '本地书',
           group: 2,
-          extra: {'durChapterIndex': 1, 'durChapterPos': 9, 'durChapterTime': 1},
+          extra: {
+            'durChapterIndex': 1,
+            'durChapterPos': 9,
+            'durChapterTime': 1,
+          },
         ),
       ],
     );
@@ -856,7 +981,9 @@ void main() {
       expect((await space.store.shelf()).length, books);
       expect((await space.store.allGroups()).length, groups);
       expect(
-        (await space.store.progressOf(await bookIdOf(titles: '网络书')))!.textOffset,
+        (await space.store.progressOf(
+          await bookIdOf(titles: '网络书'),
+        ))!.textOffset,
         50,
       );
     });
@@ -891,11 +1018,13 @@ void main() {
 
       // A local edit: a new name and tag, and a blanked intro.
       await space.store.putBook(
-        stored.toCompanion(false).copyWith(
-          title: const Value('本地改的名字'),
-          customTag: const Value('本地标签'),
-          intro: const Value(''),
-        ),
+        stored
+            .toCompanion(false)
+            .copyWith(
+              title: const Value('本地改的名字'),
+              customTag: const Value('本地标签'),
+              intro: const Value(''),
+            ),
       );
 
       await importBytes(withIntro);
@@ -982,7 +1111,9 @@ void main() {
 
     test('JSON 文本入口仍是旧的 envelope；书架 UI 导出被点名拒绝（家族 11）', () async {
       final json = File('${fixtures.path}/legacy.json');
-      await json.writeAsString('{"bookSources":[{"bookSourceUrl":"x","bookSourceName":"X"}]}');
+      await json.writeAsString(
+        '{"bookSources":[{"bookSourceUrl":"x","bookSourceName":"X"}]}',
+      );
       final record = await importLegadoBackupFile(space.store, json.path);
       expect(record.sourceCount, 1);
       expect(await space.store.allSources(), hasLength(1));
@@ -1029,8 +1160,9 @@ Future<String> canonical(SpaceStore store) async {
   final books = await store.shelf();
   final rows = <Map<String, Object?>>[];
   for (final book in books) {
-    final memberships = (await store.groupsOf(book.id)).map((g) => g.name).toList()
-      ..sort();
+    final memberships = (await store.groupsOf(
+      book.id,
+    )).map((g) => g.name).toList()..sort();
     final progress = await store.progressOf(book.id);
     rows.add({
       'kind': book.kind,

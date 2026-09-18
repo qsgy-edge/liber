@@ -75,6 +75,8 @@ class ShelfEntry {
 
   String get chapterKey => progress?.chapterKey ?? '';
 
+  int get chapterIndex => progress?.chapterIndex ?? 0;
+
   int get textOffset => progress?.textOffset ?? 0;
 
   /// The book as the pipeline hands it around: a row is not an `HtmlBook`.

@@ -138,6 +138,15 @@ class SpaceStore {
           ))
           .getSingleOrNull();
 
+  /// A network book whose source reference is absent. SQLite NULLs are not
+  /// equal in a unique key, so the migration's empty-origin identity uses the
+  /// URL explicitly to remain idempotent.
+  Future<ShelfBook?> bookWithoutSource(String sourceBookUrl) =>
+      (db.select(db.books)..where(
+            (b) => b.sourceRef.isNull() & b.sourceBookUrl.equals(sourceBookUrl),
+          ))
+          .getSingleOrNull();
+
   /// A local book's natural key: the root it was admitted under plus its path
   /// inside that root.
   Future<ShelfBook?> localBook(String rootId, String relativePath) =>
@@ -288,10 +297,12 @@ class SpaceStore {
   /// about it beyond that.
   Future<ShelfGroup> putGroup(GroupsCompanion group) async {
     final name = group.name.value.trim();
-    if (name.isEmpty) throw ArgumentError.value(group.name.value, 'name', '分组名不能为空');
+    if (name.isEmpty)
+      throw ArgumentError.value(group.name.value, 'name', '分组名不能为空');
     final existing = await groupByName(name);
-    final row = (existing == null ? group : group.copyWith(id: Value(existing.id)))
-        .copyWith(name: Value(name));
+    final row =
+        (existing == null ? group : group.copyWith(id: Value(existing.id)))
+            .copyWith(name: Value(name));
     await db.into(db.groups).insertOnConflictUpdate(row);
     return (await groupByName(name))!;
   }
