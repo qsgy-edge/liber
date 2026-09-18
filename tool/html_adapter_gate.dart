@@ -3,7 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fjs/fjs.dart';
+import 'package:liber/source/html_rule_adapter.dart';
+import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/rule_field.dart';
+import 'package:liber/source/source_host_state.dart';
 import 'package:pointycastle/export.dart';
 
 /// Runs the extraction corpus against the Rust adapter and, when a frozen
@@ -16,6 +20,11 @@ import 'package:pointycastle/export.dart';
 /// Without a frozen golden the run still checks the adapter against the corpus'
 /// expectations, which were derived by reading the frozen rule layer at the
 /// pinned commit. The device golden is not-run; see `tool/html_oracle/README.md`.
+///
+/// A case whose `path` is `rule` runs through the product's **rule-field path**
+/// (`lib/source/rule_field.dart` in front of the adapter), because its frozen
+/// entry point is `AnalyzeRule.getString` over a rule that carries an `@js:`
+/// segment, and the bare adapter deliberately refuses those (ticket #11).
 Future<void> main(List<String> args) async {
   if (args.isEmpty || args.length > 3) {
     throw ArgumentError(
@@ -44,6 +53,7 @@ Future<void> main(List<String> args) async {
   }
 
   await NativeLibrary.initialize(libraryPath: args[0]);
+  final baseUrl = corpus['baseUrl'] as String? ?? '';
   final observations = <Map<String, Object?>>[];
   var failed = false;
   for (final entry in cases) {
@@ -52,23 +62,31 @@ Future<void> main(List<String> args) async {
     final html = documents[entry['document']] ?? '';
     final observation = <String, Object?>{'id': id, 'rule': rule};
     try {
-      final outcomes = htmlAnalyze(
-        html: html,
-        jobs: [
-          HtmlRuleJob(
-            id: id,
-            rule: rule,
-            parent: null,
-            output: HtmlJobOutput.text,
-          ),
-        ],
-      );
-      final failure = outcomes.single.failure;
-      if (failure != null) {
-        observation['error'] = '${failure.kind}: ${failure.message}';
+      if (entry['path'] == 'rule') {
+        observation['value'] = await _ruleFieldValue(
+          html,
+          rule,
+          baseUrl: baseUrl,
+        );
       } else {
-        final values = outcomes.single.values;
-        observation['value'] = values.isEmpty ? '' : values.first;
+        final outcomes = htmlAnalyze(
+          html: html,
+          jobs: [
+            HtmlRuleJob(
+              id: id,
+              rule: rule,
+              parent: null,
+              output: HtmlJobOutput.text,
+            ),
+          ],
+        );
+        final failure = outcomes.single.failure;
+        if (failure != null) {
+          observation['error'] = '${failure.kind}: ${failure.message}';
+        } else {
+          final values = outcomes.single.values;
+          observation['value'] = values.isEmpty ? '' : values.first;
+        }
       }
     } catch (error) {
       observation['error'] = '$error';
@@ -146,6 +164,63 @@ Future<void> main(List<String> args) async {
     '(${cases.length} cases, frozen golden ${golden == null ? 'not-run' : 'compared'})',
   );
   if (failed) exitCode = 1;
+}
+
+/// One rule-field case through the product's own path: the shared
+/// `@js:`/`<js>`/`{{...}}`/`@get:`/`@put:` layer in front of the Rust adapter,
+/// which is what a pipeline stage runs and what the frozen `AnalyzeRule.getString`
+/// answers. `@get:`/`@put:` read and write an empty source key's variables, the
+/// way one analysis owns them.
+Future<String> _ruleFieldValue(
+  String html,
+  String rule, {
+  required String baseUrl,
+}) async {
+  const sourceRef = 'tool/html_adapter_gate';
+  final state = SourceHostState();
+  final runtime = InProcessSourceScriptRuntime(hostState: state);
+  final context = RuleFieldContext(
+    evaluateScript: (script, result) => runtime.evaluate(
+      source: script,
+      input: {
+        'sourceKey': sourceRef,
+        'baseUrl': baseUrl,
+        'result': result,
+        'title': null,
+      },
+      timeout: const Duration(seconds: 15),
+    ),
+    extract: (value, valueRule) async {
+      final batch = HtmlRuleBatch('$value');
+      final job = batch.documentText('value', valueRule);
+      await batch.run();
+      final extracted = job.value;
+      return extracted.isEmpty ? null : extracted;
+    },
+    readVariable: (key) async {
+      final value = await state.entry(
+        sourceRef,
+        sourceRuleVariableKey(sourceRef, key),
+      );
+      return value is String ? value : '';
+    },
+    writeVariable: (key, value) => state.putEntry(
+      sourceRef,
+      sourceRuleVariableKey(sourceRef, key),
+      value,
+    ),
+  );
+  final field = await RuleField.resolve(rule, context, content: html);
+  final Object? extracted;
+  if (field.isScriptOnly) {
+    extracted = html;
+  } else {
+    final batch = HtmlRuleBatch(html);
+    final job = batch.documentText('value', field.extractionRule!);
+    await batch.run();
+    extracted = job.value;
+  }
+  return '${await field.apply(extracted) ?? ''}';
 }
 
 String _sha256(List<int> bytes) {
