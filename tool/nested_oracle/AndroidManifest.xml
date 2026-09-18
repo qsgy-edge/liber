@@ -3,4 +3,5 @@
   <application android:label="Liber frozen oracle harness" android:debuggable="true" />
   <instrumentation android:name="io.liber.oracle.nested.NestedOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado nested JS oracle" />
   <instrumentation android:name="io.liber.oracle.nested.StateOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado state oracle" />
+  <instrumentation android:name="io.liber.oracle.nested.SliceOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado SLICE-01 four-stage oracle" />
 </manifest>

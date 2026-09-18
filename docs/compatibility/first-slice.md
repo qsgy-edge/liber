@@ -27,8 +27,14 @@ frozen-oracle entry that produces a golden for all four stages at once:
 - **frozen side** — one instrumentation entry beside `tool/nested_oracle` that
   reflectively drives `WebBook.searchBookAwait` / `getBookInfoAwait` /
   `getChapterListAwait` / `getContentAwait` against the same corpus and records
-  the request trace, stage outputs and state. Today it does not exist and no
-  device is attached, so every frozen row below is `not-run`.
+  the request trace, stage outputs and state
+  (`tool/nested_oracle/SliceOracle.java`, entry
+  `io.liber.oracle.nested.SliceOracle`). **Executed 2026-09-18** on the
+  operator's handset (`5615f742`, Android 17 / OS4.0.0.31): the golden is
+  `tool/first_slice/evidence/android-17-os4.0.0.31/golden.json`, its provenance
+  is the `manifest.json` beside it, and the row-by-row comparison against the
+  Liber-side observation is `comparison.json` in the same directory. Six of the
+  eight compared rows pass; R3 and R8 carry recorded divergences (below).
 
 Why this is the cheapest credible set: the four stages, the session state and
 the page chain are exercised by **one** fixture whose frozen side is **one**
@@ -50,7 +56,10 @@ flutter test test/first_slice_fixture_test.dart
 Recorded: `tool/first_slice/evidence/windows-slice-01.liber.json`
 (corpus `03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419`,
 library `aa9586df2551ef4499d08a5bf54d9a9ce1ebb1de58b0314f5456da1b9348b49e`,
-`oracle: "not-run"`). The run observed:
+`oracle: "not-run"` — the field records that no frozen golden existed when this
+observation was recorded; the golden and the comparison against it were added on
+2026-09-18 under `evidence/android-17-os4.0.0.31/`, and this file is the input to
+that comparison rather than rewritten by it). The run observed:
 
 - six requests in the declared order — `GET /search?keyword=回放&page=1`,
   `GET /book/1`, `GET /book/1/toc`, `GET /book/1/toc?page=2`,
@@ -66,6 +75,18 @@ library `aa9586df2551ef4499d08a5bf54d9a9ce1ebb1de58b0314f5456da1b9348b49e`,
 - content: chapter one over two pages, `nextContentUrl` followed, `replaceRegex`
   applied (the recorded text keeps an empty line where the replaced sentence
   was — an observation for the golden to compare, not a verdict).
+
+**Frozen side, executed 2026-09-18** (`dart run tool/first_slice_compare.dart
+ tool/first_slice/evidence/android-17-os4.0.0.31/golden.json
+ tool/first_slice/evidence/windows-slice-01.liber.json
+ tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json`, exit 1):
+both runs issued the same six requests in the same order with the same raw query
+bytes (`keyword=%E5%9B%9E%E6%94%BE&page=1`), the same decoded queries, the same
+source header, the same session cookie carriage and the same search, book
+information and table-of-contents output; two rows did not pass and are recorded
+as divergences, and four observations are named in the comparison's
+`notCompared` list rather than dropped. A second device run reproduced the golden
+byte for byte once `recordedAt` is dropped.
 
 The corpus' own port (`127.0.0.1:18731`) is fixed and is part of the compared
 inputs; a busy port fails the fixture.
@@ -128,31 +149,36 @@ then launch the driver against a scratch installation, load
 side is asserted on `<scratch>/spaces/default/data.db` (`books`, `chapters`,
 `progress`).
 
-**Status: `not-run`.** This definition ticket did not drive the app; the batch
-controller drives it after the automated checks pass. The page and the recipe
-are fixed so that run has one thing to prove.
+**Status: `run`, with the qualification below (amended 2026-09-18).** The batch
+controller drove the flow on 2026-09-17 from a scratch installation, per #6's
+resolution comment; the run was **store-seeded** (the controller seeded the
+`sources` row), so the 选择书源 JSON dialog step of the recipe above was not
+driven. The page and the recipe stay fixed so a later run has one thing to prove.
 
 ## Row set
 
 Rows follow the contract's required observations, restricted to what `SLICE-01`
-reaches. `run` means a Liber-side observation exists on this branch; the frozen
-side of every row is `not-run` until the oracle entry lands.
+reaches. `run` means an observation exists on this branch. The frozen column is
+the `tool/first_slice_compare.dart` verdict against
+`android-17-os4.0.0.31/golden.json`; `fail` rows carry a recorded divergence, and
+an observation one side does not carry is named in the comparison's
+`notCompared` list instead of being counted as a pass.
 
 | # | Row | Surface | Evidence source | Liber | Frozen |
 |---|---|---|---|---|---|
 | R1 | corpus inputs (source object, responses, keyword) | Input | `fixtures.json` + its hash | run | — |
-| R2 | request trace: method, resolved URL, raw query bytes, order | Request | evidence `requests` | run | not-run |
-| R3 | source-controlled headers and injected request defaults | Request | evidence `requests[].headers` | run | not-run |
-| R4 | session cookie: `Set-Cookie` on search, `Cookie` on the five later requests | State (cookies) | evidence `requests[].headers.cookie` | run | not-run |
-| R5 | search output: ordered results, name/author/kind/book URL | Search | evidence `stages.search` | run | not-run |
-| R6 | book information output: name/author/kind/last chapter/cover/intro | Book info | evidence `stages.bookInfo` | run | not-run |
-| R7 | table of contents: order, chapter URLs, `nextTocUrl` pages | TOC | evidence `stages.toc`, `stageTrace` | run | not-run |
-| R8 | content: page chain, `replaceRegex`, final text | Content | evidence `stages.content` | run | not-run |
+| R2 | request trace: method, resolved URL, raw query bytes, order | Request | evidence `requests` | run | pass |
+| R3 | source-controlled headers and injected request defaults | Request | evidence `requests[].headers` | run | fail (`accept-encoding`) |
+| R4 | session cookie: `Set-Cookie` on search, `Cookie` on the five later requests | State (cookies) | evidence `requests[].headers.cookie` | run | pass |
+| R5 | search output: ordered results, name/author/kind/book URL | Search | evidence `stages.search` | run | pass |
+| R6 | book information output: name/author/kind/last chapter/cover/intro | Book info | evidence `stages.bookInfo` | run | pass |
+| R7 | table of contents: order, chapter URLs, `nextTocUrl` pages | TOC | evidence `stages.toc`, `stageTrace` | run | pass |
+| R8 | content: page chain, `replaceRegex`, final text | Content | evidence `stages.content` | run | fail (paragraph indent) |
 | R9 | the scenario's declared request sequence, and no undeclared request | Failure/cleanup | evidence `scenario.invariants`, `unmatchedRequests` | run | — |
-| R10 | the page shows import → search → info → TOC → content | Product | driven run | not-run | — |
-| R11 | the shelf row, its chapters and the reader's progress row | Product/store | driven run + `data.db` | not-run | — |
+| R10 | the page shows import → search → info → TOC → content | Product | driven run | run (store-seeded, #6) | — |
+| R11 | the shelf row, its chapters and the reader's progress row | Product/store | driven run + `data.db` | run (store-seeded, #6) | — |
 | R12 | the same six observations on Linux and macOS | Platform | the corpus runs inside `flutter test test` on each desktop job | not-run on this branch | not-run |
-| R13 | frozen golden and the Android destination row | Platform | the oracle entry | not-run | not-run |
+| R13 | frozen golden and the Android destination row | Platform | the oracle entry | not-run (no Android app) | run (golden committed; the Android destination row is not-run) |
 | R14 | iOS destination row | Platform | device/simulator run (`flutter test` is not an iOS row) | not-run | not-run |
 
 Rows owned elsewhere and deliberately not in this set: request-semantics rows
@@ -161,21 +187,50 @@ JavaScript (#11), login/explore/variables (#13), replace rules (#17), host-state
 persistence (#21), XPath (#22), JSON pipeline unification (#29), and every
 capability row the matrix already tracks.
 
+## The frozen comparison, and its divergences
+
+`tool/first_slice_compare.dart` compares the golden against the committed
+Liber-side observation row by row and writes a report; it exits non-zero because
+two rows did not pass. Both are recorded, neither is normalized away:
+
+- **R3 — `accept-encoding`.** Every request carries the same injected default on
+  both sides except this value: the frozen client sends `gzip, deflate`, the
+  product's transport sends `gzip`. The source-controlled header
+  (`X-Slice-Corpus: SLICE-01`), the frozen default user agent and the rest of
+  the header set are identical on all six requests.
+- **R8 — the content text.** The frozen content stage runs `ContentProcessor`,
+  which prepends `ReadBookConfig.paragraphIndent` (default `"　　"`,
+  `ReadBookConfig.kt:532`) to every paragraph (`ContentProcessor.kt:199`). The
+  two texts are identical once that two-character prefix is removed per line —
+  including the empty line the corpus' `replaceRegex` leaves behind — and the
+  product's content stage has no counterpart to that post-processing yet.
+
+Named `notCompared` observations (each with its reason in `comparison.json`):
+`stages.bookInfo.tocUrl` (the Liber evidence shape does not record the resolved
+TOC URL), `stages.toc.chapters[].url` as stored (the frozen entity keeps the rule
+output and resolves it when used; R7 compares the resolved values),
+`state.*`/`cleanup.*`/`serverErrors` (frozen-side observations with no
+counterpart), and the two runs' provenance fields.
+
+Promotion follows the contract: a row promotes only where the comparison passes,
+so R3 and R8 do not, and the Android half of R13 stays `not-run`.
+
 ## Not-run, and what promotion needs
 
-- **The frozen golden** — no device and no AVD are attached to this machine
-  (`adb devices` empty, `emulator -list-avds` empty), and the four-stage oracle
-  entry does not exist yet. Blocker: the oracle ticket below.
-- **The comparison** — nothing compares `SLICE-01` yet; `tool/state_oracle_compare.dart`
-  and `tool/html_adapter_gate.dart` are the models, and the comparator for this
-  fixture belongs to the oracle ticket, so it is written against a real golden
-  instead of a projected one.
-- **The driven page row (R10, R11)** — needs the controller's driven run.
+- **The frozen golden** — produced and committed 2026-09-18
+  (`android-17-os4.0.0.31/`), with its `manifest.json`, `run.log`, corpus hash and
+  APK hash; a repeat run reproduced it byte for byte.
+- **The comparison** — `tool/first_slice_compare.dart` exists and ran; its report
+  is committed beside the golden. Re-running it against a re-recorded Liber-side
+  observation is the check the batch loop repeats.
+- **The driven page row (R10, R11)** — driven by the batch controller on
+  2026-09-17; the record is #6's resolution comment (store-seeded: the source row
+  was seeded, and the 选择书源 JSON dialog step is not driven).
 - **Linux/macOS (R12)** — `flutter test test` executes the corpus on every
   desktop job, so the row becomes `run` when the batch's CI run is green; that
   promotion is the controller's, after the batch lands.
-- **Android/iOS (R13, R14)** — device or simulator rows; `flutter test` on a host
-  is not one.
+- **Android/iOS destination rows (R13's other half, R14)** — the product has no
+  Android or iOS application yet (P4); the golden is the frozen half of R13 only.
 
 Promotion ladder, per the contract: fixture/platform `pass` only after the
 golden comparison; capability `pass` only with no coverage gap; a source claim

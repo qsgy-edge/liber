@@ -1,0 +1,73 @@
+# SLICE-01 frozen four-stage oracle run (ticket #38), recorded 2026-09-18 by the batch-7 lane
+# The corpus asset inside the harness is the committed blob byte for byte (LF).
+
+== target identity ==
+pus asset inside the harness is the committed blob byte for byte (LF).
+
+== target identity ==
+$ adb -s 5615f742 devices -l
+List of devices attached
+5615f742               device product:myron model:25102RKBEC device:myron transport_id:1
+
+$ adb -s 5615f742 shell getprop ro.build.fingerprint
+Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
+$ adb -s 5615f742 shell getprop ro.build.version.release
+17
+$ adb -s 5615f742 shell getprop ro.build.version.sdk
+37
+$ adb -s 5615f742 shell getprop ro.product.model
+25102RKBEC
+$ adb -s 5615f742 shell dumpsys package com.google.android.webview | awk "/versionName=/{print; exit}"
+    versionName=154.0.8037.22
+$ adb -s 5615f742 shell pm path io.legado.app.debug
+package:/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk
+
+== harness build (Temurin 17.0.20+8, build-tools 35.0.1) ==
+$ pwsh tool/nested_oracle/build.ps1 -OutputDirectory C:/Users/17945/.cache/wayfinder/slice-oracle-03 -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8
+harness apk sha256: 89acbbca3a3bfa132540f9e6adcb6b83e40d4625b6ad07aa7cf522ee7cadf0f8
+corpus asset sha256: 03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419
+committed corpus blob: 03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419
+
+== install and run ==
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t C:/Users/17945/.cache/wayfinder/slice-oracle-03/nested-oracle.apk
+Serving...
+All files should be loaded. Notifying the device.
+Performing Incremental Install
+Success
+Install command complete in 716 ms
+$ timeout 120 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.SliceOracle
+INSTRUMENTATION_RESULT: stream=Slice oracle recorded 6 requests
+
+INSTRUMENTATION_CODE: -1
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 pull /sdcard/Android/data/io.legado.app.debug/files/slice-oracle.json C:/Users/17945/.cache/wayfinder/slice-oracle-03/slice-oracle.json
+/sdcard/Android/data/io.legado.app.debug/files/slice-oracle.json: 1 file pulled, 0 skipped. 1.9 MB/s (6530 bytes in 0.003s)
+
+== evidence ==
+golden sha256: df56b01aee6503a12bae08ebe136125a37f68311d1f79dcf521772c18db71344
+repeat run to slice-oracle-repeat.json was byte-identical after dropping recordedAt
+
+== comparison ==
+$ dart run tool/first_slice_compare.dart tool/first_slice/evidence/android-17-os4.0.0.31/golden.json tool/first_slice/evidence/windows-slice-01.liber.json tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json
+
+-- comparator output (exit 1: rows R3 and R8 did not pass) --
+status: fail {'pass': 6, 'fail': 2, 'notCompared': 4}
+  R2 pass - 6 requests on both sides
+  R3 fail - every header on every request compared, values included
+  R4 pass - sid=slice01: 5 of 6 requests carry it on both sides
+  R5 pass - 2 results compared in order
+  R6 pass - 6 shared fields compared
+  R7 pass - 3 chapters over 2 pages on both sides
+  R8 fail - the two texts are equal once the frozen reader's paragraph indent is removed from the frozen side; the row still fails as observed
+  R9 pass - 6 declared requests matched on both sides
+  divergence R3 requests[0].headers.accept-encoding
+  divergence R3 requests[1].headers.accept-encoding
+  divergence R3 requests[2].headers.accept-encoding
+  divergence R3 requests[3].headers.accept-encoding
+  divergence R3 requests[4].headers.accept-encoding
+  divergence R3 requests[5].headers.accept-encoding
+  divergence R8 content.text
+notCompared: stages.bookInfo.tocUrl, stages.toc.chapters[].url (as stored), state.*, cleanup.*, serverErrors, platform, fingerprint, recordedAt
+
+final evidence hashes:
+df56b01aee6503a12bae08ebe136125a37f68311d1f79dcf521772c18db71344 *golden.json
+e142d803fb1c3ecf69ad5496ca8eefa122c1d5b8b777b1e60264634b7d30f36d *comparison.json

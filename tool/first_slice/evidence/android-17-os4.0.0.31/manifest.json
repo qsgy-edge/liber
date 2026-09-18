@@ -1,0 +1,158 @@
+{
+  "recordedAt": "2026-09-18T17:02:00+08:00",
+  "kind": "slice-01-frozen-four-stage-golden",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/38",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "application": {
+      "package": "io.legado.app.debug",
+      "productionRebuilt": false,
+      "installedBytesPulledAndVerified": true,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "sameBytesAsTheRecordedGoldens": true
+    }
+  },
+  "corpus": {
+    "path": "tool/first_slice/fixtures.json",
+    "sha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
+    "assetCopySha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
+    "fixtureId": "SLICE-01",
+    "corpusVersion": 1,
+    "origin": "http://127.0.0.1:18731",
+    "keyword": "回放",
+    "note": "the harness serves an asset copy of the corpus taken from the worktree. A Windows checkout writes CRLF, so the file was normalised back to the committed LF blob before the final harness build: the served bytes and the committed blob hash to the same value, which is also the hash the Liber-side observation records (fixturesSha256)."
+  },
+  "harness": {
+    "sources": [
+      "tool/nested_oracle/SliceOracle.java",
+      "tool/nested_oracle/NestedOracle.java",
+      "tool/nested_oracle/StateOracle.java",
+      "tool/nested_oracle/build.ps1",
+      "tool/nested_oracle/AndroidManifest.xml"
+    ],
+    "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
+    "jdk": "Temurin 17.0.20+8 (portable, unpacked from OpenJDK17U-jdk_x64_windows_hotspot_17.0.20_8.zip)",
+    "androidBuildTools": "35.0.1",
+    "androidJar": "platforms/android-35/android.jar",
+    "apkSha256": "89acbbca3a3bfa132540f9e6adcb6b83e40d4625b6ad07aa7cf522ee7cadf0f8",
+    "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable between builds of these same sources; the sources' hashes and the toolchain versions are the stable identity, the APK hash is an artifact of this build",
+    "installCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness apk>",
+    "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.SliceOracle",
+    "suspendEntryPoints": "driven with kotlinx.coroutines.runBlocking through a java.lang.reflect.Proxy over kotlin.jvm.functions.Function2, whose continuation is handed to the frozen suspend method. getChapterListAwait's JVM name is mangled (getChapterListAwait-BWLJW6A) because its kotlin.Result return type is an inline value class, and the payload is read through the synthetic unbox-impl method; getOrNull is an inlined extension and is not callable.",
+    "deferredToTheMainLooper": "Instrumentation.onCreate posts the run to the main looper: the frozen HTTP stack and its cookie store are built by the target application, which is created after onCreate. The run itself is on its own thread because runBlocking blocks the caller.",
+    "needSaveFalse": "getContentAwait is called with needSave=false. A synthetic corpus has no row in the frozen application's database, so persisting the chapter is a storage side effect outside the compared surface; every other argument is the default the product's own call site uses.",
+    "noLegadoClassRebuilt": true
+  },
+  "device": {
+    "serial": "5615f742",
+    "model": "25102RKBEC (Redmi myron)",
+    "androidRelease": "17",
+    "sdk": 37,
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
+  },
+  "run": {
+    "result": "INSTRUMENTATION_RESULT: stream=Slice oracle recorded 6 requests",
+    "requests": 6,
+    "unmatchedRequests": 0,
+    "serverErrors": 0,
+    "repeatRunByteIdenticalAfterDroppingRecordedAt": true,
+    "runDurationSeconds": 0.4,
+    "freezeNote": "MIUI's power manager freezes the frozen application's uid about three seconds after the process starts; the run finishes in well under that, and the report is written before the replay server is torn down so a freeze cannot lose the evidence."
+  },
+  "comparison": {
+    "command": "dart run tool/first_slice_compare.dart tool/first_slice/evidence/android-17-os4.0.0.31/golden.json tool/first_slice/evidence/windows-slice-01.liber.json tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json",
+    "report": "comparison.json",
+    "exitCode": 1,
+    "status": "fail",
+    "rows": {
+      "R2": "pass",
+      "R3": "fail",
+      "R4": "pass",
+      "R5": "pass",
+      "R6": "pass",
+      "R7": "pass",
+      "R8": "fail",
+      "R9": "pass"
+    },
+    "divergences": [
+      {
+        "row": "R3",
+        "observation": "requests[].headers.accept-encoding",
+        "frozen": "gzip, deflate",
+        "liber": "gzip",
+        "reason": "every request carries the same injected default in both runs except this one value, on all six requests; the source-controlled X-Slice-Corpus header and the frozen default user agent are identical"
+      },
+      {
+        "row": "R8",
+        "observation": "content.text",
+        "frozen": "two full-width spaces (U+3000 U+3000) before every line",
+        "liber": "no paragraph indent",
+        "reason": "the frozen content stage runs ContentProcessor, which prepends ReadBookConfig.paragraphIndent (default \"　　\", ReadBookConfig.kt:532) to every paragraph at ContentProcessor.kt:199. The two texts are identical once that prefix is removed per line, including the empty line the corpus' replaceRegex leaves behind; the product's content stage has no post-processing yet (that is #17's area)."
+      }
+    ],
+    "notCompared": [
+      "stages.bookInfo.tocUrl — the golden carries the resolved TOC URL; the Liber book-information evidence shape does not record it (the chapters it leads to are compared by R7 and the request is in R2)",
+      "stages.toc.chapters[].url as stored — the frozen entity keeps the rule output (relative) and resolves it when used; the product stores the resolved URL, which is what R7 compares against chaptersAbsolute",
+      "state.*, cleanup.*, serverErrors — frozen-side observations with no counterpart in the Liber evidence",
+      "platform, fingerprint, recordedAt — provenance of the two runs, recorded here and in each evidence file"
+    ]
+  },
+  "coverage": {
+    "gaps": [
+      "The Android destination row of R13 stays not-run: the product has no Android application (P4). This golden is the frozen half of R13 only.",
+      "R12 (Linux and macOS destination rows) is CI's to produce; nothing here claims it.",
+      "The corpus' own gaps, listed in fixtures.json and docs/compatibility/first-slice.md, are unchanged: one source, no redirect/non-2xx/POST/WebView/JSON/XPath/rule-JS row, no concurrency or rate limit, no chapter variables or login state, no failure path, no second book.",
+      "needSave=false leaves the frozen reader's chapter-persistence side effect unobserved."
+    ]
+  },
+  "noAggregateStatusPromotion": true,
+  "hashes": [
+    {
+      "path": "tool/first_slice/evidence/android-17-os4.0.0.31/golden.json",
+      "sha256": "df56b01aee6503a12bae08ebe136125a37f68311d1f79dcf521772c18db71344"
+    },
+    {
+      "path": "tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json",
+      "sha256": "e142d803fb1c3ecf69ad5496ca8eefa122c1d5b8b777b1e60264634b7d30f36d"
+    },
+    {
+      "path": "tool/first_slice/evidence/android-17-os4.0.0.31/run.log",
+      "sha256": "99def49398a3eb75ecc162398976c06d7868eeb961ab234e2a71e935732fc245"
+    },
+    {
+      "path": "tool/nested_oracle/SliceOracle.java",
+      "sha256": "f3435522d9bcfe9fff35af2f87eedc2f91aa9ea1404851020b4a7352c8a47e1b"
+    },
+    {
+      "path": "tool/nested_oracle/NestedOracle.java",
+      "sha256": "2ed8167deeb8430240c06f7a0e2036fe5444f2cc6dce9c1ad133ed943c09d248"
+    },
+    {
+      "path": "tool/nested_oracle/StateOracle.java",
+      "sha256": "b49e571b3bbbeff76af88d4f87f1324c12dfb0989dc6465e1205474594e5f822"
+    },
+    {
+      "path": "tool/nested_oracle/build.ps1",
+      "sha256": "706e9260551546d0d7064dc3c74d7ea7151b64765d7f54477c3f41a1c2f62c82"
+    },
+    {
+      "path": "tool/nested_oracle/AndroidManifest.xml",
+      "sha256": "cf00cffe1c2e94873d8da3be1d7d837faaee41d2551c0b4e396d7c10f7e82aa6"
+    },
+    {
+      "path": "tool/first_slice/fixtures.json",
+      "sha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419"
+    },
+    {
+      "path": "tool/first_slice/runner.dart",
+      "sha256": "8fd2578ec71803c2743c6cdc651e3f4914cde0b88634143349a9c2d0fad86539"
+    },
+    {
+      "path": "tool/first_slice_compare.dart",
+      "sha256": "bf1524c1ed96e8f7edb7de6068cd442ad5d9e0804f8e0960c3ce8fbb1cba00e2"
+    }
+  ]
+}
