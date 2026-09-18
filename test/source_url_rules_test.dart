@@ -83,27 +83,27 @@ void main() {
     expect(substituteSourcePageList('http://a/b', 3), 'http://a/b');
   });
 
-  test('query encoding follows the frozen encoder and its skip rule', () {
+  test('query encoding follows the frozen encoder and its skip rule', () async {
     // A legal query is never re-encoded, escapes included.
     expect(
-      encodeSourceQuery('http://a/b?q=%E4%B9%A6&p=2'),
+      await encodeSourceQuery('http://a/b?q=%E4%B9%A6&p=2'),
       'http://a/b?q=%E4%B9%A6&p=2',
     );
-    expect(encodeSourceQuery('http://a/b'), 'http://a/b');
+    expect(await encodeSourceQuery('http://a/b'), 'http://a/b');
     // A raw query is encoded once: UTF-8, uppercase hex, and the frozen
     // character set keeps `!$&()*+,/:;=?@[\]^`{|}` as it is.
     expect(
-      encodeSourceQuery('http://a/b?q=我的 书'),
+      await encodeSourceQuery('http://a/b?q=我的 书'),
       'http://a/b?q=%E6%88%91%E7%9A%84%20%E4%B9%A6',
     );
     expect(
-      encodeSourceQuery('http://a/b?j={"k":1}&e=[1]&s=a|b'),
+      await encodeSourceQuery('http://a/b?j={"k":1}&e=[1]&s=a|b'),
       'http://a/b?j={%22k%22:1}&e=[1]&s=a|b',
     );
     // Everything from the first `?` is the query, a `#` included, and the
     // apostrophe is the one the frozen encoder escapes while Dart keeps it.
     expect(
-      encodeSourceQuery("http://a/b?q=it's#top"),
+      await encodeSourceQuery("http://a/b?q=it's#top"),
       'http://a/b?q=it%27s%23top',
     );
   });

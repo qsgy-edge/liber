@@ -7,7 +7,13 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_http_uri.dart';
 
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
+
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
   test(
     'wire targets preserve literal brackets and redirect header isolation',
     () async {

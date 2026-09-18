@@ -77,7 +77,7 @@ class LibFjs extends BaseEntrypoint<LibFjsApi, LibFjsApiImpl, LibFjsWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -171211977;
+  int get rustContentHash => -240224773;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -533,9 +533,15 @@ abstract class LibFjsApi extends BaseApi {
   String crateApiTextTextConvert(
       {required String text, required TextDirection direction});
 
+  Future<String> crateApiTextTextDecodeBytes(
+      {required List<int> bytes, String? encoding});
+
   TextIndexOptions crateApiTextTextDefaultOptions();
 
   Future<TextDetection> crateApiTextTextDetectEncoding({required String path});
+
+  Future<Uint8List> crateApiTextTextEncodeBytes(
+      {required String text, required String encoding});
 
   Future<TextIndex> crateApiTextTextIndexFile(
       {required String path, required TextIndexOptions options});
@@ -4723,11 +4729,38 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
       );
 
   @override
+  Future<String> crateApiTextTextDecodeBytes(
+      {required List<int> bytes, String? encoding}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_prim_u_8_loose(bytes, serializer);
+        sse_encode_opt_String(encoding, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 157, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_text_engine_error,
+      ),
+      constMeta: kCrateApiTextTextDecodeBytesConstMeta,
+      argValues: [bytes, encoding],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextDecodeBytesConstMeta =>
+      const TaskConstMeta(
+        debugName: "text_decode_bytes",
+        argNames: ["bytes", "encoding"],
+      );
+
+  @override
   TextIndexOptions crateApiTextTextDefaultOptions() {
     return handler.executeSync(SyncTask(
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 157)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 158)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_index_options,
@@ -4752,7 +4785,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 158, port: port_);
+            funcId: 159, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_detection,
@@ -4771,6 +4804,33 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
       );
 
   @override
+  Future<Uint8List> crateApiTextTextEncodeBytes(
+      {required String text, required String encoding}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(text, serializer);
+        sse_encode_String(encoding, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 160, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_prim_u_8_strict,
+        decodeErrorData: sse_decode_text_engine_error,
+      ),
+      constMeta: kCrateApiTextTextEncodeBytesConstMeta,
+      argValues: [text, encoding],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextEncodeBytesConstMeta =>
+      const TaskConstMeta(
+        debugName: "text_encode_bytes",
+        argNames: ["text", "encoding"],
+      );
+
+  @override
   Future<TextIndex> crateApiTextTextIndexFile(
       {required String path, required TextIndexOptions options}) {
     return handler.executeNormal(NormalTask(
@@ -4779,7 +4839,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         sse_encode_String(path, serializer);
         sse_encode_box_autoadd_text_index_options(options, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 159, port: port_);
+            funcId: 161, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_index,
@@ -4804,7 +4864,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_box_autoadd_text_window_request(request, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 160, port: port_);
+            funcId: 162, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_window,

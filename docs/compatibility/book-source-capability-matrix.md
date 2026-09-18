@@ -65,7 +65,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 
 | Capability | Frozen | Status |
 |---|---|---|
-| `searchUrl` + `,{...}` options | `AnalyzeUrl.kt:208-248`, `671-716` | 🟡 `method`/`headers`/`body`/`js`/`retry` ✅; ⛔ `charset`, `type`, `webView`, `webJs`, `webViewDelayTime`, `serverID` |
+| `searchUrl` + `,{...}` options | `AnalyzeUrl.kt:208-248`, `671-716` | 🟡 `method`/`headers`/`body`/`js`/`retry`/`charset` ✅; ⛔ `type`, `webView`, `webJs`, `webViewDelayTime`, `serverID` |
 | `ruleSearch` | `SearchRule.kt:14-24` | ✅ `bookList`/`name`/`bookUrl`/`author`/`kind`/`coverUrl`; ❌ `intro`/`lastChapter`/`wordCount`/`updateTime`/`checkKeyWord` |
 | `ruleBookInfo` | `BookInfoRule.kt:13-24` | ✅ `name`/`author`/`intro`/`kind`/`coverUrl`/`lastChapter`/`tocUrl`; 🟡 `init` (JSON pipeline only), `canReName` (accepted, unused); ❌ `downloadUrls` |
 | `ruleToc` | `TocRule.kt:10-19` | ✅ `chapterList`/`chapterName`/`chapterUrl`/`nextTocUrl`; ❌ `preUpdateJs`/`formatJs`/`isVolume`/`isVip`/`isPay`/`updateTime` |
@@ -74,7 +74,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `header` | `BaseSource.kt:103-123` | ✅ static JSON, `@js:`, `<js>` |
 | `loginUrl`, `loginUi`, `loginCheckJs` | `BaseSource.kt:134-182`, `WebBook.kt:211` | ❌ rejected with an explicit error |
 | `jsLib` | `BaseSource.kt:245-252`, `JsExtensions.kt:253` | 🟡 local shared library ✅; remote URL and `importScript` ❌ |
-| `enabledCookieJar` | `AnalyzeUrl.kt:597-615` | 🟡 session retention, now persisted per space and scoped to a source's own site group; no full `enabledCookieJar` parity |
+| `enabledCookieJar` | `AnalyzeUrl.kt:597-615` | ✅ the flag decides whether a response's `Set-Cookie` reaches the jar, which stays per space and scoped to a source's own site group (ADR 0011 §3, #21); a source whose flag is off still sends what the jar holds, as the frozen `setCookie` does. One divergence is recorded: the frozen session/persistent split does not survive a restart here |
 | `bookSourceType` | `BookSource.kt:41` | 🟡 text (`0`) only; audio/image/file sources deferred beyond the first slice, not refused (ADR 0011 §7) |
 | `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment`, `concurrentRate` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ |
 
@@ -128,7 +128,7 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Capability | Frozen | Status |
 |---|---|---|
 | URL options (`method`, `headers`, `body`, `js`, `retry`, `origin`) | `AnalyzeUrl.kt:208-248` | ✅ (`origin` parsed and ignored, as frozen does on the HTTP path) |
-| Parameter encoding (`charset`, `escape`, already-encoded detection) | `AnalyzeUrl.kt:279-334` | 🟡 the default path (already-encoded skip plus the frozen query encoder) is implemented; `charset`/`escape` options are still rejected, and response decoding is UTF-8 only |
+| Parameter encoding (`charset`, `escape`, already-encoded detection) | `AnalyzeUrl.kt:279-334` | ✅ the default path (already-encoded skip plus the frozen query encoder), `EncoderUtils.escape`, and a named charset's bytes through `liber_text`'s `encoding_rs`; the query is taken from the rule's own text so the charset encoder sees the source's characters. Response decoding resolves the Content-Type charset, then the document's `<meta>`, then detection, in one engine. One platform seam remains for `escape` and is recorded in the differential contract |
 | Query re-encoding (nothing else) | `NetworkUtils.encodedQuery`, `AnalyzeUrl.kt:265-278` | 🟡 reproduced, with one platform seam: Dart's HTTP client percent-encodes `{`, `}`, `\|`, `^`, `` ` ``, `\` inside a query where the frozen client sends them raw, and keeps `'` raw where the frozen encoder escapes it |
 | `{{key}}` substitution | `AnalyzeUrl.kt:184-200` | ✅ raw substitution as a JavaScript binding; escaping happens once in the query or body encoder |
 | `{{page}}` substitution, page lists (`<1,2,3>`) and multi-page search | same | 🟡 the pipeline substitutes the requested page and repeats the last list entry; the reader UI still requests page 1 only |
@@ -136,8 +136,8 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Redirect semantics (300/301/302/303 → GET without body; 307/308 keep method and body; 20 follow-ups) | OkHttp 4.12 `RetryAndFollowUpInterceptor` | ✅ including the cross-origin `Authorization` drop; a declared `Cookie` is *not* forwarded to another origin here, a deliberate divergence: the frozen client forwards it |
 | Non-2xx retry from the `retry` option | `OkHttpUtils.kt:29-43` | ✅ |
 | Connection retry, 60 s read/call budgets | `HttpHelper.kt:56-62` | 🟡 30 s request budget, no separate connection-retry parity |
-| Per-source concurrency limit (`ConcurrentRateLimiter`, `concurrentRate`) | `AnalyzeUrl.kt:479`, `JsExtensions.kt:371` | ❌ |
-| Cookie priority and persistence (`setCookie`, `enabledCookieJar`) | `AnalyzeUrl.kt:597-615` | 🟡 persisted per space and scoped to a source's own site group (ADR 0011 §3, #21); no `enabledCookieJar` parity |
+| Per-source concurrency limit (`ConcurrentRateLimiter`, `concurrentRate`) | `AnalyzeUrl.kt:479`, `JsExtensions.kt:371` | ✅ the frozen source-keyed record, both rate forms and the wait-until-admitted loop around every source request; a declared batch keeps its input order. The product's page pagination is still issued sequentially, so the frozen multi-URL `nextTocUrl` branch's concurrent shape has no fixture |
+| Cookie priority and persistence (`setCookie`, `enabledCookieJar`) | `AnalyzeUrl.kt:597-615` | ✅ the URL option's `Cookie`, then the stored jar, merged into the outbound header before the request, and a response only writes the jar when the source declares `enabledCookieJar`; storage stays per space and scoped to a source's own site group (ADR 0011 §3, #21) |
 | TLS policy | `HttpHelper.kt:63-65` (unsafe trust) | 🟡 validation is the default and a certificate or hostname failure is a named outcome carrying the source and the host; the user is asked once per source and host (a browser's "continue (unsafe)"), and the exception the confirmation stores is what the transport reads afterwards (ADR 0011 §5, #30). The baseline's unconditional trust for every source stays rejected; the divergence is recorded in the differential contract |
 | Host reachability | any host the source names | 🟡 any `http`/`https` host, with no private-address filter — a LAN or self-hosted source is a real use, and the filter would remove a capability without removing the leak (ADR 0011 §5) |
 | WebView request path | `BackstageWebView`, `webView*` options | ❌ allowed by policy, not wired yet: executed headlessly through #2's adapter when it lands (ADR 0011 §4) |
@@ -187,7 +187,7 @@ Ordered by blocking impact on running real sources, then by sample frequency. Ea
 - Which JSONPath subset the frozen `AnalyzeByJSonPath` actually accepts for the corpus, and how much of it must be emulated rather than approximated.
 - ~~How the ticket 12 adapter should reproduce Jsoup-specific CSS and XPath behavior without vendoring Jsoup semantics.~~ *Answered for HTML/CSS by #12: the adapter is a Rust port of jsoup 1.16.2's selector engine and Legado's rule layer (ADR 0008). The XPath row is still open and needs its own decision.*
 - Whether the login flow is needed for the Windows target or stays deferred with the security boundary (ticket 05).
-- What the per-source concurrency limit should be, since the frozen contract compares concurrent batches and the product currently issues one request at a time.
+- ~~What the per-source concurrency limit should be, since the frozen contract compares concurrent batches and the product currently issues one request at a time.~~ *Answered by #42: `concurrentRate` is applied per source request with the frozen limiter's two forms, and a declared batch preserves input order. The product's pagination is still sequential, so the frozen `nextTocUrl` multi-URL concurrent branch remains unexercised.*
 - Whether `{{key}}` encoding parity is a compatibility requirement or an accepted divergence; the frozen rule changes the wire bytes for non-ASCII keywords.
 
 ## Provenance and re-verification

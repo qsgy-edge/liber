@@ -38,10 +38,6 @@ void main() {
     expect(json.options.method, 'GET');
 
     expect(
-      () => splitSourceUrlOptions('/s,{"charset":"gbk"}'),
-      throwsUnsupportedError,
-    );
-    expect(
       () => splitSourceUrlOptions('/s,{"webView":true}'),
       throwsUnsupportedError,
     );
@@ -56,12 +52,83 @@ void main() {
     expect(() => splitSourceUrlOptions('/s,{"method":'), throwsFormatException);
   });
 
-  test('POST request shapes mirror the frozen body selection', () {
-    final plain = sourceRequestShape(const SourceUrlOptions(), const {});
+  test('the charset option is parsed the way the frozen UrlOption reads it', () {
+    expect(splitSourceUrlOptions('/s,{"charset":"gbk"}').options.charset, 'gbk');
+    expect(
+      splitSourceUrlOptions('/s,{"charset":"escape"}').options.charset,
+      'escape',
+    );
+    // Frozen `setCharset`: null and blank are the default branch.
+    expect(splitSourceUrlOptions('/s,{"charset":""}').options.charset, isNull);
+    expect(
+      splitSourceUrlOptions('/s,{"charset":"   "}').options.charset,
+      isNull,
+    );
+    expect(splitSourceUrlOptions('/s').options.charset, isNull);
+    expect(
+      () => splitSourceUrlOptions('/s,{"charset":1}'),
+      throwsFormatException,
+    );
+  });
+
+  test('the escape charset uses the frozen EncoderUtils.escape', () async {
+    // `EncoderUtils.kt:11-28`: letters and digits stay, everything else is `%`
+    // plus the UTF-16 code unit's lower-case hex, `%0` under 16 and `%u` over
+    // 255 — the JS `escape` shape the frozen option named.
+    expect(sourceEscape('a b'), 'a%20b');
+    expect(sourceEscape('中'), '%u4e2d');
+    expect(sourceEscape('~!'), '%7e%21');
+    expect(sourceEscape('\n'), '%0a');
+
+    // A query under `escape` drops to the same field loop a form body uses, so
+    // `=` and `&` keep their meaning and each side is escaped (`AnalyzeUrl.kt:294-334`).
+    expect(
+      await encodeSourceQuery(
+        'http://a/b?q=中 文&n=1',
+        charset: 'escape',
+      ),
+      'http://a/b?q=%u4e2d%20%u6587&n=1',
+    );
+    // An already-escaped value is re-escaped, because `escape` disables the
+    // already-encoded check.
+    expect(
+      await encodeSourceQuery('http://a/b?q=%E4%B9%A6', charset: 'escape'),
+      'http://a/b?q=%25E4%25B9%25A6',
+    );
+  });
+
+  test('a named charset encodes the request the way the frozen encoder does', () async {
+    // `URLEncoder.encode(value, charset)` for a form body: the charset's bytes
+    // as uppercase `%XX`, spaces as `+`, `*-._` kept (`AnalyzeUrl.kt:318-328`).
+    final form = await sourceRequestShape(
+      const SourceUrlOptions(method: 'POST', body: 'k=中', charset: 'gbk'),
+      const {},
+    );
+    expect(form.body, 'k=%D6%D0');
+
+    // The query path uses the frozen `queryEncoder`, which keeps the mask
+    // characters and writes the charset's bytes as uppercase `%XX`.
+    expect(
+      await encodeSourceQuery('http://a/b?q=中 文', charset: 'gbk'),
+      'http://a/b?q=%D6%D0%20%CE%C4',
+    );
+    // The already-encoded check stays on for a named charset.
+    expect(
+      await encodeSourceQuery('http://a/b?q=%D6%D0', charset: 'gbk'),
+      'http://a/b?q=%D6%D0',
+    );
+    expect(
+      () => encodeSourceQuery('http://a/b?q=x', charset: 'no-such-charset'),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('POST request shapes mirror the frozen body selection', () async {
+    final plain = await sourceRequestShape(const SourceUrlOptions(), const {});
     expect(plain.method, 'GET');
     expect(plain.body, isNull);
     expect(plain.headers, isEmpty);
-    final empty = sourceRequestShape(
+    final empty = await sourceRequestShape(
       const SourceUrlOptions(method: 'POST'),
       const {},
     );
@@ -70,21 +137,21 @@ void main() {
     expect(empty.headers, {
       'Content-Type': 'application/x-www-form-urlencoded',
     });
-    final form = sourceRequestShape(
+    final form = await sourceRequestShape(
       const SourceUrlOptions(method: 'POST', body: 'a=1&b=中文'),
       const {},
     );
     expect(form.method, 'POST');
     expect(form.body, 'a=1&b=%E4%B8%AD%E6%96%87');
     expect(form.headers, {'Content-Type': 'application/x-www-form-urlencoded'});
-    final json = sourceRequestShape(
+    final json = await sourceRequestShape(
       const SourceUrlOptions(method: 'POST', body: '{"a":1}'),
       const {},
     );
     expect(json.method, 'POST');
     expect(json.body, '{"a":1}');
     expect(json.headers, {'Content-Type': 'application/json; charset=UTF-8'});
-    final declared = sourceRequestShape(
+    final declared = await sourceRequestShape(
       const SourceUrlOptions(method: 'POST', body: '<x/>'),
       const {'Content-Type': 'application/xml'},
     );

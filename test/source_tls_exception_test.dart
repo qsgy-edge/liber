@@ -12,6 +12,10 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
+
 /// The fixture certificates live in `test/fixtures/tls/`, and their exact
 /// generation commands are in that directory's `README.md`. Two servers are
 /// used, one per trust outcome:
@@ -108,6 +112,8 @@ class _RecordingTransport implements SourceHttpTransport {
 }
 
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
   late _TlsServer server;
   late _TlsServer trustedServer;
   late SpaceStore store;

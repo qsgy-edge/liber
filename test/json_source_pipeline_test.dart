@@ -9,7 +9,13 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
+
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
   test(
     'Legado JSON fields drive the four stages through the pipeline entries',
     () async {

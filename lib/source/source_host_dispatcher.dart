@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../domain/contracts.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_rate_limiter.dart';
 
 class SourceHostDispatcher {
   factory SourceHostDispatcher({
@@ -13,6 +14,9 @@ class SourceHostDispatcher {
     SourceCancellation? cancellation,
     SourceHostState? hostState,
     String sourceRef = '',
+    String concurrentRate = '',
+    bool enabledCookieJar = true,
+    SourceRateLimiter? rateLimiter,
   }) {
     final state = hostState ?? SourceHostState();
     return SourceHostDispatcher._(
@@ -23,6 +27,9 @@ class SourceHostDispatcher {
       state,
       sourceRef,
       state.cookiesFor(sourceRef),
+      concurrentRate,
+      enabledCookieJar,
+      rateLimiter ?? SourceRateLimiter.shared,
     );
   }
 
@@ -34,6 +41,9 @@ class SourceHostDispatcher {
     this._hostState,
     this._sourceRef,
     this._cookies,
+    this._concurrentRate,
+    this._enabledCookieJar,
+    this._rateLimiter,
   );
 
   SourceHostDispatcher._execution(
@@ -44,7 +54,10 @@ class SourceHostDispatcher {
       maxRequestBytes = session.maxRequestBytes,
       _hostState = session._hostState,
       _sourceRef = session._sourceRef,
-      _cookies = session._cookies;
+      _cookies = session._cookies,
+      _concurrentRate = session._concurrentRate,
+      _enabledCookieJar = session._enabledCookieJar,
+      _rateLimiter = session._rateLimiter;
 
   /// Share source state, but never reuse another execution's one-shot token.
   SourceHostDispatcher forExecution(SourceCancellation cancellation) =>
@@ -57,6 +70,19 @@ class SourceHostDispatcher {
   final SourceHostState _hostState;
   final String _sourceRef;
   final SourceCookieJar _cookies;
+
+  /// The source's `concurrentRate`, read by [SourceRateLimiter] before every
+  /// request (frozen `AnalyzeUrl.concurrentRateLimiter`).
+  final String _concurrentRate;
+
+  /// The source's `enabledCookieJar`. True by default for a caller that speaks
+  /// for no source (a gate, a tool); the pipelines pass the source's own flag,
+  /// whose frozen default is false.
+  final bool _enabledCookieJar;
+
+  /// Where the source-keyed rate records live. Process-global by default, as
+  /// the frozen companion object is; a test injects one with a fake clock.
+  final SourceRateLimiter _rateLimiter;
 
   /// The space's host surface this dispatcher speaks for (ADR 0011 §3): the
   /// script runtime reads its cache and variables through the same object.
@@ -177,34 +203,59 @@ class SourceHostDispatcher {
         maxRequestBytes) {
       throw const SourceIoLimitExceeded('request');
     }
-    final response = await transport.send(
-      SourceHttpRequest(
-        method: method,
-        url: uri,
-        headers: merged,
-        body: body,
-        followRedirects: followRedirects,
-        cancellation: cancellation,
-        retry: retry,
-        maxResponseBytes: maxResponseBytes,
-        sourceRef: _sourceRef,
-        allowInvalidCertificate: allowInvalidCertificate,
-      ),
-    );
-    cancellation?.throwIfCancelled();
-    if (utf8
-            .encode(
-              jsonEncode({
-                'headers': response.headers,
-                'body': response.body,
-                'url': '${response.url}',
-              }),
-            )
-            .length >
-        maxResponseBytes) {
-      throw const SourceIoLimitExceeded('response');
+    // Frozen `concurrentRateLimiter.withLimit`: the source's declared rate is
+    // read before the request, and a plain-millisecond record is released when
+    // the request is finished. A source with no rate keeps its request
+    // synchronous, as it was before this seam existed.
+    final rate = _rateLimiter.applies(_sourceRef, _concurrentRate)
+        ? await _rateLimiter.acquire(
+            _sourceRef,
+            _concurrentRate,
+            cancellation: cancellation,
+          )
+        : null;
+    final SourceHttpResponse response;
+    try {
+      response = await transport.send(
+        SourceHttpRequest(
+          method: method,
+          url: uri,
+          headers: merged,
+          body: body,
+          followRedirects: followRedirects,
+          cancellation: cancellation,
+          retry: retry,
+          maxResponseBytes: maxResponseBytes,
+          sourceRef: _sourceRef,
+          allowInvalidCertificate: allowInvalidCertificate,
+        ),
+      );
+      cancellation?.throwIfCancelled();
+      if (utf8
+              .encode(
+                jsonEncode({
+                  'headers': response.headers,
+                  'body': response.body,
+                  'url': '${response.url}',
+                }),
+              )
+              .length >
+          maxResponseBytes) {
+        throw const SourceIoLimitExceeded('response');
+      }
+      if (_enabledCookieJar) {
+        // Frozen `enabledCookieJar` (AnalyzeUrl.kt:604-615, HttpHelper.kt:86-98):
+        // a response's `Set-Cookie` is stored only when the source declares the
+        // flag. A source without it still sends what the jar already holds,
+        // which is what `setCookie()` does before the interceptor runs.
+        await _cookies.accept(
+          uri.host,
+          response.headers['set-cookie'] ?? const [],
+        );
+      }
+    } finally {
+      _rateLimiter.release(rate);
     }
-    await _cookies.accept(uri.host, response.headers['set-cookie'] ?? const []);
     return response;
   }
 

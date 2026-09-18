@@ -6,6 +6,10 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
+
 class ControlledTransport implements SourceHttpTransport {
   final requests = <SourceHttpRequest>[];
   final pending = <Completer<SourceHttpResponse>>[];
@@ -31,6 +35,8 @@ class ControlledTransport implements SourceHttpTransport {
 }
 
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
   test(
     'cancelling one execution preserves source cookies for the next',
     () async {

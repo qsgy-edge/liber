@@ -279,6 +279,93 @@ pub fn resolve_encoding(name: &str) -> Result<&'static Encoding> {
     Encoding::for_label(name.as_bytes()).ok_or_else(|| TextError::UnknownEncoding(name.to_string()))
 }
 
+/// Detects an in-memory buffer's encoding: [`detect_encoding`]'s order (byte
+/// order mark, UTF-8 validity, `chardetng`) over bytes that never reach a file.
+///
+/// An HTTP response body is this kind of input: the frozen path hands it to ICU
+/// (`EncodingDetect.getEncode`), and the product hands it to the same detector
+/// the local-file path uses. The sample rules are the file path's: at most
+/// [`SAMPLE_BYTES`], grown to [`ASCII_SAMPLE_BYTES`] only when that sample is
+/// all ASCII, so a body that starts with digits but is GBK further in is still
+/// separable. The whole buffer is capped at the grown sample, where the frozen
+/// ICU detector sees every byte; the difference can only show on a body larger
+/// than 4 MiB whose first 4 MiB do not settle the guess.
+pub fn detect_bytes(bytes: &[u8]) -> Result<Detection> {
+    let mut sample = &bytes[..bytes.len().min(SAMPLE_BYTES)];
+    if let Some(name) = unsupported_bom(sample) {
+        return Err(TextError::UnsupportedEncoding(name.to_string()));
+    }
+    if let Some((encoding, _)) = Encoding::for_bom(sample) {
+        return Ok(Detection {
+            encoding: encoding.name().to_string(),
+            bom: true,
+        });
+    }
+    if sample.len() == SAMPLE_BYTES && sample.iter().all(u8::is_ascii) {
+        sample = &bytes[..bytes.len().min(ASCII_SAMPLE_BYTES)];
+    }
+    if sample_is_utf8(sample) {
+        return Ok(Detection {
+            encoding: UTF_8.name().to_string(),
+            bom: false,
+        });
+    }
+    let mut detector = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Allow);
+    detector.feed(sample, true);
+    let encoding = detector.guess(None, chardetng::Utf8Detection::Deny);
+    Ok(Detection {
+        encoding: encoding.name().to_string(),
+        bom: false,
+    })
+}
+
+/// Decodes an entire in-memory buffer with `encoding_name`, or with
+/// [`detect_bytes`]'s answer when the caller has no name to give.
+///
+/// The named branch mirrors the frozen `String(bytes, Charset.forName(name))`:
+/// no byte order mark handling, and a malformed sequence becomes U+FFFD the way
+/// Java's decoder replaces it. The named branch is what the frozen response path
+/// calls for a Content-Type or meta charset (`OkHttpUtils.kt:90-96`); an unknown
+/// name is [`TextError::UnknownEncoding`], as `Charset.forName` there fails.
+///
+/// The unnamed branch is the frozen `EncodingDetect.getEncode` answer
+/// (`EncodingDetect.kt:48-50`): detect, then decode. `encoding_rs`'s own
+/// `decode` strips a byte order mark, which is what a detection that named one
+/// implies.
+pub fn decode_bytes(bytes: &[u8], encoding_name: Option<&str>) -> Result<String> {
+    match encoding_name {
+        Some(name) => {
+            let encoding = resolve_encoding(name)?;
+            let (text, _had_errors) = encoding.decode_without_bom_handling(bytes);
+            Ok(text.into_owned())
+        }
+        None => {
+            let detection = detect_bytes(bytes)?;
+            let encoding = resolve_encoding(&detection.encoding)?;
+            let (text, _used, _had_errors) = encoding.decode(bytes);
+            Ok(text.into_owned())
+        }
+    }
+}
+
+/// Encodes `text` with `encoding_name`, the request-side half of the same
+/// option: the frozen `URLEncoder.encode(value, charset)` and hutool
+/// `queryEncoder.encode(params, charset)` (`AnalyzeUrl.kt:294-334`) turn the
+/// declared charset into the bytes they percent-escape.
+///
+/// An unknown name is [`TextError::UnknownEncoding`], mirroring the
+/// `UnsupportedCharsetException` that `Charset.forName` throws on the frozen
+/// path. A character the encoding cannot represent is written as the HTML
+/// numeric character reference `encoding_rs` produces, where Java's
+/// `CharsetEncoder` writes `?`; a request option that names a legacy charset and
+/// carries such a character is the only place the two disagree, and it is
+/// recorded as a divergence in the differential contract.
+pub fn encode_bytes(text: &str, encoding_name: &str) -> Result<Vec<u8>> {
+    let encoding = resolve_encoding(encoding_name)?;
+    let (bytes, _used, _had_errors) = encoding.encode(text);
+    Ok(bytes.into_owned())
+}
+
 /// How the raw bytes are split into lines: UTF-16 newlines are two bytes wide
 /// and byte-order dependent, everything else the engine decodes is
 /// ASCII-compatible and splits on a single `\n`.

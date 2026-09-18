@@ -24,15 +24,25 @@ String ok(String body) =>
     'HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n'
     'Connection: close\r\n\r\n$body';
 
+/// The same envelope carrying raw bytes, so a non-UTF-8 body can be served.
+List<int> okBytes(List<int> body, {String contentType = 'text/html'}) => [
+  ...utf8.encode(
+    'HTTP/1.1 200 OK\r\nContent-Type: $contentType\r\n'
+    'Content-Length: ${body.length}\r\nConnection: close\r\n\r\n',
+  ),
+  ...body,
+];
+
 String redirect(int status, String location) =>
     'HTTP/1.1 $status Redirect\r\nLocation: $location\r\n'
     'Content-Length: 0\r\nConnection: close\r\n\r\n';
 
-/// A socket server that answers with [reply] and records the raw requests.
+/// A socket server that answers with [reply] (text or raw bytes) and records
+/// the raw requests.
 class _WireServer {
   _WireServer(this.reply);
 
-  final String Function(String requestLine) reply;
+  final Object Function(String requestLine) reply;
   final List<_WireRequest> requests = [];
   final List<Socket> _sockets = [];
   late final ServerSocket _server;
@@ -56,7 +66,8 @@ class _WireServer {
           final lines = head.split('\r\n');
           final line = lines.first;
           requests.add(_WireRequest(line, head.toLowerCase()));
-          socket.add(utf8.encode(reply(line)));
+          final answer = reply(line);
+          socket.add(answer is List<int> ? answer : utf8.encode(answer as String));
           unawaited(socket.flush().then((_) => socket.close()));
         },
         onDone: () => _sockets.remove(socket),
@@ -272,6 +283,153 @@ void main() {
       expect(server.requests[2].line, 'GET /search?page=2&q=%E4%B9%A6 HTTP/1.1');
       await paged.search('书', page: 7);
       expect(server.requests[3].line, 'GET /search?page=3&q=%E4%B9%A6 HTTP/1.1');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('the charset option reaches the wire in both encoder shapes', () async {
+    final server = _WireServer(
+      (_) => ok('<div class="item"><h3><a href="/book/">书</a></h3></div>'),
+    );
+    await server.start();
+    try {
+      // `charset: "escape"` is the frozen `EncoderUtils.escape` on the query:
+      // a space is `%20`, and everything outside letters and digits is escaped.
+      await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?q={{key}},{"charset":"escape"}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('a b');
+      expect(server.requests[0].line, 'GET /search?q=a%20b HTTP/1.1');
+
+      // A residual divergence the differential contract records: Dart's `Uri`
+      // canonicalizes an escape of an unreserved character while it resolves,
+      // so `EncoderUtils.escape`'s `%7e` reaches the wire as the bare `~` (and
+      // its `%uXXXX` form as `%25uXXXX`). The frozen client sends the escape.
+      await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?q={{key}},{"charset":"escape"}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('a~b');
+      expect(server.requests[1].line, 'GET /search?q=a~b HTTP/1.1');
+
+      // A named charset writes that charset's bytes: GBK 书 is CA E9.
+      await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?q={{key}},{"charset":"gbk"}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('书');
+      expect(server.requests[2].line, 'GET /search?q=%CA%E9 HTTP/1.1');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('a named charset reaches the POST form body on the wire', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final bodies = <String>[];
+    final contentTypes = <String>[];
+    final subscription = server.listen((request) async {
+      final bytes = <int>[];
+      await for (final chunk in request) {
+        bytes.addAll(chunk);
+      }
+      bodies.add(utf8.decode(bytes, allowMalformed: true));
+      contentTypes.add(request.headers.value('content-type') ?? '');
+      request.response.write(
+        '<div class="item"><h3><a href="/book/">书</a></h3></div>',
+      );
+      await request.response.close();
+    });
+    try {
+      final origin = 'http://127.0.0.1:${server.port}';
+      await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/search,{"method":"POST","body":"k={{key}}",'
+            '"charset":"gbk"}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('书');
+      // `URLEncoder.encode(value, GBK)`: the charset's bytes as upper-case
+      // `%XX` (AnalyzeUrl.kt:318-328).
+      expect(bodies.single, 'k=%CA%E9');
+      expect(contentTypes.single, contains('application/x-www-form-urlencoded'));
+    } finally {
+      await subscription.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  test('a response is decoded with the charset its Content-Type declares',
+      () async {
+    // GBK 书 is CA E9; the header names the charset the body is in.
+    final page = <int>[
+      ...utf8.encode('<html><body><div class="item"><h3><a href="/book/">'),
+      0xCA,
+      0xE9,
+      ...utf8.encode('</a></h3></div></body></html>'),
+    ];
+    final server = _WireServer(
+      (_) => okBytes(page, contentType: 'text/html; charset=GBK'),
+    );
+    await server.start();
+    try {
+      final hits = await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('书');
+      expect(hits.single.title, '书');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('a response is decoded with the charset its own meta declares',
+      () async {
+    final page = <int>[
+      ...utf8.encode(
+        '<html><head><meta charset="gbk"></head><body>'
+        '<div class="item"><h3><a href="/book/">',
+      ),
+      0xCA,
+      0xE9,
+      ...utf8.encode('</a></h3></div></body></html>'),
+    ];
+    // No Content-Type charset: the frozen path reads the document's meta.
+    final server = _WireServer((_) => okBytes(page));
+    await server.start();
+    try {
+      final hits = await HtmlSourcePipeline(<String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      }, HttpSourceTransport()).search('书');
+      expect(hits.single.title, '书');
     } finally {
       await server.stop();
     }
