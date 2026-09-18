@@ -399,6 +399,13 @@ class SourceCookies extends Table {
 /// value; `expiresAt` is the deadline a `saveTime` produces, and 0 means the
 /// entry does not expire, which is how the frozen `CacheManager` reads a
 /// `saveTime` of 0.
+///
+/// One source's rows are bounded (#37, ADR 0011 §3): `SpaceHostStatePersistence`
+/// caps each of its two buckets — the `cache.*` entries and the
+/// `java.put`/`java.get` variables — and a write past a bucket's cap evicts
+/// that bucket's least recently written rows. [writtenAt] is the order that
+/// eviction reads; it is not a read-recency stamp, because a read must not
+/// write (a `cache.get` on the request path stays a read).
 @DataClassName('StoredSourceEntry')
 class SourceEntries extends Table {
   TextColumn get sourceRef => text()();
@@ -408,6 +415,11 @@ class SourceEntries extends Table {
   TextColumn get value => text().nullable()();
 
   IntColumn get expiresAt => integer().withDefault(const Constant(0))();
+
+  /// The instant this row was last written (milliseconds since the epoch).
+  /// A v4 row has no instant and defaults to 0, which sorts before any v5
+  /// write, so it is the first evicted.
+  IntColumn get writtenAt => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {sourceRef, key};
@@ -460,7 +472,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 4;
+  static const latestVersion = 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -478,10 +490,13 @@ class SpaceDatabase extends _$SpaceDatabase {
       // v2 → v3 only creates the host-surface tables (ADR 0011 §3): there is no
       // old shape to migrate data out of, so the step is the generated one.
       // v3 → v4 only creates the TLS-exception table (ADR 0011 §5), likewise.
+      // v4 → v5 adds `source_entries.written_at`, the per-source eviction order
+      // (#37).
       await stepByStep(
         from1To2: migrateToV2,
         from2To3: migrateToV3,
         from3To4: migrateToV4,
+        from4To5: migrateToV5,
       )(m, from, to);
     },
     beforeOpen: (details) async {

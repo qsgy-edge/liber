@@ -6405,8 +6405,26 @@ class $SourceEntriesTable extends SourceEntries
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _writtenAtMeta = const VerificationMeta(
+    'writtenAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [sourceRef, key, value, expiresAt];
+  late final GeneratedColumn<int> writtenAt = GeneratedColumn<int>(
+    'written_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    sourceRef,
+    key,
+    value,
+    expiresAt,
+    writtenAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -6447,6 +6465,12 @@ class $SourceEntriesTable extends SourceEntries
         expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
       );
     }
+    if (data.containsKey('written_at')) {
+      context.handle(
+        _writtenAtMeta,
+        writtenAt.isAcceptableOrUnknown(data['written_at']!, _writtenAtMeta),
+      );
+    }
     return context;
   }
 
@@ -6472,6 +6496,10 @@ class $SourceEntriesTable extends SourceEntries
         DriftSqlType.int,
         data['${effectivePrefix}expires_at'],
       )!,
+      writtenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}written_at'],
+      )!,
     );
   }
 
@@ -6487,11 +6515,17 @@ class StoredSourceEntry extends DataClass
   final String key;
   final String? value;
   final int expiresAt;
+
+  /// The instant this row was last written (milliseconds since the epoch).
+  /// A v4 row has no instant and defaults to 0, which sorts before any v5
+  /// write, so it is the first evicted.
+  final int writtenAt;
   const StoredSourceEntry({
     required this.sourceRef,
     required this.key,
     this.value,
     required this.expiresAt,
+    required this.writtenAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6502,6 +6536,7 @@ class StoredSourceEntry extends DataClass
       map['value'] = Variable<String>(value);
     }
     map['expires_at'] = Variable<int>(expiresAt);
+    map['written_at'] = Variable<int>(writtenAt);
     return map;
   }
 
@@ -6513,6 +6548,7 @@ class StoredSourceEntry extends DataClass
           ? const Value.absent()
           : Value(value),
       expiresAt: Value(expiresAt),
+      writtenAt: Value(writtenAt),
     );
   }
 
@@ -6526,6 +6562,7 @@ class StoredSourceEntry extends DataClass
       key: serializer.fromJson<String>(json['key']),
       value: serializer.fromJson<String?>(json['value']),
       expiresAt: serializer.fromJson<int>(json['expiresAt']),
+      writtenAt: serializer.fromJson<int>(json['writtenAt']),
     );
   }
   @override
@@ -6536,6 +6573,7 @@ class StoredSourceEntry extends DataClass
       'key': serializer.toJson<String>(key),
       'value': serializer.toJson<String?>(value),
       'expiresAt': serializer.toJson<int>(expiresAt),
+      'writtenAt': serializer.toJson<int>(writtenAt),
     };
   }
 
@@ -6544,11 +6582,13 @@ class StoredSourceEntry extends DataClass
     String? key,
     Value<String?> value = const Value.absent(),
     int? expiresAt,
+    int? writtenAt,
   }) => StoredSourceEntry(
     sourceRef: sourceRef ?? this.sourceRef,
     key: key ?? this.key,
     value: value.present ? value.value : this.value,
     expiresAt: expiresAt ?? this.expiresAt,
+    writtenAt: writtenAt ?? this.writtenAt,
   );
   StoredSourceEntry copyWithCompanion(SourceEntriesCompanion data) {
     return StoredSourceEntry(
@@ -6556,6 +6596,7 @@ class StoredSourceEntry extends DataClass
       key: data.key.present ? data.key.value : this.key,
       value: data.value.present ? data.value.value : this.value,
       expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+      writtenAt: data.writtenAt.present ? data.writtenAt.value : this.writtenAt,
     );
   }
 
@@ -6565,13 +6606,14 @@ class StoredSourceEntry extends DataClass
           ..write('sourceRef: $sourceRef, ')
           ..write('key: $key, ')
           ..write('value: $value, ')
-          ..write('expiresAt: $expiresAt')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('writtenAt: $writtenAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(sourceRef, key, value, expiresAt);
+  int get hashCode => Object.hash(sourceRef, key, value, expiresAt, writtenAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6579,7 +6621,8 @@ class StoredSourceEntry extends DataClass
           other.sourceRef == this.sourceRef &&
           other.key == this.key &&
           other.value == this.value &&
-          other.expiresAt == this.expiresAt);
+          other.expiresAt == this.expiresAt &&
+          other.writtenAt == this.writtenAt);
 }
 
 class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
@@ -6587,12 +6630,14 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
   final Value<String> key;
   final Value<String?> value;
   final Value<int> expiresAt;
+  final Value<int> writtenAt;
   final Value<int> rowid;
   const SourceEntriesCompanion({
     this.sourceRef = const Value.absent(),
     this.key = const Value.absent(),
     this.value = const Value.absent(),
     this.expiresAt = const Value.absent(),
+    this.writtenAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SourceEntriesCompanion.insert({
@@ -6600,6 +6645,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
     required String key,
     this.value = const Value.absent(),
     this.expiresAt = const Value.absent(),
+    this.writtenAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : sourceRef = Value(sourceRef),
        key = Value(key);
@@ -6608,6 +6654,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
     Expression<String>? key,
     Expression<String>? value,
     Expression<int>? expiresAt,
+    Expression<int>? writtenAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6615,6 +6662,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
       if (key != null) 'key': key,
       if (value != null) 'value': value,
       if (expiresAt != null) 'expires_at': expiresAt,
+      if (writtenAt != null) 'written_at': writtenAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6624,6 +6672,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
     Value<String>? key,
     Value<String?>? value,
     Value<int>? expiresAt,
+    Value<int>? writtenAt,
     Value<int>? rowid,
   }) {
     return SourceEntriesCompanion(
@@ -6631,6 +6680,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
       key: key ?? this.key,
       value: value ?? this.value,
       expiresAt: expiresAt ?? this.expiresAt,
+      writtenAt: writtenAt ?? this.writtenAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6650,6 +6700,9 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
     if (expiresAt.present) {
       map['expires_at'] = Variable<int>(expiresAt.value);
     }
+    if (writtenAt.present) {
+      map['written_at'] = Variable<int>(writtenAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6663,6 +6716,7 @@ class SourceEntriesCompanion extends UpdateCompanion<StoredSourceEntry> {
           ..write('key: $key, ')
           ..write('value: $value, ')
           ..write('expiresAt: $expiresAt, ')
+          ..write('writtenAt: $writtenAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11705,6 +11759,7 @@ typedef $$SourceEntriesTableCreateCompanionBuilder =
       required String key,
       Value<String?> value,
       Value<int> expiresAt,
+      Value<int> writtenAt,
       Value<int> rowid,
     });
 typedef $$SourceEntriesTableUpdateCompanionBuilder =
@@ -11713,6 +11768,7 @@ typedef $$SourceEntriesTableUpdateCompanionBuilder =
       Value<String> key,
       Value<String?> value,
       Value<int> expiresAt,
+      Value<int> writtenAt,
       Value<int> rowid,
     });
 
@@ -11742,6 +11798,11 @@ class $$SourceEntriesTableFilterComposer
 
   ColumnFilters<int> get expiresAt => $composableBuilder(
     column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get writtenAt => $composableBuilder(
+    column: $table.writtenAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11774,6 +11835,11 @@ class $$SourceEntriesTableOrderingComposer
     column: $table.expiresAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get writtenAt => $composableBuilder(
+    column: $table.writtenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SourceEntriesTableAnnotationComposer
@@ -11796,6 +11862,9 @@ class $$SourceEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get expiresAt =>
       $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+
+  GeneratedColumn<int> get writtenAt =>
+      $composableBuilder(column: $table.writtenAt, builder: (column) => column);
 }
 
 class $$SourceEntriesTableTableManager
@@ -11839,12 +11908,14 @@ class $$SourceEntriesTableTableManager
                 Value<String> key = const Value.absent(),
                 Value<String?> value = const Value.absent(),
                 Value<int> expiresAt = const Value.absent(),
+                Value<int> writtenAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SourceEntriesCompanion(
                 sourceRef: sourceRef,
                 key: key,
                 value: value,
                 expiresAt: expiresAt,
+                writtenAt: writtenAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11853,12 +11924,14 @@ class $$SourceEntriesTableTableManager
                 required String key,
                 Value<String?> value = const Value.absent(),
                 Value<int> expiresAt = const Value.absent(),
+                Value<int> writtenAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SourceEntriesCompanion.insert(
                 sourceRef: sourceRef,
                 key: key,
                 value: value,
                 expiresAt: expiresAt,
+                writtenAt: writtenAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

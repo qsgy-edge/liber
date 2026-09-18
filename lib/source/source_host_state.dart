@@ -25,20 +25,24 @@ class SourceCookiePair {
 /// A cache entry, or one of the per-source variables `java.put`/`java.get`
 /// share with `source.put`/`source.get`, as the space keeps them: the value as
 /// JSON text (a `cache.put` value is any JSON value), the source it belongs to,
-/// and the instant it expires at — 0 means permanent, which is how the frozen
-/// `CacheManager` reads a `saveTime` of 0 (`CacheManager.kt:32-40`).
+/// the instant it expires at — 0 means permanent, which is how the frozen
+/// `CacheManager` reads a `saveTime` of 0 (`CacheManager.kt:32-40`) — and the
+/// instant it was last written, which is the order the store evicts a source's
+/// rows in once it is at its cap (#37).
 class SourceCacheEntry {
   const SourceCacheEntry({
     required this.sourceRef,
     required this.key,
     this.value,
     this.expiresAt = 0,
+    this.writtenAt = 0,
   });
 
   final String sourceRef;
   final String key;
   final String? value;
   final int expiresAt;
+  final int writtenAt;
 }
 
 /// An accepted TLS exception (ADR 0011 §5): the source and the host whose
@@ -62,7 +66,12 @@ abstract interface class SourceHostStatePersistence {
   Future<void> deleteCookie(String domain, String name);
 
   Future<List<SourceCacheEntry>> loadCache();
-  Future<void> saveCacheEntry(SourceCacheEntry entry);
+
+  /// Stores [entry] and returns the keys the store evicted to keep the entry's
+  /// source within its per-source caps (#37), oldest first. A persistence that
+  /// does not bound its rows returns nothing.
+  Future<List<String>> saveCacheEntry(SourceCacheEntry entry);
+
   Future<void> deleteCacheEntry(String sourceRef, String key);
 
   Future<List<SourceTlsException>> loadTlsExceptions();
@@ -79,6 +88,15 @@ abstract interface class SourceHostStatePersistence {
 /// [SourceHostStatePersistence], so a restart finds what the last run wrote. One
 /// state belongs to one space: a second space has its own rows and therefore its
 /// own jar and cache.
+///
+/// The persistent store bounds what one source may keep (#37): each write is
+/// checked against a per-source `cache.*` cap and a per-source
+/// `java.put`/`java.get` cap, and the store evicts the least recently written
+/// rows of a bucket a write overflows. It returns the evicted keys and
+/// [putEntry] removes them from the in-memory copy as well, so a read in this
+/// process cannot see a row the store no longer holds. A state with no
+/// persistence (a gate, a tool, a test that speaks for one source) has no
+/// durable store to bound.
 class SourceHostState {
   factory SourceHostState({
     SourceHostStatePersistence? persistence,
@@ -178,6 +196,10 @@ class SourceHostState {
   /// Stores [value] for one source, JSON-encoded so any JSON value round-trips
   /// through the store unchanged. [saveTime] is the frozen `cache.put`
   /// parameter, read by [expiryOf].
+  ///
+  /// The write is the source's most recently written entry; if the store had to
+  /// evict rows to stay within the source's caps (#37), the keys it returns
+  /// leave the in-memory copy too.
   Future<void> putEntry(
     String sourceRef,
     String key,
@@ -185,16 +207,21 @@ class SourceHostState {
     int saveTime = 0,
   }) async {
     await ready();
-    final expiresAt = expiryOf(saveTime, _clock());
+    final now = _clock();
+    final expiresAt = expiryOf(saveTime, now);
     _cache.putIfAbsent(sourceRef, () => {})[key] = _Entry(value, expiresAt);
-    await _persistence?.saveCacheEntry(
+    final evicted = await _persistence?.saveCacheEntry(
       SourceCacheEntry(
         sourceRef: sourceRef,
         key: key,
         value: jsonEncode(value),
         expiresAt: expiresAt,
+        writtenAt: now,
       ),
     );
+    for (final evictedKey in evicted ?? const <String>[]) {
+      _cache[sourceRef]?.remove(evictedKey);
+    }
   }
 
   /// Removes one source's entry, if it has one.

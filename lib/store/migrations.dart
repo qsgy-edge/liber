@@ -227,3 +227,14 @@ Future<void> migrateToV3(Migrator m, Schema3 schema) async {
 Future<void> migrateToV4(Migrator m, Schema4 schema) async {
   await m.createTable(schema.sourceTlsExceptions);
 }
+
+/// v4 → v5: a source entry records when it was last written (#37).
+///
+/// `SpaceHostStatePersistence` bounds each of a source's two buckets and evicts
+/// the least recently written rows of the bucket a write overflows, so the
+/// order needs an instant the v4 table did not carry. The added column defaults
+/// to 0, which sorts before any v5 write: a v4 row is evicted first, and no
+/// backfill is invented for a store with no released users.
+Future<void> migrateToV5(Migrator m, Schema5 schema) async {
+  await m.addColumn(schema.sourceEntries, schema.sourceEntries.writtenAt);
+}

@@ -258,6 +258,21 @@ test; no fixture grants one today.
 - **Cookie trimming.** The baseline evicts random pairs from its cookie store to stay at 4 096 characters
   (`CookieStore.kt`); this product bounds the session jar differently and does not reproduce the random
   eviction (ADR 0011 §3).
+- **Cache capacity and eviction order.** The baseline's persistent `caches` table is unbounded; only its
+  in-memory `LruCache` is capped (50 MB, `CacheManager.kt:20-27`), and that cap is global to the process and in
+  access order, so a read promotes an entry. This product persists a source's entries in the space's
+  `source_entries` and caps a source's `cache.*` bucket at the frozen 600 rows, evicting the least recently
+  *written* row of the bucket a write overflows (#37). A read of an entry is served from the in-memory copy and
+  writes nothing, so it does not refresh the order; a source that keeps more than 600 live cache keys, or relies
+  on read-recency to keep one alive, loses its oldest written keys.
+- **`java.put`/`java.get` allowance.** The baseline stores those variables as ordinary cache rows in the same
+  unbounded global key space (`v_<sourceKey>_<key>`, `BaseSource.kt:220-233`). This product gives them their own
+  600-row bucket per source, next to the `cache.*` bucket, so cache churn cannot evict a login variable and the
+  two buckets are bounded separately (#37).
+
+A source's *cookie* rows are still not bounded per source: the baseline's trim is the only cookie cap the
+frozen implementation has and it stays a recorded divergence above (#37 leaves cookie ownership and visibility
+as ADR 0011 §3 fixed them).
 
 The cookie *key* is not a divergence but an implementation gap: the baseline keys cookies by the registrable
 domain (`NetworkUtils.getSubDomain`) and this product still keys them by the exact host; #21 moves it to the
