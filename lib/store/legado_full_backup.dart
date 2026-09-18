@@ -61,7 +61,13 @@ const List<String> legadoBackupKnownMembers = <String>[
 /// before a single member's bytes reach the importer:
 ///
 /// - an entry whose name would escape the archive root (a path-traversal entry),
-/// - an entry whose declared size is beyond anything a backup holds.
+/// - an entry that inflates beyond [maxMemberBytes].
+///
+/// The size guard does not trust the ZIP's own arithmetic: the declared
+/// uncompressed size is only a cheap sanity check (the central directory it
+/// comes from is never verified), so the inflated bytes are written through a
+/// capping sink that aborts the moment [maxMemberBytes] would be passed. A bomb
+/// that lies about its size is refused exactly like one that admits it.
 ///
 /// Nothing is ever written to disk. The guard is enforced here, at the boundary,
 /// rather than left to a reader that happens not to extract: the archive is
@@ -69,9 +75,9 @@ const List<String> legadoBackupKnownMembers = <String>[
 class LegadoBackupArchive {
   LegadoBackupArchive._(this._members, this.names, this.preferenceCount);
 
-  /// A member's declared uncompressed size beyond this is refused instead of
-  /// decoded: the operator's own backup needs 41 MB for its largest member, and
-  /// a declared size this far above that is a decompression bomb, not a backup.
+  /// The most any one member may inflate to. The operator's own backup needs
+  /// 41 MB for its largest member, and anything this far above that is a
+  /// decompression bomb, not a backup.
   static const int maxMemberBytes = 512 * 1024 * 1024;
 
   /// Whether [bytes] start with a ZIP signature: the local-file header, an empty
@@ -86,28 +92,41 @@ class LegadoBackupArchive {
 
   /// Reads and validates [bytes].
   ///
+  /// The central directory is parsed by hand rather than through `ZipDecoder`,
+  /// which inflates a Unix symlink entry eagerly and without a bound; nothing
+  /// here decompresses until [_readMember] runs, through the capping sink.
+  ///
+  /// [memberSizeLimit] is the bound [_readMember] enforces; it exists so a test
+  /// can prove the bound with a small bomb instead of a 512 MB one.
+  ///
   /// Throws [FormatException] with a named reason when an entry would escape the
-  /// archive root, when an entry declares an impossible size, when the archive
-  /// cannot be decoded, or when it holds none of the members a Legado backup is
-  /// made of.
-  factory LegadoBackupArchive.decode(Uint8List bytes) {
-    final Archive archive;
+  /// archive root, when an entry declares an impossible size, when an entry
+  /// inflates past [memberSizeLimit], when the archive cannot be decoded, or
+  /// when it holds none of the members a Legado backup is made of.
+  factory LegadoBackupArchive.decode(
+    Uint8List bytes, {
+    int memberSizeLimit = maxMemberBytes,
+  }) {
+    final directory = ZipDirectory();
     try {
-      archive = ZipDecoder().decodeBytes(bytes, verify: true);
+      directory.read(InputMemoryStream(bytes));
     } catch (error) {
       throw FormatException('备份 ZIP 无法解析：$error');
     }
-    final names = <String>[];
-    for (final file in archive.files) {
-      final name = file.name;
+    final headers = <String, ZipFileHeader>{};
+    for (final header in directory.fileHeaders) {
+      final name = header.filename;
       if (!_isSafeMemberName(name)) {
         throw FormatException('备份包含越界条目（路径穿越），已拒绝导入：$name');
       }
-      if (file.size > maxMemberBytes) {
-        throw FormatException('备份条目过大，已拒绝导入：$name（${file.size} 字节）');
+      if (header.uncompressedSize > memberSizeLimit) {
+        throw FormatException(
+          '备份条目过大，已拒绝导入：$name（声明 ${header.uncompressedSize} 字节）',
+        );
       }
-      names.add(_normalize(name));
+      headers[_normalize(name)] = header;
     }
+    final names = headers.keys.toList();
     if (!names.any(legadoBackupEntityMembers.contains) &&
         !names.contains(legadoBackupConfigMember)) {
       throw FormatException(
@@ -120,17 +139,34 @@ class LegadoBackupArchive {
       ...legadoBackupEntityMembers,
       legadoBackupConfigMember,
     ]) {
-      for (final file in archive.files) {
-        if (_normalize(file.name) != member) continue;
-        members[member] = file.readBytes() ?? Uint8List(0);
-        break;
-      }
+      final header = headers[member];
+      if (header != null)
+        members[member] = _readMember(header, memberSizeLimit);
     }
     return LegadoBackupArchive._(
       members,
       List.unmodifiable(names),
       _preferenceCount(members[legadoBackupConfigMember]),
     );
+  }
+
+  /// One member's decompressed bytes, aborting past [limit].
+  ///
+  /// The decoder platform decides whether the abort surfaces as an exception or
+  /// as a silent stop, so both are turned into the same named refusal.
+  static Uint8List _readMember(ZipFileHeader header, int limit) {
+    final file = header.file;
+    if (file == null) return Uint8List(0);
+    final sink = _CappedOutput(limit);
+    try {
+      file.decompress(sink);
+    } catch (_) {
+      if (!sink.overflowed) rethrow;
+    }
+    if (sink.overflowed) {
+      throw FormatException('备份条目解压后过大，已拒绝导入：${header.filename}');
+    }
+    return sink.getBytes();
   }
 
   final Map<String, Uint8List> _members;
@@ -182,6 +218,53 @@ class LegadoBackupArchive {
   }
 }
 
+/// An inflate target that refuses to grow past [limit]: the write that would
+/// exceed it aborts, so a ZIP whose declared size lies cannot expand past the
+/// bound before the importer's own guard sees it.
+class _CappedOutput extends OutputMemoryStream {
+  _CappedOutput(this.limit);
+
+  final int limit;
+
+  /// Whether the bound is what stopped the write. Every path that can abort
+  /// sets it, whichever way the decoder reports the abort.
+  bool overflowed = false;
+
+  void _claim(int extra) {
+    if (length + extra <= limit) return;
+    overflowed = true;
+    throw const _MemberTooLarge();
+  }
+
+  @override
+  void writeByte(int value) {
+    _claim(1);
+    super.writeByte(value);
+  }
+
+  @override
+  void writeBytes(List<int> bytes, {int? length}) {
+    _claim(length ?? bytes.length);
+    super.writeBytes(bytes, length: length);
+  }
+
+  @override
+  void writeStream(InputStream stream) {
+    _claim(stream.length);
+    super.writeStream(stream);
+  }
+
+  @override
+  void writeBackReference(int distance, int count) {
+    _claim(count);
+    super.writeBackReference(distance, count);
+  }
+}
+
+class _MemberTooLarge implements Exception {
+  const _MemberTooLarge();
+}
+
 /// Imports a real Legado full backup into one space.
 ///
 /// This is the adapter `docs/compatibility/legado-data-migration-contract.md`
@@ -227,7 +310,11 @@ class LegadoFullBackupImport {
     // so it is decoded before the transaction opens. The sources — 41 MB in the
     // operator's own backup — are decoded and released inside it.
     final books = archive.has('bookshelf.json')
-        ? _entityArray(archive.member('bookshelf.json')!, 'bookshelf.json')
+        ? _entityArray(
+            archive.member('bookshelf.json')!,
+            'bookshelf.json',
+            totals,
+          )
         : const <Map<String, dynamic>>[];
     final lossy = lossyBooksJsonReason(books);
     if (lossy != null) throw FormatException(lossy);
@@ -269,7 +356,7 @@ class LegadoFullBackupImport {
         source.bookSourceUrl: source,
     };
     final incoming = <Map<String, dynamic>>[];
-    for (final source in _entityArray(bytes, 'bookSource.json')) {
+    for (final source in _entityArray(bytes, 'bookSource.json', totals)) {
       final url = _string(source['bookSourceUrl']);
       final name = _string(source['bookSourceName']);
       // Rule 2: v1 requires both, where the frozen UI parser required the URL
@@ -311,7 +398,7 @@ class LegadoFullBackupImport {
       losses.add('备份没有 bookGroup.json：分组不导入');
       return groupIds;
     }
-    for (final group in _entityArray(bytes, 'bookGroup.json')) {
+    for (final group in _entityArray(bytes, 'bookGroup.json', totals)) {
       final legadoId = _legacyInt(group['groupId']);
       final name = _string(group['groupName']).trim();
       if (name.isEmpty) {
@@ -326,7 +413,7 @@ class LegadoFullBackupImport {
         GroupsCompanion(
           id: Value(mintId('group')),
           name: Value(name),
-          cover: Value(_httpUrl(group['cover'])),
+          cover: Value(_httpUrl(group['cover'], totals: totals)),
           groupOrder: Value(_legacyInt(group['order'])),
           enableRefresh: Value(group['enableRefresh'] as bool? ?? true),
           show: Value(group['show'] as bool? ?? true),
@@ -361,6 +448,8 @@ class LegadoFullBackupImport {
       final sourceRef = local ? '' : _string(book['origin']);
       final existing = local
           ? await store.localBook(correlationKey, fileName!)
+          : sourceRef.isEmpty
+          ? await store.bookWithoutSource(bookUrl)
           : await store.bookByNaturalKey(sourceRef, bookUrl);
       final id = existing?.id ?? mintId('book');
       final naturalKey = local
@@ -381,20 +470,25 @@ class LegadoFullBackupImport {
           ),
           author: Value(_fill(_string(book['author']), existing?.author)),
           originName: Value(
-            _fill(
-              _string(
-                book['originName'],
-                fallback: sourceNames[sourceRef] ?? sourceRef,
-              ),
-              existing?.originName,
-            ),
+            local
+                ? _fill(fileName!, existing?.originName)
+                : _fill(
+                    _string(
+                      book['originName'],
+                      fallback: sourceNames[sourceRef] ?? sourceRef,
+                    ),
+                    existing?.originName,
+                  ),
           ),
           type: Value(_legacyInt(book['type'])),
           customTag: Value(
             _fill(_string(book['customTag']), existing?.customTag),
           ),
           coverUrl: Value(
-            _fill(_httpUrl(book['coverUrl'], totals: totals), existing?.coverUrl),
+            _fill(
+              _httpUrl(book['coverUrl'], totals: totals),
+              existing?.coverUrl,
+            ),
           ),
           customCoverUrl: Value(
             _fill(
@@ -426,7 +520,16 @@ class LegadoFullBackupImport {
                 ? existing.bookOrder
                 : _legacyInt(book['order']),
           ),
-          variable: Value(_variable(book['variable']) ?? existing?.variable),
+          // Rule 7: an existing book's opaque variable is a newer local edit
+          // than the backup's copy, so the backup only fills it when the space
+          // has none. (The import documents its deliberate exception for the
+          // frozen shelf order above; `putGroup`'s order and flags are the same
+          // disclosed exception for groups.)
+          variable: Value(
+            (existing?.variable?.isNotEmpty ?? false)
+                ? existing!.variable
+                : _variable(book['variable']),
+          ),
           // Rule 7: membership unions, so a re-import never takes a book off the
           // shelf.
           shelved: const Value(true),
@@ -438,9 +541,7 @@ class LegadoFullBackupImport {
           format: Value(local ? _fileFormat(fileName!) : existing?.format),
           // A relink the user already did stays done; a book that is new to the
           // space has no file to read.
-          needsRelink: Value(
-            local ? (existing?.needsRelink ?? true) : false,
-          ),
+          needsRelink: Value(local ? (existing?.needsRelink ?? true) : false),
           raw: Value(
             jsonEncode(
               local ? _localRaw(book, correlationKey, fileName!) : book,
@@ -460,6 +561,11 @@ class LegadoFullBackupImport {
   /// A book the frozen shelf never opened carries no position and gets no row:
   /// `SpaceStore.latestProgress` answers "continue reading", and a row of zeros
   /// would answer with a book nobody has read.
+  ///
+  /// A backup carries no chapter table, so an imported position has no chapter
+  /// key, anchor or line. When it advances, the ones a reader left on the row
+  /// are cleared with it: the reader resolves a non-empty key first, so a stale
+  /// key would reopen the old chapter at the migrated offset.
   Future<void> _writeProgress(
     String bookId,
     Map<String, dynamic> book,
@@ -478,6 +584,9 @@ class LegadoFullBackupImport {
         textOffset: Value(textOffset),
         chapterIndex: Value(chapterIndex),
         updatedAt: Value(updatedAt),
+        chapterKey: const Value(null),
+        anchor: const Value(null),
+        lineIndex: const Value(0),
       ),
     );
     if (advanced) totals.progress++;
@@ -538,9 +647,7 @@ class LegadoFullBackupImport {
       lines.add('${totals.invalidBooks} 条书架记录没有 bookUrl，已跳过');
     }
     if (totals.conflictingSources > 0) {
-      lines.add(
-        '${totals.conflictingSources} 个书源在空间中已存在且内容不同，未替换（替换需要确认）',
-      );
+      lines.add('${totals.conflictingSources} 个书源在空间中已存在且内容不同，未替换（替换需要确认）');
     }
     if (totals.duplicateBooks > 0) {
       lines.add('${totals.duplicateBooks} 条书架记录的 bookUrl 重复，合并为一条');
@@ -559,6 +666,9 @@ class LegadoFullBackupImport {
     }
     if (totals.droppedCovers > 0) {
       lines.add('${totals.droppedCovers} 个封面指向本地路径，未导入（本地字节不迁移）');
+    }
+    if (totals.droppedEntries > 0) {
+      lines.add('${totals.droppedEntries} 条记录不是 JSON 对象，已跳过');
     }
     lines.add('阅读进度的章节名没有等价字段，进度只保留章节序号与字符位置');
     return lines;
@@ -591,31 +701,67 @@ String? lossyBooksJsonReason(Iterable<Object?> entries) {
       '请在 Legado 里用「备份」导出 ZIP 再导入';
 }
 
-/// Whether a book is local: the frozen `BookType.local` bit (`BookType.kt:38`,
-/// 256), or a URL scheme that can only be a device path. The operator's own
-/// backup carries both spellings — a `content://` document URI in 26 rows and a
-/// bare `/storage/...` path in 9.
+/// Whether a book is local, by the frozen predicate.
+///
+/// `Book.isLocal` (`BookExtensions.kt:41-48`) is checked after `upType()`: a
+/// row the frozen shelf left with a pre-`BookType` source type (`type < 8`) is
+/// local only when its origin is `loc_book` or a `webDav::` tag, because
+/// `upType()` is what raises those to the `BookType.local` bit. The operator's
+/// own backup carries all three spellings — the local bit, a `content://`
+/// document URI in 26 rows, and a bare `/storage/...` path in 9.
 bool isLocalBookType(int type) => (type & 256) != 0;
 
-bool _isLocalBook(Map<String, dynamic> book, String bookUrl) =>
-    isLocalBookType(_legacyInt(book['type'])) ||
-    bookUrl.startsWith('content://') ||
-    bookUrl.startsWith('file://');
+/// `BookType.localTag`, the origin a local book gets.
+const String _localOriginTag = 'loc_book';
+
+/// `BookType.webDavTag`, the prefix a WebDAV local book's origin carries.
+const String _webDavOriginTag = 'webDav::';
+
+bool _isLocalBook(Map<String, dynamic> book, String bookUrl) {
+  final type = _legacyInt(book['type']);
+  final origin = _string(book['origin']);
+  return isLocalBookType(type) ||
+      (type < 8 &&
+          (origin == _localOriginTag || origin.startsWith(_webDavOriginTag))) ||
+      bookUrl.startsWith('content://') ||
+      bookUrl.startsWith('file://');
+}
 
 /// The name the local file ended in.
 ///
 /// Precedence: the last segment of the percent-decoded URL when that segment
 /// names a file — a `content://.../document/primary%3ABook%2F<名>.txt` URI spells
 /// it at the end — then `originName`, which the frozen shelf filled with the same
-/// file name, then the book's title. Only the name survives: rule 4 forbids
-/// keeping the path itself.
+/// file name, then the book's title. Only the last segment survives: rule 4
+/// forbids keeping the path itself, and the flat `books.relative_path` the
+/// reader joins to a root must never carry a drive letter, a leading slash or a
+/// `..` segment, whichever field spelled it.
 String _localFileName(Map<String, dynamic> book, String bookUrl) {
   final decoded = _percentDecode(bookUrl);
-  final tail = decoded.split('/').last.trim();
-  if (_namesAFile(decoded, tail)) return tail;
-  final originName = _string(book['originName']).trim();
-  if (originName.isNotEmpty) return originName;
-  return _string(book['name'], fallback: '未命名文件');
+  final tail = _lastPathSegment(decoded);
+  if (tail != null && _namesAFile(decoded, tail)) return tail;
+  for (final value in <String>[
+    _string(book['originName']).trim(),
+    _string(book['name']).trim(),
+  ]) {
+    final name = _lastPathSegment(value);
+    if (name != null) return name;
+  }
+  return '未命名文件';
+}
+
+/// The last path segment of [value], both separators treated alike, with the
+/// segments that cannot be a file name removed: empty, `.`, `..` and a drive
+/// prefix. Null means nothing was left.
+String? _lastPathSegment(String value) {
+  final segments = value.replaceAll('\\', '/').split('/');
+  for (final segment in segments.reversed) {
+    final name = segment.trim();
+    if (name.isEmpty || name == '.' || name == '..') continue;
+    if (RegExp(r'^[A-Za-z]:').hasMatch(name)) continue;
+    return name;
+  }
+  return null;
 }
 
 /// Percent-decodes a URL without the URI parser.
@@ -664,6 +810,10 @@ Map<String, dynamic> _localRaw(
   clean['bookUrl'] = correlationKey;
   clean['legacyKey'] = correlationKey;
   clean['localFileName'] = fileName;
+  // `originName` is where the frozen shelf kept the file name, but a crafted
+  // backup can spell the whole path there; only the name survives, and it is
+  // already the one the row stores.
+  clean['originName'] = fileName;
   for (final key in const ['coverUrl', 'customCoverUrl', 'tocUrl']) {
     final value = clean[key];
     if (value is String && _looksLikeLocalPath(value)) clean.remove(key);
@@ -741,9 +891,14 @@ String _sha256(List<int> bytes) {
 /// One member, decoded as the entity array the frozen baseline wrote
 /// (`Backup.kt:120`).
 ///
-/// An entry that is not a JSON object is dropped rather than trusted; the member
-/// itself has to be an array.
-List<Map<String, dynamic>> _entityArray(Uint8List bytes, String member) {
+/// An entry that is not a JSON object is dropped rather than trusted — and
+/// counted, so the loss report cannot stay silent about it; the member itself
+/// has to be an array.
+List<Map<String, dynamic>> _entityArray(
+  Uint8List bytes,
+  String member,
+  _Totals totals,
+) {
   final Object? decoded;
   try {
     decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
@@ -751,10 +906,15 @@ List<Map<String, dynamic>> _entityArray(Uint8List bytes, String member) {
     throw FormatException('$member 不是 JSON：${error.message}');
   }
   if (decoded is! List) throw FormatException('$member 不是 JSON 数组');
-  return <Map<String, dynamic>>[
-    for (final entry in decoded)
-      if (entry is Map) Map<String, dynamic>.from(entry),
-  ];
+  final rows = <Map<String, dynamic>>[];
+  for (final entry in decoded) {
+    if (entry is Map) {
+      rows.add(Map<String, dynamic>.from(entry));
+    } else {
+      totals.droppedEntries++;
+    }
+  }
+  return rows;
 }
 
 class _Totals {
@@ -773,4 +933,5 @@ class _Totals {
   int unmatchedMasks = 0;
   int unreadBooks = 0;
   int droppedCovers = 0;
+  int droppedEntries = 0;
 }

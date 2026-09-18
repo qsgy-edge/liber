@@ -141,15 +141,19 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         }
         if (!mounted || error != null) return;
         final savedUrl = entry.chapterKey;
-        final index = savedUrl.isEmpty
-            ? 0
+        var index = savedUrl.isEmpty
+            ? entry.chapterIndex
             : chapters.indexWhere((c) => '${c.url}' == savedUrl);
-        if (index < 0) throw StateError('原章节已不在目录中，进度仍保留，请选择章节');
+        if (index < 0 || index >= chapters.length) {
+          final fallback = entry.chapterIndex;
+          if (fallback < 0 || fallback >= chapters.length) {
+            throw StateError('原章节已不在目录中，进度仍保留，请选择章节');
+          }
+          index = fallback;
+        }
         await read(index, entry.textOffset);
       } else {
-        final output = await _withTls(
-          () => pipeline.search(widget.keyword),
-        );
+        final output = await _withTls(() => pipeline.search(widget.keyword));
         if (mounted) {
           setState(() {
             hits = output;
