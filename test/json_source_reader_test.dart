@@ -18,6 +18,11 @@ import 'package:liber/store/space_store.dart';
 /// no live site — and through the product's own path: the browser builds the
 /// pipeline from the source's rules, so this test fails if the JSON adapter is
 /// not the one a JSON source gets.
+///
+/// The body labels are `正文一`/`正文二` rather than the chapter names on
+/// purpose: the reader now runs the frozen content stage (#17), which strips a
+/// leading line that repeats the chapter title, so a fixture whose first line
+/// starts with `第一章` would lose that prefix before it is rendered.
 
 const sourceUrl = 'http://json.test';
 
@@ -43,8 +48,8 @@ final pages = <String, String>{
       {'name': '第二章', 'url': '/ch/2'},
     ],
   }),
-  '/ch/1': chapterPage('第一章正文'),
-  '/ch/2': chapterPage('第二章正文'),
+  '/ch/1': chapterPage('正文一'),
+  '/ch/2': chapterPage('正文二'),
 };
 
 final source = <String, dynamic>{
@@ -148,8 +153,8 @@ void main() {
     await tester.tap(find.text('第一章'));
     await tester.pumpAndSettle();
     expect(find.byType(OnlineReaderPage), findsOneWidget);
-    expect(find.textContaining('第一章正文 第0段'), findsOneWidget);
-    expect(find.textContaining('第一章正文 第39段'), findsOneWidget);
+    expect(find.textContaining('正文一 第0段'), findsOneWidget);
+    expect(find.textContaining('正文一 第39段'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -172,7 +177,7 @@ void main() {
     // Paging writes the chapter the reader switched to.
     await tester.tap(find.text('下一章'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('第二章正文 第0段'), findsOneWidget);
+    expect(find.textContaining('正文二 第0段'), findsOneWidget);
     final bookId = (await shelf.onlineShelf()).single.id;
     expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/ch/2');
 
