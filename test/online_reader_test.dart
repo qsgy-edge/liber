@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -193,6 +194,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('第二章'), findsOneWidget);
     expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/2');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reader applies the space replace rules to the title and the body', (
+    tester,
+  ) async {
+    // The rules the frozen reader reads per book: a content rule that reaches
+    // every source, and a title rule. Both are literal, because a regex rule runs
+    // in its own isolate (the deadline) and a widget test's binding does not
+    // deliver another isolate's messages; `content_processing_test.dart` covers
+    // the regex path.
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'content-rule',
+        name: '去广告',
+        pattern: '第0段',
+        replacement: const Value('第零段'),
+        isRegex: const Value(false),
+      ),
+    );
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'title-rule',
+        name: '章改回',
+        pattern: '章',
+        replacement: const Value('回'),
+        scopeTitle: const Value(true),
+        scopeContent: const Value(false),
+        isRegex: const Value(false),
+      ),
+    );
+    final chapters = [SourceChapter('第一章 广告', Uri.parse('$sourceUrl/1'))];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OnlineReaderPage(
+          pipeline: ScriptedPipeline(),
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: chapters,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // The body carries the content rule's replacement.
+    expect(find.textContaining('第零段'), findsWidgets);
+    expect(find.textContaining('第0段'), findsNothing);
+    // The reader's own title is the replaced one.
+    expect(find.text('第一回 广告'), findsOneWidget);
+    // The table of contents stays raw: the frozen list replaces a title only
+    // when `AppConfig.tocUiUseReplace` is on, and it defaults to false.
+    await tester.tap(find.text('目录'));
+    await tester.pumpAndSettle();
+    expect(find.text('第一章 广告'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
