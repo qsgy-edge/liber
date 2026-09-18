@@ -1,0 +1,122 @@
+{
+  "recordedAt": "2026-09-18T16:26:00+08:00",
+  "kind": "frozen-oracle-target-readiness",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/39",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "application": {
+      "package": "io.legado.app.debug",
+      "productionRebuilt": false,
+      "installedBytesPulledAndVerified": true,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "sameBytesAsTheRecordedGoldens": true
+    }
+  },
+  "harness": {
+    "sources": [
+      "tool/nested_oracle/NestedOracle.java",
+      "tool/nested_oracle/StateOracle.java",
+      "tool/nested_oracle/AndroidManifest.xml",
+      "tool/nested_oracle/build.ps1",
+      "tool/nested_oracle/fixtures.json",
+      "tool/nested_oracle/state-fixtures.json"
+    ],
+    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
+    "jdk": "Temurin 17.0.20+8 (portable, unpacked from OpenJDK17U-jdk_x64_windows_hotspot_17.0.20_8.zip)",
+    "androidBuildTools": "35.0.1",
+    "androidJar": "platforms/android-35/android.jar",
+    "apkSha256": "877a7458f2a573c9b4fa050b5da59ea5aff8b5d4dd9236adae7fdf674d1156b2",
+    "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable: the 2026-09-14 build of these same sources is eac1b3b83a51bf30ba8fbad0803ad93b34b5f3962a8b38b275f4721df4a2e9ed, and the nested-only build the committed nested golden was recorded with is 73667a7232d65897ed1e39e554c83c4c45f8d5c17ba5282bacdc3defd9d639b0",
+    "installCommand": "adb -s 5615f742 install -r -t <harness apk>",
+    "instrumentCommand": {
+      "nested": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.NestedOracle",
+      "state": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.StateOracle"
+    }
+  },
+  "device": {
+    "serial": "5615f742",
+    "model": "25102RKBEC (Redmi myron)",
+    "androidRelease": "17",
+    "sdk": 37,
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+    "deltaSinceTheRecordedGoldens": {
+      "recordedFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.25.XPMCNXM:user/release-keys",
+      "recordedWebViewVersion": "154.0.8037.0",
+      "note": "the handset took a system update after 2026-09-14 (OS4.0.0.25 -> OS4.0.0.31, WebView 154.0.8037.0 -> 154.0.8037.22). The frozen application's installed bytes are unchanged, which is why the committed goldens reproduce here field for field; they stay pinned to the fingerprint they recorded, and a golden produced now is pinned to this one."
+    }
+  },
+  "oracleRuns": {
+    "nested": {
+      "result": "INSTRUMENTATION_RESULT: stream=Nested oracle recorded 15 observations",
+      "observations": 15,
+      "evidence": "tool/nested_oracle/evidence/android-17-os4.0.0.31/nested-oracle.json",
+      "comparison": {
+        "against": "tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json",
+        "normalization": "the fingerprint field is dropped from both sides; everything else is compared as canonical JSON",
+        "command": "python -c \"import json,sys,pathlib; g=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')); f=json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8')); g.pop('fingerprint',None); f.pop('fingerprint',None); print('identical' if json.dumps(g,sort_keys=True)==json.dumps(f,sort_keys=True) else 'DIFFERENT')\" tool/nested_oracle/evidence/android-17-os4.0.0.25/golden.json tool/nested_oracle/evidence/android-17-os4.0.0.31/nested-oracle.json",
+        "result": "identical"
+      }
+    },
+    "state": {
+      "result": "INSTRUMENTATION_RESULT: stream=State oracle recorded 10 observations",
+      "observations": 10,
+      "evidence": "tool/nested_oracle/evidence/android-17-os4.0.0.31/state-oracle.json",
+      "comparison": {
+        "against": "tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json",
+        "normalization": "the fingerprint field is dropped from both sides; everything else is compared as canonical JSON",
+        "command": "python -c \"import json,sys,pathlib; g=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')); f=json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8')); g.pop('fingerprint',None); f.pop('fingerprint',None); print('identical' if json.dumps(g,sort_keys=True)==json.dumps(f,sort_keys=True) else 'DIFFERENT')\" tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json tool/nested_oracle/evidence/android-17-os4.0.0.31/state-oracle.json",
+        "result": "identical"
+      },
+      "note": "state-golden.json in the same directory is the pre-expansion record: it has no firstCompletesWhileSecondHeld block and no /early and /late requests, so it is DIFFERENT from any run of the current StateOracle.java by construction. state-expanded-golden.json is the record that matches the current source, and this run reproduces it."
+    }
+  },
+  "coverage": {
+    "entryPoint": "installed frozen io.legado.app.debug reached by reflection (AnalyzeUrl.evalJS, SharedJsScope), plus the two instrumentation entries the harness builds",
+    "gaps": [
+      "The four-stage SLICE-01 oracle entry itself (#38)",
+      "Request-semantics rows (#15) and the HTML extraction corpus (#23)",
+      "The Android WebView adapter rows (#2), which need their own fixtures and a recorded WebView version"
+    ]
+  },
+  "noAggregateStatusPromotion": true,
+  "hashes": [
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/nested-oracle.json",
+      "sha256": "be660aa893dfffca2f9d32f85e79972e1dc4a6cf9708e70f2a00c05ff34b412c"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/state-oracle.json",
+      "sha256": "4e7aa989a29c45ea4f8ab67e53b002439cec8cbe5754fd0e65722b161bcf6cf1"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/run.log",
+      "sha256": "7ab88e55ad4617a82de199480ec1c3f8570f9c9dbd871346aa7885dff355db12"
+    },
+    {
+      "path": "tool/nested_oracle/NestedOracle.java",
+      "sha256": "3e64adba936cc6971025c91832c07ba5ffb38994f56dcadac9bc5bbb6fc4ad71"
+    },
+    {
+      "path": "tool/nested_oracle/StateOracle.java",
+      "sha256": "157f04f8e31e28ce9b751636761871e40786e7f4a55c179fc112133e5e26b147"
+    },
+    {
+      "path": "tool/nested_oracle/AndroidManifest.xml",
+      "sha256": "0c7d1b971690fb06850c2aed75a7282ba2d004ec82ab83ac74dd22154e172b51"
+    },
+    {
+      "path": "tool/nested_oracle/build.ps1",
+      "sha256": "991fefdf4d9152a42213e9a03d97a21a4b70cf38fd0b7a4c5b4e91beba098044"
+    },
+    {
+      "path": "tool/nested_oracle/fixtures.json",
+      "sha256": "06ad9917da19fe40330ca324242efb57a38666d59a1b414b231404beda014566"
+    },
+    {
+      "path": "tool/nested_oracle/state-fixtures.json",
+      "sha256": "bdafd6e253cd15e76a54862c7211bcce288d503dcf45c579ed708714159e9c08"
+    }
+  ]
+}

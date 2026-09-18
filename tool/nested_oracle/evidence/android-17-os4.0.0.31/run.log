@@ -1,0 +1,59 @@
+# nested_oracle / StateOracle re-run on the frozen-oracle handset
+# recorded 2026-09-18T08:25:51Z (UTC) by the batch-7 controller
+
+== target identity ==
+T08:25:51Z (UTC) by the batch-7 controller
+
+== target identity ==
+$ adb -s 5615f742 devices -l
+List of devices attached
+5615f742               device product:myron model:25102RKBEC device:myron transport_id:1
+
+$ adb -s 5615f742 shell getprop ro.build.fingerprint
+Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
+$ adb -s 5615f742 shell getprop ro.build.version.release
+17
+$ adb -s 5615f742 shell getprop ro.build.version.sdk
+37
+$ adb -s 5615f742 shell getprop ro.product.model
+25102RKBEC
+$ adb -s 5615f742 shell getprop ro.serialno
+5615f742
+$ adb -s 5615f742 shell dumpsys package com.google.android.webview | awk "/versionName=/{print; exit}"
+    versionName=154.0.8037.22
+
+== installed packages ==
+$ adb -s 5615f742 shell pm path io.legado.app.debug
+package:/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk
+$ adb -s 5615f742 shell pm path io.liber.oracle.nested
+package:/data/app/~~zaVDPbMNYEOZgNJAZG5wpg==/io.liber.oracle.nested-dcNRbhCOSW6eNkRJZr0n4w==/base.apk
+
+== harness install (fresh build of tool/nested_oracle, Temurin 17.0.20+8, build-tools 35.0.1) ==
+$ adb -s 5615f742 install -r -t C:/Users/17945/.cache/wayfinder/nested-oracle-20260918-os4031/nested-oracle.apk
+Serving...
+All files should be loaded. Notifying the device.
+Performing Incremental Install
+Success
+Install command complete in 599 ms
+
+== oracle runs ==
+$ timeout 300 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.NestedOracle
+INSTRUMENTATION_RESULT: stream=Nested oracle recorded 15 observations
+
+INSTRUMENTATION_CODE: -1
+$ timeout 300 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.StateOracle
+INSTRUMENTATION_RESULT: stream=State oracle recorded 10 observations
+
+INSTRUMENTATION_CODE: -1
+
+== evidence pulled ==
+$ adb pull /sdcard/Android/data/io.legado.app.debug/files/nested-oracle.json
+/sdcard/Android/data/io.legado.app.debug/files/nested-oracle.json: 1 file pulled, 0 skipped. 0.2 MB/s (1526 bytes in 0.007s)
+$ adb pull /sdcard/Android/data/io.legado.app.debug/files/state-oracle.json
+/sdcard/Android/data/io.legado.app.debug/files/state-oracle.json: 1 file pulled, 0 skipped. 0.3 MB/s (639 bytes in 0.002s)
+
+== hashes ==
+device frozen app installed bytes sha256 (pulled twice, identical): cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6 / cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6
+harness apk sha256: 877a7458f2a573c9b4fa050b5da59ea5aff8b5d4dd9236adae7fdf674d1156b2
+nested-oracle.json sha256: be660aa893dfffca2f9d32f85e79972e1dc4a6cf9708e70f2a00c05ff34b412c
+state-oracle.json  sha256: 4e7aa989a29c45ea4f8ab67e53b002439cec8cbe5754fd0e65722b161bcf6cf1

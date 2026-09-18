@@ -5,3 +5,8 @@
 # out one byte per line too large (measured: +74 and +23 on the two fixtures).
 packages/fjs/liber_text/tests/data/** text eol=lf
 packages/fjs/liber_text/assets/** text eol=lf
+
+# Device-produced oracle evidence is compared by byte hash (see manifest.json in each
+# evidence directory). Without this a Windows checkout with core.autocrlf=true rewrites
+# the LF bytes the device wrote, and the manifest pins stop matching.
+tool/nested_oracle/evidence/** text eol=lf

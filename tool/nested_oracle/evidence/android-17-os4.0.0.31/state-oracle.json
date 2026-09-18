@@ -1,0 +1,23 @@
+{
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
+  "values": {
+    "secondCompletedWhileFirstHeld": true,
+    "firstResult": "22.0",
+    "secondResult": "22.0",
+    "concurrentFinalState": "22.0",
+    "firstCompletesWhileSecondHeld": true,
+    "cancelResult": "error:cancelled",
+    "afterCancelState": "41.0",
+    "lruTouch": "99.0",
+    "lruRetained": "99.0",
+    "lruEvicted": "0"
+  },
+  "requests": [
+    "GET \/hold",
+    "GET \/early",
+    "GET \/late",
+    "GET \/entered"
+  ],
+  "weakReferencesPinnedForLru": true
+}
