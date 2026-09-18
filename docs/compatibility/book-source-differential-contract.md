@@ -93,15 +93,20 @@ A non-observable baseline resource leak is therefore not part of the golden equa
 
 ### Known divergences
 
-A divergence is recorded here only when an approved architecture decision makes a
-frozen observation unreproducible. It is not a pass: the affected harness reports
-the observation in its `notCompared` list naming the expected and observed values,
-the platform cannot claim the capability that observation belongs to, and every
-other observation in that scenario stays compared.
+A divergence is recorded here only when an approved architecture or product
+decision makes a frozen observation unreproducible. It is not a pass: the
+affected harness reports the observation in its `notCompared` list naming the
+expected and observed values, the platform cannot claim the capability that
+observation belongs to, and every other observation in that scenario stays
+compared.
 
 | Row | Expected (frozen baseline) | Observed (Liber) | Reason | Mitigation |
 |---|---|---|---|---|
 | `firstCompletesWhileSecondHeld` (`tool/state_oracle_compare.dart`, `state-expanded-golden.json`) | `true` | `false` | ADR 0009 removes the per-execution stacks, so two scopes can no longer be parked independently: a second execution runs nested inside the parked one and the nested wait owns the OS thread, which leaves the outer scope's parked wait unpolled until the nested one returns. The frozen baseline resumes independently parked scopes in any order. | Overlapping analyses are serialized at the product level (#26), and a later chapter prefetch stays serialized rather than concurrent, so no source reaches the interleaved shape this row describes. |
+| `escape` request charset, wire query | `EncoderUtils.escape`'s output as written: `%7e` for `~`, `%u4e2d` for 中 (`EncoderUtils.kt:11-28`) | `~` and `%25u4e2d` | The request URL is a Dart `Uri`, which canonicalizes an escape of an unreserved character while it resolves and rewrites the `%uXXXX` form, which is not a valid URI escape; the frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (`AnalyzeUrl.kt:279-292`) without parsing it | The `charset: "escape"` value appears in none of the 150 used sources; the query text is spliced back before the encoder runs, so the default and named-charset branches are unaffected |
+| Legacy request charset, a character the charset cannot represent | `CharsetEncoder`'s REPLACE action writes `?` (`AnalyzeUrl.kt:318-328`) | The HTML numeric character reference, `&#128512;` for an emoji | The encoder is `encoding_rs`'s (`packages/fjs/liber_text`), whose Encoding Standard error mode is the HTML one | A source must both name a legacy `charset` and put the character in the rule to reach it; no fixture does |
+| `enabledCookieJar`, a session cookie across a restart | A non-persistent `Set-Cookie` lives in process memory only and is gone after a restart (`CookieManager.saveResponse` → `CacheManager.putMemory`, `CookieManager.kt:42-53`) | The pair survives a restart | ADR 0011 §3 puts host-surface state in the space's store and gives the jar one storage shape, so the product has no separate session tier | None claimed: a fixture that observes restart behavior reports this row in its `notCompared` list |
+| A `Set-Cookie` on a redirect hop | Stored, because the frozen interceptor runs once per network exchange and saves each response's cookies (`HttpHelper.kt:86-98`) | Dropped; only the final response's headers reach the jar | The transport walks the redirect chain itself (OkHttp's `RetryAndFollowUpInterceptor` rules, #9) and hands the pipeline one final response | The hop's cookie is lost until the redirect path carries per-hop headers; #9's semantics are out of this row's scope, so the divergence is recorded rather than closed |
 
 The divergence is a property of the execution model, so the same named set applies
 on every desktop platform that runs the harness; it is not a per-run flag and it

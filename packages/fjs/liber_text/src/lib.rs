@@ -38,6 +38,6 @@ mod scan;
 
 pub use convert::{ConvertTarget, Direction, convert, convert_to};
 pub use scan::{
-    Anchor, Chapter, Index, IndexOptions, TextError, Window, detect_encoding, index_file,
-    read_window,
+    Anchor, Chapter, Index, IndexOptions, TextError, Window, decode_bytes, detect_bytes,
+    detect_encoding, encode_bytes, index_file, read_window,
 };

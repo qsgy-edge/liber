@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../domain/contracts.dart';
 import 'book_source_service.dart';
+import 'source_encoding.dart';
 import 'source_http_uri.dart';
 
 /// The frozen `HttpHelper.okHttpClient` interceptor appends these to every
@@ -239,7 +241,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     return SourceHttpResponse(
       statusCode: response.statusCode,
       headers: Map<String, List<String>>.unmodifiable(headers),
-      body: utf8.decode(bytes),
+      body: await decodeSourceResponseBody(Uint8List.fromList(bytes), headers),
       url: url,
     );
   }
@@ -305,3 +307,145 @@ String _tlsReason(String message) {
   }
   return '证书或主机名校验未通过';
 }
+
+/// The response body decoded the way the frozen client decodes it.
+///
+/// `ResponseBody.text()` (`OkHttpUtils.kt:78-96`) removes a UTF-8 byte order
+/// mark and then decodes with the media type's charset; when the response
+/// declares none, `EncodingDetect.getHtmlEncode` (`EncodingDetect.kt:18-50`)
+/// reads the document's own `<meta>` charset and only then falls back to the
+/// engine's detection. One engine decodes every branch (`packages/fjs/liber_text`,
+/// the same `encoding_rs` the local-file decode uses). The body's
+/// `charset` request option plays no part here: the frozen option only feeds
+/// request encoding.
+Future<String> decodeSourceResponseBody(
+  Uint8List bytes,
+  Map<String, List<String>> headers,
+) async {
+  final body = removeSourceUtf8Bom(bytes);
+  final declared = sourceMediaTypeCharset(headers['content-type']);
+  if (declared != null) {
+    try {
+      return await SourceEncoding.decode(body, encoding: declared);
+    } catch (error) {
+      // OkHttp's `MediaType.charset()` answers null for a label it cannot
+      // resolve, and the frozen path then reads the document's own meta. A
+      // decoding failure that is not a missing label still propagates.
+      if (!SourceEncoding.isUnknownEncoding(error)) rethrow;
+    }
+  }
+  final meta = sourceHtmlMetaCharset(body);
+  if (meta != null) {
+    // The frozen `String(bytes, Charset.forName(meta))` is left to throw on a
+    // name no charset provider knows, so this branch does not fall back.
+    return SourceEncoding.decode(body, encoding: meta);
+  }
+  return SourceEncoding.decode(body);
+}
+
+/// Frozen `Utf8BomUtils.removeUTF8BOM` (`Utf8BomUtils.kt:12-18`), the strict
+/// `size > 3` test included: a body of exactly the three BOM bytes is kept.
+Uint8List removeSourceUtf8Bom(Uint8List bytes) =>
+    bytes.length > 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF
+    ? Uint8List.sublistView(bytes, 3)
+    : bytes;
+
+/// OkHttp's `MediaType.charset()` over the response's `Content-Type` values.
+///
+/// OkHttp reads the last `Content-Type` header, matches `charset` as a
+/// case-insensitive parameter name and unquotes its value; a parameter that is
+/// empty or absent answers null, and the caller then reads the document.
+String? sourceMediaTypeCharset(List<String>? values) {
+  if (values == null || values.isEmpty) return null;
+  final match = RegExp(
+    r'charset\s*=\s*("([^"]*)"|([^;,\s]*))',
+    caseSensitive: false,
+  ).firstMatch(values.last);
+  if (match == null) return null;
+  final value = (match[2] ?? match[3] ?? '').trim();
+  return value.isEmpty ? null : value;
+}
+
+/// Frozen `EncodingDetect.getHtmlEncode` (`EncodingDetect.kt:18-50`): the
+/// document's `<head>` meta tags in order, then an `http-equiv` content-type.
+///
+/// The head is the literal `<head>`…`</head>` byte range when the document has
+/// one — that byte search is case-sensitive in the frozen code — and otherwise
+/// the same tags matched case-insensitively over the whole body. Both read the
+/// bytes as UTF-8, as the frozen `String(bytes)` does, so a legacy-encoded
+/// page's non-ASCII text is mojibake while the meta tags, ASCII in every
+/// encoding the engine decodes, survive. No tag answers null, which is the
+/// frozen path's fall-through to detection.
+String? sourceHtmlMetaCharset(Uint8List bytes) {
+  final head = _sourceHeadSlice(bytes) ?? _sourceHeadByPattern(bytes);
+  if (head == null) return null;
+  for (final tag in RegExp(
+    '<meta\\b[^>]*>',
+    caseSensitive: false,
+  ).allMatches(head)) {
+    final text = tag.group(0)!;
+    final charset = _sourceAttributeValue(text, 'charset');
+    if (charset != null && charset.isNotEmpty) return charset;
+    final httpEquiv = _sourceAttributeValue(text, 'http-equiv');
+    if (httpEquiv == null || httpEquiv.toLowerCase() != 'content-type') {
+      continue;
+    }
+    final content = _sourceAttributeValue(text, 'content') ?? '';
+    final index = content.toLowerCase().indexOf('charset=');
+    final value = index > -1
+        ? content.substring(index + 'charset='.length)
+        : _substringAfterSemicolon(content);
+    if (value.isNotEmpty) return value;
+  }
+  return null;
+}
+
+/// Frozen `content.substringAfter(";")`: everything after the first `;`, or the
+/// whole string when there is none.
+String _substringAfterSemicolon(String content) {
+  final index = content.indexOf(';');
+  return index < 0 ? content : content.substring(index + 1);
+}
+
+/// The `<head>`…`</head>` bytes as the frozen `String(bytes)` reads them.
+String? _sourceHeadSlice(Uint8List bytes) {
+  const open = [0x3C, 0x68, 0x65, 0x61, 0x64, 0x3E]; // `<head>`
+  const close = [0x3C, 0x2F, 0x68, 0x65, 0x61, 0x64, 0x3E]; // `</head>`
+  final start = _indexOfBytes(bytes, open, 0);
+  if (start < 0) return null;
+  final end = _indexOfBytes(bytes, close, start);
+  if (end < 0) return null;
+  return _utf8Lenient(bytes, start, end + close.length);
+}
+
+/// The frozen regex fallback: `<head>`…`</head>` ignoring case over the whole
+/// body decoded as UTF-8.
+String? _sourceHeadByPattern(Uint8List bytes) =>
+    RegExp(r'<head>[\s\S]*?</head>', caseSensitive: false)
+        .firstMatch(_utf8Lenient(bytes, 0, bytes.length))
+        ?.group(0);
+
+/// One HTML attribute's value, as Jsoup's `Element.attr` reads it: double- or
+/// single-quoted, or the bare token up to whitespace or the tag's end.
+String? _sourceAttributeValue(String tag, String name) {
+  final match = RegExp(
+    '$name\\s*=\\s*("([^"]*)"|\'([^\']*)\'|([^\\s"\'>]+))',
+    caseSensitive: false,
+  ).firstMatch(tag);
+  if (match == null) return null;
+  return match[2] ?? match[3] ?? match[4] ?? '';
+}
+
+int _indexOfBytes(Uint8List bytes, List<int> pattern, int from) {
+  outer:
+  for (var at = from; at + pattern.length <= bytes.length; at++) {
+    for (var offset = 0; offset < pattern.length; offset++) {
+      if (bytes[at + offset] != pattern[offset]) continue outer;
+    }
+    return at;
+  }
+  return -1;
+}
+
+String _utf8Lenient(Uint8List bytes, int start, int end) =>
+    utf8.decode(Uint8List.sublistView(bytes, start, end), allowMalformed: true);

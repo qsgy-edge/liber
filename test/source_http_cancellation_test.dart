@@ -6,7 +6,13 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 
+import 'package:liber/source/native_library.dart';
+
+import 'native_library.dart';
+
 void main() {
+  setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
+  tearDownAll(NativeLibrary.dispose);
   test('dispatcher cancellation closes the actual HTTP connection', () async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final reached = Completer<void>();

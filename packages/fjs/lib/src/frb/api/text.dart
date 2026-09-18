@@ -20,6 +20,28 @@ TextIndexOptions textDefaultOptions() =>
 Future<TextDetection> textDetectEncoding({required String path}) =>
     LibFjs.instance.api.crateApiTextTextDetectEncoding(path: path);
 
+/// Decodes an in-memory byte buffer — an HTTP response body — with a declared
+/// encoding name, or with the engine's own detection when the caller has none.
+///
+/// The Book Source request layer resolves the name first (the frozen
+/// `OkHttpUtils.kt:78-96` order: Content-Type charset, else the document's meta
+/// charset) and passes `None` only for the frozen `EncodingDetect` fallback.
+/// `encoding_rs` decodes GBK, GB18030 and Big5 the same way on all five
+/// platforms, which `dart:convert` cannot do at all.
+Future<String> textDecodeBytes({required List<int> bytes, String? encoding}) =>
+    LibFjs.instance.api
+        .crateApiTextTextDecodeBytes(bytes: bytes, encoding: encoding);
+
+/// Encodes text with a declared charset, the request-side half of the same
+/// `charset` option: the frozen `URLEncoder.encode(value, charset)` and hutool
+/// `queryEncoder.encode(params, charset)` (`AnalyzeUrl.kt:294-334`) percent-escape
+/// these bytes. An unknown label is `TextEngineError::UnknownEncoding`, mirroring
+/// the `UnsupportedCharsetException` `Charset.forName` throws on the frozen path.
+Future<Uint8List> textEncodeBytes(
+        {required String text, required String encoding}) =>
+    LibFjs.instance.api
+        .crateApiTextTextEncodeBytes(text: text, encoding: encoding);
+
 /// Indexes a local file in one pass: encoding, both lengths, anchors, chapters.
 Future<TextIndex> textIndexFile(
         {required String path, required TextIndexOptions options}) =>

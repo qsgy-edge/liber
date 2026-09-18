@@ -82,6 +82,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
           transport: transport as SourceHttpTransport,
           hostState: hostState,
           sourceRef: _sourceRef,
+          concurrentRate: '${source['concurrentRate'] ?? ''}',
+          // Frozen `AnalyzeUrl.enabledCookieJar`: only an explicit `true`
+          // enables the response cookie jar; the null default is false.
+          enabledCookieJar: source['enabledCookieJar'] == true,
         )
       : null;
 
@@ -197,11 +201,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final split = splitSourceUrlOptions(await _expand(template, keyword));
     var url = _url(base, split.path);
     final script = split.options.js;
-    if (script != null) {
-      url = _url(base, '${await _evalJs(script, keyword, '$url')}');
-    }
+    final text = script == null
+        ? split.path
+        : '${await _evalJs(script, keyword, '$url')}';
+    url = _url(base, text);
     if (!split.options.isPost) {
-      url = _url(base, encodeSourceQuery('$url'));
+      url = _url(
+        base,
+        await encodeSourceQuery(
+          sourceUrlTextWithRawQuery(url, text),
+          charset: split.options.charset,
+        ),
+      );
     }
     return (url, split.options);
   }
@@ -213,29 +224,25 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     _cancellation.throwIfCancelled();
     final merged = {..._activeHeaders, ...options.headers};
-    final (method: method, body: body, headers: extra) = sourceRequestShape(
+    final (method: method, body: body, headers: extra) = await sourceRequestShape(
       options,
       merged,
     );
     final headers = {...merged, ...extra};
-    if (transport is SourceHttpTransport) {
-      final state = hostState;
-      // The exception is a persisted row, so a restart must read it before the
-      // request is built; the dispatcher path awaits the same load.
-      if (state != null && !state.isLoaded) await state.ready();
-      final allowInvalidCertificate =
-          state?.allowsInvalidCertificate(_sourceRef, url.host) ?? false;
-      final response = await (transport as SourceHttpTransport).send(
-        SourceHttpRequest(
-          method: method,
-          url: url,
-          headers: headers,
-          body: body,
-          retry: options.retry,
-          sourceRef: _sourceRef,
-          allowInvalidCertificate: allowInvalidCertificate,
-        ),
-      );
+    final host = _host;
+    if (host != null) {
+      // The same dispatcher every other source request goes through, so the
+      // JSON stages carry cookies, the source's rate limit and the response
+      // decoding exactly as the HTML stages do.
+      final response = await host
+          .forExecution(_cancellation)
+          .request(
+            method,
+            '$url',
+            headers: headers,
+            body: body,
+            retry: options.retry,
+          );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
       return jsonDecode(response.body);

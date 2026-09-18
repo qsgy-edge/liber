@@ -207,6 +207,30 @@ pub fn text_detect_encoding(path: String) -> Result<TextDetection, TextEngineErr
     Ok(TextDetection { encoding: detection.encoding, bom: detection.bom })
 }
 
+/// Decodes an in-memory byte buffer — an HTTP response body — with a declared
+/// encoding name, or with the engine's own detection when the caller has none.
+///
+/// The Book Source request layer resolves the name first (the frozen
+/// `OkHttpUtils.kt:78-96` order: Content-Type charset, else the document's meta
+/// charset) and passes `None` only for the frozen `EncodingDetect` fallback.
+/// `encoding_rs` decodes GBK, GB18030 and Big5 the same way on all five
+/// platforms, which `dart:convert` cannot do at all.
+pub fn text_decode_bytes(
+    bytes: Vec<u8>,
+    encoding: Option<String>,
+) -> Result<String, TextEngineError> {
+    Ok(engine::decode_bytes(&bytes, encoding.as_deref())?)
+}
+
+/// Encodes text with a declared charset, the request-side half of the same
+/// `charset` option: the frozen `URLEncoder.encode(value, charset)` and hutool
+/// `queryEncoder.encode(params, charset)` (`AnalyzeUrl.kt:294-334`) percent-escape
+/// these bytes. An unknown label is `TextEngineError::UnknownEncoding`, mirroring
+/// the `UnsupportedCharsetException` `Charset.forName` throws on the frozen path.
+pub fn text_encode_bytes(text: String, encoding: String) -> Result<Vec<u8>, TextEngineError> {
+    Ok(engine::encode_bytes(&text, &encoding)?)
+}
+
 /// Indexes a local file in one pass: encoding, both lengths, anchors, chapters.
 pub fn text_index_file(
     path: String,

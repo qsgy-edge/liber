@@ -98,6 +98,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           transport: transport as SourceHttpTransport,
           hostState: hostState,
           sourceRef: _sourceRef,
+          concurrentRate: '${source['concurrentRate'] ?? ''}',
+          // Frozen `AnalyzeUrl.enabledCookieJar`: only an explicit `true`
+          // enables the response cookie jar; the null default is false.
+          enabledCookieJar: source['enabledCookieJar'] == true,
         )
       : null;
   late final SourceScriptRuntime _runtime =
@@ -219,24 +223,35 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword,
   ) async {
     final split = splitSourceUrlOptions(await _expand(template, keyword));
-    var url = _resolve(base, split.path, keepFragment: true);
     final script = split.options.js;
-    if (script != null) {
-      final value = await _evalJs(script, keyword, '$url');
-      url = _resolve(base, '$value', keepFragment: true);
-    }
+    final text = script == null
+        ? split.path
+        : '${await _evalJs(script, keyword, '${_resolve(base, split.path, keepFragment: true)}')}';
+    var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
-      url = _resolve(base, encodeSourceQuery('$url'));
+      url = _resolve(
+        base,
+        await encodeSourceQuery(
+          sourceUrlTextWithRawQuery(url, text),
+          charset: split.options.charset,
+        ),
+      );
     }
     return (url, split.options);
   }
 
   /// Resolves an already-extracted rule value that may carry URL options.
-  (Uri, SourceUrlOptions) _extracted(Uri base, String value) {
+  Future<(Uri, SourceUrlOptions)> _extracted(Uri base, String value) async {
     final split = splitSourceUrlOptions(value);
     var url = _resolve(base, split.path, keepFragment: true);
     if (!split.options.isPost) {
-      url = _resolve(base, encodeSourceQuery('$url'));
+      url = _resolve(
+        base,
+        await encodeSourceQuery(
+          sourceUrlTextWithRawQuery(url, split.path),
+          charset: split.options.charset,
+        ),
+      );
     }
     return (url, split.options);
   }
@@ -285,7 +300,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _validate();
     final sourceHeaders = await _headers();
     final merged = {...sourceHeaders, ...options.headers};
-    final (method: method, body: body, headers: extra) = sourceRequestShape(
+    final (method: method, body: body, headers: extra) = await sourceRequestShape(
       options,
       merged,
     );
@@ -357,7 +372,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
     final books = <HtmlBook>[];
     for (var index = 0; index < items.length; index++) {
-      final (bookUrl, bookOptions) = _extracted(
+      final (bookUrl, bookOptions) = await _extracted(
         finalUrl,
         _required(urls, index, 'ruleSearch.bookUrl'),
       );
@@ -416,7 +431,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       kind: kind.value,
       lastChapter: lastChapter.value,
     );
-    final (tocTarget, tocOptions) = _extracted(infoUrl, tocUrl.value);
+    final (tocTarget, tocOptions) = await _extracted(infoUrl, tocUrl.value);
     var url = tocTarget;
     var options = tocOptions;
     final visited = <Uri>{};
@@ -452,7 +467,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await batch.run();
       if (items.isEmpty) throw StateError('目录页为空');
       for (var index = 0; index < items.length; index++) {
-        final (chapterUrl, chapterOptions) = _extracted(
+        final (chapterUrl, chapterOptions) = await _extracted(
           pageUrl,
           _required(urls, index, 'ruleToc.chapterUrl'),
         );
@@ -474,7 +489,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         );
       }
       if (next.isEmpty) break;
-      final (nextUrl, nextOptions) = _extracted(pageUrl, next.value);
+      final (nextUrl, nextOptions) = await _extracted(pageUrl, next.value);
       url = nextUrl;
       options = nextOptions;
     }
@@ -532,7 +547,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       }
       parts.add(content.value);
       if (next.isEmpty) break;
-      final (nextUrl, nextOptions) = _extracted(pageUrl, next.value);
+      final (nextUrl, nextOptions) = await _extracted(pageUrl, next.value);
       if (nextOptions.isPost ||
           nextOptions.body != null ||
           nextOptions.headers.isNotEmpty ||
