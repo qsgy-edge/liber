@@ -322,14 +322,21 @@ Map<String, Object?> compareSlice({
       });
     }
   }
-  final stripped = _withoutParagraphIndent('${goldenContent['text']}');
+  // The frozen content stage shapes its text only when the source declares
+  // `ruleContent.replaceRegex` (`BookContent.kt:135-142`), so a passing row
+  // carries two identical texts; the branches name how far apart they are when
+  // the row fails.
+  final frozenText = '${goldenContent['text']}';
+  final liberText = '${liberContent['text']}';
   row(
     'R8',
     'content: page chain, replaceRegex, final text',
     contentDifferences,
-    stripped == liberContent['text']
+    frozenText == liberText
+        ? 'the two content texts are identical'
+        : _withoutParagraphIndent(frozenText) == liberText
         ? 'the two texts are equal once the frozen reader\'s paragraph indent is '
-            'removed from the frozen side; the row still fails as observed'
+              'removed from the frozen side; the row still fails as observed'
         : 'the two texts differ by more than the paragraph indent',
   );
 

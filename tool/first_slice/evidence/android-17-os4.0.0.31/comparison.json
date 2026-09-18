@@ -53,15 +53,9 @@
     {
       "id": "R8",
       "title": "content: page chain, replaceRegex, final text",
-      "status": "fail",
-      "detail": "the two texts are equal once the frozen reader's paragraph indent is removed from the frozen side; the row still fails as observed",
-      "differences": [
-        {
-          "observation": "content.text",
-          "frozen": "　　第一页正文。\n　　第二段。\n　　\n　　第二页正文。\n　　本章结束。",
-          "liber": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。"
-        }
-      ]
+      "status": "pass",
+      "detail": "the two content texts are identical",
+      "differences": []
     },
     {
       "id": "R9",
@@ -109,18 +103,11 @@
       "reason": "provenance of the two runs, recorded in each evidence file and its manifest; not a compatibility observation."
     }
   ],
-  "divergences": [
-    {
-      "row": "R8",
-      "observation": "content.text",
-      "frozen": "　　第一页正文。\n　　第二段。\n　　\n　　第二页正文。\n　　本章结束。",
-      "liber": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。"
-    }
-  ],
-  "status": "fail",
+  "divergences": [],
+  "status": "pass",
   "summary": {
-    "pass": 7,
-    "fail": 1,
+    "pass": 8,
+    "fail": 0,
     "notCompared": 9
   }
 }

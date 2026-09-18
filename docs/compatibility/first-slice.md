@@ -33,8 +33,8 @@ frozen-oracle entry that produces a golden for all four stages at once:
   operator's handset (`5615f742`, Android 17 / OS4.0.0.31): the golden is
   `tool/first_slice/evidence/android-17-os4.0.0.31/golden.json`, its provenance
   is the `manifest.json` beside it, and the row-by-row comparison against the
-  Liber-side observation is `comparison.json` in the same directory. Seven of the
-  eight compared rows pass; R8 carries the one recorded divergence (below).
+  Liber-side observation is `comparison.json` in the same directory. All eight
+  compared rows pass; R8's paragraph-shaping divergence is resolved (below).
 
 Why this is the cheapest credible set: the four stages, the session state and
 the page chain are exercised by **one** fixture whose frozen side is **one**
@@ -73,19 +73,21 @@ that comparison rather than rewritten by it). The run observed:
   resolved, introduction;
 - table of contents: two pages, three ordered chapters, `nextTocUrl` followed;
 - content: chapter one over two pages, `nextContentUrl` followed, `replaceRegex`
-  applied (the recorded text keeps an empty line where the replaced sentence
-  was — an observation for the golden to compare, not a verdict).
+  applied, and the frozen content stage's final shaping applied because the
+  source declares `ruleContent.replaceRegex` (every line trimmed and prefixed
+  with the hard-coded `　　`, the empty line the replacement leaves behind
+  included).
 
 **Frozen side, executed 2026-09-18** (`dart run tool/first_slice_compare.dart
  tool/first_slice/evidence/android-17-os4.0.0.31/golden.json
  tool/first_slice/evidence/windows-slice-01.liber.json
- tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json`, exit 1):
+ tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json`, exit 0):
 both runs issued the same six requests in the same order with the same raw query
 bytes (`keyword=%E5%9B%9E%E6%94%BE&page=1`), the same decoded queries, the same
 source header, the same session cookie carriage and the same search, book
-information and table-of-contents output; one row did not pass and is recorded
-as a divergence, and the observations discounted or absent from one side are
-named in the comparison's `notCompared` list rather than dropped. A second device
+information, table-of-contents and content output; every compared row passes, and
+the observations discounted or absent from one side are named in the comparison's
+`notCompared` list rather than dropped. A second device
 run reproduced the golden byte for byte once `recordedAt` is dropped.
 
 The corpus' own port (`127.0.0.1:18731`) is fixed and is part of the compared
@@ -173,7 +175,7 @@ an observation one side does not carry is named in the comparison's
 | R5 | search output: ordered results, name/author/kind/book URL | Search | evidence `stages.search` | run | pass |
 | R6 | book information output: name/author/kind/last chapter/cover/intro | Book info | evidence `stages.bookInfo` | run | pass |
 | R7 | table of contents: order, chapter URLs, `nextTocUrl` pages | TOC | evidence `stages.toc`, `stageTrace` | run | pass |
-| R8 | content: page chain, `replaceRegex`, final text | Content | evidence `stages.content` | run | fail (paragraph indent) |
+| R8 | content: page chain, `replaceRegex`, final text | Content | evidence `stages.content` | run | pass |
 | R9 | the scenario's declared request sequence, and no undeclared request | Failure/cleanup | evidence `requests`, corpus `expectedRequests`, `unmatchedRequests` | run | pass |
 | R10 | the page shows import → search → info → TOC → content | Product | driven run | run (store-seeded, #6) | — |
 | R11 | the shelf row, its chapters and the reader's progress row | Product/store | driven run + `data.db` | run (store-seeded, #6) | — |
@@ -187,23 +189,36 @@ JavaScript (#11), login/explore/variables (#13), replace rules (#17), host-state
 persistence (#21), XPath (#22), JSON pipeline unification (#29), and every
 capability row the matrix already tracks.
 
-## The frozen comparison, and its divergences
+## The frozen comparison, and how each difference is handled
 
 `tool/first_slice_compare.dart` compares the golden against the committed
-Liber-side observation row by row and exits non-zero because one row did not pass.
-That row is recorded as a divergence; platform-generated request defaults are
-handled by the contract's ignore rule and do not become a product difference:
+Liber-side observation row by row and exits zero because every compared row
+passes. The handling of the two rows that once needed an explanation is kept
+here so a later run of the same comparison reads correctly:
 
 - **R3 — platform-generated request defaults.** `Host`, `Content-Length`,
   `Accept-Encoding` and `Connection` are ignored unless the source explicitly
   sets them. SLICE-01 sets only `X-Slice-Corpus`, so the frozen client's
   `gzip, deflate` and the product transport's `gzip` do not make R3 fail.
-- **R8 — the content text.** The frozen content stage runs `ContentProcessor`,
-  which prepends `ReadBookConfig.paragraphIndent` (default `"　　"`,
-  `ReadBookConfig.kt:532`) to every paragraph (`ContentProcessor.kt:199`). The
-  two texts are identical once that two-character prefix is removed per line —
-  including the empty line the corpus' `replaceRegex` leaves behind — and the
-  product's content stage has no counterpart to that post-processing yet.
+- **R8 — the content text (resolved).** The frozen content stage's final shaping
+  is `BookContent.kt:135-142` (`WebBook.getContentAwait` →
+  `BookContent.analyzeContent`), *not* `ContentProcessor.kt:199`. Only when the
+  source declares `ruleContent.replaceRegex` does that stage (1) trim every
+  line of the joined page text, (2) run the replacement over the whole text, and
+  (3) prefix **every** line — an empty line included — with the hard-coded
+  two-character string `"　　"`. The source declaration is the gate: a source
+  that declares no `replaceRegex` is left exactly as extracted. The product now
+  applies that shaping at the same layer — the content stage's final text,
+  `HtmlSourcePipeline.chapter()`: the replacement runs per page inside the
+  adapter's existing `##` rule and the trim and prefix wrap the joined result,
+  which reproduces the frozen single pass for a marker that does not span
+  pages. The two texts are identical and the row passes with no normalization.
+  The earlier explanation cited
+  `ContentProcessor.kt:199` and `ReadBookConfig.paragraphIndent`
+  (`ReadBookConfig.kt:532`): that is the *reader's* rendering step (a
+  configurable indent that drops empty paragraphs, `ContentProcessor.getContent`
+  → its paragraph loop), a different mechanism from the source stage R8
+  observes, and citing it named the wrong frozen site.
 
 Named `notCompared` observations (each with its reason in `comparison.json`):
 platform-generated request headers that the contract discounts, empty request
@@ -211,8 +226,8 @@ bodies in this GET-only corpus, `stages.bookInfo.tocUrl`,
 `stages.toc.chapters[].url` as stored, the Liber-only run metadata fields, and
 frozen-side `state.*`/`cleanup.*`/`serverErrors` without a Liber counterpart.
 
-Promotion follows the contract: R2–R7 and R9 pass; R8 remains a recorded
-divergence, and the Android half of R13 stays `not-run`.
+Promotion follows the contract: R2–R9 all pass, and the Android half of R13
+stays `not-run`.
 
 ## Not-run, and what promotion needs
 

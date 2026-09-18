@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart' show SourceChapter;
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
@@ -64,4 +65,57 @@ void main() {
       await expectLater(pipeline.chapter(chapters.first), throwsStateError);
     },
   );
+
+  group('content stage final shaping (BookContent.kt:135-142)', () {
+    Future<String> read(
+      String html, {
+      String? replaceRegex,
+      String content = '.content@textNodes',
+    }) async {
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://example.test',
+        'ruleContent': {
+          'content': content,
+          'replaceRegex': ?replaceRegex,
+        },
+      };
+      final pipeline = HtmlSourcePipeline(
+        source,
+        SitePages({'/chapter/1': html}),
+      );
+      final body = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse('http://example.test/chapter/1')),
+      );
+      return body.text;
+    }
+
+    test('prefixes hard-coded indentation on every line when declared', () async {
+      final text = await read(
+        '<div class="content">第一段<br>第二段<br>第三段</div>',
+        replaceRegex: '##（广告）',
+      );
+      expect(text, '　　第一段\n　　第二段\n　　第三段');
+    });
+
+    test('keeps the blank line a replacement leaves behind, indented', () async {
+      final text = await read(
+        '<div class="content">第一段<br>（广告）<br>第二段</div>',
+        replaceRegex: '##（广告）',
+      );
+      expect(text, '　　第一段\n　　\n　　第二段');
+    });
+
+    test('shapes the trailing empty line a trailing newline produces', () async {
+      final text = await read(
+        '<div class="content">第一段<br>（广告）</div>',
+        replaceRegex: '##（广告）',
+      );
+      expect(text, '　　第一段\n　　');
+    });
+
+    test('leaves the text untouched when the source declares no replaceRegex', () async {
+      final text = await read('<div class="content">第一段<br>第二段</div>');
+      expect(text, '第一段\n第二段');
+    });
+  });
 }

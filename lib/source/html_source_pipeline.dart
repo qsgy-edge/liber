@@ -542,6 +542,28 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       retry = nextOptions.retry;
       url = nextUrl;
     }
-    return HtmlChapterBody(parts.join('\n'), visited.length);
+    return HtmlChapterBody(_shapeJoinedContent(parts.join('\n')), visited.length);
+  }
+
+  /// The frozen content stage's final shaping (`BookContent.kt:135-142`).
+  ///
+  /// Only when the source declares `ruleContent.replaceRegex` does the frozen
+  /// stage shape the joined page text: it trims every line, runs the
+  /// replacement over the whole text, and prefixes every line — an empty line
+  /// included — with the hard-coded two full-width spaces `"　　"`. The
+  /// replacement itself already ran for each page inside [_contentRule]'s
+  /// appended `##` rule, so this step trims and prefixes the joined result; the
+  /// frozen code trims before it replaces, so a pattern that matches whitespace
+  /// the trim would remove is the one case the two orders can diverge, and the
+  /// marker this corpus declares is unaffected. A source that declares no
+  /// `replaceRegex` is left exactly as extracted.
+  String _shapeJoinedContent(String text) {
+    if (_rule('ruleContent', 'replaceRegex', optional: true).isEmpty) {
+      return text;
+    }
+    return text
+        .split('\n')
+        .map((line) => '　　${line.trim()}')
+        .join('\n');
   }
 }
