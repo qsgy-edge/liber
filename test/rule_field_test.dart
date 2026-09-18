@@ -318,9 +318,11 @@ void main() {
         (await search(_jsonSource(name: r'$.name##回音##回声##'))).title,
         '回声',
       );
+      // The trailing `##` keeps its empty fourth field, so the JSON reader runs
+      // the frozen `replaceFirst` branch and answers with the replaced match.
       expect(
         (await search(_jsonSource(name: r'$.name##回|音##X##'))).title,
-        'XX',
+        'X',
       );
       expect(
         (await search(_jsonSource(name: r'$.name##回|音##X###'))).title,
@@ -403,6 +405,20 @@ void main() {
         'x',
         '',
         false,
+      ));
+      // Three delimiters are four fields: Kotlin's `split("##")` keeps the
+      // trailing empty field, so `##` alone reaches the frozen `replaceFirst`.
+      final trailing = splitRuleFields('a##x##y##');
+      expect((
+        trailing.rule,
+        trailing.regex,
+        trailing.replacement,
+        trailing.replaceFirst,
+      ), (
+        'a',
+        'x',
+        'y',
+        true,
       ));
       final four = splitRuleFields('a##x##y###');
       expect((four.rule, four.regex, four.replacement, four.replaceFirst), (
