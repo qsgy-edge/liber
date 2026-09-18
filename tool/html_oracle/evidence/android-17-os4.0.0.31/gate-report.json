@@ -1,0 +1,191 @@
+{
+  "platform": "windows",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "AnalyzeRule.getString",
+  "status": "fail",
+  "frozenGolden": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
+  "librarySha256": "1def19b352a9f26c18d018b6cddefab7ebe39eb34ec7cb99afbbfe2f6b175cc0",
+  "fixturesSha256": "b1c95af653fa2ecf22e58fbca2581e207a3650ec337cb167ad9ca87109f284e0",
+  "cases": 35,
+  "observations": [
+    {
+      "id": "ordered-indices",
+      "rule": ".info span.1:3:0@text",
+      "value": "B\nD\nA"
+    },
+    {
+      "id": "exclusion-chain",
+      "rule": "#list li!0@a@href",
+      "value": "/1\n/2"
+    },
+    {
+      "id": "negative-index",
+      "rule": ".info span.-1@text",
+      "value": "D"
+    },
+    {
+      "id": "slice-range",
+      "rule": "#list li[0,2]@a@href",
+      "value": "/ad\n/2"
+    },
+    {
+      "id": "extraction-text",
+      "rule": ".chapter_content@text",
+      "value": "第一段 第二段嵌套广告 第三段"
+    },
+    {
+      "id": "extraction-textNodes",
+      "rule": ".chapter_content@textNodes",
+      "value": "第一段\n第二段\n第三段"
+    },
+    {
+      "id": "extraction-ownText",
+      "rule": ".chapter_content@ownText",
+      "value": "第一段 第二段 第三段"
+    },
+    {
+      "id": "extraction-html",
+      "rule": ".chapter_content@html",
+      "value": "<div class=\"chapter_content\">\n 第一段\n <br>\n 第二段<span>嵌套广告</span>\n <br>\n 第三段\n</div>"
+    },
+    {
+      "id": "extraction-all",
+      "rule": "#pages@all",
+      "value": "<div id=\"pages\">\n <a class=\"gr\" href=\"/toc/2\">下一页</a>\n</div>"
+    },
+    {
+      "id": "extraction-attribute-name",
+      "rule": "#meta@data-id",
+      "value": "42"
+    },
+    {
+      "id": "extraction-href",
+      "rule": "#pages a@href",
+      "value": "/toc/2"
+    },
+    {
+      "id": "escape-at-literal",
+      "rule": "@@#meta@text",
+      "value": "作者：忘语"
+    },
+    {
+      "id": "index-list-step",
+      "rule": ".info span[0:3:2]@text",
+      "value": "A\nC"
+    },
+    {
+      "id": "index-list-negative-step",
+      "rule": ".info span[3:0:-2]@text",
+      "value": "D\nB"
+    },
+    {
+      "id": "all-keeps-script",
+      "rule": "#wrapped@all",
+      "value": "<div id=\"wrapped\">\n <p>正文</p>\n <script>var ad=1;</script>\n</div>"
+    },
+    {
+      "id": "html-drops-script",
+      "rule": "#wrapped@html",
+      "value": "<div id=\"wrapped\">\n <p>正文</p>\n</div>"
+    },
+    {
+      "id": "entity-unescape",
+      "rule": "#code@text",
+      "value": "A&B"
+    },
+    {
+      "id": "merge-and",
+      "rule": ".info span@text&&#meta@data-id",
+      "value": "A\nB\nC\nD\n42"
+    },
+    {
+      "id": "merge-or",
+      "rule": "#missing@text||#meta@text",
+      "value": "作者：忘语"
+    },
+    {
+      "id": "merge-interleave",
+      "rule": ".info span.0:1@text%%#meta@data-id",
+      "value": "A\n42\nB"
+    },
+    {
+      "id": "legacy-text-sub-syntax",
+      "rule": "text.下一页@href",
+      "value": "/2"
+    },
+    {
+      "id": "legacy-class-sub-syntax",
+      "rule": "class.itemtxt@text",
+      "value": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "legacy-tag-sub-syntax",
+      "rule": "tag.span@text",
+      "value": "A\nB\nC\nD\n嵌套广告"
+    },
+    {
+      "id": "replacement-two-fields",
+      "rule": "#meta@text##^作者：##",
+      "value": "忘语"
+    },
+    {
+      "id": "replacement-trailing-field",
+      "rule": "#meta@text##忘语##忘语先生##",
+      "value": "作者：忘语先生"
+    },
+    {
+      "id": "replacement-first-match",
+      "rule": "#meta@text##忘语##忘语先生###",
+      "value": "忘语先生"
+    },
+    {
+      "id": "css-prefix",
+      "rule": "@CSS:.itemtxt h3 a@href",
+      "value": "/book/1\n/book/2"
+    },
+    {
+      "id": "css-nth-child",
+      "rule": "@CSS:#list li:nth-child(2n+1)@text",
+      "value": "忽略\n第二章"
+    },
+    {
+      "id": "css-eq",
+      "rule": "@CSS:#list li:eq(2) a@href",
+      "value": "/2"
+    },
+    {
+      "id": "css-lt",
+      "rule": "@CSS:#list li:lt(2)@text",
+      "value": "忽略\n第一章"
+    },
+    {
+      "id": "css-contains",
+      "rule": "@CSS:#list li:contains(第二章) a@href",
+      "value": "/2"
+    },
+    {
+      "id": "css-has",
+      "rule": "@CSS:div.itemtxt:has(.author)@text",
+      "value": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "css-matches-own",
+      "rule": "@CSS:#pages a:matchesOwn(^下一页$)@href",
+      "value": "/toc/2"
+    },
+    {
+      "id": "css-attribute-operator",
+      "rule": "@CSS:.itemtxt a[href^=/book/]@text",
+      "value": "书一\n书二"
+    },
+    {
+      "id": "css-not-pseudo",
+      "rule": "@CSS:#list li:not(:first-child)@text",
+      "value": "第一章\n第二章"
+    }
+  ],
+  "expectationMismatches": [],
+  "frozenMismatches": [
+    "replacement-trailing-field: frozen=\"忘语先生\" windows=\"作者：忘语先生\""
+  ]
+}

@@ -19,7 +19,9 @@ import 'package:pointycastle/export.dart';
 ///
 /// Without a frozen golden the run still checks the adapter against the corpus'
 /// expectations, which were derived by reading the frozen rule layer at the
-/// pinned commit. The device golden is not-run; see `tool/html_oracle/README.md`.
+/// pinned commit. The committed device golden is
+/// `tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json`; see
+/// `tool/html_oracle/README.md`.
 ///
 /// A case whose `path` is `rule` runs through the product's **rule-field path**
 /// (`lib/source/rule_field.dart` in front of the adapter), because its frozen
