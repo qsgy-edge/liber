@@ -74,6 +74,14 @@ abstract interface class SourceHostStatePersistence {
 
   Future<void> deleteCacheEntry(String sourceRef, String key);
 
+  /// Removes every host-surface row one source owns (#36): its `source_entries`
+  /// rows and the `source_cookies` rows it wrote. A pair another source of the
+  /// same site wrote belongs to that source, so it stays (ADR 0011 §3).
+  ///
+  /// A source delete and a `bookSourceUrl` change both reclaim the rows this
+  /// way; the source row itself is not this interface's to remove.
+  Future<void> deleteSource(String sourceRef);
+
   Future<List<SourceTlsException>> loadTlsExceptions();
   Future<void> saveTlsException(SourceTlsException exception);
 }
@@ -229,6 +237,32 @@ class SourceHostState {
     await ready();
     if (_cache[sourceRef]?.remove(key) == null) return;
     await _persistence?.deleteCacheEntry(sourceRef, key);
+  }
+
+  /// Drops everything one source holds (#36): its cache entries and variables,
+  /// and the cookies it wrote. What another source of the same site wrote — the
+  /// shared session (ADR 0011 §3) — and a pair no source wrote stay.
+  ///
+  /// The in-memory copy and the store are updated together, so a later read in
+  /// this process cannot see a row the store no longer holds. It does not remove
+  /// the source row itself: a delete and a re-point both call this before the
+  /// source is written again, and a re-point's new URL starts with no host
+  /// surface of its own.
+  Future<void> deleteSource(String sourceRef) async {
+    await ready();
+    _cache.remove(sourceRef);
+    for (final domain in _writers.keys.toList()) {
+      final writers = _writers[domain]!;
+      for (final name in writers.keys.toList()) {
+        if (writers[name] != sourceRef) continue;
+        writers.remove(name);
+        final pairs = _cookies[domain];
+        pairs?.remove(name);
+        if (pairs != null && pairs.isEmpty) _cookies.remove(domain);
+      }
+      if (writers.isEmpty) _writers.remove(domain);
+    }
+    await _persistence?.deleteSource(sourceRef);
   }
 
   static Object? _decode(String? value) =>
