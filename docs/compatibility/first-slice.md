@@ -33,8 +33,8 @@ frozen-oracle entry that produces a golden for all four stages at once:
   operator's handset (`5615f742`, Android 17 / OS4.0.0.31): the golden is
   `tool/first_slice/evidence/android-17-os4.0.0.31/golden.json`, its provenance
   is the `manifest.json` beside it, and the row-by-row comparison against the
-  Liber-side observation is `comparison.json` in the same directory. Six of the
-  eight compared rows pass; R3 and R8 carry recorded divergences (below).
+  Liber-side observation is `comparison.json` in the same directory. Seven of the
+  eight compared rows pass; R8 carries the one recorded divergence (below).
 
 Why this is the cheapest credible set: the four stages, the session state and
 the page chain are exercised by **one** fixture whose frozen side is **one**
@@ -83,10 +83,10 @@ that comparison rather than rewritten by it). The run observed:
 both runs issued the same six requests in the same order with the same raw query
 bytes (`keyword=%E5%9B%9E%E6%94%BE&page=1`), the same decoded queries, the same
 source header, the same session cookie carriage and the same search, book
-information and table-of-contents output; two rows did not pass and are recorded
-as divergences, and four observations are named in the comparison's
-`notCompared` list rather than dropped. A second device run reproduced the golden
-byte for byte once `recordedAt` is dropped.
+information and table-of-contents output; one row did not pass and is recorded
+as a divergence, and the observations discounted or absent from one side are
+named in the comparison's `notCompared` list rather than dropped. A second device
+run reproduced the golden byte for byte once `recordedAt` is dropped.
 
 The corpus' own port (`127.0.0.1:18731`) is fixed and is part of the compared
 inputs; a busy port fails the fixture.
@@ -168,16 +168,16 @@ an observation one side does not carry is named in the comparison's
 |---|---|---|---|---|---|
 | R1 | corpus inputs (source object, responses, keyword) | Input | `fixtures.json` + its hash | run | — |
 | R2 | request trace: method, resolved URL, raw query bytes, order | Request | evidence `requests` | run | pass |
-| R3 | source-controlled headers and injected request defaults | Request | evidence `requests[].headers` | run | fail (`accept-encoding`) |
+| R3 | source-controlled headers and injected request defaults | Request | evidence `requests[].headers` | run | pass (platform-generated defaults ignored by contract) |
 | R4 | session cookie: `Set-Cookie` on search, `Cookie` on the five later requests | State (cookies) | evidence `requests[].headers.cookie` | run | pass |
 | R5 | search output: ordered results, name/author/kind/book URL | Search | evidence `stages.search` | run | pass |
 | R6 | book information output: name/author/kind/last chapter/cover/intro | Book info | evidence `stages.bookInfo` | run | pass |
 | R7 | table of contents: order, chapter URLs, `nextTocUrl` pages | TOC | evidence `stages.toc`, `stageTrace` | run | pass |
 | R8 | content: page chain, `replaceRegex`, final text | Content | evidence `stages.content` | run | fail (paragraph indent) |
-| R9 | the scenario's declared request sequence, and no undeclared request | Failure/cleanup | evidence `scenario.invariants`, `unmatchedRequests` | run | — |
+| R9 | the scenario's declared request sequence, and no undeclared request | Failure/cleanup | evidence `requests`, corpus `expectedRequests`, `unmatchedRequests` | run | pass |
 | R10 | the page shows import → search → info → TOC → content | Product | driven run | run (store-seeded, #6) | — |
 | R11 | the shelf row, its chapters and the reader's progress row | Product/store | driven run + `data.db` | run (store-seeded, #6) | — |
-| R12 | the same six observations on Linux and macOS | Platform | the corpus runs inside `flutter test test` on each desktop job | not-run on this branch | not-run |
+| R12 | the same six observations on Linux and macOS | Platform | the corpus runs inside `flutter test test` on each desktop job | run (CI 35125476388) | not-run on this branch |
 | R13 | frozen golden and the Android destination row | Platform | the oracle entry | not-run (no Android app) | run (golden committed; the Android destination row is not-run) |
 | R14 | iOS destination row | Platform | device/simulator run (`flutter test` is not an iOS row) | not-run | not-run |
 
@@ -190,14 +190,14 @@ capability row the matrix already tracks.
 ## The frozen comparison, and its divergences
 
 `tool/first_slice_compare.dart` compares the golden against the committed
-Liber-side observation row by row and writes a report; it exits non-zero because
-two rows did not pass. Both are recorded, neither is normalized away:
+Liber-side observation row by row and exits non-zero because one row did not pass.
+That row is recorded as a divergence; platform-generated request defaults are
+handled by the contract's ignore rule and do not become a product difference:
 
-- **R3 — `accept-encoding`.** Every request carries the same injected default on
-  both sides except this value: the frozen client sends `gzip, deflate`, the
-  product's transport sends `gzip`. The source-controlled header
-  (`X-Slice-Corpus: SLICE-01`), the frozen default user agent and the rest of
-  the header set are identical on all six requests.
+- **R3 — platform-generated request defaults.** `Host`, `Content-Length`,
+  `Accept-Encoding` and `Connection` are ignored unless the source explicitly
+  sets them. SLICE-01 sets only `X-Slice-Corpus`, so the frozen client's
+  `gzip, deflate` and the product transport's `gzip` do not make R3 fail.
 - **R8 — the content text.** The frozen content stage runs `ContentProcessor`,
   which prepends `ReadBookConfig.paragraphIndent` (default `"　　"`,
   `ReadBookConfig.kt:532`) to every paragraph (`ContentProcessor.kt:199`). The
@@ -206,14 +206,13 @@ two rows did not pass. Both are recorded, neither is normalized away:
   product's content stage has no counterpart to that post-processing yet.
 
 Named `notCompared` observations (each with its reason in `comparison.json`):
-`stages.bookInfo.tocUrl` (the Liber evidence shape does not record the resolved
-TOC URL), `stages.toc.chapters[].url` as stored (the frozen entity keeps the rule
-output and resolves it when used; R7 compares the resolved values),
-`state.*`/`cleanup.*`/`serverErrors` (frozen-side observations with no
-counterpart), and the two runs' provenance fields.
+platform-generated request headers that the contract discounts, empty request
+bodies in this GET-only corpus, `stages.bookInfo.tocUrl`,
+`stages.toc.chapters[].url` as stored, the Liber-only run metadata fields, and
+frozen-side `state.*`/`cleanup.*`/`serverErrors` without a Liber counterpart.
 
-Promotion follows the contract: a row promotes only where the comparison passes,
-so R3 and R8 do not, and the Android half of R13 stays `not-run`.
+Promotion follows the contract: R2–R7 and R9 pass; R8 remains a recorded
+divergence, and the Android half of R13 stays `not-run`.
 
 ## Not-run, and what promotion needs
 
@@ -222,7 +221,9 @@ so R3 and R8 do not, and the Android half of R13 stays `not-run`.
   APK hash; a repeat run reproduced it byte for byte.
 - **The comparison** — `tool/first_slice_compare.dart` exists and ran; its report
   is committed beside the golden. Re-running it against a re-recorded Liber-side
-  observation is the check the batch loop repeats.
+  observation is the check the batch loop repeats; the recorded command removes
+  an old report before writing a new one because the comparator protects reports
+  from accidental overwrite.
 - **The driven page row (R10, R11)** — driven by the batch controller on
   2026-09-17; the record is #6's resolution comment (store-seeded: the source row
   was seeded, and the 选择书源 JSON dialog step is not driven).

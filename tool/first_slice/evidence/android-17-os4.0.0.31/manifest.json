@@ -63,13 +63,13 @@
     "freezeNote": "MIUI's power manager freezes the frozen application's uid about three seconds after the process starts; the run finishes in well under that, and the report is written before the replay server is torn down so a freeze cannot lose the evidence."
   },
   "comparison": {
-    "command": "dart run tool/first_slice_compare.dart tool/first_slice/evidence/android-17-os4.0.0.31/golden.json tool/first_slice/evidence/windows-slice-01.liber.json tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json",
+    "command": "rm -f tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json && dart run tool/first_slice_compare.dart tool/first_slice/evidence/android-17-os4.0.0.31/golden.json tool/first_slice/evidence/windows-slice-01.liber.json tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json",
     "report": "comparison.json",
     "exitCode": 1,
     "status": "fail",
     "rows": {
       "R2": "pass",
-      "R3": "fail",
+      "R3": "pass",
       "R4": "pass",
       "R5": "pass",
       "R6": "pass",
@@ -79,31 +79,29 @@
     },
     "divergences": [
       {
-        "row": "R3",
-        "observation": "requests[].headers.accept-encoding",
-        "frozen": "gzip, deflate",
-        "liber": "gzip",
-        "reason": "every request carries the same injected default in both runs except this one value, on all six requests; the source-controlled X-Slice-Corpus header and the frozen default user agent are identical"
-      },
-      {
         "row": "R8",
         "observation": "content.text",
-        "frozen": "two full-width spaces (U+3000 U+3000) before every line",
-        "liber": "no paragraph indent",
-        "reason": "the frozen content stage runs ContentProcessor, which prepends ReadBookConfig.paragraphIndent (default \"　　\", ReadBookConfig.kt:532) to every paragraph at ContentProcessor.kt:199. The two texts are identical once that prefix is removed per line, including the empty line the corpus' replaceRegex leaves behind; the product's content stage has no post-processing yet (that is #17's area)."
+        "frozen": "　　第一页正文。\n　　第二段。\n　　\n　　第二页正文。\n　　本章结束。",
+        "liber": "第一页正文。\n第二段。\n\n第二页正文。\n本章结束。",
+        "reason": "R8 is the frozen reader rendering prefix; the product compares the post-rule text before paragraph indentation."
       }
     ],
     "notCompared": [
-      "stages.bookInfo.tocUrl — the golden carries the resolved TOC URL; the Liber book-information evidence shape does not record it (the chapters it leads to are compared by R7 and the request is in R2)",
-      "stages.toc.chapters[].url as stored — the frozen entity keeps the rule output (relative) and resolves it when used; the product stores the resolved URL, which is what R7 compares against chaptersAbsolute",
-      "state.*, cleanup.*, serverErrors — frozen-side observations with no counterpart in the Liber evidence",
-      "platform, fingerprint, recordedAt — provenance of the two runs, recorded here and in each evidence file"
+      "requests[].headers.accept-encoding — platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3.",
+      "requests[].headers.connection — platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3.",
+      "requests[].headers.host — platform-generated: the contract ignores Host, Content-Length, Accept-Encoding and Connection unless the source sets them (book-source-differential-contract.md, Matching Rules -> Requests), and the SLICE-01 source sets only X-Slice-Corpus. Every other header name on every request is compared by R3.",
+      "stages.bookInfo.tocUrl — the golden carries the resolved TOC URL the frozen entity holds; the product's book-information evidence shape does not record it. The chapters it leads to are compared by R7, and the TOC request is in R2.",
+      "stages.toc.chapters[].url (as stored) — the frozen entity stores the raw rule output (a relative path) and resolves it when used; the product stores the resolved URL. The resolved values are what R7 compares (chaptersAbsolute against the Liber url), and the request trace shows both sides resolving to the same URLs.",
+      "requests[].body — every request in this corpus is a GET with an empty body, so both evidence files record an empty string and there are no body bytes to compare. The contract compares request body bytes strictly, so a corpus that declares a POST has to extend this row before it can pass.",
+      "state.*, cleanup.*, serverErrors — frozen-side observations with no counterpart in the Liber evidence: state repeats what R4/R7/R8 compare; cleanup is this harness's own replay-server teardown (openConnections, serverClosed), not a source-observable cleanup effect; serverErrors is the replay server's own error list.",
+      "liber.scenario, liber.oracle, liber.fixturesPath/fixturesSha256, liber.libraryPath/librarySha256 — Liber-side fields the comparator does not read: `scenario` is the product run's own shape check (the request sequence it describes is recomputed for R9 from `requests` and the corpus `expectedRequests`), `oracle` records that the observation was recorded before a golden existed, and the `fixtures*`/`library*` fields identify the input bytes. The corpus bytes are hashed and checked against the manifest pin instead.",
+      "platform, fingerprint, recordedAt — provenance of the two runs, recorded in each evidence file and its manifest; not a compatibility observation."
     ]
   },
   "coverage": {
     "gaps": [
       "The Android destination row of R13 stays not-run: the product has no Android application (P4). This golden is the frozen half of R13 only.",
-      "R12 (Linux and macOS destination rows) is CI's to produce; nothing here claims it.",
+      "R12 is promoted by CI run 35125476388 for the desktop destination rows; this evidence tree does not replace that CI record.",
       "The corpus' own gaps, listed in fixtures.json and docs/compatibility/first-slice.md, are unchanged: one source, no redirect/non-2xx/POST/WebView/JSON/XPath/rule-JS row, no concurrency or rate limit, no chapter variables or login state, no failure path, no second book.",
       "needSave=false leaves the frozen reader's chapter-persistence side effect unobserved."
     ]
@@ -112,19 +110,19 @@
   "hashes": [
     {
       "path": "tool/first_slice/evidence/android-17-os4.0.0.31/golden.json",
-      "sha256": "df56b01aee6503a12bae08ebe136125a37f68311d1f79dcf521772c18db71344"
+      "sha256": "4a67d3b34c6b24f18f1b42a3337745f4b271ad14008f35f9e0ded93dda1dd505"
     },
     {
       "path": "tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json",
-      "sha256": "e142d803fb1c3ecf69ad5496ca8eefa122c1d5b8b777b1e60264634b7d30f36d"
+      "sha256": "1f52778dd301acf902c3d0dad4e212fcf617989aa69454af70c8210df7ef75e5"
     },
     {
       "path": "tool/first_slice/evidence/android-17-os4.0.0.31/run.log",
-      "sha256": "99def49398a3eb75ecc162398976c06d7868eeb961ab234e2a71e935732fc245"
+      "sha256": "10074ad48055d8493af85cfa3625aeaff1fee2a7e7c75c21797b16e20a4920fc"
     },
     {
       "path": "tool/nested_oracle/SliceOracle.java",
-      "sha256": "f3435522d9bcfe9fff35af2f87eedc2f91aa9ea1404851020b4a7352c8a47e1b"
+      "sha256": "a5d2fafdd5a3611907c4a77655e5f1e00995b6c4c500d9b248bbe0fa3807f504"
     },
     {
       "path": "tool/nested_oracle/NestedOracle.java",
@@ -152,7 +150,8 @@
     },
     {
       "path": "tool/first_slice_compare.dart",
-      "sha256": "bf1524c1ed96e8f7edb7de6068cd442ad5d9e0804f8e0960c3ce8fbb1cba00e2"
+      "sha256": "d27009a40d7a74a8faa632ab2c2b9d897d9930a3c41ea80a0a30f91c95273d4a"
     }
-  ]
+  ],
+  "runLogIsCuratedTranscript": true
 }

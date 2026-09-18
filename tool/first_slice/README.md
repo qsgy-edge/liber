@@ -47,54 +47,34 @@ with 书源试读 → 选择书源 JSON → `build/slice-01.source.json` and key
 ## What a green destination run does *not* say
 
 A pass means the corpus is healthy and the product reached the stages the slice
-names. It is not a compatibility result: no frozen observation has been compared
-yet, so every differential row of this fixture is `not-run` in the capability
-matrix sense.
+names. The frozen side and the committed golden are now executed evidence;
+platform, source and capability claims still follow the differential contract's
+row and coverage rules.
 
-## Frozen side (not-run)
+## Frozen side (executed 2026-09-18)
 
-The golden must be produced by running the hash-pinned frozen APK against the
-same corpus, the way `tool/nested_oracle` does: no Legado class is rebuilt, the
-harness is an instrumentation APK that targets the installed
+The golden was produced by the hash-pinned frozen APK against the same corpus,
+without rebuilding a Legado class. The instrumentation APK targets the installed
 `io.legado.app.debug` package and reaches its classes through
 `getTargetContext().getClassLoader()`.
 
-1. Extend the oracle instrumentation (or add a second entry beside
-   `NestedOracle`/`StateOracle`) with a four-stage entry that:
-   - constructs the corpus' `BookSource` through
-     `io.legado.app.data.entities.BookSource` reflection, and a `Book` for the
-     first search result (`SearchBook` → `Book`, as the frozen app does);
-   - calls `io.legado.app.model.webBook.WebBook.searchBookAwait(bookSource, key, page)`,
-     `getBookInfoAwait(bookSource, book)`,
-     `getChapterListAwait(bookSource, book)` and
-     `getContentAwait(bookSource, book, chapter)` — all `suspend`, so the entry
-     needs a `Continuation` (the state oracle already builds
-     `kotlin.coroutines.EmptyCoroutineContext.INSTANCE` and `JobKt.Job`);
-   - serves `responses` from the corpus with the same matching rule as
-     `runner.dart` (decoded query exact where declared, otherwise path+method),
-     on `127.0.0.1:18731` inside the device process, or with the address
-     rewritten if the corpus runs outside it;
-   - records the request trace (method, resolved URL, source-controlled
-     headers, outbound cookies, body), the stage outputs, the state each stage
-     left, and cleanup — the surfaces the differential contract requires.
-2. Run it against the installed frozen APK, pull the report, and commit it as
-   `evidence/android-<fingerprint>/golden.json` with the APK hash, the corpus
-   hash, the device fingerprint and the run log, the way
-   `tool/nested_oracle/evidence/android-17-os4.0.0.25/` records its own.
-3. Compare with the contract's matching rules. `tool/state_oracle_compare.dart`
-   and `tool/html_adapter_gate.dart` are the two existing comparators to model
-   it on; neither compares this fixture.
+- `tool/nested_oracle/SliceOracle.java` drives the four suspend entry points and
+  serves the six declared responses inside the device process on
+  `127.0.0.1:18731`.
+- The golden and its provenance are committed under
+  `tool/first_slice/evidence/android-17-os4.0.0.31/`; the manifest pins the APK,
+  corpus, harness sources, device fingerprint and curated run transcript.
+- The comparator applies the contract's platform-generated-header ignore rule.
+  R2–R7 and R9 pass; R8 remains a named paragraph-indent divergence. The
+  comparator report names every observation it does not compare.
 
-Until step 2 has run, this fixture's rows are `not-run`, and no platform,
-source or capability claim may be promoted by a green destination run.
+The recorded comparison command first removes an old report because the
+comparator refuses to overwrite evidence:
 
-## Corpus rules
+```text
+rm -f tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json
+ dart run tool/first_slice_compare.dart tool/first_slice/evidence/android-17-os4.0.0.31/golden.json tool/first_slice/evidence/windows-slice-01.liber.json tool/first_slice/evidence/android-17-os4.0.0.31/comparison.json
+```
 
-- The port is fixed at 18731 and is part of the compared inputs: a busy port
-  fails the fixture instead of silently moving it.
-- Raw query bytes are recorded as observed; the declared `expectedRequests`
-  compare the *decoded* query parameters, because the query's byte spelling is
-  what the differential contract compares, not what the corpus declares.
-- The corpus is versioned: changing the source, the responses, the scenario or
-  the declared requests is a new corpus version, and the frozen golden must be
-  regenerated with it.
+The corpus and golden remain versioned together: changing the source, responses,
+scenario or declared requests requires a new corpus version and a new golden.

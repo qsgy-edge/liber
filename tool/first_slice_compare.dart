@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:pointycastle/export.dart';
 
 /// Compares the frozen SLICE-01 golden against the committed Liber-side
 /// observation, row by row, following `docs/compatibility/first-slice.md`.
@@ -19,14 +22,66 @@ void main(List<String> args) {
       jsonDecode(File(args[0]).readAsStringSync()) as Map<String, dynamic>;
   final liber =
       jsonDecode(File(args[1]).readAsStringSync()) as Map<String, dynamic>;
-  final corpus =
-      jsonDecode(File('tool/first_slice/fixtures.json').readAsStringSync())
-          as Map<String, dynamic>;
+  final corpusBytes = File(corpusPath).readAsBytesSync();
+  final corpus = jsonDecode(utf8.decode(corpusBytes)) as Map<String, dynamic>;
+  // The manifest beside the golden pins the corpus bytes this run compared; a
+  // checkout that rewrote them (a CRLF conversion, a corpus edit) has to fail
+  // here rather than compare against a different corpus than the one recorded.
+  final manifestFile = File('${File(args[0]).parent.path}/manifest.json');
+  final manifestCorpusSha256 = manifestFile.existsSync()
+      ? (((jsonDecode(manifestFile.readAsStringSync()) as Map)['corpus']
+              as Map?)?['sha256'] as String?)
+      : null;
+  final report = compareSlice(
+    golden: golden,
+    liber: liber,
+    goldenPath: args[0],
+    liberPath: args[1],
+    corpus: corpus,
+    corpusSha256: _sha256(corpusBytes),
+    manifestCorpusSha256: manifestCorpusSha256,
+  );
   final output = File(args[2]);
   if (output.existsSync()) {
     throw StateError('Refusing to overwrite a report: ${args[2]}');
   }
+  output.writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+  );
+  stdout.writeln(jsonEncode(report));
+  final failures = [
+    for (final row in (report['rows'] as List).cast<Map>())
+      if (row['status'] == 'fail') row['id'],
+  ];
+  if (failures.isNotEmpty) {
+    stderr.writeln('rows that did not pass: ${failures.join(', ')}');
+    exitCode = 1;
+  }
+}
 
+const corpusPath = 'tool/first_slice/fixtures.json';
+
+/// The contract ignores these platform-generated header names unless the source
+/// explicitly sets them (`book-source-differential-contract.md`, Matching Rules
+/// → Requests). A source that sets one owns its value and the row compares it.
+const platformGeneratedHeaders = {
+  'host',
+  'content-length',
+  'accept-encoding',
+  'connection',
+};
+
+/// The row-by-row comparison, pure over its inputs so it can be exercised
+/// without a device or a report file.
+Map<String, Object?> compareSlice({
+  required Map<String, dynamic> golden,
+  required Map<String, dynamic> liber,
+  required String goldenPath,
+  required String liberPath,
+  required Map<String, dynamic> corpus,
+  required String corpusSha256,
+  String? manifestCorpusSha256,
+}) {
   for (final field in [
     'fixtureId',
     'corpusVersion',
@@ -38,7 +93,21 @@ void main(List<String> args) {
     }
   }
   if (golden['analysisFailure'] != null) {
-    throw StateError('Golden recorded an analysis failure: ${golden['analysisFailure']}');
+    throw StateError(
+      'Golden recorded an analysis failure: ${golden['analysisFailure']}',
+    );
+  }
+  if (liber['fixturesSha256'] != corpusSha256) {
+    throw StateError(
+      'The corpus bytes hash to $corpusSha256, not the fixturesSha256 the Liber '
+      'observation recorded (${liber['fixturesSha256']})',
+    );
+  }
+  if (manifestCorpusSha256 != null && manifestCorpusSha256 != corpusSha256) {
+    throw StateError(
+      'The corpus bytes hash to $corpusSha256, not the sha256 the manifest pins '
+      '($manifestCorpusSha256)',
+    );
   }
 
   final rows = <Map<String, Object?>>[];
@@ -73,7 +142,9 @@ void main(List<String> args) {
       'liber': liberTrace.length,
     });
   }
-  for (var index = 0; index < goldenTrace.length && index < liberTrace.length; index++) {
+  for (var index = 0;
+      index < goldenTrace.length && index < liberTrace.length;
+      index++) {
     for (final field in ['method', 'path', 'rawQuery']) {
       if (goldenTrace[index][field] != liberTrace[index][field]) {
         traceDifferences.add({
@@ -83,8 +154,7 @@ void main(List<String> args) {
         });
       }
     }
-    if (jsonEncode(goldenTrace[index]['query']) !=
-        jsonEncode(liberTrace[index]['query'])) {
+    if (!_deepEquals(goldenTrace[index]['query'], liberTrace[index]['query'])) {
       traceDifferences.add({
         'observation': 'requests[$index].query',
         'frozen': goldenTrace[index]['query'],
@@ -92,7 +162,7 @@ void main(List<String> args) {
       });
     }
   }
-  if (jsonEncode(_stageTrace(golden)) != jsonEncode(_stageTrace(liber))) {
+  if (!_deepEquals(_stageTrace(golden), _stageTrace(liber))) {
     traceDifferences.add({
       'observation': 'stageTrace',
       'frozen': _stageTrace(golden),
@@ -106,13 +176,24 @@ void main(List<String> args) {
     '${goldenTrace.length} requests on both sides',
   );
 
-  // R3 — source-controlled headers and the injected request defaults.
+  // R3 — source-controlled headers and the injected request defaults. The four
+  // platform-generated names the contract ignores are skipped unless the source
+  // sets them; every other header name on every request is compared.
+  final sourceHeaders = _sourceHeaderNames(corpus);
+  final ignoredHeaders = platformGeneratedHeaders.difference(sourceHeaders);
+  final observedIgnored = <String>{};
   final headerDifferences = <Map<String, Object?>>[];
-  for (var index = 0; index < goldenTrace.length && index < liberTrace.length; index++) {
+  for (var index = 0;
+      index < goldenTrace.length && index < liberTrace.length;
+      index++) {
     final frozen = (goldenTrace[index]['headers'] as Map).cast<String, Object?>();
     final product = (liberTrace[index]['headers'] as Map).cast<String, Object?>();
     final names = {...frozen.keys, ...product.keys}.toList()..sort();
     for (final name in names) {
+      if (ignoredHeaders.contains(name)) {
+        observedIgnored.add(name);
+        continue;
+      }
       if (frozen[name] != product[name]) {
         headerDifferences.add({
           'observation': 'requests[$index].headers.$name',
@@ -126,7 +207,9 @@ void main(List<String> args) {
     'R3',
     'source-controlled headers and injected request defaults',
     headerDifferences,
-    'every header on every request compared, values included',
+    'every header on every request compared except the platform-generated names '
+        'the contract ignores (${ignoredHeaders.isEmpty ? 'none' : (ignoredHeaders.toList()..sort()).join(', ')}); '
+        'source-set headers are never ignored',
   );
 
   // R4 — session cookie: Set-Cookie on search, Cookie on the five later requests.
@@ -135,7 +218,7 @@ void main(List<String> args) {
   final goldenCookie = _cookieCarriage(golden, cookieName);
   final liberCookie = _cookieCarriage(liber, cookieName);
   final cookieDifferences = <Map<String, Object?>>[];
-  if (jsonEncode(goldenCookie) != jsonEncode(liberCookie)) {
+  if (!_deepEquals(goldenCookie, liberCookie)) {
     cookieDifferences.add({
       'observation': 'cookie carriage per request',
       'frozen': goldenCookie,
@@ -150,7 +233,9 @@ void main(List<String> args) {
         '${liberCookie.length} requests carry it on both sides',
   );
 
-  // R5 — search output: ordered results, name/author/kind/book URL.
+  // R5 — search output: ordered results, name/author/kind/book URL. Array order
+  // is compared; the key order inside each result object is not (contract,
+  // Matching Rules -> Outputs: JSON object key ordering is ignored).
   final goldenSearch = _stage(golden, 'search');
   final liberSearch = _stage(liber, 'search');
   row(
@@ -282,6 +367,15 @@ void main(List<String> args) {
   // Observations one side does not carry. Naming them is the point: none of
   // them is silently dropped, and none of them is allowed to turn a row green.
   notCompared.addAll([
+    for (final name in (observedIgnored.toList()..sort()))
+      {
+        'observation': 'requests[].headers.$name',
+        'reason': 'platform-generated: the contract ignores Host, Content-Length, '
+            'Accept-Encoding and Connection unless the source sets them '
+            '(book-source-differential-contract.md, Matching Rules -> Requests), and '
+            'the SLICE-01 source sets only X-Slice-Corpus. Every other header name on '
+            'every request is compared by R3.',
+      },
     {
       'observation': 'stages.bookInfo.tocUrl',
       'reason': 'the golden carries the resolved TOC URL the frozen entity holds; '
@@ -296,10 +390,29 @@ void main(List<String> args) {
           'the request trace shows both sides resolving to the same URLs.',
     },
     {
+      'observation': 'requests[].body',
+      'reason': 'every request in this corpus is a GET with an empty body, so both '
+          'evidence files record an empty string and there are no body bytes to '
+          'compare. The contract compares request body bytes strictly, so a corpus '
+          'that declares a POST has to extend this row before it can pass.',
+    },
+    {
       'observation': 'state.*, cleanup.*, serverErrors',
       'reason': 'frozen-side observations with no counterpart in the Liber evidence: '
-          'state repeats what R4/R7/R8 compare, and cleanup is this harness\'s own '
-          'teardown.',
+          'state repeats what R4/R7/R8 compare; cleanup is this harness\'s own '
+          'replay-server teardown (openConnections, serverClosed), not a '
+          'source-observable cleanup effect; serverErrors is the replay server\'s own '
+          'error list.',
+    },
+    {
+      'observation': 'liber.scenario, liber.oracle, liber.fixturesPath/fixturesSha256, '
+          'liber.libraryPath/librarySha256',
+      'reason': 'Liber-side fields the comparator does not read: `scenario` is the '
+          'product run\'s own shape check (the request sequence it describes is '
+          'recomputed for R9 from `requests` and the corpus `expectedRequests`), '
+          '`oracle` records that the observation was recorded before a golden '
+          'existed, and the `fixtures*`/`library*` fields identify the input bytes. '
+          'The corpus bytes are hashed and checked against the manifest pin instead.',
     },
     {
       'observation': 'platform, fingerprint, recordedAt',
@@ -309,13 +422,15 @@ void main(List<String> args) {
   ]);
 
   final failures = rows.where((entry) => entry['status'] == 'fail').toList();
-  final report = <String, Object?>{
+  return <String, Object?>{
     'comparison': 'SLICE-01',
-    'golden': args[0],
-    'liber': args[1],
+    'golden': goldenPath,
+    'liber': liberPath,
     'goldenPlatform': golden['platform'],
     'goldenFingerprint': golden['fingerprint'],
-    'corpus': 'tool/first_slice/fixtures.json',
+    'corpus': corpusPath,
+    'corpusSha256': corpusSha256,
+    'manifestCorpusSha256': manifestCorpusSha256,
     'rows': rows,
     'notCompared': notCompared,
     'divergences': divergences,
@@ -326,16 +441,6 @@ void main(List<String> args) {
       'notCompared': notCompared.length,
     },
   };
-  output.writeAsStringSync(
-    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
-  );
-  stdout.writeln(jsonEncode(report));
-  if (failures.isNotEmpty) {
-    stderr.writeln(
-      'rows that did not pass: ${failures.map((entry) => entry['id']).join(', ')}',
-    );
-    exitCode = 1;
-  }
 }
 
 List<Map<String, Object?>> _requests(Map<String, dynamic> evidence) => [
@@ -357,6 +462,43 @@ List<Object?> _cookieCarriage(Map<String, dynamic> evidence, String pair) => [
     '${((request['headers'] as Map)['cookie'] ?? '')}'.contains(pair),
 ];
 
+/// The lower-cased header names the corpus' source sets. `header` is a JSON
+/// *string* inside the source object, so it is decoded rather than read as a map.
+Set<String> _sourceHeaderNames(Map<String, dynamic> corpus) {
+  final raw = (corpus['source'] as Map)['header'];
+  final Map<dynamic, dynamic> header;
+  if (raw is String && raw.trim().isNotEmpty) {
+    header = jsonDecode(raw) as Map;
+  } else if (raw is Map) {
+    header = raw;
+  } else {
+    header = const {};
+  }
+  return {for (final name in header.keys) '$name'.toLowerCase()};
+}
+
+/// Deep equality where array order matters and JSON object key order does not
+/// (contract, Matching Rules -> Outputs).
+bool _deepEquals(Object? frozen, Object? product) {
+  if (frozen is Map && product is Map) {
+    if (frozen.length != product.length) return false;
+    for (final key in frozen.keys) {
+      if (!product.containsKey(key) || !_deepEquals(frozen[key], product[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (frozen is List && product is List) {
+    if (frozen.length != product.length) return false;
+    for (var index = 0; index < frozen.length; index++) {
+      if (!_deepEquals(frozen[index], product[index])) return false;
+    }
+    return true;
+  }
+  return frozen == product;
+}
+
 /// The frozen reader indents every paragraph with `ReadBookConfig.paragraphIndent`
 /// (`ContentProcessor.kt:199`), two full-width spaces by default. This strips that
 /// prefix per line so the two texts can be compared beyond it — the row's verdict
@@ -374,7 +516,7 @@ List<Object?> _differences(
   final differences = <Object?>[];
   final keys = {...frozen.keys, ...product.keys}.toList()..sort();
   for (final key in keys) {
-    if (jsonEncode(frozen[key]) != jsonEncode(product[key])) {
+    if (!_deepEquals(frozen[key], product[key])) {
       differences.add({
         'observation': '$prefix.$key',
         'frozen': frozen[key],
@@ -407,4 +549,10 @@ String? _sequenceMismatch(
     }
   }
   return null;
+}
+
+String _sha256(List<int> bytes) {
+  final digest = SHA256Digest();
+  final value = digest.process(Uint8List.fromList(bytes));
+  return value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
 }
