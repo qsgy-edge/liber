@@ -189,12 +189,14 @@ void main() {
         (await search(_htmlSource(name: 'a.0@text##回音##回声##'))).title,
         '回声',
       );
+      // The trailing `##` is a kept empty fourth field, so this is the frozen
+      // `replaceFirst` branch: it answers with the replaced *match* only.
       expect(
         (await search(_htmlSource(name: 'a.0@text##回|音##X##'))).title,
-        'XX',
+        'X',
       );
-      // The frozen `replaceFirst` branch replaces inside the *matched* text
-      // only, so `回|音` on 回音 replaces the first match with itself: `X`.
+      // The same branch explains `###`: `回|音` on 回音 replaces the first match
+      // with itself, so the value is `X` and not the untouched 回音.
       expect(
         (await search(_htmlSource(name: 'a.0@text##回|音##X###'))).title,
         'X',
