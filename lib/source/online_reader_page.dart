@@ -82,6 +82,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         // switch, falling back to a default that is on. The settings field set
         // is not decided yet (the map's fog), so the frozen default stands.
         useReplaceRule: true,
+        // The frozen `Book.getReSegment()`: the per-book switch for the
+        // `ContentHelp.reSegment` stage, which defaults off (21 of the
+        // operator's 1419 books have it on). The product has no per-book
+        // reading-flag storage yet, so the frozen default is what a book opens
+        // with; nothing here guesses a book's flag.
+        useReSegment: false,
         onNotice: _showRuleNotice,
         onRuleDisabled: (rule) => widget.service.store.putReplaceRule(
           rule.copyWith(isEnabled: false).toCompanion(true),

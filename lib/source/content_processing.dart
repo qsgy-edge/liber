@@ -23,10 +23,18 @@
 /// (`ChapterListAdapter.kt:78`), which defaults to false and is false in the
 /// operator's own configuration, so the frozen default is a list of raw titles.
 ///
+/// The `ContentHelp.reSegment` stage (`ContentProcessor.kt:131-133`, the
+/// per-book `Book.getReSegment()` switch) is ported in `content_re_segment.dart`
+/// and runs in the frozen position — after the duplicated-title removal, before
+/// the conversion — when [ContentProcessing.useReSegment] is set. The product has
+/// no per-book reading-flag storage yet, so the reader passes the frozen default
+/// (off, 21 of the operator's 1419 books carry it on); the flag is the caller's,
+/// the way [ContentProcessing.useReplaceRule] is. The transform is deterministic
+/// except for `forceSplit`'s `Math.random()` branch (`ContentHelp.kt:160`), which
+/// cannot be compared byte for byte against an unseeded frozen run.
+///
 /// What this module does **not** do, and why — these are recorded on #17:
 ///
-/// - `ContentHelp.reSegment` (`ContentProcessor.kt:131`, the per-book
-///   `Book.getReSegment()` switch, off by default) is not ported yet.
 /// - an `@js:` replacement (`RegexExtensions.kt:33-41`) is refused rather than
 ///   applied: the frozen engine evaluates JavaScript per match. Only the regex
 ///   branch refuses it; the frozen literal branch inserts the text as it is, and
@@ -61,6 +69,7 @@ import 'dart:isolate';
 import '../local/reader_engine.dart' show ReaderScript;
 import '../local/text_engine.dart' show TextEngine;
 import '../store/database.dart' show ReplaceRule;
+import 'content_re_segment.dart';
 import 'java_regex.dart';
 
 /// The rules the frozen `ReplaceRuleDao` returns for one book, in the frozen
@@ -179,6 +188,7 @@ class ContentProcessing {
     required this.bookName,
     this.script,
     this.useReplaceRule = true,
+    this.useReSegment = false,
     this.timeoutFallback = const Duration(milliseconds: 3000),
     this.onNotice,
     this.onRuleDisabled,
@@ -201,6 +211,14 @@ class ContentProcessing {
   /// the reader-wide default. This product has no settings surface yet, so the
   /// callers pass the frozen text-book default (on).
   final bool useReplaceRule;
+
+  /// The frozen `Book.getReSegment()`: the per-book switch that turns the
+  /// `ContentHelp.reSegment` stage on. It is a *separate* switch from
+  /// [useReplaceRule] and defaults off in the frozen reader (21 of the
+  /// operator's 1419 books have it on). The product has no per-book
+  /// reading-flag storage yet (the map's settings fog, P6), so the reader passes
+  /// the frozen default (off); the caller owns the value.
+  final bool useReSegment;
 
   /// The frozen `ReplaceRule.getValidTimeoutMillisecond()`: a rule's own value,
   /// or 3000 ms when it is non-positive.
@@ -226,8 +244,9 @@ class ContentProcessing {
 
   /// The chapter body as the frozen reader reads it
   /// (`ContentProcessor.getContent(..., includeTitle = false)`), in the frozen
-  /// order: the duplicate leading title, conversion, the per-line trim the
-  /// replace stage does, then the content rules.
+  /// order: the duplicate leading title, the optional re-segmentation, the
+  /// conversion, the per-line trim the replace stage does, then the content
+  /// rules.
   ///
   /// [includeTitle] is the frozen `includeTitle` argument: when true, the display
   /// title is prepended as its own line, which is where the frozen content stage
@@ -241,6 +260,14 @@ class ContentProcessing {
     // literal text "null", which is not content and is not processed.
     if (raw == 'null') return raw;
     var text = await _removeDuplicatedTitle(raw, chapterTitle);
+    // The frozen `if (reSegment && book.getReSegment())`
+    // (`ContentProcessor.kt:131-133`): after the duplicate-title removal, before
+    // the conversion and the replace rules. It re-segments on the *raw* chapter
+    // title, the one the title pattern above also used. Because it changes the
+    // body before the reader computes its line offsets, enabling it for a book
+    // moves that book's stored positions, exactly as the frozen reader's do
+    // (see #47 for the local reader's offset model).
+    if (useReSegment) text = reSegment(text, chapterTitle);
     if (script != null) text = _convert(text);
     if (useReplaceRule) {
       // The replace stage trims every line before the rules see it.
