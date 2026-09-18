@@ -3,9 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../store/shelf.dart';
-import 'html_source_pipeline.dart';
+import 'book_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
-import 'json_source_pipeline.dart' show SourceChapter;
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
 
@@ -20,7 +19,7 @@ class OnlineReaderPage extends StatefulWidget {
     this.chapterIndex = 0,
     this.textOffset = 0,
   });
-  final HtmlSourcePipeline pipeline;
+  final BookSourcePipeline pipeline;
   final HtmlBook book;
 
   /// The space's book row this reader reports progress for.

@@ -5,12 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../store/shelf.dart';
-import 'http_source_transport.dart';
 import 'html_source_browser.dart';
-import 'js_source_runtime.dart' show SourceHostMessage;
-import 'json_source_pipeline.dart';
-import 'source_notice.dart';
-import 'source_tls_confirmation.dart';
 
 class SourceTrialPage extends StatefulWidget {
   const SourceTrialPage({
@@ -30,22 +25,13 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
   final keyword = TextEditingController();
   late List<Map<String, dynamic>> sources;
   int? selected;
-  bool busy = false;
   String status = '选择书源并输入关键词。';
-  SourceReadingResult? result;
 
   @override
   void initState() {
     super.initState();
     sources = widget.sources.map((item) => item.data).toList();
     if (sources.isNotEmpty) selected = 0;
-  }
-
-  /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
-  /// disposed page drops it silently.
-  void _showHostNotice(SourceHostMessage message) {
-    if (!mounted) return;
-    showSourceNotice(context, message);
   }
 
   @override
@@ -75,7 +61,6 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
       setState(() {
         sources = items.cast<Map<String, dynamic>>();
         selected = 0;
-        result = null;
         status = '已载入 ${sources.length} 个书源，仅用于本次试读';
       });
     } catch (error) {
@@ -83,67 +68,26 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
     }
   }
 
+  /// Opens the browser on the selected source.
+  ///
+  /// The browser holds the pipeline and decides which adapter the source's
+  /// rules need, so a JSON source is searched, shelved and read exactly like an
+  /// HTML one instead of stopping at a text preview (ticket #29).
   Future<void> run() async {
-    if (busy || selected == null || keyword.text.trim().isEmpty) return;
-    final source = sources[selected!];
-    final search = source['ruleSearch'];
-    final listRule = search is Map ? '${search['bookList'] ?? ''}' : '';
-    if (listRule.isEmpty ||
-        listRule.startsWith('@js:') ||
-        listRule.startsWith('<js>') ||
-        listRule.startsWith('@XPath:') ||
-        listRule.startsWith('/')) {
-      setState(() {
-        result = null;
-        status = '试读失败：暂不支持该列表规则，请选择其他书源。';
-      });
+    final keywordText = keyword.text.trim();
+    if (keywordText.isEmpty) {
+      setState(() => status = '请输入关键词。');
       return;
     }
-    final jsonRule =
-        listRule.startsWith('@Json:') ||
-        listRule.startsWith(r'$.') ||
-        listRule.startsWith(r'$[');
-    if (search is Map && !jsonRule) {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => HtmlSourceBrowser(
-            source: source,
-            keyword: keyword.text.trim(),
-            service: widget.service,
-          ),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => HtmlSourceBrowser(
+          source: sources[selected!],
+          keyword: keywordText,
+          service: widget.service,
         ),
-      );
-      return;
-    }
-    setState(() {
-      busy = true;
-      result = null;
-    });
-    try {
-      final output = await withTlsExceptionConfirmation(
-        context: context,
-        hostState: widget.service.hostState,
-        sourceRef: '${source['bookSourceUrl'] ?? ''}',
-        sourceName: '${source['bookSourceName'] ?? ''}',
-        run: () => JsonSourcePipeline(
-          HttpSourceTransport(),
-          hostState: widget.service.hostState,
-          androidId: widget.service.androidId,
-          onHostMessage: _showHostNotice,
-        ).run(
-          source,
-          keyword.text.trim(),
-          (state) {
-            if (mounted) setState(() => status = state.message);
-          },
-        ),
-      );
-      if (mounted) setState(() => result = output);
-    } catch (error) {
-      if (mounted) setState(() => status = '试读失败：$error');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
+      ),
+    );
   }
 
   @override
@@ -157,31 +101,29 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      try {
-                        final saved = await widget.service.lastRead();
-                        if (!mounted) return;
-                        if (saved == null) {
-                          setState(() => status = '尚无在线阅读记录');
-                          return;
-                        }
-                        if (!context.mounted) return;
-                        await Navigator.of(context).push<void>(
-                          MaterialPageRoute(
-                            builder: (_) => HtmlSourceBrowser(
-                              source: saved.sourceJson,
-                              keyword: '',
-                              resume: saved,
-                              service: widget.service,
-                            ),
-                          ),
-                        );
-                      } catch (e) {
-                        if (mounted) setState(() => status = '恢复失败：$e');
-                      }
-                    },
+              onPressed: () async {
+                try {
+                  final saved = await widget.service.lastRead();
+                  if (!mounted) return;
+                  if (saved == null) {
+                    setState(() => status = '尚无在线阅读记录');
+                    return;
+                  }
+                  if (!context.mounted) return;
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => HtmlSourceBrowser(
+                        source: saved.sourceJson,
+                        keyword: '',
+                        resume: saved,
+                        service: widget.service,
+                      ),
+                    ),
+                  );
+                } catch (e) {
+                  if (mounted) setState(() => status = '恢复失败：$e');
+                }
+              },
               icon: const Icon(Icons.history),
               label: const Text('继续上次阅读'),
             ),
@@ -189,29 +131,26 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      try {
-                        final data =
-                            jsonDecode(
-                                  await rootBundle.loadString(
-                                    'book_sources/shudugu.json',
-                                  ),
-                                )
-                                as List;
-                        if (!mounted) return;
-                        setState(() {
-                          sources = data.cast<Map<String, dynamic>>();
-                          selected = 0;
-                          keyword.text = '凡人修仙传';
-                          result = null;
-                          status = '已载入速读谷，点击搜索后选择书籍';
-                        });
-                      } catch (e) {
-                        if (mounted) setState(() => status = '载入失败：$e');
-                      }
-                    },
+              onPressed: () async {
+                try {
+                  final data =
+                      jsonDecode(
+                            await rootBundle.loadString(
+                              'book_sources/shudugu.json',
+                            ),
+                          )
+                          as List;
+                  if (!mounted) return;
+                  setState(() {
+                    sources = data.cast<Map<String, dynamic>>();
+                    selected = 0;
+                    keyword.text = '凡人修仙传';
+                    status = '已载入速读谷，点击搜索后选择书籍';
+                  });
+                } catch (e) {
+                  if (mounted) setState(() => status = '载入失败：$e');
+                }
+              },
               child: const Text('使用速读谷书源'),
             ),
           ),
@@ -219,7 +158,7 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton(
-              onPressed: busy ? null : openSource,
+              onPressed: openSource,
               child: const Text('选择书源 JSON'),
             ),
           ),
@@ -238,13 +177,10 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                     ),
                   ),
               ],
-              onChanged: busy
-                  ? null
-                  : (value) => setState(() => selected = value),
+              onChanged: (value) => setState(() => selected = value),
             ),
           TextField(
             controller: keyword,
-            enabled: !busy,
             decoration: const InputDecoration(labelText: '搜索关键词'),
             onSubmitted: (_) => run(),
           ),
@@ -252,32 +188,12 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton(
-              onPressed: busy || selected == null ? null : run,
-              child: Text(busy ? '正在读取…' : '搜索'),
+              onPressed: selected == null ? null : run,
+              child: const Text('搜索'),
             ),
           ),
           const SizedBox(height: 16),
           SelectableText(status),
-          if (result case final output?) ...[
-            const Divider(height: 32),
-            Text(
-              output.title,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            Text('${output.chapters.length} 章 · ${output.chapters.first.name}'),
-            const SizedBox(height: 16),
-            SelectableText(output.content),
-            ExpansionTile(
-              title: const Text('请求记录'),
-              children: [
-                for (final entry in output.trace)
-                  ListTile(
-                    title: Text(entry.stage.name),
-                    subtitle: SelectableText(entry.path),
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );

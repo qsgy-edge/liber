@@ -148,8 +148,9 @@ Future<void> main(List<String> args) async {
     source['searchUrl'] =
         '/search?count={{bump()}}&nested={{java.ajax("$origin/"+"{"+"{bump()}"+"}")}}';
     final book = await JsonSourcePipeline(
+      source,
       HttpSourceTransport(),
-    ).run(source, 'test', (_) {});
+    ).run('test', (_) {});
     checks['jsonFourStagesWithNestedLibrary'] =
         book.title == 'Nested book' &&
         book.content == 'Nested chapter' &&

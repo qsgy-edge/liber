@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
@@ -23,19 +24,15 @@ Future<Map<String, Object?>> triage(
   Map<String, dynamic> source,
   String keyword,
 ) async {
-  final listRule = '${(source['ruleSearch'] as Map?)?['bookList'] ?? ''}';
-  final isJson =
-      listRule.startsWith('@Json:') ||
-      listRule.startsWith(r'$.') ||
-      listRule.startsWith(r'$[');
+  final isJson = isJsonRuleSource(source);
   final stages = <String>[];
   final failures = <String, String>{};
   var stage = 'search';
   try {
     final transport = HttpSourceTransport();
     if (isJson) {
-      final pipeline = JsonSourcePipeline(transport);
-      await pipeline.run(source, keyword, (_) {});
+      final pipeline = JsonSourcePipeline(source, transport);
+      await pipeline.run(keyword, (_) {});
       stages.addAll(['search', 'info', 'toc', 'content']);
     } else {
       final pipeline = HtmlSourcePipeline(source, transport);

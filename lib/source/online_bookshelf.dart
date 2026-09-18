@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../store/shelf.dart';
+import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'html_source_browser.dart';
-import 'html_source_pipeline.dart';
 import 'http_source_transport.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
@@ -70,6 +70,19 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     }
   }
 
+  /// A pipeline for one analysis of [source], built the way the source's rules
+  /// need: a JSON source gets the JSON adapter (ticket #29).
+  BookSourcePipeline _openPipeline(
+    Map<String, dynamic> source,
+    BookSourceTransport transport,
+  ) => openBookSourcePipeline(
+    source,
+    transport,
+    hostState: widget.service.hostState,
+    androidId: widget.service.androidId,
+    onHostMessage: _showHostNotice,
+  );
+
   Future<void> open(ShelfEntry entry) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -80,13 +93,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           service: widget.service,
           pipeline: widget.transport == null
               ? null
-              : HtmlSourcePipeline(
-                  entry.sourceJson,
-                  widget.transport!,
-                  hostState: widget.service.hostState,
-                  androidId: widget.service.androidId,
-                  onHostMessage: _showHostNotice,
-                ),
+              : _openPipeline(entry.sourceJson, widget.transport!),
         ),
       ),
     );
@@ -110,12 +117,9 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         await widget.service.remove(entry.id);
       } else {
         final source = entry.sourceJson;
-        final pipeline = HtmlSourcePipeline(
+        final pipeline = _openPipeline(
           source,
           widget.transport ?? HttpSourceTransport(),
-          hostState: widget.service.hostState,
-          androidId: widget.service.androidId,
-          onHostMessage: _showHostNotice,
         );
         try {
           final (book, chapters) = await withTlsExceptionConfirmation(

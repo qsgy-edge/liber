@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../domain/contracts.dart';
+import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'html_rule_adapter.dart';
 import 'js_source_runtime.dart';
@@ -8,7 +9,6 @@ import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_url_rules.dart';
-import 'json_source_pipeline.dart' show SourceChapter;
 
 class HtmlBook {
   const HtmlBook({
@@ -53,7 +53,10 @@ class HtmlChapterBody {
 /// Every stage parses its page once and hands the whole document plus that
 /// stage's rules to [HtmlRuleBatch], which is the frozen `AnalyzeByJSoup`
 /// shape: one tree, many rules, one bridge call.
-class HtmlSourcePipeline {
+///
+/// This is the [BookSourcePipeline] an HTML source gets; the pages hold the
+/// interface, not this class (ticket #29).
+class HtmlSourcePipeline implements BookSourcePipeline {
   HtmlSourcePipeline(
     this.source,
     this.transport, {
@@ -62,7 +65,9 @@ class HtmlSourcePipeline {
     this.androidId = '',
     this.onHostMessage,
   });
+  @override
   final Map<String, dynamic> source;
+  @override
   final BookSourceTransport transport;
   final SourceScriptRuntime? _scriptRuntime;
 
@@ -74,6 +79,7 @@ class HtmlSourcePipeline {
   /// Where a source's rate-limited `toast`/`longToast` notices go. Mutable so a
   /// page a pipeline is handed to — the reader takes the browser's pipeline over
   /// for its chapter fetch — can point it at its own messenger.
+  @override
   void Function(SourceHostMessage message)? onHostMessage;
 
   /// The space's host surface, when the caller has one: the jar, the cache
@@ -103,6 +109,7 @@ class HtmlSourcePipeline {
         androidId: androidId,
         onMessage: (message) => onHostMessage?.call(message),
       );
+  @override
   final trace = <BookSourceTraceEntry>[];
   int tocPages = 0;
 
@@ -111,6 +118,7 @@ class HtmlSourcePipeline {
   int? _page;
   final _bookOptions = <Uri, SourceUrlOptions>{};
   bool get cancelled => _cancellation.isCancelled;
+  @override
   void cancel() => _cancellation.cancel();
 
   /// Evaluates the source `header` rule: static JSON, `@js:` or `<js>`.
@@ -308,6 +316,7 @@ class HtmlSourcePipeline {
     return (text, finalUrl);
   }
 
+  @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
     _validate();
     _page = page;
@@ -365,6 +374,7 @@ class HtmlSourcePipeline {
     return books;
   }
 
+  @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
     _page = null;
     final (html, infoUrl) = await _fetch(
@@ -493,6 +503,7 @@ class HtmlSourcePipeline {
     return '$content$replacement';
   }
 
+  @override
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
     _page = null;
     final contentRule = _contentRule(chapter);

@@ -152,7 +152,7 @@ void main() {
       },
       'ruleContent': {'content': r'$.body'},
     };
-    final output = await JsonSourcePipeline(transport).run(source, '书', (_) {});
+    final output = await JsonSourcePipeline(source, transport).run('书', (_) {});
     expect(output.title, '标题');
     expect(output.content, '正文');
     final request = transport.requests.first;

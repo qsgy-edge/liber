@@ -188,8 +188,9 @@ Future<void> main(List<String> args) async {
       'ruleContent': {'content': r'$.body'},
     };
     final output = await JsonSourcePipeline(
+      jsonSource,
       HttpSourceTransport(),
-    ).run(jsonSource, '甲', (_) {});
+    ).run('甲', (_) {});
     final jsonSearch = wire.lastWhere(
       (entry) => entry['path'] == '/json-search',
     );

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../store/shelf.dart';
-import 'html_source_pipeline.dart';
+import 'book_source_pipeline.dart';
+import 'book_source_service.dart';
 import 'http_source_transport.dart';
-import 'json_source_pipeline.dart' show SourceChapter;
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'online_reader_page.dart';
 import 'source_http_uri.dart';
@@ -20,6 +20,7 @@ class HtmlSourceBrowser extends StatefulWidget {
     required this.service,
     this.resume,
     this.pipeline,
+    this.transport,
   });
   final Map<String, dynamic> source;
   final String keyword;
@@ -30,7 +31,15 @@ class HtmlSourceBrowser extends StatefulWidget {
   /// The shelf book this browser was opened from, when it was.
   final ShelfEntry? resume;
 
-  final HtmlSourcePipeline? pipeline;
+  /// The pipeline this page runs its first analysis on, when the caller built
+  /// one (the shelf hands its own over). Otherwise the page builds a pipeline
+  /// for the source's rules over [transport].
+  final BookSourcePipeline? pipeline;
+
+  /// The transport a pipeline this page builds sends through. The product
+  /// leaves it null and takes a real HTTP transport; a test hands a scripted
+  /// one, the way `OnlineBookshelf` already takes one.
+  final BookSourceTransport? transport;
   @override
   State<HtmlSourceBrowser> createState() => _HtmlSourceBrowserState();
 }
@@ -40,8 +49,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   ///
   /// One pipeline carries one analysis, so this is not `final`: when the reader
   /// takes the pipeline over for its chapter fetch, this page opens a fresh one
-  /// for whatever it runs next.
-  late HtmlSourcePipeline pipeline;
+  /// for whatever it runs next. [openBookSourcePipeline] decides which adapter
+  /// the source's rules need, so a JSON source runs here exactly like an HTML
+  /// one.
+  late BookSourcePipeline pipeline;
 
   bool inShelf = false;
   List<HtmlBook> hits = [];
@@ -56,6 +67,20 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   /// The source's name, shown in the TLS-exception confirmation (ADR 0011 §5).
   String get sourceName => '${widget.source['bookSourceName'] ?? ''}';
 
+  /// A fresh pipeline for one analysis over [transport].
+  ///
+  /// Built the way the source's rules need — a JSON source gets the JSON
+  /// adapter — and with this page's own notice sink, so a retried or next
+  /// analysis reports its toasts here.
+  BookSourcePipeline _openPipeline(BookSourceTransport transport) =>
+      openBookSourcePipeline(
+        widget.source,
+        transport,
+        hostState: widget.service.hostState,
+        androidId: widget.service.androidId,
+        onHostMessage: _showHostNotice,
+      );
+
   /// Runs one analysis under ADR 0011 §5's confirmation.
   ///
   /// The confirmed retry starts from a fresh pipeline: a failed attempt has
@@ -69,13 +94,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       sourceRef: sourceUrl,
       sourceName: sourceName,
       run: () {
-        if (!first) {
-          pipeline = HtmlSourcePipeline(
-            widget.source,
-            pipeline.transport,
-            hostState: widget.service.hostState,
-          );
-        }
+        if (!first) pipeline = _openPipeline(pipeline.transport);
         first = false;
         return analysis();
       },
@@ -87,13 +106,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     super.initState();
     pipeline =
         widget.pipeline ??
-        HtmlSourcePipeline(
-          widget.source,
-          HttpSourceTransport(),
-          hostState: widget.service.hostState,
-          androidId: widget.service.androidId,
-          onHostMessage: _showHostNotice,
-        );
+        _openPipeline(widget.transport ?? HttpSourceTransport());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(start());
     });
@@ -231,13 +244,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     // runs next. Disposing this page must never cancel work the reader still
     // holds.
     final readerPipeline = pipeline;
-    pipeline = HtmlSourcePipeline(
-      widget.source,
-      readerPipeline.transport,
-      hostState: widget.service.hostState,
-      androidId: widget.service.androidId,
-      onHostMessage: _showHostNotice,
-    );
+    pipeline = _openPipeline(readerPipeline.transport);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => OnlineReaderPage(

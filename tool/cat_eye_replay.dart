@@ -78,7 +78,7 @@ Future<void> main() async {
     'f041c49714d39908',
     '0123456789abcdef',
   );
-  final result = await JsonSourcePipeline(transport).run(source, '猫眼', (_) {});
+  final result = await JsonSourcePipeline(source, transport).run('猫眼', (_) {});
   final pass =
       result.title == '猫眼回放' &&
       result.chapters.single.name == '第一章' &&

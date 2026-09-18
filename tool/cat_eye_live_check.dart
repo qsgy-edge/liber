@@ -14,8 +14,7 @@ Future<void> main(List<String> args) async {
   final keyword = (source['ruleSearch'] as Map)['checkKeyWord'] as String;
   final trace = <BookSourceStage>[];
   try {
-    final result = await JsonSourcePipeline(HttpSourceTransport()).run(
-      source,
+    final result = await JsonSourcePipeline(source, HttpSourceTransport()).run(
       keyword,
       (s) {
         trace.add(s.stage);
