@@ -142,6 +142,22 @@
     {
       "id": "css-not-pseudo",
       "value": "第一章\n第二章"
+    },
+    {
+      "id": "rule-js-trailing",
+      "value": "作者：忘语!"
+    },
+    {
+      "id": "rule-js-lt-js-block",
+      "value": "<作者：忘语>"
+    },
+    {
+      "id": "rule-interpolation-base-url",
+      "value": "http:\/\/fixture.test作者：忘语"
+    },
+    {
+      "id": "rule-interpolation-title-null",
+      "value": "[]42"
     }
   ]
 }
