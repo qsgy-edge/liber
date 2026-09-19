@@ -1125,23 +1125,30 @@ impl JsEngine {
 
         let mut callback_failed = false;
         if let Some(resources) = resources {
+            // Marked closed *before* anything can wake a parked wait: a wait that
+            // resumes has its unwind classified with this flag in `run_scoped`
+            // (`ScopedExecution::stop_error`), so storing it after the shutdown
+            // wake lets a wait polled in that window report the shutdown
+            // cancellation as a JavaScript conversion failure instead of
+            // `JsError::Cancelled`.
+            let broker = resources.broker.lock().unwrap().take();
+            if let Some(state) = &broker {
+                state.closed.store(true, Ordering::Release);
+            }
             // Interrupt queued/running JS before dropping senders or awaiting Dart.
             if !graceful {
                 resources.runtime.request_shutdown();
             }
-            let broker = resources.broker.lock().unwrap().take();
             if let Some(state) = broker {
-                state.closed.store(true, Ordering::Release);
                 state.wake.notify_one();
-                executions().lock().unwrap().retain(|_, scope| {
-                    if scope.owner != state.owner { return true; }
-                    scope.cancelled.store(true, Ordering::Release);
-                    scope.wake.notify_one();
-                    false
-                });
+                // Claim this engine's in-flight host requests *before* waking the
+                // parked waits. A parked wait that resumes on a cancelled scope
+                // removes its own request from the registry without notifying the
+                // host (the removal below is the only owner that calls the cancel
+                // callback), so letting it wake first lets it take the request and
+                // drop the cancellation the host is owed.
                 let pending = {
                     let mut registry = broker_pending().lock().unwrap();
-                    state.closed.store(true, Ordering::Release);
                     let ids = registry
                         .iter()
                         .filter_map(|(id, entry)| (entry.owner == state.owner).then_some(*id))
@@ -1150,6 +1157,12 @@ impl JsEngine {
                         .filter_map(|id| registry.remove(&id).map(|entry| (id, entry)))
                         .collect::<Vec<_>>()
                 };
+                executions().lock().unwrap().retain(|_, scope| {
+                    if scope.owner != state.owner { return true; }
+                    scope.cancelled.store(true, Ordering::Release);
+                    scope.wake.notify_one();
+                    false
+                });
                 for (id, entry) in pending {
                     entry.starter.abort();
                     drop(entry.sender);

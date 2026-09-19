@@ -8,6 +8,10 @@ import 'package:liber/source/js_source_runtime.dart';
 Future<void> main(List<String> args) async {
   await InProcessSourceScriptRuntime.initialize(libraryPath: args.single);
   final checks = <String, bool>{};
+  // One entry per failing boolean, bounded (see the helpers at the end of the
+  // file). It is emitted only when a check is false, so a passing run's report
+  // keeps its existing shape byte for byte.
+  final diagnostics = <String, Map<String, Object?>>{};
   const library = 'var state={n:0}; // scoped isolation gate';
   final waiting = <String, Completer<void>>{};
   final releases = <String, Completer<void>>{};
@@ -238,14 +242,43 @@ Future<void> main(List<String> args) async {
       final closingId = await reserveScoped();
       final closing = runScoped(closingId, 'fjs.bridge_call("closing")');
       final closingRequest = await enterScoped('closing');
+      final closeCalledAt = DateTime.now();
       final closeError = await scopedEngine
           .close()
           .then<Object?>((_) => null, onError: (Object error) => error);
+      final closeReturnedAt = DateTime.now();
+      final nativeCancelsAtCloseReturn = List<BigInt>.of(nativeCancels);
       final closingResult = await closing.timeout(const Duration(seconds: 3));
       await settleNativeCancels(2);
       checks['closeUnwindsInflightScope'] = closingResult is JsError_Cancelled;
       checks['closeInvokesHostCancelForInflight'] =
           closeError == null && nativeCancels.contains(closingRequest);
+      if (!checks['closeInvokesHostCancelForInflight']!) {
+        // This row is red on CI and green locally, so the failing run has to
+        // say which of the two halves failed: close() itself (the host cancel
+        // callback failed, or the engine reported background errors) or the
+        // delivery of the cancel for this request.
+        diagnostics['closeInvokesHostCancelForInflight'] = {
+          'closeErrorNull': closeError == null,
+          'closeErrorType': closeError == null
+              ? 'none'
+              : closeError.runtimeType.toString(),
+          'closeErrorMessage': boundedText(closeError?.toString() ?? ''),
+          'expectedRequestId': closingRequest.toString(),
+          'expectedRequestCancelledObserved': nativeCancels.contains(
+            closingRequest,
+          ),
+          'nativeCancels': boundedIds(nativeCancels),
+          'nativeCancelsAtCloseReturn': boundedIds(nativeCancelsAtCloseReturn),
+          'closeUnwindsInflightScope': checks['closeUnwindsInflightScope'],
+          'msCloseCallToCloseReturn': closeReturnedAt
+              .difference(closeCalledAt)
+              .inMilliseconds,
+          'msCloseCallToCheck': DateTime.now()
+              .difference(closeCalledAt)
+              .inMilliseconds,
+        };
+      }
       // Re-derived from the deleted fiber gate's `lateCompletionRejected`
       // against a single in-flight scope: after close() unwound it, the host
       // completion that arrives afterwards is refused.
@@ -459,8 +492,15 @@ Future<void> main(List<String> args) async {
 
     final pass = checks.values.every((value) => value);
     stdout.writeln(
-      jsonEncode({'status': pass ? 'pass' : 'fail', 'checks': checks}),
+      jsonEncode({
+        'status': pass ? 'pass' : 'fail',
+        'checks': checks,
+        if (diagnostics.isNotEmpty) 'diagnostics': diagnostics,
+      }),
     );
+    if (diagnostics.isNotEmpty) {
+      stderr.writeln('scoped_runtime_gate diagnostics: ${jsonEncode(diagnostics)}');
+    }
     if (!pass) exitCode = 1;
   } finally {
     for (final release in releases.values) {
@@ -469,3 +509,18 @@ Future<void> main(List<String> args) async {
     await InProcessSourceScriptRuntime.dispose();
   }
 }
+
+/// A bounded view of the ids a diagnostic reports: the list is capped so a
+/// runaway list cannot flood the report, and every id is a string because a
+/// `BigInt` is not JSON-encodable.
+Map<String, Object?> boundedIds(List<BigInt> ids, {int limit = 16}) => {
+  'count': ids.length,
+  'ids': [for (final id in ids.take(limit)) id.toString()],
+  'truncated': ids.length > limit,
+};
+
+/// A diagnostic string long enough to name the failure and short enough to read
+/// in a CI log.
+String boundedText(String text, {int limit = 200}) => text.length <= limit
+    ? text
+    : '${text.substring(0, limit)}...(${text.length} chars)';
