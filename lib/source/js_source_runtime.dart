@@ -258,7 +258,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
                 ? payload
                 : await hostCall!(method, payload, token);
           } else if (method == 'state') {
-            answer = await _handleState(payload, sourceRef, input);
+            answer = await _handleState(payload, sourceRef);
           } else if (method == 'headers') {
             answer = await _headers(input, request.id, token);
           } else if (method == 'cache') {
@@ -437,11 +437,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// `source.put`/`source.get` share. They are not one analysis's rule state
   /// any more (ADR 0011 §3): a source reads them again in the next analysis and
   /// after a restart, and no other source reads them at all.
-  Future<Object?> _handleState(
-    Object? payload,
-    String sourceRef,
-    Map<String, Object?> input,
-  ) async {
+  Future<Object?> _handleState(Object? payload, String sourceRef) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid state call');
     }
@@ -452,12 +448,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final variable = sourceRuleVariableKey(sourceRef, key);
     switch (payload['op']) {
       case 'get':
-        if (key == 'bookName' && input['book'] is Map) {
-          return (input['book'] as Map)['name'];
-        }
-        if (key == 'title' && input['chapter'] is Map) {
-          return (input['chapter'] as Map)['title'];
-        }
         final value = await hostState.entry(sourceRef, variable);
         return value is String ? value : '';
       case 'put':

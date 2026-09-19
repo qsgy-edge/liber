@@ -213,30 +213,32 @@ Future<void> main(List<String> args) async {
     checks['sourceHeaderMapFalseDefault'] =
         await run('JSON.stringify(source.getHeaderMap(false))') ==
         await run('JSON.stringify(source.getHeaderMap())');
-    checks['connectOneArgumentSourceHeaders'] = await run(
-      'java.connect(${jsonEncode('$origin/headers')}).body()',
-    ) == 'yes';
-    checks['connectNullHeaderSourceFallback'] = await run(
-      'java.connect(${jsonEncode('$origin/headers')}, null).body()',
-    ) == 'yes';
+    checks['connectOneArgumentSourceHeaders'] =
+        await run('java.connect(${jsonEncode('$origin/headers')}).body()') ==
+        'yes';
+    checks['connectNullHeaderSourceFallback'] =
+        await run(
+          'java.connect(${jsonEncode('$origin/headers')}, null).body()',
+        ) ==
+        'yes';
     final connectedHeader = await run(
       'java.connect(${jsonEncode('$origin/headers')}, '
       '${jsonEncode('{"X-Contract":"yes"}')}).body()',
     );
     checks['connectHeaderString'] = connectedHeader == 'yes';
     final bookProbe = await run(
-      'JSON.stringify([book.name, book.bookUrl, java.get("bookName")])',
+      'java.put("bookName", "stored-book"); JSON.stringify([book.name, book.bookUrl, java.get("bookName")])',
       book: {'name': '契约书', 'bookUrl': '$origin/book'},
     );
     checks['bookSnapshot'] =
-        bookProbe == jsonEncode(['契约书', '$origin/book', '契约书']);
+        bookProbe == jsonEncode(['契约书', '$origin/book', 'stored-book']);
     checks['absentBookStaysNull'] = await run('book === null') == true;
     final chapterProbe = await run(
-      'JSON.stringify([chapter.title, chapter.url, java.get("title")])',
+      'java.put("title", "stored-title"); JSON.stringify([chapter.title, chapter.url, java.get("title")])',
       chapter: {'title': '第一章', 'url': '$origin/chapter'},
     );
     checks['chapterSnapshot'] =
-        chapterProbe == jsonEncode(['第一章', '$origin/chapter', '第一章']);
+        chapterProbe == jsonEncode(['第一章', '$origin/chapter', 'stored-title']);
     for (final member in [
       'book.getVariable',
       'book.putVariable',
@@ -286,9 +288,11 @@ Future<void> main(List<String> args) async {
       'java.get(${jsonEncode('$origin/echo')}, {}).code()',
     );
     checks['httpGetOverload'] = httpGet == 200;
-    checks['httpGetUndefinedSecondArgument'] = await run(
-      'java.get(${jsonEncode('$origin/echo')}, undefined).code()',
-    ) == 200;
+    checks['httpGetUndefinedSecondArgument'] =
+        await run(
+          'java.get(${jsonEncode('$origin/echo')}, undefined).code()',
+        ) ==
+        200;
     final batch = await run(
       'JSON.stringify(java.ajaxAll(['
       '${jsonEncode('$origin/a')}, ${jsonEncode('$origin/b')}])'
@@ -333,7 +337,8 @@ Future<void> main(List<String> args) async {
         cookie.replaceCookie(${jsonEncode(origin)}, "c=3");
         JSON.stringify([cookie.getCookie(${jsonEncode(origin)}), cookie.getKey(${jsonEncode(origin)}, "c")])''',
     );
-    checks['cookieRoundTrip'] = cookieProbe == jsonEncode(['a=1; b=2; c=3', '3']);
+    checks['cookieRoundTrip'] =
+        cookieProbe == jsonEncode(['a=1; b=2; c=3', '3']);
     await run('java.ajax(${jsonEncode('$origin/echo')})');
     checks['cookieOnWire'] = requests.last == 'GET /echo cookie=a=1; b=2; c=3';
     final removed = await run(
@@ -356,11 +361,11 @@ Future<void> main(List<String> args) async {
         .map((message) => '${message.kind}:${message.message}')
         .toList();
     checks['logReturnValue'] = logReturn == 'hello';
-    checks['logCaptured'] = messages.join('|') == 'log:hello|toast:t|longToast:lt|logType:object';
+    checks['logCaptured'] =
+        messages.join('|') == 'log:hello|toast:t|longToast:lt|logType:object';
 
     // 7. Encoding and utility family against the frozen semantics.
-    final utilities = await run(
-      '''JSON.stringify({
+    final utilities = await run('''JSON.stringify({
         base64: java.base64Encode("书a"),
         base64Wrapped: java.base64Encode("x".repeat(60), 0),
         base64UrlSafe: java.base64Encode("\\u00ff\\u00fe", 8 | 2),
@@ -397,7 +402,8 @@ Future<void> main(List<String> args) async {
     checks['hexDecode'] = decoded['hexDecoded'] == '书a';
     checks['hexDecodeBytes'] = decoded['hexBytes'] == '0,-1';
     checks['encodeUri'] = decoded['encodeUri'] == '%E6%88%91+a*b';
-    checks['encodeUriUnknownCharset'] = decoded['encodeUriNonAsciiCharset'] == '';
+    checks['encodeUriUnknownCharset'] =
+        decoded['encodeUriNonAsciiCharset'] == '';
     // The conversion is the reader's conversion: the same tables, including
     // Legado's exclude list (魔戒 stays 魔戒 although the table knows 指环王).
     checks['t2s'] = decoded['t2s'] == '　　“你这是什么意思？”他问道。';
@@ -414,8 +420,10 @@ Future<void> main(List<String> args) async {
     checks['toNumChapter'] = decoded['toNumChapter'] == '第12章';
     checks['toNumChapterFullwidth'] =
         decoded['toNumChapterFullwidth'] == '第123章';
-    checks['toNumChapterChineseShorthand'] = await run('java.toNumChapter("第一千二章")') == '第1200章';
-    checks['toNumChapterInvalid'] = await run('java.toNumChapter("第未知章")') == '第-1章';
+    checks['toNumChapterChineseShorthand'] =
+        await run('java.toNumChapter("第一千二章")') == '第1200章';
+    checks['toNumChapterInvalid'] =
+        await run('java.toNumChapter("第未知章")') == '第-1章';
     checks['toNumChapterUntouched'] = decoded['toNumChapterUntouched'] == '序章';
     checks['toUrl'] =
         decoded['toUrl'] ==

@@ -240,6 +240,10 @@ void main() {
         'book': {'name': 'Book', 'bookUrl': 'http://a.test/book'},
         'chapter': {'title': 'Chapter', 'url': 'http://a.test/a'},
       };
+      await run(
+        'java.put("bookName", "stored-book"); java.put("title", "stored-title")',
+        input: input,
+      );
       expect(
         await run(
           'JSON.stringify([book.name,book.bookUrl,chapter.title,chapter.url,java.get("bookName"),java.get("title")])',
@@ -250,8 +254,8 @@ void main() {
           'http://a.test/book',
           'Chapter',
           'http://a.test/a',
-          'Book',
-          'Chapter',
+          'stored-book',
+          'stored-title',
         ]),
       );
       await run('java.put("token", "source-owned")', input: input);
