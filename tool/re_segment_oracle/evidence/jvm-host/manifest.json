@@ -1,0 +1,26 @@
+{
+  "surface": "ContentHelp.reSegment (paragraph re-segmentation)",
+  "provenance": "source-executed on a host JVM; NOT the four-stage device oracle",
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSource": {
+    "path": "app/src/main/java/io/legado/app/help/book/ContentHelp.kt",
+    "sha1": "9f157c31753f0a7790d8a786659364a259c1d55a"
+  },
+  "harness": "tool/re_segment_oracle/ReSegmentOracle.kt",
+  "fixtures": "tool/re_segment_oracle/fixtures.json",
+  "golden": "tool/re_segment_oracle/evidence/jvm-host/golden.json",
+  "command": "bash tool/re_segment_oracle/run_golden.sh",
+  "toolchain": {
+    "jvm": "1.8.0_503 (Oracle, x86_64, windows)",
+    "kotlinCompiler": "kotlin-compiler-embeddable-2.1.0",
+    "kotlinStdlib": "kotlin-stdlib-2.1.0",
+    "gson": "gson-2.12.1"
+  },
+  "recordedAt": "2026-09-18T17:27:47Z",
+  "determinism": "The harness runs every reSegment=true case twice and refuses the output when the two runs differ, so forceSplit's Math.random() branch (ContentHelp.kt:160) is absent from this golden. Those inputs are covered by seeded unit tests in test/content_re_segment_test.dart.",
+  "deviceRow": {
+    "status": "not-run",
+    "owner": "#38",
+    "reason": "The four-stage device oracle entry that would call ContentProcessor.getContent inside the frozen APK process is #38's; this host harness executes the same ContentHelp.kt bytes but is not the device golden. The Android row stays not-run until that entry exists."
+  }
+}

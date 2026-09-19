@@ -1,0 +1,50 @@
+{
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSource": "app/src/main/java/io/legado/app/help/book/ContentHelp.kt",
+  "frozenSourceSha1": "9f157c31753f0a7790d8a786659364a259c1d55a",
+  "note": "Frozen inputs for ContentHelp.reSegment. Every case with reSegment=true is run twice by the oracle and refused if the two runs differ, so a golden here is a deterministic frozen result; forceSplit's Math.random() branch (ContentHelp.kt:160) is therefore absent from this corpus and is covered by seeded unit tests instead.",
+  "cases": [
+    {
+      "name": "enabled-observed-shape",
+      "chapterTitle": "第一章 初入宗门",
+      "reSegment": true,
+      "note": "The 21-of-1419 shape: a book whose readConfig.reSegment is on. Paragraphs, blank lines and dialogue, all deterministic.",
+      "content": "第一章 初入宗门\n\n清晨，山间的雾气还没有散尽。少年背着竹篓，一步步走上石阶。\n\n“你终于来了。”老者站在门前，声音沙哑。\n\n少年停下脚步，抬头看了他一眼。"
+    },
+    {
+      "name": "enabled-blank-lines-merge",
+      "chapterTitle": "第二章",
+      "reSegment": true,
+      "note": "A paragraph that does not end in a sentence end is glued to the next; blank lines collapse.",
+      "content": "第一段没有句末标点\n第二段也没有标点。\n\n\n第三段结束了。"
+    },
+    {
+      "name": "enabled-dialogue-quotes",
+      "chapterTitle": "第三章",
+      "reSegment": true,
+      "note": "Dialogue and quote direction: an opening quote, a mid-line close/open pair, and an enumeration.",
+      "content": "“走吧。”她说，“再不走就来不及了。”\n他买了“锅”、“碗”、“盆”三样东西。"
+    },
+    {
+      "name": "enabled-ideographic-space",
+      "chapterTitle": "序章",
+      "reSegment": true,
+      "note": "An ideographic space and a tab are removed inside a paragraph, as the frozen `[\\u3000\\s]` class does.",
+      "content": "前　言。\n\n\t本书是测试。"
+    },
+    {
+      "name": "enabled-title-equals-first-line",
+      "chapterTitle": "第四章 风起",
+      "reSegment": true,
+      "note": "The first line is the chapter title, so reSegment must not repeat it.",
+      "content": "第四章 风起\n\n风从山谷里吹来。树叶翻了个身。"
+    },
+    {
+      "name": "disabled-observed-shape",
+      "chapterTitle": "第一章 初入宗门",
+      "reSegment": false,
+      "note": "The same book with the flag off: the frozen reader never calls ContentHelp.reSegment, so the stage output is the body it was handed.",
+      "content": "第一章 初入宗门\n\n清晨，山间的雾气还没有散尽。少年背着竹篓，一步步走上石阶。\n\n“你终于来了。”老者站在门前，声音沙哑。\n\n少年停下脚步，抬头看了他一眼。"
+    }
+  ]
+}

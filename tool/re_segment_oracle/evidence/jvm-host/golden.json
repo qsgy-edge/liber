@@ -1,0 +1,8 @@
+{
+  "enabled-observed-shape": "清晨，山间的雾气还没有散尽。少年背着竹篓，一步步走上石阶。\n“你终于来了。”老者站在门前，声音沙哑。\n少年停下脚步，抬头看了他一眼。",
+  "enabled-blank-lines-merge": "第一段没有句末标点第二段也没有标点。\n第三段结束了。",
+  "enabled-dialogue-quotes": "“走吧。”\n她说，“再不走就来不及了。”\n他买了“锅”、“碗”、“盆”\n“三样东西。”",
+  "enabled-ideographic-space": "前言。\n本书是测试。",
+  "enabled-title-equals-first-line": "风从山谷里吹来。树叶翻了个身。",
+  "disabled-observed-shape": "第一章 初入宗门\n\n清晨，山间的雾气还没有散尽。少年背着竹篓，一步步走上石阶。\n\n“你终于来了。”老者站在门前，声音沙哑。\n\n少年停下脚步，抬头看了他一眼。"
+}

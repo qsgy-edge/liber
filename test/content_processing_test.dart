@@ -55,6 +55,7 @@ void main() {
     void Function(String)? onNotice,
     Future<void> Function(ReplaceRule)? onRuleDisabled,
     bool useReplaceRule = true,
+    bool useReSegment = false,
   }) => ContentProcessing(
     rules: ReplaceRuleSet.forBook(
       rules,
@@ -66,6 +67,7 @@ void main() {
     onNotice: onNotice,
     onRuleDisabled: onRuleDisabled,
     useReplaceRule: useReplaceRule,
+    useReSegment: useReSegment,
   );
 
   group('selection (the frozen ReplaceRuleDao statement)', () {
@@ -317,6 +319,46 @@ void main() {
         rule(pattern: 'null', replacement: 'x'),
       ]).content('null', chapterTitle: '第一章');
       expect(content, 'null');
+    });
+  });
+
+  group('the re-segmentation stage (ContentProcessor.kt:131-133)', () {
+    test('the per-book flag is off by default', () async {
+      final content = await processing(
+        const [],
+      ).content('第一段没有句号\n第二段也没有标点。', chapterTitle: '别的标题');
+      expect(content, '第一段没有句号\n第二段也没有标点。');
+    });
+
+    test('the flag runs it after the duplicated title is removed', () async {
+      final content = await processing(
+        const [],
+        useReSegment: true,
+      ).content('第一章 标题\n\n第一段没有句号\n第二段也没有标点。', chapterTitle: '第一章 标题');
+      expect(content, '第一段没有句号第二段也没有标点。');
+    });
+
+    test('the content rules see the re-segmented body', () async {
+      final body = '第一段没有句号\n第二段也没有标点。';
+      // `句号第二段` only exists once the two paragraphs are glued, so a rule
+      // that matches it proves the stage ran before the rules.
+      final on = await processing([
+        rule(pattern: '句号第二段', replacement: 'X', isRegex: false),
+      ], useReSegment: true).content(body, chapterTitle: '别的标题');
+      expect(on, '第一段没有X也没有标点。');
+
+      final off = await processing([
+        rule(pattern: '句号第二段', replacement: 'X', isRegex: false),
+      ]).content(body, chapterTitle: '别的标题');
+      expect(off, body);
+    });
+
+    test('the display title is still prepended last', () async {
+      final content = await processing(
+        const [],
+        useReSegment: true,
+      ).content('第一段没有句号\n第二段也没有标点。', chapterTitle: '第一章', includeTitle: true);
+      expect(content, '第一章\n第一段没有句号第二段也没有标点。');
     });
   });
 
