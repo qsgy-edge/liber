@@ -175,12 +175,13 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       // `ContentProcessor.getContent(..., includeTitle = false)` returns.
       final chapterName = widget.chapters[next].name;
       final current = processing;
+      final sourceTitle = result.title ?? chapterName;
       final title = current == null
-          ? chapterName
-          : await current.displayTitle(chapterName);
+          ? sourceTitle
+          : await current.displayTitle(sourceTitle);
       final body = current == null
           ? result.text
-          : await current.content(result.text, chapterTitle: chapterName);
+          : await current.content(result.text, chapterTitle: sourceTitle);
       if (!mounted) return;
       final lines = body.split('\n');
       var cursor = 0;

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../store/shelf.dart';
+import 'book_source_pipeline.dart' show sourceCheckKeyword;
 import 'html_source_browser.dart';
 
 class SourceTrialPage extends StatefulWidget {
@@ -74,7 +75,15 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
   /// rules need, so a JSON source is searched, shelved and read exactly like an
   /// HTML one instead of stopping at a text preview (ticket #29).
   Future<void> run() async {
-    final keywordText = keyword.text.trim();
+    var keywordText = keyword.text.trim();
+    if (keywordText.isEmpty) {
+      try {
+        keywordText = sourceCheckKeyword(sources[selected!], '');
+      } on FormatException catch (error) {
+        setState(() => status = '读取失败：${error.message}');
+        return;
+      }
+    }
     if (keywordText.isEmpty) {
       setState(() => status = '请输入关键词。');
       return;

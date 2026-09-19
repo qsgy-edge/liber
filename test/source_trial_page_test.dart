@@ -8,6 +8,49 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 void main() {
+  for (final entered in ['', 'user query']) {
+    testWidgets('source check keyword is a fallback only ($entered)', (
+      tester,
+    ) async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SourceTrialPage(
+            service: ShelfService(store),
+            sources: const [
+              ImportedBookSource(
+                id: 'default-keyword',
+                data: {
+                  'bookSourceName': 'Default keyword',
+                  'bookSourceUrl': 'https://example.invalid',
+                  // Stop before networking/native code; inspect the submitted keyword.
+                  'loginCheckJs': 'true',
+                  'searchUrl': '/search?key={{key}}',
+                  'ruleSearch': {
+                    'bookList': r'$.items',
+                    'name': r'$.name',
+                    'bookUrl': r'$.url',
+                    'checkKeyWord': '  source query  ',
+                  },
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      if (entered.isNotEmpty) {
+        await tester.enterText(find.byType(TextField), entered);
+      }
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      final browser = tester.widget<HtmlSourceBrowser>(
+        find.byType(HtmlSourceBrowser),
+      );
+      expect(browser.keyword, entered.isEmpty ? '  source query  ' : entered);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets(
     'source trial opens the browser, where an unsupported field fails without a success result',
     (tester) async {

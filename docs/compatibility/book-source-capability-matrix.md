@@ -66,10 +66,10 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | Capability | Frozen | Status |
 |---|---|---|
 | `searchUrl` + `,{...}` options | `AnalyzeUrl.kt:208-248`, `671-716` | 🟡 `method`/`headers`/`body`/`js`/`retry`/`charset` ✅; ⛔ `type`, `webView`, `webJs`, `webViewDelayTime`, `serverID` |
-| `ruleSearch` | `SearchRule.kt:14-24` | ✅ `bookList`/`name`/`bookUrl`/`author`/`kind`/`coverUrl`; ❌ `intro`/`lastChapter`/`wordCount`/`updateTime`/`checkKeyWord` |
-| `ruleBookInfo` | `BookInfoRule.kt:13-24` | ✅ `name`/`author`/`intro`/`kind`/`coverUrl`/`lastChapter`/`tocUrl`; 🟡 `init` (JSON pipeline only), `canReName` (accepted, unused); ❌ `downloadUrls` |
+| `ruleSearch` | `SearchRule.kt:14-24` | ✅ `bookList`/`name`/`bookUrl`/`author`/`intro`/`kind`/`lastChapter`/`wordCount`/`checkKeyWord`/`coverUrl`; ❌ `updateTime` |
+| `ruleBookInfo` | `BookInfoRule.kt:13-24` | ✅ `name`/`author`/`intro`/`kind`/`coverUrl`/`lastChapter`/`tocUrl`/`wordCount`/`canReName`; 🟡 `init` (JSON pipeline only), ❌ `downloadUrls` |
 | `ruleToc` | `TocRule.kt:10-19` | ✅ `chapterList`/`chapterName`/`chapterUrl`/`nextTocUrl`; ❌ `preUpdateJs`/`formatJs`/`isVolume`/`isVip`/`isPay`/`updateTime` |
-| `ruleContent` | `ContentRule.kt:13-21` | ✅ `content`/`nextContentUrl`; 🟡 `replaceRegex` (`##regex##replacement` and `{{chapter.title}}` only; a source that also writes an inline `##` replacement in `content` is ⛔ rejected with an explicit error instead of being applied twice — the frozen content-stage replacement belongs to #17); ❌ `title`/`webJs`/`sourceRegex`/`imageStyle`/`imageDecode`/`payAction` |
+| `ruleContent` | `ContentRule.kt:13-21` | ✅ `content`/`title`/`nextContentUrl`; 🟡 `replaceRegex` (`##regex##replacement` and `{{chapter.title}}` only; a source that also writes an inline `##` replacement in `content` is ⛔ rejected with an explicit error instead of being applied twice — the frozen content-stage replacement belongs to #17); ❌ `webJs`/`sourceRegex`/`imageStyle`/`imageDecode`/`payAction` |
 | `ruleExplore`, `ruleReview` | `ExploreRule.kt`, `ReviewRule.kt` | ❌ |
 | `header` | `BaseSource.kt:103-123` | ✅ static JSON, `@js:`, `<js>` |
 | `loginUrl`, `loginUi`, `loginCheckJs` | `BaseSource.kt:134-182`, `WebBook.kt:211` | ❌ rejected with an explicit error |
