@@ -1465,6 +1465,88 @@ async fn engine_close_drops_pending_bridge_future_without_host_release() {
         .expect("drop notification should be sent");
 }
 
+/// A close with an in-flight broker request must hand the host its cancel.
+///
+/// The parked bridge wait resumes on a cancelled scope and removes its own
+/// request from the registry *without* calling the host cancel callback, so
+/// `close_with_mode` has to claim this engine's requests before it wakes those
+/// waits — otherwise the wait can take the request and the host is never told to
+/// cancel an operation the frozen client does cancel. The reserved scopes widen
+/// the window between the wake-up pass and the claim the way a loaded runner
+/// does, and the whole scenario repeats because the window is a scheduling
+/// race, not a fixed instruction sequence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_close_notifies_host_cancel_for_inflight_broker_request() {
+    for attempt in 0..10 {
+        let engine = Arc::new(JsEngine::create(None, None, None).await.unwrap());
+        let (started_tx, started_rx) = oneshot::channel::<u64>();
+        let started_tx = Arc::new(std::sync::Mutex::new(Some(started_tx)));
+        let cancels = Arc::new(std::sync::Mutex::new(Vec::<u64>::new()));
+        engine
+            .init_broker(
+                {
+                    let started_tx = started_tx.clone();
+                    move |request| {
+                        let started_tx = started_tx
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .take();
+                        Box::pin(async move {
+                            if let Some(started_tx) = started_tx {
+                                let _ = started_tx.send(request.id);
+                            }
+                        })
+                    }
+                },
+                {
+                    let cancels = cancels.clone();
+                    move |id| {
+                        cancels
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .push(id);
+                        Box::pin(async {})
+                    }
+                },
+            )
+            .await
+            .unwrap();
+        for _ in 0..20_000 {
+            engine.create_scoped_execution(None).unwrap();
+        }
+        let id = engine.create_scoped_execution(None).unwrap();
+        let parked = tokio::spawn({
+            let engine = engine.clone();
+            async move {
+                engine
+                    .eval_scoped(id, r#"fjs.bridge_call("closing")"#.to_string())
+                    .await
+            }
+        });
+        let request_id = started_rx
+            .await
+            .expect("host start callback should run for the parked request");
+        engine.close().await.expect("close should succeed");
+        let result = tokio::time::timeout(Duration::from_secs(1), parked)
+            .await
+            .expect("parked bridge wait should unwind promptly")
+            .expect("parked eval task should not panic");
+        assert!(
+            matches!(result, Err(JsError::Cancelled(_))),
+            "attempt {attempt}: parked wait should unwind as cancelled, got {result:?}"
+        );
+        let observed = cancels
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert!(
+            observed.contains(&request_id),
+            "attempt {attempt}: close() must notify the host cancel for request \
+             {request_id}, observed {observed:?}"
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn engine_close_cancels_mixed_in_flight_eval_call_and_bridge_operations() {
     // Deterministic ordering instead of a sleep: every operation reports
