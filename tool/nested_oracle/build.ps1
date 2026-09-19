@@ -18,6 +18,9 @@ $tools = Join-Path $AndroidSdk 'build-tools/35.0.1'
 $androidJar = Join-Path $AndroidSdk 'platforms/android-35/android.jar'
 Copy-Item "$PSScriptRoot/fixtures.json" "$OutputDirectory/assets/fixtures.json"
 Copy-Item "$PSScriptRoot/state-fixtures.json" "$OutputDirectory/assets/state-fixtures.json"
+# The request-semantics corpus travels the same way: the RequestOracle drives the
+# frozen AnalyzeUrl against it, and the golden records this file's hash.
+Copy-Item "$PSScriptRoot/request-fixtures.json" "$OutputDirectory/assets/request-fixtures.json"
 # The first-slice corpus travels inside the harness: the oracle serves it from the
 # device process, and the golden records this file's hash as its corpus hash.
 Copy-Item "$PSScriptRoot/../first_slice/fixtures.json" "$OutputDirectory/assets/slice-fixtures.json"
@@ -25,7 +28,7 @@ Copy-Item "$PSScriptRoot/../first_slice/fixtures.json" "$OutputDirectory/assets/
 # the device process, and the golden records `tool/html_oracle/fixtures.json`'s
 # hash as its corpus hash.
 Copy-Item "$PSScriptRoot/../html_oracle/fixtures.json" "$OutputDirectory/assets/html-fixtures.json"
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java")
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
 Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")

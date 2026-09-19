@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "REQUEST-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (constructor, 14 parameters) + getStrResponseAwait, driven inside the installed io.legado.app.debug process through reflection",
+  "port": 18731,
+  "origin": "http://127.0.0.2:18731",
+  "otherOrigin": "http://127.0.0.3:18731",
+  "capabilityRows": [
+    "D default request headers (User-Agent, Keep-Alive, Connection, Cache-Control) and a source that declares each",
+    "D User-Agent: null, the frozen opt-out",
+    "D redirect chains 300/301/302/303 with a POST body, 307/308, content-header removal",
+    "D cross-origin Authorization drop, declared Cookie forwarding (recorded divergence)",
+    "D the 21st follow-up limit",
+    "D {{key}} raw substitution, the query encoded once, an already-encoded query left alone",
+    "D the exact bytes for { } | ^ ` \\ ' spaces and non-ASCII",
+    "D {{page}} and <1,2,3> page lists, and the empty binding on a stage that carries no page"
+  ],
+  "coverageGaps": [
+    "The corpus drives AnalyzeUrl directly rather than the four WebBook stages, so a request the frozen WebBook builds with other arguments (a chapter body, a login header map) is not covered; the argument shapes it does use are the ones WebBook.kt:60 (search, key+page), WebBook.kt:169 (book info, no key/page), WebBook.kt:244 (toc, no key/page), BookChapterList.kt:70 and BookContent.kt:90 (next page, no key/page) construct.",
+    "The rows drive the frozen OkHttp path only (useWebView stays false, `type`/`upload` are not options this corpus sets), so the WebView request path (#2) is not covered.",
+    "No `retry` option row: the non-2xx retry loop (#9, OkHttpUtils.kt:29-43) is pinned by the product's own tests and is not re-opened here.",
+    "No charset option row: the `charset`/`escape` encoder rows are #42's, pinned by its own evidence, and this corpus uses only the default UTF-8 query encoder.",
+    "The redirect rows observe the requests the replay server receives; a Set-Cookie on a hop and other client-internal state are out of this corpus' scope (the differential contract's known-divergence row records the hop-cookie loss).",
+    "Only one response status shape per redirect status is exercised: the Location header is always relative to a declared origin, so a relative Location and a cross-scheme hop are not covered."
+  ],
+  "note": "The rows drive io.legado.app.model.analyzeRule.AnalyzeUrl through reflection inside the installed frozen process, with the corpus' own in-process replay server on port 18731. Every row's evidence is the ordered request the server received (method, target, headers, body) plus the row's outcome. The corpus is the input only; the observed bytes belong to the golden. Rows whose `request.rule` carries a `,{...}` option object are declared exactly as a Book Source would declare them, so the method/body/header handling under test is AnalyzeUrl's own.",
+  "rows": [
+    {
+      "id": "defaults-injected",
+      "frozen": "HttpHelper.kt:71-82 (okHttpClient's first application interceptor) and AppConfig.kt:544-549 (the default user agent), pinned at 14dd2494",
+      "semantics": "No declared header map: the interceptor fills User-Agent from AppConfig.userAgent and appends Keep-Alive: 300, Connection: Keep-Alive, Cache-Control: no-cache; OkHttp's BridgeInterceptor then adds Host and Accept-Encoding and leaves the present User-Agent alone.",
+      "request": {
+        "rule": "$ORIGIN/defaults",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "defaults-declared",
+      "frozen": "HttpHelper.kt:71-82 over OkHttp Request.Builder.addHeader (okhttp-4.12.0 RetryAndFollowUpInterceptor sibling: the interceptor itself is HttpHelper.kt)",
+      "semantics": "A source that declares a header name the interceptor also appends keeps its slot and the appended value follows it, joined the way the wire carries a duplicate header (server-side join \", \").",
+      "request": {
+        "rule": "$ORIGIN/declared",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": {
+          "User-Agent": "Source/1.0",
+          "Keep-Alive": "600",
+          "Cache-Control": "max-age=0",
+          "Connection": "Keep-Alive"
+        }
+      }
+    },
+    {
+      "id": "defaults-user-agent-null",
+      "frozen": "HttpHelper.kt:76-80 (the literal \"null\" removes the header) and OkHttp 4.12 BridgeInterceptor (okhttp/4.12.0 is added when no User-Agent header is present)",
+      "semantics": "A source that declares User-Agent: null opts out of AppConfig.userAgent; the frozen platform default that then stands is okhttp/4.12.0. The product's transport answers Dart's own client default instead, which the differential contract records as a named divergence, so this row is reported rather than passed.",
+      "request": {
+        "rule": "$ORIGIN/ua-null",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": {
+          "User-Agent": "null"
+        }
+      }
+    },
+    {
+      "id": "redirect-300-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (300 is in the redirect branch): a POST is rewritten to GET with a null body and Transfer-Encoding/Content-Length/Content-Type removed",
+      "semantics": "300 with a POST body: the follow-up is a GET with no body and no content headers.",
+      "request": {
+        "rule": "$ORIGIN/r300,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-301-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (301)",
+      "semantics": "301 with a POST body: the follow-up is a GET with no body and no content headers.",
+      "request": {
+        "rule": "$ORIGIN/r301,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-302-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (302)",
+      "semantics": "302 with a POST body: the follow-up is a GET with no body and no content headers.",
+      "request": {
+        "rule": "$ORIGIN/r302,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-303-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (303)",
+      "semantics": "303 with a POST body: the follow-up is a GET with no body and no content headers.",
+      "request": {
+        "rule": "$ORIGIN/r303,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-307-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (307 keeps method and body; HttpMethod.redirectsWithBody is also true for 308)",
+      "semantics": "307 with a POST body: method, body and content headers are preserved.",
+      "request": {
+        "rule": "$ORIGIN/r307,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-308-post",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest (308 keeps method and body)",
+      "semantics": "308 with a POST body: method, body and content headers are preserved.",
+      "request": {
+        "rule": "$ORIGIN/r308,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\",\"X-Source\":\"kept\"},\"body\":\"a=1\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "redirect-cross-origin",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor.buildRedirectRequest: Util.canReuseConnectionFor(scheme, host, port) false removes only Authorization; a declared Cookie is an ordinary header and travels with the follow-up",
+      "semantics": "A hop to another host drops Authorization and keeps every other declared header, Cookie included. The product drops the declared Cookie as well (its documented policy divergence), so that one observation is reported rather than passed.",
+      "request": {
+        "rule": "$ORIGIN/cross",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": {
+          "Authorization": "Bearer test-value",
+          "Cookie": "test=value",
+          "X-Source": "kept"
+        }
+      }
+    },
+    {
+      "id": "redirect-limit",
+      "frozen": "okhttp-4.12.0 RetryAndFollowUpInterceptor (MAX_FOLLOW_UPS = 20 in 4.12.0; the 21st follow-up throws ProtocolException(\"Too many follow-up requests: 21\"))",
+      "semantics": "A self-redirecting chain: the server receives 21 requests (the original plus 20 follow-ups) and the call fails. The row compares the request count and the failing outcome, not the platform's exception class.",
+      "request": {
+        "rule": "$ORIGIN/loop",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "query-key-raw",
+      "frozen": "AnalyzeUrl.kt:184-200 ({{ }} evaluated as JavaScript bindings) then AnalyzeUrl.kt:265-278 + 294-334 (analyzeQuery over encodeParams/queryEncoder)",
+      "semantics": "{{key}} is substituted raw and the whole query is percent-encoded once: the space is %20 (not '+', the query encoder is not URLEncoder), both CJK characters are their UTF-8 bytes as upper-case escapes.",
+      "request": {
+        "rule": "$ORIGIN/search?q={{key}}&p={{page}}",
+        "key": "我的 书",
+        "page": 1,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "query-key-separators",
+      "frozen": "AnalyzeUrl.kt:265-278 analyzeQuery -> encodeParams: the substituted text is re-split on & and = only after substitution, so a substituted separator becomes part of the value",
+      "semantics": "A keyword carrying & and = is substituted raw and then encoded as a value: the pair boundaries stay the rule's own.",
+      "request": {
+        "rule": "$ORIGIN/search?q={{key}}&p={{page}}",
+        "key": "a&b=c",
+        "page": 1,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "query-already-encoded",
+      "frozen": "AnalyzeUrl.kt:294-311 (NetworkUtils.encodedQuery short-circuits queryEncoder.encode) and OkHttpUtils.kt:105-109 (HttpUrl.encodedQuery keeps the escape it is handed)",
+      "semantics": "A query that already looks percent-encoded is sent byte for byte; the substituted page is appended by the same rule text.",
+      "request": {
+        "rule": "$ORIGIN/search?q=%E4%B9%A6&p={{page}}",
+        "key": "书",
+        "page": 1,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "query-exact-bytes",
+      "frozen": "AnalyzeUrl.kt:265-278 (NetworkUtils.encodedQuery: notNeedEncodingQuery is alphanumerics plus !$&()*+,-./:;=?@[\\]^_`{|}~; a raw ' is not in it) and AnalyzeUrl.kt:294-311 (queryEncoder = RFC3986.UNRESERVED plus !$%&()*+,/:;=?@[\\]^`{|})",
+      "semantics": "The exact bytes of every character group the ticket names: { } | ^ ` \\ are inside the query encoder's safe set and are sent raw, ' is outside it and becomes %27, the space becomes %20, and the CJK character is its UTF-8 bytes as upper-case escapes.",
+      "request": {
+        "rule": "$ORIGIN/search?q={{key}}&p={{page}}",
+        "key": "{a}|b^c`\\d'e f 书",
+        "page": 1,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "page-list-hit",
+      "frozen": "AnalyzeUrl.kt:202-216 replaceKeyPageJs: the page list is substituted only when a page exists, and page n takes the n-th entry",
+      "semantics": "A <1,2,3> list with page 2 sends the second entry.",
+      "request": {
+        "rule": "$ORIGIN/list?page=<1,2,3>&q={{key}}",
+        "key": "书",
+        "page": 2,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "page-list-past-end",
+      "frozen": "AnalyzeUrl.kt:202-216 replaceKeyPageJs: page < pages.size takes pages[page - 1], everything else takes pages.last()",
+      "semantics": "A <1,2,3> list past the end repeats the last entry.",
+      "request": {
+        "rule": "$ORIGIN/list?page=<1,2,3>&q={{key}}",
+        "key": "书",
+        "page": 7,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "pageless-empty-bindings",
+      "frozen": "AnalyzeUrl.kt:184-200 ({{ }} with a null key/page binding evaluates to null, which the inner-rule callback maps to \"\") and AnalyzeUrl.kt:202-216 (the page list step is inside page?.let)",
+      "semantics": "A stage that carries no page or keyword (WebBook.kt:244, BookChapterList.kt:70, BookContent.kt:90) binds both empty, so {{page}} and {{key}} both substitute to nothing.",
+      "request": {
+        "rule": "$ORIGIN/toc?p={{page}}&k={{key}}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "pageless-page-list-literal",
+      "frozen": "AnalyzeUrl.kt:202-216 replaceKeyPageJs: page?.let { ... } skips the whole list substitution when no page exists, so the <...> text is left to the query encoder",
+      "semantics": "On a stage with no page a <1,2,3> list is not substituted at all; the query encoder then escapes < and > and leaves , as it is.",
+      "request": {
+        "rule": "$ORIGIN/toc?p=<1,2,3>",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    }
+  ],
+  "responses": [
+    {"method": "GET", "path": "/defaults", "status": 200, "body": "defaults"},
+    {"method": "GET", "path": "/declared", "status": 200, "body": "declared"},
+    {"method": "GET", "path": "/ua-null", "status": 200, "body": "ua-null"},
+    {"method": "POST", "path": "/r300", "status": 300, "headers": {"Location": "$ORIGIN/after300"}, "body": ""},
+    {"method": "GET", "path": "/after300", "status": 200, "body": "after300"},
+    {"method": "POST", "path": "/r301", "status": 301, "headers": {"Location": "$ORIGIN/after301"}, "body": ""},
+    {"method": "GET", "path": "/after301", "status": 200, "body": "after301"},
+    {"method": "POST", "path": "/r302", "status": 302, "headers": {"Location": "$ORIGIN/after302"}, "body": ""},
+    {"method": "GET", "path": "/after302", "status": 200, "body": "after302"},
+    {"method": "POST", "path": "/r303", "status": 303, "headers": {"Location": "$ORIGIN/after303"}, "body": ""},
+    {"method": "GET", "path": "/after303", "status": 200, "body": "after303"},
+    {"method": "POST", "path": "/r307", "status": 307, "headers": {"Location": "$ORIGIN/after307"}, "body": ""},
+    {"method": "POST", "path": "/after307", "status": 200, "body": "after307"},
+    {"method": "POST", "path": "/r308", "status": 308, "headers": {"Location": "$ORIGIN/after308"}, "body": ""},
+    {"method": "POST", "path": "/after308", "status": 200, "body": "after308"},
+    {"method": "GET", "path": "/cross", "status": 302, "headers": {"Location": "$OTHER_ORIGIN/after-cross"}, "body": ""},
+    {"method": "GET", "path": "/after-cross", "status": 200, "body": "after-cross"},
+    {"method": "GET", "path": "/loop", "status": 302, "headers": {"Location": "$ORIGIN/loop"}, "body": ""},
+    {"method": "GET", "path": "/search", "status": 200, "body": "search"},
+    {"method": "GET", "path": "/list", "status": 200, "body": "list"},
+    {"method": "GET", "path": "/toc", "status": 200, "body": "toc"}
+  ]
+}
