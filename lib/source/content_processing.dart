@@ -35,10 +35,10 @@
 ///
 /// What this module does **not** do, and why — these are recorded on #17:
 ///
-/// - an `@js:` replacement (`RegexExtensions.kt:33-41`) is refused rather than
-///   applied: the frozen engine evaluates JavaScript per match. Only the regex
-///   branch refuses it; the frozen literal branch inserts the text as it is, and
-///   so does this one.
+/// - an `@js:` replacement (`RegexExtensions.kt:23-64`) evaluates JavaScript
+///   once per regex match through the approved source runtime boundary; the
+///   frozen runtime exposes the complete match as `result`, and the returned
+///   value is inserted literally.
 /// - the frozen reader's final paragraph shaping (trim the cutset `<= 0x20` and
 ///   `　`, drop empty lines, prefix `ReadBookConfig.paragraphIndent`) is the
 ///   reader's rendering, not this transform: the product's reader draws its own
@@ -66,11 +66,15 @@ library;
 
 import 'dart:isolate';
 
+import '../domain/contracts.dart'
+    show SourceCancellation, SourceRequestCancelled;
 import '../local/reader_engine.dart' show ReaderScript;
 import '../local/text_engine.dart' show TextEngine;
 import '../store/database.dart' show ReplaceRule;
 import 'content_re_segment.dart';
 import 'java_regex.dart';
+import 'js_source_runtime.dart'
+    show InProcessSourceScriptRuntime, SourceScriptError, SourceScriptRuntime;
 
 /// The rules the frozen `ReplaceRuleDao` returns for one book, in the frozen
 /// order.
@@ -178,15 +182,18 @@ String _asciiLower(String text) {
 
 /// Applies a [ReplaceRuleSet] to one book's titles and content.
 ///
-/// The rules run in the frozen order and every skip is named: a rule whose
-/// pattern the engine cannot express, whose `@js:` replacement is deferred, or
-/// which exceeds its own `timeoutMillisecond` is reported and left out rather
-/// than mis-applied.
+/// The rules run in the frozen order. A pattern the engine cannot express or
+/// an ordinary replacement error is reported and left out; a timed-out rule is
+/// reported, disabled through [onRuleDisabled], and left out. JavaScript
+/// replacement calls use the same per-rule deadline and cancellation signal as
+/// the approved source runtime.
 class ContentProcessing {
   ContentProcessing({
     required this.rules,
     required this.bookName,
     this.script,
+    this.scriptRuntime,
+    this.cancellation,
     this.useReplaceRule = true,
     this.useReSegment = false,
     this.timeoutFallback = const Duration(milliseconds: 3000),
@@ -206,6 +213,14 @@ class ContentProcessing {
   /// Which one a reader wants is #27's choice; the conversion itself is ADR
   /// 0010's, and the frozen engine converts inside this same stage.
   final ReaderScript? script;
+
+  /// The approved JavaScript boundary used for `@js:` replacements. Tests may
+  /// inject a boundary double; the product uses the in-process source runtime.
+  final SourceScriptRuntime? scriptRuntime;
+
+  /// Cancels an in-flight JavaScript replacement when the reader's operation
+  /// is abandoned.
+  final SourceCancellation? cancellation;
 
   /// The frozen `Book.getUseReplaceRule()`: the per-book switch falling back to
   /// the reader-wide default. This product has no settings surface yet, so the
@@ -335,8 +350,9 @@ class ContentProcessing {
   String get _leading => '^($_javaSpaceClass|\\p{P}|${_javaQuoted(bookName)})*';
 
   Future<String?> _apply(String text, ReplaceRule rule) async {
-    if (rule.isRegex && rule.replacement.startsWith('@js:')) {
-      _reportOnce(rule, '替换规则「${rule.name}」使用 @js: 替换，暂不支持，已跳过');
+    final translated = rule.isRegex ? translateJavaPattern(rule.pattern) : null;
+    if (translated != null && !translated.isRunnable) {
+      _reportOnce(rule, '替换规则「${rule.name}」不可用：${translated.refusal}');
       return null;
     }
     if (!rule.isRegex) {
@@ -345,12 +361,24 @@ class ContentProcessing {
       // `@js:`, which the literal branch never interprets.
       return text.replaceAll(rule.pattern, rule.replacement);
     }
-    final translated = translateJavaPattern(rule.pattern);
-    if (!translated.isRunnable) {
-      _reportOnce(rule, '替换规则「${rule.name}」不可用：${translated.refusal}');
-      return null;
+    if (rule.replacement.startsWith('@js:')) {
+      final outcome = await _applyJsUnderDeadline(text, rule, translated!);
+      if (outcome.cancelled) return null;
+      if (outcome.timedOut) {
+        _reportOnce(
+          rule,
+          '替换规则「${rule.name}」超时（${_deadlineFor(rule).inMilliseconds} 毫秒），已停用',
+        );
+        await onRuleDisabled?.call(rule);
+        return null;
+      }
+      if (outcome.error != null) {
+        _reportOnce(rule, '替换规则「${rule.name}」出错：${outcome.error}');
+        return null;
+      }
+      return outcome.text;
     }
-    final outcome = await _applyUnderDeadline(text, rule, translated);
+    final outcome = await _applyUnderDeadline(text, rule, translated!);
     if (outcome.timedOut) {
       _reportOnce(
         rule,
@@ -380,6 +408,120 @@ class ContentProcessing {
     ReaderScript.simplified => TextEngine.t2s(text),
     ReaderScript.traditional => TextEngine.s2t(text),
   };
+
+  /// Applies the frozen JavaScript replacement once per match. The stopwatch
+  /// carries one rule deadline across all matches, matching the frozen worker
+  /// that wraps the complete replacement pass in one timeout.
+  Future<_Outcome> _applyJsUnderDeadline(
+    String text,
+    ReplaceRule rule,
+    JavaPattern pattern,
+  ) async {
+    final runtime = scriptRuntime ?? InProcessSourceScriptRuntime();
+    final script = rule.replacement.substring(4);
+    final deadline = _deadlineFor(rule);
+    final stopwatch = Stopwatch()..start();
+    final buffer = StringBuffer();
+    var cursor = 0;
+    try {
+      final remaining = deadline - stopwatch.elapsed;
+      if (remaining <= Duration.zero) return const _Outcome.timeout();
+      final matches = await _collectJsMatches(text, pattern, remaining);
+      if (matches.cancelled) return const _Outcome.cancelled();
+      if (matches.timedOut) return const _Outcome.timeout();
+      if (matches.error != null) return _Outcome.error(matches.error!);
+      for (final entry in matches.values!) {
+        final start = entry[0] as int;
+        final end = entry[1] as int;
+        final matchText = entry[2] as String;
+        final next = deadline - stopwatch.elapsed;
+        if (next <= Duration.zero) return const _Outcome.timeout();
+        final value = await runtime.evaluate(
+          source: script,
+          input: {'sourceKey': '', 'result': matchText},
+          timeout: next,
+          cancellation: cancellation,
+        );
+        cancellation?.throwIfCancelled();
+        buffer.write(text.substring(cursor, start));
+        // Matcher.appendReplacement quotes the script result. Building the
+        // output directly has the same effect for '$' and '\\' characters.
+        buffer.write('$value');
+        cursor = end;
+      }
+      buffer.write(text.substring(cursor));
+      return _Outcome.text(buffer.toString());
+    } on SourceScriptError catch (error) {
+      if (error.category == 'cancelled') return const _Outcome.cancelled();
+      if (error.category == 'timeout') return const _Outcome.timeout();
+      return _Outcome.error('$error');
+    } on SourceRequestCancelled {
+      return const _Outcome.cancelled();
+    } catch (error) {
+      return _Outcome.error('$error');
+    }
+  }
+
+  Future<_JsMatches> _collectJsMatches(
+    String text,
+    JavaPattern pattern,
+    Duration timeout,
+  ) async {
+    if (cancellation?.isCancelled ?? false) return const _JsMatches.cancelled();
+    final receive = ReceivePort();
+    Isolate? isolate;
+    final unlisten = cancellation?.listen(() {
+      isolate?.kill(priority: Isolate.immediate);
+    });
+    try {
+      isolate = await Isolate.spawn(_jsMatchEntry, <Object?>[
+        receive.sendPort,
+        pattern.source,
+        text,
+        pattern.caseSensitive,
+        pattern.multiLine,
+        pattern.dotAll,
+        pattern.unicode,
+      ], onExit: receive.sendPort);
+      final message = await receive.first.timeout(
+        timeout,
+        onTimeout: () => const <Object?>['timeout'],
+      );
+      if (message is List && message.isNotEmpty && message.first == 'timeout') {
+        return const _JsMatches.timeout();
+      }
+      if (message == null) {
+        return cancellation?.isCancelled ?? false
+            ? const _JsMatches.cancelled()
+            : const _JsMatches.error('替换进程意外退出');
+      }
+      if (message is! List || message.length < 2) {
+        return const _JsMatches.error('替换进程返回了意外结果');
+      }
+      if (message.first == 'error') {
+        return _JsMatches.error('${message[1]}');
+      }
+      if (message.first != 'ok' || message[1] is! List) {
+        return const _JsMatches.error('替换进程返回了意外结果');
+      }
+      final values = <List<Object?>>[];
+      for (final value in message[1] as List) {
+        if (value is! List ||
+            value.length != 3 ||
+            value[0] is! int ||
+            value[1] is! int ||
+            value[2] is! String) {
+          return const _JsMatches.error('替换进程返回了意外匹配');
+        }
+        values.add(value.cast<Object?>());
+      }
+      return _JsMatches.values(values);
+    } finally {
+      unlisten?.call();
+      isolate?.kill(priority: Isolate.immediate);
+      receive.close();
+    }
+  }
 
   /// Runs one regex rule in a short-lived isolate under the rule's own deadline.
   ///
@@ -433,13 +575,79 @@ class ContentProcessing {
   }
 }
 
+class _JsMatches {
+  const _JsMatches.values(this.values)
+    : timedOut = false,
+      cancelled = false,
+      error = null;
+  const _JsMatches.timeout()
+    : values = null,
+      timedOut = true,
+      cancelled = false,
+      error = null;
+  const _JsMatches.cancelled()
+    : values = null,
+      timedOut = false,
+      cancelled = true,
+      error = null;
+  const _JsMatches.error(this.error)
+    : values = null,
+      timedOut = false,
+      cancelled = false;
+
+  final List<List<Object?>>? values;
+  final bool timedOut;
+  final bool cancelled;
+  final String? error;
+}
+
 class _Outcome {
-  const _Outcome.text(this.text) : timedOut = false, error = null;
-  const _Outcome.timeout() : text = null, timedOut = true, error = null;
-  const _Outcome.error(this.error) : text = null, timedOut = false;
+  const _Outcome.text(this.text)
+    : timedOut = false,
+      cancelled = false,
+      error = null;
+  const _Outcome.timeout()
+    : text = null,
+      timedOut = true,
+      cancelled = false,
+      error = null;
+  const _Outcome.cancelled()
+    : text = null,
+      timedOut = false,
+      cancelled = true,
+      error = null;
+  const _Outcome.error(this.error)
+    : text = null,
+      timedOut = false,
+      cancelled = false;
   final String? text;
   final bool timedOut;
+  final bool cancelled;
   final String? error;
+}
+
+/// Collects complete regex matches off the reading isolate. The JavaScript
+/// runtime remains the approved boundary in the caller isolate; this worker
+/// only makes Dart's regexp work interruptible under the same rule deadline.
+void _jsMatchEntry(List<Object?> args) {
+  final send = args[0] as SendPort;
+  try {
+    final regex = RegExp(
+      args[1] as String,
+      caseSensitive: args[3] as bool,
+      multiLine: args[4] as bool,
+      dotAll: args[5] as bool,
+      unicode: args[6] as bool,
+    );
+    final text = args[2] as String;
+    final matches = <List<Object?>>[];
+    for (final match in regex.allMatches(text)) {
+      matches.add(<Object?>[match.start, match.end, match.group(0)!]);
+    }
+    send.send(<Object?>['ok', matches]);
+  } catch (error) {
+    send.send(<Object?>['error', '$error']);
+  }
 }
 
 /// The isolate entry point: one Java-compatible replacement, off the reading
