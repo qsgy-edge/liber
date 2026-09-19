@@ -483,6 +483,10 @@ class ContentProcessing {
         pattern.dotAll,
         pattern.unicode,
       ], onExit: receive.sendPort);
+      // Cancellation can arrive while spawn is awaiting the isolate handle.
+      if (cancellation?.isCancelled ?? false) {
+        return const _JsMatches.cancelled();
+      }
       final message = await receive.first.timeout(
         timeout,
         onTimeout: () => const <Object?>['timeout'],

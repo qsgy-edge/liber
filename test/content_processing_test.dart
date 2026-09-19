@@ -426,6 +426,32 @@ void main() {
       expect(notices, isEmpty);
     });
 
+    test(
+      'cancellation during match-worker startup leaves the title unchanged',
+      () async {
+        final cancellation = SourceCancellation();
+        final notices = <String>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              pattern: '广告',
+              replacement: '@js:result + "!"',
+              scopeTitle: true,
+            ),
+          ],
+          cancellation: cancellation,
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        final title = processor.displayTitle('广告');
+        cancellation.cancel();
+        expect(await title, '广告');
+        expect(notices, isEmpty);
+        expect(disabled, isEmpty);
+      },
+    );
+
     test('a JavaScript replacement timeout disables the rule', () async {
       final disabled = <String>[];
       final notices = <String>[];
