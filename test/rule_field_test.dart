@@ -57,13 +57,13 @@ Map<String, dynamic> _htmlSource({
 }) => {
   'bookSourceUrl': _htmlUrl,
   'searchUrl': '/search?key={{key}}',
-  'ruleSearch': {
+  'ruleSearch': <String, dynamic>{
     'bookList': '.result',
     'name': name,
     'bookUrl': 'a.0@href',
     'kind': kind,
   },
-  'ruleBookInfo': {'name': 'h1@text', 'tocUrl': '.toc@href'},
+  'ruleBookInfo': <String, dynamic>{'name': 'h1@text', 'tocUrl': '.toc@href'},
   'ruleToc': {
     'chapterList': '#list a',
     'chapterName': tocName,
@@ -97,13 +97,13 @@ Map<String, dynamic> _jsonSource({
 }) => {
   'bookSourceUrl': _jsonUrl,
   'searchUrl': '/search?key={{key}}',
-  'ruleSearch': {
+  'ruleSearch': <String, dynamic>{
     'bookList': r'$.items',
     'name': name,
     'bookUrl': r'$.path',
     'kind': r'$.kind',
   },
-  'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+  'ruleBookInfo': <String, dynamic>{'name': r'$.title', 'tocUrl': r'$.toc'},
   'ruleToc': {
     'chapterList': r'$.list',
     'chapterName': chapterName,
@@ -422,17 +422,58 @@ void main() {
   // (word-count formatting). The deterministic HTML/JSON replay bodies below
   // are the fixture for those frozen entry points.
   group('remaining result fields', () {
+    for (final rename in ['', '   ', 'yes']) {
+      test(
+        'detail fields preserve nonempty search values (rename=$rename)',
+        () async {
+          final source = _jsonSource(name: r'$.name');
+          (source['ruleBookInfo'] as Map)['canReName'] = rename;
+          final pipeline = JsonSourcePipeline(
+            source,
+            _JsonPages()..pages.addAll(_jsonPages),
+          );
+          final (book, _) = await pipeline.details(
+            HtmlBook(
+              url: Uri.parse('$_jsonUrl/book/1'),
+              title: '搜索书名',
+              author: '搜索作者',
+              wordCount: '9万字',
+              lastChapter: '搜索末章',
+            ),
+          );
+          expect(book.title, rename.trim().isEmpty ? '搜索书名' : '回音');
+          expect(book.author, '搜索作者');
+          expect(book.wordCount, '9万字');
+          expect(book.lastChapter, '搜索末章');
+        },
+      );
+    }
+    test(
+      'detail fills an empty search author without rename permission',
+      () async {
+        final source = _jsonSource(name: r'$.name');
+        (source['ruleBookInfo'] as Map)['author'] = r'$.author';
+        final pipeline = JsonSourcePipeline(
+          source,
+          _JsonPages()..pages.addAll(_jsonPages),
+        );
+        final (book, _) = await pipeline.details(
+          HtmlBook(url: Uri.parse('$_jsonUrl/book/1'), title: '搜索书名'),
+        );
+        expect(book.author, '作者');
+      },
+    );
     test(
       'HTML fields preserve frozen search, detail, rename, and title semantics',
       () async {
         final source = _htmlSource(name: 'a.0@text');
-        (source['ruleSearch'] as Map).addAll({
+        (source['ruleSearch'] as Map).addAll(<String, dynamic>{
           'intro': '.sr-intro@text',
           'lastChapter': '.sr-last@text',
           'wordCount': '.sr-count@text',
           'checkKeyWord': '校验词',
         });
-        (source['ruleBookInfo'] as Map).addAll({
+        (source['ruleBookInfo'] as Map).addAll(<String, dynamic>{
           'wordCount': '.info-word@text',
           'canReName': '允许改名',
         });
@@ -447,7 +488,10 @@ void main() {
         final (book, chapters) = await pipeline.details(
           HtmlBook(url: hit.url, title: '旧标题', author: '旧作者'),
         );
-        expect((book.title, book.author, book.wordCount), ('回音', '', '2.3万字'));
+        expect(
+          (book.title, book.author, book.wordCount),
+          ('回音', '旧作者', '2.3万字'),
+        );
         final body = await pipeline.chapter(chapters.single);
         expect(body.title, '正文标题');
       },
@@ -457,13 +501,14 @@ void main() {
       'JSON fields preserve frozen search, detail, rename, and title semantics',
       () async {
         final source = _jsonSource(name: r'$.name');
-        (source['ruleSearch'] as Map).addAll({
+        (source['ruleSearch'] as Map).addAll(<String, dynamic>{
           'intro': r'$.intro',
           'lastChapter': r'$.lastChapter',
           'wordCount': r'$.wordCount',
           'checkKeyWord': '校验词',
         });
-        (source['ruleBookInfo'] as Map).addAll({
+        (source['ruleBookInfo'] as Map).addAll(<String, dynamic>{
+          'author': r'$.author',
           'wordCount': r'$.wordCount',
           'canReName': '允许改名',
         });

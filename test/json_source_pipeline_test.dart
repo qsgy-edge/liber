@@ -57,6 +57,7 @@ void main() {
           'author': r'$.author',
         },
         'ruleBookInfo': {
+          'canReName': 'true',
           'name': r'$.title',
           'tocUrl': r'$.toc',
           'intro': r'$.intro',
@@ -153,7 +154,11 @@ void main() {
         'name': r'$.name',
         'bookUrl': r'$.url',
       },
-      'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+      'ruleBookInfo': {
+        'name': r'$.title',
+        'tocUrl': r'$.toc',
+        'canReName': 'true',
+      },
       'ruleToc': {
         'chapterList': r'$.list',
         'chapterName': r'$.label',

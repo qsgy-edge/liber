@@ -460,22 +460,28 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? await _field(document, initRule)
         : document;
     final cover = await _optional(page, info['coverUrl'] ?? '');
-    final canReName = info['canReName']?.isNotEmpty == true;
-    final infoTitle = await _text(page, info['name']!);
+    final canReName = info['canReName']?.trim().isNotEmpty == true;
+    final infoTitle = await _optional(page, info['name']!);
     final infoAuthor = await _optional(page, info['author'] ?? '');
+    final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
+    final infoWordCount = formatSourceWordCount(
+      await _optional(page, info['wordCount'] ?? ''),
+    );
     final book = HtmlBook(
       url: hit.url,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
-      title: canReName ? infoTitle : hit.title,
-      author: canReName ? infoAuthor : hit.author,
+      title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+          ? infoTitle
+          : hit.title,
+      author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+          ? infoAuthor
+          : hit.author,
       intro: await _optional(page, info['intro'] ?? ''),
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
       kind: await _optional(page, info['kind'] ?? ''),
-      lastChapter: await _optional(page, info['lastChapter'] ?? ''),
-      wordCount: formatSourceWordCount(
-        await _optional(page, info['wordCount'] ?? ''),
-      ),
+      lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
+      wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
     final (tocUrl, tocOptions) = await _request(
       hit.url,

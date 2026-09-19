@@ -302,19 +302,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     List<String> values,
   ) async => [for (final value in values) '${await field.apply(value) ?? ''}'];
 
-  /// One required document value: the extraction plus the field's script
-  /// segments, refused when the result is empty.
-  Future<String> _requiredText(
-    RuleField field,
-    HtmlString? job,
-    String content,
-    String label,
-  ) async {
-    final value = await _documentValue(job, field, content);
-    if (value.isEmpty) throw FormatException('$label 未匹配到内容');
-    return value;
-  }
-
   /// The source fields a script can read, as the frozen `source` object exposes
   /// them. Headers stay out: they are reachable through `java.ajax` only.
   Map<String, Object?> get _sourceFields => {
@@ -598,32 +585,43 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       content: html,
     );
     final wordCountValue = _declare(batch, 'wordCount', wordCount);
-    final canReName = _rule('ruleBookInfo', 'canReName', optional: true);
+    final canReName = _rule(
+      'ruleBookInfo',
+      'canReName',
+      optional: true,
+    ).trim().isNotEmpty;
     final tocUrl = await _field(_rule('ruleBookInfo', 'tocUrl'), content: html);
     final tocValue = _declare(batch, 'tocUrl', tocUrl);
     await batch.run();
 
     final coverText = await _documentValue(coverValue, cover, html);
-    final detailsTitle = await _requiredText(
-      name,
-      nameValue,
-      html,
-      'ruleBookInfo.name',
-    );
+    final detailsTitle = await _documentValue(nameValue, name, html);
     final detailsAuthor = await _documentValue(authorValue, author, html);
+    final detailsLastChapter = await _documentValue(
+      lastChapterValue,
+      lastChapter,
+      html,
+    );
+    final detailsWordCount = formatSourceWordCount(
+      await _documentValue(wordCountValue, wordCount, html),
+    );
     final book = HtmlBook(
       url: hit.url,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
-      title: canReName.isEmpty ? hit.title : detailsTitle,
-      author: canReName.isEmpty ? hit.author : detailsAuthor,
+      title: detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+          ? detailsTitle
+          : hit.title,
+      author: detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+          ? detailsAuthor
+          : hit.author,
       intro: await _documentValue(introValue, intro, html),
       cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
       kind: await _documentValue(kindValue, kind, html),
-      lastChapter: await _documentValue(lastChapterValue, lastChapter, html),
-      wordCount: formatSourceWordCount(
-        await _documentValue(wordCountValue, wordCount, html),
-      ),
+      lastChapter: detailsLastChapter.isEmpty
+          ? hit.lastChapter
+          : detailsLastChapter,
+      wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
     );
     final (tocTarget, tocOptions) = await _extracted(
       infoUrl,

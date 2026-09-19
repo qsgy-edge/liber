@@ -303,8 +303,6 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                         Text(book.author),
                         const SizedBox(height: 12),
                         Text(book.intro),
-                        if (book.wordCount.isNotEmpty)
-                          Text('字数 · ${book.wordCount}'),
                         const SizedBox(height: 16),
                         Text('目录 · ${chapters.length} 章'),
                         Wrap(
@@ -351,14 +349,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                   itemCount: hits.length,
                   itemBuilder: (_, i) => ListTile(
                     title: Text(hits[i].title),
-                    subtitle: Text(
-                      [
-                        hits[i].author,
-                        hits[i].intro,
-                        hits[i].lastChapter,
-                        hits[i].wordCount,
-                      ].where((value) => value.isNotEmpty).join(' · '),
-                    ),
+                    subtitle: Text(hits[i].author),
                     trailing: IconButton(
                       tooltip: '加入书架',
                       icon: const Icon(Icons.playlist_add),
