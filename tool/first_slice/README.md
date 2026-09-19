@@ -65,8 +65,10 @@ without rebuilding a Legado class. The instrumentation APK targets the installed
   `tool/first_slice/evidence/android-17-os4.0.0.31/`; the manifest pins the APK,
   corpus, harness sources, device fingerprint and curated run transcript.
 - The comparator applies the contract's platform-generated-header ignore rule.
-  R2–R7 and R9 pass; R8 remains a named paragraph-indent divergence. The
-  comparator report names every observation it does not compare.
+  R2–R9 all pass (R8's paragraph-shaping divergence was resolved by #50, which
+  applied the frozen content stage's own shaping; `docs/compatibility/first-slice.md`
+  records the mechanism and the corrected explanation). The comparator report names
+  every observation it does not compare.
 
 The recorded comparison command first removes an old report because the
 comparator refuses to overwrite evidence:
