@@ -203,7 +203,15 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
           for (final header in requestHeaders.entries)
             if (header.key.toLowerCase() == 'content-type') header.value,
         ]);
-        final bytes = await SourceEncoding.encode(body, charset ?? 'UTF-8');
+        List<int> bytes;
+        try {
+          bytes = await SourceEncoding.encode(body, charset ?? 'UTF-8');
+        } catch (error) {
+          if (!SourceEncoding.isUnknownEncoding(error)) rethrow;
+          // OkHttp MediaType.charset returns its default for unknown labels.
+          // Preserve the explicitly declared header and the UTF-8 body fallback.
+          bytes = utf8.encode(body);
+        }
         // The frozen client knows the body it built, so its request carries
         // `Content-Length` rather than a chunked stream; Dart's `HttpClient`
         // frames an unknown length chunked unless the length is set first.
@@ -237,11 +245,13 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       }
       target = next.hasFragment ? next.removeFragment() : next;
       if (method != 'GET' && method != 'HEAD') {
-        final keepsBody = response.statusCode == 307 || response.statusCode == 308;
-        if (!keepsBody && (response.statusCode == 300 ||
-            response.statusCode == 301 ||
-            response.statusCode == 302 ||
-            response.statusCode == 303)) {
+        final keepsBody =
+            response.statusCode == 307 || response.statusCode == 308;
+        if (!keepsBody &&
+            (response.statusCode == 300 ||
+                response.statusCode == 301 ||
+                response.statusCode == 302 ||
+                response.statusCode == 303)) {
           method = 'GET';
           body = null;
           headers.removeWhere((key, _) {
@@ -310,8 +320,7 @@ class SourceRedirectLimitExceeded implements Exception {
   final Uri url;
 
   @override
-  String toString() =>
-      'Too many follow-up requests: $followUps ($url)';
+  String toString() => 'Too many follow-up requests: $followUps ($url)';
 }
 
 /// Names [error] as ADR 0011 §5's certificate failure, or returns null when it
@@ -462,10 +471,10 @@ String? _sourceHeadSlice(Uint8List bytes) {
 
 /// The frozen regex fallback: `<head>`…`</head>` ignoring case over the whole
 /// body decoded as UTF-8.
-String? _sourceHeadByPattern(Uint8List bytes) =>
-    RegExp(r'<head>[\s\S]*?</head>', caseSensitive: false)
-        .firstMatch(_utf8Lenient(bytes, 0, bytes.length))
-        ?.group(0);
+String? _sourceHeadByPattern(Uint8List bytes) => RegExp(
+  r'<head>[\s\S]*?</head>',
+  caseSensitive: false,
+).firstMatch(_utf8Lenient(bytes, 0, bytes.length))?.group(0);
 
 /// One HTML attribute's value, as Jsoup's `Element.attr` reads it: double- or
 /// single-quoted, or the bare token up to whitespace or the tag's end.

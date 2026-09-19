@@ -23,7 +23,7 @@ Repository `D:/GithubRepositories/Android/legado` HEAD is the frozen `14dd24945b
 - `app/src/main/java/io/legado/app/help/http/OkHttpUtils.kt:139-142`: `postForm(encodedForm)` uses `application/x-www-form-urlencoded`, without a charset. Source blob SHA256 `1a5436e708f66f1d9b67193ef042cf47c6cb2e52ab37bfec7f199b2b0abe0894`.
 - Cached `okhttp-4.12.0.jar` SHA256 `b1050081b14bb7a3a7e55a4d3ef01b5dcfabc453b4573a4fc019767191d5f4e0`, inspected with Temurin 17 `javap -c -l 'okhttp3.RequestBody$Companion' okhttp3.MediaType`: `RequestBody.kt:106-118` resolves the media charset, appends UTF-8 when it resolves none, and calls `String.getBytes(charset)` (bytecode offset 70, line 117). `MediaType.kt:51-55` catches an unknown charset and returns its fallback.
 
-The controller explicitly required unsupported body charset errors to propagate without a UTF-8 fallback. That is recorded as a **deliberate divergence** from the last frozen behavior, rather than described as frozen parity. A Windows test checks the named `TextEngineError_UnknownEncoding` and that no request was received.
+Controller review rechecked the frozen OkHttp bytecode and corrected its earlier erroneous rejection direction: unknown labels now preserve UTF-8 bytes and the explicitly supplied header. The regression covers the initial request plus 307/308, including body bytes and framing. This is source-derived behavior and executed Windows evidence, not new device evidence. The command table below records the original lane run; its unsupported-label rejection expectation is superseded by this controller correction.
 
 ## Product and pending fixture rows
 
@@ -76,7 +76,7 @@ The historical v1 comparison's 17 passes and 3 `notCompared` rows were not rerun
 - `redirect-cross-origin`: frozen declared cookie `"test=value"`, product `null` (header absent).
 - `query-exact-bytes`: frozen ``q={a}|b^c`\d%27e%20f%20%E4%B9%A6&p=1``; product `q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1`.
 
-The existing encoding engine's unrepresentable-character difference also applies to raw legacy bodies: for GBK emoji, Java's replacement is `?` (`3F`), while encoding_rs uses `&#128512;` (`26 23 31 32 38 35 31 32 3B`). It is not a new device observation. UTF-16 output and other labels remain uncovered; no universal charset parity claim is made. Unknown labels follow the approved rejection: frozen fallback would encode `书` as `E4 B9 A6`; this product sends no bytes and reports the named error.
+The existing encoding engine's unrepresentable-character difference also applies to raw legacy bodies: for GBK emoji, Java's replacement is `?` (`3F`), while encoding_rs uses `&#128512;` (`26 23 31 32 38 35 31 32 3B`). It is not a new device observation. UTF-16 output and other labels remain uncovered; no universal charset parity claim is made. Unknown labels preserve the frozen fallback: `书` encodes as `E4 B9 A6`, while the explicitly declared header remains unchanged.
 
 The parser's existing media-type label handling, form selection, response decode order, all historical evidence and comparator ignore/divergence rules are deliberately unchanged. The corpus still drives AnalyzeUrl directly, not the four WebBook stages; the v1 manifest's other coverage gaps continue to apply.
 
@@ -84,7 +84,7 @@ The parser's existing media-type label handling, form selection, response decode
 
 - [x] Prepare the new versioned fixtures and corpus hash, and build a matching harness asset.
 - [ ] Execute RequestOracle on handset `5615f742`, verify installed frozen bytes/fingerprint, and refresh golden/manifest: blocked.
-- [x] Implement body encoding through the existing bridge with Content-Type and Content-Length behavior preserved for supported labels; named-error divergence is explicit.
+- [x] Implement body encoding through the existing bridge with Content-Type and Content-Length behavior preserved for supported labels and unknown-label fallback.
 - [ ] New rows compare pass against a refreshed golden: blocked; strict identity failure retained.
 - [x] Matrix/contract distinguish executed offline checks, static evidence, divergences and blocked device rows.
 - [x] `flutter test test` 312/312; analyze clean; runtime 16/16; host surface 46/46.
