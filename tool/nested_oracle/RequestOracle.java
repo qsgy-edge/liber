@@ -549,7 +549,11 @@ public final class RequestOracle extends Instrumentation {
                         .getBytes(StandardCharsets.US_ASCII));
                     output.write(text);
                 } else {
-                    byte[] bytes = rendered(declared.optString("body", ""));
+                    // The declared strings carry the corpus' origin tokens, so a
+                    // Location header and a body are both substituted here: the
+                    // header is text, the body is this file's UTF-8 bytes.
+                    byte[] bytes = substituted(declared.optString("body", ""))
+                        .getBytes(StandardCharsets.UTF_8);
                     StringBuilder head = new StringBuilder();
                     head.append("HTTP/1.1 ").append(declared.optInt("status", 200)).append(" OK\r\n");
                     JSONObject declaredHeaders = declared.optJSONObject("headers");
@@ -558,7 +562,7 @@ public final class RequestOracle extends Instrumentation {
                         while (names.hasNext()) {
                             String name = names.next();
                             head.append(name).append(": ")
-                                .append(rendered(declaredHeaders.optString(name))).append("\r\n");
+                                .append(substituted(declaredHeaders.optString(name))).append("\r\n");
                         }
                     }
                     head.append("Content-Length: ").append(bytes.length).append("\r\n\r\n");
@@ -569,9 +573,8 @@ public final class RequestOracle extends Instrumentation {
             }
         }
 
-        private byte[] rendered(String text) {
-            return substitute(text, corpus.optString("origin"), corpus.optString("otherOrigin"))
-                .getBytes(StandardCharsets.UTF_8);
+        private String substituted(String text) {
+            return substitute(text, corpus.optString("origin"), corpus.optString("otherOrigin"));
         }
 
         private static Map<String, String> decodeQuery(String rawQuery) {

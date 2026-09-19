@@ -59,6 +59,38 @@ Map<String, String> withSourceRequestDefaults(Map<String, String> headers) {
   return result;
 }
 
+/// Frozen `String.toRequestBody(contentType)` (okhttp-4.12.0
+/// `RequestBody$Companion.create(String, MediaType)`): a media type that names
+/// no charset gains `; charset=utf-8` on the body it writes, and a declared
+/// charset is kept as it is. Mutates [headers] in place, so the follow-up of a
+/// 307/308 sees the same map, and is idempotent for the same reason.
+///
+/// Guarded by the body's own content type, so it applies to every branch the
+/// frozen `AnalyzeUrl` builds a body for: the form branch
+/// (`postForm(encodedForm)`, `OkHttpUtils.kt:113-115`), a declared
+/// `Content-Type` (`body.toRequestBody(contentType.toMediaType())`,
+/// `AnalyzeUrl.kt:381-393`) and `postJson` (whose media type already names
+/// `UTF-8`). It is idempotent, so the follow-up of a 307/308 keeps one charset.
+///
+/// The frozen call also writes the body's *bytes* with that same resolved
+/// charset (`String.getBytes(charset)`), so a source that declares a non-UTF-8
+/// charset reaches the wire as those bytes. This transport keeps writing UTF-8
+/// (recorded as a coverage gap: no fixture declares such a charset).
+Map<String, String> withSourceBodyContentType(Map<String, String> headers) {
+  String? name;
+  for (final key in headers.keys) {
+    if (key.toLowerCase() == 'content-type') {
+      name = key;
+      break;
+    }
+  }
+  if (name == null) return headers;
+  final value = headers[name]!;
+  if (sourceMediaTypeCharset([value]) != null) return headers;
+  headers[name] = '$value; charset=utf-8';
+  return headers;
+}
+
 /// Statuses the frozen client follows (OkHttp `followRedirects`).
 const _sourceRedirectStatuses = {300, 301, 302, 303, 307, 308};
 
@@ -160,13 +192,19 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     while (true) {
       final request = await client.openUrl(method, target);
       request.followRedirects = false;
-      for (final header in headers.entries) {
+      final requestHeaders = body == null
+          ? headers
+          : withSourceBodyContentType(headers);
+      for (final header in requestHeaders.entries) {
         request.headers.set(header.key, header.value);
       }
       if (body != null) {
-        // OkHttp writes a body as UTF-8 unless the media type names a charset;
-        // the sink's own encoding is latin1 and not mutable here.
-        request.add(utf8.encode(body));
+        final bytes = utf8.encode(body);
+        // The frozen client knows the body it built, so its request carries
+        // `Content-Length` rather than a chunked stream; Dart's `HttpClient`
+        // frames an unknown length chunked unless the length is set first.
+        request.contentLength = bytes.length;
+        request.add(bytes);
       }
       final response = await request.close();
       if (!sourceRequest.followRedirects ||

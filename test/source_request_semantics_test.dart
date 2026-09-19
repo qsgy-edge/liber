@@ -164,6 +164,10 @@ void main() {
     try {
       final after302 = await post('/302');
       expect(server.requests[0].line, 'POST /302 HTTP/1.1');
+      // The frozen client knows the body it built: the wire carries its
+      // length, not a chunked stream (okhttp-4.12.0 RequestBody$Companion).
+      expect(server.requests[0].headers, contains('content-length: 3'));
+      expect(server.requests[0].headers, isNot(contains('transfer-encoding')));
       expect(after302.line, 'GET /after HTTP/1.1');
       expect(after302.headers, isNot(contains('content-type:')));
       expect(after302.headers, isNot(contains('content-length:')));
@@ -181,6 +185,49 @@ void main() {
       expect(server.requests[6].line, 'POST /308 HTTP/1.1');
       expect(after308.line, 'POST /after HTTP/1.1');
       expect(after308.headers, contains('content-type:'));
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('a body media type gains the frozen charset only when none is declared',
+      () async {
+    final server = _WireServer((_) => ok('ok'));
+    await server.start();
+    final transport = HttpSourceTransport();
+    Future<_WireRequest> post(Map<String, String> headers) async {
+      final before = server.requests.length;
+      await transport.send(
+        SourceHttpRequest(
+          method: 'POST',
+          url: Uri.parse('${server.origin}/post'),
+          headers: headers,
+          body: 'a=1',
+        ),
+      );
+      return server.requests[before];
+    }
+
+    try {
+      // okhttp-4.12.0 `RequestBody$Companion.create(String, MediaType)` parses
+      // "<declared>; charset=utf-8" and writes the resolved charset's bytes,
+      // so a declared media type without a charset reaches the wire with one.
+      final appended = await post({
+        'Content-Type': 'application/x-www-form-urlencoded',
+      });
+      expect(
+        appended.headers,
+        contains('content-type: application/x-www-form-urlencoded; charset=utf-8'),
+      );
+      expect(appended.headers, contains('content-length: 3'));
+      expect(appended.headers, isNot(contains('transfer-encoding')));
+
+      // A media type that names a charset is kept as the source wrote it. The
+      // frozen call would also write the body's bytes with that charset; this
+      // transport keeps UTF-8, which no fixture in this slice reaches.
+      final declared = await post({'Content-Type': 'text/plain; charset=GBK'});
+      expect(declared.headers, contains('content-type: text/plain; charset=gbk'));
+      expect(declared.headers, contains('content-length: 3'));
     } finally {
       await server.stop();
     }
@@ -369,7 +416,13 @@ void main() {
       // `URLEncoder.encode(value, GBK)`: the charset's bytes as upper-case
       // `%XX` (AnalyzeUrl.kt:318-328).
       expect(bodies.single, 'k=%CA%E9');
-      expect(contentTypes.single, contains('application/x-www-form-urlencoded'));
+      // Frozen `String.toRequestBody(formContentType)`: the form media type has
+      // no charset parameter, so the body it writes gains `; charset=utf-8`
+      // (okhttp-4.12.0 `RequestBody$Companion.create`). The frozen client's
+      // header therefore names UTF-8 while the bytes above are GBK: the same
+      // resolved charset also selects those bytes, and only the header half is
+      // reproduced here (recorded as a coverage gap).
+      expect(contentTypes.single, 'application/x-www-form-urlencoded; charset=utf-8');
     } finally {
       await subscription.cancel();
       await server.close(force: true);
