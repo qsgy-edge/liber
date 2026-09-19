@@ -184,11 +184,23 @@
     },
     {
       "id": "query-key-separators",
-      "frozen": "AnalyzeUrl.kt:265-278 analyzeQuery -> encodeParams: the substituted text is re-split on & and = only after substitution, so a substituted separator becomes part of the value",
-      "semantics": "A keyword carrying & and = is substituted raw and then encoded as a value: the pair boundaries stay the rule's own.",
+      "frozen": "AnalyzeUrl.kt:265-278 analyzeQuery -> encodeParams: NetworkUtils.encodedQuery runs on the substituted text, and a query that is already legal (letters, & and = only) is returned unchanged",
+      "semantics": "A keyword whose substituted text is itself a legal query makes the whole query look already-encoded, so nothing is re-encoded and the & and = the keyword introduced stay pair boundaries.",
       "request": {
         "rule": "$ORIGIN/search?q={{key}}&p={{page}}",
         "key": "a&b=c",
+        "page": 1,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "query-key-separators-and-space",
+      "frozen": "AnalyzeUrl.kt:294-311 encodeParams/queryEncoder: the whole query is handed to one PercentCodec.encode call, so the substituted & stays a safe character while the space is escaped",
+      "semantics": "When one character forces the query encoder, the encoder runs once over the whole query text: the substituted separators stay as they are and only the characters outside the safe set are escaped.",
+      "request": {
+        "rule": "$ORIGIN/search?q={{key}}&p={{page}}",
+        "key": "a&b c",
         "page": 1,
         "baseUrl": "$ORIGIN",
         "headers": null
