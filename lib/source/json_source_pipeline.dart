@@ -561,7 +561,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// `ruleContent`: one chapter's text.
   @override
-  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+  }) async {
+    if (book != null) _book = book;
     _chapter = chapter;
     _validate();
     _page = null;

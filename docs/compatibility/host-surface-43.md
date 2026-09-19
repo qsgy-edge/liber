@@ -1,7 +1,9 @@
 # Host-surface rows implemented by #43
 
-This is branch-scoped evidence on `wayfinder/43`, based on `master` at `8d4069d`.
-It does not promote a frozen-device comparison or another destination platform.
+Introduced on `wayfinder/43` from `master` at `8d4069d`, then integrated and
+corrected by the batch-9 controller. See ticket #43's resolution for the integrated
+commit and platform results. Source-derived expectations do not promote a frozen-device
+comparison or an unexecuted destination platform.
 The frozen revision is `14dd24945b2914ce2708b8abaa4ee67ceef892af`.
 
 ## Members and shapes
@@ -14,7 +16,7 @@ The frozen revision is `14dd24945b2914ce2708b8abaa4ee67ceef892af`.
 | `java.get` overload | `AnalyzeUrl.kt:371-383`; HTTP helper inherited from `JsExtensions` | One argument reads state; two arguments issue HTTP even if the second is explicitly undefined. |
 | `source.getHeaderMap()` / `(false)` | `data/entities/BaseSource.kt:103-130` | A fresh header map, evaluated at the call from static JSON or `@js:`/`<js>` through the same scoped runtime. Missing case-insensitive `User-Agent` gets the product's emulated default. Invalid JSON/script results fall back to the default; number/boolean scalars are strings, null values are preserved. |
 | `source.getHeaderMap(true)` | `BaseSource.kt:124-139` | Named deferral to #13. Login headers are not silently dropped or newly implemented. |
-| `book` | `AnalyzeUrl.kt:350`; `data/entities/Book.kt:42-70` | Read-only snapshot of actual selected pipeline fields: `name`, `bookUrl`, `author`, `intro`, `coverUrl`, `kind`, `latestChapterTitle`. Info starts with its supplied hit; TOC/content use the resulting book. Search resets context; genuinely absent book stays null. Unknown fields and mutations fail by member name. |
+| `book` | `AnalyzeUrl.kt:350`; `data/entities/Book.kt:42-70` | Read-only snapshot of actual selected pipeline fields: `name`, `bookUrl`, `author`, `intro`, `coverUrl`, `kind`, `latestChapterTitle`, `wordCount`. Info starts with its supplied hit; TOC/content use the resulting book, including a reader reopened through a fresh pipeline. Search resets context; genuinely absent book stays null. Unknown fields and mutations fail by member name. |
 | Chapter fields/variables | `BookChapter.kt:42-84`; `AnalyzeUrl.kt:365-383` | Actual chapter `title` and `url` are read-only. `book.variable`, `book.getVariable`, `book.putVariable` and the corresponding chapter members refuse by name. No mutable public result models or persistence were introduced. |
 | `java.get('bookName')` / `java.get('title')` | `AnalyzeUrl.kt:371-379` | All keys retain ADR 0011 §3's source-owned persistent state, including `bookName` and `title`; a bound snapshot must not shadow values written by `java.put`. Actual stage values are exposed through the read-only snapshots and the existing pipeline rule-variable reader. Frozen chapter/book variable routing remains unimplemented. `source.get/put` continue to address the same source state. |
 | `java.toNumChapter` | `help/JsExtensions.kt:905-912`; `constant/AppPattern.kt:21`; `utils/StringUtils.kt:29-53,133-218` | Nullable string result, first `第...章` match only, fullwidth normalization, Chinese and financial digits, shorthand such as `一千二` → 1200, invalid input → -1, signed 32-bit overflow. No match returns the original text. |

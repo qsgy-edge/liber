@@ -169,7 +169,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         hostState: widget.service.hostState,
         sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
         sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-        run: () => widget.pipeline.chapter(widget.chapters[next]),
+        run: () =>
+            widget.pipeline.chapter(widget.chapters[next], book: widget.book),
       );
       if (!mounted) return;
       // The frozen reader replaces the text before it reaches the screen: the

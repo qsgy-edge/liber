@@ -107,8 +107,9 @@ abstract interface class BookSourcePipeline {
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit);
 
-  /// `ruleContent`: one chapter's text.
-  Future<HtmlChapterBody> chapter(SourceChapter chapter);
+  /// `ruleContent`: one chapter's text. A reader supplies its selected [book]
+  /// when its fresh analysis has not run the details stage.
+  Future<HtmlChapterBody> chapter(SourceChapter chapter, {HtmlBook? book});
 
   /// Ends this analysis: a stage in flight stops at its next check, and every
   /// stage after it refuses to start.

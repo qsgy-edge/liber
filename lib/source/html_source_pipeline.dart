@@ -750,7 +750,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }
 
   @override
-  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+  }) async {
+    if (book != null) _book = book;
     _chapter = chapter;
     _page = null;
     _chapterTitle = chapter.name;

@@ -58,7 +58,11 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   }
 
   @override
-  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+  }) async {
+    expect(book?.title, isNotEmpty);
     chapterCalls.add('${chapter.url}');
     final marker = analysisMarker;
     if (chapterGate != null) await chapterGate!.future;

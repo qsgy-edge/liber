@@ -371,7 +371,21 @@ void main() {
         expect(book.title, 'HitDetails');
         final body = await pipeline.chapter(chapters.single);
         expect(body.text, 'HitDetails|Chapter|pipeline');
-        expect((await pipeline.search('again')).single.title, 'Hit');
+        pipeline.cancel();
+        // Returning from the reader hands the browser a fresh analysis. It
+        // must bind the selected book without fetching the details page again.
+        final reopened = openBookSourcePipeline(source, transport);
+        final requestsBefore = transport.requests.length;
+        final reopenedBody = await reopened.chapter(
+          chapters.single,
+          book: book,
+        );
+        expect(reopenedBody.text, 'HitDetails|Chapter|pipeline');
+        expect(transport.requests.skip(requestsBefore).map((r) => r.url.path), [
+          '/content',
+        ]);
+        expect((await reopened.search('again')).single.title, 'Hit');
+        reopened.cancel();
       },
     );
   }
