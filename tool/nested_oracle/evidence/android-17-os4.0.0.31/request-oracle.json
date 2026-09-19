@@ -1,0 +1,1729 @@
+{
+  "fixtureId": "REQUEST-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (constructor, 14 parameters) + getStrResponseAwait, driven inside the installed io.legado.app.debug process through reflection",
+  "platform": "android",
+  "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
+  "recordedAt": "2026-09-19T04:31:49.099Z",
+  "rows": [
+    {
+      "id": "defaults-injected",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/defaults",
+      "body": "defaults",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/defaults",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "defaults-declared",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/declared",
+      "body": "declared",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/declared",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Source\/1.0",
+            "keep-alive": "600, 300",
+            "cache-control": "max-age=0, no-cache",
+            "connection": "Keep-Alive, Keep-Alive",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "defaults-user-agent-null",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/ua-null",
+      "body": "ua-null",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/ua-null",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731",
+            "user-agent": "okhttp\/4.12.0"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-300-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after300",
+      "body": "after300",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r300",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "GET",
+          "path": "\/after300",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-301-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after301",
+      "body": "after301",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r301",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "GET",
+          "path": "\/after301",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-302-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after302",
+      "body": "after302",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r302",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "GET",
+          "path": "\/after302",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-303-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after303",
+      "body": "after303",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r303",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "GET",
+          "path": "\/after303",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-307-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after307",
+      "body": "after307",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r307",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "POST",
+          "path": "\/after307",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        }
+      ]
+    },
+    {
+      "id": "redirect-308-post",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after308",
+      "body": "after308",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/r308",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        },
+        {
+          "method": "POST",
+          "path": "\/after308",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "a=1"
+        }
+      ]
+    },
+    {
+      "id": "redirect-cross-origin",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.3:18731\/after-cross",
+      "body": "after-cross",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/cross",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "authorization": "Bearer test-value",
+            "cookie": "test=value",
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/after-cross",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "cookie": "test=value",
+            "x-source": "kept",
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.3:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "redirect-limit",
+      "outcome": "error",
+      "error": "java.net.ProtocolException: Too many follow-up requests: 21 <- java.net.ProtocolException: Too many follow-up requests: 21",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        },
+        {
+          "method": "GET",
+          "path": "\/loop",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "query-key-raw",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/search?q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1",
+      "body": "search",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/search",
+          "rawQuery": "q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1",
+          "query": {
+            "q": "我的 书",
+            "p": "1"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "query-key-separators",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/search?q=a&b=c&p=1",
+      "body": "search",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/search",
+          "rawQuery": "q=a&b=c&p=1",
+          "query": {
+            "q": "a",
+            "b": "c",
+            "p": "1"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "query-key-separators-and-space",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/search?q=a&b%20c&p=1",
+      "body": "search",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/search",
+          "rawQuery": "q=a&b%20c&p=1",
+          "query": {
+            "q": "a",
+            "b c": "",
+            "p": "1"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "query-already-encoded",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/search?q=%E4%B9%A6&p=1",
+      "body": "search",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/search",
+          "rawQuery": "q=%E4%B9%A6&p=1",
+          "query": {
+            "q": "书",
+            "p": "1"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "query-exact-bytes",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/search?q={a}|b^c`\\d%27e%20f%20%E4%B9%A6&p=1",
+      "body": "search",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/search",
+          "rawQuery": "q={a}|b^c`\\d%27e%20f%20%E4%B9%A6&p=1",
+          "query": {
+            "q": "{a}|b^c`\\d'e f 书",
+            "p": "1"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "page-list-hit",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/list?page=2&q=%E4%B9%A6",
+      "body": "list",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/list",
+          "rawQuery": "page=2&q=%E4%B9%A6",
+          "query": {
+            "page": "2",
+            "q": "书"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "page-list-past-end",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/list?page=3&q=%E4%B9%A6",
+      "body": "list",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/list",
+          "rawQuery": "page=3&q=%E4%B9%A6",
+          "query": {
+            "page": "3",
+            "q": "书"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "pageless-empty-bindings",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/toc?p=&k=",
+      "body": "toc",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/toc",
+          "rawQuery": "p=&k=",
+          "query": {
+            "p": "",
+            "k": ""
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    },
+    {
+      "id": "pageless-page-list-literal",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/toc?p=%3C1,2,3%3E",
+      "body": "toc",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "\/toc",
+          "rawQuery": "p=%3C1,2,3%3E",
+          "query": {
+            "p": "<1,2,3>"
+          },
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "host": "127.0.0.2:18731"
+          },
+          "body": ""
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "\/defaults",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/declared",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Source\/1.0",
+        "keep-alive": "600, 300",
+        "cache-control": "max-age=0, no-cache",
+        "connection": "Keep-Alive, Keep-Alive",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/ua-null",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731",
+        "user-agent": "okhttp\/4.12.0"
+      },
+      "body": ""
+    },
+    {
+      "method": "POST",
+      "path": "\/r300",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "GET",
+      "path": "\/after300",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "POST",
+      "path": "\/r301",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "GET",
+      "path": "\/after301",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "POST",
+      "path": "\/r302",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "GET",
+      "path": "\/after302",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "POST",
+      "path": "\/r303",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "GET",
+      "path": "\/after303",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "POST",
+      "path": "\/r307",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "POST",
+      "path": "\/after307",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "POST",
+      "path": "\/r308",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "POST",
+      "path": "\/after308",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "a=1"
+    },
+    {
+      "method": "GET",
+      "path": "\/cross",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "authorization": "Bearer test-value",
+        "cookie": "test=value",
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/after-cross",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "cookie": "test=value",
+        "x-source": "kept",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.3:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/loop",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/search",
+      "rawQuery": "q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1",
+      "query": {
+        "q": "我的 书",
+        "p": "1"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/search",
+      "rawQuery": "q=a&b=c&p=1",
+      "query": {
+        "q": "a",
+        "b": "c",
+        "p": "1"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/search",
+      "rawQuery": "q=a&b%20c&p=1",
+      "query": {
+        "q": "a",
+        "b c": "",
+        "p": "1"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/search",
+      "rawQuery": "q=%E4%B9%A6&p=1",
+      "query": {
+        "q": "书",
+        "p": "1"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/search",
+      "rawQuery": "q={a}|b^c`\\d%27e%20f%20%E4%B9%A6&p=1",
+      "query": {
+        "q": "{a}|b^c`\\d'e f 书",
+        "p": "1"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/list",
+      "rawQuery": "page=2&q=%E4%B9%A6",
+      "query": {
+        "page": "2",
+        "q": "书"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/list",
+      "rawQuery": "page=3&q=%E4%B9%A6",
+      "query": {
+        "page": "3",
+        "q": "书"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/toc",
+      "rawQuery": "p=&k=",
+      "query": {
+        "p": "",
+        "k": ""
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "\/toc",
+      "rawQuery": "p=%3C1,2,3%3E",
+      "query": {
+        "p": "<1,2,3>"
+      },
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.2:18731"
+      },
+      "body": ""
+    }
+  ],
+  "serverErrors": [],
+  "cleanup": {
+    "openConnections": 2,
+    "serverClosed": true
+  },
+  "analysisFailure": null
+}

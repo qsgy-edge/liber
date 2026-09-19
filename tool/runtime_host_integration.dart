@@ -29,6 +29,8 @@ Future<void> main(List<String> args) async {
       'sourceHeader': request.headers.value('x-source'),
       'optionHeader': request.headers.value('x-option'),
       'contentType': request.headers.value('content-type'),
+      'contentLength': request.headers.value('content-length'),
+      'transferEncoding': request.headers.value('transfer-encoding'),
       'userAgent': request.headers.value('user-agent'),
       'keepAlive': request.headers.value('keep-alive'),
       'cacheControl': request.headers.value('cache-control'),
@@ -140,7 +142,17 @@ Future<void> main(List<String> args) async {
     checks['htmlOptionMethodAndBody'] =
         search['method'] == 'POST' &&
         search['body'] == 'key=%E7%94%B2' &&
-        search['contentType'] == 'application/x-www-form-urlencoded';
+        // Frozen `String.toRequestBody(formContentType)`: the form media type
+        // carries no charset, so the body it writes gains `; charset=utf-8`
+        // (okhttp-4.12.0 `RequestBody$Companion.create`).
+        search['contentType'] ==
+            'application/x-www-form-urlencoded; charset=utf-8';
+    // The frozen client built the body, so the wire carries its length rather
+    // than a chunked stream.
+    checks['bodyContentLengthOnWire'] =
+        search['contentLength'] ==
+            '${utf8.encode(search['body'] as String).length}' &&
+        search['transferEncoding'] == null;
     checks['htmlDynamicHeaderOnWire'] = search['sourceHeader'] == 'html';
     checks['htmlOptionHeaderMerged'] = search['optionHeader'] == '1';
     checks['htmlJsOptionRewroteUrl'] = search['query'] == 'js=1';
@@ -247,7 +259,14 @@ Future<void> main(List<String> args) async {
     }
 
     await redirect('redirect302');
+    final post302 = wire.lastWhere((entry) => entry['path'] == '/redirect302');
     final getAfter302 = wire.lastWhere((entry) => entry['path'] == '/after');
+    checks['declaredBodyMediaTypeGainsTheFrozenCharset'] =
+        post302['contentType'] ==
+            'application/x-www-form-urlencoded; charset=utf-8' &&
+        post302['contentLength'] ==
+            '${utf8.encode(post302['body'] as String).length}' &&
+        post302['transferEncoding'] == null;
     checks['redirect302DowngradesPostToGet'] =
         getAfter302['method'] == 'GET' &&
         getAfter302['body'] == '' &&
@@ -256,8 +275,7 @@ Future<void> main(List<String> args) async {
     await redirect('redirect307');
     final postAfter307 = wire.lastWhere((entry) => entry['path'] == '/after');
     checks['redirect307KeepsMethodAndBody'] =
-        postAfter307['method'] == 'POST' &&
-        postAfter307['body'] == 'key=甲';
+        postAfter307['method'] == 'POST' && postAfter307['body'] == 'key=甲';
 
     // Keyword substitution is raw and the query is re-encoded exactly once,
     // with the frozen page list picking the entry for the requested page.
