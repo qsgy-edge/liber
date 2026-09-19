@@ -422,6 +422,74 @@ void main() {
   // (word-count formatting). The deterministic HTML/JSON replay bodies below
   // are the fixture for those frozen entry points.
   group('remaining result fields', () {
+    for (final json in [false, true]) {
+      test('intro formatting and detail fallback (json=$json)', () async {
+        final source = json
+            ? _jsonSource(name: r'$.name')
+            : _htmlSource(name: 'a.0@text');
+        const raw = '<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;';
+        (source['ruleSearch'] as Map)['intro'] =
+              '${json ? r'$.intro' : '.sr-intro@text'} @js:${jsonEncode(raw)}';
+        final BookSourcePipeline pipeline = json
+            ? JsonSourcePipeline(source, _JsonPages()..pages.addAll(_jsonPages))
+            : HtmlSourcePipeline(source, _HtmlPages());
+        final hit = (await pipeline.search('query')).single;
+        expect(hit.intro, '　　　　A B\n　　CD\n　　&amp;');
+        final (book, _) = await pipeline.details(hit);
+        expect(book.intro, hit.intro);
+      });
+      for (final blank in [false, true]) {
+        test(
+          'content scripts see the first-page title (json=$json, blank=$blank)',
+          () async {
+            final source = json
+                ? _jsonSource(
+                    name: r'$.name',
+                    content: r'$.content @js:title + ":" + result',
+                  )
+                : _htmlSource(
+                    name: 'a.0@text',
+                    content: '.content@text @js:title + ":" + result',
+                  );
+            (source['ruleContent'] as Map)['title'] = blank
+                ? '@js:"   "'
+                : json
+                ? r'$.title'
+                : '.chapter-title@text';
+            final BookSourcePipeline pipeline = json
+                ? JsonSourcePipeline(
+                    source,
+                    _JsonPages()..pages.addAll(_jsonPages),
+                  )
+                : HtmlSourcePipeline(source, _HtmlPages());
+            final result = await pipeline.chapter(
+              SourceChapter(
+                '目录标题',
+                Uri.parse('${json ? _jsonUrl : _htmlUrl}/chapter/1'),
+              ),
+            );
+            expect(result.text, '${blank ? '目录标题' : '正文标题'}:正文');
+            expect(result.title, blank ? null : '正文标题');
+          },
+        );
+      }
+    }
+    test('word counts retain frozen Float and DecimalFormat rounding', () {
+      // Executed on Temurin 17 with the frozen StringUtils expression.
+      for (final row in {
+        '10500': '1.1万字',
+        '11500': '1.1万字',
+        '12500': '1.2万字',
+        '13500': '1.4万字',
+        '14500': '1.4万字',
+        '17500': '1.8万字',
+        '16777217': '1677.7万字',
+        '2147483647': '214748.4万字',
+      }.entries) {
+        expect(formatSourceWordCount(row.key), row.value, reason: row.key);
+      }
+      expect(() => formatSourceWordCount('2147483648'), throwsFormatException);
+    });
     for (final rename in ['', '   ', 'yes']) {
       test(
         'detail fields preserve nonempty search values (rename=$rename)',

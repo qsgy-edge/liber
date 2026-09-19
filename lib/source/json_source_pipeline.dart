@@ -427,7 +427,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           url: bookUrl,
           title: name,
           author: author,
-          intro: intro,
+          intro: formatSourceIntro(intro),
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
           kind: await _optional(entry, search['kind'] ?? ''),
@@ -467,6 +467,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final infoWordCount = formatSourceWordCount(
       await _optional(page, info['wordCount'] ?? ''),
     );
+    final infoIntro = formatSourceIntro(
+      await _optional(page, info['intro'] ?? ''),
+    );
     final book = HtmlBook(
       url: hit.url,
       // Legado only permits a detail page to replace the search title/author
@@ -477,7 +480,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
           ? infoAuthor
           : hit.author,
-      intro: await _optional(page, info['intro'] ?? ''),
+      intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
       kind: await _optional(page, info['kind'] ?? ''),
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
@@ -544,16 +547,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
       chapter.url,
       options: _chapterOptions.remove(chapter.url) ?? const SourceUrlOptions(),
     );
-    final text = await _text(document, content['content']!);
     final titleRule = content['title'];
     final title = titleRule == null
         ? null
         : await _optional(document, titleRule);
-    return HtmlChapterBody(
-      text,
-      1,
-      title: title?.isEmpty == true ? null : title,
-    );
+    final contentTitle = title == null || title.trim().isEmpty ? null : title;
+    if (contentTitle != null) _chapterTitle = contentTitle;
+    final text = await _text(document, content['content']!);
+    return HtmlChapterBody(text, 1, title: contentTitle);
   }
 
   /// One book, end to end, over the three stage entries.

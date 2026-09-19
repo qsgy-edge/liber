@@ -533,7 +533,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           url: bookUrlTarget,
           title: _required(titles, index, 'ruleSearch.name'),
           author: authorValues[index],
-          intro: introValues[index],
+          intro: formatSourceIntro(introValues[index]),
           lastChapter: lastChapterValues[index],
           wordCount: formatSourceWordCount(wordCountValues[index]),
           kind: kindValues[index],
@@ -605,6 +605,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final detailsWordCount = formatSourceWordCount(
       await _documentValue(wordCountValue, wordCount, html),
     );
+    final detailsIntro = formatSourceIntro(
+      await _documentValue(introValue, intro, html),
+    );
     final book = HtmlBook(
       url: hit.url,
       // Legado only permits a detail page to replace the search title/author
@@ -615,7 +618,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       author: detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
           ? detailsAuthor
           : hit.author,
-      intro: await _documentValue(introValue, intro, html),
+      intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
       cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
       kind: await _documentValue(kindValue, kind, html),
       lastChapter: detailsLastChapter.isEmpty
@@ -726,7 +729,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
     _page = null;
     _chapterTitle = chapter.name;
-    final contentRule = _contentRule(chapter);
     var url = chapter.url;
     final visited = <Uri>{};
     final parts = <String>[];
@@ -741,26 +743,33 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         BookSourceStage.content,
         options: SourceUrlOptions(retry: retry),
       );
-      final content = await _field(contentRule, content: html);
+      // Frozen BookContent applies the first-page title before parsing content
+      // rules: their scripts and {{chapter.title}} see the updated value.
+      if (parts.isEmpty) {
+        final titleRule = _rule('ruleContent', 'title', optional: true);
+        if (titleRule.trim().isNotEmpty) {
+          final title = await _field(titleRule, content: html);
+          final titleBatch = HtmlRuleBatch(html);
+          final titleValue = _declare(titleBatch, 'title', title);
+          await titleBatch.run();
+          final extracted = await _documentValue(titleValue, title, html);
+          if (extracted.trim().isNotEmpty) {
+            contentTitle = _chapterTitle = extracted;
+          }
+        }
+      }
+      final content = await _field(
+        _contentRule(SourceChapter(_chapterTitle!, chapter.url)),
+        content: html,
+      );
       final next = await _field(
         _rule('ruleContent', 'nextContentUrl', optional: true),
         content: html,
       );
-      final titleRule = parts.isEmpty
-          ? _rule('ruleContent', 'title', optional: true)
-          : '';
-      final title = titleRule.isEmpty
-          ? null
-          : await _field(titleRule, content: html);
       final batch = HtmlRuleBatch(html);
       final contentValue = _declare(batch, 'content', content);
       final nextValue = _declare(batch, 'next', next);
-      final titleValue = title == null ? null : _declare(batch, 'title', title);
       await batch.run();
-      if (title != null) {
-        final extractedTitle = await _documentValue(titleValue, title, html);
-        if (extractedTitle.isNotEmpty) contentTitle = extractedTitle;
-      }
       final text = await _documentValue(contentValue, content, html);
       if (text.isEmpty) {
         throw const FormatException('ruleContent.content 未匹配到内容');
