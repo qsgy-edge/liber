@@ -2,7 +2,7 @@
 /// engine of its own: the `@js:`/`<js>` split and `{{...}}`/`@get:`/`@put:`
 /// substitution of `AnalyzeRule.splitSourceRule` (`AnalyzeRule.kt:471-520`) and
 /// `SourceRule.makeUpRule` (`:575-620`), plus the `##`/`###` field split
-/// (`:650-665`).
+/// (`:686-695`).
 ///
 /// The product has two rule engines — the Rust HTML adapter and the bounded
 /// JSONPath reader — and the frozen grammar above sits *in front of* both: a
@@ -75,20 +75,22 @@ class RuleReplaceFields {
   final String? regex;
   final String replacement;
 
-  /// The frozen fourth field (`###`): replace the first match only.
+  /// The frozen fourth field (`###`, and any rule with three `##` delimiters):
+  /// the frozen `replaceFirst` branch, which answers with the replaced match
+  /// rather than the whole value (`AnalyzeRule.kt:426-437`).
   final bool replaceFirst;
 
   bool get hasReplacement => regex != null;
 }
 
-/// Kotlin's `split("##")` drops trailing empty fields, so `a##b##` is the
-/// three-field replacement with an empty replacement text and `a##b##c###`
-/// keeps its fourth field, which means replace the first match only.
+/// Kotlin's `split("##")` takes its default `limit` of zero, which means no
+/// limit, so it *keeps* the trailing empty field: a rule that ends in `##`
+/// carries one more field than a Java reading of the same rule gives it, and
+/// three delimiters are already four fields, which is the frozen `replaceFirst`
+/// (`AnalyzeRule.kt:686-695`). A Java-style split that drops the trailing field
+/// turns that `replaceFirst` into a replace-all (#51).
 RuleReplaceFields splitRuleFields(String text) {
   final parts = text.split('##');
-  while (parts.length > 1 && parts.last.isEmpty) {
-    parts.removeLast();
-  }
   final rule = parts.first.trim();
   if (parts.length < 2) return RuleReplaceFields(rule);
   return RuleReplaceFields(

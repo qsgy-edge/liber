@@ -13,9 +13,9 @@ A case may carry `"path": "rule"`: its frozen entry point is
 side runs the product's rule-field path (`lib/source/rule_field.dart` in front of
 the Rust adapter) instead of the bare adapter, which deliberately refuses those.
 The four `rule` cases are the ones ticket #11 added; their expectations are
-source reads like every other row here, and their device golden is `not-run`
-until ticket #23 records it. `baseUrl` is the value the device entry must pass to
-`setContent(html, baseUrl)` - the `{{baseUrl}}` row and the always-null
+source reads like every other row here, and ticket #51 recorded their device
+golden with the rest of the corpus. `baseUrl` is the value the device entry
+passes to `setContent(html, baseUrl)` - the `{{baseUrl}}` row and the always-null
 `{{title}}` row are only meaningful with it.
 
 ## Destination side
@@ -30,17 +30,19 @@ case's `expected`. Those expectations were
 derived by reading the frozen `AnalyzeByJSoup.kt`, `AnalyzeRule.kt` and jsoup
 1.16.2 at `14dd24945b2914ce2708b8abaa4ee67ceef892af`. They are a reading; the
 frozen application has since been run against the corpus (Frozen side below), and
-34 of the 35 device rows match the adapter while one row disagrees.
+all 39 device rows match the adapter.
 
 ## Frozen side (executed)
 
 `tool/html_oracle/evidence/android-17-os4.0.0.31/` holds the executed frozen row:
-`golden.json` (35 observations), the `gate-report.json` comparison, the
+`golden.json` (39 observations), the `gate-report.json` comparison, the
 `manifest.json` with the corpus, APK, harness-source and report hashes, and the
-`run.log`. The entry is `tool/nested_oracle/HtmlOracle.java`
-(`io.liber.oracle.nested.HtmlOracle`), which loads
-`io.legado.app.model.analyzeRule.AnalyzeRule` from the installed, hash-pinned
-`io.legado.app.debug` (installed bytes `cc99040c…`), calls
+`run.log`. Ticket #51 refreshed it in place (the directory names the device
+image, not a corpus revision) as a superset of the ticket #23 run: the 35 shared
+ids keep their values and the four `rule` rows are added. The entry is
+`tool/nested_oracle/HtmlOracle.java` (`io.liber.oracle.nested.HtmlOracle`), which
+loads `io.legado.app.model.analyzeRule.AnalyzeRule` from the installed,
+hash-pinned `io.legado.app.debug` (installed bytes `cc99040c…`), calls
 `setContent(html, baseUrl)` and then `getString(rule)` for every case, and writes
 `{"baselineCommit", "entryPoint": "AnalyzeRule.getString", "observations":
 [{"id", "value"}]}` - the same report shape the nested oracle records. Re-run the
@@ -51,12 +53,13 @@ dart run tool/html_adapter_gate.dart <fjs library> \r
   tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json <out.json>
 ```
 
-The comparison passes for 34 of the 35 rows and fails on
-`replacement-trailing-field`: the frozen `AnalyzeRule.kt` splits a rule on the
-literal `##` and Kotlin's split keeps a trailing empty field, so the rule is a
-four-field `replaceFirst`, and the handset returns `忘语先生` where the adapter
-returns `作者：忘语先生` (see `manifest.json`). That is a finding for the adapter;
-the corpus expectation was not edited. The capability rows the 34 passing cases
-cover are device-confirmed in
-`docs/compatibility/book-source-capability-matrix.md`; the fourth-field row is
-not.
+The comparison passes for all 39 rows. The frozen `SourceRule.makeUpRule` splits
+a rule on the literal `##` with Kotlin's `split("##")` (`AnalyzeRule.kt:686`),
+whose default `limit` of zero keeps the trailing empty field, so `a##b##` is a
+four-field frozen `replaceFirst` and `AnalyzeRule.replaceRegex`
+(`AnalyzeRule.kt:426-437`) answers with the replaced match only. The adapter
+split the same rule the Java way in both `packages/fjs/liber_html/src/rule.rs`
+and `lib/source/rule_field.dart`; ticket #51 removed both trailing-empty trims
+and corrected the corpus expectation for `replacement-trailing-field`, which had
+been read from the Java-style split. The capability rows the 39 cases cover are
+device-confirmed in `docs/compatibility/book-source-capability-matrix.md`.

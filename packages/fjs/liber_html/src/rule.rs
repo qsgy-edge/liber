@@ -131,15 +131,16 @@ fn index_of_capture(chars: &[char]) -> Option<usize> {
     None
 }
 
-/// Splits `##` fields the way `SourceRule.makeUpRule` does. Kotlin's
-/// `split("##")` drops trailing empty fields, so a rule ending in `##` is a
-/// three-field replacement while `###` keeps its extra field and means
-/// `replaceFirst`.
+/// Splits `##` fields the way `SourceRule.makeUpRule` does
+/// (`AnalyzeRule.kt:686-695`: `rule.split("##")`, then `size > 1` sets the
+/// regex, `size > 2` the replacement and `size > 3` `replaceFirst`). Kotlin's
+/// `split` takes its default `limit` of zero, which means no limit, so the
+/// trailing empty field is *kept*: `a##b##` is three fields (`a`, `b`, ``) and
+/// `a##b##c##` is four, which is the frozen `replaceFirst`. A Java reading of
+/// the same rule drops the trailing field and turns that `replaceFirst` into a
+/// replace-all (#51).
 fn split_replace(body: &str) -> (String, Option<Replace>) {
-    let mut parts: Vec<&str> = body.split("##").collect();
-    while parts.len() > 1 && parts.last() == Some(&"") {
-        parts.pop();
-    }
+    let parts: Vec<&str> = body.split("##").collect();
     let rule = parts[0].trim().to_string();
     if parts.len() < 2 {
         return (rule, None);
@@ -933,18 +934,50 @@ mod tests {
     }
 
     #[test]
+    fn split_replace_keeps_the_trailing_empty_field() {
+        let (rule, replace) = split_replace("#meta@text");
+        assert_eq!(rule, "#meta@text");
+        assert!(replace.is_none());
+        // The empty field a trailing `##` leaves is a real third field.
+        let (rule, replace) = split_replace("#meta@text##忘语##");
+        assert_eq!(rule, "#meta@text");
+        let replace = replace.expect("a trailing ## is a replacement");
+        assert_eq!(
+            (replace.regex.as_str(), replace.replacement.as_str(), replace.replace_first),
+            ("忘语", "", false)
+        );
+        // Three delimiters are four fields, so the width that sets `replaceFirst`
+        // is reached by `##` alone, not only by `###`.
+        let (_, replace) = split_replace("#meta@text##忘语##忘语先生##");
+        let replace = replace.expect("three delimiters are four fields");
+        assert_eq!(
+            (replace.regex.as_str(), replace.replacement.as_str(), replace.replace_first),
+            ("忘语", "忘语先生", true)
+        );
+        let (_, replace) = split_replace("#meta@text##忘语##忘语先生###");
+        let replace = replace.expect("### is four fields");
+        assert_eq!(
+            (replace.regex.as_str(), replace.replacement.as_str(), replace.replace_first),
+            ("忘语", "忘语先生", true)
+        );
+    }
+
+    #[test]
     fn replacements_follow_the_frozen_field_rules() {
-        // A trailing `##` leaves three fields: replace every match.
-        assert_eq!(text("#meta@text##忘语##忘语先生##"), "作者：忘语先生");
-        // `###` keeps a fourth field, which means replace the first match only.
+        // A trailing `##` leaves four fields, which is the frozen `replaceFirst`;
+        // that branch answers with the replaced *match*, not the whole value.
+        assert_eq!(text("#meta@text##忘语##忘语先生##"), "忘语先生");
+        // `###` reaches the same branch.
         assert_eq!(text("#meta@text##忘语##忘语先生###"), "忘语先生");
         // Java capture references survive a Chinese suffix.
         assert_eq!(text("#meta@text##(作者)：##$1是###"), "作者是");
-        assert_eq!(text("#meta@text##(作者)：##$1是##"), "作者是忘语");
+        assert_eq!(text("#meta@text##(作者)：##$1是##"), "作者是");
         // An unknown group reference is Java's exception path: the frozen
-        // `runCatching` falls back to replacing the pattern text literally.
-        assert_eq!(text("#meta@text##忘语##$9##"), "作者：$9");
+        // `runCatching` answers with the raw replacement.
+        assert_eq!(text("#meta@text##忘语##$9##"), "$9");
         assert_eq!(text("#meta@text##忘语##$9###"), "$9");
+        // Two fields replace every match of the pattern.
+        assert_eq!(text("#meta@text##^作者：##"), "忘语");
     }
 
     #[test]

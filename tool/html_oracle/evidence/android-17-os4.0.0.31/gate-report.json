@@ -2,11 +2,11 @@
   "platform": "windows",
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "AnalyzeRule.getString",
-  "status": "fail",
+  "status": "pass",
   "frozenGolden": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
-  "librarySha256": "1def19b352a9f26c18d018b6cddefab7ebe39eb34ec7cb99afbbfe2f6b175cc0",
-  "fixturesSha256": "b1c95af653fa2ecf22e58fbca2581e207a3650ec337cb167ad9ca87109f284e0",
-  "cases": 35,
+  "librarySha256": "602b12213f8438af826be562fac62cb55e4b217a79e67ef8176a14cc5df24aa2",
+  "fixturesSha256": "911e85df1b5bd8d01ad05fbf0a3af8be3500543ddc4d75b0a19cda375f1c005c",
+  "cases": 39,
   "observations": [
     {
       "id": "ordered-indices",
@@ -131,7 +131,7 @@
     {
       "id": "replacement-trailing-field",
       "rule": "#meta@text##忘语##忘语先生##",
-      "value": "作者：忘语先生"
+      "value": "忘语先生"
     },
     {
       "id": "replacement-first-match",
@@ -182,10 +182,28 @@
       "id": "css-not-pseudo",
       "rule": "@CSS:#list li:not(:first-child)@text",
       "value": "第一章\n第二章"
+    },
+    {
+      "id": "rule-js-trailing",
+      "rule": "#meta@text @js: result + '!'",
+      "value": "作者：忘语!"
+    },
+    {
+      "id": "rule-js-lt-js-block",
+      "rule": "#meta@text<js>'<' + result + '>'</js>",
+      "value": "<作者：忘语>"
+    },
+    {
+      "id": "rule-interpolation-base-url",
+      "rule": "#meta@text@js: '{{baseUrl}}' + result",
+      "value": "http://fixture.test作者：忘语"
+    },
+    {
+      "id": "rule-interpolation-title-null",
+      "rule": "#meta@data-id@js: '[' + '{{title}}' + ']' + result",
+      "value": "[]42"
     }
   ],
   "expectationMismatches": [],
-  "frozenMismatches": [
-    "replacement-trailing-field: frozen=\"忘语先生\" windows=\"作者：忘语先生\""
-  ]
+  "frozenMismatches": []
 }
