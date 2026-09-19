@@ -52,8 +52,10 @@ const expectedMembers = <String>[
   'source.get',
   'source.bookSourceUrl',
   'source.bookSourceName',
+  'source.getHeaderMap',
   'java.connect',
   'java.ajax',
+  'java.ajaxAll',
   'java.get',
   'java.head',
   'java.post',
@@ -115,9 +117,9 @@ Future<void> main(List<String> args) async {
           '<div class="item"><h3><a href="/book/">书</a></h3></div>',
         );
       case '/echo':
-        request.response.write(
-          request.headers.value('cookie') ?? 'none',
-        );
+        request.response.write(request.headers.value('cookie') ?? 'none');
+      case '/headers':
+        request.response.write(request.headers.value('x-contract') ?? 'none');
       default:
         request.response.write('<div>ok</div>');
     }
@@ -143,6 +145,8 @@ Future<void> main(List<String> args) async {
       InProcessSourceScriptRuntime target,
       String script, {
       String? sourceKey,
+      Map<String, Object?>? book,
+      Map<String, Object?>? chapter,
     }) => target.evaluate(
       source: script,
       input: {
@@ -151,12 +155,15 @@ Future<void> main(List<String> args) async {
           'bookSourceUrl': sourceKey ?? origin,
           'bookSourceName': '契约源',
           'bookSourceGroup': 'group',
+          'header': '{"X-Contract":"yes"}',
         },
         'key': '甲',
         'page': 1,
         'result': null,
         'baseUrl': origin,
         'headers': const <String, String>{},
+        'book': ?book,
+        'chapter': ?chapter,
       },
       timeout: const Duration(seconds: 15),
     );
@@ -164,7 +171,15 @@ Future<void> main(List<String> args) async {
       String script, {
       String? sourceKey,
       InProcessSourceScriptRuntime? using,
-    }) => evaluateOn(using ?? runtime, script, sourceKey: sourceKey);
+      Map<String, Object?>? book,
+      Map<String, Object?>? chapter,
+    }) => evaluateOn(
+      using ?? runtime,
+      script,
+      sourceKey: sourceKey,
+      book: book,
+      chapter: chapter,
+    );
 
     // 1. Every allowlisted member exists.
     final missing = await run(
@@ -190,14 +205,65 @@ Future<void> main(List<String> args) async {
     );
     checks['sourceAccessors'] =
         sourceInfo ==
-        jsonEncode([
-          origin,
-          '契约源',
-          '契约源',
-          '契约源',
-          origin,
-          'string',
-        ]);
+        jsonEncode([origin, '契约源', '契约源', '契约源', origin, 'string']);
+
+    checks['sourceHeaderMap'] =
+        await run('JSON.stringify(source.getHeaderMap())') ==
+        jsonEncode({'X-Contract': 'yes', 'User-Agent': sourceDefaultUserAgent});
+    checks['sourceHeaderMapFalseDefault'] =
+        await run('JSON.stringify(source.getHeaderMap(false))') ==
+        await run('JSON.stringify(source.getHeaderMap())');
+    checks['connectOneArgumentSourceHeaders'] = await run(
+      'java.connect(${jsonEncode('$origin/headers')}).body()',
+    ) == 'yes';
+    checks['connectNullHeaderSourceFallback'] = await run(
+      'java.connect(${jsonEncode('$origin/headers')}, null).body()',
+    ) == 'yes';
+    final connectedHeader = await run(
+      'java.connect(${jsonEncode('$origin/headers')}, '
+      '${jsonEncode('{"X-Contract":"yes"}')}).body()',
+    );
+    checks['connectHeaderString'] = connectedHeader == 'yes';
+    final bookProbe = await run(
+      'JSON.stringify([book.name, book.bookUrl, java.get("bookName")])',
+      book: {'name': '契约书', 'bookUrl': '$origin/book'},
+    );
+    checks['bookSnapshot'] =
+        bookProbe == jsonEncode(['契约书', '$origin/book', '契约书']);
+    checks['absentBookStaysNull'] = await run('book === null') == true;
+    final chapterProbe = await run(
+      'JSON.stringify([chapter.title, chapter.url, java.get("title")])',
+      chapter: {'title': '第一章', 'url': '$origin/chapter'},
+    );
+    checks['chapterSnapshot'] =
+        chapterProbe == jsonEncode(['第一章', '$origin/chapter', '第一章']);
+    for (final member in [
+      'book.getVariable',
+      'book.putVariable',
+      'book.variable',
+      'chapter.getVariable',
+      'chapter.putVariable',
+      'chapter.variable',
+    ]) {
+      SourceScriptError? failure;
+      try {
+        await run(member, book: {'name': '契约书'}, chapter: {'title': '第一章'});
+      } on SourceScriptError catch (error) {
+        failure = error;
+      }
+      checks['${member}UnavailableByName'] =
+          failure?.category == 'policy' && failure!.message.contains(member);
+    }
+    SourceScriptError? loginFailure;
+    try {
+      await run('source.getHeaderMap(true)');
+    } on SourceScriptError catch (error) {
+      loginFailure = error;
+    }
+    checks['loginHeaderDeferredByName'] =
+        loginFailure?.category == 'policy' &&
+        loginFailure!.message.contains('source.getHeaderMap(true)') &&
+        loginFailure.message.contains('#13');
 
     // 3. Rule state is the source's own persistent variables, not one
     //    analysis's: it survives an evaluation that shares nothing with the last
@@ -205,7 +271,9 @@ Future<void> main(List<String> args) async {
     await run(
       'java.put("token", "abc"); cache.put("shared", java.get("token"))',
     );
-    final stateRead = await run('java.get("token") + "|" + cache.get("shared")');
+    final stateRead = await run(
+      'java.get("token") + "|" + cache.get("shared")',
+    );
     checks['ruleStatePersistsForItsSource'] = stateRead == 'abc|abc';
     final otherSource = await run(
       'java.get("token")',
@@ -214,8 +282,37 @@ Future<void> main(List<String> args) async {
     checks['ruleStateIsOwnedByItsSource'] = otherSource == '';
     // The frozen runtime overloads `java.get`: one argument reads rule state,
     // two send an HTTP GET. Both paths stay reachable.
-    final httpGet = await run('java.get(${jsonEncode('$origin/echo')}, {}).code()');
+    final httpGet = await run(
+      'java.get(${jsonEncode('$origin/echo')}, {}).code()',
+    );
     checks['httpGetOverload'] = httpGet == 200;
+    checks['httpGetUndefinedSecondArgument'] = await run(
+      'java.get(${jsonEncode('$origin/echo')}, undefined).code()',
+    ) == 200;
+    final batch = await run(
+      'JSON.stringify(java.ajaxAll(['
+      '${jsonEncode('$origin/a')}, ${jsonEncode('$origin/b')}])'
+      '.map(r => ({statusCode:r.code(), body:r.body(), url:r.url()})))',
+    );
+    final batchValues = jsonDecode(batch! as String) as List<dynamic>;
+    checks['ajaxAllReturnsOrderedResponses'] =
+        batchValues.length == 2 &&
+        batchValues[0]['url'] == '$origin/a' &&
+        batchValues[1]['url'] == '$origin/b' &&
+        batchValues.every(
+          (value) =>
+              value is Map &&
+              value['statusCode'] == 200 &&
+              value['body'] == '<div>ok</div>',
+        );
+
+    checks['ajaxAllEmptyArray'] = await run('java.ajaxAll([]).length') == 0;
+    checks['ajaxListUsesFirstUrl'] =
+        await run(
+              'java.ajax([${jsonEncode('$origin/headers')}, ${jsonEncode('$origin/unused')}])',
+            ) ==
+            'yes' &&
+        requests.last.startsWith('GET /headers');
 
     // 4. Cache round-trips, typed reads and deletion.
     final cacheProbe = await run(
@@ -281,13 +378,13 @@ Future<void> main(List<String> args) async {
         htmlFormat: java.htmlFormat("<div>一<br>二<p>三</p><img src=\\"/i.png\\"></div>"),
         timeFormatUtc: java.timeFormatUTC(0, "yyyy-MM-dd HH:mm", 8),
         uuid: java.randomUUID().length,
-        toNumChapter: java.toNumChapter("第１２3章 起点"),
+        toNumChapter: java.toNumChapter("第十二章"),
+        toNumChapterFullwidth: java.toNumChapter("第１２3章 起点"),
         toNumChapterUntouched: java.toNumChapter("序章"),
         toUrl: JSON.stringify(java.toURL("http://a.test/b?x=1&y=2")),
         toUrlRelative: java.toURL("/c", "http://a.test/base/").pathname,
         bytes: java.bytesToStr(java.strToBytes("书"))
-      })''',
-    );
+      })''');
     final decoded = jsonDecode(utilities! as String) as Map<String, dynamic>;
     checks['base64Encode'] = decoded['base64'] == '5LmmYQ==';
     // `base64Encode(str)` encodes the UTF-8 bytes of the string, like
@@ -314,7 +411,11 @@ Future<void> main(List<String> args) async {
         '\u3000\u3000\u4e00\n\u3000\u3000\u4e8c\n\u3000\u3000\u4e09\n\u3000\u3000<img src="/i.png">';
     checks['timeFormatUtc'] = decoded['timeFormatUtc'] == '1970-01-01 08:00';
     checks['randomUuid'] = decoded['uuid'] == 36;
-    checks['toNumChapter'] = decoded['toNumChapter'] == '第123章';
+    checks['toNumChapter'] = decoded['toNumChapter'] == '第12章';
+    checks['toNumChapterFullwidth'] =
+        decoded['toNumChapterFullwidth'] == '第123章';
+    checks['toNumChapterChineseShorthand'] = await run('java.toNumChapter("第一千二章")') == '第1200章';
+    checks['toNumChapterInvalid'] = await run('java.toNumChapter("第未知章")') == '第-1章';
     checks['toNumChapterUntouched'] = decoded['toNumChapterUntouched'] == '序章';
     checks['toUrl'] =
         decoded['toUrl'] ==
@@ -411,18 +512,15 @@ Future<void> main(List<String> args) async {
         notices.length == 1 && notices.single.message == 'a';
 
     // 11. A rule that uses the blocked sample pattern end to end.
-    final pipeline = HtmlSourcePipeline(
-      <String, dynamic>{
-        'bookSourceUrl': origin,
-        'searchUrl': '/search?q={{cookie.removeCookie(source.getKey())}}{{key}}',
-        'ruleSearch': {
-          'bookList': '@CSS:.item',
-          'name': '@CSS:h3 a@text',
-          'bookUrl': '@CSS:h3 a@href',
-        },
+    final pipeline = HtmlSourcePipeline(<String, dynamic>{
+      'bookSourceUrl': origin,
+      'searchUrl': '/search?q={{cookie.removeCookie(source.getKey())}}{{key}}',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        'name': '@CSS:h3 a@text',
+        'bookUrl': '@CSS:h3 a@href',
       },
-      HttpSourceTransport(),
-    );
+    }, HttpSourceTransport());
     final hits = await pipeline.search('甲');
     checks['cookieInUrlRuleRan'] = requests.last.startsWith('GET /search?q=');
     checks['cookieInUrlRuleParsed'] = hits.single.title == '书';

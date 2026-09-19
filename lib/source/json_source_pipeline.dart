@@ -69,8 +69,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// The chapter whose title the frozen `AnalyzeRule` binds as `title` while the
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
-  /// is there. The `book` binding stays the runtime's always-null one.
+  /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  HtmlBook? _book;
+  SourceChapter? _chapter;
 
   /// The frozen `AnalyzeUrl` options one analysis owns: the options a stage's
   /// URL carried, kept for the stage that fetches it, because a book URL and a
@@ -137,6 +139,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'bookSourceGroup': source['bookSourceGroup'],
     'bookSourceType': source['bookSourceType'],
     'bookSourceComment': source['bookSourceComment'],
+    'header': source['header'],
     'enabledCookieJar': source['enabledCookieJar'],
     'loginUrl': source['loginUrl'],
   };
@@ -152,6 +155,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
           'baseUrl': '$_base',
           'result': result,
           'title': _chapterTitle,
+          'book': _book == null
+              ? null
+              : {
+                  'name': _book!.title,
+                  'bookUrl': '${_book!.url}',
+                  'author': _book!.author,
+                  'intro': _book!.intro,
+                  'coverUrl': _book!.cover,
+                  'kind': _book!.kind,
+                  'latestChapterTitle': _book!.lastChapter,
+                },
+          'chapter': _chapter == null
+              ? null
+              : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
           'headers': _activeHeaders,
         },
         timeout: const Duration(seconds: 30),
@@ -170,7 +187,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   );
 
   Future<String> _readRuleVariable(String key) async {
-    if (key == 'bookName') return '';
+    if (key == 'bookName') return _book?.title ?? '';
     if (key == 'title') return _chapterTitle ?? '';
     final value = await _hostSurface.entry(
       _sourceRef,
@@ -391,6 +408,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `ruleSearch`: the books a keyword search returns.
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
+    _book = null;
+    _chapter = null;
     _validate();
     _keyword = keyword;
     _page = page;
@@ -435,6 +454,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    _book = hit;
+    _chapter = null;
+    _chapterTitle = null;
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
@@ -464,6 +486,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       kind: await _optional(page, info['kind'] ?? ''),
       lastChapter: await _optional(page, info['lastChapter'] ?? ''),
     );
+    _book = book;
     final (tocUrl, tocOptions) = await _request(
       hit.url,
       JsonSourceRules.template(page, info['tocUrl']!),
@@ -517,6 +540,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `ruleContent`: one chapter's text.
   @override
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+    _chapter = chapter;
     _validate();
     _page = null;
     _chapterTitle = chapter.name;

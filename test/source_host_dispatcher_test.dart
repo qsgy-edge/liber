@@ -169,12 +169,13 @@ void main() {
     () async {
       final transport = ControlledTransport();
       final dispatcher = SourceHostDispatcher(transport: transport);
-      final result = dispatcher.ajaxAll([
-        'http://localhost/a',
-        'http://localhost/b',
-        'http://localhost/c',
-      ], concurrency: 2);
+      final result = dispatcher.ajaxAll(
+        ['http://localhost/a', 'http://localhost/b', 'http://localhost/c'],
+        concurrency: 2,
+        headers: {'X-Batch': 'yes'},
+      );
       expect(transport.requests.length, 2);
+      expect(transport.requests.first.headers['X-Batch'], 'yes');
       transport.finish(1);
       await Future<void>.delayed(Duration.zero);
       expect(transport.requests.length, 3);
