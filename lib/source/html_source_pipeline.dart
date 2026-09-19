@@ -140,8 +140,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// The chapter whose title the frozen `AnalyzeRule` binds as `title` while the
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
-  /// is there. The `book` binding stays the runtime's always-null one.
+  /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  HtmlBook? _book;
+  SourceChapter? _chapter;
   final _bookOptions = <Uri, SourceUrlOptions>{};
   bool get cancelled => _cancellation.isCancelled;
   @override
@@ -205,6 +207,21 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           'result': result,
           'baseUrl': source['bookSourceUrl'],
           'title': _chapterTitle,
+          'book': _book == null
+              ? null
+              : {
+                  'name': _book!.title,
+                  'bookUrl': '${_book!.url}',
+                  'author': _book!.author,
+                  'intro': _book!.intro,
+                  'coverUrl': _book!.cover,
+                  'kind': _book!.kind,
+                  'latestChapterTitle': _book!.lastChapter,
+                  'wordCount': _book!.wordCount,
+                },
+          'chapter': _chapter == null
+              ? null
+              : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
           'headers': const <String, String>{},
         },
         timeout: const Duration(seconds: 30),
@@ -223,7 +240,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   );
 
   Future<String> _readRuleVariable(String key) async {
-    if (key == 'bookName') return '';
+    if (key == 'bookName') return _book?.title ?? '';
     if (key == 'title') return _chapterTitle ?? '';
     final value = await _hostSurface.entry(
       _sourceRef,
@@ -303,13 +320,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   ) async => [for (final value in values) '${await field.apply(value) ?? ''}'];
 
   /// The source fields a script can read, as the frozen `source` object exposes
-  /// them. Headers stay out: they are reachable through `java.ajax` only.
+  /// them, including the header rule that `source.getHeaderMap` evaluates.
   Map<String, Object?> get _sourceFields => {
     'bookSourceUrl': source['bookSourceUrl'],
     'bookSourceName': source['bookSourceName'],
     'bookSourceGroup': source['bookSourceGroup'],
     'bookSourceType': source['bookSourceType'],
     'bookSourceComment': source['bookSourceComment'],
+    'header': source['header'],
     'enabledCookieJar': source['enabledCookieJar'],
     'loginUrl': source['loginUrl'],
   };
@@ -442,6 +460,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
+    _book = null;
+    _chapter = null;
+    _chapterTitle = null;
     _validate();
     sourceCheckKeyword(source, keyword);
     _page = page;
@@ -545,8 +566,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
-    _page = null;
+    _book = hit;
+    _chapter = null;
     _chapterTitle = null;
+    _page = null;
     final (html, infoUrl) = await _fetch(
       hit.url,
       BookSourceStage.bookInfo,
@@ -626,6 +649,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           : detailsLastChapter,
       wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
     );
+    _book = book;
     final (tocTarget, tocOptions) = await _extracted(
       infoUrl,
       await _documentValue(tocValue, tocUrl, html),
@@ -727,6 +751,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+    _chapter = chapter;
     _page = null;
     _chapterTitle = chapter.name;
     var url = chapter.url;
@@ -755,6 +780,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           final extracted = await _documentValue(titleValue, title, html);
           if (extracted.trim().isNotEmpty) {
             contentTitle = _chapterTitle = extracted;
+            _chapter = SourceChapter(extracted, chapter.url);
           }
         }
       }

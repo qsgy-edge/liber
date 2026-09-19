@@ -429,7 +429,7 @@ void main() {
             : _htmlSource(name: 'a.0@text');
         const raw = '<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;';
         (source['ruleSearch'] as Map)['intro'] =
-              '${json ? r'$.intro' : '.sr-intro@text'} @js:${jsonEncode(raw)}';
+            '${json ? r'$.intro' : '.sr-intro@text'} @js:${jsonEncode(raw)}';
         final BookSourcePipeline pipeline = json
             ? JsonSourcePipeline(source, _JsonPages()..pages.addAll(_jsonPages))
             : HtmlSourcePipeline(source, _HtmlPages());
@@ -445,11 +445,13 @@ void main() {
             final source = json
                 ? _jsonSource(
                     name: r'$.name',
-                    content: r'$.content @js:title + ":" + result',
+                    content:
+                        r'$.content @js:title + ":" + chapter.title + ":" + result',
                   )
                 : _htmlSource(
                     name: 'a.0@text',
-                    content: '.content@text @js:title + ":" + result',
+                    content:
+                        '.content@text @js:title + ":" + chapter.title + ":" + result',
                   );
             (source['ruleContent'] as Map)['title'] = blank
                 ? '@js:"   "'
@@ -468,7 +470,10 @@ void main() {
                 Uri.parse('${json ? _jsonUrl : _htmlUrl}/chapter/1'),
               ),
             );
-            expect(result.text, '${blank ? '目录标题' : '正文标题'}:正文');
+            expect(
+              result.text,
+              '${blank ? '目录标题' : '正文标题'}:${blank ? '目录标题' : '正文标题'}:正文',
+            );
             expect(result.title, blank ? null : '正文标题');
           },
         );

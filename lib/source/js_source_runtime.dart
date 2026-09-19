@@ -259,6 +259,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
                 : await hostCall!(method, payload, token);
           } else if (method == 'state') {
             answer = await _handleState(payload, sourceRef);
+          } else if (method == 'headers') {
+            answer = await _headers(input, request.id, token);
           } else if (method == 'cache') {
             answer = await _handleCache(payload, sourceRef);
           } else if (method == 'cookie') {
@@ -281,14 +283,46 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = await _dispatch(
               host,
               {
-                'method': 'GET',
+                'method': 'connect',
                 'url': payload,
-                'headers': input['headers'] ?? const <String, String>{},
+                'headers': await _headers(input, request.id, token),
               },
               request.id,
               input,
               token,
             );
+          } else if (method == 'ajaxAll') {
+            if (host == null || payload is! Map || payload['urls'] is! List) {
+              throw const SourceScriptError(
+                'host-input',
+                'invalid ajaxAll call',
+              );
+            }
+            final rawUrls = payload['urls'] as List;
+            if (rawUrls.any((url) => url is! String)) {
+              throw const SourceScriptError(
+                'host-input',
+                'invalid ajaxAll url',
+              );
+            }
+            final rawHeaders = payload['headers'];
+            final headers = rawHeaders is Map
+                ? Map<String, String>.from(rawHeaders)
+                : const <String, String>{};
+            final urls = <String>[];
+            for (final url in rawUrls.cast<String>()) {
+              urls.add(await _expandHostUrl(url, request.id, input, token));
+            }
+            final responses = await host.ajaxAll(urls, headers: headers);
+            answer = [
+              for (final response in responses)
+                {
+                  'statusCode': response.statusCode,
+                  'headers': response.headers,
+                  'body': response.body,
+                  'url': response.url.toString(),
+                },
+            ];
           } else {
             throw const SourceScriptError('host-method', 'method refused');
           }
@@ -445,7 +479,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       case 's2t':
         return TextEngine.s2t(text);
       default:
-        throw const SourceScriptError('host-method', 'convert direction refused');
+        throw const SourceScriptError(
+          'host-method',
+          'convert direction refused',
+        );
     }
   }
 
@@ -629,21 +666,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   static String _wrap(String source, Map<String, Object?> input) =>
       '__liberRun(($_facade)(${jsonEncode(input)}), ${jsonEncode(source)})';
 
-  Future<Object?> _dispatch(
-    SourceHostDispatcher? host,
-    Object? payload,
+  Future<String> _expandHostUrl(
+    String rawUrl,
     BigInt requestId,
     Map<String, Object?> outerInput,
     SourceCancellation token,
   ) async {
-    if (host == null || payload is! Map) {
-      throw const SourceScriptError('host-method', 'request unavailable');
-    }
-    final method = payload['method'];
-    final rawUrl = payload['url'];
-    if (method is! String || rawUrl is! String) {
-      throw const SourceScriptError('host-input', 'invalid request');
-    }
     final url = await expandSourceUrl(rawUrl, (script, result) async {
       token.throwIfCancelled();
       final value = await evalBridgeRequestGlobal(
@@ -671,6 +699,83 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         'nested URL options unsupported',
       );
     }
+    return url;
+  }
+
+  /// BaseSource.kt:103-130: evaluate the header afresh, tolerate malformed
+  /// JSON, and add User-Agent only if no case-insensitive slot exists.
+  Future<Map<String, String?>> _headers(
+    Map<String, Object?> input,
+    BigInt requestId,
+    SourceCancellation token,
+  ) async {
+    final source = input['source'];
+    final raw = source is Map ? source['header'] : null;
+    Object? value = raw;
+    if (raw is String) {
+      String? script;
+      if (raw.toLowerCase().startsWith('@js:')) {
+        script = raw.substring(4);
+      } else if (raw.toLowerCase().startsWith('<js>')) {
+        final end = raw.lastIndexOf('<');
+        if (end > 4) script = raw.substring(4, end);
+      }
+      if (script != null) {
+        token.throwIfCancelled();
+        try {
+          value = (await evalBridgeRequestGlobal(
+            id: requestId,
+            source: _wrap(script, {
+              'sourceKey': input['sourceKey'],
+              'source': source,
+              'headers': const <String, String>{},
+            }),
+          )).value;
+        } on JsError {
+          token.throwIfCancelled();
+          value = null;
+        }
+      }
+    }
+    final headers = <String, String?>{};
+    try {
+      final parsed = value is String ? jsonDecode(value) : null;
+      if (parsed is Map &&
+          parsed.values.every(
+            (v) => v == null || v is String || v is num || v is bool,
+          )) {
+        for (final entry in parsed.entries) {
+          headers['${entry.key}'] = entry.value == null
+              ? null
+              : '${entry.value}';
+        }
+      }
+    } on FormatException {
+      // The frozen Gson failure leaves the default header map intact.
+    }
+    if (!headers.keys.any((key) => key.toLowerCase() == 'user-agent')) {
+      headers['User-Agent'] = sourceDefaultUserAgent;
+    }
+    token.throwIfCancelled();
+    return headers;
+  }
+
+  Future<Object?> _dispatch(
+    SourceHostDispatcher? host,
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> outerInput,
+    SourceCancellation token,
+  ) async {
+    if (host == null || payload is! Map) {
+      throw const SourceScriptError('host-method', 'request unavailable');
+    }
+    final method = payload['method'];
+    final rawUrl = payload['url'];
+    if (method is! String || rawUrl is! String) {
+      throw const SourceScriptError('host-input', 'invalid request');
+    }
+    final url = await _expandHostUrl(rawUrl, requestId, outerInput, token);
     final rawHeaders = payload['headers'] ?? const <String, String>{};
     if (rawHeaders is! Map ||
         rawHeaders.entries.any((e) => e.key is! String || e.value is! String)) {
@@ -704,10 +809,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   const bridge = fjs.bridge_call;
   const call = (method, payload) =>
     JSON.parse(bridge(JSON.stringify({method: method, payload: payload}))).value;
-  function request(method, url, body, headers) {
-    const result = JSON.parse(bridge(JSON.stringify({method:'request', payload:{
-      method, url:String(url), body, headers:headers || input.headers || {}
-    }}))).value;
+  function response(result) {
     return Object.freeze({
       body: () => result.body,
       code: () => result.statusCode,
@@ -715,6 +817,22 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       headers: () => result.headers,
       raw: () => Object.freeze({request: () => Object.freeze({url: () => result.url})})
     });
+  }
+  function connectHeaders(headers) {
+    if (typeof headers === 'string') {
+      try {
+        const parsed = JSON.parse(headers);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+      } catch (_) {}
+      return call('headers', null);
+    }
+    return headers == null ? call('headers', null) : headers;
+  }
+  function request(method, url, body, headers) {
+    const result = call('request', {
+      method, url:String(url), body, headers:headers || input.headers || {}
+    });
+    return response(result);
   }
 
   const utf8Encode = text => {
@@ -812,11 +930,35 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   };
 
   const sourceFields = input.source || {};
+  const unavailable = member => call('refuse', {
+    member, policy: 'book/chapter variables are unavailable in the current pipeline (#43)'
+  });
+  const snapshot = (name, value) => {
+    if (value === null || value === undefined) return null;
+    return new Proxy(Object.freeze({...value}), {
+      get: (target, key) => {
+        if (typeof key === 'symbol') return undefined;
+        if (key === 'toJSON') return () => ({...target});
+        if (Object.prototype.hasOwnProperty.call(target, key)) return target[key];
+        return unavailable(name + '.' + String(key));
+      },
+      set: (_, key) => unavailable(name + '.' + String(key)),
+      defineProperty: (_, key) => unavailable(name + '.' + String(key)),
+      deleteProperty: (_, key) => unavailable(name + '.' + String(key))
+    });
+  };
+  const book = snapshot('book', input.book);
+  const chapter = snapshot('chapter', input.chapter);
   const source = Object.freeze({
     ...sourceFields,
     getKey: () => input.sourceKey,
     getName: () => sourceFields.bookSourceName || '',
     getTag: () => sourceFields.bookSourceName || '',
+    getHeaderMap: (...args) => {
+      if (args.length > 1) throw new Error('source.getHeaderMap expects zero or one argument');
+      if (args[0]) return call('refuse', {member:'source.getHeaderMap(true)', policy:'login headers (#13)'});
+      return call('headers', null);
+    },
     getVariable: () => call('cache', {op:'get', key:'sourceVariable_' + input.sourceKey}) || '',
     put: (key, value) => call('cache', {op:'put', key:'v_' + input.sourceKey + '_' + key, value:String(value)}),
     get: key => call('cache', {op:'get', key:'v_' + input.sourceKey + '_' + key}) || ''
@@ -869,17 +1011,44 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       searchParams: parsed.searchParams
     });
   };
+  // StringUtils.kt:133-218: retain Int overflow and the trailing shorthand.
   const toNumChapter = text => {
     const match = /(第)(.+?)(章)/.exec(text);
     if (!match) return text;
-    let digits = '';
-    for (const ch of match[2]) {
+    const digits = Array.from(match[2], ch => {
       const code = ch.charCodeAt(0);
-      digits += (code >= 0xff10 && code <= 0xff19)
-        ? String.fromCharCode(code - 0xfee0)
-        : ch;
+      return code === 12288 ? ' ' : code >= 65281 && code <= 65374
+        ? String.fromCharCode(code - 65248) : ch;
+    }).join('').replace(/[ \t\n\x0b\f\r]+/g, '');
+    let value = Number(digits);
+    if (!/^[+-]?[0-9]+$/.test(digits) || value < -2147483648 || value > 2147483647) {
+      const numbers = {零:0, 〇:0, 一:1, 二:2, 两:2, 三:3, 四:4, 五:5,
+        六:6, 七:7, 八:8, 九:9, 壹:1, 贰:2, 叁:3, 肆:4, 伍:5,
+        陆:6, 柒:7, 捌:8, 玖:9, 十:10, 拾:10, 百:100, 佰:100,
+        千:1000, 仟:1000, 万:10000, 亿:100000000};
+      let result = 0, tmp = 0, billion = 0;
+      value = 0;
+      for (let i = 0; i < digits.length; i++) {
+        const n = numbers[digits[i]];
+        if (n === undefined) { value = -1; break; }
+        if (n === 100000000) {
+          result = Math.imul((result + tmp) | 0, n);
+          billion = (Math.imul(billion, n) + result) | 0;
+          result = 0; tmp = 0;
+        } else if (n === 10000) {
+          result = Math.imul((result + tmp) | 0, n); tmp = 0;
+        } else if (n >= 10) {
+          if (tmp === 0) tmp = 1;
+          result = (result + Math.imul(n, tmp)) | 0; tmp = 0;
+        } else {
+          tmp = i >= 2 && i === digits.length - 1 && numbers[digits[i - 1]] > 10
+            ? Math.trunc(Math.imul(n, numbers[digits[i - 1]]) / 10)
+            : (Math.imul(tmp, 10) + n) | 0;
+        }
+        value = (result + tmp + billion) | 0;
+      }
     }
-    return match[1] + digits + match[3];
+    return match[1] + String(value) + match[3];
   };
   const encodeUriJava = text => {
     let out = '';
@@ -934,11 +1103,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   });
 
   const java = Object.freeze({
-    connect: (url, headers) => request('connect', url, null, headers),
-    ajax: url => call('ajax', String(url)).body,
-    get: (urlOrKey, headers) => headers === undefined
-      ? call('state', {op:'get', key:String(urlOrKey)})
-      : request('GET', urlOrKey, null, headers),
+    connect: (...args) => {
+      if (args.length < 1 || args.length > 2) throw new Error('java.connect expects one or two arguments');
+      return request('connect', args[0], null, connectHeaders(args[1]));
+    },
+    ajax: url => call('ajax', Array.isArray(url) ? String(url.length ? url[0] : null) : String(url)).body,
+    ajaxAll: (...args) => {
+      if (args.length !== 1 || !Array.isArray(args[0])) throw new Error('java.ajaxAll expects one URL array');
+      if (args[0].length === 0) return [];
+      return call('ajaxAll', {urls:args[0].map(String), headers:call('headers', null)}).map(response);
+    },
+    get: (...args) => {
+      if (args.length === 1) return call('state', {op:'get', key:String(args[0])});
+      if (args.length === 2) return request('GET', args[0], null, args[1]);
+      throw new Error('java.get expects one or two arguments');
+    },
     head: (url, headers) => request('HEAD', url, null, headers),
     post: (url, body, headers) => request('POST', url, body, headers),
     put: (key, value) => call('state', {op:'put', key:String(key), value:String(value)}),
@@ -1029,8 +1208,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getQueryTTF: refuseFont('cache.getQueryTTF')
   });
 
-  return {key:null, page:null, book:null, result:null, speakText:null, speakSpeed:null,
-    ...input, __LIBER_INPUT__: input, source, java, cookie, cache};
+  return {key:null, page:null, book:book, chapter:chapter, result:null, speakText:null, speakSpeed:null,
+    ...input, __LIBER_INPUT__: input, book, chapter, source, java, cookie, cache};
 }
 ''';
 }
