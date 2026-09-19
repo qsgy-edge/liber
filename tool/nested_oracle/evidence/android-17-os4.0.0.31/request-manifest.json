@@ -1,0 +1,217 @@
+{
+  "recordedAt": "2026-09-19T04:31Z",
+  "kind": "frozen-request-semantics-corpus",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/15",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "application": {
+      "package": "io.legado.app.debug",
+      "productionRebuilt": false,
+      "installedBytesPulledAndVerified": true,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "sameBytesAsTheRecordedGoldens": true,
+      "verifiedCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 pull <pm path io.legado.app.debug> then sha256sum (the #23/#38/#51 pin, unchanged)"
+    }
+  },
+  "corpus": {
+    "path": "tool/nested_oracle/request-fixtures.json",
+    "sha256": "4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e",
+    "fixtureId": "REQUEST-01",
+    "corpusVersion": 1,
+    "rows": 20,
+    "responses": 21,
+    "origin": "http://127.0.0.2:18731",
+    "otherOrigin": "http://127.0.0.3:18731",
+    "bundledInTheHarnessAs": "assets/request-fixtures.json (byte-identical copy, build.ps1)",
+    "originChoice": "The rows use the IPv4 loopback literals 127.0.0.2 and 127.0.0.3 so the cross-origin row has two origins, and so the frozen cookie lookup (keyed by the URL host, NetworkUtils.getSubDomain) cannot see a cookie the SLICE-01 corpus stored for 127.0.0.1. One wildcard-bound socket on port 18731 serves both.",
+    "declaredInputNote": "A row declares the AnalyzeUrl call the frozen runtime builds: the rule text (with its optional `,{...}` object), the {{key}}/{{page}} bindings and the declared header map. The product side resolves the same rule text with the public functions HtmlSourcePipeline._request uses; the corpus declares no `js` option and no relative rule text, so that branch and the pipeline's URL validation are outside it."
+  },
+  "harness": {
+    "sources": [
+      "tool/nested_oracle/RequestOracle.java",
+      "tool/nested_oracle/AndroidManifest.xml",
+      "tool/nested_oracle/build.ps1",
+      "tool/nested_oracle/request-fixtures.json"
+    ],
+    "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (14-parameter constructor) + getStrResponseAwait, reached through getTargetContext().getClassLoader()",
+    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
+    "freshOutputDirectory": "C:/Users/17945/.cache/wayfinder/liber-15/request-oracle-2",
+    "jdk": "Temurin 17.0.20+8 (portable)",
+    "androidBuildTools": "35.0.1",
+    "androidJar": "platforms/android-35/android.jar",
+    "apkSha256": "ae51c9b1ccdf237a22f07331fb05c326d17877646234c45f015e4535d29605fe",
+    "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable between builds of the same sources, and an earlier build of this entry (before RequestOracle.java substituted the corpus' origin tokens into a Location header as text rather than as bytes) hashed 040d753b53e5c518dc48096b0af7708ea883f8dcb25dfde73165404b5b9701fb; the sources' hashes and the toolchain versions are the stable identity",
+    "installCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness apk>",
+    "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle",
+    "suspendEntryPoints": "driven with kotlinx.coroutines.runBlocking through a java.lang.reflect.Proxy over kotlin.jvm.functions.Function2, whose continuation is handed to the frozen suspend method. getStrResponseAwait is called with its three default arguments (jsStr null, sourceRegex null, useWebView true); no row sets the WebView option, so the WebView branch is never taken.",
+    "deferredToTheMainLooper": "Instrumentation.onCreate posts the run to the main looper: the frozen HTTP stack and its cookie store are built by the target application, which is created after onCreate. The rows then run on their own thread because runBlocking blocks the caller.",
+    "noLegadoClassRebuilt": true,
+    "sourceHashDependency": "tool/nested_oracle/RequestOracle.java hashes 584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d for this run"
+  },
+  "device": {
+    "serial": "5615f742",
+    "model": "25102RKBEC (Redmi myron)",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
+  },
+  "run": {
+    "result": "INSTRUMENTATION_RESULT: stream=Request oracle recorded 20 rows and 47 requests",
+    "rows": 20,
+    "requests": 47,
+    "serverErrors": 0,
+    "analysisFailure": null,
+    "repeatRunByteIdenticalAfterDroppingRecordedAt": true,
+    "cleanup": {
+      "openConnections": 2,
+      "serverClosed": true
+    },
+    "requestCountIsDeclared": "3 header rows + 6 redirect rows x 2 + the cross-origin pair (2) + the follow-up limit (21) + 5 query rows + 2 page-list rows + 2 page-less rows = 47",
+    "golden": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json"
+  },
+  "comparison": {
+    "command": "rm -f tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json && dart run tool/nested_oracle_compare.dart --requests D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+    "report": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+    "exitCode": 0,
+    "status": "pass",
+    "rows": {
+      "pass": 17,
+      "fail": 0,
+      "notCompared": 3
+    },
+    "passedRows": [
+      "defaults-injected",
+      "defaults-declared",
+      "redirect-300-post",
+      "redirect-301-post",
+      "redirect-302-post",
+      "redirect-303-post",
+      "redirect-307-post",
+      "redirect-308-post",
+      "redirect-limit",
+      "query-key-raw",
+      "query-key-separators",
+      "query-key-separators-and-space",
+      "query-already-encoded",
+      "page-list-hit",
+      "page-list-past-end",
+      "pageless-empty-bindings",
+      "pageless-page-list-literal"
+    ],
+    "notComparedRows": [
+      {
+        "row": "defaults-user-agent-null",
+        "observation": "requests[0].headers.user-agent",
+        "frozen": "okhttp/4.12.0",
+        "liber": "Dart/3.12 (dart:io)",
+        "reason": "The frozen client removes the declared literal `null` and OkHttp's BridgeInterceptor then supplies its own default; the product's transport is Dart's HttpClient, whose own default stands. Recorded in the differential contract's known-divergence table."
+      },
+      {
+        "row": "redirect-cross-origin",
+        "observation": "requests[1].headers.cookie",
+        "frozen": "test=value",
+        "liber": null,
+        "reason": "The frozen client drops only Authorization on a hop to another origin and forwards the declared Cookie; the product's transport drops both (credentials do not travel to another origin). Recorded in the differential contract's known-divergence table."
+      },
+      {
+        "row": "query-exact-bytes",
+        "observation": "requests[0].rawQuery",
+        "frozen": "q={a}|b^c`\\d%27e%20f%20%E4%B9%A6&p=1",
+        "liber": "q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1",
+        "reason": "The request URL is a Dart Uri, which percent-encodes {, }, |, ^, the backtick and the backslash while it resolves; the frozen client keeps the URL as text and hands its query to HttpUrl.encodedQuery. The capability matrix already records this platform seam for the query re-encoding row; the contract's known-divergence table now names it."
+      }
+    ],
+    "ignoredHeaders": [
+      "host",
+      "content-length",
+      "accept-encoding"
+    ],
+    "ignoreRule": "The contract's rule: a platform-generated name is ignored unless the source declares it. Rows that declare a header name (the `defaults-declared` row's Connection) have it compared; everything else on the wire is compared byte for byte.",
+    "comparedSurface": "method, path, raw query bytes, request body bytes, every non-ignored header (values and duplicate order, joined \", \" by the server on both sides), the ordered hop sequence and the row's outcome; `finalUrl` is not compared because the two sides serve the corpus on their own port.",
+    "libraryTheProductSideRanAgainst": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll, sha256 b9cd78a76353991fd535fb4b8df5e3fe951f494506f2ec5852609beade4c9983 (master's, already rebuilt for #51). This lane changes no Rust, and the request path reaches the engine only for the response-body decode's EncodingDetect fallback and for a named charset option, neither of which this corpus declares."
+  },
+  "productChangesTheComparisonForced": [
+    {
+      "observation": "requests[].headers.content-type on every body-carrying request (8 observations over 6 rows)",
+      "frozen": "application/x-www-form-urlencoded; charset=utf-8",
+      "beforeTheFix": "application/x-www-form-urlencoded",
+      "frozenSource": "okhttp-4.12.0 RequestBody$Companion.create(String, MediaType): the media type is re-parsed as \"<declared>; charset=utf-8\" when MediaType.charset() answers null; the frozen caller is AnalyzeUrl.kt:381-393 (`body.toRequestBody(contentType.toMediaType())`) and OkHttpUtils.kt:113-115 (postForm)",
+      "fix": "lib/source/http_source_transport.dart `withSourceBodyContentType`, applied while the body is written and idempotent across a 307/308 hop"
+    },
+    {
+      "observation": "requests[].headers.transfer-encoding / content-length on every body-carrying request (8 observations over 6 rows)",
+      "frozen": "no Transfer-Encoding, Content-Length: 3",
+      "beforeTheFix": "Transfer-Encoding: chunked, no Content-Length",
+      "frozenSource": "the frozen client built the body, so OkHttp writes its length (Http1ExchangeCodec.writeRequestHeaders)",
+      "fix": "lib/source/http_source_transport.dart `_readOnce` sets request.contentLength before writing the UTF-8 body"
+    }
+  ],
+  "coverage": {
+    "pinned": [
+      "the frozen default headers and the append rule, including a source that declares each of them",
+      "the User-Agent: null opt-out",
+      "300/301/302/303 to GET without body and without content headers, 307/308 keeping method and body, on a POST with a body",
+      "the cross-origin Authorization drop and the declared Cookie the frozen client keeps",
+      "the 21st follow-up failing the call after 21 requests",
+      "{{key}} raw substitution with the query encoded once, an already-encoded query left alone, and the character groups the ticket names",
+      "{{page}} and <1,2,3> lists, and the empty binding on a stage that carries no page",
+      "the body media type's charset and the Content-Length framing the frozen client writes"
+    ],
+    "gaps": [
+      "AnalyzeUrl is driven directly rather than through the four WebBook suspend entry points, so a request the frozen WebBook builds with other arguments (a chapter body, a login header map) is not covered; the argument shapes it uses are the ones WebBook.kt:60, WebBook.kt:169, WebBook.kt:244, BookChapterList.kt:70 and BookContent.kt:90 construct.",
+      "A declared non-UTF-8 charset on a body: the frozen String.toRequestBody also writes the body's *bytes* with that resolved charset, which this transport does not reproduce (it writes UTF-8). No fixture in this corpus declares one, so no row observes it; the product-side test pins the header half and the comment names the quirk.",
+      "No `retry` (non-2xx) row and no named-`charset` row: those are #9's and #42's rows, pinned by their own evidence.",
+      "The `type`/`upload`/WebView request paths are not driven (the corpus sets no such option).",
+      "A Set-Cookie on a redirect hop stays unobserved here; the differential contract records that divergence for the product's own redirect walk."
+    ]
+  },
+  "noAggregateStatusPromotion": true,
+  "hashes": [
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
+      "sha256": "16d42622ea09f1b86388b6043e8f755542e382c39e6fadab2debfd384fce0222"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+      "sha256": "3340789d9857e51763e1a0d75dcbe038d562691727df9a7598679854116f985b"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-run.log",
+      "sha256": "the curated transcript of this run; it names every command and its raw result"
+    },
+    {
+      "path": "tool/nested_oracle/RequestOracle.java",
+      "sha256": "584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d"
+    },
+    {
+      "path": "tool/nested_oracle/AndroidManifest.xml",
+      "sha256": "edd75d6cc7c789f1f53db9187a3627729bbeefca601fb3c7376baf8efd737f58"
+    },
+    {
+      "path": "tool/nested_oracle/build.ps1",
+      "sha256": "bdf3a9b86e307fb419fa006788f2f1893bcaeddf7549861f00b086a41543691f"
+    },
+    {
+      "path": "tool/nested_oracle/request-fixtures.json",
+      "sha256": "4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e"
+    },
+    {
+      "path": "tool/nested_oracle_compare.dart",
+      "sha256": "a97dd3251a11136cd719a706760c264ca07f69caad1aa27d8f687a72d15ef197"
+    },
+    {
+      "path": "lib/source/http_source_transport.dart",
+      "sha256": "296de37db440ce3224ab6ea7ed5c80f7f119d78f6a2c3fc210da620d03dbd75d"
+    },
+    {
+      "path": "test/source_request_semantics_test.dart",
+      "sha256": "06b283b2267075f4b669daf0589555f32fc761132e71046b69a4ebdf680d26d5"
+    },
+    {
+      "path": "tool/runtime_host_integration.dart",
+      "sha256": "7f7a651a725a6e092f37bd5e2f62a76c27eb449f40495b13bd8c6247e9b83b45"
+    }
+  ],
+  "runLogIsCuratedTranscript": true,
+  "note": "The corpus and the golden are versioned together: changing a row, a response or the declared request requires a new corpus version and a new golden. The comparison is a per-row report; the rows it does not compare are listed by id in the report and in the ticket."
+}

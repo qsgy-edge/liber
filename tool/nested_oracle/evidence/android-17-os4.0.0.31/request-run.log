@@ -1,0 +1,154 @@
+# request_oracle / RequestOracle on the frozen-oracle handset
+# recorded 2026-09-19T04:31Z by lane #15 (batch 8), ticket
+# https://github.com/qsgy-edge/liber/issues/15
+#
+# The lane's evidence is the ordered request the in-process replay server
+# received per row. This log is the curated transcript: the commands, their raw
+# results, and the two comparisons the run produced (before and after the two
+# product fixes the controller approved for this ticket).
+
+== target identity ==
+$ adb -s 5615f742 devices
+List of devices attached
+5615f742	device
+
+$ adb -s 5615f742 shell getprop ro.build.fingerprint
+Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
+
+== frozen application identity (the pin this golden trusts) ==
+$ adb -s 5615f742 shell pm path io.legado.app.debug
+package:/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 pull <that path> C:/Users/17945/.cache/wayfinder/liber-15/frozen-base.apk
+/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk: 1 file pulled, 0 skipped. 38.2 MB/s (27617019 bytes in 0.690s)
+$ sha256sum frozen-base.apk
+cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6  frozen-base.apk
+== the committed manifests pin cc99040c...; the installed bytes still hash to it,
+== so the golden recorded now is trusted.
+
+== harness build ==
+$ pwsh tool/nested_oracle/build.ps1 -OutputDirectory C:/Users/17945/.cache/wayfinder/liber-15/request-oracle-2 -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8
+SHA256 AE51C9B1CCDF237A22F07331FB05C326D17877646234C45F015E4535D29605FE  .../nested-oracle.apk
+$ sha256sum .../assets/request-fixtures.json tool/nested_oracle/request-fixtures.json
+4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e  .../assets/request-fixtures.json
+4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e  tool/nested_oracle/request-fixtures.json
+== the served asset is the committed corpus byte for byte (the worktree writes LF,
+== so the copy and the blob hash to the same value).
+== an earlier build of this same entry (before the Location-header substitution
+== was fixed in RequestOracle.java) hashed 040d753b...; its run is not evidence.
+
+== install and run ==
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t C:/Users/17945/.cache/wayfinder/liber-15/request-oracle-2/nested-oracle.apk
+Performing Incremental Install
+Success
+Install command complete in 377 ms
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 shell am force-stop io.legado.app.debug
+$ timeout 240 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle
+INSTRUMENTATION_RESULT: stream=Request oracle recorded 20 rows and 47 requests
+
+INSTRUMENTATION_CODE: -1
+
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 pull /sdcard/Android/data/io.legado.app.debug/files/request-oracle.json C:/Users/17945/.cache/wayfinder/liber-15/handset-request-oracle.json
+/sdcard/Android/data/io.legado.app.debug/files/request-oracle.json: 1 file pulled, 0 skipped. 11.3 MB/s (55528 bytes in 0.005s)
+$ sha256sum handset-request-oracle.json
+16d42622ea09f1b86388b6043e8f755542e382c39e6fadab2debfd384fce0222  handset-request-oracle.json
+
+== repeat run, to prove the rows are not timing-dependent ==
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 shell am force-stop io.legado.app.debug
+$ timeout 240 adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle
+INSTRUMENTATION_RESULT: stream=Request oracle recorded 20 rows and 47 requests
+$ python - <<'EOF'  (drop recordedAt from both reports, compare canonical JSON)
+cleanup {'openConnections': 2, 'serverClosed': True}
+cleanup {'openConnections': 2, 'serverClosed': True}
+identical after dropping recordedAt: True
+EOF
+== the committed golden is the second run; serverErrors is [] and
+== analysisFailure is null in both.
+
+== what the frozen client sent, per row (request line as received) ==
+defaults-injected                GET /defaults
+defaults-declared                GET /declared
+defaults-user-agent-null         GET /ua-null
+redirect-300-post                POST /r300 -> GET /after300
+redirect-301-post                POST /r301 -> GET /after301
+redirect-302-post                POST /r302 -> GET /after302
+redirect-303-post                POST /r303 -> GET /after303
+redirect-307-post                POST /r307 -> POST /after307
+redirect-308-post                POST /r308 -> POST /after308
+redirect-cross-origin            GET /cross -> GET /after-cross (127.0.0.3)
+redirect-limit                   GET /loop x21, then
+                                 java.net.ProtocolException: Too many follow-up requests: 21
+query-key-raw                    GET /search?q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1
+query-key-separators             GET /search?q=a&b=c&p=1
+query-key-separators-and-space   GET /search?q=a&b%20c&p=1
+query-already-encoded            GET /search?q=%E4%B9%A6&p=1
+query-exact-bytes                GET /search?q={a}|b^c`\d%27e%20f%20%E4%B9%A6&p=1
+page-list-hit                    GET /list?page=2&q=%E4%B9%A6
+page-list-past-end               GET /list?page=3&q=%E4%B9%A6
+pageless-empty-bindings          GET /toc?p=&k=
+pageless-page-list-literal       GET /toc?p=%3C1,2,3%3E
+
+== the headers the two header rows produced ==
+defaults-injected   user-agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36
+                    keep-alive = 300 | connection = Keep-Alive | cache-control = no-cache | accept-encoding = gzip, deflate
+defaults-declared   user-agent = Source/1.0 | keep-alive = 600, 300 | cache-control = max-age=0, no-cache | connection = Keep-Alive, Keep-Alive
+defaults-user-agent-null
+                    user-agent = okhttp/4.12.0 (the declared literal null removes the header, and
+                    okhttp-4.12.0's BridgeInterceptor then supplies its own default)
+
+== comparison, product unfixed (the state the lane found) ==
+$ dart run tool/nested_oracle_compare.dart --requests <master fjs.dll> tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json <report>
+pass        defaults-injected, defaults-declared, redirect-limit, query-key-raw,
+            query-key-separators, query-key-separators-and-space, query-already-encoded,
+            page-list-hit, page-list-past-end, pageless-empty-bindings,
+            pageless-page-list-literal                                   (11)
+notCompared defaults-user-agent-null, redirect-cross-origin              (2)
+fail        redirect-300-post, redirect-301-post, redirect-302-post, redirect-303-post,
+            redirect-307-post, redirect-308-post, query-exact-bytes        (7)
+== the six redirect rows differed on exactly two observations per body-carrying
+== request (the first of the pair, and both of the 307/308 pair):
+   requests[i].headers.content-type    frozen "application/x-www-form-urlencoded; charset=utf-8"
+                                       liber  "application/x-www-form-urlencoded"
+   requests[i].headers.transfer-encoding frozen null, liber "chunked"
+== every method, path, query, body and outcome observation of those six rows
+== matched, including the content-header removal on the 300/301/302/303 follow-ups
+== and the 21-request limit row.
+
+== the two fixes the controller approved for this ticket ==
+- lib/source/http_source_transport.dart `withSourceBodyContentType`: okhttp-4.12.0
+  `RequestBody$Companion.create(String, MediaType)` parses "<declared>; charset=utf-8"
+  when the media type names no charset (bytecode: the literal "; charset=utf-8" is
+  appended and re-parsed only when `MediaType.charset()` answers null), so the wire
+  carries that value; a declared charset is left untouched.
+- `_readOnce` sets `request.contentLength` to the UTF-8 body's byte length before
+  writing it, because the frozen client built that body and sends Content-Length.
+
+== comparison after the fixes ==
+$ rm -f tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json
+$ dart run tool/nested_oracle_compare.dart --requests <master fjs.dll> tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json
+pass        defaults-injected, defaults-declared, redirect-300-post, redirect-301-post,
+            redirect-302-post, redirect-303-post, redirect-307-post, redirect-308-post,
+            redirect-limit, query-key-raw, query-key-separators,
+            query-key-separators-and-space, query-already-encoded, page-list-hit,
+            page-list-past-end, pageless-empty-bindings,
+            pageless-page-list-literal                                   (17)
+notCompared defaults-user-agent-null, redirect-cross-origin, query-exact-bytes (3)
+fail        (none)
+request corpus: pass (20 rows, 17 pass, 0 fail, 3 notCompared)
+
+== the three notCompared rows, with both observed values ==
+defaults-user-agent-null      requests[0].headers.user-agent
+                              frozen "okhttp/4.12.0" | liber "Dart/3.12 (dart:io)"
+redirect-cross-origin         requests[1].headers.cookie
+                              frozen "test=value" | liber null
+query-exact-bytes             requests[0].rawQuery
+                              frozen "q={a}|b^c`\d%27e%20f%20%E4%B9%A6&p=1"
+                              liber  "q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1"
+
+== the library the product side ran against ==
+$ sha256sum D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll
+b9cd78a76353991fd535fb4b8df5e3fe951f494506f2ec5852609beade4c9983
+== the request path reaches the engine only for the response-body decode
+== (`EncodingDetect` fallback) and for a named `charset`; this corpus declares
+== neither a charset nor a JavaScript request rule. The fixes in this lane are
+== Dart-only, so master's DLL (already rebuilt for #51's Rust change) is the
+== library every row above ran against.
