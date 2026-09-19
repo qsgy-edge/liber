@@ -7,6 +7,8 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_encoding.dart';
+import 'package:liber/source/source_url_rules.dart';
 
 import 'native_library.dart';
 
@@ -222,9 +224,7 @@ void main() {
       expect(appended.headers, contains('content-length: 3'));
       expect(appended.headers, isNot(contains('transfer-encoding')));
 
-      // A media type that names a charset is kept as the source wrote it. The
-      // frozen call would also write the body's bytes with that charset; this
-      // transport keeps UTF-8, which no fixture in this slice reaches.
+      // A media type that names a charset is kept as the source wrote it.
       final declared = await post({'Content-Type': 'text/plain; charset=GBK'});
       expect(declared.headers, contains('content-type: text/plain; charset=gbk'));
       expect(declared.headers, contains('content-length: 3'));
@@ -417,15 +417,130 @@ void main() {
       // `%XX` (AnalyzeUrl.kt:318-328).
       expect(bodies.single, 'k=%CA%E9');
       // Frozen `String.toRequestBody(formContentType)`: the form media type has
-      // no charset parameter, so the body it writes gains `; charset=utf-8`
-      // (okhttp-4.12.0 `RequestBody$Companion.create`). The frozen client's
-      // header therefore names UTF-8 while the bytes above are GBK: the same
-      // resolved charset also selects those bytes, and only the header half is
-      // reproduced here (recorded as a coverage gap).
+      // no charset parameter, so the body it writes gains `; charset=utf-8`.
+      // The GBK bytes are percent-escaped ASCII here: `k=%CA%E9` is sent as
+      // UTF-8, while the raw body branch uses its declared media type's charset.
       expect(contentTypes.single, 'application/x-www-form-urlencoded; charset=utf-8');
     } finally {
       await subscription.cancel();
       await server.close(force: true);
+    }
+  });
+
+  for (final row in <
+    ({
+      String name,
+      String? contentType,
+      String? charset,
+      String body,
+      List<int> bytes,
+      String wireContentType,
+    })
+  >[
+    (
+      name: 'declared GBK body',
+      contentType: 'text/plain; charset=GBK',
+      charset: null,
+      body: '书',
+      bytes: [0xCA, 0xE9],
+      wireContentType: 'text/plain; charset=GBK',
+    ),
+    (
+      name: 'Content-Type takes precedence over the charset option',
+      contentType: 'text/plain; charset=UTF-8',
+      charset: 'GBK',
+      body: '书',
+      bytes: [0xE4, 0xB9, 0xA6],
+      wireContentType: 'text/plain; charset=UTF-8',
+    ),
+    (
+      name: 'undeclared body charset defaults to UTF-8',
+      contentType: 'text/plain',
+      charset: null,
+      body: '书',
+      bytes: [0xE4, 0xB9, 0xA6],
+      wireContentType: 'text/plain; charset=utf-8',
+    ),
+    (
+      name: 'GBK form option percent-escapes before UTF-8 body encoding',
+      contentType: null,
+      charset: 'GBK',
+      body: 'k=书',
+      bytes: [0x6B, 0x3D, 0x25, 0x43, 0x41, 0x25, 0x45, 0x39],
+      wireContentType: 'application/x-www-form-urlencoded; charset=utf-8',
+    ),
+  ]) {
+    test('${row.name} preserves bytes and framing across 307/308', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final bodies = <List<int>>[];
+      final headers = <HttpHeaders>[];
+      final methods = <String>[];
+      final subscription = server.listen((request) async {
+        bodies.add(
+          await request.fold<List<int>>([], (all, part) => all..addAll(part)),
+        );
+        headers.add(request.headers);
+        methods.add(request.method);
+        if (request.uri.path != '/end') {
+          request.response.statusCode = request.uri.path == '/start' ? 307 : 308;
+          request.response.headers.set(
+            'Location',
+            request.uri.path == '/start' ? '/middle' : '/end',
+          );
+        }
+        request.response.headers.contentType = ContentType.text;
+        request.response.write('ok');
+        await request.response.close();
+      });
+      try {
+        final declared = <String, String>{
+          if (row.contentType != null) 'Content-Type': row.contentType!,
+        };
+        final shape = await sourceRequestShape(
+          SourceUrlOptions(method: 'POST', body: row.body, charset: row.charset),
+          declared,
+        );
+        await HttpSourceTransport().send(
+          SourceHttpRequest(
+            method: shape.method,
+            url: Uri.parse('http://127.0.0.1:${server.port}/start'),
+            headers: {...declared, ...shape.headers},
+            body: shape.body,
+            followRedirects: true,
+          ),
+        );
+        expect(methods, ['POST', 'POST', 'POST']);
+        expect(bodies, [row.bytes, row.bytes, row.bytes]);
+        for (final header in headers) {
+          expect(header.value('content-type'), row.wireContentType);
+          expect(header.contentLength, row.bytes.length);
+          expect(header.value('transfer-encoding'), isNull);
+        }
+      } finally {
+        await subscription.cancel();
+        await server.close(force: true);
+      }
+    });
+  }
+
+  test('an unsupported body charset propagates its named encoding error', () async {
+    final server = _WireServer((_) => ok('ok'));
+    await server.start();
+    try {
+      await expectLater(
+        HttpSourceTransport().send(
+          SourceHttpRequest(
+            method: 'POST',
+            url: Uri.parse('${server.origin}/post'),
+            headers: {'Content-Type': 'text/plain; charset=unknown-liber-54'},
+            body: '书',
+          ),
+        ),
+        throwsA(predicate<Object>(SourceEncoding.isUnknownEncoding)),
+      );
+      expect(server.requests, isEmpty);
+    } finally {
+      await server.stop();
     }
   });
 

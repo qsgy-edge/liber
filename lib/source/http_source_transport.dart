@@ -67,15 +67,15 @@ Map<String, String> withSourceRequestDefaults(Map<String, String> headers) {
 ///
 /// Guarded by the body's own content type, so it applies to every branch the
 /// frozen `AnalyzeUrl` builds a body for: the form branch
-/// (`postForm(encodedForm)`, `OkHttpUtils.kt:113-115`), a declared
+/// (`postForm(encodedForm)`, `OkHttpUtils.kt:141-142`), a declared
 /// `Content-Type` (`body.toRequestBody(contentType.toMediaType())`,
-/// `AnalyzeUrl.kt:381-393`) and `postJson` (whose media type already names
+/// `AnalyzeUrl.kt:435-446`) and `postJson` (whose media type already names
 /// `UTF-8`). It is idempotent, so the follow-up of a 307/308 keeps one charset.
 ///
-/// The frozen call also writes the body's *bytes* with that same resolved
-/// charset (`String.getBytes(charset)`), so a source that declares a non-UTF-8
-/// charset reaches the wire as those bytes. This transport keeps writing UTF-8
-/// (recorded as a coverage gap: no fixture declares such a charset).
+/// The body's bytes use that media type's charset through [SourceEncoding].
+/// The URL option's `charset` has already been applied to form/query escapes;
+/// it does not override a declared body media type (frozen AnalyzeUrl.kt:257-260,
+/// 435-446).
 Map<String, String> withSourceBodyContentType(Map<String, String> headers) {
   String? name;
   for (final key in headers.keys) {
@@ -199,7 +199,11 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
         request.headers.set(header.key, header.value);
       }
       if (body != null) {
-        final bytes = utf8.encode(body);
+        final charset = sourceMediaTypeCharset([
+          for (final header in requestHeaders.entries)
+            if (header.key.toLowerCase() == 'content-type') header.value,
+        ]);
+        final bytes = await SourceEncoding.encode(body, charset ?? 'UTF-8');
         // The frozen client knows the body it built, so its request carries
         // `Content-Length` rather than a chunked stream; Dart's `HttpClient`
         // frames an unknown length chunked unless the length is set first.
