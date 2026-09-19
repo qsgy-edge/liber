@@ -10,6 +10,39 @@ import 'source_host_state.dart';
 export 'html_source_pipeline.dart' show HtmlBook, HtmlChapterBody;
 export 'json_source_pipeline.dart' show SourceChapter;
 
+/// The frozen source's default search keyword (`BookSource.getCheckKeyword`).
+///
+/// See `BookSource.kt:208-215` in Legado baseline `14dd24945`: a nonblank
+/// `ruleSearch.checkKeyWord` wins without trimming the value; otherwise the
+/// caller's fallback is used.
+String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
+  final search = source['ruleSearch'];
+  final value = search is Map ? search['checkKeyWord'] : null;
+  if (value == null) return fallback;
+  if (value is! String) {
+    throw const FormatException('ruleSearch.checkKeyWord 必须是字符串规则');
+  }
+  return value.trim().isNotEmpty ? value : fallback;
+}
+
+/// Formats a source word-count value using Legado's `StringUtils.wordCountFormat`.
+///
+/// Numeric values up to 10,000 are suffixed with `字`; larger positive values
+/// are rendered in ten-thousands with at most one decimal and `万字`. Other
+/// strings pass through unchanged, while zero and negative numeric values are
+/// empty.
+String formatSourceWordCount(String value) {
+  final numeric = RegExp(r'^-?[0-9]+$').hasMatch(value);
+  if (!numeric) return value;
+  final count = int.parse(value);
+  if (count <= 0) return '';
+  if (count <= 10000) return '$count字';
+  final tenThousands = (count / 10000)
+      .toStringAsFixed(1)
+      .replaceFirst(RegExp(r'\.0$'), '');
+  return '$tenThousands万字';
+}
+
 /// One analysis of one Book Source, as the pages that run a source hold it.
 ///
 /// A source's rules decide which adapter actually runs: [HtmlSourcePipeline]

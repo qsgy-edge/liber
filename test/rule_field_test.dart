@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
@@ -26,11 +27,12 @@ const _htmlUrl = 'http://rules.test';
 /// every rule below transforms.
 const _pages = {
   '/search':
-      '<div class="result"><a href="/book/1">回音</a></div>',
+      '<div class="result"><a href="/book/1">回音</a><span class="sr-intro">搜索简介</span><span class="sr-last">搜索最新章</span><span class="sr-count">12001</span></div>',
   '/book/1':
-      '<h1>回音</h1><div class="intro">简介</div><a class="toc" href="/toc/1">目录</a>',
+      '<h1>回音</h1><div class="intro">简介</div><div class="info-word">23000</div><a class="toc" href="/toc/1">目录</a>',
   '/toc/1': '<div id="list"><a href="/chapter/1">第一章</a></div>',
-  '/chapter/1': '<div class="content">正文</div>',
+  '/chapter/1':
+      '<h2 class="chapter-title">正文标题</h2><div class="content">正文</div>',
 };
 
 class _HtmlPages implements BookSourceTransport {
@@ -62,7 +64,11 @@ Map<String, dynamic> _htmlSource({
     'kind': kind,
   },
   'ruleBookInfo': {'name': 'h1@text', 'tocUrl': '.toc@href'},
-  'ruleToc': {'chapterList': '#list a', 'chapterName': tocName, 'chapterUrl': 'href'},
+  'ruleToc': {
+    'chapterList': '#list a',
+    'chapterName': tocName,
+    'chapterUrl': 'href',
+  },
   'ruleContent': {'content': content},
 };
 
@@ -110,16 +116,30 @@ const _jsonUrl = 'http://json-rules.test';
 const _jsonPages = {
   '/search': {
     'items': [
-      {'name': '回音', 'path': '/book/1', 'kind': '玄幻', 'id': '7'},
+      {
+        'name': '回音',
+        'path': '/book/1',
+        'kind': '玄幻',
+        'id': '7',
+        'intro': '搜索简介',
+        'lastChapter': '搜索最新章',
+        'wordCount': '12001',
+      },
     ],
   },
-  '/book/1': {'title': '回音', 'toc': '/toc/1', 'intro': '简介'},
+  '/book/1': {
+    'title': '回音',
+    'author': '作者',
+    'toc': '/toc/1',
+    'intro': '简介',
+    'wordCount': '23000',
+  },
   '/toc/1': {
     'list': [
       {'label': '第一章', 'href': '/chapter/1'},
     ],
   },
-  '/chapter/1': {'content': '正文'},
+  '/chapter/1': {'content': '正文', 'title': '正文标题'},
 };
 
 void main() {
@@ -132,12 +152,15 @@ void main() {
       return (await pipeline.search('关键字')).single;
     }
 
-    test('a trailing @js: executes its value instead of being dropped', () async {
-      final hit = await search(
-        _htmlSource(name: r"a.0@text @js: result + '!'"),
-      );
-      expect(hit.title, '回音!');
-    });
+    test(
+      'a trailing @js: executes its value instead of being dropped',
+      () async {
+        final hit = await search(
+          _htmlSource(name: r"a.0@text @js: result + '!'"),
+        );
+        expect(hit.title, '回音!');
+      },
+    );
 
     test('<js> runs its value and feeds the next segment nothing', () async {
       final hit = await search(
@@ -278,12 +301,15 @@ void main() {
       return (await pipeline.search('关键字')).single;
     }
 
-    test('a trailing @js: executes its value instead of being dropped', () async {
-      final hit = await search(
-        _jsonSource(name: r'$.name @js: result + "!"'),
-      );
-      expect(hit.title, '回音!');
-    });
+    test(
+      'a trailing @js: executes its value instead of being dropped',
+      () async {
+        final hit = await search(
+          _jsonSource(name: r'$.name @js: result + "!"'),
+        );
+        expect(hit.title, '回音!');
+      },
+    );
 
     test('<js> runs its value', () async {
       final hit = await search(
@@ -306,9 +332,7 @@ void main() {
 
     test('@put: writes a rule variable and @get: reads it back', () async {
       final hit = await search(
-        _jsonSource(
-          name: r'@put:{"saved":"$.name"}$.name##回音##@get:{saved}',
-        ),
+        _jsonSource(name: r'@put:{"saved":"$.name"}$.name##回音##@get:{saved}'),
       );
       expect(hit.title, '回音');
     });
@@ -320,10 +344,7 @@ void main() {
       );
       // The trailing `##` keeps its empty fourth field, so the JSON reader runs
       // the frozen `replaceFirst` branch and answers with the replaced match.
-      expect(
-        (await search(_jsonSource(name: r'$.name##回|音##X##'))).title,
-        'X',
-      );
+      expect((await search(_jsonSource(name: r'$.name##回|音##X##'))).title, 'X');
       expect(
         (await search(_jsonSource(name: r'$.name##回|音##X###'))).title,
         'X',
@@ -395,38 +416,140 @@ void main() {
     });
   });
 
+  // Frozen evidence: Legado baseline 14dd24945, BookList.kt:101-252
+  // (search fields), BookInfo.kt:65-107 (canReName and wordCount),
+  // BookContent.kt:64-72 (content title), and StringUtils.kt:252-266
+  // (word-count formatting). The deterministic HTML/JSON replay bodies below
+  // are the fixture for those frozen entry points.
+  group('remaining result fields', () {
+    test(
+      'HTML fields preserve frozen search, detail, rename, and title semantics',
+      () async {
+        final source = _htmlSource(name: 'a.0@text');
+        (source['ruleSearch'] as Map).addAll({
+          'intro': '.sr-intro@text',
+          'lastChapter': '.sr-last@text',
+          'wordCount': '.sr-count@text',
+          'checkKeyWord': '校验词',
+        });
+        (source['ruleBookInfo'] as Map).addAll({
+          'wordCount': '.info-word@text',
+          'canReName': '允许改名',
+        });
+        (source['ruleContent'] as Map)['title'] = '.chapter-title@text';
+        final pipeline = HtmlSourcePipeline(source, _HtmlPages());
+        final hit = (await pipeline.search('关键字')).single;
+        expect(
+          (hit.intro, hit.lastChapter, hit.wordCount),
+          ('搜索简介', '搜索最新章', '1.2万字'),
+        );
+        expect(sourceCheckKeyword(source, 'fallback'), '校验词');
+        final (book, chapters) = await pipeline.details(
+          HtmlBook(url: hit.url, title: '旧标题', author: '旧作者'),
+        );
+        expect((book.title, book.author, book.wordCount), ('回音', '', '2.3万字'));
+        final body = await pipeline.chapter(chapters.single);
+        expect(body.title, '正文标题');
+      },
+    );
+
+    test(
+      'JSON fields preserve frozen search, detail, rename, and title semantics',
+      () async {
+        final source = _jsonSource(name: r'$.name');
+        (source['ruleSearch'] as Map).addAll({
+          'intro': r'$.intro',
+          'lastChapter': r'$.lastChapter',
+          'wordCount': r'$.wordCount',
+          'checkKeyWord': '校验词',
+        });
+        (source['ruleBookInfo'] as Map).addAll({
+          'wordCount': r'$.wordCount',
+          'canReName': '允许改名',
+        });
+        (source['ruleContent'] as Map)['title'] = r'$.title';
+        final pipeline = JsonSourcePipeline(
+          source,
+          _JsonPages()..pages.addAll(_jsonPages),
+        );
+        final hit = (await pipeline.search('关键字')).single;
+        expect(
+          (hit.intro, hit.lastChapter, hit.wordCount),
+          ('搜索简介', '搜索最新章', '1.2万字'),
+        );
+        expect(sourceCheckKeyword(source, 'fallback'), '校验词');
+        final (book, chapters) = await pipeline.details(
+          HtmlBook(url: hit.url, title: '旧标题', author: '旧作者'),
+        );
+        expect(
+          (book.title, book.author, book.wordCount),
+          ('回音', '作者', '2.3万字'),
+        );
+        final body = await pipeline.chapter(chapters.single);
+        expect(body.title, '正文标题');
+      },
+    );
+
+    test('malformed optional fields fail with their field name', () async {
+      final html = _htmlSource(name: 'a.0@text');
+      (html['ruleSearch'] as Map)['intro'] = 42;
+      await expectLater(
+        HtmlSourcePipeline(html, _HtmlPages()).search('关键字'),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('ruleSearch.intro'),
+          ),
+        ),
+      );
+      final json = _jsonSource(name: r'$.name');
+      (json['ruleContent'] as Map)['title'] = 'bad';
+      final pipeline = JsonSourcePipeline(
+        json,
+        _JsonPages()..pages.addAll(_jsonPages),
+      );
+      final hit = (await pipeline.search('关键字')).single;
+      final (_, chapters) = await pipeline.details(hit);
+      await expectLater(
+        pipeline.chapter(chapters.single),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (error) => '$error',
+            'message',
+            contains('ruleContent.title'),
+          ),
+        ),
+      );
+    });
+  });
+
   group('shared rule-field parse', () {
     test('the ##/### fields follow the frozen split', () {
       expect(splitRuleFields('#a@text').rule, '#a@text');
       expect(splitRuleFields('#a@text').hasReplacement, isFalse);
       final two = splitRuleFields('a##x##');
-      expect((two.rule, two.regex, two.replacement, two.replaceFirst), (
-        'a',
-        'x',
-        '',
-        false,
-      ));
+      expect(
+        (two.rule, two.regex, two.replacement, two.replaceFirst),
+        ('a', 'x', '', false),
+      );
       // Three delimiters are four fields: Kotlin's `split("##")` keeps the
       // trailing empty field, so `##` alone reaches the frozen `replaceFirst`.
       final trailing = splitRuleFields('a##x##y##');
-      expect((
-        trailing.rule,
-        trailing.regex,
-        trailing.replacement,
-        trailing.replaceFirst,
-      ), (
-        'a',
-        'x',
-        'y',
-        true,
-      ));
+      expect(
+        (
+          trailing.rule,
+          trailing.regex,
+          trailing.replacement,
+          trailing.replaceFirst,
+        ),
+        ('a', 'x', 'y', true),
+      );
       final four = splitRuleFields('a##x##y###');
-      expect((four.rule, four.regex, four.replacement, four.replaceFirst), (
-        'a',
-        'x',
-        'y',
-        true,
-      ));
+      expect(
+        (four.rule, four.regex, four.replacement, four.replaceFirst),
+        ('a', 'x', 'y', true),
+      );
     });
 
     test('a field is split into its extraction text and its scripts', () {
@@ -438,14 +561,8 @@ void main() {
     });
 
     test('@put: must be a JSON string map', () {
-      expect(
-        () => parseRuleField('@put:{"a":1}'),
-        returnsNormally,
-      );
-      expect(
-        () => RuleField.extractionText('@put:'),
-        returnsNormally,
-      );
+      expect(() => parseRuleField('@put:{"a":1}'), returnsNormally);
+      expect(() => RuleField.extractionText('@put:'), returnsNormally);
     });
   });
 }

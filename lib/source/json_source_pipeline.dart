@@ -179,12 +179,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return value is String ? value : '';
   }
 
-  Future<void> _writeRuleVariable(String key, String value) =>
-      _hostSurface.putEntry(
-        _sourceRef,
-        sourceRuleVariableKey(_sourceRef, key),
-        value,
-      );
+  Future<void> _writeRuleVariable(String key, String value) => _hostSurface
+      .putEntry(_sourceRef, sourceRuleVariableKey(_sourceRef, key), value);
 
   /// One rule field through the shared path: `@js:`/`<js>` split,
   /// `{{...}}`/`@get:`/`@put:` resolved, then the JSON reader's extraction, then
@@ -301,10 +297,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     _cancellation.throwIfCancelled();
     final merged = {..._activeHeaders, ...options.headers};
-    final (method: method, body: body, headers: extra) = await sourceRequestShape(
-      options,
-      merged,
-    );
+    final (method: method, body: body, headers: extra) =
+        await sourceRequestShape(options, merged);
     final headers = {...merged, ...extra};
     final host = _host;
     if (host != null) {
@@ -340,16 +334,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final rules = <String, String>{};
     for (final entry in raw.entries) {
       if (entry.value == null || entry.value == '') continue;
-      if (entry.value is! String && entry.key != 'canReName') {
+      if (entry.value is! String) {
         throw FormatException('Invalid $key.${entry.key}');
       }
-      if (entry.value is! String) continue;
-      if (required.contains(entry.key) && entry.key != 'checkKeyWord') {
-        // The extraction text of the field: a `@js:`/`<js>` segment is not
-        // validated as JSONPath here, and a broken field is refused before any
-        // request is sent.
+      if (entry.key != 'checkKeyWord' && entry.key != 'canReName') {
+        // Every declared extraction field is checked, including optional
+        // result fields: malformed rules fail with their field context.
         final extraction = RuleField.extractionText(entry.value as String);
-        if (extraction != null) JsonSourceRules.validate(extraction);
+        try {
+          if (extraction != null) JsonSourceRules.validate(extraction);
+        } on UnsupportedError catch (error) {
+          throw UnsupportedError('$key.${entry.key}: $error');
+        }
       }
       if (!required.contains(entry.key) &&
           !{
@@ -364,6 +360,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'downloadUrls',
             'init',
             'checkKeyWord',
+            'title',
           }.contains(entry.key)) {
         throw UnsupportedError('Unsupported field: $key.${entry.key}');
       }
@@ -420,11 +417,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
         keyword,
       );
       _bookOptions[bookUrl] = bookOptions;
+      final name = await _text(entry, search['name']!);
+      final author = await _optional(entry, search['author'] ?? '');
+      final intro = await _optional(entry, search['intro'] ?? '');
+      final lastChapter = await _optional(entry, search['lastChapter'] ?? '');
+      final wordCount = await _optional(entry, search['wordCount'] ?? '');
       books.add(
         HtmlBook(
           url: bookUrl,
-          title: await _text(entry, search['name']!),
-          author: await _optional(entry, search['author'] ?? ''),
+          title: name,
+          author: author,
+          intro: intro,
+          lastChapter: lastChapter,
+          wordCount: formatSourceWordCount(wordCount),
           kind: await _optional(entry, search['kind'] ?? ''),
         ),
       );
@@ -455,14 +460,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? await _field(document, initRule)
         : document;
     final cover = await _optional(page, info['coverUrl'] ?? '');
+    final canReName = info['canReName']?.isNotEmpty == true;
+    final infoTitle = await _text(page, info['name']!);
+    final infoAuthor = await _optional(page, info['author'] ?? '');
     final book = HtmlBook(
       url: hit.url,
-      title: await _text(page, info['name']!),
-      author: await _optional(page, info['author'] ?? ''),
+      // Legado only permits a detail page to replace the search title/author
+      // when `canReName` is declared (BookInfo.kt:65-70).
+      title: canReName ? infoTitle : hit.title,
+      author: canReName ? infoAuthor : hit.author,
       intro: await _optional(page, info['intro'] ?? ''),
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
       kind: await _optional(page, info['kind'] ?? ''),
       lastChapter: await _optional(page, info['lastChapter'] ?? ''),
+      wordCount: formatSourceWordCount(
+        await _optional(page, info['wordCount'] ?? ''),
+      ),
     );
     final (tocUrl, tocOptions) = await _request(
       hit.url,
@@ -480,14 +493,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
     // the script: the adapter reads the JSONPath and decrypts with the source's
     // own key and iv here. The script is not dropped — it is answered by name.
-    final catEye = toc['chapterUrl']!.contains('@js:java.aesBase64DecodeToString');
+    final catEye = toc['chapterUrl']!.contains(
+      '@js:java.aesBase64DecodeToString',
+    );
     for (final entry in entries) {
       var chapterUrl = catEye
           ? (JsonSourceRules.extract(
                   entry,
                   RuleField.extractionText(toc['chapterUrl']!) ?? '',
-                )
-                ?.toString() ??
+                )?.toString() ??
                 '')
           : await _text(entry, toc['chapterUrl']!);
       if (catEye) {
@@ -504,10 +518,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
       _chapterOptions[resolved] = chapterOptions;
       chapters.add(
-        SourceChapter(
-          await _text(entry, toc['chapterName']!),
-          resolved,
-        ),
+        SourceChapter(await _text(entry, toc['chapterName']!), resolved),
       );
     }
     if (chapters.isEmpty) throw StateError('Empty table of contents');
@@ -528,7 +539,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       options: _chapterOptions.remove(chapter.url) ?? const SourceUrlOptions(),
     );
     final text = await _text(document, content['content']!);
-    return HtmlChapterBody(text, 1);
+    final titleRule = content['title'];
+    final title = titleRule == null
+        ? null
+        : await _optional(document, titleRule);
+    return HtmlChapterBody(
+      text,
+      1,
+      title: title?.isEmpty == true ? null : title,
+    );
   }
 
   /// One book, end to end, over the three stage entries.
