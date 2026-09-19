@@ -10,14 +10,19 @@ exact entry points that a future Android oracle must call:
 
 `fixtures.json` deliberately contains inputs and row metadata only. It has no
 hand-authored expected values and no committed golden. The Android
-`ContentProcessor` entry is **not-run**, owned by #38; #54 owns the handset in
+`ContentProcessor` entry is **not-run** and remains unfinished work of #17;
+closed #38 supplied a four-stage precedent, not this reader-processing entry.
+#54 owns the handset in
 batch 9. A host implementation of the algorithm would not be independent
 frozen evidence, so it is not used as a comparator.
 
-The comparison boundary is the processed content returned before
-`ContentProcessor.kt:177-198` performs final paragraph shaping. This keeps
-#50's reader paragraph trimming, blank-line removal, and indentation out of a
-replace-rule verdict. The title path is compared separately at
+The comparison boundary is the complete `ContentProcessor.getContent` return
+value with `includeTitle=false`, including its final paragraph shaping at
+`ContentProcessor.kt:177-198`, against the product's complete `ContentProcessing`
+result. No intermediate value is described as that method's returned output.
+#50 corrected the upstream `BookContent` stage's shaping; #48 supplied
+`reSegment` inside reader processing. Neither permits normalization that hides
+a replace-rule mismatch. Compare the title path separately at
 `BookChapter.getDisplayTitle`.
 
 The corpus covers the requested rows:

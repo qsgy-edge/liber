@@ -4,10 +4,10 @@
   "corpusVersion": 1,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "ContentProcessor.getContent + BookChapter.getDisplayTitle",
-  "comparisonBoundary": "ContentProcessor output before its final paragraph shaping loop (ContentProcessor.kt:177-198); title observations use BookChapter.getDisplayTitle",
+  "comparisonBoundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:177-198); title observations use BookChapter.getDisplayTitle",
   "deviceOracle": {
     "status": "not-run",
-    "owner": "#38",
+    "owner": "#17",
     "handsetOwner": "#54",
     "reason": "The Android entry that can execute ContentProcessor against the frozen app is not available to this lane. A host model is not an independent frozen oracle and must not supply expected values."
   },

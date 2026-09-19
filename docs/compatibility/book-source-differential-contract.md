@@ -209,12 +209,14 @@ The prepared corpus at `tool/replace_rule_oracle/fixtures.json` covers the
 frozen reader's replace-rule entry points: no rules, content-only, title-only,
 both paths, regex and literal rules, name/origin scope and exclusion, ordering,
 duplicated titles, `reSegment`, simplified/traditional conversion, timeout, and
-refusal behavior. Its comparison boundary is the processed content returned by
-`ContentProcessor.getContent` before the final paragraph shaping loop, with
-`BookChapter.getDisplayTitle` compared separately. The corpus contains inputs
-and frozen source hashes but no expected output until the Android entry exists.
-The entry is owned by #38; on this batch's shared handset it is `not-run` while
-#54 owns device use. A host reimplementation cannot substitute for frozen
+refusal behavior. Its comparison boundary is the complete content returned by
+`ContentProcessor.getContent(includeTitle=false)`, including the final paragraph
+shaping loop, with `BookChapter.getDisplayTitle` compared separately. The corpus
+contains inputs and frozen source hashes but no expected output until the
+Android entry exists. This reader-processing entry remains unfinished #17 work;
+closed #38's four-stage entry supplies precedent, not ownership or execution
+proof. It is `not-run`; #54 owns batch 9 device use. A host reimplementation
+cannot substitute for frozen
 execution. Timeout's frozen restart and stack-trace content side effects remain
 a named `notCompared` observation rather than a normalized result.
 
