@@ -270,19 +270,22 @@ are a shell claim, not a compatibility claim.
 
 ## The device prerequisite
 
-`adb devices` and `emulator -list-avds` are empty on this machine; the Android
-SDK (platforms 32–36, emulator, NDK) is installed, but there is no system image
-and no AVD. The recorded goldens were produced on a physical device
-(`tool/nested_oracle/evidence/android-17-os4.0.0.25/manifest.json`, a Redmi
-running Android 17). Three tickets wait on a device: #38 (the four-stage
-golden), #15 (request semantics) and #23 (HTML extraction). The preferred route
-is to attach the physical device that produced the recorded goldens; the
-fallback is to build an AVD (JDK 17, a system image, then the frozen debug APK
-built from `D:\GithubRepositories\Android\legado` at `14dd24945`, signed with the
-same debug keystore the oracle instrumentation requires) and record the AVD
-fingerprint and WebView version in the golden's manifest. An AVD runs the
-Android WebView, so it can produce Android-adapter rows with a recorded version;
-it cannot produce the other platforms' adapter rows, and #2 keeps its own
+The physical device the recorded goldens came from is attached (`adb devices`
+shows `5615f742`, a Redmi myron on Android 17, fingerprint
+`Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys`), and
+the three tickets that waited on it produced their goldens on it in 2026-09-18/19:
+#38 (the four-stage golden), #23 with its 39-row refresh (#51), and #15
+(`tool/nested_oracle/evidence/android-17-os4.0.0.31/` carries all of them, each
+manifest pinning the device, the corpus and the harness). What remains of those
+rows is their Android *destination* half, which waits on P4 (the product has no
+Android application). When the handset is not attached — `adb devices` empty even
+after `adb kill-server && adb start-server` — a lane asks the controller and
+waits rather than improvising. The fallback of building an AVD (JDK 17, a system
+image, then the frozen debug APK built from `D:\GithubRepositories\Android\legado`
+at `14dd24945`, signed with the same debug keystore the oracle instrumentation
+requires) was declined by the operator and stays declined: it would need the
+fingerprint and WebView version recorded in the golden's manifest, and it could
+not produce the other platforms' adapter rows. #2 keeps its own
 acceptance and provenance requirements for all five adapters.
 
 ## Ratified from the practice so far, and what changes
