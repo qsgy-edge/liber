@@ -69,8 +69,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// The chapter whose title the frozen `AnalyzeRule` binds as `title` while the
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
-  /// is there. The `book` binding stays the runtime's always-null one.
+  /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  HtmlBook? _book;
+  SourceChapter? _chapter;
 
   /// The frozen `AnalyzeUrl` options one analysis owns: the options a stage's
   /// URL carried, kept for the stage that fetches it, because a book URL and a
@@ -137,6 +139,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'bookSourceGroup': source['bookSourceGroup'],
     'bookSourceType': source['bookSourceType'],
     'bookSourceComment': source['bookSourceComment'],
+    'header': source['header'],
     'enabledCookieJar': source['enabledCookieJar'],
     'loginUrl': source['loginUrl'],
   };
@@ -152,6 +155,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
           'baseUrl': '$_base',
           'result': result,
           'title': _chapterTitle,
+          'book': _book == null
+              ? null
+              : {
+                  'name': _book!.title,
+                  'bookUrl': '${_book!.url}',
+                  'author': _book!.author,
+                  'intro': _book!.intro,
+                  'coverUrl': _book!.cover,
+                  'kind': _book!.kind,
+                  'latestChapterTitle': _book!.lastChapter,
+                  'wordCount': _book!.wordCount,
+                },
+          'chapter': _chapter == null
+              ? null
+              : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
           'headers': _activeHeaders,
         },
         timeout: const Duration(seconds: 30),
@@ -170,7 +188,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   );
 
   Future<String> _readRuleVariable(String key) async {
-    if (key == 'bookName') return '';
+    if (key == 'bookName') return _book?.title ?? '';
     if (key == 'title') return _chapterTitle ?? '';
     final value = await _hostSurface.entry(
       _sourceRef,
@@ -179,12 +197,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return value is String ? value : '';
   }
 
-  Future<void> _writeRuleVariable(String key, String value) =>
-      _hostSurface.putEntry(
-        _sourceRef,
-        sourceRuleVariableKey(_sourceRef, key),
-        value,
-      );
+  Future<void> _writeRuleVariable(String key, String value) => _hostSurface
+      .putEntry(_sourceRef, sourceRuleVariableKey(_sourceRef, key), value);
 
   /// One rule field through the shared path: `@js:`/`<js>` split,
   /// `{{...}}`/`@get:`/`@put:` resolved, then the JSON reader's extraction, then
@@ -301,10 +315,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     _cancellation.throwIfCancelled();
     final merged = {..._activeHeaders, ...options.headers};
-    final (method: method, body: body, headers: extra) = await sourceRequestShape(
-      options,
-      merged,
-    );
+    final (method: method, body: body, headers: extra) =
+        await sourceRequestShape(options, merged);
     final headers = {...merged, ...extra};
     final host = _host;
     if (host != null) {
@@ -340,16 +352,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final rules = <String, String>{};
     for (final entry in raw.entries) {
       if (entry.value == null || entry.value == '') continue;
-      if (entry.value is! String && entry.key != 'canReName') {
+      if (entry.value is! String) {
         throw FormatException('Invalid $key.${entry.key}');
       }
-      if (entry.value is! String) continue;
-      if (required.contains(entry.key) && entry.key != 'checkKeyWord') {
-        // The extraction text of the field: a `@js:`/`<js>` segment is not
-        // validated as JSONPath here, and a broken field is refused before any
-        // request is sent.
+      if (entry.key != 'checkKeyWord' && entry.key != 'canReName') {
+        // Every declared extraction field is checked, including optional
+        // result fields: malformed rules fail with their field context.
         final extraction = RuleField.extractionText(entry.value as String);
-        if (extraction != null) JsonSourceRules.validate(extraction);
+        try {
+          if (extraction != null) JsonSourceRules.validate(extraction);
+        } on UnsupportedError catch (error) {
+          throw UnsupportedError('$key.${entry.key}: $error');
+        }
       }
       if (!required.contains(entry.key) &&
           !{
@@ -364,6 +378,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'downloadUrls',
             'init',
             'checkKeyWord',
+            'title',
           }.contains(entry.key)) {
         throw UnsupportedError('Unsupported field: $key.${entry.key}');
       }
@@ -391,6 +406,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `ruleSearch`: the books a keyword search returns.
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
+    _book = null;
+    _chapter = null;
+    _chapterTitle = null;
     _validate();
     _keyword = keyword;
     _page = page;
@@ -420,11 +438,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
         keyword,
       );
       _bookOptions[bookUrl] = bookOptions;
+      final name = await _text(entry, search['name']!);
+      final author = await _optional(entry, search['author'] ?? '');
+      final intro = await _optional(entry, search['intro'] ?? '');
+      final lastChapter = await _optional(entry, search['lastChapter'] ?? '');
+      final wordCount = await _optional(entry, search['wordCount'] ?? '');
       books.add(
         HtmlBook(
           url: bookUrl,
-          title: await _text(entry, search['name']!),
-          author: await _optional(entry, search['author'] ?? ''),
+          title: name,
+          author: author,
+          intro: formatSourceIntro(intro),
+          lastChapter: lastChapter,
+          wordCount: formatSourceWordCount(wordCount),
           kind: await _optional(entry, search['kind'] ?? ''),
         ),
       );
@@ -435,6 +461,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    _book = hit;
+    _chapter = null;
+    _chapterTitle = null;
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
@@ -455,15 +484,33 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? await _field(document, initRule)
         : document;
     final cover = await _optional(page, info['coverUrl'] ?? '');
+    final canReName = info['canReName']?.trim().isNotEmpty == true;
+    final infoTitle = await _optional(page, info['name']!);
+    final infoAuthor = await _optional(page, info['author'] ?? '');
+    final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
+    final infoWordCount = formatSourceWordCount(
+      await _optional(page, info['wordCount'] ?? ''),
+    );
+    final infoIntro = formatSourceIntro(
+      await _optional(page, info['intro'] ?? ''),
+    );
     final book = HtmlBook(
       url: hit.url,
-      title: await _text(page, info['name']!),
-      author: await _optional(page, info['author'] ?? ''),
-      intro: await _optional(page, info['intro'] ?? ''),
+      // Legado only permits a detail page to replace the search title/author
+      // when `canReName` is declared (BookInfo.kt:65-70).
+      title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+          ? infoTitle
+          : hit.title,
+      author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+          ? infoAuthor
+          : hit.author,
+      intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
       kind: await _optional(page, info['kind'] ?? ''),
-      lastChapter: await _optional(page, info['lastChapter'] ?? ''),
+      lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
+      wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
+    _book = book;
     final (tocUrl, tocOptions) = await _request(
       hit.url,
       JsonSourceRules.template(page, info['tocUrl']!),
@@ -480,14 +527,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
     // the script: the adapter reads the JSONPath and decrypts with the source's
     // own key and iv here. The script is not dropped — it is answered by name.
-    final catEye = toc['chapterUrl']!.contains('@js:java.aesBase64DecodeToString');
+    final catEye = toc['chapterUrl']!.contains(
+      '@js:java.aesBase64DecodeToString',
+    );
     for (final entry in entries) {
       var chapterUrl = catEye
           ? (JsonSourceRules.extract(
                   entry,
                   RuleField.extractionText(toc['chapterUrl']!) ?? '',
-                )
-                ?.toString() ??
+                )?.toString() ??
                 '')
           : await _text(entry, toc['chapterUrl']!);
       if (catEye) {
@@ -504,10 +552,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
       _chapterOptions[resolved] = chapterOptions;
       chapters.add(
-        SourceChapter(
-          await _text(entry, toc['chapterName']!),
-          resolved,
-        ),
+        SourceChapter(await _text(entry, toc['chapterName']!), resolved),
       );
     }
     if (chapters.isEmpty) throw StateError('Empty table of contents');
@@ -516,7 +561,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// `ruleContent`: one chapter's text.
   @override
-  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+  }) async {
+    if (book != null) _book = book;
+    _chapter = chapter;
     _validate();
     _page = null;
     _chapterTitle = chapter.name;
@@ -527,8 +577,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
       chapter.url,
       options: _chapterOptions.remove(chapter.url) ?? const SourceUrlOptions(),
     );
+    final titleRule = content['title'];
+    final title = titleRule == null
+        ? null
+        : await _optional(document, titleRule);
+    final contentTitle = title == null || title.trim().isEmpty ? null : title;
+    if (contentTitle != null) {
+      _chapterTitle = contentTitle;
+      _chapter = SourceChapter(contentTitle, chapter.url);
+    }
     final text = await _text(document, content['content']!);
-    return HtmlChapterBody(text, 1);
+    return HtmlChapterBody(text, 1, title: contentTitle);
   }
 
   /// One book, end to end, over the three stage entries.

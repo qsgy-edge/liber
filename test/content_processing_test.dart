@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/domain/contracts.dart' show SourceCancellation;
 import 'package:liber/local/reader_engine.dart' show ReaderScript;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/native_library.dart';
@@ -54,6 +55,7 @@ void main() {
     String bookOrigin = origin,
     void Function(String)? onNotice,
     Future<void> Function(ReplaceRule)? onRuleDisabled,
+    SourceCancellation? cancellation,
     bool useReplaceRule = true,
     bool useReSegment = false,
   }) => ContentProcessing(
@@ -66,6 +68,7 @@ void main() {
     script: script,
     onNotice: onNotice,
     onRuleDisabled: onRuleDisabled,
+    cancellation: cancellation,
     useReplaceRule: useReplaceRule,
     useReSegment: useReSegment,
   );
@@ -362,17 +365,123 @@ void main() {
     });
   });
 
-  group('skips are named, never mis-applied', () {
-    test('an @js: replacement is refused and reported once', () async {
+  group('replacement JavaScript and named skips', () {
+    test('an enabled @js: replacement sees the complete match', () async {
+      final content = await processing([
+        rule(
+          pattern: r'(\d+)字',
+          replacement: r'@js:result + ":" + result.match(/(\d+)字/)[1] + " $1"',
+          ruleName: 'JS 规则',
+        ),
+      ]).content('共20字和30字', chapterTitle: '第一章');
+      expect(content, '共20字:20 \$1和30字:30 \$1');
+    });
+
+    test('a disabled @js: replacement remains inactive', () async {
       final notices = <String>[];
-      final processor = processing([
-        rule(pattern: '广告', replacement: '@js:result', ruleName: 'JS 规则'),
-      ], onNotice: notices.add);
-      expect(await processor.content('广告', chapterTitle: '第一章'), '广告');
-      expect(await processor.content('广告', chapterTitle: '第二章'), '广告');
+      final content = await processing([
+        rule(
+          pattern: '广告',
+          replacement: '@js:result + "!"',
+          ruleName: '停用 JS 规则',
+          isEnabled: false,
+        ),
+      ], onNotice: notices.add).content('广告', chapterTitle: '第一章');
+      expect(content, '广告');
+      expect(notices, isEmpty);
+    });
+
+    test(
+      'a JavaScript replacement error keeps the text and is reported',
+      () async {
+        final notices = <String>[];
+        final content = await processing([
+          rule(
+            pattern: '广告',
+            replacement: '@js:throw new Error("boom")',
+            ruleName: '出错 JS 规则',
+          ),
+        ], onNotice: notices.add).content('广告', chapterTitle: '第一章');
+        expect(content, '广告');
+        expect(notices, hasLength(1));
+        expect(notices.single, contains('出错 JS 规则'));
+      },
+    );
+
+    test('cancellation keeps the text without reporting an error', () async {
+      final cancellation = SourceCancellation()..cancel();
+      final notices = <String>[];
+      final content = await processing(
+        [
+          rule(
+            pattern: '广告',
+            replacement: '@js:result + "!"',
+            ruleName: '取消 JS 规则',
+          ),
+        ],
+        cancellation: cancellation,
+        onNotice: notices.add,
+      ).content('广告', chapterTitle: '第一章');
+      expect(content, '广告');
+      expect(notices, isEmpty);
+    });
+
+    test(
+      'cancellation during match-worker startup leaves the title unchanged',
+      () async {
+        final cancellation = SourceCancellation();
+        final notices = <String>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              pattern: '广告',
+              replacement: '@js:result + "!"',
+              scopeTitle: true,
+            ),
+          ],
+          cancellation: cancellation,
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        final title = processor.displayTitle('广告');
+        cancellation.cancel();
+        expect(await title, '广告');
+        expect(notices, isEmpty);
+        expect(disabled, isEmpty);
+      },
+    );
+
+    test('a JavaScript replacement timeout disables the rule', () async {
+      final disabled = <String>[];
+      final notices = <String>[];
+      final content = await processing(
+        [
+          rule(
+            id: 'js-slow',
+            pattern: '广告',
+            replacement: '@js:while (true) {}',
+            ruleName: '超时 JS 规则',
+            timeoutMillisecond: 100,
+          ),
+        ],
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async {
+          disabled.add(rule.id);
+        },
+      ).content('广告', chapterTitle: '第一章');
+      expect(content, '广告');
+      expect(disabled, ['js-slow']);
       expect(notices, hasLength(1));
-      expect(notices.single, contains('@js:'));
-      expect(notices.single, contains('JS 规则'));
+      expect(notices.single, contains('超时 JS 规则'));
+      expect(notices.single, contains('超时'));
+    });
+
+    test('an ordinary regex replacement remains unchanged', () async {
+      final content = await processing([
+        rule(pattern: r'(\d+)字', replacement: r'$1 字'),
+      ]).content('共20字', chapterTitle: '第一章');
+      expect(content, '共20 字');
     });
 
     test('a pattern the engine cannot express is refused by name', () async {

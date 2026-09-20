@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'book_source_service.dart';
 import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
@@ -9,6 +11,63 @@ import 'source_host_state.dart';
 /// HTML adapter's file, [SourceChapter] from the JSON adapter's.
 export 'html_source_pipeline.dart' show HtmlBook, HtmlChapterBody;
 export 'json_source_pipeline.dart' show SourceChapter;
+
+/// The frozen source's default search keyword (`BookSource.getCheckKeyword`).
+///
+/// See `BookSource.kt:208-215` in Legado baseline `14dd24945`: a nonblank
+/// `ruleSearch.checkKeyWord` wins without trimming the value; otherwise the
+/// caller's fallback is used.
+String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
+  final search = source['ruleSearch'];
+  final value = search is Map ? search['checkKeyWord'] : null;
+  if (value == null) return fallback;
+  if (value is! String) {
+    throw const FormatException('ruleSearch.checkKeyWord 必须是字符串规则');
+  }
+  return value.trim().isNotEmpty ? value : fallback;
+}
+
+/// Frozen HtmlFormatter.format used for search and book-information intros.
+String formatSourceIntro(String value) => value
+    .replaceAll(RegExp(r'(&nbsp;)+'), ' ')
+    .replaceAll(RegExp(r'(&ensp;|&emsp;)'), ' ')
+    .replaceAll(RegExp('(&thinsp;|&zwnj;|&zwj;|\u2009|\u200C|\u200D)'), '')
+    .replaceAll(RegExp(r'</?(?:div|p|br|hr|h\d|article|dd|dl)[^>]*>'), '\n')
+    .replaceAll(RegExp(r'<!--[^>]*-->'), '')
+    .replaceAll(RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>'), '')
+    // Java's default \\s is ASCII, unlike Dart's ECMAScript whitespace class.
+    .replaceAll(RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'), '\n　　')
+    .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), '　　')
+    .replaceAll(RegExp(r'[\n \t\x0b\f\r]+$'), '');
+
+/// Formats a source word-count value using Legado's `StringUtils.wordCountFormat`.
+///
+/// Numeric values up to 10,000 are suffixed with `字`; larger positive values
+/// are rendered in ten-thousands with at most one decimal and `万字`. Other
+/// strings pass through unchanged, while zero and negative numeric values are
+/// empty.
+String formatSourceWordCount(String value) {
+  final numeric = RegExp(r'^-?[0-9]+$').hasMatch(value);
+  if (!numeric) return value;
+  final count = int.parse(value);
+  if (count < -2147483648 || count > 2147483647) {
+    throw const FormatException('wordCount 超出冻结 Int 范围');
+  }
+  if (count <= 0) return '';
+  if (count <= 10000) return '$count字';
+  // Frozen Kotlin multiplies by 1.0f before dividing as Double. DecimalFormat
+  // rounds ties to even; at one decimal, exact binary ties are .25 and .75.
+  var units = Float32List.fromList([count.toDouble()]).single / 10000;
+  final quarters = units * 4;
+  if (quarters == quarters.roundToDouble() && quarters.toInt().isOdd) {
+    final lower = (units * 10).floor();
+    units = (lower.isEven ? lower : lower + 1) / 10;
+  }
+  final tenThousands = units
+      .toStringAsFixed(1)
+      .replaceFirst(RegExp(r'\.0$'), '');
+  return '$tenThousands万字';
+}
 
 /// One analysis of one Book Source, as the pages that run a source hold it.
 ///
@@ -48,8 +107,9 @@ abstract interface class BookSourcePipeline {
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit);
 
-  /// `ruleContent`: one chapter's text.
-  Future<HtmlChapterBody> chapter(SourceChapter chapter);
+  /// `ruleContent`: one chapter's text. A reader supplies its selected [book]
+  /// when its fresh analysis has not run the details stage.
+  Future<HtmlChapterBody> chapter(SourceChapter chapter, {HtmlBook? book});
 
   /// Ends this analysis: a stage in flight stops at its next check, and every
   /// stage after it refuses to start.

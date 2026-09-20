@@ -144,6 +144,7 @@ class SourceHostDispatcher {
   Future<List<SourceHttpResponse>> ajaxAll(
     Iterable<String> urls, {
     int concurrency = 4,
+    Map<String, String> headers = const {},
   }) async {
     if (concurrency < 1) throw ArgumentError.value(concurrency, 'concurrency');
     final values = urls.toList(growable: false);
@@ -154,7 +155,7 @@ class SourceHostDispatcher {
       while (true) {
         final index = next++;
         if (index >= values.length) return;
-        output[index] = await connect(values[index]);
+        output[index] = await connect(values[index], headers: headers);
       }
     }
 
