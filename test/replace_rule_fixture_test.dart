@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// The #17 corpus is an input contract for the future frozen Android entry.
+/// The #17 corpus is an input contract for the frozen Android instrumentation entry.
 ///
 /// It intentionally has no expected values: a host reimplementation would not
-/// be independent frozen evidence; the reader-processing entry remains #17 work.
+/// be independent frozen evidence; device execution remains blocked on harness installation.
 /// This test protects row coverage and the processed-stage comparison boundary
 /// without turning fixture prose into a compatibility verdict.
 void main() {
@@ -34,7 +34,10 @@ void main() {
       'ContentProcessor.getContent + BookChapter.getDisplayTitle',
     );
     final boundary = fixture['comparisonBoundary'] as String;
-    expect(boundary, contains('includeTitle=false, including its paragraph shaping loop'));
+    expect(
+      boundary,
+      contains('includeTitle=false, including its paragraph shaping loop'),
+    );
     expect((fixture['deviceOracle'] as Map)['status'], 'not-run');
     expect((fixture['deviceOracle'] as Map)['owner'], '#17');
   });

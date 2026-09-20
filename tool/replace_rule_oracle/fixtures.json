@@ -8,8 +8,8 @@
   "deviceOracle": {
     "status": "not-run",
     "owner": "#17",
-    "handsetOwner": "#54",
-    "reason": "The Android entry that can execute ContentProcessor against the frozen app is not available to this lane. A host model is not an independent frozen oracle and must not supply expected values."
+    "handsetOwner": "#17",
+    "reason": "Disposable ReaderOracle instrumentation is implemented but not executed: the approved handset rejected installation with INSTALL_FAILED_USER_RESTRICTED, including the single controller-authorized retry. No golden exists."
   },
   "frozenSources": [
     {
@@ -206,12 +206,12 @@
       "rules": [
         {"name": "slow", "pattern": "(a+)+$", "replacement": "", "scopeContent": true, "scopeTitle": false, "isRegex": true, "timeoutMillisecond": 200}
       ],
-      "notComparedReason": "The frozen timeout path injects the rule name and stack trace into content and schedules an application restart; the product's approved behavior disables the rule and keeps the text. No device observation is available in this lane."
+      "notComparedReason": "The frozen timeout path injects the rule name and stack trace into content and schedules an application restart; the product's approved behavior disables the rule and keeps the text. No frozen timeout is observed yet; the prepared short input may complete on Android and must not be amplified to manufacture a timeout."
     },
     {
       "id": "refusal",
       "status": "not-run",
-      "observations": ["content", "unsupported-regex-refusal", "js-replacement-refusal"],
+      "observations": ["content", "unsupported-regex-refusal", "js-replacement-execution"],
       "bookName": "不科学御兽",
       "bookOrigin": "http://www.beqege.cc",
       "chapterTitle": "第一章",
