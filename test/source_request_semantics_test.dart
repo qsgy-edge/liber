@@ -7,6 +7,7 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_url_rules.dart';
 
 import 'native_library.dart';
 
@@ -55,23 +56,22 @@ class _WireServer {
       _sockets.add(socket);
       var buffer = '';
       var sent = false;
-      socket.listen(
-        (bytes) {
-          if (sent) return;
-          buffer += utf8.decode(bytes, allowMalformed: true);
-          final end = buffer.indexOf('\r\n\r\n');
-          if (end < 0) return;
-          sent = true;
-          final head = buffer.substring(0, end);
-          final lines = head.split('\r\n');
-          final line = lines.first;
-          requests.add(_WireRequest(line, head.toLowerCase()));
-          final answer = reply(line);
-          socket.add(answer is List<int> ? answer : utf8.encode(answer as String));
-          unawaited(socket.flush().then((_) => socket.close()));
-        },
-        onDone: () => _sockets.remove(socket),
-      );
+      socket.listen((bytes) {
+        if (sent) return;
+        buffer += utf8.decode(bytes, allowMalformed: true);
+        final end = buffer.indexOf('\r\n\r\n');
+        if (end < 0) return;
+        sent = true;
+        final head = buffer.substring(0, end);
+        final lines = head.split('\r\n');
+        final line = lines.first;
+        requests.add(_WireRequest(line, head.toLowerCase()));
+        final answer = reply(line);
+        socket.add(
+          answer is List<int> ? answer : utf8.encode(answer as String),
+        );
+        unawaited(socket.flush().then((_) => socket.close()));
+      }, onDone: () => _sockets.remove(socket));
     });
   }
 
@@ -96,7 +96,10 @@ void main() {
         SourceHttpRequest(method: 'GET', url: Uri.parse('${server.origin}/a')),
       );
       final injected = server.requests.single;
-      expect(injected.has('user-agent: mozilla/5.0 (windows nt 10.0; win64;'), isTrue);
+      expect(
+        injected.has('user-agent: mozilla/5.0 (windows nt 10.0; win64;'),
+        isTrue,
+      );
       expect(injected.headers, contains('chrome/128.0.0.0'));
       expect(injected.headers, contains('keep-alive: 300'));
       expect(injected.headers, contains('connection: keep-alive'));
@@ -190,81 +193,92 @@ void main() {
     }
   });
 
-  test('a body media type gains the frozen charset only when none is declared',
-      () async {
-    final server = _WireServer((_) => ok('ok'));
-    await server.start();
-    final transport = HttpSourceTransport();
-    Future<_WireRequest> post(Map<String, String> headers) async {
-      final before = server.requests.length;
-      await transport.send(
-        SourceHttpRequest(
-          method: 'POST',
-          url: Uri.parse('${server.origin}/post'),
-          headers: headers,
-          body: 'a=1',
-        ),
-      );
-      return server.requests[before];
-    }
+  test(
+    'a body media type gains the frozen charset only when none is declared',
+    () async {
+      final server = _WireServer((_) => ok('ok'));
+      await server.start();
+      final transport = HttpSourceTransport();
+      Future<_WireRequest> post(Map<String, String> headers) async {
+        final before = server.requests.length;
+        await transport.send(
+          SourceHttpRequest(
+            method: 'POST',
+            url: Uri.parse('${server.origin}/post'),
+            headers: headers,
+            body: 'a=1',
+          ),
+        );
+        return server.requests[before];
+      }
 
-    try {
-      // okhttp-4.12.0 `RequestBody$Companion.create(String, MediaType)` parses
-      // "<declared>; charset=utf-8" and writes the resolved charset's bytes,
-      // so a declared media type without a charset reaches the wire with one.
-      final appended = await post({
-        'Content-Type': 'application/x-www-form-urlencoded',
-      });
-      expect(
-        appended.headers,
-        contains('content-type: application/x-www-form-urlencoded; charset=utf-8'),
-      );
-      expect(appended.headers, contains('content-length: 3'));
-      expect(appended.headers, isNot(contains('transfer-encoding')));
+      try {
+        // okhttp-4.12.0 `RequestBody$Companion.create(String, MediaType)` parses
+        // "<declared>; charset=utf-8" and writes the resolved charset's bytes,
+        // so a declared media type without a charset reaches the wire with one.
+        final appended = await post({
+          'Content-Type': 'application/x-www-form-urlencoded',
+        });
+        expect(
+          appended.headers,
+          contains(
+            'content-type: application/x-www-form-urlencoded; charset=utf-8',
+          ),
+        );
+        expect(appended.headers, contains('content-length: 3'));
+        expect(appended.headers, isNot(contains('transfer-encoding')));
 
-      // A media type that names a charset is kept as the source wrote it. The
-      // frozen call would also write the body's bytes with that charset; this
-      // transport keeps UTF-8, which no fixture in this slice reaches.
-      final declared = await post({'Content-Type': 'text/plain; charset=GBK'});
-      expect(declared.headers, contains('content-type: text/plain; charset=gbk'));
-      expect(declared.headers, contains('content-length: 3'));
-    } finally {
-      await server.stop();
-    }
-  });
+        // A media type that names a charset is kept as the source wrote it.
+        final declared = await post({
+          'Content-Type': 'text/plain; charset=GBK',
+        });
+        expect(
+          declared.headers,
+          contains('content-type: text/plain; charset=gbk'),
+        );
+        expect(declared.headers, contains('content-length: 3'));
+      } finally {
+        await server.stop();
+      }
+    },
+  );
 
-  test('a redirect to another origin drops credentials and keeps the rest',
-      () async {
-    final target = _WireServer((_) => ok('ok'));
-    await target.start();
-    final redirecting = _WireServer((_) => redirect(302, '${target.origin}/after'));
-    await redirecting.start();
-    try {
-      await HttpSourceTransport().send(
-        SourceHttpRequest(
-          method: 'POST',
-          url: Uri.parse('${redirecting.origin}/cross'),
-          headers: {
-            'Authorization': 'test-value',
-            'Cookie': 'test=value',
-            'X-Source': 'kept',
-          },
-          body: 'a=1',
-          followRedirects: true,
-        ),
+  test(
+    'a redirect to another origin drops credentials and keeps the rest',
+    () async {
+      final target = _WireServer((_) => ok('ok'));
+      await target.start();
+      final redirecting = _WireServer(
+        (_) => redirect(302, '${target.origin}/after'),
       );
-      final hop = target.requests.single;
-      expect(hop.line, 'GET /after HTTP/1.1');
-      expect(hop.headers, isNot(contains('authorization:')));
-      // The frozen client forwards a declared cookie here; this transport does
-      // not, a recorded policy divergence.
-      expect(hop.headers, isNot(contains('cookie:')));
-      expect(hop.headers, contains('x-source: kept'));
-    } finally {
-      await redirecting.stop();
-      await target.stop();
-    }
-  });
+      await redirecting.start();
+      try {
+        await HttpSourceTransport().send(
+          SourceHttpRequest(
+            method: 'POST',
+            url: Uri.parse('${redirecting.origin}/cross'),
+            headers: {
+              'Authorization': 'test-value',
+              'Cookie': 'test=value',
+              'X-Source': 'kept',
+            },
+            body: 'a=1',
+            followRedirects: true,
+          ),
+        );
+        final hop = target.requests.single;
+        expect(hop.line, 'GET /after HTTP/1.1');
+        expect(hop.headers, isNot(contains('authorization:')));
+        // The frozen client forwards a declared cookie here; this transport does
+        // not, a recorded policy divergence.
+        expect(hop.headers, isNot(contains('cookie:')));
+        expect(hop.headers, contains('x-source: kept'));
+      } finally {
+        await redirecting.stop();
+        await target.stop();
+      }
+    },
+  );
 
   test('the chain stops at the frozen follow-up limit', () async {
     late final _WireServer server;
@@ -287,53 +301,55 @@ void main() {
     }
   });
 
-  test('search URLs substitute the raw keyword and encode the query once',
-      () async {
-    final server = _WireServer((_) => ok('<div></div>'));
-    await server.start();
-    final source = <String, dynamic>{
-      'bookSourceUrl': server.origin,
-      'searchUrl': '/search?q={{key}}&p={{page}}',
-      'ruleSearch': {
-        'bookList': '@CSS:.item',
-        'name': '@CSS:h3 a@text',
-        'bookUrl': '@CSS:h3 a@href',
-      },
-    };
-    try {
-      await HtmlSourcePipeline(source, HttpSourceTransport()).search('我的 书');
-      expect(
-        server.requests[0].line,
-        'GET /search?q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1 HTTP/1.1',
-      );
+  test(
+    'search URLs substitute the raw keyword and encode the query once',
+    () async {
+      final server = _WireServer((_) => ok('<div></div>'));
+      await server.start();
+      final source = <String, dynamic>{
+        'bookSourceUrl': server.origin,
+        'searchUrl': '/search?q={{key}}&p={{page}}',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      };
+      try {
+        await HtmlSourcePipeline(source, HttpSourceTransport()).search('我的 书');
+        expect(
+          server.requests[0].line,
+          'GET /search?q=%E6%88%91%E7%9A%84%20%E4%B9%A6&p=1 HTTP/1.1',
+        );
 
-      // A query that already looks encoded is sent as it is.
-      await HtmlSourcePipeline(
-        <String, dynamic>{
+        // A query that already looks encoded is sent as it is.
+        await HtmlSourcePipeline(<String, dynamic>{
           ...source,
           'searchUrl': '/search?q=%E4%B9%A6&p={{page}}',
-        },
-        HttpSourceTransport(),
-      ).search('书');
-      expect(server.requests[1].line, 'GET /search?q=%E4%B9%A6&p=1 HTTP/1.1');
+        }, HttpSourceTransport()).search('书');
+        expect(server.requests[1].line, 'GET /search?q=%E4%B9%A6&p=1 HTTP/1.1');
 
-      // A page list picks the entry for the requested page, and repeats the
-      // last entry past the end.
-      final paged = HtmlSourcePipeline(
-        <String, dynamic>{
+        // A page list picks the entry for the requested page, and repeats the
+        // last entry past the end.
+        final paged = HtmlSourcePipeline(<String, dynamic>{
           ...source,
           'searchUrl': '/search?page=<1,2,3>&q={{key}}',
-        },
-        HttpSourceTransport(),
-      );
-      await paged.search('书', page: 2);
-      expect(server.requests[2].line, 'GET /search?page=2&q=%E4%B9%A6 HTTP/1.1');
-      await paged.search('书', page: 7);
-      expect(server.requests[3].line, 'GET /search?page=3&q=%E4%B9%A6 HTTP/1.1');
-    } finally {
-      await server.stop();
-    }
-  });
+        }, HttpSourceTransport());
+        await paged.search('书', page: 2);
+        expect(
+          server.requests[2].line,
+          'GET /search?page=2&q=%E4%B9%A6 HTTP/1.1',
+        );
+        await paged.search('书', page: 7);
+        expect(
+          server.requests[3].line,
+          'GET /search?page=3&q=%E4%B9%A6 HTTP/1.1',
+        );
+      } finally {
+        await server.stop();
+      }
+    },
+  );
 
   test('the charset option reaches the wire in both encoder shapes', () async {
     final server = _WireServer(
@@ -405,7 +421,8 @@ void main() {
       final origin = 'http://127.0.0.1:${server.port}';
       await HtmlSourcePipeline(<String, dynamic>{
         'bookSourceUrl': origin,
-        'searchUrl': '/search,{"method":"POST","body":"k={{key}}",'
+        'searchUrl':
+            '/search,{"method":"POST","body":"k={{key}}",'
             '"charset":"gbk"}',
         'ruleSearch': {
           'bookList': '@CSS:.item',
@@ -417,74 +434,190 @@ void main() {
       // `%XX` (AnalyzeUrl.kt:318-328).
       expect(bodies.single, 'k=%CA%E9');
       // Frozen `String.toRequestBody(formContentType)`: the form media type has
-      // no charset parameter, so the body it writes gains `; charset=utf-8`
-      // (okhttp-4.12.0 `RequestBody$Companion.create`). The frozen client's
-      // header therefore names UTF-8 while the bytes above are GBK: the same
-      // resolved charset also selects those bytes, and only the header half is
-      // reproduced here (recorded as a coverage gap).
-      expect(contentTypes.single, 'application/x-www-form-urlencoded; charset=utf-8');
+      // no charset parameter, so the body it writes gains `; charset=utf-8`.
+      // The GBK bytes are percent-escaped ASCII here: `k=%CA%E9` is sent as
+      // UTF-8, while the raw body branch uses its declared media type's charset.
+      expect(
+        contentTypes.single,
+        'application/x-www-form-urlencoded; charset=utf-8',
+      );
     } finally {
       await subscription.cancel();
       await server.close(force: true);
     }
   });
 
-  test('a response is decoded with the charset its Content-Type declares',
-      () async {
-    // GBK 书 is CA E9; the header names the charset the body is in.
-    final page = <int>[
-      ...utf8.encode('<html><body><div class="item"><h3><a href="/book/">'),
-      0xCA,
-      0xE9,
-      ...utf8.encode('</a></h3></div></body></html>'),
-    ];
-    final server = _WireServer(
-      (_) => okBytes(page, contentType: 'text/html; charset=GBK'),
-    );
-    await server.start();
-    try {
-      final hits = await HtmlSourcePipeline(<String, dynamic>{
-        'bookSourceUrl': server.origin,
-        'searchUrl': '/search?key={{key}}',
-        'ruleSearch': {
-          'bookList': '@CSS:.item',
-          'name': '@CSS:h3 a@text',
-          'bookUrl': '@CSS:h3 a@href',
-        },
-      }, HttpSourceTransport()).search('书');
-      expect(hits.single.title, '书');
-    } finally {
-      await server.stop();
-    }
-  });
+  for (final row
+      in <
+        ({
+          String name,
+          String? contentType,
+          String? charset,
+          String body,
+          List<int> bytes,
+          String wireContentType,
+        })
+      >[
+        (
+          name: 'unknown declared charset keeps UTF-8 body fallback',
+          contentType: 'text/plain; charset=unknown-liber-54',
+          charset: null,
+          body: '书',
+          bytes: [0xE4, 0xB9, 0xA6],
+          wireContentType: 'text/plain; charset=unknown-liber-54',
+        ),
+        (
+          name: 'declared GBK body',
+          contentType: 'text/plain; charset=GBK',
+          charset: null,
+          body: '书',
+          bytes: [0xCA, 0xE9],
+          wireContentType: 'text/plain; charset=GBK',
+        ),
+        (
+          name: 'Content-Type takes precedence over the charset option',
+          contentType: 'text/plain; charset=UTF-8',
+          charset: 'GBK',
+          body: '书',
+          bytes: [0xE4, 0xB9, 0xA6],
+          wireContentType: 'text/plain; charset=UTF-8',
+        ),
+        (
+          name: 'undeclared body charset defaults to UTF-8',
+          contentType: 'text/plain',
+          charset: null,
+          body: '书',
+          bytes: [0xE4, 0xB9, 0xA6],
+          wireContentType: 'text/plain; charset=utf-8',
+        ),
+        (
+          name: 'GBK form option percent-escapes before UTF-8 body encoding',
+          contentType: null,
+          charset: 'GBK',
+          body: 'k=书',
+          bytes: [0x6B, 0x3D, 0x25, 0x43, 0x41, 0x25, 0x45, 0x39],
+          wireContentType: 'application/x-www-form-urlencoded; charset=utf-8',
+        ),
+      ]) {
+    test('${row.name} preserves bytes and framing across 307/308', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final bodies = <List<int>>[];
+      final headers = <HttpHeaders>[];
+      final methods = <String>[];
+      final subscription = server.listen((request) async {
+        bodies.add(
+          await request.fold<List<int>>([], (all, part) => all..addAll(part)),
+        );
+        headers.add(request.headers);
+        methods.add(request.method);
+        if (request.uri.path != '/end') {
+          request.response.statusCode = request.uri.path == '/start'
+              ? 307
+              : 308;
+          request.response.headers.set(
+            'Location',
+            request.uri.path == '/start' ? '/middle' : '/end',
+          );
+        }
+        request.response.headers.contentType = ContentType.text;
+        request.response.write('ok');
+        await request.response.close();
+      });
+      try {
+        final declared = <String, String>{
+          if (row.contentType != null) 'Content-Type': row.contentType!,
+        };
+        final shape = await sourceRequestShape(
+          SourceUrlOptions(
+            method: 'POST',
+            body: row.body,
+            charset: row.charset,
+          ),
+          declared,
+        );
+        await HttpSourceTransport().send(
+          SourceHttpRequest(
+            method: shape.method,
+            url: Uri.parse('http://127.0.0.1:${server.port}/start'),
+            headers: {...declared, ...shape.headers},
+            body: shape.body,
+            followRedirects: true,
+          ),
+        );
+        expect(methods, ['POST', 'POST', 'POST']);
+        expect(bodies, [row.bytes, row.bytes, row.bytes]);
+        for (final header in headers) {
+          expect(header.value('content-type'), row.wireContentType);
+          expect(header.contentLength, row.bytes.length);
+          expect(header.value('transfer-encoding'), isNull);
+        }
+      } finally {
+        await subscription.cancel();
+        await server.close(force: true);
+      }
+    });
+  }
 
-  test('a response is decoded with the charset its own meta declares',
-      () async {
-    final page = <int>[
-      ...utf8.encode(
-        '<html><head><meta charset="gbk"></head><body>'
-        '<div class="item"><h3><a href="/book/">',
-      ),
-      0xCA,
-      0xE9,
-      ...utf8.encode('</a></h3></div></body></html>'),
-    ];
-    // No Content-Type charset: the frozen path reads the document's meta.
-    final server = _WireServer((_) => okBytes(page));
-    await server.start();
-    try {
-      final hits = await HtmlSourcePipeline(<String, dynamic>{
-        'bookSourceUrl': server.origin,
-        'searchUrl': '/search?key={{key}}',
-        'ruleSearch': {
-          'bookList': '@CSS:.item',
-          'name': '@CSS:h3 a@text',
-          'bookUrl': '@CSS:h3 a@href',
-        },
-      }, HttpSourceTransport()).search('书');
-      expect(hits.single.title, '书');
-    } finally {
-      await server.stop();
-    }
-  });
+  test(
+    'a response is decoded with the charset its Content-Type declares',
+    () async {
+      // GBK 书 is CA E9; the header names the charset the body is in.
+      final page = <int>[
+        ...utf8.encode('<html><body><div class="item"><h3><a href="/book/">'),
+        0xCA,
+        0xE9,
+        ...utf8.encode('</a></h3></div></body></html>'),
+      ];
+      final server = _WireServer(
+        (_) => okBytes(page, contentType: 'text/html; charset=GBK'),
+      );
+      await server.start();
+      try {
+        final hits = await HtmlSourcePipeline(<String, dynamic>{
+          'bookSourceUrl': server.origin,
+          'searchUrl': '/search?key={{key}}',
+          'ruleSearch': {
+            'bookList': '@CSS:.item',
+            'name': '@CSS:h3 a@text',
+            'bookUrl': '@CSS:h3 a@href',
+          },
+        }, HttpSourceTransport()).search('书');
+        expect(hits.single.title, '书');
+      } finally {
+        await server.stop();
+      }
+    },
+  );
+
+  test(
+    'a response is decoded with the charset its own meta declares',
+    () async {
+      final page = <int>[
+        ...utf8.encode(
+          '<html><head><meta charset="gbk"></head><body>'
+          '<div class="item"><h3><a href="/book/">',
+        ),
+        0xCA,
+        0xE9,
+        ...utf8.encode('</a></h3></div></body></html>'),
+      ];
+      // No Content-Type charset: the frozen path reads the document's meta.
+      final server = _WireServer((_) => okBytes(page));
+      await server.start();
+      try {
+        final hits = await HtmlSourcePipeline(<String, dynamic>{
+          'bookSourceUrl': server.origin,
+          'searchUrl': '/search?key={{key}}',
+          'ruleSearch': {
+            'bookList': '@CSS:.item',
+            'name': '@CSS:h3 a@text',
+            'bookUrl': '@CSS:h3 a@href',
+          },
+        }, HttpSourceTransport()).search('书');
+        expect(hits.single.title, '书');
+      } finally {
+        await server.stop();
+      }
+    },
+  );
 }

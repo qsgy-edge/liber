@@ -1,85 +1,228 @@
 {
-  "recordedAt": "2026-09-19T04:31Z",
+  "recordedAt": "2026-09-20T12:12:35.074Z",
   "kind": "frozen-request-semantics-corpus",
-  "ticket": "https://github.com/qsgy-edge/liber/issues/15",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/54",
+  "source": {
+    "branch": "wayfinder/54",
+    "startingHead": "cdf4ae7db03a084ad6caf508dc5baf695e2337aa",
+    "scope": "branch-scoped until controller review and integration",
+    "productAndComparatorUnchangedDuringResume": true
+  },
   "baseline": {
     "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
     "application": {
       "package": "io.legado.app.debug",
       "productionRebuilt": false,
       "installedBytesPulledAndVerified": true,
+      "installedPath": "/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk",
       "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
-      "sameBytesAsTheRecordedGoldens": true,
-      "verifiedCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 pull <pm path io.legado.app.debug> then sha256sum (the #23/#38/#51 pin, unchanged)"
+      "verifiedCommand": [
+        "adb",
+        "-s",
+        "5615f742",
+        "pull",
+        "/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk",
+        "C:\\Users\\17945\\.cache\\wayfinder\\liber-54\\device-resume\\frozen-base.apk"
+      ]
     }
   },
   "corpus": {
     "path": "tool/nested_oracle/request-fixtures.json",
-    "sha256": "4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e",
+    "sha256": "d59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17",
     "fixtureId": "REQUEST-01",
-    "corpusVersion": 1,
-    "rows": 20,
-    "responses": 21,
+    "corpusVersion": 2,
+    "rows": 23,
+    "responses": 25,
     "origin": "http://127.0.0.2:18731",
     "otherOrigin": "http://127.0.0.3:18731",
-    "bundledInTheHarnessAs": "assets/request-fixtures.json (byte-identical copy, build.ps1)",
-    "originChoice": "The rows use the IPv4 loopback literals 127.0.0.2 and 127.0.0.3 so the cross-origin row has two origins, and so the frozen cookie lookup (keyed by the URL host, NetworkUtils.getSubDomain) cannot see a cookie the SLICE-01 corpus stored for 127.0.0.1. One wildcard-bound socket on port 18731 serves both.",
-    "declaredInputNote": "A row declares the AnalyzeUrl call the frozen runtime builds: the rule text (with its optional `,{...}` object), the {{key}}/{{page}} bindings and the declared header map. The product side resolves the same rule text with the public functions HtmlSourcePipeline._request uses; the corpus declares no `js` option and no relative rule text, so that branch and the pipeline's URL validation are outside it."
+    "bundledAsset": {
+      "path": "C:/Users/17945/.cache/wayfinder/liber-54/device-resume/harness/assets/request-fixtures.json",
+      "sha256": "d59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17"
+    },
+    "declaredRequestsAndResponsesUnchangedFromPreparedV2": true,
+    "metadataChange": "Removed stale unavailable/pending-device wording before building and capturing; fixture input remains 23 rows."
   },
   "harness": {
+    "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (constructor, 14 parameters) + getStrResponseAwait, driven inside the installed io.legado.app.debug process through reflection",
     "sources": [
-      "tool/nested_oracle/RequestOracle.java",
-      "tool/nested_oracle/AndroidManifest.xml",
-      "tool/nested_oracle/build.ps1",
-      "tool/nested_oracle/request-fixtures.json"
+      {
+        "path": "tool/nested_oracle/NestedOracle.java",
+        "sha256": "2ed8167deeb8430240c06f7a0e2036fe5444f2cc6dce9c1ad133ed943c09d248",
+        "gitBlobSha256AtStartingHead": "3e64adba936cc6971025c91832c07ba5ffb38994f56dcadac9bc5bbb6fc4ad71"
+      },
+      {
+        "path": "tool/nested_oracle/StateOracle.java",
+        "sha256": "b49e571b3bbbeff76af88d4f87f1324c12dfb0989dc6465e1205474594e5f822",
+        "gitBlobSha256AtStartingHead": "157f04f8e31e28ce9b751636761871e40786e7f4a55c179fc112133e5e26b147"
+      },
+      {
+        "path": "tool/nested_oracle/SliceOracle.java",
+        "sha256": "d84bc4de05a919e7f24c63288a7b631120580ced878bfa6e136e8f10c755157c",
+        "gitBlobSha256AtStartingHead": "a5d2fafdd5a3611907c4a77655e5f1e00995b6c4c500d9b248bbe0fa3807f504"
+      },
+      {
+        "path": "tool/nested_oracle/HtmlOracle.java",
+        "sha256": "c8265692c7e824bdc3cb233c0ee20c3d96b90ae877b861b3e872eeff784ad0ab",
+        "gitBlobSha256AtStartingHead": "4ee563d7002df1f744862b71522c1d8cb709fd7aec777008b1fcfd7563119b63"
+      },
+      {
+        "path": "tool/nested_oracle/RequestOracle.java",
+        "sha256": "f221184449faad551d7309c190790cfb40907d661811221061ce8e67971c416e",
+        "gitBlobSha256AtStartingHead": "584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d"
+      },
+      {
+        "path": "tool/nested_oracle/AndroidManifest.xml",
+        "sha256": "edd75d6cc7c789f1f53db9187a3627729bbeefca601fb3c7376baf8efd737f58",
+        "gitBlobSha256AtStartingHead": "7985c842925b0f11ef76ae1301b2297028ab3d6db86c72646cc20dd4746bc9dc"
+      },
+      {
+        "path": "tool/nested_oracle/build.ps1",
+        "sha256": "bdf3a9b86e307fb419fa006788f2f1893bcaeddf7549861f00b086a41543691f",
+        "gitBlobSha256AtStartingHead": "e1f4d1853c60001db609e9a10e5658546bdebc2856699beb8c5edae00a0e41ac"
+      },
+      {
+        "path": "tool/nested_oracle/fixtures.json",
+        "sha256": "1d9860822df124150732bbbec721e11d437ef8acea115d297fe9228bfb6a78e3",
+        "gitBlobSha256AtStartingHead": "06ad9917da19fe40330ca324242efb57a38666d59a1b414b231404beda014566"
+      },
+      {
+        "path": "tool/nested_oracle/state-fixtures.json",
+        "sha256": "81d298944392c23bf74886205573a420401e1150ae23116aceba1bc2d6be753b",
+        "gitBlobSha256AtStartingHead": "bdafd6e253cd15e76a54862c7211bcce288d503dcf45c579ed708714159e9c08"
+      },
+      {
+        "path": "tool/nested_oracle/request-fixtures.json",
+        "sha256": "d59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17",
+        "gitBlobSha256AtStartingHead": "473e581c74a40a74121491c72dba60ab8dad57d25f6ca44c76de76dca215df78"
+      },
+      {
+        "path": "tool/first_slice/fixtures.json",
+        "sha256": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419",
+        "gitBlobSha256AtStartingHead": "03b013304efa90be2328014bdde0b9081957aac634a9c01b86bb1bd3bfade419"
+      },
+      {
+        "path": "tool/html_oracle/fixtures.json",
+        "sha256": "911e85df1b5bd8d01ad05fbf0a3af8be3500543ddc4d75b0a19cda375f1c005c",
+        "gitBlobSha256AtStartingHead": "4cf0ae7a54b14fd9b18c8ba3ce62bdc704e1eb039a1988e9d5ac59b95168e1f8"
+      }
     ],
-    "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (14-parameter constructor) + getStrResponseAwait, reached through getTargetContext().getClassLoader()",
-    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
-    "freshOutputDirectory": "C:/Users/17945/.cache/wayfinder/liber-15/request-oracle-2",
-    "jdk": "Temurin 17.0.20+8 (portable)",
+    "freshOutputDirectory": "C:/Users/17945/.cache/wayfinder/liber-54/device-resume/harness",
+    "buildCommand": [
+      "pwsh",
+      "tool/nested_oracle/build.ps1",
+      "-OutputDirectory",
+      "C:\\Users\\17945\\.cache\\wayfinder\\liber-54\\device-resume\\harness",
+      "-JavaHome",
+      "C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8"
+    ],
+    "jdk": "Temurin 17.0.20+8",
     "androidBuildTools": "35.0.1",
     "androidJar": "platforms/android-35/android.jar",
-    "apkSha256": "ae51c9b1ccdf237a22f07331fb05c326d17877646234c45f015e4535d29605fe",
-    "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable between builds of the same sources, and an earlier build of this entry (before RequestOracle.java substituted the corpus' origin tokens into a Location header as text rather than as bytes) hashed 040d753b53e5c518dc48096b0af7708ea883f8dcb25dfde73165404b5b9701fb; the sources' hashes and the toolchain versions are the stable identity",
-    "installCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness apk>",
-    "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle",
-    "suspendEntryPoints": "driven with kotlinx.coroutines.runBlocking through a java.lang.reflect.Proxy over kotlin.jvm.functions.Function2, whose continuation is handed to the frozen suspend method. getStrResponseAwait is called with its three default arguments (jsStr null, sourceRegex null, useWebView true); no row sets the WebView option, so the WebView branch is never taken.",
-    "deferredToTheMainLooper": "Instrumentation.onCreate posts the run to the main looper: the frozen HTTP stack and its cookie store are built by the target application, which is created after onCreate. The rows then run on their own thread because runBlocking blocks the caller.",
+    "apkSha256": "c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28",
+    "installedApkPulledAndVerified": true,
+    "installedApkSha256": "c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28",
+    "installCommand": [
+      "adb",
+      "-s",
+      "5615f742",
+      "install",
+      "-r",
+      "-t",
+      "C:\\Users\\17945\\.cache\\wayfinder\\liber-54\\device-resume\\harness\\nested-oracle.apk"
+    ],
+    "instrumentCommand": [
+      "adb",
+      "-s",
+      "5615f742",
+      "shell",
+      "am",
+      "instrument",
+      "-w",
+      "-r",
+      "io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle"
+    ],
     "noLegadoClassRebuilt": true,
-    "sourceHashDependency": "tool/nested_oracle/RequestOracle.java hashes 584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d for this run"
+    "sourceHashNote": "sha256 pins actual build input bytes; gitBlobSha256AtStartingHead is also recorded because checkout CRLF and Git LF differ. Corpus metadata changed after that starting head; its actual bytes and bundled asset are identical."
   },
   "device": {
     "serial": "5615f742",
-    "model": "25102RKBEC (Redmi myron)",
+    "model": "25102RKBEC",
     "androidRelease": "17",
     "sdk": 37,
     "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
   },
   "run": {
-    "result": "INSTRUMENTATION_RESULT: stream=Request oracle recorded 20 rows and 47 requests",
-    "rows": 20,
-    "requests": 47,
-    "serverErrors": 0,
+    "result": "Request oracle recorded 23 rows and 51 requests",
+    "instrumentationCode": -1,
+    "processExitCode": 0,
+    "rows": 23,
+    "requests": 51,
     "analysisFailure": null,
-    "repeatRunByteIdenticalAfterDroppingRecordedAt": true,
+    "serverErrors": [],
     "cleanup": {
       "openConnections": 2,
       "serverClosed": true
     },
-    "requestCountIsDeclared": "3 header rows + 6 redirect rows x 2 + the cross-origin pair (2) + the follow-up limit (21) + 5 query rows + 2 page-list rows + 2 page-less rows = 47",
-    "golden": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json"
+    "cleanupMeaning": "openConnections sampled before Replay.close; serverClosed after closing. Target force-stopped after captures; pidof exit 1 with no output confirms resources released.",
+    "repeatRunIdenticalAfterDroppingRecordedAt": true,
+    "captures": [
+      {
+        "path": "C:/Users/17945/.cache/wayfinder/liber-54/device-resume/capture-1.json",
+        "sha256": "26f72509f0d7fa002892d0a7cbcf730bbf5adba62fbe6d831f9aacf0f05d6b26"
+      },
+      {
+        "path": "C:/Users/17945/.cache/wayfinder/liber-54/device-resume/capture-2.json",
+        "sha256": "89c286d29517d815c04d881229f470271d4dc9aeb5359d1ee48f7c9b000bbd83"
+      }
+    ],
+    "golden": {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
+      "sha256": "89c286d29517d815c04d881229f470271d4dc9aeb5359d1ee48f7c9b000bbd83"
+    },
+    "goldenCopiedVerbatimFrom": "capture-2.json",
+    "deviceResourcesReleased": true,
+    "deviceReleaseCheck": {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "pidof",
+        "io.legado.app.debug"
+      ],
+      "exitCode": 1,
+      "stdout": "",
+      "meaning": "target process absent; instrumentation and its in-process replay stopped"
+    }
   },
   "comparison": {
-    "command": "rm -f tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json && dart run tool/nested_oracle_compare.dart --requests D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
-    "report": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+    "name": "compare",
+    "command": [
+      "C:/Users/17945/fvm/default/bin/dart.bat",
+      "run",
+      "tool/nested_oracle_compare.dart",
+      "--requests",
+      "build/windows/x64/runner/Debug/fjs.dll",
+      "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
+      "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json"
+    ],
     "exitCode": 0,
+    "seconds": 7.195,
+    "report": {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+      "sha256": "12caba1fc9f59f8e59ff41b064dc378bd99a5d87eba4cabbbba139cbc7bdc164"
+    },
+    "platform": "windows",
     "status": "pass",
     "rows": {
-      "pass": 17,
+      "pass": 20,
       "fail": 0,
       "notCompared": 3
     },
     "passedRows": [
+      "body-charset-gbk-307",
+      "body-charset-content-type-precedence",
+      "body-charset-gbk-form",
       "defaults-injected",
       "defaults-declared",
       "redirect-300-post",
@@ -104,21 +247,21 @@
         "observation": "requests[0].headers.user-agent",
         "frozen": "okhttp/4.12.0",
         "liber": "Dart/3.12 (dart:io)",
-        "reason": "The frozen client removes the declared literal `null` and OkHttp's BridgeInterceptor then supplies its own default; the product's transport is Dart's HttpClient, whose own default stands. Recorded in the differential contract's known-divergence table."
+        "reason": "The frozen client removes the declared `null` header and then sends OkHttp BridgeInterceptor's own default (`okhttp/4.12.0`). The product's transport is Dart's HttpClient, whose own default stands when the source declares `User-Agent: null` (lib/source/http_source_transport.dart, `withSourceRequestDefaults`)."
       },
       {
         "row": "redirect-cross-origin",
         "observation": "requests[1].headers.cookie",
         "frozen": "test=value",
         "liber": null,
-        "reason": "The frozen client drops only Authorization on a hop to another origin and forwards the declared Cookie; the product's transport drops both (credentials do not travel to another origin). Recorded in the differential contract's known-divergence table."
+        "reason": "The frozen client drops `Authorization` on a hop to another origin and forwards a declared `Cookie`; the product's transport drops both, the recorded credentials-policy divergence (lib/source/http_source_transport.dart, `_readOnce`)."
       },
       {
         "row": "query-exact-bytes",
         "observation": "requests[0].rawQuery",
         "frozen": "q={a}|b^c`\\d%27e%20f%20%E4%B9%A6&p=1",
         "liber": "q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1",
-        "reason": "The request URL is a Dart Uri, which percent-encodes {, }, |, ^, the backtick and the backslash while it resolves; the frozen client keeps the URL as text and hands its query to HttpUrl.encodedQuery. The capability matrix already records this platform seam for the query re-encoding row; the contract's known-divergence table now names it."
+        "reason": "The frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (AnalyzeUrl.kt:265-278, OkHttpUtils.kt:105-109), which writes `{`, `}`, `|`, `^`, the backtick and the backslash as they are. The product's request URL is a Dart `Uri`, which percent-encodes those six characters while it resolves (lib/source/source_http_uri.dart), the platform seam the capability matrix already records for the query re-encoding row."
       }
     ],
     "ignoredHeaders": [
@@ -126,92 +269,210 @@
       "content-length",
       "accept-encoding"
     ],
-    "ignoreRule": "The contract's rule: a platform-generated name is ignored unless the source declares it. Rows that declare a header name (the `defaults-declared` row's Connection) have it compared; everything else on the wire is compared byte for byte.",
-    "comparedSurface": "method, path, raw query bytes, request body bytes, every non-ignored header (values and duplicate order, joined \", \" by the server on both sides), the ordered hop sequence and the row's outcome; `finalUrl` is not compared because the two sides serve the corpus on their own port.",
-    "libraryTheProductSideRanAgainst": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll, sha256 b9cd78a76353991fd535fb4b8df5e3fe951f494506f2ec5852609beade4c9983 (master's, already rebuilt for #51). This lane changes no Rust, and the request path reaches the engine only for the response-body decode's EncodingDetect fallback and for a named charset option, neither of which this corpus declares."
-  },
-  "productChangesTheComparisonForced": [
-    {
-      "observation": "requests[].headers.content-type on every body-carrying request (8 observations over 6 rows)",
-      "frozen": "application/x-www-form-urlencoded; charset=utf-8",
-      "beforeTheFix": "application/x-www-form-urlencoded",
-      "frozenSource": "okhttp-4.12.0 RequestBody$Companion.create(String, MediaType): the media type is re-parsed as \"<declared>; charset=utf-8\" when MediaType.charset() answers null; the frozen caller is AnalyzeUrl.kt:381-393 (`body.toRequestBody(contentType.toMediaType())`) and OkHttpUtils.kt:113-115 (postForm)",
-      "fix": "lib/source/http_source_transport.dart `withSourceBodyContentType`, applied while the body is written and idempotent across a 307/308 hop"
-    },
-    {
-      "observation": "requests[].headers.transfer-encoding / content-length on every body-carrying request (8 observations over 6 rows)",
-      "frozen": "no Transfer-Encoding, Content-Length: 3",
-      "beforeTheFix": "Transfer-Encoding: chunked, no Content-Length",
-      "frozenSource": "the frozen client built the body, so OkHttp writes its length (Http1ExchangeCodec.writeRequestHeaders)",
-      "fix": "lib/source/http_source_transport.dart `_readOnce` sets request.contentLength before writing the UTF-8 body"
+    "ignoreRule": "Unchanged contract: platform-generated headers ignored unless source declared. Content-Length remains ignored by comparator, pinned in golden and asserted in Windows wire tests.",
+    "comparedSurface": "method, path, raw query bytes, raw body bytes (Latin-1 reversible representation), nonignored headers and duplicates, ordered hops and outcome; finalUrl not compared because replay ports differ.",
+    "strictIdentityAndDivergenceRulesUnchanged": true,
+    "normalProcessExitVerified": true,
+    "nativeLibrary": {
+      "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+      "frozenApkPath": "/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk",
+      "frozenApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "nativeSource": "D:\\GithubRepositories\\Flutter\\liber\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
+      "nativeDestination": "D:\\GithubRepositories\\Flutter\\liber-54\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
+      "nativeSourceSha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+      "nativeDestinationSha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1"
     }
-  ],
+  },
+  "validation": {
+    "commands": [
+      {
+        "name": "focused",
+        "command": [
+          "C:/Users/17945/fvm/default/bin/flutter.bat",
+          "test",
+          "test/source_request_semantics_test.dart"
+        ],
+        "exitCode": 0,
+        "seconds": 50.014
+      },
+      {
+        "name": "tests",
+        "command": [
+          "C:/Users/17945/fvm/default/bin/flutter.bat",
+          "test",
+          "test",
+          "--reporter",
+          "json"
+        ],
+        "exitCode": 0,
+        "seconds": 36.221
+      },
+      {
+        "name": "analyze",
+        "command": [
+          "C:/Users/17945/fvm/default/bin/dart.bat",
+          "analyze",
+          "lib",
+          "test",
+          "integration_test",
+          "tool"
+        ],
+        "exitCode": 0,
+        "seconds": 77.822
+      },
+      {
+        "name": "runtime",
+        "command": [
+          "C:\\Users\\17945\\.local\\bin\\python.exe",
+          "tool/ci_runtime.py",
+          "windows",
+          "x86_64-pc-windows-msvc"
+        ],
+        "exitCode": 0,
+        "seconds": 95.393
+      },
+      {
+        "name": "host",
+        "command": [
+          "C:/Users/17945/fvm/default/bin/dart.bat",
+          "run",
+          "tool/host_surface_gate.dart",
+          "build/windows/x64/runner/Debug/fjs.dll"
+        ],
+        "exitCode": 0,
+        "seconds": 6.679
+      }
+    ],
+    "focusedTests": 15,
+    "fullTests": 347,
+    "skippedTests": 0,
+    "analysis": "No issues found",
+    "runtimeRows": 16,
+    "runtimePassed": 16,
+    "hostChecks": 68,
+    "hostPassed": 68,
+    "runtimeManifest": {
+      "path": ".ci-results/manifest.json",
+      "sha256": "0038a6450c90db1144bf4ac948f9c2a6f4f40c4f0e2d3a57c652205dee4be260"
+    },
+    "dartMcp": "Unavailable to worker; bounded CLI authorized by resume briefing. Controller owns driven UI.",
+    "controllerBarrier": "Independent reproduction and driven Windows review required after candidate commit, before lane final delivery; result recorded in final artifact and subsequent ticket evidence comment."
+  },
   "coverage": {
-    "pinned": [
-      "the frozen default headers and the append rule, including a source that declares each of them",
-      "the User-Agent: null opt-out",
-      "300/301/302/303 to GET without body and without content headers, 307/308 keeping method and body, on a POST with a body",
-      "the cross-origin Authorization drop and the declared Cookie the frozen client keeps",
-      "the 21st follow-up failing the call after 21 requests",
-      "{{key}} raw substitution with the query encoded once, an already-encoded query left alone, and the character groups the ticket names",
-      "{{page}} and <1,2,3> lists, and the empty binding on a stage that carries no page",
-      "the body media type's charset and the Content-Length framing the frozen client writes"
+    "newComparedRows": [
+      "body-charset-gbk-307",
+      "body-charset-content-type-precedence",
+      "body-charset-gbk-form"
+    ],
+    "bodyBytes": [
+      {
+        "row": "body-charset-gbk-307",
+        "requests": [
+          {
+            "bodyHex": "CA E9",
+            "contentType": "text/plain; charset=GBK",
+            "contentLength": "2",
+            "transferEncoding": null
+          },
+          {
+            "bodyHex": "CA E9",
+            "contentType": "text/plain; charset=GBK",
+            "contentLength": "2",
+            "transferEncoding": null
+          }
+        ]
+      },
+      {
+        "row": "body-charset-content-type-precedence",
+        "requests": [
+          {
+            "bodyHex": "E4 B9 A6",
+            "contentType": "text/plain; charset=UTF-8",
+            "contentLength": "3",
+            "transferEncoding": null
+          }
+        ]
+      },
+      {
+        "row": "body-charset-gbk-form",
+        "requests": [
+          {
+            "bodyHex": "6B 3D 25 43 41 25 45 39",
+            "contentType": "application/x-www-form-urlencoded; charset=utf-8",
+            "contentLength": "8",
+            "transferEncoding": null
+          }
+        ]
+      }
     ],
     "gaps": [
-      "AnalyzeUrl is driven directly rather than through the four WebBook suspend entry points, so a request the frozen WebBook builds with other arguments (a chapter body, a login header map) is not covered; the argument shapes it uses are the ones WebBook.kt:60, WebBook.kt:169, WebBook.kt:244, BookChapterList.kt:70 and BookContent.kt:90 construct.",
-      "A declared non-UTF-8 charset on a body: the frozen String.toRequestBody also writes the body's *bytes* with that resolved charset, which this transport does not reproduce (it writes UTF-8). No fixture in this corpus declares one, so no row observes it; the product-side test pins the header half and the comment names the quirk.",
-      "No `retry` (non-2xx) row and no named-`charset` row: those are #9's and #42's rows, pinned by their own evidence.",
-      "The `type`/`upload`/WebView request paths are not driven (the corpus sets no such option).",
-      "A Set-Cookie on a redirect hop stays unobserved here; the differential contract records that divergence for the product's own redirect walk."
-    ]
+      "UTF-16 body output, other legacy labels and unrepresentable characters are outside this device corpus; existing encoding_rs limits remain.",
+      "Unknown charset UTF-8 fallback has source-derived Windows wire coverage, not a device row.",
+      "AnalyzeUrl is driven directly rather than through the four WebBook suspend entry points; stage-specific arguments remain uncovered.",
+      "No retry, WebView/type/upload or Set-Cookie-on-redirect observation; relative Location and cross-scheme hops remain uncovered.",
+      "Query divergence frequency is not measured against the 150-source used set; no Android/iOS/macOS/Linux destination run is claimed."
+    ],
+    "noUniversalCharsetClaim": true
   },
-  "noAggregateStatusPromotion": true,
   "hashes": [
     {
-      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
-      "sha256": "16d42622ea09f1b86388b6043e8f755542e382c39e6fadab2debfd384fce0222"
-    },
-    {
-      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
-      "sha256": "3340789d9857e51763e1a0d75dcbe038d562691727df9a7598679854116f985b"
-    },
-    {
-      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-run.log",
-      "sha256": "the curated transcript of this run; it names every command and its raw result"
-    },
-    {
-      "path": "tool/nested_oracle/RequestOracle.java",
-      "sha256": "584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d"
-    },
-    {
-      "path": "tool/nested_oracle/AndroidManifest.xml",
-      "sha256": "edd75d6cc7c789f1f53db9187a3627729bbeefca601fb3c7376baf8efd737f58"
-    },
-    {
-      "path": "tool/nested_oracle/build.ps1",
-      "sha256": "bdf3a9b86e307fb419fa006788f2f1893bcaeddf7549861f00b086a41543691f"
-    },
-    {
-      "path": "tool/nested_oracle/request-fixtures.json",
-      "sha256": "4194ed959b597fa3100c9338a222d8731a1055f7f001f217c2182c4329b0cd3e"
-    },
-    {
-      "path": "tool/nested_oracle_compare.dart",
-      "sha256": "a97dd3251a11136cd719a706760c264ca07f69caad1aa27d8f687a72d15ef197"
-    },
-    {
       "path": "lib/source/http_source_transport.dart",
-      "sha256": "296de37db440ce3224ab6ea7ed5c80f7f119d78f6a2c3fc210da620d03dbd75d"
+      "sha256": "a6c39241ce34ddd15c9ad8a1f384f7131298ae3eb8323281fef872e6cc3bf9cf"
+    },
+    {
+      "path": "lib/source/source_encoding.dart",
+      "sha256": "17c8629eebb363c5a93929b5017453021819368c728cf48b24248bb5a1bebdd1"
+    },
+    {
+      "path": "lib/source/source_url_rules.dart",
+      "sha256": "fcd8984a1afcce6debb4c542ff1c3d015baa1f3c09b7710eb76e7dc6eb764e84"
+    },
+    {
+      "path": "packages/fjs/liber_text/src/scan.rs",
+      "sha256": "852a82c7a30e7763a6eec00506963b4b7537bed87ca5b24cfb8662a3af9b99fd"
     },
     {
       "path": "test/source_request_semantics_test.dart",
-      "sha256": "06b283b2267075f4b669daf0589555f32fc761132e71046b69a4ebdf680d26d5"
+      "sha256": "4b68441dfcab646f8a7a580011a39a2451f0791065d1f4ff0eb6029fdece3344"
     },
     {
-      "path": "tool/runtime_host_integration.dart",
-      "sha256": "7f7a651a725a6e092f37bd5e2f62a76c27eb449f40495b13bd8c6247e9b83b45"
+      "path": "tool/nested_oracle_compare.dart",
+      "sha256": "5214cacbbffed4beea204ae641543bacea604d490323c317ce07d5c947ecc9d4"
+    },
+    {
+      "path": "docs/compatibility/book-source-capability-matrix.md",
+      "sha256": "d75df94bba282df633ed01372ab810491a86a36aac03bbe46756c927e9143b1c"
+    },
+    {
+      "path": "docs/compatibility/book-source-differential-contract.md",
+      "sha256": "36fb49fab0a6212c8304764e619f8499fd062be3e91648f642d825b920544154"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/request-charset-v2-pending.md",
+      "sha256": "7a506876d874c3ed9f157669f7df529de4737859634a89a4b6328465a6fe3780"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-run.log",
+      "sha256": "9fa879f991a0697211792006a8ff9aa9536854478eefc2790e2f2e05881d7b1f"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
+      "sha256": "89c286d29517d815c04d881229f470271d4dc9aeb5359d1ee48f7c9b000bbd83"
+    },
+    {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json",
+      "sha256": "12caba1fc9f59f8e59ff41b064dc378bd99a5d87eba4cabbbba139cbc7bdc164"
     }
   ],
-  "runLogIsCuratedTranscript": true,
-  "note": "The corpus and the golden are versioned together: changing a row, a response or the declared request requires a new corpus version and a new golden. The comparison is a per-row report; the rows it does not compare are listed by id in the report and in the ticket."
+  "previousEvidence": {
+    "availableAtCommit": "cdf4ae7db03a084ad6caf508dc5baf695e2337aa",
+    "corpusVersion": 1,
+    "goldenSha256": "16d42622ea09f1b86388b6043e8f755542e382c39e6fadab2debfd384fce0222",
+    "manifestSha256": "d06d5ca79d0792b5e3752e05caab65831bebb096e1274deecce8deb7272f4242",
+    "comparisonSha256": "3340789d9857e51763e1a0d75dcbe038d562691727df9a7598679854116f985b",
+    "note": "Historical v1 device evidence remains reachable in Git; the working corpus was already v2 and deliberately mismatched it until this executed refresh."
+  },
+  "noAggregateStatusPromotion": true,
+  "rawLogDirectory": "C:/Users/17945/.cache/wayfinder/liber-54/device-resume",
+  "note": "Only rows with executed equality are promoted on Windows; three named differences and uncovered charset families remain explicit. No comparator or gate was weakened."
 }

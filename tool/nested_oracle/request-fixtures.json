@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "fixtureId": "REQUEST-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (constructor, 14 parameters) + getStrResponseAwait, driven inside the installed io.legado.app.debug process through reflection",
   "port": 18731,
@@ -15,18 +15,56 @@
     "D the 21st follow-up limit",
     "D {{key}} raw substitution, the query encoded once, an already-encoded query left alone",
     "D the exact bytes for { } | ^ ` \\ ' spaces and non-ASCII",
-    "D {{page}} and <1,2,3> page lists, and the empty binding on a stage that carries no page"
+    "D {{page}} and <1,2,3> page lists, and the empty binding on a stage that carries no page",
+    "D declared GBK body bytes and 307 preservation, Content-Type charset precedence, and GBK form percent-encoding"
   ],
   "coverageGaps": [
     "The corpus drives AnalyzeUrl directly rather than the four WebBook stages, so a request the frozen WebBook builds with other arguments (a chapter body, a login header map) is not covered; the argument shapes it does use are the ones WebBook.kt:60 (search, key+page), WebBook.kt:169 (book info, no key/page), WebBook.kt:244 (toc, no key/page), BookChapterList.kt:70 and BookContent.kt:90 (next page, no key/page) construct.",
     "The rows drive the frozen OkHttp path only (useWebView stays false, `type`/`upload` are not options this corpus sets), so the WebView request path (#2) is not covered.",
     "No `retry` option row: the non-2xx retry loop (#9, OkHttpUtils.kt:29-43) is pinned by the product's own tests and is not re-opened here.",
-    "No charset option row: the `charset`/`escape` encoder rows are #42's, pinned by its own evidence, and this corpus uses only the default UTF-8 query encoder.",
+    "The three body-charset rows cover representable GBK text, Content-Type precedence, and a GBK form control; they do not establish universal charset parity.",
+    "The `escape` encoder, unknown charset labels, UTF-16 output, and characters a legacy charset cannot represent are outside these rows; the bridge retains its encoding_rs limits.",
     "The redirect rows observe the requests the replay server receives; a Set-Cookie on a hop and other client-internal state are out of this corpus' scope (the differential contract's known-divergence row records the hop-cookie loss).",
     "Only one response status shape per redirect status is exercised: the Location header is always relative to a declared origin, so a relative Location and a cross-scheme hop are not covered."
   ],
   "note": "The rows drive io.legado.app.model.analyzeRule.AnalyzeUrl through reflection inside the installed frozen process, with the corpus' own in-process replay server on port 18731. Every row's evidence is the ordered request the server received (method, target, headers, body) plus the row's outcome. The corpus is the input only; the observed bytes belong to the golden. Rows whose `request.rule` carries a `,{...}` option object are declared exactly as a Book Source would declare them, so the method/body/header handling under test is AnalyzeUrl's own.",
   "rows": [
+    {
+      "id": "body-charset-gbk-307",
+      "frozen": "AnalyzeUrl.kt:435-444 at 14dd24945b2914ce2708b8abaa4ee67ceef892af; okhttp-4.12.0 RequestBody$Companion.create(String, MediaType) resolves MediaType.charset then String.getBytes; RetryAndFollowUpInterceptor keeps body on 307",
+      "semantics": "Declared GBK encodes the raw body 书 as CA E9 (UTF-8 would be E4 B9 A6); the 307 follow-up keeps bytes and media type. This is an input expectation from source inspection, not an executed golden.",
+      "request": {
+        "rule": "$ORIGIN/body-gbk,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"text/plain; charset=GBK\"},\"body\":\"书\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "body-charset-content-type-precedence",
+      "frozen": "AnalyzeUrl.kt:257-260 skips analyzeFields when Content-Type is present; :438-444 passes only Content-Type into toRequestBody",
+      "semantics": "The GBK charset option does not override the declared UTF-8 raw body media type. No ambiguity in this branch: the option never reaches toRequestBody.",
+      "request": {
+        "rule": "$ORIGIN/body-precedence,{\"method\":\"POST\",\"charset\":\"GBK\",\"headers\":{\"Content-Type\":\"text/plain; charset=UTF-8\"},\"body\":\"书\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
+    {
+      "id": "body-charset-gbk-form",
+      "frozen": "AnalyzeUrl.kt:257-272,279-334,440-441 and OkHttpUtils.kt:139-142",
+      "semantics": "Without a declared media type the GBK option percent-escapes 书 as k=%CA%E9. postForm then writes that ASCII text as UTF-8 with application/x-www-form-urlencoded; charset=utf-8.",
+      "request": {
+        "rule": "$ORIGIN/body-form,{\"method\":\"POST\",\"charset\":\"GBK\",\"body\":\"k=书\"}",
+        "key": null,
+        "page": null,
+        "baseUrl": "$ORIGIN",
+        "headers": null
+      }
+    },
     {
       "id": "defaults-injected",
       "frozen": "HttpHelper.kt:71-82 (okHttpClient's first application interceptor) and AppConfig.kt:544-549 (the default user agent), pinned at 14dd2494",
@@ -280,6 +318,10 @@
     }
   ],
   "responses": [
+    {"method": "POST", "path": "/body-gbk", "status": 307, "headers": {"Location": "$ORIGIN/after-body-gbk"}, "body": ""},
+    {"method": "POST", "path": "/after-body-gbk", "status": 200, "body": "body-gbk"},
+    {"method": "POST", "path": "/body-precedence", "status": 200, "body": "body-precedence"},
+    {"method": "POST", "path": "/body-form", "status": 200, "body": "body-form"},
     {"method": "GET", "path": "/defaults", "status": 200, "body": "defaults"},
     {"method": "GET", "path": "/declared", "status": 200, "body": "declared"},
     {"method": "GET", "path": "/ua-null", "status": 200, "body": "ua-null"},
