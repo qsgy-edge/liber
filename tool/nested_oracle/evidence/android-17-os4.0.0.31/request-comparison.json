@@ -2,7 +2,7 @@
   "platform": "windows",
   "mode": "requests",
   "fixtureId": "REQUEST-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "golden": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json",
   "status": "pass",
@@ -10,7 +10,7 @@
     "origin": "http://127.0.0.2:18763",
     "otherOrigin": "http://127.0.0.3:18763"
   },
-  "library": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll",
+  "library": "build/windows/x64/runner/Debug/fjs.dll",
   "ignoredHeaders": [
     "host",
     "content-length",
@@ -22,6 +22,207 @@
     "query-exact-bytes": "The frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (AnalyzeUrl.kt:265-278, OkHttpUtils.kt:105-109), which writes `{`, `}`, `|`, `^`, the backtick and the backslash as they are. The product's request URL is a Dart `Uri`, which percent-encodes those six characters while it resolves (lib/source/source_http_uri.dart), the platform seam the capability matrix already records for the query re-encoding row."
   },
   "rows": [
+    {
+      "id": "body-charset-gbk-307",
+      "status": "pass",
+      "frozen": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-gbk",
+            "rawQuery": "",
+            "query": {},
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "keep-alive": "300",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "accept-encoding": "gzip, deflate",
+              "content-type": "text/plain; charset=GBK",
+              "content-length": "2",
+              "host": "127.0.0.2:18731"
+            },
+            "body": "Êé"
+          },
+          {
+            "method": "POST",
+            "path": "/after-body-gbk",
+            "rawQuery": "",
+            "query": {},
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "keep-alive": "300",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "accept-encoding": "gzip, deflate",
+              "content-type": "text/plain; charset=GBK",
+              "content-length": "2",
+              "host": "127.0.0.2:18731"
+            },
+            "body": "Êé"
+          }
+        ],
+        "outcome": "ok"
+      },
+      "liber": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-gbk",
+            "rawQuery": "",
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "keep-alive": "300",
+              "accept-encoding": "gzip",
+              "content-length": "2",
+              "host": "127.0.0.2:18763",
+              "content-type": "text/plain; charset=GBK"
+            },
+            "body": "Êé"
+          },
+          {
+            "method": "POST",
+            "path": "/after-body-gbk",
+            "rawQuery": "",
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "keep-alive": "300",
+              "accept-encoding": "gzip",
+              "content-length": "2",
+              "host": "127.0.0.2:18763",
+              "content-type": "text/plain; charset=GBK"
+            },
+            "body": "Êé"
+          }
+        ],
+        "outcome": "ok",
+        "status": 200,
+        "body": "body-gbk"
+      },
+      "liberRule": {
+        "ruleText": "http://127.0.0.2:18763/body-gbk,{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"text/plain; charset=GBK\"},\"body\":\"书\"}",
+        "resolvedUrl": "http://127.0.0.2:18763/body-gbk",
+        "method": "POST"
+      },
+      "mismatches": [],
+      "divergences": []
+    },
+    {
+      "id": "body-charset-content-type-precedence",
+      "status": "pass",
+      "frozen": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-precedence",
+            "rawQuery": "",
+            "query": {},
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "keep-alive": "300",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "accept-encoding": "gzip, deflate",
+              "content-type": "text/plain; charset=UTF-8",
+              "content-length": "3",
+              "host": "127.0.0.2:18731"
+            },
+            "body": "ä¹¦"
+          }
+        ],
+        "outcome": "ok"
+      },
+      "liber": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-precedence",
+            "rawQuery": "",
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "keep-alive": "300",
+              "accept-encoding": "gzip",
+              "content-length": "3",
+              "host": "127.0.0.2:18763",
+              "content-type": "text/plain; charset=UTF-8"
+            },
+            "body": "ä¹¦"
+          }
+        ],
+        "outcome": "ok",
+        "status": 200,
+        "body": "body-precedence"
+      },
+      "liberRule": {
+        "ruleText": "http://127.0.0.2:18763/body-precedence,{\"method\":\"POST\",\"charset\":\"GBK\",\"headers\":{\"Content-Type\":\"text/plain; charset=UTF-8\"},\"body\":\"书\"}",
+        "resolvedUrl": "http://127.0.0.2:18763/body-precedence",
+        "method": "POST"
+      },
+      "mismatches": [],
+      "divergences": []
+    },
+    {
+      "id": "body-charset-gbk-form",
+      "status": "pass",
+      "frozen": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-form",
+            "rawQuery": "",
+            "query": {},
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "keep-alive": "300",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "accept-encoding": "gzip, deflate",
+              "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+              "content-length": "8",
+              "host": "127.0.0.2:18731"
+            },
+            "body": "k=%CA%E9"
+          }
+        ],
+        "outcome": "ok"
+      },
+      "liber": {
+        "requests": [
+          {
+            "method": "POST",
+            "path": "/body-form",
+            "rawQuery": "",
+            "headers": {
+              "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+              "connection": "Keep-Alive",
+              "cache-control": "no-cache",
+              "keep-alive": "300",
+              "accept-encoding": "gzip",
+              "content-length": "8",
+              "host": "127.0.0.2:18763",
+              "content-type": "application/x-www-form-urlencoded; charset=utf-8"
+            },
+            "body": "k=%CA%E9"
+          }
+        ],
+        "outcome": "ok",
+        "status": 200,
+        "body": "body-form"
+      },
+      "liberRule": {
+        "ruleText": "http://127.0.0.2:18763/body-form,{\"method\":\"POST\",\"charset\":\"GBK\",\"body\":\"k=书\"}",
+        "resolvedUrl": "http://127.0.0.2:18763/body-form",
+        "method": "POST"
+      },
+      "mismatches": [],
+      "divergences": []
+    },
     {
       "id": "defaults-injected",
       "status": "pass",
@@ -1960,6 +2161,9 @@
     }
   ],
   "passedRows": [
+    "body-charset-gbk-307",
+    "body-charset-content-type-precedence",
+    "body-charset-gbk-form",
     "defaults-injected",
     "defaults-declared",
     "redirect-300-post",

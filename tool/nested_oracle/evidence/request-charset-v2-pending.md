@@ -1,91 +1,132 @@
-# #54 offline request-body charset preparation — device blocked
+# #54 — REQUEST-01 v2 executed device evidence
 
-Status: **partial; not accepted as frozen compatibility evidence**. Branch `wayfinder/54`, worktree `D:/GithubRepositories/Flutter/liber-54`, base `8d4069d`. This record accompanies REQUEST-01 corpus v2 (23 rows, 25 responses); it is not a refreshed device manifest or golden.
+The restored handset run resolves the device block recorded by the earlier version of this document. The filename is retained for existing links. REQUEST-01 v2 now has a real frozen golden and a strict Windows comparison: **20 pass / 0 fail / 3 existing named notCompared**, including passes for all three new body-charset rows. Evidence remains scoped to `wayfinder/54` until controller review and integration; this is not an all-platform or universal-charset claim.
 
-## Device boundary and controller direction
+The resume started from clean `cdf4ae7db03a084ad6caf508dc5baf695e2337aa` in `D:/GithubRepositories/Flutter/liber-54`, after the controller merged validated master. No product, parser, Rust, harness or comparator code was changed during this device continuation. Corpus metadata was updated before building to remove the obsolete device-block wording; all 23 declared requests and 25 replay responses are unchanged from the prepared v2 inputs.
 
-The only approved device is `5615f742`. The actual command/result was:
+## Device and provenance
+
+On 2026-09-20, `adb devices` returned `5615f742 device`. At capture time, `getprop ro.build.fingerprint` returned:
 
 ```text
-$ adb devices
-List of devices attached
-
+Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
 ```
 
-No devices were listed. The controller authorized offline fixture/product/test work only, with no device retry loop, substitute device or AVD. APK installation, current installed frozen APK hash verification, device fingerprint verification, RequestOracle instrumentation and golden pull are **blocked/not-run**. No device input was sent. No Windows UI driven run was performed in this lane; the controller owns the integrated driven review.
+`pm path io.legado.app.debug` identified the installed base APK, which was pulled and verified as SHA256 `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6`. No frozen app was rebuilt, cleared or uninstalled. The only installation was the existing reflection-only oracle instrumentation, built in a fresh directory:
 
-## Frozen basis (source inspection, not a new execution)
+```text
+pwsh tool/nested_oracle/build.ps1 -OutputDirectory C:/Users/17945/.cache/wayfinder/liber-54/device-resume/harness -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8
+MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <that directory>/nested-oracle.apk
+```
 
-Repository `D:/GithubRepositories/Android/legado` HEAD is the frozen `14dd24945b2914ce2708b8abaa4ee67ceef892af`; the inspected text came from `git show <commit>:<path>`:
+Build and install exited 0 (one javac source-8/bootstrap-path warning). Built and pulled installed harness APKs both hash to `c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28`. The committed corpus and built asset both hash to `d59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17`.
 
-- `app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt:257-260,271-272,279-334`: the option charset percent-encodes a non-JSON/XML form only when `Content-Type` is absent. Source blob SHA256 `3cf214316ed79271739467ba47572bd4f64f86130fab929d733bedd467e7dd56`.
-- The same file `:435-446`: the declared raw body goes to `body.toRequestBody(contentType.toMediaType())`. The option charset is not passed to it. There is no unresolved precedence ambiguity for these fixtures: Content-Type controls the raw body's bytes.
-- `app/src/main/java/io/legado/app/help/http/OkHttpUtils.kt:139-142`: `postForm(encodedForm)` uses `application/x-www-form-urlencoded`, without a charset. Source blob SHA256 `1a5436e708f66f1d9b67193ef042cf47c6cb2e52ab37bfec7f199b2b0abe0894`.
-- Cached `okhttp-4.12.0.jar` SHA256 `b1050081b14bb7a3a7e55a4d3ef01b5dcfabc453b4573a4fc019767191d5f4e0`, inspected with Temurin 17 `javap -c -l 'okhttp3.RequestBody$Companion' okhttp3.MediaType`: `RequestBody.kt:106-118` resolves the media charset, appends UTF-8 when it resolves none, and calls `String.getBytes(charset)` (bytecode offset 70, line 117). `MediaType.kt:51-55` catches an unknown charset and returns its fallback.
+Each of two sequential runs used force-stop, the existing instrumentation entry and the existing output path, with `MSYS_NO_PATHCONV=1` in every adb command's environment:
 
-Controller review rechecked the frozen OkHttp bytecode and corrected its earlier erroneous rejection direction: unknown labels now preserve UTF-8 bytes and the explicitly supplied header. The regression covers the initial request plus 307/308, including body bytes and framing. This is source-derived behavior and executed Windows evidence, not new device evidence. The command table below records the original lane run; its unsupported-label rejection expectation is superseded by this controller correction.
+```text
+adb -s 5615f742 shell am force-stop io.legado.app.debug
+adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.RequestOracle
+INSTRUMENTATION_RESULT: stream=Request oracle recorded 23 rows and 51 requests
+INSTRUMENTATION_CODE: -1
+adb -s 5615f742 pull /sdcard/Android/data/io.legado.app.debug/files/request-oracle.json <capture-N.json>
+```
 
-## Product and pending fixture rows
+Both runs exited 0, with `analysisFailure: null`, `serverErrors: []`, and `cleanup: {openConnections: 2, serverClosed: true}`. `openConnections` is sampled before `Replay.close`; it is not a post-close leak count. The captures are identical after removing only `recordedAt`. The committed golden is the second capture, copied verbatim, recorded at `2026-09-20T12:12:35.074Z`.
 
-`HttpSourceTransport` now passes the body and resolved media-type charset to the existing `SourceEncoding.encode` bridge; `Content-Length` uses the resulting byte count. No Rust, bridge entry, option parser, response decoding or comparator change.
+After capture, the target app was force-stopped; `adb shell pidof io.legado.app.debug` returned exit 1 with no output, confirming the instrumentation and in-process replay were stopped. No shell input events or operator content operations occurred. The desktop comparator exited normally, releasing its server; no competing device/replay work remains owned by this lane.
 
-| New corpus row | Offline product result | Frozen v2 comparison |
-|---|---|---|
-| `body-charset-gbk-307` | `书` writes `CA E9`, length 2; wire tests also cover both 307 and 308 | blocked/not-run |
-| `body-charset-content-type-precedence` | GBK option with declared UTF-8 writes `E4 B9 A6`, length 3 | blocked/not-run |
-| `body-charset-gbk-form` | `k=书` becomes ASCII `k=%CA%E9`, bytes `6B 3D 25 43 41 25 45 39`, length 8; media type names UTF-8 | blocked/not-run |
+## Frozen basis and observed new rows
 
-The wire tests also cover an absent media charset defaulting to UTF-8. Each of the four success cases checks the initial request, 307 hop and 308 hop, Content-Type, actual bytes, method, Content-Length and no Transfer-Encoding. The regression was run before the fix and failed with actual `E4 B9 A6` on all three GBK hops versus expected `CA E9`.
+Frozen commit: `14dd24945b2914ce2708b8abaa4ee67ceef892af`.
 
-## Commands and actual results
+- `AnalyzeUrl.kt:257-260,271-272,279-334` applies the option charset to form/query percent-encoding. `:435-446` passes a declared raw body's Content-Type to `toRequestBody`; the option does not override it. Source blob SHA256 `3cf214316ed79271739467ba47572bd4f64f86130fab929d733bedd467e7dd56`.
+- `OkHttpUtils.kt:139-142` writes the encoded form with the form media type. Source blob SHA256 `1a5436e708f66f1d9b67193ef042cf47c6cb2e52ab37bfec7f199b2b0abe0894`.
+- okhttp-4.12.0 `RequestBody.kt:106-118` resolves the media charset and calls `String.getBytes(charset)` (`javap` bytecode offset 70, source line 117). `MediaType.kt:51-55` supplies the fallback on an unknown charset. Inspected JAR SHA256 `b1050081b14bb7a3a7e55a4d3ef01b5dcfabc453b4573a4fc019767191d5f4e0`.
 
-Raw local logs are in `C:/Users/17945/.cache/wayfinder/liber-54/`.
+| Row | Frozen bytes | Windows bytes | Observed media type / framing | Result |
+|---|---|---|---|---|
+| `body-charset-gbk-307` | `CA E9` on initial and 307 requests | `CA E9` on both | `text/plain; charset=GBK`; Content-Length 2 | pass |
+| `body-charset-content-type-precedence` | `E4 B9 A6` | `E4 B9 A6` | `text/plain; charset=UTF-8`; Content-Length 3, despite GBK option | pass |
+| `body-charset-gbk-form` | `6B 3D 25 43 41 25 45 39` (`k=%CA%E9`) | identical | `application/x-www-form-urlencoded; charset=utf-8`; Content-Length 8 | pass |
 
-| Command | Actual result |
+No request above used Transfer-Encoding. The golden stores raw body bytes as a reversible Latin-1 string, not as decoded GBK text; this is the existing comparator representation. Content-Length remains a platform-generated ignored header in the strict comparator. The golden observations and focused Windows wire tests establish framing without weakening that rule. The tests additionally cover 308 preservation, default UTF-8 and unknown-label fallback.
+
+Declared Content-Type precedence is now supported by both source inspection and a passing executed row, with no unresolved ambiguity for the fixture. Unknown-label UTF-8 fallback remains unchanged from controller correction `78e6442`; it has source-derived Windows wire evidence but no row in this device corpus. The earlier instruction to reject unknown labels was withdrawn and is not the current behavior.
+
+## Full comparison
+
+The existing comparator, including master's socket teardown correction, completed in **7.195 seconds**, exit 0. A printed result without process exit was not accepted.
+
+```text
+dart run tool/nested_oracle_compare.dart --requests build/windows/x64/runner/Debug/fjs.dll tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json tool/nested_oracle/evidence/android-17-os4.0.0.31/request-comparison.json
+```
+
+| Row | Status |
 |---|---|
-| `flutter pub get` | exit 0; generated Windows plugin noise subsequently restored |
-| `flutter test test/source_request_semantics_test.dart --plain-name 'declared GBK body'` (before fix) | exit 1, expected `[202,233]`, actual `[228,185,166]` on all 3 hops (`before.log`) |
-| `flutter test test/source_request_semantics_test.dart` | exit 0, 15/15 tests (`focused.log`) |
-| `flutter test test` | exit 0, 312/312 tests (`flutter-test.log`) |
-| `dart analyze lib test integration_test tool` | exit 0, No issues found (`analyze-complete.log`, `analyze-exit.json`) |
-| `python tool/ci_runtime.py windows x86_64-pc-windows-msvc` | exit 0, 16/16 rows (`ci-runtime-complete.log`, `ci-runtime-exit.json`; worktree `.ci-results/manifest.json` and row logs) |
-| `dart run tool/host_surface_gate.dart build/windows/x64/runner/Debug/fjs.dll` | exit 0, status pass, 46/46 checks (`host-surface.log`) |
-| `pwsh tool/nested_oracle/build.ps1 -OutputDirectory C:/Users/17945/.cache/wayfinder/liber-54/request-oracle-v2 -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8` | exit 0; harness built (`harness-build.log`); one javac source-8/bootstrap-path warning |
-| `dart run tool/nested_oracle_compare.dart --requests build/windows/x64/runner/Debug/fjs.dll tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json C:/Users/17945/.cache/wayfinder/liber-54/request-comparison-v2.json` | exit 255: `Bad state: Oracle identity mismatch`; no report created (`comparator.log`) |
-| `git diff --check` | exit 0 |
+| `body-charset-gbk-307` | pass |
+| `body-charset-content-type-precedence` | pass |
+| `body-charset-gbk-form` | pass |
+| `defaults-injected` | pass |
+| `defaults-declared` | pass |
+| `defaults-user-agent-null` | notCompared |
+| `redirect-300-post` | pass |
+| `redirect-301-post` | pass |
+| `redirect-302-post` | pass |
+| `redirect-303-post` | pass |
+| `redirect-307-post` | pass |
+| `redirect-308-post` | pass |
+| `redirect-cross-origin` | notCompared |
+| `redirect-limit` | pass |
+| `query-key-raw` | pass |
+| `query-key-separators` | pass |
+| `query-key-separators-and-space` | pass |
+| `query-already-encoded` | pass |
+| `query-exact-bytes` | notCompared |
+| `page-list-hit` | pass |
+| `page-list-past-end` | pass |
+| `pageless-empty-bindings` | pass |
+| `pageless-page-list-literal` | pass |
 
-The first analyzer and runtime-matrix attempts were terminated by the tool's 60-second timeout (matrix reached six successful rows); the complete reruns used detached subprocesses with exit-code files and finished as reported above. The headline counts come from the complete runs, not the interrupted ones. Only test whitespace/comments changed after those runs.
+The three remaining differences are unchanged and quoted exactly by the report:
 
-The controller approved read-only reuse of its native library because the lane had none. The initially suggested controller bundle path did not exist; the approved replacement was `D:/GithubRepositories/Flutter/liber/packages/fjs/libfjs/target/debug/fjs.dll`, copied to this worktree's ignored `build/windows/x64/runner/Debug/fjs.dll`. `sha256sum` before and after gave **`e5bade176f54d786d0225dbcd9c133707335d1caf0b4d661eeae3f122a6a2bf6`** for both. No Rust build ran; no FRB mismatch occurred.
+- `defaults-user-agent-null`, `requests[0].headers.user-agent`: frozen `"okhttp/4.12.0"`; Windows `"Dart/3.12 (dart:io)"`.
+- `redirect-cross-origin`, `requests[1].headers.cookie`: frozen `"test=value"`; Windows `null` (header absent).
+- `query-exact-bytes`, `requests[0].rawQuery`: frozen ``q={a}|b^c`\d%27e%20f%20%E4%B9%A6&p=1``; Windows `q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1`.
 
-## Pins and evidence grades
+Only those named observations are excepted; every other required observation in those rows matched. The comparator's identity checking, ignore list and divergence rules were not edited.
 
-- Pending corpus and built `assets/request-fixtures.json`: both SHA256 `67a03ae60a126200ccd5b7ecb74280ca32965d8d3fd542d0799db19630ee2d33` — versioned input, not a golden.
-- Built harness APK: SHA256 `d99f4cc59aa3be735efab8d0f41ff2aa3d23091790a2480aeafadd830e7e08b9` — build-only, never installed.
-- `RequestOracle.java`: working-copy SHA256 `f221184449faad551d7309c190790cfb40907d661811221061ce8e67971c416e`; unchanged Git blob SHA256 `584ae5952a82fafee35f56be1abb88fb241d3ea36d45614e62919e0ec88a646d` (checkout CRLF versus LF).
-- `AndroidManifest.xml`: `edd75d6cc7c789f1f53db9187a3627729bbeefca601fb3c7376baf8efd737f58`; `build.ps1`: `bdf3a9b86e307fb419fa006788f2f1893bcaeddf7549861f00b086a41543691f`.
-- Historical v1 `android-17-os4.0.0.31/request-oracle.json`: SHA256 `16d42622ea09f1b86388b6043e8f755542e382c39e6fadab2debfd384fce0222`; `request-manifest.json`: `d06d5ca79d0792b5e3752e05caab65831bebb096e1274deecce8deb7272f4242`; `request-comparison.json`: `3340789d9857e51763e1a0d75dcbe038d562691727df9a7598679854116f985b`. All unchanged.
-- That historical manifest pins frozen APK `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6` and fingerprint `Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys`. **Neither was verified on the currently unavailable device in this lane.**
-- Product wire tests/runtime gates: executed Windows evidence against the copied DLL; source precedence: static frozen source/bytecode evidence; new device equality: not-run. No row or aggregate status was promoted.
+## Desktop validation and native identity
 
-## Remaining divergences and gaps
+The approved native source `D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll` was hashed before copying into this worktree's ignored `build/windows/x64/runner/Debug/fjs.dll`. Source and destination SHA256 both equal `b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1`. No Rust build ran, and no FRB mismatch occurred.
 
-The historical v1 comparison's 17 passes and 3 `notCompared` rows were not rerun against v2. Their existing divergence values remain:
+The worker lacks Dart MCP tools. Per the resume briefing it used bounded CLI validation; the controller owns independent reproduction and driven Windows UI review before delivery. Tests ran sequentially in a bounded subprocess with recorded exit codes.
 
-- `defaults-user-agent-null`: frozen `"okhttp/4.12.0"`, product `"Dart/3.12 (dart:io)"`.
-- `redirect-cross-origin`: frozen declared cookie `"test=value"`, product `null` (header absent).
-- `query-exact-bytes`: frozen ``q={a}|b^c`\d%27e%20f%20%E4%B9%A6&p=1``; product `q=%7Ba%7D%7Cb%5Ec%60%5Cd%27e%20f%20%E4%B9%A6&p=1`.
+| Command | Result |
+|---|---|
+| `flutter test test/source_request_semantics_test.dart` | exit 0, 15 tests passed |
+| `flutter test test --reporter json` | exit 0, 347 visible tests passed, 0 skipped |
+| `dart analyze lib test integration_test tool` | exit 0, No issues found |
+| `python tool/ci_runtime.py windows x86_64-pc-windows-msvc` | exit 0, 16/16 rows pass, no VM crash markers |
+| `dart run tool/host_surface_gate.dart build/windows/x64/runner/Debug/fjs.dll` | exit 0, 68/68 checks pass |
 
-The existing encoding engine's unrepresentable-character difference also applies to raw legacy bodies: for GBK emoji, Java's replacement is `?` (`3F`), while encoding_rs uses `&#128512;` (`26 23 31 32 38 35 31 32 3B`). It is not a new device observation. UTF-16 output and other labels remain uncovered; no universal charset parity claim is made. Unknown labels preserve the frozen fallback: `书` encodes as `E4 B9 A6`, while the explicitly declared header remains unchanged.
+Exact commands, durations and raw device results are in the versioned `android-17-os4.0.0.31/request-run.log`; the manifest pins the source bytes, APKs, corpus, golden, comparison, native DLL and executed validation. Full logs and both captures remain in `C:/Users/17945/.cache/wayfinder/liber-54/device-resume/`; `.ci-results/` contains this worktree's runtime row logs and manifest. A host-side capture inspection initially used Windows' GBK default instead of UTF-8 and raised `UnicodeDecodeError` after a successful device run/pull. Re-reading the untouched capture explicitly as UTF-8 resolved that inspection error; no device evidence was altered or substituted.
 
-The parser's existing media-type label handling, form selection, response decode order, all historical evidence and comparator ignore/divergence rules are deliberately unchanged. The corpus still drives AnalyzeUrl directly, not the four WebBook stages; the v1 manifest's other coverage gaps continue to apply.
+Key hashes:
 
-## Acceptance checklist
+- Golden: `89c286d29517d815c04d881229f470271d4dc9aeb5359d1ee48f7c9b000bbd83`.
+- Comparison: `12caba1fc9f59f8e59ff41b064dc378bd99a5d87eba4cabbbba139cbc7bdc164`.
+- Corpus: `d59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17`.
 
-- [x] Prepare the new versioned fixtures and corpus hash, and build a matching harness asset.
-- [ ] Execute RequestOracle on handset `5615f742`, verify installed frozen bytes/fingerprint, and refresh golden/manifest: blocked.
-- [x] Implement body encoding through the existing bridge with Content-Type and Content-Length behavior preserved for supported labels and unknown-label fallback.
-- [ ] New rows compare pass against a refreshed golden: blocked; strict identity failure retained.
-- [x] Matrix/contract distinguish executed offline checks, static evidence, divergences and blocked device rows.
-- [x] `flutter test test` 312/312; analyze clean; runtime 16/16; host surface 46/46.
-- [ ] Overall #54 completion and compatibility promotion: not met. Resume on the approved handset, refresh the evidence pair, compare every row, and review before integration/closure.
+## Coverage limits and acceptance
+
+Only the three new body rows and existing passing rows gain current Windows differential evidence. Unknown charset labels, UTF-16 output, other legacy labels and characters not representable in a legacy charset remain outside this device corpus. The existing bridge still uses encoding_rs replacement: for a GBK emoji, Java writes `?` (`3F`) while the bridge writes `&#128512;` (`26 23 31 32 38 35 31 32 3B`). That known difference is not a newly measured device row or a pass.
+
+The harness drives AnalyzeUrl directly rather than four WebBook entry points; finalUrl is not compared because replay ports differ. Retry, WebView/upload/type, redirect-hop Set-Cookie, relative/cross-scheme redirects and the used-source frequency of the query divergence remain outside this slice. No response decode, parser, Rust, bridge entry or unrelated host/content behavior changed.
+
+- [x] Matching 23-row v2 corpus, fresh harness, installed frozen APK verification and fingerprint.
+- [x] Two executed device captures, pinned refreshed golden/manifest and explicit cleanup.
+- [x] All three new rows compare pass; remaining divergences quoted without expanding exceptions.
+- [x] Existing product implementation encodes through the shared bridge and preserves media type/framing, including controller's unknown-label correction.
+- [x] Matrix/contract describe actual executed status and residual limits.
+- [x] Focused tests 15/15, full tests 347/347, clean analysis, runtime 16/16 and host gate 68/68.
+- Controller independent reproduction and driven UI review are the delivery barrier after the candidate commit; their result is recorded in the final lane artifact and subsequent evidence comment. No merge, push or ticket closure is performed by this lane.

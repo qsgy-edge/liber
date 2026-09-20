@@ -1,12 +1,107 @@
 {
   "fixtureId": "REQUEST-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeUrl (constructor, 14 parameters) + getStrResponseAwait, driven inside the installed io.legado.app.debug process through reflection",
   "platform": "android",
   "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
-  "recordedAt": "2026-09-19T04:31:49.099Z",
+  "recordedAt": "2026-09-20T12:12:35.074Z",
   "rows": [
+    {
+      "id": "body-charset-gbk-307",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/after-body-gbk",
+      "body": "body-gbk",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/body-gbk",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "text\/plain; charset=GBK",
+            "content-length": "2",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "Êé"
+        },
+        {
+          "method": "POST",
+          "path": "\/after-body-gbk",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "text\/plain; charset=GBK",
+            "content-length": "2",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "Êé"
+        }
+      ]
+    },
+    {
+      "id": "body-charset-content-type-precedence",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/body-precedence",
+      "body": "body-precedence",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/body-precedence",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "text\/plain; charset=UTF-8",
+            "content-length": "3",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "ä¹¦"
+        }
+      ]
+    },
+    {
+      "id": "body-charset-gbk-form",
+      "outcome": "ok",
+      "status": 200,
+      "finalUrl": "http:\/\/127.0.0.2:18731\/body-form",
+      "body": "body-form",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "\/body-form",
+          "rawQuery": "",
+          "query": {},
+          "headers": {
+            "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+            "keep-alive": "300",
+            "connection": "Keep-Alive",
+            "cache-control": "no-cache",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+            "content-length": "8",
+            "host": "127.0.0.2:18731"
+          },
+          "body": "k=%CA%E9"
+        }
+      ]
+    },
     {
       "id": "defaults-injected",
       "outcome": "ok",
@@ -953,6 +1048,74 @@
     }
   ],
   "requests": [
+    {
+      "method": "POST",
+      "path": "\/body-gbk",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "text\/plain; charset=GBK",
+        "content-length": "2",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "Êé"
+    },
+    {
+      "method": "POST",
+      "path": "\/after-body-gbk",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "text\/plain; charset=GBK",
+        "content-length": "2",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "Êé"
+    },
+    {
+      "method": "POST",
+      "path": "\/body-precedence",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "text\/plain; charset=UTF-8",
+        "content-length": "3",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "ä¹¦"
+    },
+    {
+      "method": "POST",
+      "path": "\/body-form",
+      "rawQuery": "",
+      "query": {},
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "content-type": "application\/x-www-form-urlencoded; charset=utf-8",
+        "content-length": "8",
+        "host": "127.0.0.2:18731"
+      },
+      "body": "k=%CA%E9"
+    },
     {
       "method": "GET",
       "path": "\/defaults",

@@ -58,21 +58,28 @@ The following values are strict:
 
 Header-name case and ordinary header ordering are ignored. Platform-generated `Host`, `Content-Length`, `Accept-Encoding`, and `Connection` are ignored unless the source explicitly sets them. No general URL, body, or text cleanup is allowed.
 
-Pending #54 evidence: REQUEST-01 v2 prepares `body-charset-gbk-307`,
-`body-charset-content-type-precedence`, and `body-charset-gbk-form`. The handset
-`5615f742` was unavailable (`adb devices` listed no devices), so these rows are
-**blocked/not-run**, not compatibility passes. The v1 golden, manifest and
-17 pass / 3 recorded-divergence comparison remain historical evidence only;
-the unchanged comparator rejects the v2 corpus against that v1 golden. A fresh
-frozen run with installed APK verification and a new manifest is required before
-any promotion. The offline Windows tests assert raw GBK `书` = `CA E9`, versus
-UTF-8 `E4 B9 A6`, and form `k=%CA%E9` = `6B 3D 25 43 41 25 45 39`.
+Executed #54 evidence: REQUEST-01 v2 was recorded twice on handset `5615f742`
+after pulling and verifying the installed frozen APK and fingerprint. Both runs
+recorded 23 rows and 51 requests, identical after dropping `recordedAt`.
+The Windows comparison is **20 pass / 0 fail / 3 named notCompared**; all three
+new rows (`body-charset-gbk-307`, `body-charset-content-type-precedence`, and
+`body-charset-gbk-form`) pass. The golden and pinned manifest are in
+`tool/nested_oracle/evidence/android-17-os4.0.0.31/`; the comparison exits normally
+and preserves the strict identity check and existing divergence rules.
+Both sides write raw GBK `书` = `CA E9`, UTF-8 `E4 B9 A6` when the declared
+Content-Type overrides the GBK option, and form `k=%CA%E9` =
+`6B 3D 25 43 41 25 45 39`. GBK bytes and the declared media type survive the
+307 hop. The golden records Content-Length 2/3/8 and no Transfer-Encoding;
+Windows wire tests assert framing (the comparator retains the contract's
+platform-generated Content-Length ignore rule).
 At the frozen commit, `AnalyzeUrl.kt:257-260,271-272` applies the charset option
 only to the form branch, while `:435-446` passes the declared Content-Type to
-`toRequestBody`; these inputs have no unresolved precedence ambiguity. This is
-source inspection plus product wire evidence, not a substitute for device bytes.
-UTF-16 body output, other legacy labels, and unrepresentable characters are
-outside the new device coverage; the existing `encoding_rs` bridge is unchanged.
+`toRequestBody`; the executed rows confirm that precedence. UTF-16 body output,
+other legacy labels, unknown labels and unrepresentable characters remain
+outside this device corpus. Unknown-label UTF-8 fallback is covered by the
+existing Windows wire regression and frozen bytecode inspection, not a device
+row. The existing `encoding_rs` bridge is unchanged; no universal charset or
+other destination-platform compatibility is claimed.
 
 Every attempt is classified as `initial`, `redirect`, `source-status-retry`, or `transport-retry`. The comparator records every HTTP attempt observed by the replay server and every declared pre-request connection failure. Source-configured retries after non-2xx responses and client-level automatic retries after connection failure remain separate causal events; neither may be hidden in one aggregate retry count.
 

@@ -16,13 +16,13 @@
     "D {{key}} raw substitution, the query encoded once, an already-encoded query left alone",
     "D the exact bytes for { } | ^ ` \\ ' spaces and non-ASCII",
     "D {{page}} and <1,2,3> page lists, and the empty binding on a stage that carries no page",
-    "D declared GBK body bytes and 307 preservation, Content-Type charset precedence, and GBK form percent-encoding (v2 device run pending)"
+    "D declared GBK body bytes and 307 preservation, Content-Type charset precedence, and GBK form percent-encoding"
   ],
   "coverageGaps": [
     "The corpus drives AnalyzeUrl directly rather than the four WebBook stages, so a request the frozen WebBook builds with other arguments (a chapter body, a login header map) is not covered; the argument shapes it does use are the ones WebBook.kt:60 (search, key+page), WebBook.kt:169 (book info, no key/page), WebBook.kt:244 (toc, no key/page), BookChapterList.kt:70 and BookContent.kt:90 (next page, no key/page) construct.",
     "The rows drive the frozen OkHttp path only (useWebView stays false, `type`/`upload` are not options this corpus sets), so the WebView request path (#2) is not covered.",
     "No `retry` option row: the non-2xx retry loop (#9, OkHttpUtils.kt:29-43) is pinned by the product's own tests and is not re-opened here.",
-    "Version 2's three charset rows have no frozen device golden yet (#54: handset 5615f742 unavailable). The committed v1 golden and manifest remain historical evidence only; the comparator must reject their identity mismatch with v2.",
+    "The three body-charset rows cover representable GBK text, Content-Type precedence, and a GBK form control; they do not establish universal charset parity.",
     "The `escape` encoder, unknown charset labels, UTF-16 output, and characters a legacy charset cannot represent are outside these rows; the bridge retains its encoding_rs limits.",
     "The redirect rows observe the requests the replay server receives; a Set-Cookie on a hop and other client-internal state are out of this corpus' scope (the differential contract's known-divergence row records the hop-cookie loss).",
     "Only one response status shape per redirect status is exercised: the Location header is always relative to a declared origin, so a relative Location and a cross-scheme hop are not covered."
@@ -44,7 +44,7 @@
     {
       "id": "body-charset-content-type-precedence",
       "frozen": "AnalyzeUrl.kt:257-260 skips analyzeFields when Content-Type is present; :438-444 passes only Content-Type into toRequestBody",
-      "semantics": "The GBK charset option does not override the declared UTF-8 raw body media type. No ambiguity in this branch: the option never reaches toRequestBody. Device verification pending.",
+      "semantics": "The GBK charset option does not override the declared UTF-8 raw body media type. No ambiguity in this branch: the option never reaches toRequestBody.",
       "request": {
         "rule": "$ORIGIN/body-precedence,{\"method\":\"POST\",\"charset\":\"GBK\",\"headers\":{\"Content-Type\":\"text/plain; charset=UTF-8\"},\"body\":\"书\"}",
         "key": null,
@@ -56,7 +56,7 @@
     {
       "id": "body-charset-gbk-form",
       "frozen": "AnalyzeUrl.kt:257-272,279-334,440-441 and OkHttpUtils.kt:139-142",
-      "semantics": "Without a declared media type the GBK option percent-escapes 书 as k=%CA%E9. postForm then writes that ASCII text as UTF-8 with application/x-www-form-urlencoded; charset=utf-8. Device verification pending.",
+      "semantics": "Without a declared media type the GBK option percent-escapes 书 as k=%CA%E9. postForm then writes that ASCII text as UTF-8 with application/x-www-form-urlencoded; charset=utf-8.",
       "request": {
         "rule": "$ORIGIN/body-form,{\"method\":\"POST\",\"charset\":\"GBK\",\"body\":\"k=书\"}",
         "key": null,
