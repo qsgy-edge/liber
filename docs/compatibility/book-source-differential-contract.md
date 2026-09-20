@@ -58,6 +58,29 @@ The following values are strict:
 
 Header-name case and ordinary header ordering are ignored. Platform-generated `Host`, `Content-Length`, `Accept-Encoding`, and `Connection` are ignored unless the source explicitly sets them. No general URL, body, or text cleanup is allowed.
 
+Executed #54 evidence: REQUEST-01 v2 was recorded twice on handset `5615f742`
+after pulling and verifying the installed frozen APK and fingerprint. Both runs
+recorded 23 rows and 51 requests, identical after dropping `recordedAt`.
+The Windows comparison is **20 pass / 0 fail / 3 named notCompared**; all three
+new rows (`body-charset-gbk-307`, `body-charset-content-type-precedence`, and
+`body-charset-gbk-form`) pass. The golden and pinned manifest are in
+`tool/nested_oracle/evidence/android-17-os4.0.0.31/`; the comparison exits normally
+and preserves the strict identity check and existing divergence rules.
+Both sides write raw GBK `书` = `CA E9`, UTF-8 `E4 B9 A6` when the declared
+Content-Type overrides the GBK option, and form `k=%CA%E9` =
+`6B 3D 25 43 41 25 45 39`. GBK bytes and the declared media type survive the
+307 hop. The golden records Content-Length 2/3/8 and no Transfer-Encoding;
+Windows wire tests assert framing (the comparator retains the contract's
+platform-generated Content-Length ignore rule).
+At the frozen commit, `AnalyzeUrl.kt:257-260,271-272` applies the charset option
+only to the form branch, while `:435-446` passes the declared Content-Type to
+`toRequestBody`; the executed rows confirm that precedence. UTF-16 body output,
+other legacy labels, unknown labels and unrepresentable characters remain
+outside this device corpus. Unknown-label UTF-8 fallback is covered by the
+existing Windows wire regression and frozen bytecode inspection, not a device
+row. The existing `encoding_rs` bridge is unchanged; no universal charset or
+other destination-platform compatibility is claimed.
+
 Every attempt is classified as `initial`, `redirect`, `source-status-retry`, or `transport-retry`. The comparator records every HTTP attempt observed by the replay server and every declared pre-request connection failure. Source-configured retries after non-2xx responses and client-level automatic retries after connection failure remain separate causal events; neither may be hidden in one aggregate retry count.
 
 HTTP non-2xx responses are not automatically network errors: the frozen client retries as configured and returns the last response body to the parser. Connection failures propagate as failures. Fixtures MUST cover both paths.
@@ -104,7 +127,8 @@ compared.
 |---|---|---|---|---|
 | `firstCompletesWhileSecondHeld` (`tool/state_oracle_compare.dart`, `state-expanded-golden.json`) | `true` | `false` | ADR 0009 removes the per-execution stacks, so two scopes can no longer be parked independently: a second execution runs nested inside the parked one and the nested wait owns the OS thread, which leaves the outer scope's parked wait unpolled until the nested one returns. The frozen baseline resumes independently parked scopes in any order. | Overlapping analyses are serialized at the product level (#26), and a later chapter prefetch stays serialized rather than concurrent, so no source reaches the interleaved shape this row describes. |
 | `escape` request charset, wire query | `EncoderUtils.escape`'s output as written: `%7e` for `~`, `%u4e2d` for 中 (`EncoderUtils.kt:11-28`) | `~` and `%25u4e2d` | The request URL is a Dart `Uri`, which canonicalizes an escape of an unreserved character while it resolves and rewrites the `%uXXXX` form, which is not a valid URI escape; the frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (`AnalyzeUrl.kt:279-292`) without parsing it | The `charset: "escape"` value appears in none of the 150 used sources; the query text is spliced back before the encoder runs, so the default and named-charset branches are unaffected |
-| Legacy request charset, a character the charset cannot represent | `CharsetEncoder`'s REPLACE action writes `?` (`AnalyzeUrl.kt:318-328`) | The HTML numeric character reference, `&#128512;` for an emoji | The encoder is `encoding_rs`'s (`packages/fjs/liber_text`), whose Encoding Standard error mode is the HTML one | A source must both name a legacy `charset` and put the character in the rule to reach it; no fixture does |
+| Legacy request charset, a character the charset cannot represent (including a raw body with that declared media type) | `CharsetEncoder`'s REPLACE action writes `?` (`3F` for a raw GBK emoji body; `AnalyzeUrl.kt:323-334` / okhttp `String.getBytes(charset)`) | The HTML numeric character reference, `&#128512;` for an emoji (`26 23 31 32 38 35 31 32 3B` in a raw body) | The encoder is `encoding_rs`'s (`packages/fjs/liber_text`), whose Encoding Standard error mode is the HTML one | No device fixture covers this case; #54 reuses that bridge without changing its replacement mode |
+| Unknown raw body Content-Type charset (#54) | okhttp `MediaType.charset()` falls back when `Charset.forName` fails; `RequestBody$Companion.create(String, MediaType)` then uses UTF-8 (`书` = `E4 B9 A6`) | UTF-8 bytes with the explicitly declared header preserved; failures other than unknown encoding still propagate | Source-derived behavior, controller rechecked the frozen OkHttp bytecode; no new device observation | Windows wire regression covers bytes, framing and 307/308; device compatibility remains not-run |
 | `enabledCookieJar`, a session cookie across a restart | A non-persistent `Set-Cookie` lives in process memory only and is gone after a restart (`CookieManager.saveResponse` → `CacheManager.putMemory`, `CookieManager.kt:42-53`) | The pair survives a restart | ADR 0011 §3 puts host-surface state in the space's store and gives the jar one storage shape, so the product has no separate session tier | None claimed: a fixture that observes restart behavior reports this row in its `notCompared` list |
 | A `Set-Cookie` on a redirect hop | Stored, because the frozen interceptor runs once per network exchange and saves each response's cookies (`HttpHelper.kt:86-98`) | Dropped; only the final response's headers reach the jar | The transport walks the redirect chain itself (OkHttp's `RetryAndFollowUpInterceptor` rules, #9) and hands the pipeline one final response | The hop's cookie is lost until the redirect path carries per-hop headers; #9's semantics are out of this row's scope, so the divergence is recorded rather than closed |
 | `User-Agent: null` (`tool/nested_oracle_compare.dart --requests`, REQUEST-01 row `defaults-user-agent-null`) | The declared literal `null` removes the header, and okhttp-4.12.0's `BridgeInterceptor` then supplies its own platform default, `okhttp/4.12.0` (`HttpHelper.kt:76-80`) | Dart's `HttpClient` default, `Dart/3.12 (dart:io)` | The product's transport is Dart's `HttpClient`, which writes its own default when the request carries no `User-Agent`; the source's `null` removes the declared header only (`lib/source/http_source_transport.dart`, `withSourceRequestDefaults`) | The default fill-in and the append rule are compared and pass; no source in the 150-source used set declares `User-Agent: null` |

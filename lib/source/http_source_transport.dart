@@ -67,15 +67,15 @@ Map<String, String> withSourceRequestDefaults(Map<String, String> headers) {
 ///
 /// Guarded by the body's own content type, so it applies to every branch the
 /// frozen `AnalyzeUrl` builds a body for: the form branch
-/// (`postForm(encodedForm)`, `OkHttpUtils.kt:113-115`), a declared
+/// (`postForm(encodedForm)`, `OkHttpUtils.kt:141-142`), a declared
 /// `Content-Type` (`body.toRequestBody(contentType.toMediaType())`,
-/// `AnalyzeUrl.kt:381-393`) and `postJson` (whose media type already names
+/// `AnalyzeUrl.kt:435-446`) and `postJson` (whose media type already names
 /// `UTF-8`). It is idempotent, so the follow-up of a 307/308 keeps one charset.
 ///
-/// The frozen call also writes the body's *bytes* with that same resolved
-/// charset (`String.getBytes(charset)`), so a source that declares a non-UTF-8
-/// charset reaches the wire as those bytes. This transport keeps writing UTF-8
-/// (recorded as a coverage gap: no fixture declares such a charset).
+/// The body's bytes use that media type's charset through [SourceEncoding].
+/// The URL option's `charset` has already been applied to form/query escapes;
+/// it does not override a declared body media type (frozen AnalyzeUrl.kt:257-260,
+/// 435-446).
 Map<String, String> withSourceBodyContentType(Map<String, String> headers) {
   String? name;
   for (final key in headers.keys) {
@@ -199,7 +199,19 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
         request.headers.set(header.key, header.value);
       }
       if (body != null) {
-        final bytes = utf8.encode(body);
+        final charset = sourceMediaTypeCharset([
+          for (final header in requestHeaders.entries)
+            if (header.key.toLowerCase() == 'content-type') header.value,
+        ]);
+        List<int> bytes;
+        try {
+          bytes = await SourceEncoding.encode(body, charset ?? 'UTF-8');
+        } catch (error) {
+          if (!SourceEncoding.isUnknownEncoding(error)) rethrow;
+          // OkHttp MediaType.charset returns its default for unknown labels.
+          // Preserve the explicitly declared header and the UTF-8 body fallback.
+          bytes = utf8.encode(body);
+        }
         // The frozen client knows the body it built, so its request carries
         // `Content-Length` rather than a chunked stream; Dart's `HttpClient`
         // frames an unknown length chunked unless the length is set first.
@@ -233,11 +245,13 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       }
       target = next.hasFragment ? next.removeFragment() : next;
       if (method != 'GET' && method != 'HEAD') {
-        final keepsBody = response.statusCode == 307 || response.statusCode == 308;
-        if (!keepsBody && (response.statusCode == 300 ||
-            response.statusCode == 301 ||
-            response.statusCode == 302 ||
-            response.statusCode == 303)) {
+        final keepsBody =
+            response.statusCode == 307 || response.statusCode == 308;
+        if (!keepsBody &&
+            (response.statusCode == 300 ||
+                response.statusCode == 301 ||
+                response.statusCode == 302 ||
+                response.statusCode == 303)) {
           method = 'GET';
           body = null;
           headers.removeWhere((key, _) {
@@ -306,8 +320,7 @@ class SourceRedirectLimitExceeded implements Exception {
   final Uri url;
 
   @override
-  String toString() =>
-      'Too many follow-up requests: $followUps ($url)';
+  String toString() => 'Too many follow-up requests: $followUps ($url)';
 }
 
 /// Names [error] as ADR 0011 §5's certificate failure, or returns null when it
@@ -458,10 +471,10 @@ String? _sourceHeadSlice(Uint8List bytes) {
 
 /// The frozen regex fallback: `<head>`…`</head>` ignoring case over the whole
 /// body decoded as UTF-8.
-String? _sourceHeadByPattern(Uint8List bytes) =>
-    RegExp(r'<head>[\s\S]*?</head>', caseSensitive: false)
-        .firstMatch(_utf8Lenient(bytes, 0, bytes.length))
-        ?.group(0);
+String? _sourceHeadByPattern(Uint8List bytes) => RegExp(
+  r'<head>[\s\S]*?</head>',
+  caseSensitive: false,
+).firstMatch(_utf8Lenient(bytes, 0, bytes.length))?.group(0);
 
 /// One HTML attribute's value, as Jsoup's `Element.attr` reads it: double- or
 /// single-quoted, or the bare token up to whitespace or the tag's end.
