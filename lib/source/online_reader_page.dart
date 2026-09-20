@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../domain/contracts.dart' show SourceCancellation;
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'content_processing.dart';
@@ -35,6 +36,7 @@ class OnlineReaderPage extends StatefulWidget {
 class _OnlineReaderPageState extends State<OnlineReaderPage> {
   final scroll = ScrollController();
   final viewport = GlobalKey();
+  final _processingCancellation = SourceCancellation();
   List<String> paragraphs = [];
   List<int> offsets = [];
   List<GlobalKey> keys = [];
@@ -78,6 +80,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
           bookOrigin: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
         ),
         bookName: widget.book.title,
+        cancellation: _processingCancellation,
         // The frozen `Book.getUseReplaceRule()` for a text book: the per-book
         // switch, falling back to a default that is on. The settings field set
         // is not decided yet (the map's fog), so the frozen default stands.
@@ -105,8 +108,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     );
   }
 
-  /// Shows a skipped replace rule (a timeout, an unusable pattern, a deferred
-  /// `@js:` replacement) on the page's own notice surface.
+  /// Shows a skipped replace rule (a timeout, an unusable pattern, or a
+  /// JavaScript failure) on the page's own notice surface.
   void _showRuleNotice(String message) {
     if (!mounted) return;
     showSourceNotice(context, SourceHostMessage('replace', message));
@@ -166,7 +169,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         hostState: widget.service.hostState,
         sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
         sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-        run: () => widget.pipeline.chapter(widget.chapters[next]),
+        run: () =>
+            widget.pipeline.chapter(widget.chapters[next], book: widget.book),
       );
       if (!mounted) return;
       // The frozen reader replaces the text before it reaches the screen: the
@@ -175,12 +179,13 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       // `ContentProcessor.getContent(..., includeTitle = false)` returns.
       final chapterName = widget.chapters[next].name;
       final current = processing;
+      final sourceTitle = result.title ?? chapterName;
       final title = current == null
-          ? chapterName
-          : await current.displayTitle(chapterName);
+          ? sourceTitle
+          : await current.displayTitle(sourceTitle);
       final body = current == null
           ? result.text
-          : await current.content(result.text, chapterTitle: chapterName);
+          : await current.content(result.text, chapterTitle: sourceTitle);
       if (!mounted) return;
       final lines = body.split('\n');
       var cursor = 0;
@@ -262,6 +267,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     // The reader owns the pipeline it fetches through: it is the analysis whose
     // cancellation token this page must end when it leaves, and the page that
     // handed the pipeline over has already replaced its own.
+    _processingCancellation.cancel();
     widget.pipeline.cancel();
     scroll.dispose();
     super.dispose();

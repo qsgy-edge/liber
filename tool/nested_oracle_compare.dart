@@ -628,8 +628,14 @@ class _ReplayServer {
           }
         }
       },
-      onDone: () => _clients.remove(socket),
-      onError: (_) => _clients.remove(socket),
+      onDone: () {
+        socket.destroy();
+        _clients.remove(socket);
+      },
+      onError: (_) {
+        socket.destroy();
+        _clients.remove(socket);
+      },
     );
   }
 

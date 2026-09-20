@@ -29,7 +29,10 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   int calls = 0;
 
   @override
-  Future<HtmlChapterBody> chapter(SourceChapter chapter) async {
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+  }) async {
     if (gate != null && calls++ > 0) await gate!.future;
     return HtmlChapterBody(
       List.generate(60, (i) => '${chapter.url} 第$i段 中文内容。').join('\n'),
