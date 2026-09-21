@@ -1,0 +1,447 @@
+{
+  "fixtureId": "REPLACE-17",
+  "fixtureSha256": "61983626e9af6a9095dafd474e91bf5994e437f08e0aa373261bf73179cd7968",
+  "comparisonBoundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:177-198); title observations use BookChapter.getDisplayTitle",
+  "rows": [
+    {
+      "id": "no-rules",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "content-only",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "title-only",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "both",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "regex",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "literal",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "scope-name-origin",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "exclude-scope-name-origin",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "ordering",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "duplicated-title",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "re-segment-interaction",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": []
+    },
+    {
+      "id": "conversion-t2s",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": [],
+      "conversionPolicy": "ADR 0010 accepts measured dictionary differences; this comparator preserves exact strings and fails new differences pending attribution, without blanket normalization."
+    },
+    {
+      "id": "conversion-s2t",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass"
+      },
+      "differences": [],
+      "conversionPolicy": "ADR 0010 accepts measured dictionary differences; this comparator preserves exact strings and fails new differences pending attribution, without blanket normalization."
+    },
+    {
+      "id": "timeout",
+      "status": "notCompared",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "fail",
+        "selection": "pass"
+      },
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　slowio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　替换规则(a+)+$\n　　替换内容:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+          "product": "　　aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"
+        }
+      ],
+      "policy": "ADR 0011: per-rule disable/preserve text; frozen stack trace and restart are not reproduced. The unchanged short input may not trigger the frozen timeout; inspect timeoutObserved.",
+      "comparison": "notCompared",
+      "timeoutObserved": true,
+      "restartObservation": "notCompared: a completed call does not demonstrate restart; no input amplification",
+      "timeoutCoverage": "observed"
+    },
+    {
+      "id": "refusal",
+      "status": "notCompared",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "fail",
+        "selection": "pass"
+      },
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　xx广x告x",
+          "product": "　　aa广告"
+        }
+      ],
+      "policy": "Named unsupported possessive-quantifier refusal; #49 JS execution is integrated, not a blanket JS refusal."
+    }
+  ],
+  "counts": {
+    "pass": 13,
+    "fail": 0,
+    "notCompared": 2,
+    "not-run": 0
+  },
+  "complete": false,
+  "product": [
+    {
+      "id": "no-rules",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章 龍鳳",
+      "content": "　　正文。",
+      "status": "observed"
+    },
+    {
+      "id": "content-only",
+      "selection": {
+        "title": [],
+        "content": [
+          "content"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　正文有。",
+      "status": "observed"
+    },
+    {
+      "id": "title-only",
+      "selection": {
+        "title": [
+          "title"
+        ],
+        "content": []
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "章1章",
+      "content": "　　正文。",
+      "status": "observed"
+    },
+    {
+      "id": "both",
+      "selection": {
+        "title": [
+          "title"
+        ],
+        "content": [
+          "content"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "章1章",
+      "content": "　　正文有。",
+      "status": "observed"
+    },
+    {
+      "id": "regex",
+      "selection": {
+        "title": [],
+        "content": [
+          "regex"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　正文20 字。",
+      "status": "observed"
+    },
+    {
+      "id": "literal",
+      "selection": {
+        "title": [],
+        "content": [
+          "literal"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　正文。",
+      "status": "observed"
+    },
+    {
+      "id": "scope-name-origin",
+      "selection": {
+        "title": [],
+        "content": [
+          "name-scope",
+          "origin-scope"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　正文有书名和地址标记。",
+      "status": "observed"
+    },
+    {
+      "id": "exclude-scope-name-origin",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　正文名字来源。",
+      "status": "observed"
+    },
+    {
+      "id": "ordering",
+      "selection": {
+        "title": [],
+        "content": [
+          "earlier",
+          "later",
+          "stable-tie"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　2",
+      "status": "observed"
+    },
+    {
+      "id": "duplicated-title",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第一章 开始",
+      "content": "　　正文。",
+      "status": "observed"
+    },
+    {
+      "id": "re-segment-interaction",
+      "selection": {
+        "title": [],
+        "content": [
+          "after-re-segment"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "第二章",
+      "content": "　　第一段没有X也没有标点。",
+      "status": "observed"
+    },
+    {
+      "id": "conversion-t2s",
+      "selection": {
+        "title": [
+          "converted"
+        ],
+        "content": [
+          "converted"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "龙（已转换）凤",
+      "content": "　　龙（已转换）与凤。",
+      "status": "observed"
+    },
+    {
+      "id": "conversion-s2t",
+      "selection": {
+        "title": [
+          "converted"
+        ],
+        "content": [
+          "converted"
+        ]
+      },
+      "notices": [],
+      "disabledRules": [],
+      "title": "龍（已转换）鳳",
+      "content": "　　龍（已转换）與鳳。",
+      "status": "observed"
+    },
+    {
+      "id": "timeout",
+      "selection": {
+        "title": [],
+        "content": [
+          "slow"
+        ]
+      },
+      "notices": [
+        "替换规则「slow」超时（200 毫秒），已停用"
+      ],
+      "disabledRules": [
+        "slow"
+      ],
+      "title": "第一章",
+      "content": "　　aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+      "status": "observed"
+    },
+    {
+      "id": "refusal",
+      "selection": {
+        "title": [],
+        "content": [
+          "unsupported-regex",
+          "js-replacement"
+        ]
+      },
+      "notices": [
+        "替换规则「unsupported-regex」不可用：Dart's regular-expression engine rejects the translated pattern: Nothing to repeat"
+      ],
+      "disabledRules": [],
+      "title": "第一章",
+      "content": "　　aa广告",
+      "status": "observed"
+    }
+  ],
+  "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+  "goldenSha256": "554bfade723edc02460c3ec278c1271b3c15082fe252e1a1abb875b6afe54c14",
+  "productCommit": "7eabf885b7ffbb987e707f8b00435ac2b0d359f5",
+  "recordedAt": "2026-09-21T01:44:30.439748Z",
+  "sourceHashes": {
+    "lib/source/content_processing.dart": "43e2f638037edc95c431ab8d88bf95ab78f55aa4de063744cb49e3df280c633b",
+    "lib/source/content_re_segment.dart": "acc5f38a16b2004052b5d1c9db2a188b2b75727591d0f793b3d4b61e2bda0251",
+    "lib/source/java_regex.dart": "e91e43f9f594e8cd190193c8af40f79c429c1820d0a5f41ed9e28d9dc614e037",
+    "lib/source/js_source_runtime.dart": "bc77e0c324f7989b4049182cbaf8d7d239dec34fdffcadc1b6c54ab33fad8bee",
+    "tool/replace_rule_oracle/compare.dart": "771afedeb3f6751631c130fbff6137ccae7236c1235ae3899aa06d89d754b0e0"
+  }
+}

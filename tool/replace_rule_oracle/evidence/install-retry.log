@@ -1,0 +1,6 @@
+Serving...
+Performing Incremental Install
+Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]
+Performing Streamed Install
+All files should be loaded. Notifying the device.
+adb.exe: failed to install C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-2/reader-oracle.apk: Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]
