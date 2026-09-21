@@ -14,6 +14,11 @@ tool/first_slice/evidence/** text eol=lf
 # The SLICE-01 corpus is a compared input: its committed bytes are its identity, and
 # the harness serves an asset copy of them (see the golden's manifest).
 tool/first_slice/fixtures.json text eol=lf
+# The FIELDS-01 corpus and the evidence that pins its bytes are read for their bytes
+# the same way: the comparator refuses to compare when the corpus bytes hash to
+# anything but the value the observation and manifest recorded.
+tool/result_field_oracle/fixtures.json text eol=lf
+tool/result_field_oracle/evidence/** text eol=lf
 # The harness serves the corpus out of its assets, so the runner is not shipped;
 # this line keeps the matching-rule reference byte-stable alongside it.
 tool/first_slice/runner.dart text eol=lf
