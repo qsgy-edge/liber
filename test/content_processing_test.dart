@@ -75,79 +75,79 @@ void main() {
 
   group('selection (the frozen ReplaceRuleDao statement)', () {
     test('a disabled rule never runs', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: '广告', replacement: '', isEnabled: false, isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(content, '　　本章有广告内容');
     });
 
     test('scope is a substring of the book name or the origin', () async {
-      final byName = await processing([
+      final byName = (await processing([
         rule(pattern: '广告', scope: '不科学御兽;http://other.test', isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(byName, '　　本章有内容');
 
-      final byOrigin = await processing([
+      final byOrigin = (await processing([
         rule(pattern: '广告', scope: '某书;http://www.beqege.cc', isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(byOrigin, '　　本章有内容');
 
       // The name is the needle: a scope the name merely contains does not match.
-      final neither = await processing([
+      final neither = (await processing([
         rule(pattern: '广告', scope: '御兽', isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(neither, '　　本章有广告内容');
 
-      final otherBook = await processing([
+      final otherBook = (await processing([
         rule(pattern: '广告', scope: '别的书;http://other.test', isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(otherBook, '　　本章有广告内容');
     });
 
     test('a null or empty scope reaches every book', () async {
       for (final scope in [null, '']) {
-        final content = await processing([
+        final content = (await processing([
           rule(pattern: '广告', scope: scope, isRegex: false),
-        ]).content('本章有广告内容', chapterTitle: '第一章');
+        ]).content('本章有广告内容', chapterTitle: '第一章')).text;
         expect(content, '　　本章有内容', reason: 'scope=$scope');
       }
     });
 
     test('scope folding is ASCII, as SQLite LIKE is', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(
           pattern: '广告',
           scope: '不科学御兽;HTTP://WWW.BEQEGE.CC',
           isRegex: false,
         ),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(content, '　　本章有内容');
     });
 
     test('excludeScope removes the book, an empty one does not', () async {
-      final excluded = await processing([
+      final excluded = (await processing([
         rule(
           pattern: '广告',
           excludeScope: '不科学御兽;http://other.test',
           isRegex: false,
         ),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(excluded, '　　本章有广告内容');
 
-      final empty = await processing([
+      final empty = (await processing([
         rule(pattern: '广告', excludeScope: '', isRegex: false),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(empty, '　　本章有内容');
     });
 
     test('excludeScope removes the book by origin too', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(
           pattern: '广告',
           excludeScope: 'book@http://www.beqege.cc',
           isRegex: false,
         ),
-      ]).content('本章有广告内容', chapterTitle: '第一章');
+      ]).content('本章有广告内容', chapterTitle: '第一章')).text;
       expect(content, '　　本章有广告内容');
     });
 
@@ -162,7 +162,10 @@ void main() {
         ),
       ]);
       expect(await titleOnly.displayTitle('第1章'), '一1章');
-      expect(await titleOnly.content('正文第1章', chapterTitle: '别的标题'), '　　正文第1章');
+      expect(
+        (await titleOnly.content('正文第1章', chapterTitle: '别的标题')).text,
+        '　　正文第1章',
+      );
 
       final contentOnly = processing([
         rule(
@@ -174,11 +177,14 @@ void main() {
         ),
       ]);
       expect(await contentOnly.displayTitle('第1章'), '第1章');
-      expect(await contentOnly.content('正文第1章', chapterTitle: '别的标题'), '　　内容第1章');
+      expect(
+        (await contentOnly.content('正文第1章', chapterTitle: '别的标题')).text,
+        '　　内容第1章',
+      );
     });
 
     test('rules run in order, and one order keeps the store order', () async {
-      final ordered = await processing([
+      final ordered = (await processing([
         rule(
           id: 'b',
           pattern: 'x',
@@ -193,12 +199,12 @@ void main() {
           ruleOrder: 1,
           isRegex: false,
         ),
-      ]).content('1', chapterTitle: '别的标题');
+      ]).content('1', chapterTitle: '别的标题')).text;
       expect(ordered, '　　2');
 
       // Two rules with the same order: the store's own order decides, so the
       // ('1' -> 'x') rule runs after ('x' -> '2') and '1' stays.
-      final stable = await processing([
+      final stable = (await processing([
         rule(
           id: 'b',
           pattern: 'x',
@@ -213,7 +219,7 @@ void main() {
           ruleOrder: 5,
           isRegex: false,
         ),
-      ]).content('1', chapterTitle: '别的标题');
+      ]).content('1', chapterTitle: '别的标题')).text;
       expect(stable, '　　x');
     });
   });
@@ -250,45 +256,45 @@ void main() {
 
   group('the chapter body (ContentProcessor.getContent)', () {
     test('a literal rule, a regex rule with a capture group', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: '广告', replacement: '', isRegex: false),
         rule(pattern: r'(\d+)字', replacement: r'$1 字', ruleOrder: 1),
-      ]).content('本章有广告，共20字', chapterTitle: '第一章');
+      ]).content('本章有广告，共20字', chapterTitle: '第一章')).text;
       expect(content, '　　本章有，共20 字');
     });
 
     test(
       'the replace stage trims every line before the rules see it',
       () async {
-        final withoutTrim = await processing([
+        final withoutTrim = (await processing([
           rule(pattern: r'^开始', replacement: '起', ruleOrder: 1),
-        ]).content('  开始', chapterTitle: '别的标题');
+        ]).content('  开始', chapterTitle: '别的标题')).text;
         expect(
           withoutTrim,
           '　　起',
           reason: 'the leading spaces are gone before ^开始',
         );
 
-        final everyLine = await processing([
+        final everyLine = (await processing([
           rule(pattern: r'(?m)^开始', replacement: '起', ruleOrder: 1),
-        ]).content('  开始\n   开始', chapterTitle: '别的标题');
+        ]).content('  开始\n   开始', chapterTitle: '别的标题')).text;
         expect(everyLine, '　　起\n　　起');
       },
     );
 
     test('a duplicated leading title is removed', () async {
-      final content = await processing(
+      final content = (await processing(
         const [],
-      ).content('第一章 开始\n正文开始。', chapterTitle: '第一章 开始');
+      ).content('第一章 开始\n正文开始。', chapterTitle: '第一章 开始')).text;
       expect(content, '　　正文开始。');
     });
 
     test(
       'the title pattern tolerates whitespace runs and the book name',
       () async {
-        final content = await processing(
+        final content = (await processing(
           const [],
-        ).content('不科学御兽 第一章\n正文。', chapterTitle: '第一章');
+        ).content('不科学御兽 第一章\n正文。', chapterTitle: '第一章')).text;
         expect(content, '　　正文。');
       },
     );
@@ -296,75 +302,78 @@ void main() {
     test(
       'the title pattern preserves Java ASCII whitespace semantics',
       () async {
-        final content = await processing(
+        final content = (await processing(
           const [],
-        ).content('第一章　标题\n正文。', chapterTitle: '第一章　标题');
+        ).content('第一章　标题\n正文。', chapterTitle: '第一章　标题')).text;
         expect(content, '　　正文。');
       },
     );
 
     test('the retry uses the content rules to find the title', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: '第1章', replacement: '第一章', id: 'retitle'),
-      ]).content('第一章 正文。', chapterTitle: '第1章');
+      ]).content('第一章 正文。', chapterTitle: '第1章')).text;
       expect(content, '　　正文。');
     });
 
     test('includeTitle prepends the display title as its own line', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: '网', replacement: '', scopeTitle: true),
-      ]).content('正文。', chapterTitle: '第一网章', includeTitle: true);
+      ]).content('正文。', chapterTitle: '第一网章', includeTitle: true)).text;
       expect(content, '第一章\n　　正文。');
     });
 
     test('a body that is the literal null is not processed', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: 'null', replacement: 'x'),
-      ]).content('null', chapterTitle: '第一章');
+      ]).content('null', chapterTitle: '第一章')).text;
       expect(content, 'null');
     });
   });
 
   group('the final paragraph shaping (ContentProcessor.kt:185-201)', () {
     test('every paragraph is indented and blank lines are dropped', () async {
-      final content = await processing(
+      final content = (await processing(
         const [],
-      ).content('第一段。\n\n　第二段。　\n', chapterTitle: '别的标题');
+      ).content('第一段。\n\n　第二段。　\n', chapterTitle: '别的标题')).text;
       expect(content, '　　第一段。\n　　第二段。');
     });
 
-    test('the frozen cutset is code <= 0x20 and the ideographic space', () async {
-      // Dart's String.trim also removes U+00A0 and friends; the frozen
-      // `trim { it.code <= 0x20 || it == '　' }` does not, so the reader text
-      // the pinned oracle compares keeps them.
-      final content = await processing(
-        const [],
-        useReplaceRule: false,
-      ).content('\u00A0正文\u00A0', chapterTitle: '别的标题');
-      expect(content, '　　\u00A0正文\u00A0');
-    });
+    test(
+      'the frozen cutset is code <= 0x20 and the ideographic space',
+      () async {
+        // Dart's String.trim also removes U+00A0 and friends; the frozen
+        // `trim { it.code <= 0x20 || it == '　' }` does not, so the reader text
+        // the pinned oracle compares keeps them.
+        final content = (await processing(
+          const [],
+          useReplaceRule: false,
+        ).content('\u00A0正文\u00A0', chapterTitle: '别的标题')).text;
+        expect(content, '　　\u00A0正文\u00A0');
+      },
+    );
 
     test('includeTitle leaves the first paragraph unindented', () async {
-      final content = await processing(
+      final content = (await processing(
         const [],
-      ).content('正文。\n续。', chapterTitle: '第一章', includeTitle: true);
+      ).content('正文。\n续。', chapterTitle: '第一章', includeTitle: true)).text;
       expect(content, '第一章\n　　正文。\n　　续。');
     });
   });
 
   group('the re-segmentation stage (ContentProcessor.kt:131-133)', () {
     test('the per-book flag is off by default', () async {
-      final content = await processing(
+      final content = (await processing(
         const [],
-      ).content('第一段没有句号\n第二段也没有标点。', chapterTitle: '别的标题');
+      ).content('第一段没有句号\n第二段也没有标点。', chapterTitle: '别的标题')).text;
       expect(content, '　　第一段没有句号\n　　第二段也没有标点。');
     });
 
     test('the flag runs it after the duplicated title is removed', () async {
-      final content = await processing(
+      final content = (await processing(
         const [],
         useReSegment: true,
-      ).content('第一章 标题\n\n第一段没有句号\n第二段也没有标点。', chapterTitle: '第一章 标题');
+      ).content('第一章 标题\n\n第一段没有句号\n第二段也没有标点。', chapterTitle: '第一章 标题')).text;
       expect(content, '　　第一段没有句号第二段也没有标点。');
     });
 
@@ -372,48 +381,49 @@ void main() {
       final body = '第一段没有句号\n第二段也没有标点。';
       // `句号第二段` only exists once the two paragraphs are glued, so a rule
       // that matches it proves the stage ran before the rules.
-      final on = await processing([
+      final on = (await processing([
         rule(pattern: '句号第二段', replacement: 'X', isRegex: false),
-      ], useReSegment: true).content(body, chapterTitle: '别的标题');
+      ], useReSegment: true).content(body, chapterTitle: '别的标题')).text;
       expect(on, '　　第一段没有X也没有标点。');
 
-      final off = await processing([
+      final off = (await processing([
         rule(pattern: '句号第二段', replacement: 'X', isRegex: false),
-      ]).content(body, chapterTitle: '别的标题');
+      ]).content(body, chapterTitle: '别的标题')).text;
       expect(off, '　　第一段没有句号\n　　第二段也没有标点。');
     });
 
     test('the display title is still prepended last', () async {
-      final content = await processing(
-        const [],
-        useReSegment: true,
-      ).content('第一段没有句号\n第二段也没有标点。', chapterTitle: '第一章', includeTitle: true);
+      final content = (await processing(const [], useReSegment: true).content(
+        '第一段没有句号\n第二段也没有标点。',
+        chapterTitle: '第一章',
+        includeTitle: true,
+      )).text;
       expect(content, '第一章\n　　第一段没有句号第二段也没有标点。');
     });
   });
 
   group('replacement JavaScript and named skips', () {
     test('an enabled @js: replacement sees the complete match', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(
           pattern: r'(\d+)字',
           replacement: r'@js:result + ":" + result.match(/(\d+)字/)[1] + " $1"',
           ruleName: 'JS 规则',
         ),
-      ]).content('共20字和30字', chapterTitle: '第一章');
+      ]).content('共20字和30字', chapterTitle: '第一章')).text;
       expect(content, '　　共20字:20 \$1和30字:30 \$1');
     });
 
     test('a disabled @js: replacement remains inactive', () async {
       final notices = <String>[];
-      final content = await processing([
+      final content = (await processing([
         rule(
           pattern: '广告',
           replacement: '@js:result + "!"',
           ruleName: '停用 JS 规则',
           isEnabled: false,
         ),
-      ], onNotice: notices.add).content('广告', chapterTitle: '第一章');
+      ], onNotice: notices.add).content('广告', chapterTitle: '第一章')).text;
       expect(content, '　　广告');
       expect(notices, isEmpty);
     });
@@ -422,13 +432,13 @@ void main() {
       'a JavaScript replacement error keeps the text and is reported',
       () async {
         final notices = <String>[];
-        final content = await processing([
+        final content = (await processing([
           rule(
             pattern: '广告',
             replacement: '@js:throw new Error("boom")',
             ruleName: '出错 JS 规则',
           ),
-        ], onNotice: notices.add).content('广告', chapterTitle: '第一章');
+        ], onNotice: notices.add).content('广告', chapterTitle: '第一章')).text;
         expect(content, '　　广告');
         expect(notices, hasLength(1));
         expect(notices.single, contains('出错 JS 规则'));
@@ -438,7 +448,7 @@ void main() {
     test('cancellation keeps the text without reporting an error', () async {
       final cancellation = SourceCancellation()..cancel();
       final notices = <String>[];
-      final content = await processing(
+      final content = (await processing(
         [
           rule(
             pattern: '广告',
@@ -448,7 +458,7 @@ void main() {
         ],
         cancellation: cancellation,
         onNotice: notices.add,
-      ).content('广告', chapterTitle: '第一章');
+      ).content('广告', chapterTitle: '第一章')).text;
       expect(content, '　　广告');
       expect(notices, isEmpty);
     });
@@ -482,7 +492,7 @@ void main() {
     test('a JavaScript replacement timeout disables the rule', () async {
       final disabled = <String>[];
       final notices = <String>[];
-      final content = await processing(
+      final content = (await processing(
         [
           rule(
             id: 'js-slow',
@@ -496,7 +506,7 @@ void main() {
         onRuleDisabled: (rule) async {
           disabled.add(rule.id);
         },
-      ).content('广告', chapterTitle: '第一章');
+      ).content('广告', chapterTitle: '第一章')).text;
       expect(content, '　　广告');
       expect(disabled, ['js-slow']);
       expect(notices, hasLength(1));
@@ -505,17 +515,17 @@ void main() {
     });
 
     test('an ordinary regex replacement remains unchanged', () async {
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: r'(\d+)字', replacement: r'$1 字'),
-      ]).content('共20字', chapterTitle: '第一章');
+      ]).content('共20字', chapterTitle: '第一章')).text;
       expect(content, '　　共20 字');
     });
 
     test('a pattern the engine cannot express is refused by name', () async {
       final notices = <String>[];
-      final content = await processing([
+      final content = (await processing([
         rule(pattern: r'a*+', replacement: 'x', ruleName: '占有量词'),
-      ], onNotice: notices.add).content('aaab', chapterTitle: '第一章');
+      ], onNotice: notices.add).content('aaab', chapterTitle: '第一章')).text;
       expect(content, '　　aaab');
       expect(notices.single, contains('占有量词'));
       expect(notices.single, contains('不可用'));
@@ -526,7 +536,7 @@ void main() {
     test('a rule past its own deadline is disabled and its text kept', () async {
       final disabled = <String>[];
       final notices = <String>[];
-      final content = await processing(
+      final content = (await processing(
         [
           rule(id: 'fast', pattern: 'b', replacement: 'c', ruleOrder: 1),
           rule(
@@ -547,7 +557,7 @@ void main() {
         ],
         onNotice: notices.add,
         onRuleDisabled: (rule) async => disabled.add(rule.id),
-      ).content('${'a' * 32}b', chapterTitle: '第一章');
+      ).content('${'a' * 32}b', chapterTitle: '第一章')).text;
       // The fast rule ran, the slow one was killed at its own deadline and left
       // the text as it was, and the rule after it still ran.
       expect(content, '　　${'a' * 32}d');
@@ -558,7 +568,7 @@ void main() {
 
     test('a fast rule under its deadline is never reported', () async {
       var disableCalls = 0;
-      final content = await processing(
+      final content = (await processing(
         [
           rule(
             pattern: r'第(\d+)章',
@@ -567,7 +577,7 @@ void main() {
           ),
         ],
         onRuleDisabled: (rule) async => disableCalls++,
-      ).content('正文第1章', chapterTitle: '别的标题');
+      ).content('正文第1章', chapterTitle: '别的标题')).text;
       expect(content, '　　正文第1章（改）');
       expect(disableCalls, 0);
     });
@@ -575,9 +585,10 @@ void main() {
 
   group('conversion, in the frozen position', () {
     test('the rules see converted content', () async {
-      final content = await processing([
-        rule(pattern: '龙', replacement: '龙（已转换）', isRegex: false),
-      ], script: ReaderScript.simplified).content('龍與鳳', chapterTitle: '第一章');
+      final content = (await processing(
+        [rule(pattern: '龙', replacement: '龙（已转换）', isRegex: false)],
+        script: ReaderScript.simplified,
+      ).content('龍與鳳', chapterTitle: '第一章')).text;
       expect(content, contains('龙（已转换）'));
     });
 

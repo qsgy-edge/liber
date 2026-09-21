@@ -47,6 +47,14 @@ String? restoreNotice(RestoreTier tier) => switch (tier) {
   RestoreTier.percentage => '文件已替换：阅读位置按百分比恢复，请检查',
 };
 
+/// What the reader reports when the position's own text is gone: the rules
+/// rewrote or deleted the line the position was on, and the deleted-offset
+/// policy (`reader_offset_map.dart`) put the reader on the run's own text
+/// instead. The position itself is not lost — it is still the raw file's offset
+/// — but what it shows has moved, and D4 reports that instead of moving
+/// silently.
+const String deletedPositionNotice = '替换规则改写了这一行：阅读位置移到改动处的正文';
+
 /// The local reader's one open book: the file's index, the position the reader
 /// is at, and the one bounded window on screen (D4/D10).
 ///
@@ -62,6 +70,12 @@ String? restoreNotice(RestoreTier tier) => switch (tier) {
 /// position is still the raw file's, translated to and from the processed text
 /// through the unit's [ReaderOffsetMap] — so a record written before the rules
 /// ran stays valid, and a rule set that changes later does not invalidate it.
+/// That translation is exact: it reads the edit script the entry returns for the
+/// unit, so a rule that inserts or deletes lines moves the lines after it by
+/// exactly what it changed. A position inside a line the rules rewrote or
+/// deleted has no image of its own; the map's deleted-offset policy puts the
+/// reader on the rewritten run's own boundary and the reader reports it with
+/// [deletedPositionNotice].
 /// With [processing] null the reader is the plain window reader it was, the way
 /// the online page falls back to the source's own text while its rules load.
 class LocalReader {
@@ -235,8 +249,18 @@ class LocalReader {
       // record describes.
       await library.setNeedsRelink(book, restored != null && restored.changed);
       if (_processed) {
-        _unit = await _materialise(await _unitStartFor(_position!.lineStart));
-        _pageStart = _unit!.map.processedForRaw(_position!.lineStart);
+        final unit = await _materialise(
+          await _unitStartFor(_position!.lineStart),
+        );
+        _unit = unit;
+        if (unit.map.imageOf(_position!.lineStart) == null) {
+          final reported = deletedPositionNotice;
+          _notice = _notice == null ? reported : '$_notice $reported';
+        }
+        _pageStart = _processedLineStartAt(
+          unit.processedText,
+          unit.map.processedForRaw(_position!.lineStart),
+        );
         await _readProcessedPage();
       } else {
         await _readRawPage();
@@ -379,18 +403,13 @@ class LocalReader {
       body,
       chapterTitle: region.title,
     );
-    // The entry converts its own output with its own script, so the map's raw
-    // side is converted the same way for an unchanged line to compare equal.
-    final convert = processing!.script;
-    final map = buildOffsetMap(
-      rawText: convert == null ? body : engine.render(body, convert),
-      rawBase: bodyStart,
-      processedText: processed,
-    );
+    // The entry's own edit script is what the map is built from: it names the
+    // ranges of the body the run rewrote, so no text has to be compared.
+    final map = ReaderOffsetMap.fromEdits(processed.edits, rawBase: bodyStart);
     return _ReaderUnit(
       rawStart: rawStart,
       rawEnd: rawEnd,
-      processedText: processed,
+      processedText: processed.text,
       map: map,
     );
   }
@@ -420,7 +439,13 @@ class LocalReader {
     final index = _index;
     if (unit == null || index == null) return;
     final length = unit.processedText.length;
-    final start = _pageStart.clamp(0, length);
+    var start = _pageStart.clamp(0, length);
+    if (start == length && length > 0) {
+      // A run rewrote or deleted the text to the end of the unit, and the
+      // deleted-offset policy put the position past the last character it kept:
+      // the last line the run left is what the reader shows for it.
+      start = _processedLineStartAt(unit.processedText, length);
+    }
     _pageStart = start;
     final end = math.min(length, start + pageCodeUnits);
     _page = unit.processedText.substring(start, end);
