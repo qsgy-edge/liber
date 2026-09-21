@@ -1178,6 +1178,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     member: 'java.importScript',
     policy: 'the local-path half comes with the file family (ADR 0011 §2) and the remote half with #13'
   });
+  const refuseVerificationHatch = member => () => call('refuse', {
+    member: member,
+    policy: 'the user-confirmed browser and captcha hatches require the confirmation UI that #32 lands (ADR 0011 §4)'
+  });
   const optionalText = value => (value === null || value === undefined) ? null : String(value);
 
   const java = Object.freeze({
@@ -1249,6 +1253,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       op:'override', html:optionalText(html), url:optionalText(url), js:optionalText(js),
       regex:optionalText(overrideUrlRegex)
     }),
+    startBrowser: refuseVerificationHatch('java.startBrowser'),
+    startBrowserAwait: refuseVerificationHatch('java.startBrowserAwait'),
+    getVerificationCode: refuseVerificationHatch('java.getVerificationCode'),
+    openUrl: refuseVerificationHatch('java.openUrl'),
     getFile: refuseFile('java.getFile'),
     readFile: refuseFile('java.readFile'),
     readTxtFile: refuseFile('java.readTxtFile'),

@@ -247,4 +247,37 @@ void main() {
       ),
     );
   });
+
+  test('the user-confirmed hatches refuse with the policy category', () async {
+    final runtime = InProcessSourceScriptRuntime();
+    Future<Object?> run(String script) => runtime.evaluate(
+      source: script,
+      input: {'sourceKey': 'http://source.test'},
+      timeout: const Duration(seconds: 5),
+    );
+    const members = <String>[
+      'java.startBrowser',
+      'java.startBrowserAwait',
+      'java.getVerificationCode',
+      'java.openUrl',
+    ];
+    for (final member in members) {
+      await expectLater(
+        run('$member("https://a.test/verify")'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having(
+                (error) => error.message,
+                'message',
+                contains(member),
+              ),
+        ),
+      );
+    }
+    expect(
+      runtime.messages.where((message) => message.kind == 'refused'),
+      hasLength(members.length),
+    );
+  });
 }

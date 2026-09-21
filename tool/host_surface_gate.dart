@@ -10,12 +10,15 @@ import 'package:liber/source/source_host_dispatcher.dart';
 // rule state, cookies, cache, logging, and the encoding/utility family. Every
 // member is named in [expectedMembers], so the gate fails when one disappears.
 
-/// The members this slice defers: each refuses by name (ADR 0011 §2/§6) instead
-/// of failing as an undefined JavaScript function. The file and archive family
-/// follows the frozen `JsExtensions.kt` names, including `unArchiveFile` and the
-/// `*ByteArrayContent` forms; the font family follows the ADR's `:791-903` row
-/// (`queryBase64TTF`, `queryTTF`, `replaceFont`). `speakText`/`speakSpeed` are
-/// not here: they are null value bindings in the frozen runtime, not members.
+/// The members this slice defers: each refuses by name (ADR 0011 §2/§4/§6)
+/// instead of failing as an undefined JavaScript function. The file and archive
+/// family follows the frozen `JsExtensions.kt` names, including `unArchiveFile`
+/// and the `*ByteArrayContent` forms; the font family follows the ADR's
+/// `:791-903` row (`queryBase64TTF`, `queryTTF`, `replaceFont`); the
+/// user-confirmed browser and captcha hatches (`startBrowser*`,
+/// `getVerificationCode`, `openUrl`) refuse with #32's policy (§4).
+/// `speakText`/`speakSpeed` are not here: they are null value bindings in the
+/// frozen runtime, not members.
 const deferredMembers = <String>[
   'java.getFile',
   'java.readFile',
@@ -41,6 +44,10 @@ const deferredMembers = <String>[
   'cache.getFile',
   'cache.putFile',
   'cache.getQueryTTF',
+  'java.startBrowser',
+  'java.startBrowserAwait',
+  'java.getVerificationCode',
+  'java.openUrl',
 ];
 
 const expectedMembers = <String>[
