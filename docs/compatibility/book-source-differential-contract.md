@@ -136,23 +136,49 @@ compared.
 | Query text carrying `{`, `}`, `\|`, `^`, the backtick or the backslash (REQUEST-01 row `query-exact-bytes`) | The query text as written: `{a}\|b^c` backtick `\d` stays, `'` is `%27`, the space is `%20`, 中 is `%E4%B9%A6` | `%7B`, `%7D`, `%7C`, `%5E`, `%60` and `%5C` for those six characters; every other byte identical to the frozen one | The request URL is a Dart `Uri`, which percent-encodes those six characters while it resolves; the frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (`AnalyzeUrl.kt:265-278`, `OkHttpUtils.kt:105-109`) | Not measured against the used-source set: the six characters are legal in a Legado query rule, so a source that writes one reaches this row. The safe-character mask, the already-encoded rule and every other query byte are compared and pass (`query-key-raw`, `query-key-separators`, `query-key-separators-and-space`, `query-already-encoded`, `page-list-hit`, `page-list-past-end`, `pageless-empty-bindings`, `pageless-page-list-literal`); the comparison report quotes both byte strings |
 | `local-txt-no-toc-replace-unit` (local reader, #47) | A TXT no enabled TOC rule matches is chunked at `maxLengthWithNoToc` = 10 KiB bytes, each chunk ending at a newline, into synthetic `第N章(M)` chapters (`TextFile.kt:62,370-373`), and the replace rules run once per synthetic chapter (`ReadBook.kt:699/772` → `ContentProcessor.getContent`). | A file with no chapter boundary is one implicit chapter (D4, ADR 0012); the rules run once per bounded materialisation unit of `unitCodeUnits` = 102400 code units, split at a line start (`lib/local/local_reader.dart`). Unit boundaries and the synthetic chapter list therefore differ, and a rule whose match spans a unit boundary is not applied. | D4 forbids materialising a document (the measured whole-document layout death), and ADR 0012 fixes a chapter-less file as one implicit chapter; the frozen reader's 10 KiB chunks are a streaming artifact, not a chaptering this product reproduces. | The unit is bounded and the divergence is limited to a rule spanning a unit boundary; a fixture that observes it reports it in `notCompared` and blocks the local replace-rule capability claim. No frozen-device golden covers the local TXT content path, so this row is source-derived. |
 | `local-txt-long-chapter-split` (local reader, #47) | With a TOC rule, `splitLongChapter` (default on, `Book.kt:253-254,401`) cuts a chapter longer than `maxLengthWithToc` = 102400 **bytes** at a line and applies the rules once per sub-chapter (`TextFile.kt:65,194,301`), renaming the sub-chapters `第N章(M)`. | The product keeps the regex TOC and splits only for materialisation, at 102400 **code units** snapped to a line start (`LocalReader.unitCodeUnits`); the split point differs, the product can apply a rule across a boundary the frozen reader cuts, and no synthetic sub-chapter names enter the TOC. | The TOC comes from the Rust index's regex pass (`packages/fjs/liber_text/src/scan.rs`), which does not reproduce `splitLongChapter`'s renaming; the materialisation cap exists for D4's bound, not to invent chapters. | The cap is 102400 code units, at least the frozen byte threshold for every supported encoding, so a chapter the frozen reader keeps whole is kept whole; only the split point and the synthetic names differ. Source-derived, not device-measured. |
-| `local-progress-raw-space` (local reader, #47) | `durChapterPos` is an index into the laid-out **processed** chapter — the display title plus `ContentProcessor.getContent`'s output (`ReadBook.kt:416,426`; `TextPage.chapterPosition`, `ChapterProvider.kt:628-630`) — so a rule change moves what a stored position means. | The progress row's `text_offset`, `line_index`, `offset_in_line`, `text_length` and `anchor` are all the raw file's code-unit space (`lib/store/progress.dart`, `lib/local/local_reader.dart`); the reader translates to and from the unit's processed text through the unit's offset map (`lib/local/reader_offset_map.dart`). | D4's tiers compare the file as it is (length + anchor), so `text_length` has to be the raw file's; and a stored position must survive a rule change, which the frozen behavior does not — the record is deliberately richer than the frozen `durChapterIndex` + `durChapterPos` pair. | None claimed: a record written before the rules ran stays valid and now renders processed, a rewrite in place still maps line to line so it round-trips exactly, and only a position the alignment could not place (an inserted line, or a run of rewritten lines past the alignment's lookahead) resolves to the nearest sync point. Source-derived, not device-measured. |
+| `local-progress-raw-space` (local reader, #47) | `durChapterPos` is an index into the laid-out **processed** chapter — the display title plus `ContentProcessor.getContent`'s output (`ReadBook.kt:416,426`; `TextPage.chapterPosition`, `ChapterProvider.kt:628-630`) — so a rule change moves what a stored position means. | The progress row's `text_offset`, `line_index`, `offset_in_line`, `text_length` and `anchor` are all the raw file's code-unit space (`lib/store/progress.dart`, `lib/local/local_reader.dart`); the reader translates to and from the unit's processed text through the exact map of the edit script the entry returns for the unit (`lib/local/reader_offset_map.dart`). | D4's tiers compare the file as it is (length + anchor), so `text_length` has to be the raw file's; and a stored position must survive a rule change, which the frozen behavior does not — the record is deliberately richer than the frozen `durChapterIndex` + `durChapterPos` pair. | None claimed: a record written before the rules ran stays valid and now renders processed, every range the rules left alone translates offset for offset (a rewrite in place included), and a position inside a range the rules rewrote or deleted follows the named deleted-offset policy — the line the run's replacement begins on, reported to the reader. Source-derived, not device-measured. |
 
 The divergence is a property of the execution model, so the same named set applies
 on every desktop platform that runs the harness; it is not a per-run flag and it
 does not vary by platform.
 
-### Local reader raw ↔ processed alignment (#47)
+### Local reader raw ↔ processed alignment (#47, exact since #57)
 
-The local reader's raw-file ↔ processed-text mapping (`lib/local/reader_offset_map.dart`)
-is a **line-level heuristic**, not an exact edit script. Where the processed text has the
-same number of lines as the raw body, the lines correspond one to one: an unchanged line
-is found by matching its text, and a line a rule rewrote in place still corresponds, so
-it round-trips to the same visible line. A rule that inserts or deletes lines, or that
-rewrites a run longer than the alignment's **64-line lookahead**, makes those lines fall
-back to the nearest preceding sync point, so a position inside such a line can resolve to
-a neighbouring one. This is the reader-side shape behind the three `(local reader, #47)`
-rows above; it is source-derived, not device-measured.
+The local reader's raw-file ↔ processed-text mapping
+(`lib/local/reader_offset_map.dart`) is **exact**, and it is not derived by comparing the
+two texts: the stage that rewrites them reports what it did.
+`ContentProcessing.content` — #17's one text entry, shared with the online reader, whose
+observable output is unchanged — returns the processed text *and the edit script of the
+run* (`ProcessedContent{text, edits}`): ascending, disjoint ranges of the text it was
+given, each with the length it became. The ranges cover every stage of the frozen
+pipeline that rewrites text — the duplicated-title drop, the line trim, each replace
+rule's matches, the title the shape prepends, and the paragraph shape's trims, dropped
+empty paragraphs and indents — so the script is the run's own account of itself.
+Outside those ranges the raw text is on screen, shifted by the lengths the earlier ranges
+add or remove, and both directions translate offset for offset. A range that only
+rewrote text in place (same length) needs no entry: position `i` stayed position `i`,
+which is why a rule that rewrites a line still round-trips to the same visible line.
+
+**The deleted-offset policy.** An offset inside a range the run rewrote or deleted has no
+image of its own. It resolves to the offset where that range's replacement begins — for
+a range that replaced nothing, exactly where the text after it begins — and the reader
+shows the processed line that starts at or before that offset and reports the move with
+`deletedPositionNotice` (`lib/local/local_reader.dart`) instead of jumping silently. A
+range that removes the text to the end of the unit resolves to the last surviving line.
+`test/local_reader_processing_test.dart` pins this per offset over a corpus of rule
+shapes (rewrite in place, insertion, deletion, a rewritten run far longer than the 64
+lines the retired alignment fell back at, a deleted line carrying the stored position) and
+at the reader, where a stored
+position on a deleted line shows the text the deletion left and the record stays in the
+raw file's space.
+
+Two limits are named rather than hidden. The re-segmentation stage (`useReSegment`, off
+in both reading paths) reflows paragraphs instead of rewriting ranges, so it reports its
+whole text as one rewritten range (the map never guesses); and the conversion stage's
+tables live in the native library and do not report the boundaries inside a line, so a
+line whose converted form has another length is one rewritten range while a line the
+conversion left the same length translates offset for offset. Everything here is
+source-derived, not device-measured.
 
 ### Cookies and state
 

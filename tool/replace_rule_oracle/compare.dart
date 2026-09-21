@@ -208,11 +208,11 @@ Future<List<Map<String, Object?>>> observeProduct(
       row['title'] = await processor.displayTitle(
         input['chapterTitle'] as String,
       );
-      row['content'] = await processor.content(
+      row['content'] = (await processor.content(
         input['rawContent'] as String,
         chapterTitle: input['chapterTitle'] as String,
         includeTitle: false,
-      );
+      )).text;
       row['status'] = 'observed';
     } catch (error) {
       row['status'] = 'error';

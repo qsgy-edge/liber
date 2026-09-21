@@ -67,6 +67,16 @@
 /// messages, the way it cannot settle `flutter_rust_bridge`'s pending work. A
 /// widget test that drives a reader must use literal rules (or a fake processor),
 /// and `content_processing_test.dart` carries the regex and deadline cases.
+///
+/// [ContentProcessing.content] also returns the **edit script** of the run it
+/// performed — every range of its input it rewrote, inserted or deleted, with the
+/// length it became ([ProcessedContent]). The stage that rewrites the text is the
+/// only place that knows this, so a caller that has to translate a position
+/// stored in the raw text into the processed text (the local reader's progress
+/// record, in `lib/local/reader_offset_map.dart`) reads the script instead of
+/// comparing the two texts. A stage whose rewrite is not a range of the input —
+/// the re-segmentation switch, which moves characters between paragraphs —
+/// reports its whole text as one rewritten range: the script never guesses.
 library;
 
 import 'dart:isolate';
@@ -185,6 +195,52 @@ String _asciiLower(String text) {
   return out.toString();
 }
 
+/// One range of a text a processing stage rewrote, in that text's own offsets:
+/// the code units `[start, end)` became [length] code units of the stage's
+/// output. A zero-width range is text the stage inserted; a zero [length] is
+/// text it deleted. A range of equal length whose content changed (an in-place
+/// rewrite) is not reported: position `i` of the range became position `i` of
+/// the result, so nothing about it needs translating.
+class ContentEdit {
+  const ContentEdit({
+    required this.start,
+    required this.end,
+    required this.length,
+  });
+
+  /// The first code unit of the input range.
+  final int start;
+
+  /// One past the last code unit of the input range.
+  final int end;
+
+  /// How many code units the stage's output has where the range was.
+  final int length;
+
+  @override
+  String toString() => 'ContentEdit($start..$end -> $length)';
+}
+
+/// What one [ContentProcessing.content] call produced: the text, and the edit
+/// script that turned the text it was given into it.
+///
+/// [edits] is ascending and disjoint: outside its ranges the input's own
+/// offsets line up exactly, shifted by the lengths the earlier ranges add or
+/// remove; a reported range is one whose length changed. That is enough
+/// to translate any offset of the input into the output and back
+/// (`lib/local/reader_offset_map.dart`): outside a range the translation is
+/// exact, and inside one — where the run replaced or removed the text — the
+/// offset resolves to the range's own boundary.
+class ProcessedContent {
+  const ProcessedContent({required this.text, required this.edits});
+
+  /// The processed text, exactly what the frozen pipeline produces.
+  final String text;
+
+  /// The ranges of the input the run rewrote, in the input's offsets.
+  final List<ContentEdit> edits;
+}
+
 /// Applies a [ReplaceRuleSet] to one book's titles and content.
 ///
 /// The rules run in the frozen order. A pattern the engine cannot express or
@@ -192,6 +248,12 @@ String _asciiLower(String text) {
 /// reported, disabled through [onRuleDisabled], and left out. JavaScript
 /// replacement calls use the same per-rule deadline and cancellation signal as
 /// the approved source runtime.
+///
+/// [content] is the single text entry of both reading paths, and it returns the
+/// text it produced together with the script of the run ([ProcessedContent]).
+/// The online reader consumes the text and nothing else; the local reader
+/// consumes the script to translate its raw-file position exactly (ADR 0012:
+/// one entry, no second evaluator).
 class ContentProcessing {
   ContentProcessing({
     required this.rules,
@@ -269,40 +331,80 @@ class ContentProcessing {
   /// and finally the frozen paragraph shaping whose joined result is the frozen
   /// `BookContent.toString()` the #17 boundary pins.
   ///
+  /// The result is the text and the script of the run it took to produce it:
+  /// [ProcessedContent.edits] names every range of [raw] the run rewrote, in
+  /// [raw]'s own offsets. Outside those ranges the text is [raw]'s own, shifted
+  /// by the length the rewritten ranges add or remove, so a position stored in
+  /// the raw text translates exactly into the processed text and back.
+  ///
   /// [includeTitle] is the frozen `includeTitle` argument: when true, the display
   /// title is prepended as its own line, which is where the frozen content stage
   /// puts it before the reader splits the body into paragraphs, and the shaping
-  /// then leaves that first paragraph unindented.
-  Future<String> content(
+  /// then leaves that first paragraph unindented. The title is not part of [raw],
+  /// so the script carries it as an insertion at the run's start.
+  Future<ProcessedContent> content(
     String raw, {
     required String chapterTitle,
     bool includeTitle = false,
   }) async {
     // The frozen guard: a source stage that produced nothing hands over the
     // literal text "null", which is not content and is not processed.
-    if (raw == 'null') return raw;
-    var text = await _removeDuplicatedTitle(raw, chapterTitle);
+    if (raw == 'null') {
+      return ProcessedContent(text: raw, edits: const <ContentEdit>[]);
+    }
+    final deduped = await _removeDuplicatedTitle(raw, chapterTitle);
+    var text = deduped.text;
+    var trace = _OffsetTrace.identity(raw.length).after(
+      deduped.dropped == 0
+          ? const <ContentEdit>[]
+          : [ContentEdit(start: 0, end: deduped.dropped, length: 0)],
+      text,
+    );
     // The frozen `if (reSegment && book.getReSegment())`
     // (`ContentProcessor.kt:131-133`): after the duplicate-title removal, before
     // the conversion and the replace rules. It re-segments on the *raw* chapter
     // title, the one the title pattern above also used. Because it changes the
     // body before the reader computes its line offsets, enabling it for a book
     // moves that book's stored positions, exactly as the frozen reader's do
-    // (see #47 for the local reader's offset model).
-    if (useReSegment) text = reSegment(text, chapterTitle);
-    if (script != null) text = _convert(text);
+    // (see #47 for the local reader's offset model). The stage reflows
+    // paragraphs rather than rewriting ranges, so its script is the whole text
+    // as one rewritten range (the local reader passes the frozen default, off).
+    if (useReSegment) {
+      final next = reSegment(text, chapterTitle);
+      trace = trace.after([
+        ContentEdit(start: 0, end: text.length, length: next.length),
+      ], next);
+      text = next;
+    }
+    if (script != null) {
+      final next = _convert(text);
+      trace = trace.after(_conversionEdits(text, next), next);
+      text = next;
+    }
     if (useReplaceRule) {
       // The replace stage trims every line before the rules see it.
-      text = text.split('\n').map((line) => line.trim()).join('\n');
+      final trimmed = _trimLines(text);
+      trace = trace.after(trimmed.edits, trimmed.text);
+      text = trimmed.text;
       for (final rule in rules.contentRules) {
         if (rule.pattern.isEmpty) continue;
-        text = await _apply(text, rule) ?? text;
+        final applied = await _apply(text, rule);
+        if (applied == null) continue;
+        trace = trace.after(applied.edits, applied.text);
+        text = applied.text;
       }
     }
     if (includeTitle) {
-      text = '${await displayTitle(chapterTitle)}\n$text';
+      final title = await displayTitle(chapterTitle);
+      final next = '$title\n$text';
+      trace = trace.after([
+        ContentEdit(start: 0, end: 0, length: title.length + 1),
+      ], next);
+      text = next;
     }
-    return _shapeParagraphs(text, includeTitle: includeTitle);
+    final shaped = _shapeParagraphs(text, includeTitle: includeTitle);
+    trace = trace.after(shaped.edits, shaped.text);
+    return ProcessedContent(text: shaped.text, edits: trace.script());
   }
 
   Future<String> _titleWithRules(
@@ -316,18 +418,21 @@ class ContentProcessing {
     for (final rule in source) {
       if (rule.pattern.isEmpty) continue;
       final candidate = await _apply(text, rule);
-      if (candidate != null && candidate.trim().isNotEmpty) text = candidate;
+      if (candidate != null && candidate.text.trim().isNotEmpty) {
+        text = candidate.text;
+      }
     }
     return text;
   }
 
-  /// The frozen duplicated-leading-title removal (`ContentProcessor.kt:120-135`).
+  /// The frozen duplicated-leading-title removal (`ContentProcessor.kt:120-135`),
+  /// with the length dropped from the front of the content.
   ///
   /// The first pattern is the raw chapter title with every whitespace run as
   /// `\s*` and the book's own name allowed as leading punctuation noise; when it
   /// does not match, the frozen reader retries with the title the **content**
   /// rules produce — a quirk: the content rules, and without conversion.
-  Future<String> _removeDuplicatedTitle(
+  Future<({String text, int dropped})> _removeDuplicatedTitle(
     String content,
     String chapterTitle,
   ) async {
@@ -335,20 +440,24 @@ class ContentProcessing {
       '$_leading${_javaTitlePattern(chapterTitle)}$_javaSpaceStar',
       unicode: true,
     ).firstMatch(content);
-    if (rawTitle != null) return content.substring(rawTitle.end);
-    if (!useReplaceRule) return content;
+    if (rawTitle != null) {
+      return (text: content.substring(rawTitle.end), dropped: rawTitle.end);
+    }
+    if (!useReplaceRule) return (text: content, dropped: 0);
     final processed = await _titleWithRules(
       chapterTitle,
       rules.contentRules,
       convert: false,
     );
-    if (processed.isEmpty) return content;
+    if (processed.isEmpty) return (text: content, dropped: 0);
     final retry = RegExp(
       '$_leading${_javaQuoted(processed)}$_javaSpaceStar',
       unicode: true,
     ).firstMatch(content);
-    if (retry != null) return content.substring(retry.end);
-    return content;
+    if (retry != null) {
+      return (text: content.substring(retry.end), dropped: retry.end);
+    }
+    return (text: content, dropped: 0);
   }
 
   /// `^(\s|\p{P}|<quoted book name>)*` in the frozen reader's own words: Java's
@@ -356,7 +465,13 @@ class ContentProcessing {
   /// name quoted.
   String get _leading => '^($_javaSpaceClass|\\p{P}|${_javaQuoted(bookName)})*';
 
-  Future<String?> _apply(String text, ReplaceRule rule) async {
+  /// One rule's rewrite: the text and the edits it made to it, or null when the
+  /// rule was left out (unusable pattern, deadline, JavaScript failure or
+  /// cancellation) and the text is unchanged.
+  Future<({String text, List<ContentEdit> edits})?> _apply(
+    String text,
+    ReplaceRule rule,
+  ) async {
     final translated = rule.isRegex ? translateJavaPattern(rule.pattern) : null;
     if (translated != null && !translated.isRunnable) {
       _reportOnce(rule, '替换规则「${rule.name}」不可用：${translated.refusal}');
@@ -366,7 +481,7 @@ class ContentProcessing {
       // Kotlin's literal `String.replace`, which is what the frozen content path
       // uses for a non-regex rule — including a replacement that starts with
       // `@js:`, which the literal branch never interprets.
-      return text.replaceAll(rule.pattern, rule.replacement);
+      return _replaceLiteral(text, rule.pattern, rule.replacement);
     }
     if (rule.replacement.startsWith('@js:')) {
       final outcome = await _applyJsUnderDeadline(text, rule, translated!);
@@ -383,7 +498,7 @@ class ContentProcessing {
         _reportOnce(rule, '替换规则「${rule.name}」出错：${outcome.error}');
         return null;
       }
-      return outcome.text;
+      return (text: outcome.text!, edits: outcome.edits!);
     }
     final outcome = await _applyUnderDeadline(text, rule, translated!);
     if (outcome.timedOut) {
@@ -398,7 +513,7 @@ class ContentProcessing {
       _reportOnce(rule, '替换规则「${rule.name}」出错：${outcome.error}');
       return null;
     }
-    return outcome.text;
+    return (text: outcome.text!, edits: outcome.edits!);
   }
 
   void _reportOnce(ReplaceRule rule, String message) {
@@ -429,6 +544,7 @@ class ContentProcessing {
     final deadline = _deadlineFor(rule);
     final stopwatch = Stopwatch()..start();
     final buffer = StringBuffer();
+    final edits = <ContentEdit>[];
     var cursor = 0;
     try {
       final remaining = deadline - stopwatch.elapsed;
@@ -454,10 +570,11 @@ class ContentProcessing {
         // Matcher.appendReplacement quotes the script result. Building the
         // output directly has the same effect for '$' and '\\' characters.
         buffer.write('$value');
+        edits.add(ContentEdit(start: start, end: end, length: '$value'.length));
         cursor = end;
       }
       buffer.write(text.substring(cursor));
-      return _Outcome.text(buffer.toString());
+      return _Outcome.text(buffer.toString(), edits: edits);
     } on SourceScriptError catch (error) {
       if (error.category == 'cancelled') return const _Outcome.cancelled();
       if (error.category == 'timeout') return const _Outcome.timeout();
@@ -571,7 +688,10 @@ class ContentProcessing {
       }
       switch (message.first) {
         case 'ok':
-          return _Outcome.text('${message[1]}');
+          return _Outcome.text(
+            '${message[1]}',
+            edits: _replacementEdits(message.length > 2 ? message[2] : null),
+          );
         case 'timeout':
           return const _Outcome.timeout();
         default:
@@ -586,6 +706,293 @@ class ContentProcessing {
   }
 }
 
+/// The trim the frozen replace stage does before the rules see the text: every
+/// line trimmed from both ends (`ContentProcessor.kt:139-141`, `str.trim()`,
+/// which Dart's own `String.trim` matches).
+({String text, List<ContentEdit> edits}) _trimLines(String text) {
+  final lines = text.split('\n');
+  final edits = <ContentEdit>[];
+  var cursor = 0;
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.length != line.length) {
+      if (trimmed.isEmpty) {
+        edits.add(
+          ContentEdit(start: cursor, end: cursor + line.length, length: 0),
+        );
+      } else {
+        // The trimmed line's first occurrence in the line is its own position:
+        // the line's first non-whitespace code unit cannot start `trimmed`
+        // earlier, because that code unit would then be whitespace.
+        final lead = line.indexOf(trimmed);
+        edits.add(ContentEdit(start: cursor, end: cursor + lead, length: 0));
+        edits.add(
+          ContentEdit(
+            start: cursor + lead + trimmed.length,
+            end: cursor + line.length,
+            length: 0,
+          ),
+        );
+      }
+    }
+    cursor += line.length + 1;
+  }
+  return (text: lines.map((line) => line.trim()).join('\n'), edits: edits);
+}
+
+/// The conversion stage's edits.
+///
+/// The conversion tables live in the native library and do not report the
+/// boundaries inside a line, so a line the conversion left the same length is
+/// translated offset for offset — every table entry consumes as many code units
+/// as it writes, so equal lengths mean positional alignment — and a line whose
+/// converted form has another length is one rewritten range. A conversion that
+/// moved the line structure itself is one rewritten range over the whole text.
+List<ContentEdit> _conversionEdits(String before, String after) {
+  if (before == after) return const <ContentEdit>[];
+  final beforeLines = before.split('\n');
+  final afterLines = after.split('\n');
+  if (beforeLines.length != afterLines.length) {
+    return [ContentEdit(start: 0, end: before.length, length: after.length)];
+  }
+  final edits = <ContentEdit>[];
+  var cursor = 0;
+  for (var index = 0; index < beforeLines.length; index++) {
+    if (beforeLines[index].length != afterLines[index].length) {
+      edits.add(
+        ContentEdit(
+          start: cursor,
+          end: cursor + beforeLines[index].length,
+          length: afterLines[index].length,
+        ),
+      );
+    }
+    cursor += beforeLines[index].length + 1;
+  }
+  return edits;
+}
+
+/// Kotlin's literal `String.replace`: every non-overlapping occurrence of
+/// [pattern] replaced by [replacement] as written, and the edits that did it.
+({String text, List<ContentEdit> edits}) _replaceLiteral(
+  String text,
+  String pattern,
+  String replacement,
+) {
+  final buffer = StringBuffer();
+  final edits = <ContentEdit>[];
+  var cursor = 0;
+  for (final match in pattern.allMatches(text)) {
+    buffer.write(text.substring(cursor, match.start));
+    buffer.write(replacement);
+    edits.add(
+      ContentEdit(
+        start: match.start,
+        end: match.end,
+        length: replacement.length,
+      ),
+    );
+    cursor = match.end;
+  }
+  buffer.write(text.substring(cursor));
+  return (text: buffer.toString(), edits: edits);
+}
+
+/// The monotone map from the offsets of the text one stage is working on back to
+/// the offsets of the text `content` was given.
+///
+/// The map is a list of cuts, each a pair of matching offsets. Between two cuts
+/// either the two spaces advance together — the text was copied — or they do
+/// not, and every offset in that range then resolves to the cut that opens it.
+/// A stage hands its own rewrites to [after] as [ContentEdit]s in the offsets of
+/// the text it was given; nothing here compares texts to guess at a
+/// correspondence, so the map carries only what the stages actually did.
+class _OffsetTrace {
+  _OffsetTrace._(this._text, this._input);
+
+  /// The identity over a text of [length] code units.
+  factory _OffsetTrace.identity(int length) =>
+      _OffsetTrace._([0, length], [0, length]);
+
+  /// The cuts' offsets in the text the current stage is working on, ascending,
+  /// from `0` to that text's length.
+  final List<int> _text;
+
+  /// The cuts' offsets in the text `content` was given, ascending, from `0` to
+  /// that text's length.
+  final List<int> _input;
+
+  /// The offset of the given text that produced [textOffset]: exact where the
+  /// text was copied, and where a run rewrote the text its range's first offset
+  /// — the range is opaque, so every offset of it answers the same.
+  int inputAt(int textOffset) {
+    final at = _lastAtOrBefore(_text, textOffset);
+    if (at == _text.length - 1 || textOffset == _text[at]) {
+      return _input[at];
+    }
+    return _text[at + 1] - _text[at] == _input[at + 1] - _input[at]
+        ? _input[at] + (textOffset - _text[at])
+        : _input[at];
+  }
+
+  /// The trace after a stage turned this trace's text into [next] through
+  /// [edits], which are ranges of the text this trace describes.
+  _OffsetTrace after(List<ContentEdit> edits, String next) {
+    if (edits.isEmpty) return this;
+    // Where each edit's replacement starts and ends in the text the stage
+    // produced, and how far the text has shifted by the end of each edit.
+    final starts = List<int>.filled(edits.length, 0);
+    final shifts = List<int>.filled(edits.length, 0);
+    var shift = 0;
+    for (var at = 0; at < edits.length; at++) {
+      starts[at] = edits[at].start + shift;
+      shift += edits[at].length - (edits[at].end - edits[at].start);
+      shifts[at] = shift;
+    }
+
+    int indexAt(int offset, int Function(int) key) {
+      var low = 0;
+      var high = edits.length - 1;
+      var found = -1;
+      while (low <= high) {
+        final middle = (low + high) >> 1;
+        if (key(middle) <= offset) {
+          found = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      return found;
+    }
+
+    // The stage's texts on the two sides of [offset]: an insertion that sits
+    // exactly there leaves the offset before it on the left and after it on the
+    // right, and both are cuts of the composed map.
+    int nextOfBefore(int offset) {
+      var at = indexAt(offset, (middle) => edits[middle].start);
+      while (at >= 0 && edits[at].start >= offset) {
+        at -= 1;
+      }
+      if (at < 0) return offset;
+      return offset < edits[at].end ? starts[at] : offset + shifts[at];
+    }
+
+    int nextOfAfter(int offset) {
+      final at = indexAt(offset, (middle) => edits[middle].start);
+      if (at < 0) return offset;
+      return offset < edits[at].end ? starts[at] : offset + shifts[at];
+    }
+
+    final cuts = <(int, int)>[];
+
+    // The map can only change slope where the stage changed it (an edit's two
+    // boundaries) or where this trace already did (its own cuts, carried into
+    // the stage's text). A cut this trace made twice at one offset is a range
+    // the input lost: its first cut is the text before that range and its last
+    // the text after it, so each keeps the side it belongs to.
+    for (var at = 0; at < _text.length; at++) {
+      final first = at == 0 || _text[at - 1] != _text[at];
+      final last = at == _text.length - 1 || _text[at + 1] != _text[at];
+      if (first) cuts.add((nextOfBefore(_text[at]), _input[at]));
+      if (last) cuts.add((nextOfAfter(_text[at]), _input[at]));
+    }
+    for (var at = 0; at < edits.length; at++) {
+      cuts.add((starts[at], inputAt(edits[at].start)));
+      cuts.add((starts[at] + edits[at].length, inputAt(edits[at].end)));
+    }
+    cuts.add((next.length, _input.last));
+    cuts.sort((a, b) {
+      final byText = a.$1.compareTo(b.$1);
+      return byText != 0 ? byText : a.$2.compareTo(b.$2);
+    });
+
+    final text = <int>[];
+    final input = <int>[];
+    for (final (textOffset, inputOffset) in cuts) {
+      if (text.isNotEmpty &&
+          text.last == textOffset &&
+          input.last == inputOffset) {
+        continue;
+      }
+      assert(
+        text.isEmpty || (textOffset >= text.last && inputOffset >= input.last),
+        'the trace cuts stay ordered',
+      );
+      text.add(textOffset);
+      input.add(inputOffset);
+    }
+    return _OffsetTrace._(text, input);
+  }
+
+  /// The run's script: one [ContentEdit] per rewritten range, in the offsets of
+  /// the text `content` was given. Ranges that turn out to be inside a range
+  /// already emitted (a later stage rewrote text an earlier one had generated)
+  /// are absorbed into it: the outer range is opaque, so the map cannot tell the
+  /// two apart anyway, and the absorbed text lengthens it.
+  List<ContentEdit> script() {
+    final edits = <ContentEdit>[];
+    for (var at = 0; at + 1 < _text.length; at++) {
+      final textSpan = _text[at + 1] - _text[at];
+      final inputStart = _input[at];
+      final inputEnd = _input[at + 1];
+      if (edits.isNotEmpty && inputStart < edits.last.end) {
+        final previous = edits.removeLast();
+        edits.add(
+          ContentEdit(
+            start: previous.start,
+            end: inputEnd > previous.end ? inputEnd : previous.end,
+            length: previous.length + textSpan,
+          ),
+        );
+        continue;
+      }
+      if (textSpan == inputEnd - inputStart) continue;
+      if (edits.isNotEmpty && edits.last.end == inputStart) {
+        final previous = edits.removeLast();
+        edits.add(
+          ContentEdit(
+            start: previous.start,
+            end: inputEnd,
+            length: previous.length + textSpan,
+          ),
+        );
+        continue;
+      }
+      edits.add(
+        ContentEdit(start: inputStart, end: inputEnd, length: textSpan),
+      );
+    }
+    assert(_ascending(edits), 'the script is ascending and disjoint');
+    return edits;
+  }
+
+  /// The last index whose value in [stops] is at or before [offset].
+  static int _lastAtOrBefore(List<int> stops, int offset) {
+    var low = 0;
+    var high = stops.length - 1;
+    var found = 0;
+    while (low <= high) {
+      final middle = (low + high) >> 1;
+      if (stops[middle] <= offset) {
+        found = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return found;
+  }
+}
+
+/// Whether the script's ranges are ascending and disjoint.
+bool _ascending(List<ContentEdit> edits) {
+  for (var at = 1; at < edits.length; at++) {
+    if (edits[at].start < edits[at - 1].end) return false;
+  }
+  return true;
+}
+
 /// `ReadBookConfig.paragraphIndent`'s frozen default (`ReadBookConfig.kt:532`).
 /// The reader's indent is a reading setting; until a settings ticket owns it,
 /// [ContentProcessing.content] uses this constant, the value the pinned oracle
@@ -598,34 +1005,90 @@ const _paragraphIndent = '　　';
 /// Dart's wider `String.trim` — empty paragraphs are dropped, and every
 /// remaining paragraph is indented except the first when [includeTitle] makes it
 /// the title.
-String _shapeParagraphs(String text, {required bool includeTitle}) {
-  final paragraphs = <String>[];
-  for (final line in text.split('\n')) {
+///
+/// The returned edits describe it: the trims it cuts, the empty paragraphs it
+/// drops with their separators, and the indents it inserts. A line separator it
+/// keeps is the newline the line before it ends with, so an offset on a kept
+/// newline translates exactly; a dropped line takes the separator before it with
+/// it.
+({String text, List<ContentEdit> edits}) _shapeParagraphs(
+  String text, {
+  required bool includeTitle,
+}) {
+  final out = StringBuffer();
+  final edits = <ContentEdit>[];
+  final lines = text.split('\n');
+  var emitted = 0;
+  var cursor = 0;
+  for (var index = 0; index < lines.length; index++) {
+    final line = lines[index];
     final paragraph = _trimFrozen(line);
-    if (paragraph.isEmpty) continue;
-    paragraphs.add(
-      paragraphs.isEmpty && includeTitle
-          ? paragraph
-          : '$_paragraphIndent$paragraph',
-    );
+    // The separator this line follows — the newline the line before it ends
+    // with — survives as this paragraph's own separator; the shaping drops it
+    // with the paragraph, or when no paragraph came before it.
+    if (index > 0) {
+      if (paragraph.isNotEmpty && emitted > 0) {
+        out.write('\n');
+      } else {
+        edits.add(ContentEdit(start: cursor - 1, end: cursor, length: 0));
+      }
+    }
+    if (paragraph.isEmpty) {
+      if (line.isNotEmpty) {
+        edits.add(
+          ContentEdit(start: cursor, end: cursor + line.length, length: 0),
+        );
+      }
+    } else {
+      final lead = _frozenTrimStart(line);
+      if (lead > 0) {
+        edits.add(ContentEdit(start: cursor, end: cursor + lead, length: 0));
+      }
+      final indent = emitted == 0 && includeTitle ? '' : _paragraphIndent;
+      if (indent.isNotEmpty) {
+        edits.add(
+          ContentEdit(
+            start: cursor + lead,
+            end: cursor + lead,
+            length: indent.length,
+          ),
+        );
+        out.write(indent);
+      }
+      out.write(paragraph);
+      final trailing = cursor + line.length - lead - paragraph.length;
+      if (trailing > cursor + lead) {
+        edits.add(
+          ContentEdit(start: trailing, end: cursor + line.length, length: 0),
+        );
+      }
+      emitted += 1;
+    }
+    cursor += line.length + 1;
   }
-  return paragraphs.join('\n');
+  return (text: out.toString(), edits: edits);
 }
 
 /// The frozen `str.trim { it.code <= 0x20 || it == '　' }`: Java's control/space
 /// range plus the ideographic space, both ends.
 String _trimFrozen(String text) {
-  bool trimmed(int codeUnit) => codeUnit <= 0x20 || codeUnit == 0x3000;
-  var start = 0;
+  final start = _frozenTrimStart(text);
   var end = text.length;
-  while (start < end && trimmed(text.codeUnitAt(start))) {
-    start++;
-  }
-  while (end > start && trimmed(text.codeUnitAt(end - 1))) {
+  while (end > start && _frozenCut(text.codeUnitAt(end - 1))) {
     end--;
   }
   return text.substring(start, end);
 }
+
+int _frozenTrimStart(String text) {
+  var start = 0;
+  while (start < text.length && _frozenCut(text.codeUnitAt(start))) {
+    start++;
+  }
+  return start;
+}
+
+bool _frozenCut(int codeUnit) => codeUnit <= 0x20 || codeUnit == 0x3000;
 
 class _JsMatches {
   const _JsMatches.values(this.values)
@@ -654,25 +1117,32 @@ class _JsMatches {
 }
 
 class _Outcome {
-  const _Outcome.text(this.text)
+  const _Outcome.text(this.text, {required this.edits})
     : timedOut = false,
       cancelled = false,
       error = null;
   const _Outcome.timeout()
     : text = null,
+      edits = null,
       timedOut = true,
       cancelled = false,
       error = null;
   const _Outcome.cancelled()
     : text = null,
+      edits = null,
       timedOut = false,
       cancelled = true,
       error = null;
   const _Outcome.error(this.error)
     : text = null,
+      edits = null,
       timedOut = false,
       cancelled = false;
   final String? text;
+
+  /// The ranges of the rule's input the replacement rewrote, in that text's
+  /// offsets — null whenever [text] is null.
+  final List<ContentEdit>? edits;
   final bool timedOut;
   final bool cancelled;
   final String? error;
@@ -718,6 +1188,7 @@ void _replaceEntry(List<Object?> args) {
       unicode: args[7] as bool,
     );
     final buffer = StringBuffer();
+    final edits = <List<Object?>>[];
     var cursor = 0;
     for (final match in regex.allMatches(text)) {
       buffer.write(text.substring(cursor, match.start));
@@ -727,13 +1198,38 @@ void _replaceEntry(List<Object?> args) {
         return;
       }
       buffer.write(expanded);
+      edits.add(<Object?>[match.start, match.end, expanded.length]);
       cursor = match.end;
     }
     buffer.write(text.substring(cursor));
-    send.send(<Object?>['ok', buffer.toString()]);
+    send.send(<Object?>['ok', buffer.toString(), edits]);
   } catch (error) {
     send.send(<Object?>['error', '$error']);
   }
+}
+
+/// The edits one regex replacement made, as the isolate reported them: `[start,
+/// end, length]` per match.
+List<ContentEdit> _replacementEdits(Object? reported) {
+  if (reported is! List) return const <ContentEdit>[];
+  final edits = <ContentEdit>[];
+  for (final entry in reported) {
+    if (entry is! List ||
+        entry.length != 3 ||
+        entry[0] is! int ||
+        entry[1] is! int ||
+        entry[2] is! int) {
+      return const <ContentEdit>[];
+    }
+    edits.add(
+      ContentEdit(
+        start: entry[0] as int,
+        end: entry[1] as int,
+        length: entry[2] as int,
+      ),
+    );
+  }
+  return edits;
 }
 
 /// Java's `\s` set as a character class: the ASCII whitespace Java uses, and

@@ -185,7 +185,13 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
           : await current.displayTitle(sourceTitle);
       final body = current == null
           ? result.text
-          : await current.content(result.text, chapterTitle: sourceTitle);
+          // The one text entry returns the text and the run's edit script; the
+          // online reader consumes the text alone — it pages the chapter it just
+          // read, and its stored position is the source's own offset.
+          : (await current.content(
+              result.text,
+              chapterTitle: sourceTitle,
+            )).text;
       if (!mounted) return;
       final lines = body.split('\n');
       var cursor = 0;
