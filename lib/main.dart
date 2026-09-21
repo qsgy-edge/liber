@@ -20,11 +20,7 @@ import 'store/space_store.dart';
 import 'store/workspace.dart';
 
 void main() {
-  // The platform WebView is the rendered-document engine behind
-  // `BookSourceWebViewAdapter` (ADR 0003, ticket #55). The binding is installed
-  // here, at the application's composition root, because the plugin reaches
-  // `dart:ui` and the gates and tools run this model layer on a plain Dart VM.
-  installInAppWebViewBookSourceAdapter();
+  installApplicationBindings();
   // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens a different installation
   // directory instead of `%APPDATA%\Liber`: a review run drives the real app
   // without the operator's own library underneath it.
@@ -32,6 +28,20 @@ void main() {
   runApp(
     LiberApp(workspaceRoot: workspace.isEmpty ? null : Directory(workspace)),
   );
+}
+
+/// The process-wide bindings the application's composition root owns.
+///
+/// Both entry points call this: `main()` above and the debug-only driver entry
+/// point (`tool/driver_main.dart`), so the driven run exercises the application
+/// the build ships. The platform WebView is the rendered-document engine behind
+/// `BookSourceWebViewAdapter` (ADR 0003, ticket #55); installing it here rather
+/// than inside [LiberApp] keeps the plugin — which reaches `dart:ui` — out of
+/// the model layer that the gates, the tools and the unit tests run on a plain
+/// Dart VM, and keeps the install single-sourced instead of copied per
+/// entry point.
+void installApplicationBindings() {
+  installInAppWebViewBookSourceAdapter();
 }
 
 class LiberApp extends StatelessWidget {

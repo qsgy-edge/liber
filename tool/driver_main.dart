@@ -18,6 +18,10 @@ import 'package:liber/main.dart';
 
 void main() {
   enableFlutterDriverExtension();
+  // The same composition root the real build runs, so a driven run exercises
+  // the application the build ships — including the platform WebView binding
+  // the rendered-document path needs (#55).
+  installApplicationBindings();
   const workspace = String.fromEnvironment('LIBER_WORKSPACE_ROOT');
   runApp(
     LiberApp(workspaceRoot: workspace.isEmpty ? null : Directory(workspace)),
