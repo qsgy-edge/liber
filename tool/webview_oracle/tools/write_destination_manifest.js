@@ -150,7 +150,7 @@ function main() {
           // fingerprint rather than to a hardcoded directory.
           const candidates = fs
             .readdirSync(path.join(root, 'evidence'))
-            .filter((name) => /^android(-\d+)?$/.test(name));
+            .filter((name) => /^android(-[0-9A-Za-z.]+)?$/.test(name));
           for (const name of candidates) {
             const candidate = path.join(root, 'evidence', name, 'manifest.json');
             if (!fs.existsSync(candidate)) continue;

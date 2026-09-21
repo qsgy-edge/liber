@@ -126,7 +126,7 @@ fi
 # than hardcoded, so a run cannot be compared against another OS's golden.
 golden_dir="$root/evidence/android"
 fingerprint="$(adb shell getprop ro.build.fingerprint | tr -d '\r')"
-for candidate in "$root"/evidence/android "$root"/evidence/android-1[0-9]; do
+for candidate in "$root"/evidence/android "$root"/evidence/android-*; do
   [[ -f "$candidate/manifest.json" ]] || continue
   if [[ "$(node -p "require('$candidate/manifest.json').device.fingerprint")" == "$fingerprint" ]]; then
     golden_dir="$candidate"

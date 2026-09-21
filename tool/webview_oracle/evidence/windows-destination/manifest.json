@@ -96,7 +96,7 @@
     "tools/run_fixture_windows.sh": "a6d721947c810cb9c8fec22125d547dbb58b08fcb8269df1789cad1dd7596b3d",
     "tools/run_all_destination_windows.sh": "0cd80f77b6f4998751c3afb9f7c8eb0e6325e1d5ee423def33503d7daa15cb69",
     "tools/build_windows_harness.sh": "3bb98bfde2f38af555ab93339312e48ed216dff4113c7f21e50a1d0aa5b000f1",
-    "tools/write_destination_manifest.js": "588b081756a9df439b323b6d3cb6d3737979d298379cbd783fd18f6d75ecf21e",
+    "tools/write_destination_manifest.js": "4d77902094ee56ca3a1a50eb7972416a480ed5606537b021f5a269af55856baa",
     "adapter/tool/sync_fixtures.sh": "87dc9e0b0783afb178f4aac7e0ef49379ae8381a4715170bc59eedee6feeb978",
     "adapter/pubspec.yaml": "eeb1a31baed59630979069853927df4e1027c3fcbe1461cce232b52ae38669e7",
     "adapter/pubspec.lock": "0adb597c011da00e83435e75bbccf6abb6bfcf50d5ea07abd05538d3b766136d",
