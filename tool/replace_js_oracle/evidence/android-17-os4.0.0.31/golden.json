@@ -1,0 +1,320 @@
+{
+  "fixtureId": "REPLACE-JS-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "fixtureSha256": "267bf9635cd0dcc5ad7e45a3d6a219f17ca46050e76cb8c184bef4def2393818",
+  "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+  "recordedAtEpochMillis": 1789989452981,
+  "boundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:185-201); titles use BookChapter.getDisplayTitle. The frozen replacement insertion quotes the JavaScript result with Matcher.quoteReplacement (RegexExtensions.kt:38-40).",
+  "isolation": {
+    "application": "android.app.Application",
+    "files": "/data/user/0/io.legado.app.debug/cache/liber-replace-js-49/files",
+    "database": "/data/user/0/io.legado.app.debug/cache/liber-replace-js-49/databases/legado.db",
+    "preferencesPrefix": "liber_replace_js_49_",
+    "frozenAppOnCreate": "not-run: unrelated background maintenance"
+  },
+  "paragraphIndent": "　　",
+  "rows": [
+    {
+      "id": "js-returned-text",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-returned-text"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　正文【已净化】开始【已净化】结束。",
+      "textList": [
+        "　　正文【已净化】开始【已净化】结束。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [
+        "js-returned-text"
+      ],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 93
+    },
+    {
+      "id": "js-title-scope",
+      "selection": {
+        "title": [
+          "js-title-scope"
+        ],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第[1章] 开端",
+      "content": "　　正文内容。",
+      "textList": [
+        "　　正文内容。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 30
+    },
+    {
+      "id": "js-match-and-capture",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-match-and-capture"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　共[20字|20|$1|${name}|\\1]，另有[300字|300|$1|${name}|\\1]。",
+      "textList": [
+        "　　共[20字|20|$1|${name}|\\1]，另有[300字|300|$1|${name}|\\1]。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [
+        "js-match-and-capture"
+      ],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 27
+    },
+    {
+      "id": "js-binding-surface",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-binding-surface"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　result=string $1=undefined $name=undefined book=undefined source=undefined java=object sourceKey=undefined",
+      "textList": [
+        "　　result=string $1=undefined $name=undefined book=undefined source=undefined java=object sourceKey=undefined"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [
+        "js-binding-surface"
+      ],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 22
+    },
+    {
+      "id": "js-ordering-with-literal",
+      "selection": {
+        "title": [],
+        "content": [
+          "literal-first",
+          "js-second",
+          "literal-third"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　乙丁。",
+      "textList": [
+        "　　乙丁。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [
+        "literal-first",
+        "js-second",
+        "literal-third"
+      ],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 19
+    },
+    {
+      "id": "js-literal-branch-prefix",
+      "selection": {
+        "title": [],
+        "content": [
+          "literal-branch-prefix"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　这里有@js:\"X\"。",
+      "textList": [
+        "　　这里有@js:\"X\"。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [
+        "literal-branch-prefix"
+      ],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 12
+    },
+    {
+      "id": "js-disabled",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　正文广告。",
+      "textList": [
+        "　　正文广告。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 5
+    },
+    {
+      "id": "js-error",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-error"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　正文广告。",
+      "textList": [
+        "　　正文广告。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 15
+    },
+    {
+      "id": "backup-rule-1",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第十二章",
+      "content": "　　正文内容。",
+      "textList": [
+        "　　正文内容。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 7
+    },
+    {
+      "id": "backup-rule-2",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　ＡＢＣ１２３．",
+      "textList": [
+        "　　ＡＢＣ１２３．"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 4
+    },
+    {
+      "id": "backup-rule-3",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　他说：“你好”…",
+      "textList": [
+        "　　他说：“你好”…"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 4
+    },
+    {
+      "id": "backup-rule-4",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　他想说些ꁘꁘ的话。",
+      "textList": [
+        "　　他想说些ꁘꁘ的话。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [],
+      "status": "observed",
+      "elapsedMillis": 4
+    },
+    {
+      "id": "js-timeout",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-timeout"
+        ]
+      },
+      "useReplaceRule": true,
+      "reSegment": false,
+      "converterType": 0,
+      "title": "第一章",
+      "content": "　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　替换规则广告\n　　替换内容:正文广告。",
+      "textList": [
+        "　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用",
+        "　　替换规则广告",
+        "　　替换内容:正文广告。"
+      ],
+      "sameTitleRemoved": false,
+      "effectiveRules": [],
+      "rulesDisabledByRun": [
+        "js-timeout"
+      ],
+      "timeoutObserved": true,
+      "restartObservation": "not-demonstrated: a completed call cannot show the 3 s appCtx.restart() that the frozen handler only schedules while its worker is still active; no input was amplified",
+      "status": "observed",
+      "elapsedMillis": 206
+    }
+  ],
+  "cleanup": {
+    "databaseClosed": true,
+    "scratchRemoved": true,
+    "server": "not-used"
+  }
+}

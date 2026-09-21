@@ -1,0 +1,479 @@
+{
+  "fixtureId": "REPLACE-JS-01",
+  "fixtureSha256": "267bf9635cd0dcc5ad7e45a3d6a219f17ca46050e76cb8c184bef4def2393818",
+  "comparisonBoundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:185-201); titles use BookChapter.getDisplayTitle. The frozen replacement insertion quotes the JavaScript result with Matcher.quoteReplacement (RegexExtensions.kt:38-40).",
+  "rows": [
+    {
+      "id": "js-returned-text",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-title-scope",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-match-and-capture",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-binding-surface",
+      "status": "notCompared",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "fail",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　result=string $1=undefined $name=undefined book=undefined source=undefined java=object sourceKey=undefined",
+          "product": "　　result=string $1=undefined $name=undefined book=object source=object java=object sourceKey=string"
+        }
+      ],
+      "policy": "Approved boundary (#49): frozen binds only the complete match as `result`; the product evaluates through the approved source script facade, whose documented globals are broader.",
+      "productNotices": []
+    },
+    {
+      "id": "js-ordering-with-literal",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-literal-branch-prefix",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-disabled",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": []
+    },
+    {
+      "id": "js-error",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": [
+        "替换规则「js-error」出错：js"
+      ]
+    },
+    {
+      "id": "backup-rule-1",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": [],
+      "backupRule": {
+        "id": 1,
+        "name": "#01 数字标题#JS",
+        "scopeTitle": true,
+        "scopeContent": false,
+        "isEnabled": false,
+        "recordedOutcome": "disabled; replacement not executed"
+      }
+    },
+    {
+      "id": "backup-rule-2",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": [],
+      "backupRule": {
+        "id": 2,
+        "name": "#02 全角字符#JS",
+        "scopeTitle": false,
+        "scopeContent": true,
+        "isEnabled": false,
+        "recordedOutcome": "disabled; replacement not executed"
+      }
+    },
+    {
+      "id": "backup-rule-3",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": [],
+      "backupRule": {
+        "id": 3,
+        "name": "#03 其他字符#JS",
+        "scopeTitle": false,
+        "scopeContent": true,
+        "isEnabled": false,
+        "recordedOutcome": "disabled; replacement not executed"
+      }
+    },
+    {
+      "id": "backup-rule-4",
+      "status": "pass",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "pass",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [],
+      "productNotices": [],
+      "backupRule": {
+        "id": 4,
+        "name": "#04 星号修复#JS",
+        "scopeTitle": false,
+        "scopeContent": true,
+        "isEnabled": false,
+        "recordedOutcome": "disabled; replacement not executed"
+      }
+    },
+    {
+      "id": "js-timeout",
+      "status": "notCompared",
+      "frozenStatus": "observed",
+      "productStatus": "observed",
+      "observations": {
+        "title": "pass",
+        "content": "fail",
+        "selection": "pass",
+        "rulesDisabledByRun": "pass"
+      },
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　替换规则广告\n　　替换内容:正文广告。",
+          "product": "　　正文广告。"
+        }
+      ],
+      "policy": "ADR 0011 / #17: the frozen reader disables the timed-out rule, replaces the content with the rule name plus the timeout exception text and schedules appCtx.restart(); the product reports the rule, disables it for the caller and keeps the original text.",
+      "productNotices": [
+        "替换规则「js-timeout」超时（200 毫秒），已停用"
+      ],
+      "timeoutObserved": true,
+      "restartObservation": "not-demonstrated: a completed call cannot show the 3 s appCtx.restart() that the frozen handler only schedules while its worker is still active; no input was amplified",
+      "timeoutCoverage": "observed: the frozen run disabled the timed-out rule and injected the rule name plus the exception text"
+    }
+  ],
+  "acceptedDivergences": [
+    {
+      "id": "js-timeout",
+      "summary": "Timeout side effect: frozen injects the rule name plus the exception text into the content and schedules an application restart; the product disables the rule, reports it and preserves the original text.",
+      "product": "PASS-by-policy: report, disable, keep original text (ADR 0011).",
+      "frozen": "recorded verbatim in the golden content and in rulesDisabledByRun.",
+      "status": "notCompared",
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　替换规则广告\n　　替换内容:正文广告。",
+          "product": "　　正文广告。"
+        }
+      ]
+    },
+    {
+      "id": "js-binding-surface",
+      "summary": "Binding breadth: frozen injects only the complete match as `result`; the product evaluates through the approved source script facade, whose documented globals are broader.",
+      "product": "recorded verbatim.",
+      "frozen": "recorded verbatim.",
+      "status": "notCompared",
+      "differences": [
+        {
+          "field": "content",
+          "frozen": "　　result=string $1=undefined $name=undefined book=undefined source=undefined java=object sourceKey=undefined",
+          "product": "　　result=string $1=undefined $name=undefined book=object source=object java=object sourceKey=string"
+        }
+      ]
+    },
+    {
+      "id": "js-error",
+      "summary": "Error reporting channel, not content: frozen logs to AppLog and toasts; the product reports a notice. Content and rule state are equal.",
+      "product": "notice in the comparison report.",
+      "frozen": "not observable from the harness; the content is the compared value.",
+      "status": "pass",
+      "differences": []
+    }
+  ],
+  "counts": {
+    "pass": 11,
+    "fail": 0,
+    "notCompared": 2,
+    "not-run": 0
+  },
+  "complete": false,
+  "product": [
+    {
+      "id": "js-returned-text",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-returned-text"
+        ]
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　正文【已净化】开始【已净化】结束。",
+      "status": "observed"
+    },
+    {
+      "id": "js-title-scope",
+      "selection": {
+        "title": [
+          "js-title-scope"
+        ],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第[1章] 开端",
+      "content": "　　正文内容。",
+      "status": "observed"
+    },
+    {
+      "id": "js-match-and-capture",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-match-and-capture"
+        ]
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　共[20字|20|$1|${name}|\\1]，另有[300字|300|$1|${name}|\\1]。",
+      "status": "observed"
+    },
+    {
+      "id": "js-binding-surface",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-binding-surface"
+        ]
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　result=string $1=undefined $name=undefined book=object source=object java=object sourceKey=string",
+      "status": "observed"
+    },
+    {
+      "id": "js-ordering-with-literal",
+      "selection": {
+        "title": [],
+        "content": [
+          "literal-first",
+          "js-second",
+          "literal-third"
+        ]
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　乙丁。",
+      "status": "observed"
+    },
+    {
+      "id": "js-literal-branch-prefix",
+      "selection": {
+        "title": [],
+        "content": [
+          "literal-branch-prefix"
+        ]
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　这里有@js:\"X\"。",
+      "status": "observed"
+    },
+    {
+      "id": "js-disabled",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　正文广告。",
+      "status": "observed"
+    },
+    {
+      "id": "js-error",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-error"
+        ]
+      },
+      "notices": [
+        "替换规则「js-error」出错：js"
+      ],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　正文广告。",
+      "status": "observed"
+    },
+    {
+      "id": "backup-rule-1",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第十二章",
+      "content": "　　正文内容。",
+      "status": "observed"
+    },
+    {
+      "id": "backup-rule-2",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　ＡＢＣ１２３．",
+      "status": "observed"
+    },
+    {
+      "id": "backup-rule-3",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　他说：“你好”…",
+      "status": "observed"
+    },
+    {
+      "id": "backup-rule-4",
+      "selection": {
+        "title": [],
+        "content": []
+      },
+      "notices": [],
+      "rulesDisabledByRun": [],
+      "title": "第一章",
+      "content": "　　他想说些ꁘꁘ的话。",
+      "status": "observed"
+    },
+    {
+      "id": "js-timeout",
+      "selection": {
+        "title": [],
+        "content": [
+          "js-timeout"
+        ]
+      },
+      "notices": [
+        "替换规则「js-timeout」超时（200 毫秒），已停用"
+      ],
+      "rulesDisabledByRun": [
+        "js-timeout"
+      ],
+      "title": "第一章",
+      "content": "　　正文广告。",
+      "status": "observed"
+    }
+  ],
+  "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+  "goldenSha256": "3cb818c8164aa2d044d0fb02bf951167eedfa67dc7cafaf66f36c2f46fbb89e8",
+  "productCommit": "3bd4c85c90b70bd282cd14e908fb8288e3eee1ef",
+  "recordedAt": "2026-09-21T11:18:10.941530Z",
+  "sourceHashes": {
+    "lib/source/content_processing.dart": "43e2f638037edc95c431ab8d88bf95ab78f55aa4de063744cb49e3df280c633b",
+    "lib/source/java_regex.dart": "e91e43f9f594e8cd190193c8af40f79c429c1820d0a5f41ed9e28d9dc614e037",
+    "lib/source/js_source_runtime.dart": "bc77e0c324f7989b4049182cbaf8d7d239dec34fdffcadc1b6c54ab33fad8bee",
+    "tool/replace_js_oracle/compare.dart": "5cb6628b0a79831a641de13e3553d94b0d45211bb53e9ceee89fcb0261e0ad8b"
+  }
+}
