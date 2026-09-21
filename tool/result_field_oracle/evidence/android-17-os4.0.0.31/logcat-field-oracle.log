@@ -1,0 +1,85 @@
+--------- beginning of main
+09-21 16:13:02.632 31228 31228 I FieldOracle: onCreate
+09-21 16:13:02.679 31228 31228 I FieldOracle: main looper reached; starting the worker thread
+09-21 16:13:02.681 31228 31416 I FieldOracle: harness start
+09-21 16:13:02.706 31228 31416 I FieldOracle: corpus loaded: FIELDS-01
+09-21 16:13:02.711 31228 31416 I FieldOracle: replay server bound to the corpus origin: http://127.0.0.1:18732
+09-21 16:13:02.711 31228 31416 I FieldOracle: case html-rename-permitted
+09-21 16:13:02.720 31228 31416 I FieldOracle: stage search
+09-21 16:13:02.721 31228 31416 I FieldOracle: frozen entry searchBookAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:02.924 31228 31416 I FieldOracle: stage search returned
+09-21 16:13:02.924 31228 31416 I FieldOracle: stage bookInfo
+09-21 16:13:02.924 31228 31416 I FieldOracle: frozen entry getBookInfoAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:02.938 31228 31416 I FieldOracle: stage bookInfo returned
+09-21 16:13:02.938 31228 31416 I FieldOracle: stage tableOfContents
+09-21 16:13:02.939 31228 31416 I FieldOracle: frozen entry getChapterListAwait-BWLJW6A on io.legado.app.model.webBook.WebBook
+09-21 16:13:02.950 31228 31416 I FieldOracle: stage tableOfContents returned
+09-21 16:13:02.950 31228 31416 I FieldOracle: stage content
+09-21 16:13:02.951 31228 31416 I FieldOracle: frozen entry getContentAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:02.960 31228 31416 I FieldOracle: stage content returned
+09-21 16:13:02.960 31228 31416 I FieldOracle: case html-rename-permitted done
+09-21 16:13:02.963 31228 31416 I FieldOracle: case html-rename-absent
+09-21 16:13:02.968 31228 31416 I FieldOracle: stage search
+09-21 16:13:02.968 31228 31416 I FieldOracle: frozen entry searchBookAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.003 31228 31416 I FieldOracle: stage search returned
+09-21 16:13:03.003 31228 31416 I FieldOracle: stage bookInfo
+09-21 16:13:03.004 31228 31416 I FieldOracle: frozen entry getBookInfoAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.014 31228 31416 I FieldOracle: stage bookInfo returned
+09-21 16:13:03.014 31228 31416 I FieldOracle: stage tableOfContents
+09-21 16:13:03.015 31228 31416 I FieldOracle: frozen entry getChapterListAwait-BWLJW6A on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.022 31228 31416 I FieldOracle: stage tableOfContents returned
+09-21 16:13:03.022 31228 31416 I FieldOracle: stage content
+09-21 16:13:03.023 31228 31416 I FieldOracle: frozen entry getContentAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.034 31228 31416 I FieldOracle: stage content returned
+09-21 16:13:03.034 31228 31416 I FieldOracle: case html-rename-absent done
+09-21 16:13:03.035 31228 31416 I FieldOracle: case html-blank-rename-empty-author
+09-21 16:13:03.038 31228 31416 I FieldOracle: stage search
+09-21 16:13:03.039 31228 31416 I FieldOracle: frozen entry searchBookAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.065 31228 31416 I FieldOracle: stage search returned
+09-21 16:13:03.065 31228 31416 I FieldOracle: stage bookInfo
+09-21 16:13:03.065 31228 31416 I FieldOracle: frozen entry getBookInfoAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.073 31228 31416 I FieldOracle: stage bookInfo returned
+09-21 16:13:03.073 31228 31416 I FieldOracle: stage tableOfContents
+09-21 16:13:03.073 31228 31416 I FieldOracle: frozen entry getChapterListAwait-BWLJW6A on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.081 31228 31416 I FieldOracle: stage tableOfContents returned
+09-21 16:13:03.081 31228 31416 I FieldOracle: stage content
+09-21 16:13:03.082 31228 31416 I FieldOracle: frozen entry getContentAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.088 31228 31416 I FieldOracle: stage content returned
+09-21 16:13:03.088 31228 31416 I FieldOracle: case html-blank-rename-empty-author done
+09-21 16:13:03.090 31228 31416 I FieldOracle: case html-content-title-blank
+09-21 16:13:03.095 31228 31416 I FieldOracle: stage search
+09-21 16:13:03.096 31228 31416 I FieldOracle: frozen entry searchBookAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.126 31228 31416 I FieldOracle: stage search returned
+09-21 16:13:03.126 31228 31416 I FieldOracle: stage bookInfo
+09-21 16:13:03.127 31228 31416 I FieldOracle: frozen entry getBookInfoAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.136 31228 31416 I FieldOracle: stage bookInfo returned
+09-21 16:13:03.136 31228 31416 I FieldOracle: stage tableOfContents
+09-21 16:13:03.137 31228 31416 I FieldOracle: frozen entry getChapterListAwait-BWLJW6A on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.147 31228 31416 I FieldOracle: stage tableOfContents returned
+09-21 16:13:03.147 31228 31416 I FieldOracle: stage content
+09-21 16:13:03.147 31228 31416 I FieldOracle: frozen entry getContentAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.155 31228 31416 I FieldOracle: stage content returned
+09-21 16:13:03.155 31228 31416 I FieldOracle: case html-content-title-blank done
+09-21 16:13:03.156 31228 31416 I FieldOracle: case json-fields
+09-21 16:13:03.160 31228 31416 I FieldOracle: stage search
+09-21 16:13:03.161 31228 31416 I FieldOracle: frozen entry searchBookAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.195 31228 31416 I FieldOracle: stage search returned
+09-21 16:13:03.195 31228 31416 I FieldOracle: stage bookInfo
+09-21 16:13:03.196 31228 31416 I FieldOracle: frozen entry getBookInfoAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.207 31228 31416 I FieldOracle: stage bookInfo returned
+09-21 16:13:03.207 31228 31416 I FieldOracle: stage tableOfContents
+09-21 16:13:03.207 31228 31416 I FieldOracle: frozen entry getChapterListAwait-BWLJW6A on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.219 31228 31416 I FieldOracle: stage tableOfContents returned
+09-21 16:13:03.219 31228 31416 I FieldOracle: stage content
+09-21 16:13:03.220 31228 31416 I FieldOracle: frozen entry getContentAwait on io.legado.app.model.webBook.WebBook
+09-21 16:13:03.226 31228 31416 I FieldOracle: stage content returned
+09-21 16:13:03.226 31228 31416 I FieldOracle: case json-fields done
+09-21 16:13:03.233 31228 31416 I FieldOracle: checkKeyword declared -> 校验词
+09-21 16:13:03.233 31228 31416 I FieldOracle: checkKeyword blank -> 回放默认
+09-21 16:13:03.233 31228 31416 I FieldOracle: checkKeyword absent -> 回放默认
+09-21 16:13:03.234 31228 31416 I FieldOracle: checkKeyword number -> 42
+09-21 16:13:03.234 31228 31416 I FieldOracle: checkKeyword object refused: com.google.gson.JsonSyntaxException: java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord
+09-21 16:13:03.234 31228 31416 I FieldOracle: See https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure <- java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord
+09-21 16:13:03.234 31228 31416 I FieldOracle: See https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure
+09-21 16:13:03.236 31228 31416 I FieldOracle: report written; failures=0
+09-21 16:13:03.238 31228 31416 I FieldOracle: report rewritten with cleanup={"openConnections":1,"serverClosed":true}

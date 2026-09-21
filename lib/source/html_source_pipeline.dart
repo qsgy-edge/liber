@@ -464,7 +464,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _validate();
-    sourceCheckKeyword(source, keyword);
+    // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it are
+    // the source check and the debug page's search box, not this stage, so a
+    // search runs on the keyword it was given whatever the field holds.
     _page = page;
     _keyword = keyword;
     _chapterTitle = null;

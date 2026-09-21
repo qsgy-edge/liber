@@ -79,8 +79,26 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment`, `concurrentRate` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ |
 
 `✅` in this field inventory means implemented with product tests. The seven #41
-field observations are source-derived; their frozen differential rows remain
-`not-run` and owned by #41. The existing #38 golden does not contain them.
+field observations now have an executed frozen golden
+(`tool/result_field_oracle/evidence/android-17-os4.0.0.31/`, corpus `FIELDS-01`,
+compared row by row against the integrated product): `ruleSearch.intro`,
+`lastChapter` and `wordCount`, `ruleBookInfo.wordCount`, `canReName` and
+`ruleContent.title` pass on both the HTML and the JSON rule shape, and the #38
+golden still does not contain them. `ruleSearch.checkKeyWord` is a **check**
+keyword — the frozen readers of it are the source check and the debug page's
+search box, not the search stage, which never reads the field. Its frozen
+semantics are the parse layer's: the value is read through Gson into `String?`,
+so a JSON scalar becomes its literal text (`42` → `"42"`, `1e3` → `"1e3"`,
+`true` → `"true"`) and only an array or object is refused, while the source is
+parsed. The product reproduces the scalar coercion at its single reading point
+(`sourceCheckKeyword`) and refuses a structured value with a named error. Two
+residual differences are recorded rather than normalized: the refusal happens at
+use (`FormatException` with the field name) where the frozen reader refuses at
+parse (`JsonSyntaxException: Expected a string but was BEGIN_OBJECT`), and a
+non-canonical number literal loses its original spelling (this product sees
+`1000.0`/`1.5` where the frozen reader keeps `1e3`/`1.50`). The second one is
+reopened only if a used source declares such a literal; neither is a correctness
+claim either way.
 
 ### B. Rule grammar and selectors
 
