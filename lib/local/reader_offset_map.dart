@@ -7,7 +7,7 @@
 /// of the body it rewrote, as the stage that rewrote them reported them — so
 /// nothing here compares the two texts or guesses a correspondence.
 ///
-/// Outside a rewritten range the raw body's own text is on screen, shifted by
+/// Outside a rewritten range the raw body's offsets line up exactly, shifted by
 /// the lengths the earlier ranges add or remove, and both directions translate
 /// offset for offset. Inside one there is no image to translate: the **deleted
 /// (rewritten) offset policy** resolves such an offset to the processed offset
