@@ -9,6 +9,7 @@ import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
 import 'source/book_source_service.dart';
+import 'source/content_processing.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'store/legacy_import.dart';
@@ -141,10 +142,16 @@ class _LiberHomePageState extends State<LiberHomePage> {
   /// Opens a local book in the paged reader.
   ///
   /// The reader writes the five-field progress record through the library, so
-  /// the shelf's cached offset is re-read when the page comes back.
+  /// the shelf's cached offset is re-read when the page comes back. The space's
+  /// replace rules are read once and applied through #17's one text entry, the
+  /// way the online reader applies them; a book whose rules cannot be read opens
+  /// on the file's own text.
   Future<void> _openLocalBook(LocalBook book) async {
     final library = _library;
     if (library == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final processing = await _contentProcessing(book, library, messenger);
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => LocalReaderPage(
@@ -152,11 +159,48 @@ class _LiberHomePageState extends State<LiberHomePage> {
             engine: const NativeReaderEngine(),
             library: library,
             book: book,
+            processing: processing,
           ),
         ),
       ),
     );
     if (mounted) setState(() {});
+  }
+
+  /// This book's replace rules, or null when they cannot be read (the reader
+  /// then shows the file's own text).
+  Future<ContentProcessing?> _contentProcessing(
+    LocalBook book,
+    LocalLibrary library,
+    ScaffoldMessengerState? messenger,
+  ) async {
+    try {
+      final rules = await library.store.replaceRules();
+      return ContentProcessing(
+        rules: ReplaceRuleSet.forBook(
+          rules,
+          bookName: book.title,
+          // The frozen reader's local-book origin is `BookType.localTag`
+          // (`BookType.kt:66`); this product stores `kind` instead (D2), and a
+          // rule's `scope` is still matched against the origin text.
+          bookOrigin: 'loc_book',
+        ),
+        bookName: book.title,
+        // The frozen `Book.getUseReplaceRule()` for a text book: on by default.
+        useReplaceRule: true,
+        // The frozen `Book.getReSegment()`, which defaults off (21 of the
+        // operator's 1419 books carry it on).
+        useReSegment: false,
+        onNotice: (message) =>
+            messenger?.showSnackBar(SnackBar(content: Text(message))),
+        // The frozen reader disables a rule that exceeded its deadline.
+        onRuleDisabled: (rule) => library.store.putReplaceRule(
+          rule.copyWith(isEnabled: false).toCompanion(true),
+        ),
+      );
+    } on Object {
+      return null;
+    }
   }
 
   /// Re-reads what the shelf and the migration page list: a source trial, a

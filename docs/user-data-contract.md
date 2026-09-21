@@ -149,6 +149,17 @@ Relational, never a mask:
   TOC changes, which the migration contract works around by only ever advancing progress.
   This record keeps the coarse anchor as a stable `chapter_key` and adds the line's own
   prefix as the fine anchor.
+- *Progress stays in the raw file's space when replace rules render the page (#47).* The
+  frozen reader applies the user's replace rules per materialised chapter and stores
+  `durChapterPos` as an index into the **processed** chapter (`ReadBook.kt:416,426`;
+  `ChapterProvider.kt:628-630`), so a rule change moves what a stored position means. This
+  record stays in the file's raw code-unit space: `text_offset`, `line_index`,
+  `offset_in_line`, `text_length` and `anchor` all describe the file, and the reader
+  translates to and from the unit's processed text through the unit's offset map
+  (`lib/local/reader_offset_map.dart`). That keeps `text_length` the file's length, so D4's
+  file-change tiers still work, and it keeps a record written before the rules ran valid
+  after they run or after the rule set changes. The named divergence is
+  `local-progress-raw-space` in `docs/compatibility/book-source-differential-contract.md`.
 - *Correction (2026-09-16).* The anchor is the line's first ≤32 code units **verbatim**, not a
   hash: the near tier relocates it within ±N lines and the search tier finds it in the file,
   and neither can compare a digest. `docs/user-data-contract.md` D4 and ADR 0007 carried the
