@@ -224,8 +224,9 @@ class ContentEdit {
 /// What one [ContentProcessing.content] call produced: the text, and the edit
 /// script that turned the text it was given into it.
 ///
-/// [edits] is ascending and disjoint: outside its ranges the text is the input's
-/// own, shifted by the lengths the earlier ranges add or remove. That is enough
+/// [edits] is ascending and disjoint: outside its ranges the input's own
+/// offsets line up exactly, shifted by the lengths the earlier ranges add or
+/// remove; a reported range is one whose length changed. That is enough
 /// to translate any offset of the input into the output and back
 /// (`lib/local/reader_offset_map.dart`): outside a range the translation is
 /// exact, and inside one — where the run replaced or removed the text — the
