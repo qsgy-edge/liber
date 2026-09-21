@@ -1,0 +1,597 @@
+{
+  "fixtureId": "FIELDS-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "checkKeywordEntryPoint": "io.legado.app.data.entities.BookSource.getCheckKeyword",
+  "platform": "windows",
+  "recordedAt": "2026-09-21T16:08:42.176681",
+  "origin": "http://127.0.0.1:18732",
+  "fixturesPath": "tool/result_field_oracle/fixtures.json",
+  "fixturesSha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
+  "libraryPath": "build/windows/x64/runner/Debug/fjs.dll",
+  "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+  "oracle": "not-run",
+  "scenario": {
+    "status": "pass",
+    "invariants": [
+      {
+        "id": "no-undeclared-request",
+        "ok": true,
+        "detail": "every request had a declared response"
+      },
+      {
+        "id": "declared-requests",
+        "ok": true,
+        "detail": "20 declared requests matched: GET /html-rename/search?keyword=回放&page=1 | GET /html-rename/book/1 | GET /html-rename/toc/1 | GET /html-rename/chapter/1 | GET /html-rename-absent/search?keyword=回放&page=1 | GET /html-rename-absent/book/1 | GET /html-rename-absent/toc/1 | GET /html-rename-absent/chapter/1 | GET /html-blank-rename/search?keyword=回放&page=1 | GET /html-blank-rename/book/1 | GET /html-blank-rename/toc/1 | GET /html-blank-rename/chapter/1 | GET /html-content-title/search?keyword=回放&page=1 | GET /html-content-title/book/1 | GET /html-content-title/toc/1 | GET /html-content-title/chapter/1 | GET /json-fields/search?keyword=回放&page=1 | GET /json-fields/book/1 | GET /json-fields/toc/1 | GET /json-fields/chapter/1"
+      },
+      {
+        "id": "cases-completed",
+        "ok": true,
+        "detail": "5 cases ran; no stage threw"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/html-rename/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename/toc/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename-absent/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename-absent/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename-absent/toc/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-rename-absent/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-blank-rename/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-blank-rename/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-blank-rename/toc/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-blank-rename/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-content-title/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-content-title/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-content-title/toc/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/html-content-title/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/json-fields/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      },
+      "rawQuery": "keyword=%E5%9B%9E%E6%94%BE&page=1",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/json-fields/book/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/json-fields/toc/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    },
+    {
+      "method": "GET",
+      "path": "/json-fields/chapter/1",
+      "query": {},
+      "rawQuery": "",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "host": "127.0.0.1:18732",
+        "x-fields-corpus": "FIELDS-01"
+      },
+      "body": ""
+    }
+  ],
+  "unmatchedRequests": [],
+  "stageTrace": [
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18732/html-rename/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18732/html-rename/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18732/html-rename/toc/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18732/html-rename/chapter/1"
+    },
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18732/html-rename-absent/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18732/html-rename-absent/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18732/html-rename-absent/toc/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18732/html-rename-absent/chapter/1"
+    },
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18732/html-blank-rename/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18732/html-blank-rename/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18732/html-blank-rename/toc/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18732/html-blank-rename/chapter/1"
+    },
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18732/html-content-title/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18732/html-content-title/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18732/html-content-title/toc/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18732/html-content-title/chapter/1"
+    },
+    {
+      "stage": "search",
+      "path": "http://127.0.0.1:18732/json-fields/search?keyword=%E5%9B%9E%E6%94%BE&page=1"
+    },
+    {
+      "stage": "bookInfo",
+      "path": "http://127.0.0.1:18732/json-fields/book/1"
+    },
+    {
+      "stage": "tableOfContents",
+      "path": "http://127.0.0.1:18732/json-fields/toc/1"
+    },
+    {
+      "stage": "content",
+      "path": "http://127.0.0.1:18732/json-fields/chapter/1"
+    }
+  ],
+  "cases": {
+    "html-rename-permitted": {
+      "search": {
+        "results": [
+          {
+            "name": "回放之书",
+            "author": "搜索作者",
+            "intro": "搜索简介",
+            "lastChapter": "搜索最新章",
+            "wordCount": "1.2万字"
+          },
+          {
+            "name": "第二本书",
+            "author": "",
+            "intro": "",
+            "lastChapter": "",
+            "wordCount": "约12万字"
+          }
+        ]
+      },
+      "bookInfo": {
+        "name": "详情书名",
+        "author": "详情作者",
+        "wordCount": "2.3万字"
+      },
+      "chapter": {
+        "title": "正文标题",
+        "text": "正文内容"
+      }
+    },
+    "html-rename-absent": {
+      "search": {
+        "results": [
+          {
+            "name": "回放之书",
+            "author": "搜索作者",
+            "intro": "搜索简介",
+            "lastChapter": "搜索最新章",
+            "wordCount": "1.2万字"
+          }
+        ]
+      },
+      "bookInfo": {
+        "name": "回放之书",
+        "author": "搜索作者",
+        "wordCount": "2.3万字"
+      },
+      "chapter": {
+        "title": "目录章节名",
+        "text": "正文内容"
+      }
+    },
+    "html-blank-rename-empty-author": {
+      "search": {
+        "results": [
+          {
+            "name": "回放之书",
+            "author": "",
+            "intro": "",
+            "lastChapter": "",
+            "wordCount": ""
+          }
+        ]
+      },
+      "bookInfo": {
+        "name": "回放之书",
+        "author": "详情作者",
+        "wordCount": ""
+      },
+      "chapter": {
+        "title": "目录章节名",
+        "text": "正文内容"
+      }
+    },
+    "html-content-title-blank": {
+      "search": {
+        "results": [
+          {
+            "name": "回放之书",
+            "author": "",
+            "intro": "",
+            "lastChapter": "",
+            "wordCount": ""
+          }
+        ]
+      },
+      "bookInfo": {
+        "name": "回放之书",
+        "author": "",
+        "wordCount": ""
+      },
+      "chapter": {
+        "title": "目录章节名",
+        "text": "正文内容"
+      }
+    },
+    "json-fields": {
+      "search": {
+        "results": [
+          {
+            "name": "JSON书名",
+            "author": "JSON搜索作者",
+            "intro": "JSON搜索简介",
+            "lastChapter": "JSON搜索最新章",
+            "wordCount": "1.2万字"
+          }
+        ]
+      },
+      "bookInfo": {
+        "name": "JSON详情书名",
+        "author": "JSON详情作者",
+        "wordCount": "2.3万字"
+      },
+      "chapter": {
+        "title": "JSON正文标题",
+        "text": "JSON正文内容"
+      }
+    }
+  },
+  "caseFailures": {},
+  "checkKeyword": {
+    "declared": {
+      "outcome": "value",
+      "value": "校验词"
+    },
+    "blank": {
+      "outcome": "value",
+      "value": "回放默认"
+    },
+    "absent": {
+      "outcome": "value",
+      "value": "回放默认"
+    },
+    "number": {
+      "outcome": "refused",
+      "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+    },
+    "object": {
+      "outcome": "refused",
+      "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+    }
+  }
+}

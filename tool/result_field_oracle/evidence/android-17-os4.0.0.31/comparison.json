@@ -1,0 +1,126 @@
+{
+  "comparison": "FIELDS-01",
+  "golden": "tool/result_field_oracle/evidence/android-17-os4.0.0.31/golden.json",
+  "liber": "tool/result_field_oracle/evidence/windows-fields-01.liber.json",
+  "goldenPlatform": "android",
+  "goldenFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+  "corpus": "tool/result_field_oracle/fixtures.json",
+  "corpusSha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
+  "manifestCorpusSha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
+  "rows": [
+    {
+      "id": "C1",
+      "title": "corpus: the declared request sequence ran identically on both sides",
+      "status": "pass",
+      "detail": "20 declared requests, 20 on the frozen side and 20 on the product side",
+      "differences": []
+    },
+    {
+      "id": "F1",
+      "title": "ruleSearch.intro: the extracted intro through the frozen HtmlFormatter",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on intro",
+      "differences": []
+    },
+    {
+      "id": "F2",
+      "title": "ruleSearch.lastChapter: the extracted latest chapter title",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on lastChapter",
+      "differences": []
+    },
+    {
+      "id": "F3",
+      "title": "ruleSearch.wordCount: the extracted count through the frozen wordCountFormat",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on wordCount",
+      "differences": []
+    },
+    {
+      "id": "F4",
+      "title": "ruleSearch.checkKeyWord: the default keyword path and a non-string value",
+      "status": "fail",
+      "detail": "5 checkKeyWord cases compared; refused on both sides: object (frozen: com.google.gson.JsonSyntaxException: java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord\nSee https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure <- java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord\nSee https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure; product: FormatException: ruleSearch.checkKeyWord 必须是字符串规则)",
+      "differences": [
+        {
+          "observation": "checkKeyword.number.outcome",
+          "frozen": {
+            "outcome": "value",
+            "value": "42"
+          },
+          "liber": {
+            "outcome": "refused",
+            "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5",
+      "title": "ruleBookInfo.wordCount: the detail count through the frozen wordCountFormat",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on bookInfo.wordCount",
+      "differences": []
+    },
+    {
+      "id": "F6",
+      "title": "ruleBookInfo.canReName: the detail title/author replacement gate",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on bookInfo.name/author",
+      "differences": []
+    },
+    {
+      "id": "F7",
+      "title": "ruleContent.title: the content title replacing the chapter title",
+      "status": "pass",
+      "detail": "5 of 5 cases compared on chapter.title",
+      "differences": []
+    }
+  ],
+  "notCompared": [
+    {
+      "observation": "cases.<id>.search.results[].name, .author",
+      "reason": "context for the canReName row, not one of this corpus' field rows: the search result name and author are SLICE-01 row R5's, and F6 compares the same names where the rename gate decides them."
+    },
+    {
+      "observation": "cases.<id>.chapter.text",
+      "reason": "recorded so a case that produced no content is visible; the content text is not one of the seven field rows (SLICE-01 R8 owns it)."
+    },
+    {
+      "observation": "requests[].headers.*, requests[].body",
+      "reason": "this corpus compares the request method, resolved path and raw query bytes only: source headers and injected request defaults are SLICE-01 row R3's, and every request here is a GET with an empty body."
+    },
+    {
+      "observation": "state.*, cleanup.*, serverErrors",
+      "reason": "frozen-side observations with no counterpart in the Liber evidence: cleanup is this harness' own replay-server teardown (openConnections, serverClosed), not a source-observable cleanup effect, and serverErrors is the replay server's own error list."
+    },
+    {
+      "observation": "liber.scenario, liber.oracle, liber.fixturesPath/fixturesSha256, liber.libraryPath/librarySha256",
+      "reason": "Liber-side fields the comparator does not read: `scenario` is the product run's own shape check (C1 recomputes it from `requests` and the corpus `expectedRequests`), `oracle` records that the observation was recorded before a golden existed, and the `fixtures*`/`library*` fields identify the input bytes. The corpus bytes are hashed and checked against the manifest pin instead."
+    },
+    {
+      "observation": "platform, fingerprint, recordedAt",
+      "reason": "provenance of the two runs, recorded in each evidence file and its manifest; not a compatibility observation."
+    }
+  ],
+  "divergences": [
+    {
+      "row": "F4",
+      "observation": "checkKeyword.number.outcome",
+      "frozen": {
+        "outcome": "value",
+        "value": "42"
+      },
+      "liber": {
+        "outcome": "refused",
+        "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+      }
+    }
+  ],
+  "status": "fail",
+  "summary": {
+    "pass": 7,
+    "fail": 1,
+    "notCompared": 6
+  }
+}

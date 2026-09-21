@@ -1,0 +1,404 @@
+{
+  "status": "observed",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/41",
+  "kind": "fields-01-frozen-result-field-golden",
+  "corpus": {
+    "path": "tool/result_field_oracle/fixtures.json",
+    "sha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
+    "assetCopySha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
+    "fixtureId": "FIELDS-01",
+    "corpusVersion": 1,
+    "origin": "http://127.0.0.1:18732",
+    "note": "the harness serves an asset copy of the corpus taken from the worktree; a Windows checkout that rewrote it to CRLF has to be normalised back to the committed LF blob before the build, so the served bytes and the committed blob hash to the same value, which is also the hash the Liber-side observation records (fixturesSha256)."
+  },
+  "harnessApkSha256": "e7c460d528bdcfa6bfbcb42c447c020265e0d0700aeec6256a83c6605f5072ab",
+  "serial": "5615f742",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-C",
+        "D:\\GithubRepositories\\Android\\legado",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exitCode": 0,
+      "log": "source-head.log"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "D:\\GithubRepositories\\Android\\legado",
+        "hash-object",
+        "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+        "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+        "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+        "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+        "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+        "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/SearchRule.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/BookInfoRule.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/ContentRule.kt",
+        "app/src/main/java/io/legado/app/help/book/BookHelp.kt"
+      ],
+      "exitCode": 0,
+      "log": "frozen-source-hashes.log"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "D:\\GithubRepositories\\Android\\legado",
+        "status",
+        "--porcelain",
+        "--",
+        "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+        "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+        "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+        "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+        "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+        "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/SearchRule.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/BookInfoRule.kt",
+        "app/src/main/java/io/legado/app/data/entities/rule/ContentRule.kt",
+        "app/src/main/java/io/legado/app/help/book/BookHelp.kt"
+      ],
+      "exitCode": 0,
+      "log": "frozen-source-status.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "getprop",
+        "ro.build.fingerprint"
+      ],
+      "exitCode": 0,
+      "log": "fingerprint.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "getprop",
+        "ro.build.version.release"
+      ],
+      "exitCode": 0,
+      "log": "android-release.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "getprop",
+        "ro.build.version.sdk"
+      ],
+      "exitCode": 0,
+      "log": "sdk.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "getprop",
+        "ro.product.model"
+      ],
+      "exitCode": 0,
+      "log": "model.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "pm",
+        "path",
+        "io.legado.app.debug"
+      ],
+      "exitCode": 0,
+      "log": "baseline-path.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "pull",
+        "/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk",
+        "C:\\Users\\17945\\AppData\\Local\\Temp\\fields-01-baseline-epg866dr\\frozen.apk"
+      ],
+      "exitCode": 0,
+      "log": "pull-baseline.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "pm",
+        "path",
+        "io.liber.oracle.fields"
+      ],
+      "exitCode": 1,
+      "log": "harness-existing.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "sh",
+        "-c",
+        "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
+      ],
+      "exitCode": 0,
+      "log": "private-before.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "install",
+        "-r",
+        "build\\result-field-oracle\\b2\\field-oracle.apk"
+      ],
+      "exitCode": 0,
+      "log": "install.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "logcat",
+        "-c"
+      ],
+      "exitCode": 0,
+      "log": "logcat-clear.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-r",
+        "io.liber.oracle.fields/.FieldOracle"
+      ],
+      "exitCode": 0,
+      "log": "instrumentation.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "logcat",
+        "-d",
+        "-s",
+        "FieldOracle"
+      ],
+      "exitCode": 0,
+      "log": "logcat-field-oracle.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "pull",
+        "/sdcard/Android/data/io.legado.app.debug/files/field-oracle.json",
+        "tool\\result_field_oracle\\evidence\\android-17-os4.0.0.31\\field-oracle.json"
+      ],
+      "exitCode": 0,
+      "log": "pull-report.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "sh",
+        "-c",
+        "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
+      ],
+      "exitCode": 0,
+      "log": "private-after.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "am",
+        "force-stop",
+        "io.legado.app.debug"
+      ],
+      "exitCode": 0,
+      "log": "stop-owned-run.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "uninstall",
+        "io.liber.oracle.fields"
+      ],
+      "exitCode": 0,
+      "log": "remove-harness.log"
+    }
+  ],
+  "harnessSources": {
+    "capture.py": "ed0d6a41dc0a73c14a1df9c753661f786db25bd6633190207ea3ce156ad56ad0",
+    "FieldOracle.java": "28502bfe942e8a72d1b6b5258030e235a598cb5894be9cd0fc7038483655e843",
+    "AndroidManifest.xml": "99a7cf3e606b661134de7880b9079329035f67825726f4f39ca0bd741091d0a2",
+    "build.ps1": "1adf53cdbbb3b1a713b620dca9783ee13eebb6b7abea4d20aafde712da93064f"
+  },
+  "frozenSources": {
+    "app/src/main/java/io/legado/app/model/webBook/BookList.kt": {
+      "blobSha1": "9f33dd6665b8aff0583321b516c7e86022bd3726",
+      "worktreeSha256": "92fe441d4c095c4042c86a574beda9c756591a50adaf3f5f3635b4fc1bb1a2ea"
+    },
+    "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt": {
+      "blobSha1": "f90d5fab03bf5a2eecb6b9086d27be6edd270e43",
+      "worktreeSha256": "746b1a92220e298fc86ccf3e3a41467643946aa831d244602daacd384e25c750"
+    },
+    "app/src/main/java/io/legado/app/model/webBook/BookContent.kt": {
+      "blobSha1": "0455f8f0ae01a92e5e28e0a5af7567219cea287b",
+      "worktreeSha256": "61e09c20d3e6966bb80ea85a5f765967703b99beb783c5b2acf00dbddc4f73a6"
+    },
+    "app/src/main/java/io/legado/app/model/webBook/WebBook.kt": {
+      "blobSha1": "7537a33f33a97eb704f533ef24c3f0187c3e5f94",
+      "worktreeSha256": "e0754f77698d7d1a9457c7c57f0e407f0ac5096feaa20242f9710d73c923b45a"
+    },
+    "app/src/main/java/io/legado/app/utils/StringUtils.kt": {
+      "blobSha1": "acc118d12e221bd8e0d4b546434373d8640576fb",
+      "worktreeSha256": "b21a94c3f78f78c60a265fa363c6c21b6cf44021664755ea1abc03b9c58fca3b"
+    },
+    "app/src/main/java/io/legado/app/data/entities/BookSource.kt": {
+      "blobSha1": "d2ac6002cbaabe508f72a77e138f95b376c424c4",
+      "worktreeSha256": "39507cceba01f14559879747ec13d26be7c964dd1606215a42560e3a6c3b1dfd"
+    },
+    "app/src/main/java/io/legado/app/data/entities/rule/SearchRule.kt": {
+      "blobSha1": "ba8cda4543a4afb507224ba57f0f1f5ab4ad5594",
+      "worktreeSha256": "9957e821bd290eae25ce98b3dba6eaffb036db6ea6767828f2bc119988bbc5cc"
+    },
+    "app/src/main/java/io/legado/app/data/entities/rule/BookInfoRule.kt": {
+      "blobSha1": "54fd639003b4b4780d095c5afa379eac25a8620b",
+      "worktreeSha256": "859b43d954186a9488f9c0d2d44b19b8571c7dc8ac7fa2cc49488c44316c5dbd"
+    },
+    "app/src/main/java/io/legado/app/data/entities/rule/ContentRule.kt": {
+      "blobSha1": "aef453668216619314f556bdf5d100733c9c5414",
+      "worktreeSha256": "8942da0373194f7295b0b0dcdf2a078c5addc1f34d23fa328ed5a8d562d2a304"
+    },
+    "app/src/main/java/io/legado/app/help/book/BookHelp.kt": {
+      "blobSha1": "c9dd19cbeb9ea6e620e86546425eadcf0c554269",
+      "worktreeSha256": "f31f966f437cac9a62a2f957a8dc13e1f16f997abfdbe665297b4565befc7f72"
+    }
+  },
+  "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+  "androidRelease": "17",
+  "sdk": "37",
+  "model": "25102RKBEC",
+  "baselineApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+  "run": {
+    "result": "INSTRUMENTATION_RESULT: stream=Fields oracle recorded 20 requests and 5 cases\r\n\r\nINSTRUMENTATION_CODE: -1"
+  },
+  "existingDataHashesUnchanged": false,
+  "error": "existing private file hash list changed; inspect before promotion",
+  "privateFileChanges": {
+    "databases/google_app_measurement_local.db": {
+      "before": "20f45803746df9ef8187f3859cb3382288dec90e3949769d3b6b9e7e6bd0a54a",
+      "after": "5c7e99a2addfbcaf0988bff97b4d57f0d54bfd955aea16b347dd4532b5bc2e75"
+    },
+    "shared_prefs/FirebaseHeartBeatW0RFRkFVTFRd+MTo0NTMzOTIyNzQ3OTA6YW5kcm9pZDpjNGVhYzE0YjE0MTBlZWM1ZjYyNGE3.xml": {
+      "before": "6f9cbe7f9224692f5b441444f3e20da41667f1dd4e3fa418d7855cfe1ed44ada",
+      "after": "27a88983b50a9a76e26fab061f1703bbf85ac8098edd25376ec83a728b66f86a"
+    },
+    "shared_prefs/WebViewChromiumPrefs.xml": {
+      "before": "368502f07d0716735d3f4ff67ab7110db4df7f76a283bde3a206e748e77bad3f",
+      "after": "03830c79399bbbe2e562e14350d3a8a5e9a65466c5d7c91b2fb4839914daf7ef"
+    }
+  },
+  "frozenAppDataUnchanged": true,
+  "goldenSha256": "319c261e503d09ccac5ff2252de0a57ecf082343e9f5e6952ab9aff98a9e5c5a",
+  "cases": {
+    "frozen": [
+      "html-rename-permitted",
+      "html-rename-absent",
+      "html-blank-rename-empty-author",
+      "html-content-title-blank",
+      "json-fields"
+    ],
+    "checkKeyword": [
+      "declared",
+      "blank",
+      "absent",
+      "number",
+      "object"
+    ]
+  },
+  "deviceAssets": {
+    "openConnections": 1,
+    "serverClosed": true
+  },
+  "harnessSourcesNote": "hashes of the committed harness sources; capture.py gained its re-runnable --finalize validation path after this device run, and FieldOracle.java, AndroidManifest.xml, build.ps1 and the corpus are unchanged since the build whose APK hash this manifest records.",
+  "comparison": {
+    "path": "comparison.json",
+    "sha256": "c6d0374f6beef86c0ca6c5b327c0e8c0a4b2d70fd09dc9ea4cc28fafbc76c538",
+    "status": "fail",
+    "summary": {
+      "pass": 7,
+      "fail": 1,
+      "notCompared": 6
+    },
+    "rows": {
+      "C1": "pass",
+      "F1": "pass",
+      "F2": "pass",
+      "F3": "pass",
+      "F4": "fail",
+      "F5": "pass",
+      "F6": "pass",
+      "F7": "pass"
+    },
+    "divergences": [
+      {
+        "row": "F4",
+        "observation": "checkKeyword.number.outcome",
+        "frozen": {
+          "outcome": "value",
+          "value": "42"
+        },
+        "liber": {
+          "outcome": "refused",
+          "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+        }
+      }
+    ],
+    "note": "the comparator exits 1 when a row does not pass; the F4 divergence here is recorded evidence, not a corpus defect."
+  }
+}

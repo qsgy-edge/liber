@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.liber.oracle.fields">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+  <application android:label="Liber FIELDS-01 result-field oracle harness" android:debuggable="true" />
+  <instrumentation android:name="io.liber.oracle.fields.FieldOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado remaining result-field oracle (FIELDS-01)" />
+</manifest>
