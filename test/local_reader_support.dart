@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/local/local_reader.dart';
 import 'package:liber/local/reader_engine.dart';
+import 'package:liber/source/content_processing.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/local_library.dart';
 import 'package:liber/store/progress.dart';
@@ -265,5 +266,49 @@ ProgressRecord recordAt(
     chapterKey: chapterKey,
     chapterIndex: chapterIndex,
     anchor: facts.anchor,
+  );
+}
+
+/// A [ContentProcessing] over **literal** replace rules.
+///
+/// A regex rule runs in its own isolate, which a widget test's binding cannot
+/// settle (and which a plain test pays a spawn for), so the reader's processed
+/// path is driven here with a rule the isolated path would produce the same
+/// result for. The book name and origin match what the app passes a local book.
+ContentProcessing literalProcessing(
+  List<({String pattern, String replacement})> rules, {
+  String bookName = '本地书',
+  String bookOrigin = 'loc_book',
+  ReaderScript? script,
+  bool useReplaceRule = true,
+}) {
+  final replaceRules = [
+    for (var index = 0; index < rules.length; index++)
+      ReplaceRule(
+        id: 'r$index',
+        name: '规则$index',
+        groupName: '',
+        pattern: rules[index].pattern,
+        replacement: rules[index].replacement,
+        scope: null,
+        excludeScope: null,
+        scopeTitle: false,
+        scopeContent: true,
+        isEnabled: true,
+        isRegex: false,
+        timeoutMillisecond: 0,
+        ruleOrder: index,
+      ),
+  ];
+  return ContentProcessing(
+    rules: ReplaceRuleSet.forBook(
+      replaceRules,
+      bookName: bookName,
+      bookOrigin: bookOrigin,
+    ),
+    bookName: bookName,
+    script: script,
+    useReplaceRule: useReplaceRule,
+    useReSegment: false,
   );
 }
