@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../domain/contracts.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
+import 'book_source_webview_adapter.dart';
 import 'json_source_rules.dart';
 import 'js_source_runtime.dart';
 import 'rule_field.dart';
@@ -27,6 +28,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     this.hostState,
     this.androidId = '',
     this.onHostMessage,
+    this.webViewFactory,
   });
 
   @override
@@ -45,6 +47,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// cache entries and per-source variables outlive the analysis. Without one
   /// they live for the process.
   final SourceHostState? hostState;
+
+  /// The rendered-document adapter factory this pipeline's WebView stages use.
+  /// Null builds the platform one for this source; a test substitutes its own,
+  /// because the pipeline's choice of path is what it checks.
+  final BookSourceWebViewAdapterFactory? webViewFactory;
 
   /// The installation's opaque `androidId` the source's `java.androidId` answers
   /// with (ADR 0011 §6); empty when the caller has no installation.
@@ -86,6 +93,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
   final trace = <BookSourceTraceEntry>[];
 
   late final SourceHostState _hostSurface = hostState ?? SourceHostState();
+
+  late final BookSourceWebViewAdapterFactory _webViewAdapter =
+      webViewFactory ??
+      BookSourceWebViewAdapterFactory(
+        sourceRef: _sourceRef,
+        hostState: _hostSurface,
+        // The frozen `BackstageWebView.setCookie` writes what a finished page
+        // left in the native store under the source's key; the source-scoped jar
+        // is where this product keeps it (ADR 0011 §3).
+        onPageCookies: (pageUrl, cookies) =>
+            _hostSurface.cookiesFor(_sourceRef).set(pageUrl, cookies),
+      );
 
   late final SourceHostDispatcher? _host = transport is SourceHttpTransport
       ? SourceHostDispatcher(
@@ -319,6 +338,29 @@ class JsonSourcePipeline implements BookSourcePipeline {
         await sourceRequestShape(options, merged);
     final headers = {...merged, ...extra};
     final host = _host;
+    if (options.webView) {
+      // The frozen `AnalyzeUrl` WebView path, under this source's rate limit: a
+      // JSON source's `webJs` is what produces the JSON this stage reads.
+      Future<({String body, Uri url})> render() => loadSourceWebView(
+        factory: _webViewAdapter,
+        options: options,
+        url: url,
+        method: method,
+        headers: headers,
+        cancellation: _cancellation,
+        bootstrap: () => host!
+            .forExecution(_cancellation)
+            .request(method, '$url', headers: headers, body: body),
+      );
+      final result = host == null
+          ? await render()
+          : await host
+                .forExecution(_cancellation)
+                .withSourceRateLimit(render);
+      trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
+      _cancellation.throwIfCancelled();
+      return jsonDecode(result.body);
+    }
     if (host != null) {
       // The same dispatcher every other source request goes through, so the
       // JSON stages carry cookies, the source's rate limit and the response

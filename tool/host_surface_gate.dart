@@ -97,6 +97,9 @@ const expectedMembers = <String>[
   'cache.deleteMemory',
   'java.androidId',
   'java.getWebViewUA',
+  'java.webView',
+  'java.webViewGetSource',
+  'java.webViewGetOverrideUrl',
   ...deferredMembers,
 ];
 
