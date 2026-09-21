@@ -1,0 +1,10 @@
+{
+  "id": "WV-06",
+  "path": "/override",
+  "overrideRegex": ".*/blocked",
+  "routes": [
+    {"method": "GET", "path": "/override", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body><main id=\"oracle\">override</main><script>location.href='/blocked'</script></body></html>"},
+    {"method": "GET", "path": "/blocked", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "blocked-should-not-load"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "headers": {"Content-Type": "text/plain"}, "body": ""}
+  ]
+}

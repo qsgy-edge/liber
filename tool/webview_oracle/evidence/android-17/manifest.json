@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "kind": "frozen-legado-android-webview-oracle",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "tree": "5a250932cf8cc4905198a58587851b39dbc98499",
+    "productionSourceDiff": []
+  },
+  "supersedes": null,
+  "siblingGolden": {
+    "path": "evidence/android",
+    "fingerprint": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
+    "reason": "the device was updated from Android 16 to Android 17 after that golden was produced; both goldens come from the same frozen APKs, and each destination row is compared against the golden matching its own fingerprint"
+  },
+  "runWindowUtc": {
+    "started": "2026-08-22T10:02:12.900Z",
+    "completed": "2026-08-22T10:04:54.117Z",
+    "acceptedEvidenceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+    "acceptedSegments": [
+      {
+        "window": "2026-08-22T10:02:12.900Z..2026-08-22T10:04:54.117Z",
+        "fixtures": "WV-01..WV-14",
+        "methods": 16
+      }
+    ],
+    "discardedAttempts": [
+      {
+        "at": "2026-08-22T08:23Z..09:06Z",
+        "fixture": "WV-01..WV-09",
+        "reason": "the device froze the instrumentation process in the background, which stalled the harness timers; WV-09 exhausted its retries with no result or evidence. Nothing from these attempts was accepted. The device setting that caused it was changed, not the harness: the oracle app was given an unrestricted battery policy."
+      },
+      {
+        "at": "2026-08-22T09:5xZ",
+        "fixture": "WV-09",
+        "reason": "diagnostic timing run outside the acceptance protocol to confirm the battery-policy fix; completed in 32.4s but was neither pulled nor accepted and is not in run.log"
+      }
+    ],
+    "temporaryDeviceState": {
+      "stayOnWhilePluggedIn": "set to 7 for the run, restored afterwards",
+      "foreground": "launcher kept in front so the instrumentation process was not background-frozen",
+      "batteryPolicy": "the oracle app was set to an unrestricted battery policy; without it this OS freezes the process (cgroup.freeze=1) and the 32s and 60s fixtures never advance"
+    }
+  },
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia/Shanghai"
+  },
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "152.0.7977.42",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+    "legadoUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "build": {
+    "gradle": "8.11.1",
+    "java": "Temurin 17.0.20+8",
+    "androidGradlePlugin": "8.8.0",
+    "kotlin": "2.1.0",
+    "adb": "36.0.0-13206524"
+  },
+  "installedArtifacts": {
+    "application": {
+      "package": "io.legado.app.debug",
+      "sizeBytes": 27617019,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "matchesLocalBuild": true,
+      "reusedFromGolden": "evidence/android"
+    },
+    "instrumentation": {
+      "package": "io.legado.app.debug.test",
+      "sizeBytes": 1106371,
+      "sha256": "10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6",
+      "matchesLocalBuild": true,
+      "reusedFromGolden": "evidence/android"
+    }
+  },
+  "harness": {
+    "path": "oracle/android/Ticket13OracleTest.kt",
+    "sha256": "3d8e4ff81096ef6fa2b05e4ea1b201a90fbb0eb4ec1d438afc7ed35fade08f05"
+  },
+  "runner": {
+    "path": "tools/run_oracle_android17.sh",
+    "sha256": "8d4049ac8c8047580c26560273d2852d8eca7958c50332d6c6d623e73974fd26"
+  },
+  "instrumentationLog": {
+    "path": "evidence/android-17/run.log",
+    "sha256": "3e6a2690092ae88becd7568e3beeaf443f843e7e7fb4cc9d0adbba6e5e7adaff",
+    "lineEndings": "LF, pinned by .gitattributes",
+    "okOneTestLines": 16,
+    "acceptedOkOneTestCount": 16,
+    "environmentInterruptions": 0
+  },
+  "fixtureSha256": {
+    "WV-01.json": "29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec",
+    "WV-02.json": "c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6",
+    "WV-03.json": "5dcf73eda93359ad787cfdbd7b4f9a97863d5192e65f04e79388262cca38c154",
+    "WV-04.json": "b049b549c4d104cf5f8cac19b47042eac5d0765217057253f7ddaa10bb044a67",
+    "WV-05.json": "6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4",
+    "WV-06.json": "6903d9ad37ec1a9aae5f8f527d0656ab47b1341bb7791fa7cd8b1b30d98c5651",
+    "WV-07.json": "10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b",
+    "WV-08.json": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+    "WV-09.json": "c4044d8e012bf29f0e0a5c8944a5c467f99918e48afbeb49c6204b7ff487fddf",
+    "WV-10.json": "0446f3e4661e1ebeeec5aeccbb76eed1d5aa64846aed94396e38905f25b7c4b3",
+    "WV-11.json": "6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be",
+    "WV-12.json": "c05f766b1d1d57ab9c83c19974f07c227c7634b3d0d2ce9abc378aead0b3364b",
+    "WV-13.json": "6385814046fa99fff64f1fdf278f1f55988be9c50129886ae73173ba0b1b2bda",
+    "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
+  },
+  "diagnosticEvidence": {
+    "WV-05-subresource-delivered.json": {
+      "path": "evidence/android-17/diagnostics/WV-05-subresource-delivered.json",
+      "sha256": "4a75e3584b183fde1dbf484aa7ebd8d9993a7c0c87b53e413af00cf20bec3c18",
+      "accepted": false,
+      "producedBy": "the same frozen APKs and device fingerprint as this golden",
+      "reason": "preserves the request-delivered side of the sourceRegex destruction race on this fingerprint; the accepted golden landed on the not-delivered side, and both sides were observed across repeated runs of the same binary"
+    }
+  },
+  "evidence": {
+    "WV-01.json": {
+      "verdict": "pass",
+      "sha256": "76284165643f23ffaa210cf0a1f867896df7c1523deebd7ad6cd47720f632ff9"
+    },
+    "WV-02.json": {
+      "verdict": "pass",
+      "sha256": "ab0680caa370b827cf802ed62a198739681578befd7d7284c695c3d1eda112dc"
+    },
+    "WV-03.json": {
+      "verdict": "pass",
+      "sha256": "73e9f4eab0234970d4fabe28ec868f309b1a93dca0d4a8d76161374115362405"
+    },
+    "WV-04.json": {
+      "verdict": "pass",
+      "sha256": "ca96bf85f215497c93a7407847791db112c231984a6d64bd44a5af6e38f65a81"
+    },
+    "WV-05.json": {
+      "verdict": "pass",
+      "sha256": "5172398d101cbb58a6ee9e434b15e3d6e83de1abee215a58762130afef075eb9"
+    },
+    "WV-06.json": {
+      "verdict": "pass",
+      "sha256": "e684ac85c31d08796ebb55faf178ec69d6e5c2c300492c1956e93679add3c7fe"
+    },
+    "WV-07.json": {
+      "verdict": "pass",
+      "sha256": "fb789da70f6820745c1f0479bd5fb7d17909f1999f6924aedd21b1595b6f8a5e"
+    },
+    "WV-08.json": {
+      "verdict": "pass",
+      "sha256": "15c71449c941a918bad02876ffb17c371876ad9311034acaf045d939633f6501"
+    },
+    "WV-09.json": {
+      "verdict": "pass",
+      "sha256": "7fc2f4dd8f3f3ddffdda12971397a162e2ba84d301d07ccdc4096b8acbd4f03d"
+    },
+    "WV-10.json": {
+      "verdict": "pass",
+      "sha256": "c8453c05affcf31c14f5fd70fcc512443d0dc0fcfa30430c5cc2142609a188cf"
+    },
+    "WV-11.json": {
+      "verdict": "pass",
+      "sha256": "0e36b976a43bf720cc57bc51b9e85c6e5faf8c3bb5dd1939e53530114609726d"
+    },
+    "WV-12.json": {
+      "verdict": "pass",
+      "sha256": "6ffbca033da1120e006765cad3d19fa24052ce95145bd0486451a34aee9d17fc"
+    },
+    "WV-13.json": {
+      "verdict": "pass",
+      "sha256": "07834c019400bc0f9ab6bb4b891a0a14f2d6a24fe11505ded7fff61ad6fb4365"
+    },
+    "WV-14.json": {
+      "verdict": "policy-rejected",
+      "sha256": "915de00e539edc7b0f2b1d5cd04d4c6a5f8843b449935c2a54508ef1e697c255"
+    }
+  },
+  "coverage": {
+    "requiredFixtures": 14,
+    "executedFixtures": 14,
+    "gaps": [],
+    "pass": 13,
+    "policyRejected": 1,
+    "policyReason": "frozen-baseline-accepts-invalid-tls"
+  },
+  "observedDifferenceFromSiblingGolden": {
+    "WV-12": "the arrival order inside the declared concurrent groups differed (helper-a/helper-b and ordered-slow/ordered-third swapped). Every check and the admission shape are identical, so this is scheduling non-determinism inside a group the fixture itself declares concurrent, not an OS behaviour change."
+  },
+  "aggregateFivePlatformVerdict": "not-run"
+}

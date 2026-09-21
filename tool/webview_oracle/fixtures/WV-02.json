@@ -1,0 +1,30 @@
+{
+  "id": "WV-02",
+  "path": "/post",
+  "postBody": "{\"key\":\"value\"}",
+  "requestHeaders": {
+    "X-Wayfinder": "wv02",
+    "Content-Type": "application/json"
+  },
+  "javaScript": "document.documentElement.outerHTML + '|ASSET=' + window.assetLoaded + '|BASE=' + document.baseURI",
+  "delayTime": 25,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/post",
+      "status": 200,
+      "reason": "OK",
+      "headers": {"Content-Type": "text/html; charset=utf-8"},
+      "body": "<!doctype html><html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>"
+    },
+    {
+      "method": "GET",
+      "path": "/relative.js",
+      "status": 200,
+      "reason": "OK",
+      "headers": {"Content-Type": "application/javascript"},
+      "body": "window.assetLoaded=true;"
+    },
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "headers": {"Content-Type": "text/plain"}, "body": ""}
+  ]
+}

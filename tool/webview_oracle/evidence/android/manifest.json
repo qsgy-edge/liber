@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "kind": "frozen-legado-android-webview-oracle",
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "tree": "5a250932cf8cc4905198a58587851b39dbc98499",
+    "productionSourceDiff": []
+  },
+  "runWindowUtc": {
+    "started": "2026-08-20T06:58:16Z",
+    "completed": "2026-08-20T07:33:08Z",
+    "acceptedEvidenceFingerprint": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
+    "acceptedSegments": [
+      {"window": "06:58:16Z..06:59:54Z", "fixtures": "WV-01..WV-07", "methods": 8},
+      {"window": "07:12:31Z..07:12:40Z", "fixtures": "WV-08", "methods": 2},
+      {"window": "07:30:56Z..07:33:08Z", "fixtures": "WV-09..WV-14", "methods": 6}
+    ],
+    "discardedAttempts": [
+      {
+        "at": "2026-08-20T06:59:55Z",
+        "fixture": "WV-08",
+        "reason": "instrumentation host stopped responding after the device wrote evidence; no OK (1 test) was reported, so the JSON was discarded and the fixture was rerun"
+      },
+      {
+        "at": "2026-08-20T07:12:41Z",
+        "fixture": "WV-09",
+        "reason": "device froze the instrumentation process while a heavy foreground app was running (logcat: process frozen at kill); 240s host limit reached with no result or evidence"
+      },
+      {
+        "at": "2026-08-20T07:16:44Z",
+        "fixture": "WV-09",
+        "reason": "same background-freeze interruption on the retry; 240s host limit reached with no result or evidence"
+      },
+      {
+        "at": "2026-08-20T07:29Z",
+        "fixture": "WV-09",
+        "reason": "diagnostic timing run outside the acceptance protocol to confirm the launcher-foreground fix; completed in 32.4s but was neither pulled nor accepted and is not in run.log"
+      }
+    ],
+    "supersededBatches": {
+      "reason": "earlier batches were produced by earlier harness revisions, and one batch ran on fingerprint OS3.0.308.0; all accepted evidence here comes from the single final APK recorded in installedArtifacts",
+      "retained": false
+    },
+    "temporaryDeviceState": {
+      "stayOnWhilePluggedIn": "set to 7 for the run, restored to 2",
+      "foreground": "launcher kept in front so the instrumentation process was not background-frozen"
+    }
+  },
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "16",
+    "sdk": 36,
+    "fingerprint": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia/Shanghai"
+  },
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "152.0.7977.42",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 16; 25102RKBEC Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+    "legadoUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "build": {
+    "gradle": "8.11.1",
+    "java": "Temurin 17.0.20+8",
+    "androidGradlePlugin": "8.8.0",
+    "kotlin": "2.1.0",
+    "adb": "36.0.0-13206524"
+  },
+  "installedArtifacts": {
+    "application": {
+      "package": "io.legado.app.debug",
+      "sizeBytes": 27617019,
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "matchesLocalBuild": true
+    },
+    "instrumentation": {
+      "package": "io.legado.app.debug.test",
+      "sizeBytes": 1106371,
+      "sha256": "10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6",
+      "matchesLocalBuild": true
+    }
+  },
+  "harness": {
+    "path": "oracle/android/Ticket13OracleTest.kt",
+    "sha256": "3d8e4ff81096ef6fa2b05e4ea1b201a90fbb0eb4ec1d438afc7ed35fade08f05"
+  },
+  "instrumentationLog": {
+    "path": "evidence/android/run.log",
+    "sha256": "0a6ec8966c693aea4f0b26ec8f2c0498f136e4ae5b2fde1375c2670296e6e99d",
+    "lineEndings": "LF, pinned by .gitattributes",
+    "okOneTestLines": 16,
+    "acceptedOkOneTestCount": 16,
+    "harnessBindingAcrossSegments": "the initial header pins HARNESS_SHA256; the two resume headers re-pin only APP_SHA256/TEST_SHA256, so harness identity across segments follows from the identical test APK hash in every header"
+  },
+  "diagnosticEvidence": {
+    "WV-05-subresource-delivered.json": {
+      "path": "evidence/android/diagnostics/WV-05-subresource-delivered.json",
+      "sha256": "b025cc3774dc07349e9d02d44ca645ea66458e2aeb368e7437487a09c991dea6",
+      "accepted": false,
+      "producedBy": "earlier harness revision, same device fingerprint",
+      "reason": "preserves the same-fingerprint request-delivered side of the sourceRegex destruction race"
+    }
+  },
+  "fixtureSha256": {
+    "WV-01.json": "29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec",
+    "WV-02.json": "c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6",
+    "WV-03.json": "5dcf73eda93359ad787cfdbd7b4f9a97863d5192e65f04e79388262cca38c154",
+    "WV-04.json": "b049b549c4d104cf5f8cac19b47042eac5d0765217057253f7ddaa10bb044a67",
+    "WV-05.json": "6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4",
+    "WV-06.json": "6903d9ad37ec1a9aae5f8f527d0656ab47b1341bb7791fa7cd8b1b30d98c5651",
+    "WV-07.json": "10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b",
+    "WV-08.json": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+    "WV-09.json": "c4044d8e012bf29f0e0a5c8944a5c467f99918e48afbeb49c6204b7ff487fddf",
+    "WV-10.json": "0446f3e4661e1ebeeec5aeccbb76eed1d5aa64846aed94396e38905f25b7c4b3",
+    "WV-11.json": "6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be",
+    "WV-12.json": "c05f766b1d1d57ab9c83c19974f07c227c7634b3d0d2ce9abc378aead0b3364b",
+    "WV-13.json": "6385814046fa99fff64f1fdf278f1f55988be9c50129886ae73173ba0b1b2bda",
+    "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
+  },
+  "evidence": {
+    "WV-01.json": {"verdict": "pass", "sha256": "e22c3e08d0e45ba8804efa2c96ae5842dc83532dd0bafa819fb9d4e3c0a4c727"},
+    "WV-02.json": {"verdict": "pass", "sha256": "b0a9b599122bd75e871bb8f828b05d66b7cf7aa3e8a05e799c9d86bf8e884d15"},
+    "WV-03.json": {"verdict": "pass", "sha256": "036593e5de827ce8cf250dd94be4797fe8a37278c661002a6cb0fd53012e0961"},
+    "WV-04.json": {"verdict": "pass", "sha256": "c44552467ffa45b6c50a3c4e889962e7cfa2bb605f6837e99511f3f7e9731904"},
+    "WV-05.json": {"verdict": "pass", "sha256": "ba3185756cae9a6d56ded9f9144c4850f11a720944f2ced5c9bd71f59865569d"},
+    "WV-06.json": {"verdict": "pass", "sha256": "13b9964b53c133c4b40b60149b69bcb55c39c6402870fe39712c7b436e32d26a"},
+    "WV-07.json": {"verdict": "pass", "sha256": "e7d2ae4ddc19a8ff5929050af1b48719af7d8ac0694c264a11af0e947cbe5d88"},
+    "WV-08.json": {"verdict": "pass", "sha256": "fd00cfeaa76afc22c64f3671bcd71a8c819947112e7fb20b191954252a44f696"},
+    "WV-09.json": {"verdict": "pass", "sha256": "edabddebfcec93034c5c484917c0f59156a2da66bf2b18bfcc7045da173cc498"},
+    "WV-10.json": {"verdict": "pass", "sha256": "ba925ee9ba2f0c14d6068a5f9f68bcc6b74c3b98d2a9a2687e32fb81770e3ab3"},
+    "WV-11.json": {"verdict": "pass", "sha256": "49fe28187dc473305e5b6711b13216814af0742ea110957dd22142205721cd7c"},
+    "WV-12.json": {"verdict": "pass", "sha256": "11d2b6e58af117d74cb7a37b0069c4d04a868d11190987c65eb6e202adfcae38"},
+    "WV-13.json": {"verdict": "pass", "sha256": "c619524dbab3869fbd27ed5aa85a7686e013918005bf3b8b81921fd71da26310"},
+    "WV-14.json": {"verdict": "policy-rejected", "sha256": "274de573b41de1df4d1df30cb296fa1f49d91ccf8e573e0be0e83d590efd0854"}
+  },
+  "coverage": {
+    "requiredFixtures": 14,
+    "executedFixtures": 14,
+    "gaps": [],
+    "pass": 13,
+    "policyRejected": 1,
+    "policyReason": "frozen-baseline-accepts-invalid-tls"
+  },
+  "aggregateFivePlatformVerdict": "not-run"
+}

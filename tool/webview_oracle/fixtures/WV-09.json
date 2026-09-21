@@ -1,0 +1,6 @@
+{
+  "id": "WV-09",
+  "html": "<!doctype html><html><body><main id=\"oracle\">null-retry</main></body></html>",
+  "javaScript": "undefined",
+  "expectedError": "js执行超时"
+}

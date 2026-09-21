@@ -1,0 +1,7 @@
+{
+  "id": "WV-08",
+  "path": "/storage",
+  "html": "<!doctype html><html><body><main id=\"oracle\">storage</main></body></html>",
+  "firstJavaScript": "localStorage.setItem('wv8_local','persisted'); sessionStorage.setItem('wv8_session','instance'); JSON.stringify({local:localStorage.getItem('wv8_local'),session:sessionStorage.getItem('wv8_session'),origin:location.origin})",
+  "secondJavaScript": "JSON.stringify({local:localStorage.getItem('wv8_local'),session:sessionStorage.getItem('wv8_session'),origin:location.origin})"
+}

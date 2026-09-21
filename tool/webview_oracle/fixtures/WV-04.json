@@ -1,0 +1,10 @@
+{
+  "id": "WV-04",
+  "path": "/redirect",
+  "routes": [
+    {"method": "GET", "path": "/redirect", "status": 302, "reason": "Found", "headers": {"Location": "/final"}, "body": ""},
+    {"method": "GET", "path": "/final", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body><main id=\"oracle\">redirect-final</main><script>location.replace('/late')</script></body></html>"},
+    {"method": "GET", "path": "/late", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body><main id=\"oracle\">redirect-late</main></body></html>"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "headers": {"Content-Type": "text/plain"}, "body": ""}
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-07",
+  "fixtureSha256": "10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "target": "windows-destination-adapter",
+  "adapter": {
+    "implementation": "flutter_inappwebview",
+    "headlessWebView": true
+  },
+  "phase": "main",
+  "startedAtUtc": "2026-09-21T16:39:02.706696Z",
+  "completedAtUtc": "2026-09-21T16:39:06.981053Z",
+  "device": {
+    "manufacturer": "Microsoft",
+    "model": "Windows 11 Pro",
+    "device": "LAPTOP-KB55HTI0",
+    "windowsBuild": "10.0.28020",
+    "displayVersion": "26H1",
+    "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+  },
+  "runtime": {
+    "webViewPackage": "Microsoft.Web.WebView2",
+    "webViewVersion": "154.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "operation": [
+    {
+      "responseUrl": "http://127.0.0.1:49172/cookie",
+      "responseCode": 200,
+      "responseBody": "<html><head></head><body><main id=\"oracle\">cookie</main><script>document.cookie='js=from-js; Path=/'</script></body></html>",
+      "priorResponseCode": null
+    },
+    {
+      "responseUrl": "http://127.0.0.1:49172/echo",
+      "responseCode": 200,
+      "responseBody": "<html><head></head><body>echo</body></html>",
+      "priorResponseCode": null
+    }
+  ],
+  "cookieStore": "js=from-js; sid=from-page",
+  "durableCookieStore": "sid=from-page; js=from-js",
+  "echoCookie": "sid=from-page; js=from-js",
+  "requests": [
+    {
+      "method": "GET",
+      "target": "/cookie",
+      "headers": {
+        "host": "127.0.0.1:49172",
+        "connection": "keep-alive",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "x-wayfinder": "wv07",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-user": "?1",
+        "sec-fetch-dest": "document",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+      },
+      "body": "",
+      "startedAtElapsedMs": 625
+    },
+    {
+      "method": "GET",
+      "target": "/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:49172",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http://127.0.0.1:49172/cookie",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+        "cookie": "sid=from-page; js=from-js"
+      },
+      "body": "",
+      "startedAtElapsedMs": 738
+    },
+    {
+      "method": "GET",
+      "target": "/echo",
+      "headers": {
+        "host": "127.0.0.1:49172",
+        "connection": "keep-alive",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-user": "?1",
+        "sec-fetch-dest": "document",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+        "cookie": "sid=from-page; js=from-js"
+      },
+      "body": "",
+      "startedAtElapsedMs": 2787
+    }
+  ],
+  "checks": {
+    "initialAppCookieAbsent": true,
+    "firstResponse": true,
+    "storeHasPageCookie": true,
+    "storeHasJavaScriptCookie": true,
+    "webViewOutboundPageCookie": true,
+    "webViewOutboundJavaScriptCookie": true,
+    "durableStoreHasPageCookie": true,
+    "durableStoreHasJavaScriptCookie": true,
+    "secondResponse": true,
+    "restart_response": true,
+    "restart_durableStorePresentBeforeWebView": true,
+    "restart_nativeSessionCookiesAbsentAfterRestart": true,
+    "restart_webViewCompletionOverwritesStoreWithEmptyNativeCookie": true
+  },
+  "failure": null,
+  "executionVerdict": "pass",
+  "restart": {
+    "response": {
+      "responseUrl": "http://127.0.0.1:49172/echo",
+      "responseCode": 200,
+      "responseBody": "<html><head></head><body>echo</body></html>",
+      "priorResponseCode": null
+    },
+    "storeBeforeWebView": "sid=from-page; js=from-js",
+    "storeAfterWebView": "",
+    "echoCookie": "",
+    "requests": [
+      {
+        "method": "GET",
+        "target": "/echo",
+        "headers": {
+          "host": "127.0.0.1:49172",
+          "connection": "keep-alive",
+          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Windows\"",
+          "upgrade-insecure-requests": "1",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+          "sec-fetch-site": "none",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-user": "?1",
+          "sec-fetch-dest": "document",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+        },
+        "body": "",
+        "startedAtElapsedMs": 569
+      },
+      {
+        "method": "GET",
+        "target": "/favicon.ico",
+        "headers": {
+          "host": "127.0.0.1:49172",
+          "connection": "keep-alive",
+          "sec-ch-ua-platform": "\"Windows\"",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua-mobile": "?0",
+          "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "no-cors",
+          "sec-fetch-dest": "image",
+          "referer": "http://127.0.0.1:49172/echo",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+        },
+        "body": "",
+        "startedAtElapsedMs": 629
+      }
+    ],
+    "checks": {
+      "response": true,
+      "durableStorePresentBeforeWebView": true,
+      "nativeSessionCookiesAbsentAfterRestart": true,
+      "webViewCompletionOverwritesStoreWithEmptyNativeCookie": true
+    }
+  },
+  "restartCompletedAtUtc": "2026-09-21T16:39:28.344951Z",
+  "restartProvenance": {
+    "device": {
+      "manufacturer": "Microsoft",
+      "model": "Windows 11 Pro",
+      "device": "LAPTOP-KB55HTI0",
+      "windowsBuild": "10.0.28020",
+      "displayVersion": "26H1",
+      "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+    },
+    "runtime": {
+      "webViewPackage": "Microsoft.Web.WebView2",
+      "webViewVersion": "154.0.0.0",
+      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    },
+    "startedAtUtc": "2026-09-21T16:39:25.556879Z"
+  }
+}

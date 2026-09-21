@@ -29,3 +29,12 @@ tool/first_slice/runner.dart text eol=lf
 # core.autocrlf=true rewrites the LF bytes and every pin stops matching (#41 hit
 # the same gap during merge verification).
 tool/replace_js_oracle/** text eol=lf
+# The WebView contract harness and every byte it pins are read for their bytes:
+# the fixtures and goldens the comparator refuses to compare without matching
+# hashes, the evidence and manifests a sweep produces, and the sources the
+# manifest writer hashes. Without this a Windows checkout with core.autocrlf=true
+# rewrites the LF bytes and every pin stops matching (#55 hit the same gap as #41).
+tool/webview_oracle/** text eol=lf
+# ... except the harness's own binary resources, which are not lines at all.
+tool/webview_oracle/**/*.png -text
+tool/webview_oracle/**/*.ico -text

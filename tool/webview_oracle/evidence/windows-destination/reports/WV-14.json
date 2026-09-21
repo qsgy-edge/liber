@@ -1,0 +1,19 @@
+{
+  "fixtureId": "WV-14",
+  "fixtureSha256": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db",
+  "goldenVerdict": "policy-rejected",
+  "destinationVerdict": "policy-rejected",
+  "goldenDevice": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
+  "destinationDevice": "windows/Windows 11 Pro/10.0.28020/26H1",
+  "goldenWebView": "152.0.7977.42",
+  "destinationWebView": "154.0.0.0",
+  "goldenPolicyReason": "frozen-baseline-accepts-invalid-tls",
+  "destinationPolicyReason": "destination-refuses-invalid-tls",
+  "destinationPolicyRefusal": {
+    "check": "invalidTlsRefusedAfterCertificatePresented",
+    "reason": "the fixture certificate was presented and the operation did not proceed through it"
+  },
+  "destinationPolicyRefusalHolds": true,
+  "differences": [],
+  "comparisonVerdict": "policy-rejected"
+}

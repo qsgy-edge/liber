@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-02",
+  "fixtureSha256": "c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "target": "android-destination-adapter",
+  "adapter": {
+    "implementation": "flutter_inappwebview",
+    "headlessWebView": true
+  },
+  "phase": "main",
+  "startedAtUtc": "2026-08-22T10:17:42.889693Z",
+  "completedAtUtc": "2026-08-22T10:17:44.354001Z",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys"
+  },
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "152.0.7977.42",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+    "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "operation": {
+    "responseUrl": "http://127.0.0.1:39539/post",
+    "responseCode": 200,
+    "responseBody": "<html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>|ASSET=true|BASE=http://127.0.0.1:39539/post",
+    "priorResponseCode": null,
+    "durationMs": 1344
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "target": "/post",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "keep-alive": "300",
+        "accept-encoding": "gzip",
+        "content-length": "15",
+        "x-wayfinder": "wv02",
+        "host": "127.0.0.1:39539",
+        "content-type": "application/json; charset=UTF-8"
+      },
+      "body": "{\"key\":\"value\"}",
+      "startedAtElapsedMs": 68
+    },
+    {
+      "method": "GET",
+      "target": "/relative.js",
+      "headers": {
+        "host": "127.0.0.1:39539",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Android\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "*/*",
+        "x-requested-with": "io.legado.ticket13.ticket13_adapter",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "script",
+        "referer": "http://127.0.0.1:39539/post",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 353
+    },
+    {
+      "method": "GET",
+      "target": "/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:39539",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Android\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "x-requested-with": "io.legado.ticket13.ticket13_adapter",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http://127.0.0.1:39539/post",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 392
+    }
+  ],
+  "checks": {
+    "postObserved": true,
+    "postBody": true,
+    "sourceHeader": true,
+    "relativeResource": true,
+    "customJavaScript": true,
+    "baseUrl": true,
+    "responseUrl": true
+  },
+  "failure": null,
+  "executionVerdict": "pass"
+}

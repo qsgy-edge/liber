@@ -1,0 +1,18 @@
+{
+  "id": "WV-10",
+  "path": "/outer-timeout",
+  "postTerminalPath": "/after-timeout",
+  "postTerminalObservationMs": 7000,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/outer-timeout",
+      "status": 200,
+      "reason": "OK",
+      "delayMs": 65000,
+      "headers": {"Content-Type": "text/html; charset=utf-8"},
+      "body": "<!doctype html><html><body><script>fetch('/after-timeout')</script></body></html>"
+    },
+    {"method": "GET", "path": "/after-timeout", "status": 200, "reason": "OK", "body": "late"}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "WV-12",
+  "helperSourceKey": "https://wv12-helper.invalid",
+  "limitedSourceKey": "https://wv12-limiter.invalid",
+  "siblingSourceKey": "https://wv12-sibling.invalid",
+  "helperAPath": "/helper-a",
+  "helperBPath": "/helper-b",
+  "helperJavaScript": "document.body.innerText",
+  "concurrentRate": "1/800",
+  "orderedPaths": ["/ordered-slow", "/ordered-fast", "/ordered-third"],
+  "orderedBodies": ["ordered-slow", "ordered-fast", "ordered-third"],
+  "siblingSlowPath": "/sibling-slow",
+  "siblingFastPath": "/sibling-fast",
+  "routes": [
+    {"method": "GET", "path": "/helper-a", "status": 200, "reason": "OK", "delayMs": 400, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>helper-a</body></html>"},
+    {"method": "GET", "path": "/helper-b", "status": 200, "reason": "OK", "delayMs": 400, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>helper-b</body></html>"},
+    {"method": "GET", "path": "/ordered-slow", "status": 200, "reason": "OK", "delayMs": 400, "body": "ordered-slow"},
+    {"method": "GET", "path": "/ordered-fast", "status": 200, "reason": "OK", "delayMs": 50, "body": "ordered-fast"},
+    {"method": "GET", "path": "/ordered-third", "status": 200, "reason": "OK", "delayMs": 50, "body": "ordered-third"},
+    {"method": "GET", "path": "/sibling-slow", "status": 200, "reason": "OK", "delayMs": 5000, "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>sibling-slow</body></html>"},
+    {"method": "GET", "path": "/sibling-fast", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>sibling-fast</body></html>"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "body": ""}
+  ]
+}
