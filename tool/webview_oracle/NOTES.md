@@ -60,6 +60,24 @@ dependency tree pins `win32 ^6.3.0`, which `device_info_plus` 12 cannot accept,
 so the path dependency does not resolve otherwise. The harness reads only
 `androidInfo`/`windowsInfo` from it.
 
+## The harness is its own package, outside the root analysis
+
+`adapter/` is a standalone Flutter package (`ticket13_adapter`) with its own
+`pubspec.yaml` and lockfile, and the root package does not depend on it. Its
+dependency context therefore comes from `flutter pub get` inside `adapter/`
+before a sweep, which a fresh checkout — CI included — does not have, so the
+root `analysis_options.yaml` excludes `tool/webview_oracle/adapter/**` the way it
+already excludes `packages/fjs/**`. Nothing about the product's analysis changed.
+When you change the harness, analyze it in place:
+
+```text
+cd tool/webview_oracle/adapter && flutter pub get && flutter analyze
+```
+
+The product files the fixtures drive (`lib/source/book_source_webview_adapter.dart`,
+`lib/source/inappwebview_book_source_adapter.dart`) stay inside the root
+analysis and inside the manifest writer's `adapterSourceSha256` guard.
+
 ## Evidence directories
 
 - `evidence/android` and `evidence/android-17` are the frozen goldens, copied

@@ -13,6 +13,13 @@ analyzer:
   exclude:
     # Vendored package/build-tool sources have their own dependency context.
     - packages/fjs/**
+    # The WebView evidence harness is its own Flutter package under
+    # `tool/webview_oracle/adapter` (own pubspec and lockfile), so its
+    # dependency context comes from `flutter pub get` inside it before a sweep;
+    # a fresh checkout — CI included — has none, and the root package does not
+    # depend on it. Analyze it in place when it changes:
+    # `cd tool/webview_oracle/adapter && flutter pub get && flutter analyze`.
+    - tool/webview_oracle/adapter/**
 
 linter:
   # The lint rules applied to this project can be customized in the
