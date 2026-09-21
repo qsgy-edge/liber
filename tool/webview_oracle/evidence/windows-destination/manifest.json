@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "target": "windows-destination-adapter",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "goldenEvidence": "evidence/android",
+  "adapter": {
+    "implementation": "flutter_inappwebview",
+    "applicationExecutableSha256": "9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39",
+    "applicationExecutableUnchangedAcrossSweep": true,
+    "applicationExecutableHashSamples": 30
+  },
+  "device": {
+    "manufacturer": "Microsoft",
+    "model": "Windows 11 Pro",
+    "device": "LAPTOP-KB55HTI0",
+    "windowsBuild": "10.0.28020",
+    "displayVersion": "26H1",
+    "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+  },
+  "runtime": {
+    "webViewPackage": "Microsoft.Web.WebView2",
+    "webViewVersion": "154.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "run": {
+    "startedAtUtc": "2026-09-21T16:37:00.143088Z",
+    "completedAtUtc": "2026-09-21T16:44:57.596220Z",
+    "logSha256": "65215c3d9e8904c80f7b99d196cd7f5e0bb32f8fb947406a8d43e58b28be166d"
+  },
+  "verdicts": {
+    "WV-01": "pass",
+    "WV-02": "pass",
+    "WV-03": "pass",
+    "WV-04": "pass",
+    "WV-05": "pass",
+    "WV-06": "pass",
+    "WV-07": "pass",
+    "WV-08": "pass",
+    "WV-09": "pass",
+    "WV-10": "pass",
+    "WV-11": "pass",
+    "WV-12": "pass",
+    "WV-13": "pass",
+    "WV-14": "policy-rejected"
+  },
+  "comparisonVerdicts": {
+    "WV-01": "match",
+    "WV-02": "match",
+    "WV-03": "match",
+    "WV-04": "match",
+    "WV-05": "match",
+    "WV-06": "match",
+    "WV-07": "match",
+    "WV-08": "match",
+    "WV-09": "match",
+    "WV-10": "match",
+    "WV-11": "match",
+    "WV-12": "match",
+    "WV-13": "match",
+    "WV-14": "policy-rejected"
+  },
+  "matchedGoldenTrace": {
+    "WV-01": "accepted",
+    "WV-02": "accepted",
+    "WV-03": "accepted",
+    "WV-04": "accepted",
+    "WV-05": "accepted",
+    "WV-06": "accepted",
+    "WV-07": "accepted",
+    "WV-08": "accepted",
+    "WV-09": "accepted",
+    "WV-10": "accepted",
+    "WV-11": "accepted",
+    "WV-12": "accepted",
+    "WV-13": "accepted"
+  },
+  "adapterSourceSha256": {
+    "cookie_store.dart": "e5813d1349d7619e93d9a86108d68042f1e6e2c40509da71518d6d028d2902b3",
+    "fixture_runner.dart": "086beb2d20cd6bd0d1134631c94ba54ae0fe0cd252af793f9848dffc4c54599e",
+    "fixtures_concurrency.dart": "210d8d88fb0cfac0c0e5d441cfa0944e14fa5340f6dece0b9a14333b9b797ba1",
+    "fixtures_error_paths.dart": "e454789980dc0e9fbecc5ac823fc756aa8a09968817fbe7b917962b36c302167",
+    "legado_http.dart": "f36fca6a42c053b5083bc9051747fd82f1c9625db863155a2a1a3cf55133b55d",
+    "main.dart": "709f54f2e9e49435159e4376b27fc42d39fcb2468de933e9e8c61faeafdac44a",
+    "product_webview.dart": "9fc8cc664416892a18bdd797d40dd777f4f2fc9de6f4832225d9115126b82047",
+    "rate_limiter.dart": "20484fc5c26cc45ba7f8513204b2b515ae81431e3363ae736571a9393b95b03f",
+    "replay_server.dart": "f753042e386ff97d9fdc8666be6dbcfe45eaee4393b8e724394aff7087d14fa4",
+    "liber:lib/source/book_source_webview_adapter.dart": "4716166794eefc178b7b4187ed566b2da444e472879c32c1b8e20922d8dad71e",
+    "liber:lib/source/inappwebview_book_source_adapter.dart": "560fd95e8036ee29b4d8e1e1d8e8c76629c07a3e2f8832202558ffa92fae1c65"
+  },
+  "harnessSha256": {
+    "integration_test/destination_test.dart": "4d4425bca31c35fa3bbf03d9253cc268cb0f07dcb87f7c0e072e51780af582c8",
+    "test_driver/integration_test.dart": "1ffeb9ba753f9e9cdcf972fb999aa09e985f3384ab0cd320d010ffa7ef512273",
+    "tools/compare_to_golden.js": "2ae9d1b70f9adf04571a8a4ad91ba91cdb880a0e45ba8715f0c4d1eb6aa4c35b",
+    "tools/merge_restart_evidence.js": "89b4470e422e809f5595c0ca9841b0e1c6590ae78ff3c2392b3eceb4fbd7055c",
+    "tools/run_fixture_windows.sh": "a6d721947c810cb9c8fec22125d547dbb58b08fcb8269df1789cad1dd7596b3d",
+    "tools/run_all_destination_windows.sh": "0cd80f77b6f4998751c3afb9f7c8eb0e6325e1d5ee423def33503d7daa15cb69",
+    "tools/build_windows_harness.sh": "3bb98bfde2f38af555ab93339312e48ed216dff4113c7f21e50a1d0aa5b000f1",
+    "tools/write_destination_manifest.js": "cbd0fa0d20f8215f9e7e867825e2e2e5eb5bd6f482572d2aae9b8937b68f944f",
+    "adapter/tool/sync_fixtures.sh": "87dc9e0b0783afb178f4aac7e0ef49379ae8381a4715170bc59eedee6feeb978",
+    "adapter/pubspec.yaml": "eeb1a31baed59630979069853927df4e1027c3fcbe1461cce232b52ae38669e7",
+    "adapter/pubspec.lock": "0adb597c011da00e83435e75bbccf6abb6bfcf50d5ea07abd05538d3b766136d",
+    "evidence/android/manifest.json": "529896fd2e4180c650d251546e6fc4bd10167665f0a0d5a91a9828fe3b0f8606"
+  },
+  "toolchain": {
+    "flutterVersion": {
+      "frameworkVersion": "3.44.6",
+      "dartSdkVersion": "3.12.2",
+      "frameworkRevision": "ee80f08bbf97172ec030b8751ceab557177a34a6"
+    }
+  },
+  "fixtureSha256": {
+    "WV-01.json": "29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec",
+    "WV-02.json": "c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6",
+    "WV-03.json": "5dcf73eda93359ad787cfdbd7b4f9a97863d5192e65f04e79388262cca38c154",
+    "WV-04.json": "b049b549c4d104cf5f8cac19b47042eac5d0765217057253f7ddaa10bb044a67",
+    "WV-05.json": "6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4",
+    "WV-06.json": "6903d9ad37ec1a9aae5f8f527d0656ab47b1341bb7791fa7cd8b1b30d98c5651",
+    "WV-07.json": "10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b",
+    "WV-08.json": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+    "WV-09.json": "c4044d8e012bf29f0e0a5c8944a5c467f99918e48afbeb49c6204b7ff487fddf",
+    "WV-10.json": "0446f3e4661e1ebeeec5aeccbb76eed1d5aa64846aed94396e38905f25b7c4b3",
+    "WV-11.json": "6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be",
+    "WV-12.json": "c05f766b1d1d57ab9c83c19974f07c227c7634b3d0d2ce9abc378aead0b3364b",
+    "WV-13.json": "6385814046fa99fff64f1fdf278f1f55988be9c50129886ae73173ba0b1b2bda",
+    "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
+  },
+  "evidenceSha256": {
+    "WV-01.json": "207db563872e990264b0ccc80f7f911849a6247ff97ef2f0b082b82345b154a6",
+    "WV-02.json": "b6ff52c00aff1f651d7d936a038ca0954c2436296b94b28cd6e8180eedfec604",
+    "WV-03.json": "8bdad4395e685104500b7793544eccd91358149be090d26c7bbb74bc5d7b5e58",
+    "WV-04.json": "3424fadbb6638ae056d976a994e3507181aa51d5e8312d9e8680aadf8ec23b5f",
+    "WV-05.json": "692e3955c85dcd44e1504b16996b4edb346f7d8636673792434da340290ff9b0",
+    "WV-06.json": "b489460bda706a6200b9c0a8660a534849c96273f7ed7ec2bebcc29d03bc9b15",
+    "WV-07.json": "39cde50625fff88f484bb6b5df4c3f06baad16856b7b9c642a63bb57edd4f8bd",
+    "WV-08.json": "37dcca912acc214fcf55caa9b1f9b3fb53a88fab5a7daf4caf8c4212313b0bc4",
+    "WV-09.json": "3cc667a9aa24074c09f377fa0593df629e796c1fa943ed69d74e12a6c8512658",
+    "WV-10.json": "cf881e25bc0276a62d986b736055e51b1cde4f6384d4ddbd6699f6a6ee41e25c",
+    "WV-11.json": "0bc4d802013bdb4fb21d762aa865a108ae59e09a7272bdb6d9d8930c70e2e1a0",
+    "WV-12.json": "047682cb9d763b06e94a456494e564dfcf8e86c76c4e47943a497d429ae625d7",
+    "WV-13.json": "f5d4e6bc99cea98034e4d52e1913d50c475d7c192e5b0ae40b54678a9043e9d0",
+    "WV-14.json": "bac4069de25dc19943c51dde2c5faea47c0be422c4fdb1253754479923a11e6f"
+  },
+  "reportSha256": {
+    "WV-01.json": "68767107d4fbfcc0dd4a19759a8918e3e3014360e5d886541e7aa4b10f00ee90",
+    "WV-02.json": "6187dd5798c34f547b58be86ac220cd35a0d60b91a5a50f87c163c043f6feee3",
+    "WV-03.json": "56098105011049722660cc502acdcb83e76c83df140b5f5838aabf9b36a93b5c",
+    "WV-04.json": "99ebc8a877bc9ad80a28e06c83d502bf58c5b0876d5647684d295e630b745f92",
+    "WV-05.json": "42e08f4dd148460307919c091766fae4594f8876df641de585b9faff5eda2df1",
+    "WV-06.json": "a151b3461d09bac2f3ca61e0de2c16c0518ad2e42d2865a2f49f1dc233e4e7f7",
+    "WV-07.json": "8afd0ea8788cfb5d9a29b4fc6e0492ed0d3aaeb4af12bc7198a466d5c7dd334e",
+    "WV-08.json": "d03f1574b02ab421e7dad70a0df15be4ee7858c49a3f0b9bf404638eb82f49fe",
+    "WV-09.json": "5610f189fe64ee20a2aaad90144e0caf35749c46b16c0fee6276b0949e79be62",
+    "WV-10.json": "64410a15de65d493156362a2e8962d42c622d6af2f5963b938c51100b420e40b",
+    "WV-11.json": "161334d6c9c7dfc51b98154558fea8eb1f214397b4fdb6c036b08f79360af3f1",
+    "WV-12.json": "d3b6ca0d6da8975ada5fe407e48c0a147b307ceef4a61ebe651700abd265b11d",
+    "WV-13.json": "749e32bde361f812f02fd69c350c06d8eaf35ad99b7d9f5a32bd2ef30308872f",
+    "WV-14.json": "7cb734df1b527a4b7156b3ea1ded961e288455655c94e26f12e77daf629373bb"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-11",
+  "fixtureSha256": "6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "target": "windows-destination-adapter",
+  "adapter": {
+    "implementation": "flutter_inappwebview",
+    "headlessWebView": true
+  },
+  "phase": "main",
+  "startedAtUtc": "2026-09-21T16:42:45.779851Z",
+  "completedAtUtc": "2026-09-21T16:42:52.944349Z",
+  "device": {
+    "manufacturer": "Microsoft",
+    "model": "Windows 11 Pro",
+    "device": "LAPTOP-KB55HTI0",
+    "windowsBuild": "10.0.28020",
+    "displayVersion": "26H1",
+    "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+  },
+  "runtime": {
+    "webViewPackage": "Microsoft.Web.WebView2",
+    "webViewVersion": "154.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "operation": {
+    "queuedLoadAfterCancellation": false,
+    "queuedCancelled": true,
+    "flightCancelled": true
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "target": "/flight-cancel",
+      "headers": {
+        "host": "127.0.0.1:56752",
+        "connection": "keep-alive",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-user": "?1",
+        "sec-fetch-dest": "document",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+      },
+      "body": "",
+      "startedAtElapsedMs": 659
+    }
+  ],
+  "checks": {
+    "queuedCancellationCompleted": true,
+    "queuedCancellationCleanup": true,
+    "flightRequestObserved": true,
+    "flightCancellationCompleted": true,
+    "flightCancellationCleanup": true,
+    "postCancellationRequestAbsent": true
+  },
+  "failure": null,
+  "executionVerdict": "pass"
+}

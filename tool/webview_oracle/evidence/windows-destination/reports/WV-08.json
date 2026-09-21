@@ -1,0 +1,22 @@
+{
+  "fixtureId": "WV-08",
+  "fixtureSha256": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+  "goldenVerdict": "pass",
+  "destinationVerdict": "pass",
+  "goldenDevice": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
+  "destinationDevice": "windows/Windows 11 Pro/10.0.28020/26H1",
+  "goldenWebView": "152.0.7977.42",
+  "destinationWebView": "154.0.0.0",
+  "goldenChecksCompared": 6,
+  "destinationExtraChecks": [],
+  "matchedGoldenTrace": "accepted",
+  "raceAlternativesConsidered": 0,
+  "browserInitiatedGolden": [
+    "/favicon.ico"
+  ],
+  "browserInitiatedDestination": [
+    "/favicon.ico"
+  ],
+  "differences": [],
+  "comparisonVerdict": "match"
+}

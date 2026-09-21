@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-08",
+  "fixtureSha256": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "target": "windows-destination-adapter",
+  "adapter": {
+    "implementation": "flutter_inappwebview",
+    "headlessWebView": true
+  },
+  "phase": "main",
+  "startedAtUtc": "2026-09-21T16:39:47.570452Z",
+  "completedAtUtc": "2026-09-21T16:39:50.444437Z",
+  "device": {
+    "manufacturer": "Microsoft",
+    "model": "Windows 11 Pro",
+    "device": "LAPTOP-KB55HTI0",
+    "windowsBuild": "10.0.28020",
+    "displayVersion": "26H1",
+    "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+  },
+  "runtime": {
+    "webViewPackage": "Microsoft.Web.WebView2",
+    "webViewVersion": "154.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "operation": [
+    {
+      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseCode": 200,
+      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:56517\"}",
+      "priorResponseCode": null
+    },
+    {
+      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseCode": 200,
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:56517\"}",
+      "priorResponseCode": null
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "target": "/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:56517",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http://127.0.0.1:56517/storage",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+      },
+      "body": "",
+      "startedAtElapsedMs": 492
+    },
+    {
+      "method": "GET",
+      "target": "/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:56517",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua-mobile": "?0",
+        "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http://127.0.0.1:56517/storage",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+      },
+      "body": "",
+      "startedAtElapsedMs": 1627
+    }
+  ],
+  "checks": {
+    "firstLocalStorage": true,
+    "firstSessionStorage": true,
+    "sameOrigin": true,
+    "newInstanceSessionStorageAbsent": true,
+    "restart_localStorageAfterRestart": true,
+    "restart_sessionStorageAfterRestartAbsent": true
+  },
+  "failure": null,
+  "executionVerdict": "pass",
+  "restart": {
+    "response": {
+      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseCode": 200,
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:56517\"}",
+      "priorResponseCode": null
+    },
+    "checks": {
+      "localStorageAfterRestart": true,
+      "sessionStorageAfterRestartAbsent": true
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "target": "/favicon.ico",
+        "headers": {
+          "host": "127.0.0.1:56517",
+          "connection": "keep-alive",
+          "sec-ch-ua-platform": "\"Windows\"",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua-mobile": "?0",
+          "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "no-cors",
+          "sec-fetch-dest": "image",
+          "referer": "http://127.0.0.1:56517/storage",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+        },
+        "body": "",
+        "startedAtElapsedMs": 453
+      }
+    ]
+  },
+  "restartCompletedAtUtc": "2026-09-21T16:40:09.618936Z",
+  "restartProvenance": {
+    "device": {
+      "manufacturer": "Microsoft",
+      "model": "Windows 11 Pro",
+      "device": "LAPTOP-KB55HTI0",
+      "windowsBuild": "10.0.28020",
+      "displayVersion": "26H1",
+      "fingerprint": "windows/Windows 11 Pro/10.0.28020/26H1"
+    },
+    "runtime": {
+      "webViewPackage": "Microsoft.Web.WebView2",
+      "webViewVersion": "154.0.0.0",
+      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    },
+    "startedAtUtc": "2026-09-21T16:40:07.964061Z"
+  }
+}

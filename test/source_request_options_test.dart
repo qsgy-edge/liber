@@ -37,8 +37,14 @@ void main() {
     expect(json.options.headers, {'X-B': '2'});
     expect(json.options.method, 'GET');
 
+    // `type` and `serverID` stay named refusals; the WebView options are wired
+    // to the WebView path instead.
     expect(
-      () => splitSourceUrlOptions('/s,{"webView":true}'),
+      () => splitSourceUrlOptions('/s,{"type":"audio"}'),
+      throwsUnsupportedError,
+    );
+    expect(
+      () => splitSourceUrlOptions('/s,{"serverID":1}'),
       throwsUnsupportedError,
     );
     expect(
@@ -50,6 +56,61 @@ void main() {
       throwsFormatException,
     );
     expect(() => splitSourceUrlOptions('/s,{"method":'), throwsFormatException);
+  });
+
+  test('the WebView options are parsed the way the frozen UrlOption reads them', () {
+    // Frozen `useWebView()`: null, "", false and "false" are false, everything
+    // else is true.
+    expect(splitSourceUrlOptions('/s').options.webView, isFalse);
+    expect(splitSourceUrlOptions('/s,{}').options.webView, isFalse);
+    for (final value in ['null', '""', 'false', '"false"']) {
+      expect(
+        splitSourceUrlOptions('/s,{"webView":$value}').options.webView,
+        isFalse,
+        reason: 'webView:$value',
+      );
+    }
+    for (final value in ['true', '"true"', '1']) {
+      expect(
+        splitSourceUrlOptions('/s,{"webView":$value}').options.webView,
+        isTrue,
+        reason: 'webView:$value',
+      );
+    }
+    // Frozen `setWebJs()`: blank is null, anything else is kept verbatim.
+    expect(splitSourceUrlOptions('/s').options.webJs, isNull);
+    expect(splitSourceUrlOptions('/s,{"webJs":""}').options.webJs, isNull);
+    expect(
+      splitSourceUrlOptions('/s,{"webJs":"  "}').options.webJs,
+      isNull,
+    );
+    expect(
+      splitSourceUrlOptions('/s,{"webJs":"document.title"}').options.webJs,
+      'document.title',
+    );
+    expect(
+      () => splitSourceUrlOptions('/s,{"webJs":1}'),
+      throwsFormatException,
+    );
+    // Frozen `max(0, getWebViewDelayTime() ?: 0)`: a malformed value disables the
+    // delay instead of failing the request.
+    expect(splitSourceUrlOptions('/s').options.webViewDelayTime, 0);
+    expect(
+      splitSourceUrlOptions('/s,{"webViewDelayTime":250}').options.webViewDelayTime,
+      250,
+    );
+    expect(
+      splitSourceUrlOptions('/s,{"webViewDelayTime":"250"}').options.webViewDelayTime,
+      250,
+    );
+    expect(
+      splitSourceUrlOptions('/s,{"webViewDelayTime":-5}').options.webViewDelayTime,
+      0,
+    );
+    expect(
+      splitSourceUrlOptions('/s,{"webViewDelayTime":"nope"}').options.webViewDelayTime,
+      0,
+    );
   });
 
   test('the charset option is parsed the way the frozen UrlOption reads it', () {

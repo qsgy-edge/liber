@@ -1,0 +1,36 @@
+{
+  "fixtureId": "ticket-13-webview-contract-v1",
+  "corpusVersion": "local-replay-v1",
+  "baseline": {
+    "repository": "D:/GithubRepositories/Android/legado",
+    "sha": "14dd24945b2914ce2708b8abaa4ee67ceef892af"
+  },
+  "transport": "loopback-only",
+  "routes": {
+    "/http-seed": "200 + Set-Cookie httpSeed=from-http",
+    "/start": "302 Location=/final",
+    "/final": "200 + Set-Cookie serverCookie=from-response + delayed DOM mutation + resource.js",
+    "/resource.js": "200 JavaScript resource for source URL extraction",
+    "/echo": "200 JSON echo of request Cookie",
+    "/hang": "accept request and hold response until cancellation/disposal",
+    "/parallel/a": "200 after 300ms",
+    "/parallel/b": "200 after 300ms",
+    "/favicon.ico": "204 for engine-generated request",
+    "/spin": "200 with an infinite JavaScript loop",
+    "/recovery": "200 after aborted operations"
+  },
+  "operations": [
+    "HTTP response cookie -> WebView cookie manager -> redirect navigation",
+    "hidden navigation -> delayed JavaScript DOM -> final URL/HTML/cookies/storage",
+    "observe a page subresource URL for sourceRegex-style extraction",
+    "WebView cookies -> HTTP Cookie header",
+    "two hidden navigations in one concurrent batch",
+    "dispose an infinite-script navigation at adapter timeout",
+    "stop and dispose a hanging navigation on explicit cancellation",
+    "navigate successfully after both aborted operations"
+  ],
+  "golden": {
+    "status": "not-run",
+    "reason": "Frozen Legado replay oracle was not executed in this probe"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "WV-01",
+  "path": "/wv01",
+  "request": {
+    "method": "GET",
+    "headers": {
+      "X-Wayfinder": "wv01"
+    }
+  },
+  "response": {
+    "status": 200,
+    "reason": "OK",
+    "headers": {
+      "Content-Type": "text/html; charset=utf-8"
+    },
+    "body": "<!doctype html><html><head><title>WV-01</title></head><body><main id=\"oracle\">frozen-android</main></body></html>"
+  }
+}

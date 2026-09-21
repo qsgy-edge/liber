@@ -1,0 +1,10 @@
+{
+  "id": "WV-05",
+  "path": "/sniff",
+  "sourceRegex": ".*/asset/target\\?token=abc",
+  "routes": [
+    {"method": "GET", "path": "/sniff", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body><main id=\"oracle\">sniff</main><script src=\"/asset/target?token=abc\"></script></body></html>"},
+    {"method": "GET", "path": "/asset/target?token=abc", "status": 200, "reason": "OK", "headers": {"Content-Type": "application/javascript"}, "body": "window.sniffLoaded=true;"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "headers": {"Content-Type": "text/plain"}, "body": ""}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "WV-13",
+  "http500Path": "/http-500",
+  "abortPath": "/abort",
+  "webView500Path": "/webview-500",
+  "javaScript": "document.body.innerText",
+  "routes": [
+    {"method": "GET", "path": "/http-500", "status": 500, "reason": "Internal Server Error", "body": "http-500"},
+    {"method": "GET", "path": "/abort", "abort": true},
+    {"method": "GET", "path": "/webview-500", "status": 500, "reason": "Internal Server Error", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>webview-500</body></html>"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "body": ""}
+  ]
+}

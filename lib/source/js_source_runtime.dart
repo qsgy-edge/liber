@@ -6,6 +6,7 @@ import 'package:fjs/fjs.dart';
 
 import '../domain/contracts.dart';
 import '../local/text_engine.dart';
+import 'book_source_webview_adapter.dart';
 import 'http_source_transport.dart' show sourceDefaultUserAgent;
 import 'native_library.dart';
 import 'source_host_dispatcher.dart';
@@ -95,6 +96,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.androidId = '',
     this.onMessage,
     SourceHostState? hostState,
+    this.webViewFactory,
   }) : _providedState = hostState;
   final String jsLib;
 
@@ -116,6 +118,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   final SourceHostCall? hostCall;
   final SourceHostDispatcher? dispatcher;
   final SourceHostState? _providedState;
+
+  /// The rendered-document adapter factory the `java.webView*` helpers use. Null
+  /// builds one from [dispatcher]'s source scope; a test substitutes its own,
+  /// because the helpers' wiring is what it checks.
+  final BookSourceWebViewAdapterFactory? webViewFactory;
 
   /// The host surface this runtime reads and writes (ADR 0011 §3): what the
   /// caller passed, the dispatcher's when a transport is attached — the
@@ -275,6 +282,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             throw _handleRefusal(payload);
           } else if (method == 'url') {
             answer = _handleUrl(payload);
+          } else if (method == 'webview') {
+            answer = await _handleWebView(payload, request.id, input, token);
           } else if (method == 'convert') {
             answer = _handleConvert(payload);
           } else if (method == 'request') {
@@ -457,6 +466,74 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       default:
         throw const SourceScriptError('host-method', 'state op refused');
     }
+  }
+
+  /// Frozen `JsExtensions.webView`, `webViewGetSource` and
+  /// `webViewGetOverrideUrl` (`JsExtensions.kt:161-213`): a rendered document, a
+  /// matched resource URL or a matched navigation URL.
+  ///
+  /// Each returns the frozen `StrResponse.body`, which is what the helpers hand
+  /// back. They run outside the source rate limiter, as the frozen direct
+  /// helpers do (`AnalyzeUrl` is what wraps its own operation in `withLimit`),
+  /// and each is its own operation with its own WebView.
+  Future<Object?> _handleWebView(
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> outerInput,
+    SourceCancellation token,
+  ) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid webView call');
+    }
+    final factory = webViewFactory ?? _defaultWebViewFactory();
+    if (factory == null) {
+      throw const SourceScriptError(
+        'host-method',
+        'webView is unavailable without a source session',
+      );
+    }
+    String? text(Object? value) => value == null ? null : '$value';
+    final operation = '${payload['op']}';
+    final rawHeaders = await _headers(outerInput, requestId, token);
+    final headers = <String, String>{
+      for (final entry in rawHeaders.entries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
+    final adapter = factory.create();
+    final unsubscribe = token.listen(adapter.destroy);
+    try {
+      final response = await adapter.load(
+        SourceWebViewRequest(
+          url: text(payload['url']),
+          html: text(payload['html']),
+          headers: headers,
+          javaScript: text(payload['js']),
+          sourceRegex: operation == 'source' ? text(payload['regex']) : null,
+          overrideUrlRegex: operation == 'override'
+              ? text(payload['regex'])
+              : null,
+        ),
+      );
+      return response.body;
+    } on SourceWebViewCancelled {
+      throw const SourceRequestCancelled();
+    } finally {
+      unsubscribe();
+      adapter.destroy();
+    }
+  }
+
+  /// The factory the direct helpers derive from the session's own source scope:
+  /// its key, its jar's page-cookie sink and its TLS policy (ADR 0011 §4/§5).
+  BookSourceWebViewAdapterFactory? _defaultWebViewFactory() {
+    final host = dispatcher;
+    if (host == null) return null;
+    return BookSourceWebViewAdapterFactory(
+      sourceRef: host.sourceRef,
+      hostState: hostState,
+      onPageCookies: (pageUrl, cookies) =>
+          host.cookies.set(pageUrl, cookies),
+    );
   }
 
   /// Frozen `JsExtensions.t2s`/`s2t`, which call `ChineseUtils`. Both go through
@@ -1101,6 +1178,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     member: 'java.importScript',
     policy: 'the local-path half comes with the file family (ADR 0011 §2) and the remote half with #13'
   });
+  const refuseVerificationHatch = member => () => call('refuse', {
+    member: member,
+    policy: 'the user-confirmed browser and captcha hatches require the confirmation UI that #32 lands (ADR 0011 §4)'
+  });
+  const optionalText = value => (value === null || value === undefined) ? null : String(value);
 
   const java = Object.freeze({
     connect: (...args) => {
@@ -1160,6 +1242,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     toURL: (url, baseUrl) => toUrl(String(url), (baseUrl === undefined || baseUrl === null) ? null : String(baseUrl)),
     androidId: () => call('identity', null),
     getWebViewUA: () => call('userAgent', null),
+    webView: (html, url, js) => call('webview', {
+      op:'render', html:optionalText(html), url:optionalText(url), js:optionalText(js)
+    }),
+    webViewGetSource: (html, url, js, sourceRegex) => call('webview', {
+      op:'source', html:optionalText(html), url:optionalText(url), js:optionalText(js),
+      regex:optionalText(sourceRegex)
+    }),
+    webViewGetOverrideUrl: (html, url, js, overrideUrlRegex) => call('webview', {
+      op:'override', html:optionalText(html), url:optionalText(url), js:optionalText(js),
+      regex:optionalText(overrideUrlRegex)
+    }),
+    startBrowser: refuseVerificationHatch('java.startBrowser'),
+    startBrowserAwait: refuseVerificationHatch('java.startBrowserAwait'),
+    getVerificationCode: refuseVerificationHatch('java.getVerificationCode'),
+    openUrl: refuseVerificationHatch('java.openUrl'),
     getFile: refuseFile('java.getFile'),
     readFile: refuseFile('java.readFile'),
     readTxtFile: refuseFile('java.readTxtFile'),

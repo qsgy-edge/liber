@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../domain/contracts.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
+import 'book_source_webview_adapter.dart';
 import 'html_rule_adapter.dart';
 import 'js_source_runtime.dart';
 import 'rule_field.dart';
@@ -72,6 +73,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     this.hostState,
     this.androidId = '',
     this.onHostMessage,
+    this.webViewFactory,
   });
   @override
   final Map<String, dynamic> source;
@@ -96,6 +98,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// what the gates and the tools need.
   final SourceHostState? hostState;
 
+  /// The rendered-document adapter factory this pipeline's WebView stages use.
+  /// Null builds the platform one for this source; a test substitutes its own,
+  /// because the pipeline's choice of path is what it checks.
+  final BookSourceWebViewAdapterFactory? webViewFactory;
+
   /// The source this pipeline speaks for: its `bookSourceUrl`, the key its
   /// per-source state is owned by.
   String get _sourceRef => '${source['bookSourceUrl'] ?? ''}';
@@ -106,6 +113,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the way the frozen `AnalyzeRule.get`/`put` reach the same `BaseSource`
   /// variables `java.get`/`java.put` do.
   late final SourceHostState _hostSurface = hostState ?? SourceHostState();
+  late final BookSourceWebViewAdapterFactory _webViewAdapter =
+      webViewFactory ??
+      BookSourceWebViewAdapterFactory(
+        sourceRef: _sourceRef,
+        hostState: _hostSurface,
+        // The frozen `BackstageWebView.setCookie` writes what a finished page
+        // left in the native store under the source's key; the source-scoped jar
+        // is where this product keeps it (ADR 0011 §3).
+        onPageCookies: (pageUrl, cookies) =>
+            _hostSurface.cookiesFor(_sourceRef).set(pageUrl, cookies),
+      );
   late final SourceHostDispatcher? _host = transport is SourceHttpTransport
       ? SourceHostDispatcher(
           transport: transport as SourceHttpTransport,
@@ -435,6 +453,29 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final host = _host;
     String text;
     var finalUrl = url;
+    if (options.webView) {
+      // The frozen `AnalyzeUrl` WebView path, under this source's rate limit:
+      // `withLimit` encloses the whole operation, bootstrap and load alike.
+      Future<({String body, Uri url})> render() => loadSourceWebView(
+        factory: _webViewAdapter,
+        options: options,
+        url: url,
+        method: method,
+        headers: headers,
+        cancellation: _cancellation,
+        bootstrap: () => host!
+            .forExecution(_cancellation)
+            .request(method, '$url', headers: headers, body: body),
+      );
+      final result = host == null
+          ? await render()
+          : await host
+                .forExecution(_cancellation)
+                .withSourceRateLimit(render);
+      _cancellation.throwIfCancelled();
+      trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
+      return (result.body, result.url);
+    }
     if (host != null) {
       final response = await host
           .forExecution(_cancellation)

@@ -1,0 +1,24 @@
+{
+  "fixtureId": "WV-01",
+  "fixtureSha256": "29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec",
+  "goldenVerdict": "pass",
+  "destinationVerdict": "pass",
+  "goldenDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "destinationDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "goldenWebView": "152.0.7977.42",
+  "destinationWebView": "152.0.7977.42",
+  "goldenChecksCompared": 8,
+  "destinationExtraChecks": [
+    "configuredUserAgent"
+  ],
+  "matchedGoldenTrace": "accepted",
+  "raceAlternativesConsidered": 0,
+  "browserInitiatedGolden": [
+    "/favicon.ico"
+  ],
+  "browserInitiatedDestination": [
+    "/favicon.ico"
+  ],
+  "differences": [],
+  "comparisonVerdict": "match"
+}

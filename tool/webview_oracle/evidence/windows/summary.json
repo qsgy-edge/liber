@@ -1,0 +1,315 @@
+{
+  "fixtureId": "ticket-13-webview-contract-v1",
+  "platform": "windows-x64",
+  "adapter": "native WebView2 engine (no Flutter plugin)",
+  "runtimeVersion": "152.0.4191.35",
+  "sdkVersion": "1.0.3179.45",
+  "candidateSelfCheckVerdict": "pass",
+  "contractVerdict": "not-run",
+  "aggregateFivePlatformVerdict": "not-run",
+  "provenance": {
+    "baselineSha": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "executedAtUtc": "2026-08-21T15:29:34.975123+00:00",
+    "probeSourceSha256": "3c6943fec5bfd012dd760285304589652d723535cc81166851f87fe0fc2200cf",
+    "projectSha256": "e6c1e914fbbfb51c2c41644078877f2ec2667b46950e67af07f7c5b9caf97a14",
+    "fixtureSha256": "5a2d2631378641e709b03ad35bf088a5fb0cf0205fd7300808337d727e1416dc",
+    "webView2LoaderSha256": "1970ae5e398666304483203dae64f8bc3327811114ae38bb3484ecbce1386b41"
+  },
+  "checks": {
+    "hiddenLoad": true,
+    "redirect": true,
+    "delayedJavaScript": true,
+    "finalDom": true,
+    "finalUrl": true,
+    "sourceUrlExtraction": true,
+    "httpCookieToWebView": true,
+    "webViewResponseCookie": true,
+    "webViewJavaScriptCookie": true,
+    "webViewCookieToHttp": true,
+    "localStorage": true,
+    "sessionStorage": true,
+    "concurrency": true,
+    "timeoutDisposedScript": true,
+    "explicitCancellation": true,
+    "postDisposalRecovery": true,
+    "noUnmatchedRequests": true
+  },
+  "coverageGaps": [
+    "POST bootstrap and inline HTML load modes",
+    "sourceRegex and overrideUrlRegex early-completion semantics",
+    "cookie/storage state across instances, origins, and restart",
+    "null-result retry timeout and 60-second outer timeout",
+    "early cancellation race and source-visible post-terminal side effects",
+    "HTTP, renderer, setup, and invalid-certificate error branches",
+    "Flutter adapter and Android/iOS/macOS/Linux executions"
+  ],
+  "observations": {
+    "normal": {
+      "Hidden": true,
+      "Redirected": true,
+      "FinalUrl": "http://127.0.0.1:53816/final",
+      "ReadyText": "delayed-dom httpSeed=from-http; serverCookie=from-response; jsCookie=from-js",
+      "ResourceLoaded": true,
+      "ResourceUrls": [
+        "http://127.0.0.1:53816/start",
+        "http://127.0.0.1:53816/final",
+        "http://127.0.0.1:53816/resource.js",
+        "http://127.0.0.1:53816/favicon.ico"
+      ],
+      "Html": "\u003Chtml\u003E\u003Chead\u003E\u003C/head\u003E\u003Cbody\u003E\u003Cdiv id=\u0022ready\u0022\u003Edelayed-dom httpSeed=from-http; serverCookie=from-response; jsCookie=from-js\u003C/div\u003E\u003C/body\u003E\u003C/html\u003E",
+      "Storage": {
+        "local": "persisted",
+        "session": "alive"
+      },
+      "Cookies": {
+        "httpSeed": "from-http",
+        "jsCookie": "from-js",
+        "serverCookie": "from-response"
+      },
+      "HttpEchoCookie": "httpSeed=from-http; jsCookie=from-js; serverCookie=from-response",
+      "Navigation": {
+        "Success": true,
+        "HttpStatusCode": 200,
+        "ErrorStatus": "Unknown",
+        "StartedUrls": [
+          "http://127.0.0.1:53816/start",
+          "http://127.0.0.1:53816/final"
+        ]
+      }
+    },
+    "concurrency": {
+      "Passed": true,
+      "MaxParallelRequests": 2,
+      "FirstHtml": "\u003Chtml\u003E\u003Chead\u003E\u003C/head\u003E\u003Cbody\u003Eparallel-a\u003C/body\u003E\u003C/html\u003E",
+      "SecondHtml": "\u003Chtml\u003E\u003Chead\u003E\u003C/head\u003E\u003Cbody\u003Eparallel-b\u003C/body\u003E\u003C/html\u003E"
+    },
+    "timeout": {
+      "Passed": true,
+      "CompletedBeforeAbort": false,
+      "OperationEndedAfterDispose": true,
+      "RequestDisconnected": null,
+      "BrowserProcessId": 77572
+    },
+    "cancellation": {
+      "Passed": true,
+      "CompletedBeforeAbort": false,
+      "OperationEndedAfterDispose": true,
+      "RequestDisconnected": true,
+      "BrowserProcessId": 77572
+    },
+    "recovery": true
+  },
+  "requestTrace": [
+    {
+      "sequence": 1,
+      "method": "GET",
+      "target": "/http-seed",
+      "cookie": ""
+    },
+    {
+      "sequence": 2,
+      "method": "GET",
+      "target": "/start",
+      "cookie": "httpSeed=from-http"
+    },
+    {
+      "sequence": 3,
+      "method": "GET",
+      "target": "/final",
+      "cookie": "httpSeed=from-http"
+    },
+    {
+      "sequence": 4,
+      "method": "GET",
+      "target": "/resource.js",
+      "cookie": "httpSeed=from-http; serverCookie=from-response"
+    },
+    {
+      "sequence": 5,
+      "method": "GET",
+      "target": "/favicon.ico",
+      "cookie": "httpSeed=from-http; serverCookie=from-response"
+    },
+    {
+      "sequence": 6,
+      "method": "GET",
+      "target": "/echo",
+      "cookie": "httpSeed=from-http; jsCookie=from-js; serverCookie=from-response"
+    },
+    {
+      "sequence": 7,
+      "method": "GET",
+      "target": "/parallel/b",
+      "cookie": ""
+    },
+    {
+      "sequence": 8,
+      "method": "GET",
+      "target": "/parallel/a",
+      "cookie": ""
+    },
+    {
+      "sequence": 9,
+      "method": "GET",
+      "target": "/favicon.ico",
+      "cookie": ""
+    },
+    {
+      "sequence": 10,
+      "method": "GET",
+      "target": "/spin",
+      "cookie": ""
+    },
+    {
+      "sequence": 11,
+      "method": "GET",
+      "target": "/hang",
+      "cookie": ""
+    },
+    {
+      "sequence": 12,
+      "method": "GET",
+      "target": "/recovery",
+      "cookie": ""
+    }
+  ],
+  "platformResults": [
+    {
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "not-run",
+      "reason": "bounded candidate self-check passed; complete frozen contract matrix was not run"
+    },
+    {
+      "platform": "windows",
+      "adapter": "flutter_inappwebview",
+      "verdict": "not-run",
+      "reason": "package absent from local pub cache"
+    },
+    {
+      "platform": "android",
+      "adapter": "Android WebView",
+      "verdict": "not-run"
+    },
+    {
+      "platform": "ios",
+      "adapter": "WKWebView",
+      "verdict": "not-run"
+    },
+    {
+      "platform": "macos",
+      "adapter": "WKWebView",
+      "verdict": "not-run"
+    },
+    {
+      "platform": "linux",
+      "adapter": "WebKitGTK",
+      "verdict": "not-run",
+      "reason": "no Linux execution host"
+    }
+  ],
+  "capabilityRows": [
+    {
+      "capability": "hiddenLoad",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "redirect",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "delayedJavaScript",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "finalDom",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "finalUrl",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "sourceUrlExtraction",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "httpCookieToWebView",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "webViewResponseCookie",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "webViewJavaScriptCookie",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "webViewCookieToHttp",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "localStorage",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "sessionStorage",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "concurrency",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "timeoutDisposedScript",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "explicitCancellation",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "postDisposalRecovery",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    },
+    {
+      "capability": "noUnmatchedRequests",
+      "platform": "windows",
+      "adapter": "WebView2 native engine",
+      "verdict": "pass"
+    }
+  ]
+}

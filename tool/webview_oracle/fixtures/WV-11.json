@@ -1,0 +1,27 @@
+{
+  "id": "WV-11",
+  "queuedPath": "/queued-cancel",
+  "flightPath": "/flight-cancel",
+  "postTerminalPath": "/after-cancel",
+  "postTerminalObservationMs": 6000,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/queued-cancel",
+      "status": 200,
+      "reason": "OK",
+      "headers": {"Content-Type": "text/html; charset=utf-8"},
+      "body": "<!doctype html><html><body>queued</body></html>"
+    },
+    {
+      "method": "GET",
+      "path": "/flight-cancel",
+      "status": 200,
+      "reason": "OK",
+      "delayMs": 5000,
+      "headers": {"Content-Type": "text/html; charset=utf-8"},
+      "body": "<!doctype html><html><body><script>fetch('/after-cancel')</script></body></html>"
+    },
+    {"method": "GET", "path": "/after-cancel", "status": 200, "reason": "OK", "body": "late"}
+  ]
+}

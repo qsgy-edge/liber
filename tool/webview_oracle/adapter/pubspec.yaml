@@ -1,0 +1,38 @@
+name: ticket13_adapter
+description: "Ticket 13 destination adapter probe: thin native WebView adapter compared against the frozen Legado golden."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inappwebview: ^6.1.5
+  path_provider: ^2.1.5
+  device_info_plus: ^13.2.0
+  crypto: ^3.0.6
+  shared_preferences: ^2.5.5
+
+  # The destination harness drives the product's own adapter
+  # (`package:liber/source/book_source_webview_adapter.dart` and its
+  # `inappwebview_book_source_adapter.dart` engine binding). A forked copy of the
+  # adapter logic would make every row describe the fork instead of the product.
+  liber:
+    path: ../../..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # Mechanically copied from ../fixtures by tool/sync_fixtures.sh. Bundling is
+  # required because installing the app clears its external files directory, so
+  # a pushed fixture cannot survive the install that precedes a test run.
+  assets:
+    - assets/fixtures/

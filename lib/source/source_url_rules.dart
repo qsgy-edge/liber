@@ -5,7 +5,7 @@ import 'source_encoding.dart';
 typedef UrlScriptEvaluator =
     Future<Object?> Function(String script, Object? result);
 
-/// Legado URL options (`<url>, {json}`) that the HTTP request path supports.
+/// Legado URL options (`<url>, {json}`) that the request path supports.
 class SourceUrlOptions {
   const SourceUrlOptions({
     this.method = 'GET',
@@ -15,6 +15,9 @@ class SourceUrlOptions {
     this.retry = 0,
     this.js,
     this.charset,
+    this.webView = false,
+    this.webJs,
+    this.webViewDelayTime = 0,
   });
 
   /// The frozen `AnalyzeUrl` only leaves GET for an explicit `POST`.
@@ -36,15 +39,26 @@ class SourceUrlOptions {
   /// for the default UTF-8 with its already-encoded check.
   final String? charset;
 
+  /// Frozen `UrlOption.useWebView()`: the option `webView` is true for every
+  /// value but null, `""`, `false` and `"false"`, so this stage is rendered by
+  /// the platform WebView instead of being fetched over HTTP.
+  final bool webView;
+
+  /// Frozen `UrlOption.getWebJs()`: the page JavaScript the WebView path runs,
+  /// null when the option was absent or blank. It replaces the frozen default
+  /// (`document.documentElement.outerHTML`).
+  final String? webJs;
+
+  /// Frozen `UrlOption.getWebViewDelayTime()`, floored at 0: milliseconds added
+  /// to the frozen 1000 ms delay before the page script runs.
+  final int webViewDelayTime;
+
   bool get isPost => method == 'POST';
 }
 
-/// Options that need the WebView path or upload path.
+/// Options that need a request path this product does not have.
 const _unsupportedUrlOptions = <String, String>{
   'type': 'type 选项属于 WebView/表单上传路径',
-  'webView': 'webView 选项需要 WebView 请求路径',
-  'webJs': 'webJs 选项需要 WebView 请求路径',
-  'webViewDelayTime': 'webViewDelayTime 选项需要 WebView 请求路径',
   'serverID': 'serverID 选项需要多服务器书源支持',
 };
 
@@ -304,6 +318,9 @@ sourceRequestShape(
       'retry',
       'charset',
       'origin',
+      'webView',
+      'webJs',
+      'webViewDelayTime',
     }.contains(key)) {
       throw UnsupportedError('暂不支持该请求选项：$key');
     }
@@ -360,6 +377,31 @@ sourceRequestShape(
     throw const FormatException('charset 选项必须是字符串');
   }
   final rawMethod = '${decoded['method'] ?? ''}';
+  // Frozen `UrlOption.setWebJs`: a null or blank value is null, any other value
+  // is kept verbatim.
+  final rawWebJs = decoded['webJs'];
+  if (rawWebJs != null && rawWebJs is! String) {
+    throw const FormatException('webJs 选项必须是字符串');
+  }
+  // Frozen `UrlOption.setWebViewViewDelayTime` plus `AnalyzeUrl`'s
+  // `max(0, option.getWebViewDelayTime() ?: 0)`: a malformed value disables the
+  // delay instead of failing the request.
+  final rawDelay = decoded['webViewDelayTime'];
+  final int webViewDelayTime;
+  switch (rawDelay) {
+    case null:
+      webViewDelayTime = 0;
+    case final int value:
+      webViewDelayTime = value < 0 ? 0 : value;
+    case final num value:
+      final truncated = value.toInt();
+      webViewDelayTime = truncated < 0 ? 0 : truncated;
+    case final String value:
+      final parsed = int.tryParse(value);
+      webViewDelayTime = parsed == null || parsed < 0 ? 0 : parsed;
+    default:
+      webViewDelayTime = 0;
+  }
   return (
     path: expanded.substring(0, match.start).trim(),
     options: SourceUrlOptions(
@@ -374,9 +416,21 @@ sourceRequestShape(
       charset: rawCharset == null || rawCharset.trim().isEmpty
           ? null
           : rawCharset,
+      webView: _useWebView(decoded['webView']),
+      webJs: rawWebJs == null || rawWebJs.trim().isEmpty ? null : rawWebJs,
+      webViewDelayTime: webViewDelayTime,
     ),
   );
 }
+
+/// Frozen `UrlOption.useWebView()`.
+
+/// Frozen `UrlOption.useWebView()`: `null`, `""`, `false` and `"false"` are
+/// false and every other value is true.
+bool _useWebView(Object? value) => switch (value) {
+  null || '' || false || 'false' => false,
+  _ => true,
+};
 
 /// Index just past the JSON object starting at [start], or -1 when unbalanced.
 int _jsonObjectEnd(String text, int start) {

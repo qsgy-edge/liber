@@ -1,0 +1,19 @@
+{
+  "fixtureId": "WV-05",
+  "fixtureSha256": "6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4",
+  "goldenVerdict": "pass",
+  "destinationVerdict": "pass",
+  "goldenDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "destinationDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "goldenWebView": "152.0.7977.42",
+  "destinationWebView": "152.0.7977.42",
+  "goldenChecksCompared": 4,
+  "destinationExtraChecks": [],
+  "matchedGoldenTrace": "diagnostic:WV-05-subresource-delivered.json",
+  "matchedRaceAlternativeReason": "preserves the request-delivered side of the sourceRegex destruction race on this fingerprint; the accepted golden landed on the not-delivered side, and both sides were observed across repeated runs of the same binary",
+  "raceAlternativesConsidered": 1,
+  "browserInitiatedGolden": [],
+  "browserInitiatedDestination": [],
+  "differences": [],
+  "comparisonVerdict": "match-race-alternative"
+}

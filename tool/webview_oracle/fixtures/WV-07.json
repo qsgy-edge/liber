@@ -1,0 +1,10 @@
+{
+  "id": "WV-07",
+  "path": "/cookie",
+  "requestHeaders": {"X-Wayfinder": "wv07", "Cookie": "app=from-app"},
+  "routes": [
+    {"method": "GET", "path": "/cookie", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8", "Set-Cookie": "sid=from-page; Path=/"}, "body": "<!doctype html><html><body><main id=\"oracle\">cookie</main><script>document.cookie='js=from-js; Path=/'</script></body></html>"},
+    {"method": "GET", "path": "/echo", "status": 200, "reason": "OK", "headers": {"Content-Type": "text/html; charset=utf-8"}, "body": "<!doctype html><html><body>echo</body></html>"},
+    {"method": "GET", "path": "/favicon.ico", "status": 404, "reason": "Not Found", "headers": {"Content-Type": "text/plain"}, "body": ""}
+  ]
+}

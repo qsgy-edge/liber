@@ -10,6 +10,7 @@ import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
 import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
+import 'source/inappwebview_book_source_adapter.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'store/legacy_import.dart';
@@ -19,6 +20,11 @@ import 'store/space_store.dart';
 import 'store/workspace.dart';
 
 void main() {
+  // The platform WebView is the rendered-document engine behind
+  // `BookSourceWebViewAdapter` (ADR 0003, ticket #55). The binding is installed
+  // here, at the application's composition root, because the plugin reaches
+  // `dart:ui` and the gates and tools run this model layer on a plain Dart VM.
+  installInAppWebViewBookSourceAdapter();
   // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens a different installation
   // directory instead of `%APPDATA%\Liber`: a review run drives the real app
   // without the operator's own library underneath it.

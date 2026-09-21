@@ -1,0 +1,19 @@
+{
+  "fixtureId": "WV-14",
+  "fixtureSha256": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db",
+  "goldenVerdict": "policy-rejected",
+  "destinationVerdict": "policy-rejected",
+  "goldenDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "destinationDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys",
+  "goldenWebView": "152.0.7977.42",
+  "destinationWebView": "152.0.7977.42",
+  "goldenPolicyReason": "frozen-baseline-accepts-invalid-tls",
+  "destinationPolicyReason": "destination-refuses-invalid-tls",
+  "destinationPolicyRefusal": {
+    "check": "invalidTlsRefusedAfterCertificatePresented",
+    "reason": "the fixture certificate was presented and the operation did not proceed through it"
+  },
+  "destinationPolicyRefusalHolds": true,
+  "differences": [],
+  "comparisonVerdict": "policy-rejected"
+}

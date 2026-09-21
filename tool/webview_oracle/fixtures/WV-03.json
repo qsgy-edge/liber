@@ -1,0 +1,5 @@
+{
+  "id": "WV-03",
+  "html": "<!doctype html><html><body><main id=\"oracle\">inline-no-base</main><script>window.inlineValue='ok'</script></body></html>",
+  "javaScript": "document.documentElement.outerHTML + '|INLINE=' + window.inlineValue"
+}

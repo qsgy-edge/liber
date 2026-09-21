@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-13",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "startedAtUtc": "2026-08-22T10:04:49.210Z",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.19.XPMCNXM:user\/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia\/Shanghai"
+  },
+  "operation": {
+    "http500": {
+      "responseUrl": "http:\/\/127.0.0.1:33301\/http-500",
+      "responseCode": 500,
+      "responseBody": "http-500",
+      "priorResponseCode": null
+    },
+    "abortError": {
+      "type": "java.io.IOException",
+      "message": "unexpected end of stream on http:\/\/127.0.0.1:33301\/..."
+    },
+    "webView500": {
+      "responseUrl": "http:\/\/127.0.0.1:33301\/webview-500",
+      "responseCode": 200,
+      "responseBody": "webview-500",
+      "priorResponseCode": null
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "target": "\/http-500",
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.1:33301"
+      },
+      "body": "",
+      "startedAtElapsedMs": 13141575
+    },
+    {
+      "method": "GET",
+      "target": "\/abort",
+      "headers": {
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "keep-alive": "300",
+        "connection": "Keep-Alive",
+        "cache-control": "no-cache",
+        "accept-encoding": "gzip, deflate",
+        "host": "127.0.0.1:33301"
+      },
+      "body": "",
+      "startedAtElapsedMs": 13141594
+    },
+    {
+      "method": "GET",
+      "target": "\/webview-500",
+      "headers": {
+        "host": "127.0.0.1:33301",
+        "connection": "keep-alive",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": "\"Android\"",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "accept": "text\/html,application\/xhtml+xml,application\/xml;q=0.9,image\/avif,image\/webp,image\/apng,*\/*;q=0.8,application\/signed-exchange;v=b3;q=0.7",
+        "x-requested-with": "io.legado.app.debug",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-user": "?1",
+        "sec-fetch-dest": "document",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 13141660
+    },
+    {
+      "method": "GET",
+      "target": "\/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:33301",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Android\"",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "image\/avif,image\/webp,image\/apng,image\/svg+xml,image\/*,*\/*;q=0.8",
+        "x-requested-with": "io.legado.app.debug",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http:\/\/127.0.0.1:33301\/webview-500",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 13141699
+    }
+  ],
+  "checks": {
+    "http500IsOrdinaryResponse": true,
+    "abortedConnectionThrows": true,
+    "mainFrame500BodyReturned": true,
+    "mainFrame500MetadataSynthetic200": true,
+    "mainFrameErrorCleanup": true
+  },
+  "executionVerdict": "pass",
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "152.0.7977.42",
+    "defaultUserAgent": "Mozilla\/5.0 (Linux; Android 17; 25102RKBEC Build\/CP2A.260605.016; wv) AppleWebKit\/537.36 (KHTML, like Gecko) Version\/4.0 Chrome\/152.0.7977.42 Mobile Safari\/537.36",
+    "legadoUserAgent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36"
+  },
+  "completedAtUtc": "2026-08-22T10:04:50.504Z"
+}

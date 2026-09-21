@@ -115,6 +115,28 @@ class SourceHostDispatcher {
     );
   }
 
+  /// Runs one rendered-document operation under this source's `concurrentRate`.
+  ///
+  /// The frozen `AnalyzeUrl.getStrResponseAwait` wraps its whole body — the HTTP
+  /// bootstrap and the WebView load alike — in `concurrentRateLimiter.withLimit`
+  /// (`AnalyzeUrl.kt:397-461`), while the direct `java.webView*` helpers never
+  /// touch that limiter (`JsExtensions.kt:161-213`). A source with no rate runs
+  /// [run] without waiting.
+  Future<T> withSourceRateLimit<T>(Future<T> Function() run) async {
+    final rate = _rateLimiter.applies(_sourceRef, _concurrentRate)
+        ? await _rateLimiter.acquire(
+            _sourceRef,
+            _concurrentRate,
+            cancellation: cancellation,
+          )
+        : null;
+    try {
+      return await run();
+    } finally {
+      _rateLimiter.release(rate);
+    }
+  }
+
   Future<String> ajax(String url) async {
     final response = await _send('GET', url, followRedirects: true);
     return response.body;

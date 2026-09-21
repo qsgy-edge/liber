@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:liber/domain/contracts.dart';
-import 'package:liber/source/windows_webview_transport.dart';
+import 'package:liber/source/book_source_webview_adapter.dart';
+import 'package:liber/source/inappwebview_book_source_adapter.dart';
 
-// Native Windows smoke test: launch through Flutter, never widget-test HTTP.
+// Native Windows smoke test for the rendered-document path: launch through
+// Flutter and drive `BookSourceWebViewAdapter`, never widget-test HTTP. The
+// contract-level evidence lives in `tool/webview_oracle/`; this is the quick
+// "does the engine work on this machine" check beside it.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  installInAppWebViewBookSourceAdapter();
   final status = ValueNotifier<String>('Running WebView2 checks');
   runApp(
     MaterialApp(
@@ -42,58 +46,49 @@ Future<void> main() async {
       /* cancellation */
     }
   });
-  final transport = WindowsWebViewTransport(
-    baseUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-    timeout: const Duration(seconds: 10),
-  );
+  final base = 'http://127.0.0.1:${server.port}';
+  final factory = BookSourceWebViewAdapterFactory(sourceRef: base);
+  final adapter = factory.create();
   try {
     for (final path in ['/slow', '/error']) {
-      final html = await transport.request(
-        stage: BookSourceStage.content,
-        path: path,
+      final response = await adapter.load(
+        SourceWebViewRequest(url: '$base$path'),
       );
-      if (!html.contains('observed-$path') ||
-          !observed.contains(path) ||
-          !transport.resources.any((url) => Uri.parse(url).path == path)) {
-        throw StateError(
-          'Missing document/server/interception evidence: $path',
-        );
+      if (!(response.body ?? '').contains('observed-$path') ||
+          !observed.contains(path)) {
+        throw StateError('Missing document/server evidence: $path');
       }
     }
-    final timed = WindowsWebViewTransport(
-      baseUrl: Uri.parse('http://127.0.0.1:${server.port}'),
-      timeout: const Duration(seconds: 2),
-    );
+    final timed = factory.create();
     try {
-      await timed.request(stage: BookSourceStage.content, path: '/hang');
+      await timed
+          .load(SourceWebViewRequest(url: '$base/hang'))
+          .timeout(const Duration(seconds: 2));
       throw StateError('Deadline did not stop navigation');
     } on TimeoutException {
       if (!observed.contains('/hang')) {
         throw StateError('Deadline ran before HTTP');
       }
     } finally {
-      await timed.dispose();
+      timed.destroy();
     }
-    final cancelling = transport.request(
-      stage: BookSourceStage.content,
-      path: '/slow',
+    final cancelling = adapter.load(
+      SourceWebViewRequest(url: '$base/slow'),
     );
-    final cancellationCheck = cancelling.then<void>(
+    adapter.destroy();
+    await cancelling.then<void>(
       (_) => throw StateError('Cancelled navigation succeeded'),
       onError: (Object error) {
-        if (!error.toString().contains('Navigation cancelled')) throw error;
+        if (error is! SourceWebViewCancelled) throw error;
       },
     );
-    transport.cancel();
-    await cancellationCheck;
-    status.value =
-        'PASS: delayed DOM, HTTP 503, interception, timeout and cancellation';
+    status.value = 'PASS: rendered DOM, HTTP 503, timeout and cancellation';
     debugPrint(status.value);
   } catch (error, stack) {
     status.value = 'FAIL: $error';
     debugPrint('$error\n$stack');
   } finally {
-    await transport.dispose();
+    adapter.destroy();
     await server.close(force: true);
   }
 }
