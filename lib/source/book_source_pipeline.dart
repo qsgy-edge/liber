@@ -12,19 +12,31 @@ import 'source_host_state.dart';
 export 'html_source_pipeline.dart' show HtmlBook, HtmlChapterBody;
 export 'json_source_pipeline.dart' show SourceChapter;
 
-/// The frozen source's default search keyword (`BookSource.getCheckKeyword`).
+/// The frozen source's check keyword (`BookSource.getCheckKeyword`).
 ///
 /// See `BookSource.kt:208-215` in Legado baseline `14dd24945`: a nonblank
 /// `ruleSearch.checkKeyWord` wins without trimming the value; otherwise the
-/// caller's fallback is used.
+/// caller's fallback is used. The field is a *check* keyword — the frozen
+/// readers of it are the source check and the debug page's search box — so the
+/// normal search path does not read it (`HtmlSourcePipeline.search`).
+///
+/// The frozen app reads the field through Gson into `String?`, whose string
+/// adapter turns a scalar token into its text and rejects an array or object
+/// while the source is parsed, so a numeric or boolean value is a keyword here
+/// rather than a malformed rule; only a structured value is refused.
 String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
   final search = source['ruleSearch'];
   final value = search is Map ? search['checkKeyWord'] : null;
   if (value == null) return fallback;
-  if (value is! String) {
+  final String text;
+  if (value is String) {
+    text = value;
+  } else if (value is num || value is bool) {
+    text = '$value';
+  } else {
     throw const FormatException('ruleSearch.checkKeyWord 必须是字符串规则');
   }
-  return value.trim().isNotEmpty ? value : fallback;
+  return text.trim().isNotEmpty ? text : fallback;
 }
 
 /// Frozen HtmlFormatter.format used for search and book-information intros.

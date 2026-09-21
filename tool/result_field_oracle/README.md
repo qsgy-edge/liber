@@ -109,32 +109,35 @@ field). A row passes only when both sides observed the same thing; an unequal
 observation is a `fail` with the divergence named, and an observation one side
 does not carry is named in `notCompared` with its reason.
 
-**Executed result: 7 pass / 1 fail / 6 notCompared** (the comparator exits 1
-because of the fail below; that is the recorded verdict, not a broken run). The
-fail is a named product divergence, not a corpus defect:
+**Executed result: 8 pass / 0 fail / 6 notCompared** (the comparator exits 0).
+Every row matches; the two observations that needed a word are:
 
-- `F4 ruleSearch.checkKeyWord`, observation `checkKeyword.number`: the frozen
-  reader coerces the JSON number `42` into the string `"42"` — Gson's `String`
-  adapter reads a `NUMBER` token with `nextString()`, and
-  `BookSource.getCheckKeyword` then returns it because it is non-blank
-  (`BookSource.kt:208-215`) — while the product refuses with
-  `FormatException: ruleSearch.checkKeyWord 必须是字符串规则`
-  (`lib/source/book_source_pipeline.dart`, `sourceCheckKeyword`). A source that
-  declares a numeric `checkKeyWord` therefore searches with `42` on the baseline
-  and does not search at all in the product.
-  The non-string **object** case is refused on both sides (frozen: Gson
-  `JsonSyntaxException: Expected a string but was BEGIN_OBJECT` while the source
-  is read; product: the same `FormatException` at use), so its row compares the
-  refusal itself and records both reasons.
+- `F4 ruleSearch.checkKeyWord`. The field is a *check* keyword: the frozen
+  readers of it are the source check and the debug page's search box, and the
+  search stage never reads it — the product now matches that, because
+  `HtmlSourcePipeline.search()` no longer validates the field. Its frozen
+  semantics are the parse layer's: `SearchRule.checkKeyWord` is a `String?` read
+  by Gson, so a JSON scalar becomes its literal text while the source is parsed
+  (`42` → `"42"` — the executed golden's `checkKeyword.number`) and only an
+  array or object is refused. `sourceCheckKeyword` is the one reading point and
+  reproduces that: a scalar is its string form, `blank`/absent still fall back
+  to the caller's default (`BookSource.kt:208-215`), and a structured value is
+  refused by name. The `object` case is therefore refused on both sides, and the
+  row records both reasons verbatim.
+- Two residuals stay named rather than normalized: the refusal happens at use
+  (`FormatException` with the field name) where the frozen reader refuses while
+  parsing (`JsonSyntaxException: Expected a string but was BEGIN_OBJECT`), and a
+  non-canonical number literal loses its spelling — Gson keeps the source text
+  (`1e3`, `1.50`), this product's `jsonDecode` sees `1000.0`, `1.5`. Reopen the
+  second one only if a used source declares such a literal.
 - Everything else matches byte for byte, including the frozen
   `StringUtils.wordCountFormat` rendering (`12001` → `1.2万字`, `23000` →
   `2.3万字`, `约12万字` unchanged) and the `canReName` gate in all four of its
   shapes.
 
-The divergence is evidence for the controller's decision, not something this
-lane fixes: the product's loud failure was chosen deliberately in #41 and
-accepted there, so changing it is a product decision. No product file is changed
-by this corpus.
+The F4 fix was approved by the controller after this lane reported the frozen
+line and a minimal repro; the golden and the harness evidence are unchanged by
+it, and only the product side was re-run to reach 8/0/6.
 
 ## Coverage gaps
 

@@ -292,6 +292,24 @@ void main() {
         ),
       );
     });
+
+    test('a search runs on its own keyword whatever checkKeyWord holds', () async {
+      // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it
+      // are the source check and the debug page's search box, so the search
+      // stage must neither substitute it nor refuse a search because of it.
+      for (final declared in <Object>[
+        '校验词',
+        42,
+        <String>['not', 'a', 'string'],
+        <String, Object>{'nested': 1},
+      ]) {
+        final source = _htmlSource(name: 'a.0@text');
+        (source['ruleSearch'] as Map)['checkKeyWord'] = declared;
+        final hit =
+            (await HtmlSourcePipeline(source, _HtmlPages()).search('关键字')).single;
+        expect(hit.title, '回音', reason: '$declared');
+      }
+    });
   });
 
   group('JSON adapter entry point', () {
@@ -607,6 +625,45 @@ void main() {
         expect(body.title, '正文标题');
       },
     );
+
+    test('a scalar checkKeyWord is the frozen parse-layer coercion', () {
+      // The frozen reader reads the field through Gson into `String?`: a JSON
+      // scalar becomes its literal text while the source is parsed, and only an
+      // array or object is refused. Executed on the handset for the numeric case
+      // by the FIELDS-01 golden (`checkKeyword.number` -> "42").
+      Map<String, dynamic> sourceWith(Object? value) => {
+        'ruleSearch': <String, Object?>{'checkKeyWord': value},
+      };
+      expect(sourceCheckKeyword(sourceWith(42), 'fallback'), '42');
+      expect(sourceCheckKeyword(sourceWith(0), 'fallback'), '0');
+      expect(sourceCheckKeyword(sourceWith(1.0), 'fallback'), '1.0');
+      expect(sourceCheckKeyword(sourceWith(true), 'fallback'), 'true');
+      expect(sourceCheckKeyword(sourceWith('校验词'), 'fallback'), '校验词');
+      expect(sourceCheckKeyword(sourceWith('   '), 'fallback'), 'fallback');
+      expect(sourceCheckKeyword(sourceWith(''), 'fallback'), 'fallback');
+      expect(sourceCheckKeyword(sourceWith(null), 'fallback'), 'fallback');
+      expect(sourceCheckKeyword(const {}, 'fallback'), 'fallback');
+      expect(
+        sourceCheckKeyword(const <String, dynamic>{}, 'fallback'),
+        'fallback',
+      );
+      for (final structured in <Object>[
+        <Object>[42],
+        <String, Object>{'nested': 1},
+      ]) {
+        expect(
+          () => sourceCheckKeyword(sourceWith(structured), 'fallback'),
+          throwsA(
+            isA<FormatException>().having(
+              (error) => error.message,
+              'message',
+              contains('ruleSearch.checkKeyWord'),
+            ),
+          ),
+          reason: '$structured',
+        );
+      }
+    });
 
     test('malformed optional fields fail with their field name', () async {
       final html = _htmlSource(name: 'a.0@text');

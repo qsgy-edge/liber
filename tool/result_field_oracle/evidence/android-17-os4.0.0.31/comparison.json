@@ -39,21 +39,9 @@
     {
       "id": "F4",
       "title": "ruleSearch.checkKeyWord: the default keyword path and a non-string value",
-      "status": "fail",
+      "status": "pass",
       "detail": "5 checkKeyWord cases compared; refused on both sides: object (frozen: com.google.gson.JsonSyntaxException: java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord\nSee https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure <- java.lang.IllegalStateException: Expected a string but was BEGIN_OBJECT at line 1 column 248 path $.ruleSearch.checkKeyWord\nSee https://github.com/google/gson/blob/main/Troubleshooting.md#unexpected-json-structure; product: FormatException: ruleSearch.checkKeyWord 必须是字符串规则)",
-      "differences": [
-        {
-          "observation": "checkKeyword.number.outcome",
-          "frozen": {
-            "outcome": "value",
-            "value": "42"
-          },
-          "liber": {
-            "outcome": "refused",
-            "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
-          }
-        }
-      ]
+      "differences": []
     },
     {
       "id": "F5",
@@ -103,24 +91,11 @@
       "reason": "provenance of the two runs, recorded in each evidence file and its manifest; not a compatibility observation."
     }
   ],
-  "divergences": [
-    {
-      "row": "F4",
-      "observation": "checkKeyword.number.outcome",
-      "frozen": {
-        "outcome": "value",
-        "value": "42"
-      },
-      "liber": {
-        "outcome": "refused",
-        "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
-      }
-    }
-  ],
-  "status": "fail",
+  "divergences": [],
+  "status": "pass",
   "summary": {
-    "pass": 7,
-    "fail": 1,
+    "pass": 8,
+    "fail": 0,
     "notCompared": 6
   }
 }

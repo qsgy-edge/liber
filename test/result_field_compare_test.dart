@@ -56,30 +56,31 @@ void main() {
 
   test('the corpus row and six of the seven field rows pass', () {
     final report = compareWith();
-    for (final id in ['C1', 'F1', 'F2', 'F3', 'F5', 'F6', 'F7']) {
+    for (final id in ['C1', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']) {
       expect(_row(report, id)['status'], 'pass', reason: id);
       expect(_row(report, id)['differences'], isEmpty, reason: id);
     }
     expect(_row(report, 'C1')['detail'], contains('20 declared requests'));
   });
 
-  test('F4 fails only on the frozen numeric checkKeyWord coercion', () {
+  test('F4 passes on the frozen parse-layer scalar coercion', () {
     // The executed frozen reader reads `checkKeyWord: 42` as the string "42"
     // (Gson's String adapter on a NUMBER token) and `BookSource.getCheckKeyword`
-    // returns it; the product refuses with a named FormatException. This is
-    // recorded evidence, not a scenario the comparator is allowed to normalize.
+    // returns it; the product reproduces that at `sourceCheckKeyword`. This test
+    // fails if either side stops coercing, which is the point of the row. The
+    // residual spelling difference for a non-canonical literal (`1e3`, `1.50`)
+    // is recorded in the capability matrix, not compared here.
+    expect((golden['checkKeyword'] as Map)['number'], {
+      'outcome': 'value',
+      'value': '42',
+    });
+    expect((liber['checkKeyword'] as Map)['number'], {
+      'outcome': 'value',
+      'value': '42',
+    });
     final row = _row(compareWith(), 'F4');
-    expect(row['status'], 'fail');
-    expect(row['differences'], [
-      {
-        'observation': 'checkKeyword.number.outcome',
-        'frozen': {'outcome': 'value', 'value': '42'},
-        'liber': {
-          'outcome': 'refused',
-          'reason': 'FormatException: ruleSearch.checkKeyWord 必须是字符串规则',
-        },
-      },
-    ]);
+    expect(row['status'], 'pass');
+    expect(row['differences'], isEmpty);
   });
 
   test('F4 treats the malformed object as refused on both sides', () {

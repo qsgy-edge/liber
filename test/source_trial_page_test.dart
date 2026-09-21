@@ -51,6 +51,57 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  for (final declared in <Object>['numeric', 'structured']) {
+    testWidgets('source check keyword: a $declared checkKeyWord', (tester) async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SourceTrialPage(
+            service: ShelfService(store),
+            sources: [
+              ImportedBookSource(
+                id: 'check-keyword-$declared',
+                data: {
+                  'bookSourceName': 'Check keyword $declared',
+                  'bookSourceUrl': 'https://example.invalid',
+                  // Stop before networking/native code; the submitted keyword is
+                  // what this row observes.
+                  'loginCheckJs': 'true',
+                  'searchUrl': '/search?key={{key}}',
+                  'ruleSearch': {
+                    'bookList': r'$.items',
+                    'name': r'$.name',
+                    'bookUrl': r'$.url',
+                    // The frozen reader reads the field through Gson into
+                    // `String?`: a scalar is its literal text, and an array or
+                    // object is refused while the source is parsed.
+                    'checkKeyWord': declared == 'numeric'
+                        ? 42
+                        : <String, Object>{'nested': 1},
+                  },
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      if (declared == 'numeric') {
+        expect(
+          tester.widget<HtmlSourceBrowser>(find.byType(HtmlSourceBrowser)).keyword,
+          '42',
+        );
+      } else {
+        expect(find.byType(HtmlSourceBrowser), findsNothing);
+        expect(find.textContaining('读取失败'), findsOneWidget);
+        expect(find.textContaining('ruleSearch.checkKeyWord'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'source trial opens the browser, where an unsupported field fails without a success result',
     (tester) async {

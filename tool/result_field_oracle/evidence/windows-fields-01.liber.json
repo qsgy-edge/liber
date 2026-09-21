@@ -5,7 +5,7 @@
   "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
   "checkKeywordEntryPoint": "io.legado.app.data.entities.BookSource.getCheckKeyword",
   "platform": "windows",
-  "recordedAt": "2026-09-21T16:08:42.176681",
+  "recordedAt": "2026-09-21T16:42:58.464748",
   "origin": "http://127.0.0.1:18732",
   "fixturesPath": "tool/result_field_oracle/fixtures.json",
   "fixturesSha256": "99dc2aad2214a02af4bec4e0520164e8b832beb130e5f0d98881ab6328581ac8",
@@ -586,8 +586,8 @@
       "value": "回放默认"
     },
     "number": {
-      "outcome": "refused",
-      "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
+      "outcome": "value",
+      "value": "42"
     },
     "object": {
       "outcome": "refused",

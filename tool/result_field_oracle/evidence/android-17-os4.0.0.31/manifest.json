@@ -368,11 +368,11 @@
   "harnessSourcesNote": "hashes of the committed harness sources; capture.py gained its re-runnable --finalize validation path after this device run, and FieldOracle.java, AndroidManifest.xml, build.ps1 and the corpus are unchanged since the build whose APK hash this manifest records.",
   "comparison": {
     "path": "comparison.json",
-    "sha256": "c6d0374f6beef86c0ca6c5b327c0e8c0a4b2d70fd09dc9ea4cc28fafbc76c538",
-    "status": "fail",
+    "sha256": "91170c307fc5816646f7ed000fb0205ed6463e27685793bb718e9dda7bb13b49",
+    "status": "pass",
     "summary": {
-      "pass": 7,
-      "fail": 1,
+      "pass": 8,
+      "fail": 0,
       "notCompared": 6
     },
     "rows": {
@@ -380,25 +380,12 @@
       "F1": "pass",
       "F2": "pass",
       "F3": "pass",
-      "F4": "fail",
+      "F4": "pass",
       "F5": "pass",
       "F6": "pass",
       "F7": "pass"
     },
-    "divergences": [
-      {
-        "row": "F4",
-        "observation": "checkKeyword.number.outcome",
-        "frozen": {
-          "outcome": "value",
-          "value": "42"
-        },
-        "liber": {
-          "outcome": "refused",
-          "reason": "FormatException: ruleSearch.checkKeyWord 必须是字符串规则"
-        }
-      }
-    ],
+    "divergences": [],
     "note": "the comparator exits 1 when a row does not pass; the F4 divergence here is recorded evidence, not a corpus defect."
   }
 }
