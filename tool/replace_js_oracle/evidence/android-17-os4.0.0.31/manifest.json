@@ -1,0 +1,205 @@
+{
+  "status": "observed",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-C",
+        "D:\\GithubRepositories\\Android\\legado",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exitCode": 0,
+      "log": "source-head.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "getprop",
+        "ro.build.fingerprint"
+      ],
+      "exitCode": 0,
+      "log": "fingerprint.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "pm",
+        "path",
+        "io.legado.app.debug"
+      ],
+      "exitCode": 0,
+      "log": "baseline-path.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "pull",
+        "/data/app/~~OMz2CGFQ225zN8cVbjJSRg==/io.legado.app.debug--TZKSBzY-SGdZhcCC9KTkw==/base.apk",
+        "tool\\replace_js_oracle\\evidence\\android-17-os4.0.0.31\\frozen.apk"
+      ],
+      "exitCode": 0,
+      "log": "pull-baseline.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "pm",
+        "path",
+        "io.liber.oracle.replacejs"
+      ],
+      "exitCode": 1,
+      "log": "harness-existing.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "sh",
+        "-c",
+        "'find databases shared_prefs files cache -type f -exec sha256sum {} \\; 2>/dev/null'"
+      ],
+      "exitCode": 0,
+      "log": "private-before.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "ls",
+        "cache"
+      ],
+      "exitCode": 0,
+      "log": "scratch-before.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "install",
+        "-r",
+        "C:\\Temp\\replace-js-49-build\\replace-js-oracle.apk"
+      ],
+      "exitCode": 0,
+      "log": "install.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-r",
+        "io.liber.oracle.replacejs/io.liber.oracle.replacejs.ReplaceJsOracle"
+      ],
+      "exitCode": 0,
+      "log": "instrumentation.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "sh",
+        "-c",
+        "'find databases shared_prefs files cache -type f -exec sha256sum {} \\; 2>/dev/null'"
+      ],
+      "exitCode": 0,
+      "log": "private-after.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "run-as",
+        "io.legado.app.debug",
+        "ls",
+        "cache"
+      ],
+      "exitCode": 0,
+      "log": "scratch-after.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "am",
+        "force-stop",
+        "io.legado.app.debug"
+      ],
+      "exitCode": 0,
+      "log": "stop-owned-run.log"
+    },
+    {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "uninstall",
+        "io.liber.oracle.replacejs"
+      ],
+      "exitCode": 0,
+      "log": "remove-harness.log"
+    }
+  ],
+  "fixture": "REPLACE-JS-01",
+  "fixtureSha256": "267bf9635cd0dcc5ad7e45a3d6a219f17ca46050e76cb8c184bef4def2393818",
+  "serial": "5615f742",
+  "harnessSources": {
+    "capture.py": "4cfe7ba9e945d26eaf1f42fca1f6d5af7aa790d4d534746c8d94c0b71cc678df",
+    "ReplaceJsOracle.java": "a257e74cc1259414394a08f12f33d134130119f631eb374c5be9439a08584bd5",
+    "AndroidManifest.xml": "bf9e1990c2aa774d96cc5df655856ceebb7d01e1df3d2e3e0d2eacf425b22cac",
+    "build.ps1": "d275287be663e89c97aa1b0cad8ec98ccf22c9d0fbe27d25f6f8cf9648ee8b35"
+  },
+  "harnessApkSha256": "eed39ac54915ce76cc12dbe72119c7f769aacacb8d91d82ad3cde211c04d1646",
+  "backupRuleCount": 129,
+  "backupJsRuleIds": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "frozenSources": {
+    "app/src/main/java/io/legado/app/utils/RegexExtensions.kt": "4d4128364f7a3e8fb91ecc438ff63b54cc74b107a4074d1a780ac2afd3ad2189",
+    "app/src/main/java/io/legado/app/help/book/ContentProcessor.kt": "6260aa5dda0a626bca85a55267e9f7899e7ad8735c2d603602accebb1132accd",
+    "app/src/main/java/io/legado/app/data/dao/ReplaceRuleDao.kt": "0da7e4ec6930d910ff43777a59a8c64a3932108fe076c69e9ec4602d8fa16526",
+    "app/src/main/java/io/legado/app/data/entities/BookChapter.kt": "de6610d74e92c7ef24d1b21a224205d07a1a356fcde4985632cccd7d2bb7e27e"
+  },
+  "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+  "baselineApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+  "privateFileChanges": [],
+  "existingDataHashesUnchanged": true,
+  "scratchRemoved": true,
+  "goldenSha256": "3cb818c8164aa2d044d0fb02bf951167eedfa67dc7cafaf66f36c2f46fbb89e8",
+  "harnessUninstalled": true
+}

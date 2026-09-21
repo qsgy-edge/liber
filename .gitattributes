@@ -22,3 +22,10 @@ tool/result_field_oracle/evidence/** text eol=lf
 # The harness serves the corpus out of its assets, so the runner is not shipped;
 # this line keeps the matching-rule reference byte-stable alongside it.
 tool/first_slice/runner.dart text eol=lf
+# The REPLACE-JS-01 corpus, its harness sources and the evidence that pins their
+# bytes are all hashed: the harness serves the corpus out of its assets, the
+# manifest pins the harness sources, and the golden records the corpus hash the
+# comparator refuses to compare without. Without this a Windows checkout with
+# core.autocrlf=true rewrites the LF bytes and every pin stops matching (#41 hit
+# the same gap during merge verification).
+tool/replace_js_oracle/** text eol=lf

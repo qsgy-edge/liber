@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.liber.oracle.replacejs">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+  <application android:label="Liber REPLACE-JS-01 oracle harness" android:debuggable="true" />
+  <instrumentation android:name="io.liber.oracle.replacejs.ReplaceJsOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado @js: replacement oracle (REPLACE-JS-01)" />
+</manifest>
