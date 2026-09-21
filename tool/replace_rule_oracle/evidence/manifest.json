@@ -1,10 +1,11 @@
 {
-  "status": "blocked",
-  "claim": "Preparation plus fresh product/host verification only; no frozen execution or differential pass",
-  "sourceBaseCommit": "51d8973c848caeda7ef447462633bb4155bf7b29",
-  "sourceState": "Uncommitted candidate additions at capture; exact source hashes below bind the committed candidate. Runtime/product lib files unchanged from sourceBaseCommit.",
+  "status": "observed-compared",
+  "claim": "Executed the real frozen reader oracle on the exclusive handset and ran the strict comparator against the product. No phase/platform aggregate, ticket closure or downstream acceptance is claimed.",
+  "ticket": 17,
   "branch": "wayfinder/17",
-  "recordedAt": "2026-09-20T15:17:55.361920+00:00",
+  "sourceBaseCommit": "7eabf885b7ffbb987e707f8b00435ac2b0d359f5",
+  "sourceState": "The comparison and validation ran on the working tree that this commit records. comparison.json's productCommit field is the parent 7eabf885 because the tree was not committed at generation; sourceHashes/candidateSourceSha256 below bind the exact files in this commit.",
+  "recordedAt": "2026-09-21T01:45:00Z",
   "serial": "5615f742",
   "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
@@ -16,284 +17,163 @@
     "app/src/main/java/io/legado/app/data/dao/ReplaceRuleDao.kt": "0da7e4ec6930d910ff43777a59a8c64a3932108fe076c69e9ec4602d8fa16526",
     "app/src/main/java/io/legado/app/utils/RegexExtensions.kt": "4d4128364f7a3e8fb91ecc438ff63b54cc74b107a4074d1a780ac2afd3ad2189"
   },
+  "harnessApk": {
+    "path": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-4/reader-oracle.apk",
+    "sha256": "eb6961dce7d058b8d5a24e3d3c7fe2ca95f2d100282f6dbd4630348a6a5a5529",
+    "note": "Built in the blocked stage from the same committed harness source and the committed fixture (its embedded assets/fixtures.json hash equals the fixture hash). Reused after re-verifying that hash; not rebuilt in this run."
+  },
+  "golden": {
+    "path": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence/device-capture-17-run3/golden.json",
+    "sha256": "554bfade723edc02460c3ec278c1271b3c15082fe252e1a1abb875b6afe54c14",
+    "note": "Byte-identical to the raw observation.json; produced by capture.py only after every row was observed and the preservation/cleanup checks passed."
+  },
+  "captureRuns": [
+    {
+      "stage": "run1",
+      "command": "python tool/replace_rule_oracle/capture.py --apk <build-4> ... (original install --no-incremental)",
+      "result": "blocked",
+      "detail": "INSTALL_FAILED_USER_RESTRICTED; manifest C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence/device-capture-17/manifest.json"
+    },
+    {
+      "stage": "controller-authorized single retry",
+      "command": "adb -s 5615f742 install -r C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-4/reader-oracle.apk",
+      "result": "Success",
+      "detail": "Harness installed; immediately uninstalled to leave the device as found (adb uninstall -> Success)."
+    },
+    {
+      "stage": "run2",
+      "command": "python tool/replace_rule_oracle/capture.py --apk <build-4> ... (install -r)",
+      "result": "blocked",
+      "detail": "INSTALL_FAILED_USER_RESTRICTED again (sessions 1891217242 and 2065607389); manifest C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence/device-capture-17-run2/manifest.json. capture.py was then corrected to adb's incremental install form."
+    },
+    {
+      "stage": "run3",
+      "command": "python tool/replace_rule_oracle/capture.py --serial 5615f742 --apk C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-4/reader-oracle.apk --frozen-source D:/GithubRepositories/Android/legado --output C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence/device-capture-17-run3",
+      "result": "observed",
+      "detail": "Operator held the handset awake and confirmed the MIUI install prompt. All 15 rows observed; scratchRemoved true; existingDataHashesUnchanged true; harness uninstalled (Success)."
+    }
+  ],
+  "comparison": {
+    "path": "tool/replace_rule_oracle/evidence/comparison.json",
+    "sha256": "558aeab80f5805b152ae7a31523ac4bf6e75c494ed8cf52a8a6e5812ed585d06",
+    "counts": {
+      "pass": 13,
+      "fail": 0,
+      "notCompared": 2,
+      "not-run": 0
+    },
+    "complete": false,
+    "notComparedRows": ["timeout", "refusal"],
+    "comparisonBoundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:177-198); title observations use BookChapter.getDisplayTitle",
+    "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+    "goldenSha256": "554bfade723edc02460c3ec278c1271b3c15082fe252e1a1abb875b6afe54c14",
+    "exitCode": 0,
+    "note": "Exit 0 means compared with no undeclared failures; the two declared policy gaps keep complete=false. No normalization or input edit was applied."
+  },
+  "differentialCounts": {
+    "pass": 13,
+    "fail": 0,
+    "notCompared": 2,
+    "not-run": 0
+  },
+  "timeoutPolicy": "The frozen short fixture DID trip the deadline (timeoutObserved=true, 210 ms, rule slow disabled, name + stack trace injected). No input amplification. The product's approved disable-and-keep-text behavior still differs, so the row stays explicit notCompared; frozen stack trace/restart remains an ADR 0011 divergence.",
+  "validation": {
+    "focusedTests": {
+      "command": "flutter test test/replace_rule_fixture_test.dart test/replace_rule_oracle_compare_test.dart test/content_processing_test.dart test/java_regex_test.dart test/online_reader_test.dart --reporter json",
+      "exitCode": 0,
+      "failed": 0
+    },
+    "fullProductTests": {
+      "command": "flutter test test --reporter json",
+      "passed": 360,
+      "failed": 0,
+      "previousOnParent": 357
+    },
+    "analysis": {
+      "command": "dart analyze lib test integration_test tool",
+      "result": "No issues found!"
+    },
+    "runtime": {
+      "command": "python tool/ci_runtime.py windows x86_64-pc-windows-msvc",
+      "rows": 16,
+      "failed": 0
+    },
+    "hostSurfaceGate": {
+      "command": "dart run tool/host_surface_gate.dart build/windows/x64/runner/Debug/fjs.dll",
+      "checksPassed": 68,
+      "checksTotal": 68
+    }
+  },
+  "approvedLibrary": {
+    "source": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll",
+    "worktreeCopy": "build/windows/x64/runner/Debug/fjs.dll",
+    "sha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+    "note": "Source and worktree copy hashes verified equal; no Rust or generated bridge change."
+  },
+  "changedProductSourceSha256": {
+    "lib/source/content_processing.dart": "43e2f638037edc95c431ab8d88bf95ab78f55aa4de063744cb49e3df280c633b",
+    "test/content_processing_test.dart": "f2415012c551b4f01a2fede77ace678137ad19cae8f5c5ce78ff6d973a0000f7",
+    "tool/replace_rule_oracle/capture.py": "03598493cdd626b4a77295cf2358613521b78824055eac5e5c9a63494b042ba7",
+    "tool/replace_rule_oracle/README.md": "390308ef080df4b6a2a39cb92522feed8caa7eec5704f71a81ca6a1bfa0b06e9",
+    "docs/compatibility/book-source-differential-contract.md": "1040754b5433df411cb722a445be7a9b0fef57c947329d7020c3d3de7876d973"
+  },
   "candidateSourceSha256": {
     "tool/replace_rule_oracle/AndroidManifest.xml": "3cc7a8dcb5d467df6233077c7deab35a81217a5f542472a3aef29f5143b4134c",
     "tool/replace_rule_oracle/build.ps1": "ea65f06977fda3a1148fdc3a5a127c7b5c4d8f496160f09ab81e1834c7246970",
-    "tool/replace_rule_oracle/capture.py": "c8599bfe46f06e311c310800fd0352c8badd0b431a6dacb3c7b0b08d1a80c32a",
+    "tool/replace_rule_oracle/capture.py": "03598493cdd626b4a77295cf2358613521b78824055eac5e5c9a63494b042ba7",
     "tool/replace_rule_oracle/compare.dart": "771afedeb3f6751631c130fbff6137ccae7236c1235ae3899aa06d89d754b0e0",
     "tool/replace_rule_oracle/fixtures.json": "61983626e9af6a9095dafd474e91bf5994e437f08e0aa373261bf73179cd7968",
     "tool/replace_rule_oracle/ReaderOracle.java": "d2c41b1499175a0eba48cf1411bfeca73d120f265e135dd7f39fdae221d7b53d",
-    "tool/replace_rule_oracle/README.md": "55c3ac8b8ccf453a238070ffaf3c8355d41439f4277cb3e56dcb298bdee7ee4f",
     "test/replace_rule_fixture_test.dart": "78a06955e5e327b206c30f0ec7e95a82a4058c4ac360c349f01439f92cca1053",
-    "test/replace_rule_oracle_compare_test.dart": "70e98410780d1036d206637d68146ce0443ef5f25ef6f866a05884d97626b7f8",
-    "docs/compatibility/book-source-differential-contract.md": "596db6e095927c9ea3e7ea46fc9446365f647e93c571fef6b2622324b1da2b4a"
+    "test/replace_rule_oracle_compare_test.dart": "70e98410780d1036d206637d68146ce0443ef5f25ef6f866a05884d97626b7f8"
   },
-  "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
-  "approvedLibrarySource": "D:/GithubRepositories/Flutter/liber/build/windows/x64/runner/Debug/fjs.dll",
-  "librarySourceSha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
-  "frbCompatibility": "Native initialization, conversion, JS, full tests and every runtime command passed; no Rust or generated bridge changes",
-  "attemptedHarnessApk": {
-    "path": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-2/reader-oracle.apk",
-    "sha256": "05724f771890320b346fcc8b075a6b18dd47c949afc6b6e431b0624335303753",
-    "note": "Built before fixture metadata refresh and scratch preference collision guard. Never installed/executed; no frozen output."
-  },
-  "finalHarnessApk": {
-    "path": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-4/reader-oracle.apk",
-    "sha256": "eb6961dce7d058b8d5a24e3d3c7fe2ca95f2d100282f6dbd4630348a6a5a5529",
-    "status": "built, not installed, not executed"
-  },
-  "golden": null,
-  "goldenSha256": null,
-  "deviceAttempts": [
-    {
-      "command": [
-        "adb",
-        "-s",
-        "5615f742",
-        "install",
-        "-r",
-        "C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-2/reader-oracle.apk"
-      ],
-      "exitCode": 1,
-      "result": "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user",
-      "attempts": 2,
-      "retryAuthorization": "Controller authorized a single retry; after repeat rejection ordered all device operations stopped. Raw retry log retained.",
-      "logNote": "Committed text copy has line endings/terminal trailing blank lines normalized; exact raw bytes and raw hash remain in rawArtifactDirectory/install-retry.log. No result text changed."
-    }
-  ],
-  "buildCommand": [
-    "powershell.exe",
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    "tool/replace_rule_oracle/build.ps1",
-    "-OutputDirectory",
-    "C:/Users/17945/AppData/Local/Temp/liber-17-reader-build-4",
-    "-JavaHome",
-    "C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8"
-  ],
-  "buildExitCode": 0,
-  "earlyBuildFailures": [
-    "build-1: javac GBK default rejected UTF-8 ideographic spaces; fixed explicit -encoding UTF-8.",
-    "build-2: javac/d8/package/sign succeeded; PowerShell Get-FileHash unavailable. Fixed using .NET SHA256. Final build exit 0."
-  ],
-  "commands": [
-    {
-      "name": "analysis",
-      "command": [
-        "cmd",
-        "/c",
-        "dart",
-        "analyze",
-        "lib",
-        "test",
-        "integration_test",
-        "tool"
-      ],
-      "exitCode": 0,
-      "seconds": 35.9
-    },
-    {
-      "name": "full-tests",
-      "command": [
-        "cmd",
-        "/c",
-        "flutter",
-        "test",
-        "test",
-        "--reporter",
-        "json"
-      ],
-      "exitCode": 0,
-      "seconds": 28.59
-    },
-    {
-      "name": "runtime",
-      "command": [
-        "python",
-        "tool/ci_runtime.py",
-        "windows",
-        "x86_64-pc-windows-msvc"
-      ],
-      "exitCode": 0,
-      "seconds": 104.37
-    },
-    {
-      "name": "analysis-final",
-      "command": [
-        "cmd",
-        "/c",
-        "dart",
-        "analyze",
-        "lib",
-        "test",
-        "integration_test",
-        "tool"
-      ],
-      "exitCode": 0,
-      "seconds": 8.69
-    },
-    {
-      "name": "compare-final",
-      "command": [
-        "cmd",
-        "/c",
-        "dart",
-        "run",
-        "tool/replace_rule_oracle/compare.dart",
-        "D:\\GithubRepositories\\Flutter\\liber-17\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
-        "-",
-        "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-17-reader-evidence\\comparison.json"
-      ],
-      "exitCode": 2,
-      "seconds": 6.25
-    }
-  ],
-  "focused": {
-    "command": "flutter test test/replace_rule_fixture_test.dart test/replace_rule_oracle_compare_test.dart test/content_processing_test.dart test/java_regex_test.dart test/online_reader_test.dart --reporter json",
-    "exitCode": 0,
-    "passed": 71,
-    "failed": 0
-  },
-  "finalComparatorTests": {
-    "command": "flutter test test/replace_rule_fixture_test.dart test/replace_rule_oracle_compare_test.dart --reporter json",
-    "exitCode": 0,
-    "passed": 10,
-    "failed": 0
-  },
-  "fullProductTests": {
-    "passed": 357,
-    "failed": 0
-  },
-  "analysis": "Final: no issues found. Initial analysis had one null-aware-elements info, corrected then rerun.",
-  "runtimeRows": [
-    {
-      "name": "runtime_gate",
-      "exitCode": 0
-    },
-    {
-      "name": "runtime_host_integration",
-      "exitCode": 0
-    },
-    {
-      "name": "host_surface_gate",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_lifecycle_regression",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_loader_regression",
-      "exitCode": 0
-    },
-    {
-      "name": "scoped_runtime_gate",
-      "exitCode": 0
-    },
-    {
-      "name": "nested_runtime_gate",
-      "exitCode": 0
-    },
-    {
-      "name": "html-adapter",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-queued-close",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-throw-start",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-throw-cancel",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-same-runtime-nested",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-same-runtime-queued-release",
-      "exitCode": 0
-    },
-    {
-      "name": "broker_gate_regression-same-runtime-cancel",
-      "exitCode": 0
-    },
-    {
-      "name": "state-differential",
-      "exitCode": 0
-    },
-    {
-      "name": "nested-differential",
-      "exitCode": 0
-    }
-  ],
-  "hostChecks": {
-    "passed": 68,
-    "total": 68
-  },
-  "differentialCounts": {
-    "pass": 0,
-    "fail": 0,
-    "notCompared": 0,
-    "not-run": 15
-  },
-  "timeoutPolicy": "Explicit notCompared for frozen stack trace/restart; frozen timeout not-run. Product disabled slow. Prepared input unchanged.",
-  "captureScriptValidation": [
-    "Python compile() passed",
-    "python tool/replace_rule_oracle/capture.py --help exited 0; no device invocation"
-  ],
-  "rawArtifactDirectory": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence",
+  "rawArtifactDirectory": "C:/Users/17945/AppData/Local/Temp/liber-17-reader-evidence/device-capture-17-run3",
   "rawArtifactsSha256": {
-    "analysis-final.log": "8f27fafb590b8629a3d0203af805480bb592d7465f68e1a0d63a04634b0c786e",
-    "analysis.log": "8fe4cb0ec0bdd8eb2959838dda38f813611418c263a6734dffc2e6774fb7a439",
-    "build-command.json": "6650dd232a4dbc8029d2b9806f17c5761f6f914c187f5502355dc50dba4a83a8",
-    "build-final.log": "5d45602b28d716fe0fcc624d104eeadd747d833c381b73a675d3a017856409fb",
-    "capture-help.log": "df08c488f025216a398a5ff59066c4d730b2e1d85ccbc598d1f8c73ac87ca58f",
-    "comparator-tests-final.log": "ffbcf06dbefc1adab8ff77f66d4ad5d62a91635746e80506432d92a2889f652d",
-    "compare-final.log": "e8f4055dd4be0524d7845e5f28c699d9f0838a936a4d1499180effd84fbf8e8f",
-    "compare.log": "e8f4055dd4be0524d7845e5f28c699d9f0838a936a4d1499180effd84fbf8e8f",
-    "comparison.json": "fd116f61ba9aa735acfd953b1b4ff992186f000ec315ccf2ed3655e18c66ab1e",
-    "final-validation.json": "120d22a529a0782a11828e3ccd2232eb80493947ed4778ca5338189db691760e",
-    "focused.log": "a182c79f0d0af34996e76edd82b84ed1b42256764182d18ede0226ed47709e2f",
-    "full-tests.log": "b56487dc6241d4c678ca851edb0058b91ccac2f4346dd8ed254d4e30daa67dc0",
-    "install-retry.log": "7cdd46d1baead7988e024393617a98930ea9b3e31d56ca55eb6967120e6222d7",
-    "runtime.log": "c7877682ed3320810bd1d75c034fb89f71e95fd0ed1714e202a35b54a8463334",
-    "validation-runner.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "validation.json": "7fd801d6952d190c5bf2daa2d789b49123e288c079c4dd59e0f4b466a636a7ec"
+    "golden.json": "554bfade723edc02460c3ec278c1271b3c15082fe252e1a1abb875b6afe54c14",
+    "observation.json": "554bfade723edc02460c3ec278c1271b3c15082fe252e1a1abb875b6afe54c14",
+    "manifest.json": "3685f0a3fefc12c7aa70ab011bdefe6cb3f3790bdfce7714ca7d7f575fdad067",
+    "instrumentation.log": "f05623ee89ccf0698123f47ad40d8b73cc5f8d61e03fd3342feb0d384e3af2ba",
+    "install.log": "480a4ca1707037e4ff4dc566ac453d539f9574fde7c06a4d8573bcec48d8072a",
+    "remove-harness.log": "df5f678c3e897e8db27b8c5de5ae1938a25aa084aeee89a1a44958f104316b3d",
+    "private-before.log": "e6de3f60125268db3741a9f4dd03877b15423260570132654e6b3589243cdb4e",
+    "private-after.log": "e6de3f60125268db3741a9f4dd03877b15423260570132654e6b3589243cdb4e",
+    "fingerprint.log": "4ace3b5ca7b818f669f4f7831a71bc431fc0eeb04951eb4cd97de9747e3f78d4",
+    "baseline-path.log": "78e126ac120071fa7ccc285df0667a54b24a0f31e509d90b2bec5f0d7e3a3958",
+    "source-head.log": "a81d859717ce64e034a3cc99e28390ae2985e94e4c59c80da927c26474535dff",
+    "frozen.apk": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+    "comparison-final.json": "558aeab80f5805b152ae7a31523ac4bf6e75c494ed8cf52a8a6e5812ed585d06"
   },
   "trackedArtifactSha256": {
-    "analysis-final.log": "8f27fafb590b8629a3d0203af805480bb592d7465f68e1a0d63a04634b0c786e",
-    "build-final.log": "5d45602b28d716fe0fcc624d104eeadd747d833c381b73a675d3a017856409fb",
-    "comparison.json": "fd116f61ba9aa735acfd953b1b4ff992186f000ec315ccf2ed3655e18c66ab1e",
+    "comparison.json": "558aeab80f5805b152ae7a31523ac4bf6e75c494ed8cf52a8a6e5812ed585d06",
+    "runtime-manifest.json": "75b996503d5ca5496c34272f7986b640484094ea9037177f742daa0ce50c3e87",
     "host_surface_gate.log": "64c908849eb8e054f265bdfb6685b9223922e9975aa27f7dbac0d42e83d32389",
+    "analysis-final.log": "8f27fafb590b8629a3d0203af805480bb592d7465f68e1a0d63a04634b0c786e",
+    "install-run3.log": "480a4ca1707037e4ff4dc566ac453d539f9574fde7c06a4d8573bcec48d8072a",
+    "device-cleanup.log": "6e7f9fcc60eaabdcf15ac904a67f1ab04cd05e75bc5b35ddec51fe02e4998ad0",
     "install-retry.log": "a9692ba0c6c895390e365de85509c634ab64b81ec0e9647df67d01b28ecce108",
-    "runtime-manifest.json": "6594367bbcb7489ac920c8109e7293c94a992bb331b5eb95971102bb53cebc1e"
+    "build-final.log": "5d45602b28d716fe0fcc624d104eeadd747d833c381b73a675d3a017856409fb"
   },
   "resources": {
     "deviceHarnessInstalled": false,
-    "instrumentationStarted": false,
+    "instrumentationStarted": true,
     "ownedServerStarted": false,
     "adbForwardCreated": false,
     "adbReverseCreated": false,
     "deviceWorkReleased": true,
     "baselineAppChanged": false,
+    "baselineDataChanged": false,
     "frozenSourceChanged": false,
     "nestedOracleChanged": false,
-    "productChanged": false
+    "unrelatedProductChanged": false,
+    "securitySettingsChanged": false,
+    "shellKeyEventsSent": false
   },
   "residualGaps": [
-    "All 15 frozen observations and strict differential results remain not-run due to device install policy.",
-    "Harness runtime, reflection entry invocation, scratch isolation and cleanup are compile-only/unverified.",
-    "No frozen timeout/restart was observed; the unchanged short input may not trigger Android timeout.",
-    "Expected final-shaping difference needs actual frozen execution and controller attribution before product edits.",
-    "ADR 0010 conversion and unsupported Java regex/runtime policy divergences remain explicit.",
-    "Worker MCP tools unavailable; bounded CLI verification used. Controller reproduction/driven review pending.",
-    "No phase/platform aggregate, ticket completion, #49 acceptance or local reader acceptance is claimed."
+    "timeout and refusal remain explicit notCompared by policy; frozen restart/stack-trace behavior is an ADR 0011 divergence, not a normalized pass.",
+    "The harness runs the reader-processing entry points only; it does not exercise the product's reader widget, TOC list or progress-offset persistence (driven review belongs to the controller).",
+    "The fixture does not cover a literal \"null\" body; the product keeps its own guard there while the frozen code would still shape it.",
+    "ADR 0010 conversion and Java-regex refusal divergences remain explicit; this corpus's two conversion rows matched exactly.",
+    "MIUI requires operator confirmation per install on this handset; automated re-runs need the operator present.",
+    "No phase/platform aggregate, ticket closure, #49 acceptance or local reader acceptance is claimed."
   ]
 }

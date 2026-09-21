@@ -238,19 +238,22 @@ refusal behavior. Its comparison boundary is the complete content returned by
 shaping loop, with `BookChapter.getDisplayTitle` compared separately. The corpus contains inputs and frozen source hashes, with no hand-authored expected
 output. A disposable instrumentation entry and strict comparator now live in
 `tool/replace_rule_oracle/`; they call the actual frozen reader and Room selection
-path, with complete final text, title and selection observations. The approved
-handset rejected harness installation with `INSTALL_FAILED_USER_RESTRICTED`,
-including the controller-authorized single retry. No instrumentation executed and
-no golden exists: all 15 frozen rows remain `not-run`. The product-only run is
-recorded separately and exits nonzero for missing frozen evidence. See that
-directory's README and `evidence/manifest.json` for build identity, raw commands,
-validation and unverified runtime isolation. #17 owns this remaining execution;
-closed #38 and completed #54 do not supply it. A host reimplementation cannot
-substitute for frozen execution. Timeout's frozen restart and stack-trace content
-side effects remain a named `notCompared` observation rather than a normalized
-result. The original short timeout input may not trigger the frozen deadline;
-that coverage gap must remain explicit. #49's JS implementation is integrated,
-while its separate frozen acceptance stays outside this corpus.
+path, with complete final text, title and selection observations. The disposable
+harness executed on the approved handset (serial `5615f742`, frozen APK
+`cc99040c…`, frozen source `14dd2494…`) and produced golden `554bfade…`: all 15
+rows are observed by the real frozen reader, with storage isolation and cleanup
+verified. The strict comparator reports 13 `pass`, 0 `fail`, 2 `notCompared`
+(`timeout`, `refusal`); the executed result and per-row differences are in
+`tool/replace_rule_oracle/evidence/comparison.json` and `manifest.json`. The
+product content path was changed to reproduce the frozen final paragraph shaping
+(cutset, dropped blank paragraphs, `ReadBookConfig.paragraphIndent`,
+`includeTitle` first-paragraph exception); the Android-8-only `\u00A0` rewrite is
+not reproduced because the pinned device runs Android 17. Timeout's frozen
+restart and stack-trace content side effects remain a named `notCompared`
+observation rather than a normalized result, and `refusal` stays explicit for the
+named possessive-quantifier refusal. A host reimplementation cannot substitute
+for frozen execution. #49's JS implementation is integrated, while its separate
+frozen acceptance stays outside this corpus.
 
 ## Verdict Aggregation
 

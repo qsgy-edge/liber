@@ -23,6 +23,19 @@
 /// (`ChapterListAdapter.kt:78`), which defaults to false and is false in the
 /// operator's own configuration, so the frozen default is a list of raw titles.
 ///
+/// The frozen `getContent` ends by reshaping the text, and that shaping is the
+/// boundary #17 pins: split on `\n`, trim every paragraph from both ends of the
+/// cutset `code <= 0x20 || it == '　'`, drop empty paragraphs, and prefix each
+/// remaining one with `ReadBookConfig.paragraphIndent`
+/// (`ContentProcessor.kt:185-201`). The frozen default of that setting is two
+/// ideographic spaces (`ReadBookConfig.kt:532`); [content] uses that constant
+/// until a settings ticket owns the reader's indent. The frozen
+/// `if (contents.isEmpty() && includeTitle)` condition leaves the first
+/// paragraph unindented when `includeTitle` is true. The frozen `isAndroid8`
+/// branch rewriting `\u00A0` to a space (`ContentProcessor.kt:182-184`) is not
+/// reproduced: the pinned capture device runs Android 17, where `isAndroid8` is
+/// false, so that rewrite is not this release's observed behavior.
+///
 /// The `ContentHelp.reSegment` stage (`ContentProcessor.kt:131-133`, the
 /// per-book `Book.getReSegment()` switch) is ported in `content_re_segment.dart`
 /// and runs in the frozen position — after the duplicated-title removal, before
@@ -39,14 +52,6 @@
 ///   once per regex match through the approved source runtime boundary; the
 ///   frozen runtime exposes the complete match as `result`, and the returned
 ///   value is inserted literally.
-/// - the frozen reader's final paragraph shaping (trim the cutset `<= 0x20` and
-///   `　`, drop empty lines, prefix `ReadBookConfig.paragraphIndent`) is the
-///   reader's rendering, not this transform: the product's reader draws its own
-///   paragraphs. It is a *different* mechanism from the source content stage's
-///   own shaping (`BookContent.kt:135-142`: trim every line, run
-///   `ruleContent.replaceRegex`, prefix every line with a hard-coded `　　` when
-///   the source declares that field), which the HTML pipeline applies to the
-///   content stage's final text before it reaches the reader.
 /// - the frozen `removeSameTitleCache` guard (`ContentProcessor.kt:126-128`)
 ///   depends on the retired on-disk chapter files, which this product has none
 ///   of, so the duplicated-title removal always runs.
@@ -260,12 +265,14 @@ class ContentProcessing {
   /// The chapter body as the frozen reader reads it
   /// (`ContentProcessor.getContent(..., includeTitle = false)`), in the frozen
   /// order: the duplicate leading title, the optional re-segmentation, the
-  /// conversion, the per-line trim the replace stage does, then the content
-  /// rules.
+  /// conversion, the per-line trim the replace stage does, the content rules,
+  /// and finally the frozen paragraph shaping whose joined result is the frozen
+  /// `BookContent.toString()` the #17 boundary pins.
   ///
   /// [includeTitle] is the frozen `includeTitle` argument: when true, the display
   /// title is prepended as its own line, which is where the frozen content stage
-  /// puts it before the reader splits the body into paragraphs.
+  /// puts it before the reader splits the body into paragraphs, and the shaping
+  /// then leaves that first paragraph unindented.
   Future<String> content(
     String raw, {
     required String chapterTitle,
@@ -295,7 +302,7 @@ class ContentProcessing {
     if (includeTitle) {
       text = '${await displayTitle(chapterTitle)}\n$text';
     }
-    return text;
+    return _shapeParagraphs(text, includeTitle: includeTitle);
   }
 
   Future<String> _titleWithRules(
@@ -577,6 +584,47 @@ class ContentProcessing {
       receive.close();
     }
   }
+}
+
+/// `ReadBookConfig.paragraphIndent`'s frozen default (`ReadBookConfig.kt:532`).
+/// The reader's indent is a reading setting; until a settings ticket owns it,
+/// [ContentProcessing.content] uses this constant, the value the pinned oracle
+/// captures.
+const _paragraphIndent = '　　';
+
+/// The frozen `ContentProcessor.kt:185-201` paragraph shaping, whose result is
+/// the frozen `BookContent.toString()`: paragraphs joined by newlines. Each
+/// paragraph is trimmed of the frozen cutset `code <= 0x20 || it == '　'` — not
+/// Dart's wider `String.trim` — empty paragraphs are dropped, and every
+/// remaining paragraph is indented except the first when [includeTitle] makes it
+/// the title.
+String _shapeParagraphs(String text, {required bool includeTitle}) {
+  final paragraphs = <String>[];
+  for (final line in text.split('\n')) {
+    final paragraph = _trimFrozen(line);
+    if (paragraph.isEmpty) continue;
+    paragraphs.add(
+      paragraphs.isEmpty && includeTitle
+          ? paragraph
+          : '$_paragraphIndent$paragraph',
+    );
+  }
+  return paragraphs.join('\n');
+}
+
+/// The frozen `str.trim { it.code <= 0x20 || it == '　' }`: Java's control/space
+/// range plus the ideographic space, both ends.
+String _trimFrozen(String text) {
+  bool trimmed(int codeUnit) => codeUnit <= 0x20 || codeUnit == 0x3000;
+  var start = 0;
+  var end = text.length;
+  while (start < end && trimmed(text.codeUnitAt(start))) {
+    start++;
+  }
+  while (end > start && trimmed(text.codeUnitAt(end - 1))) {
+    end--;
+  }
+  return text.substring(start, end);
 }
 
 class _JsMatches {

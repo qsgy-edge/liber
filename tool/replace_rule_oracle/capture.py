@@ -75,7 +75,10 @@ def main():
         # Only hash lists leave the device; no user content is copied.
         snapshot = "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
         before = adb('private-before', 'shell', 'run-as', 'io.legado.app.debug', 'sh', '-c', snapshot)
-        installed_result = adb('install', 'install', '--no-incremental', str(args.apk), checked=False)
+        # `-r` is adb's incremental install, the only form MIUI accepts on this
+        # handset; the streamed `--no-incremental` install is rejected as
+        # INSTALL_FAILED_USER_RESTRICTED even with USB installation enabled.
+        installed_result = adb('install', 'install', '-r', str(args.apk), checked=False)
         if installed_result.returncode:
             manifest['status'] = 'blocked'
             manifest['blocker'] = installed_result.stderr.decode(errors='replace')
