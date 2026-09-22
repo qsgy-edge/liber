@@ -5,6 +5,7 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
+import 'package:liber/source/source_http_uri.dart';
 
 // Exercises the JavaScript host surface a Book Source sees: source accessors,
 // rule state, cookies, cache, logging, and the encoding/utility family. Every
@@ -55,6 +56,7 @@ const expectedMembers = <String>[
   'source.getName',
   'source.getTag',
   'source.getVariable',
+  'source.setVariable',
   'source.put',
   'source.get',
   'source.bookSourceUrl',
@@ -63,6 +65,9 @@ const expectedMembers = <String>[
   'java.connect',
   'java.ajax',
   'java.ajaxAll',
+  'java.getResponse',
+  'java.getStrResponse',
+  'java.initUrl',
   'java.get',
   'java.head',
   'java.post',
@@ -236,6 +241,44 @@ Future<void> main(List<String> args) async {
       '${jsonEncode('{"X-Contract":"yes"}')}).body()',
     );
     checks['connectHeaderString'] = connectedHeader == 'yes';
+    // `source.getVariable`/`setVariable` are the frozen per-source variable
+    // (`BaseSource.kt:200-212`): the `sourceVariable_<sourceKey>` entry, which a
+    // null deletes.
+    final variableProbe = await run(
+      'source.setVariable(JSON.stringify({token: "T1"})); '
+      'const set = source.getVariable(); source.setVariable(null); '
+      'JSON.stringify([set, source.getVariable()])',
+    );
+    checks['sourceVariableRoundTrip'] =
+        variableProbe == jsonEncode([jsonEncode({'token': 'T1'}), '']);
+    // The stage request surface belongs to a `loginCheckJs` hook (#59): a rule
+    // script has no stage request, so each member refuses by name instead of
+    // failing as a `TypeError`.
+    for (final member in [
+      'java.getResponse',
+      'java.getStrResponse',
+      'java.initUrl',
+    ]) {
+      SourceScriptError? failure;
+      try {
+        await run('$member()');
+      } on SourceScriptError catch (error) {
+        failure = error;
+      }
+      checks['${member}RefusedWithoutHook'] =
+          failure?.category == 'policy' && failure!.message.contains(member);
+    }
+    // The `getStrResponse(jsStr, …)` form drives the frozen WebView path and has
+    // no used-source call site, so it refuses by name too.
+    SourceScriptError? scriptForm;
+    try {
+      await run('java.getStrResponse("page.js")');
+    } on SourceScriptError catch (error) {
+      scriptForm = error;
+    }
+    checks['getStrResponseScriptFormRefusedByName'] =
+        scriptForm?.category == 'policy' &&
+        scriptForm!.message.contains('java.getStrResponse(jsStr, …)');
     final bookProbe = await run(
       'java.put("bookName", "stored-book"); JSON.stringify([book.name, book.bookUrl, java.get("bookName")])',
       book: {'name': '契约书', 'bookUrl': '$origin/book'},
@@ -327,6 +370,15 @@ Future<void> main(List<String> args) async {
             ) ==
             'yes' &&
         requests.last.startsWith('GET /headers');
+    // `java.ajax` builds an `AnalyzeUrl` from its URL (`JsExtensions.kt:91-105`),
+    // so a `,{…}` option tail applies to the request it makes.
+    checks['ajaxOptionTailReachesTheWire'] =
+        await run(
+              'java.ajax(${jsonEncode('$origin/echo')} + "," + '
+              'JSON.stringify({method: "POST", body: "x=1"}))',
+            ) ==
+            'none' &&
+        requests.last == 'POST /echo';
 
     // 4. Cache round-trips, typed reads and deletion.
     final cacheProbe = await run(
@@ -542,6 +594,47 @@ Future<void> main(List<String> args) async {
     final hits = await pipeline.search('甲');
     checks['cookieInUrlRuleRan'] = requests.last.startsWith('GET /search?q=');
     checks['cookieInUrlRuleParsed'] = hits.single.title == '书';
+
+    // 12. The stage request surface a `loginCheckJs` hook owns: the members
+    //     answer the stage's own request, and a response header is readable on
+    //     the response the hook returns.
+    final stageResponse = SourceStageResponse(
+      body: 'stage body',
+      url: SourceHttpUri.parse('$origin/stage'),
+      statusCode: 201,
+      headers: const {
+        'x-stage': ['yes'],
+      },
+    );
+    var resends = 0;
+    final hooked = await runtime.evaluateLoginCheck(
+      script:
+          'cache.put("hook-stage", java.getStrResponse().headers().get("x-stage")); '
+          'java.getResponse()',
+      input: {
+        'sourceKey': origin,
+        'source': {'bookSourceUrl': origin, 'bookSourceName': '契约源'},
+        'result': {
+          'statusCode': 200,
+          'headers': const <String, List<String>>{},
+          'body': 'gate',
+          'url': '$origin/search',
+        },
+      },
+      stage: SourceStageRequest(
+        resend: () async {
+          resends++;
+          return stageResponse;
+        },
+        reanalyze: () async {},
+      ),
+      timeout: const Duration(seconds: 15),
+    );
+    checks['loginCheckStageRequestSurface'] =
+        resends == 2 &&
+        hooked.body == 'stage body' &&
+        hooked.statusCode == 201 &&
+        await runtime.hostState.entry(origin, 'hook-stage') == 'yes';
 
     final pass = checks.values.every((value) => value);
     stdout.writeln(
