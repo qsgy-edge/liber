@@ -59,6 +59,13 @@ class ShelfEntry {
   /// The space-local Book Source key; empty for a book no source resolves.
   String get sourceRef => book.sourceRef ?? '';
 
+  /// Whether the Book Source this book resolved is gone from the space (#53):
+  /// the book stays on the shelf with everything it had — its chapters, its
+  /// position, its denormalized origin name, which D2 keeps for exactly this —
+  /// and nothing opens it until a source is imported under the same URL again,
+  /// when the natural key resolves it once more.
+  bool get sourceMissing => sourceRef.isNotEmpty && source == null;
+
   /// The source object the rule pipeline takes.
   Map<String, dynamic> get sourceJson =>
       source == null ? const <String, dynamic>{} : bookSourceJson(source!);
@@ -128,7 +135,11 @@ class ShelfService {
       ),
   ];
 
-  /// The online shelf: the shelved books a source can open, in shelf order.
+  /// The online shelf: the shelved network books in shelf order, each with
+  /// whether a source still resolves it. A book whose source row was deleted
+  /// (#53) stays in this list, marked by [ShelfEntry.sourceMissing]: the shelf
+  /// keeps showing the record it has instead of dropping the row, which is what
+  /// lets the same URL resolve it again.
   Future<List<ShelfEntry>> onlineShelf() async =>
       _entries(await store.shelf(kind: 'network', hasSource: true));
 
@@ -247,6 +258,73 @@ class ShelfService {
       updatedAt: Value(DateTime.now().toUtc().millisecondsSinceEpoch),
     ),
   );
+
+  // --- Sources -------------------------------------------------------------
+
+  /// Deletes a Book Source and every row this space keeps for it: its host
+  /// surface — cache entries, variables, the cookies it wrote and the TLS
+  /// exceptions the user confirmed for it (#36, #53) — and then the `sources`
+  /// row itself, in one store transaction.
+  ///
+  /// The two writes are one user-visible step: the action either completes with
+  /// both done or fails with neither, so the half-deleted state (the host rows
+  /// reclaimed while the source row is still there) is not something a
+  /// completed delete can leave behind.
+  ///
+  /// The books that resolved this URL stay on the shelf and their progress
+  /// stays with them (D2), and [ShelfEntry.sourceMissing] marks them until a
+  /// source with that URL exists again. Removing them instead would cost the
+  /// user those positions, and the baseline keeps them too.
+  Future<void> deleteSource(String sourceRef) async {
+    if (await store.sourceByUrl(sourceRef) == null) {
+      throw StateError('书源不存在：$sourceRef');
+    }
+    await store.transaction(() async {
+      await hostState.deleteSource(sourceRef);
+      await store.deleteSource(sourceRef);
+    });
+  }
+
+  /// Writes a Book Source under [newUrl], reclaiming what its old URL owned.
+  ///
+  /// A source's row identity *is* its `bookSourceUrl` (D7), so an edit is the old
+  /// URL's host surface going (#36's seam, TLS exceptions included) and the
+  /// source written under the new URL through the existing write path — the
+  /// imported object's own `bookSourceUrl` field included, because that object
+  /// is what the pipeline is handed (D7). One store transaction, like
+  /// [deleteSource].
+  ///
+  /// The books that resolved the old URL are not rewritten to the new one: they
+  /// stay on the shelf marked by [ShelfEntry.sourceMissing]. Rewriting them
+  /// would rebind a book to a source that never served it and could collide with
+  /// the natural key `(sourceRef, sourceBookUrl)` of a book the new URL's source
+  /// already has.
+  ///
+  /// A URL is a key here, not a fetch target: an empty one is refused, a URL
+  /// another source already holds is refused instead of overwriting that source,
+  /// and an edit that does not change the URL writes nothing.
+  Future<void> repointSource(String sourceRef, String newUrl) async {
+    final target = newUrl.trim();
+    if (target.isEmpty) {
+      throw ArgumentError.value(newUrl, 'newUrl', '书源 URL 不能为空');
+    }
+    if (target == sourceRef) return;
+    final source = await store.sourceByUrl(sourceRef);
+    if (source == null) throw StateError('书源不存在：$sourceRef');
+    if (await store.sourceByUrl(target) != null) {
+      throw StateError('已存在同一 URL 的书源：$target');
+    }
+    final data = {...bookSourceJson(source), 'bookSourceUrl': target};
+    await store.transaction(() async {
+      await hostState.deleteSource(sourceRef);
+      // `fallbackId` keeps a source that arrived without a URL of its own keyed
+      // by the URL the user just gave it. `putSourceJson` derives the typed
+      // columns from [data], so the row under the new URL keeps the name, the
+      // groups and the flags the old row had.
+      await store.putSourceJson(data, fallbackId: target);
+      await store.deleteSource(sourceRef);
+    });
+  }
 
   // --- Assembly ------------------------------------------------------------
 
