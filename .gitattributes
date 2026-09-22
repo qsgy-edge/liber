@@ -38,3 +38,9 @@ tool/webview_oracle/** text eol=lf
 # ... except the harness's own binary resources, which are not lines at all.
 tool/webview_oracle/**/*.png -text
 tool/webview_oracle/**/*.ico -text
+
+# The JSONPath probe's transcript is the recorded evidence every JSONPath comment
+# and test expectation cites, and `jars.sha256` is compared by `run.sh` against
+# the jars it downloads; without this a Windows checkout with core.autocrlf=true
+# rewrites the LF bytes of both (#44).
+tool/jsonpath_probe/** text eol=lf
