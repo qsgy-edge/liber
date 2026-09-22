@@ -10,7 +10,10 @@ import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
 import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
+import 'source/http_source_transport.dart';
 import 'source/inappwebview_book_source_adapter.dart';
+import 'source/source_login.dart';
+import 'source/source_login_dialog.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'store/legacy_import.dart';
@@ -341,6 +344,40 @@ class _LiberHomePageState extends State<LiberHomePage> {
     super.dispose();
   }
 
+  /// Opens one source's login surface (#60): the frozen `SourceLoginDialog` over
+  /// the space's host state, so a login header the source's own login script
+  /// stores is the one the next stage's requests carry (ADR 0011 §3).
+  ///
+  /// The session is built per opening, because a login is one user action and
+  /// not an analysis; the transport and the host state are the ones the pages
+  /// run this source's stages with.
+  Future<void> _loginSource(String sourceRef, String sourceName) async {
+    final shelf = _shelf;
+    if (shelf == null) return;
+    Map<String, dynamic>? source;
+    for (final item in _sources) {
+      if (item.id == sourceRef) source = item.data;
+    }
+    final data = source;
+    if (data == null) {
+      setState(() => _migrationMessage = '找不到书源：$sourceRef');
+      return;
+    }
+    final loggedIn = await showDialog<bool>(
+      context: context,
+      builder: (_) => SourceLoginDialog(
+        session: SourceLoginSession(
+          source: data,
+          hostState: shelf.hostState,
+          androidId: shelf.androidId,
+          transport: HttpSourceTransport(),
+        ),
+      ),
+    );
+    if (!mounted || loggedIn != true) return;
+    setState(() => _migrationMessage = '已登录书源：$sourceName');
+  }
+
   @override
   Widget build(BuildContext context) {
     final shelf = _shelf;
@@ -429,6 +466,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
         spaceMessage: _spaceMessage,
         onDeleteSource: _deleteSource,
         onEditSourceUrl: _editSourceUrl,
+        onLogin: _loginSource,
         onImportFile: (path) async {
           if (store == null) return;
           try {
@@ -858,6 +896,7 @@ class _MigrationPage extends StatelessWidget {
     required this.onImportFile,
     required this.onDeleteSource,
     required this.onEditSourceUrl,
+    required this.onLogin,
   });
 
   final MigrationImportRecord? result;
@@ -877,6 +916,9 @@ class _MigrationPage extends StatelessWidget {
   /// together.
   final Future<void> Function(String ref, String name) onDeleteSource;
   final Future<void> Function(String ref, String name) onEditSourceUrl;
+
+  /// Opens one source's login surface (#60), called with the same two values.
+  final Future<void> Function(String ref, String name) onLogin;
 
   /// What the one-time import of this installation's own JSON stores did. It
   /// runs by itself on the first launch, so it reports here instead of behind a
@@ -974,13 +1016,16 @@ class _MigrationPage extends StatelessWidget {
                 tooltip: '书源操作',
                 onSelected: (action) {
                   final name = '${source.data['bookSourceName'] ?? source.id}';
-                  if (action == 'edit') {
+                  if (action == 'login') {
+                    onLogin(source.id, name);
+                  } else if (action == 'edit') {
                     onEditSourceUrl(source.id, name);
                   } else {
                     onDeleteSource(source.id, name);
                   }
                 },
                 itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'login', child: Text('登录')),
                   PopupMenuItem(value: 'edit', child: Text('修改书源 URL')),
                   PopupMenuItem(value: 'delete', child: Text('删除书源')),
                 ],
