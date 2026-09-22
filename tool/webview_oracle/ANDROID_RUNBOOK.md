@@ -27,10 +27,23 @@ Operator actions at the handset, in order:
    launcher visible is what makes those two rows finish. The scripts set
    `stay_on_while_plugged_in` and re-wake the screen every 20 s themselves and
    restore the previous value when they exit.
-2. Approve the install prompt if it appears (only the oracle run installs the
+2. The script additionally brings the frozen app's own window up after every
+   `pm clear` and after each restart phase's `force-stop` (`wake_app`). On the
+   current build (`OS4.0.0.31`) the launcher alone is no longer enough: a headless
+   app process's main-looper timers are deferred within seconds, so WV-09's 1 s
+   retry chain and WV-10's 60 s outer timeout never fire and both fixtures hang
+   indefinitely. With the app's window up, the same probe finishes in 33.5 s
+   (archived row: 32.3 s). Measured 2026-09-22 on `5615f742`; the app process is
+   not frozen, and neither the battery whitelist nor an active standby bucket nor
+   the `RUN_IN_BACKGROUND` app-op replaces it.
+3. MIUI may show an "Android 应用兼容性" dialog (16 KB page alignment for a debug
+   build) when the app comes up. It does not affect any row — WV-09 completes with
+   it on screen — but dismissing it with **不再显示** keeps the screen readable.
+   `pm clear` may bring it back.
+4. Approve the install prompt if it appears (only the oracle run installs the
    frozen APKs; the destination sweep uses `--use-application-binary` and
    `--keep-app-running`, so it does not reinstall per fixture).
-3. Do not touch the phone while a fixture runs. Do not unplug it: WV-07 and WV-08
+5. Do not touch the phone while a fixture runs. Do not unplug it: WV-07 and WV-08
    run a second phase in a new process and need the device to stay attached.
 
 ## 1. Frozen oracle for the current fingerprint (about 25–40 minutes)

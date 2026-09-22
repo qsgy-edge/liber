@@ -28,6 +28,9 @@ TEST_EXPECTED='10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6'
 HARNESS_EXPECTED='3d8e4ff81096ef6fa2b05e4ea1b201a90fbb0eb4ec1d438afc7ed35fade08f05'
 STAGE='C:/Users/17945/.cache/wayfinder/ticket13-android-os4.0.0.31-golden'
 REMOTE='/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle'
+# The frozen app's launcher entry. Bringing its window up is what makes the
+# two timer-dependent fixtures runnable on this build; see `wake_app` below.
+APP_LAUNCHER='io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity'
 CLASS='io.legado.app.ticket13.Ticket13OracleTest'
 RUNNER='io.legado.app.debug.test/androidx.test.runner.AndroidJUnitRunner'
 BASELINE='14dd24945b2914ce2708b8abaa4ee67ceef892af'
@@ -57,6 +60,21 @@ device_unlocked() {
   keyguard="$(adb shell dumpsys window 2>/dev/null | tr -d '\r')"
   [[ "$user_state" == *'0=RUNNING_UNLOCKED'* ]] &&
     [[ "$keyguard" == *'isKeyguardShowing=false'* ]]
+}
+
+# The handset's current build (OS4.0.0.31) defers a headless app process's
+# main-looper timers within seconds of the app going idle: WV-09's 1 s retry chain
+# and WV-10's 60 s outer timeout never fire and both fixtures then hang
+# indefinitely (measured 2026-09-22: three 240 s attempts each, twice, plus a
+# standalone `wv09NullResultRetryTimeout` that printed nothing for over five
+# minutes). The app process is not frozen (`/proc/<pid>/cgroup` carries no
+# `frozen`), and neither the battery whitelist nor an active standby bucket nor
+# the `RUN_IN_BACKGROUND` app-op changes it. Bringing the app's own window up
+# does: the same probe then completes in 33.5 s, matching the archived 32.3 s row.
+# The command is logged like every other device command, so the golden's log
+# carries the procedure it was produced with.
+wake_app() {
+  command_log adb shell am start -n "$APP_LAUNCHER"
 }
 
 run_method() {
@@ -186,13 +204,16 @@ for index in "${!ids[@]}"; do
   id="${ids[$index]}"
   log "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] CLEAR $id"
   command_log adb shell pm clear io.legado.app.debug
+  wake_app
   run_method "$id" "${methods[$index]}" "${limits[$index]}" main || exit 1
   if [[ "$id" == 'WV-07' ]]; then
     adb shell am force-stop io.legado.app.debug
+    wake_app
     run_method "$id" wv07CookiesAfterProcessRestart 90 restart || exit 1
   fi
   if [[ "$id" == 'WV-08' ]]; then
     adb shell am force-stop io.legado.app.debug
+    wake_app
     run_method "$id" wv08StorageAfterProcessRestart 90 restart || exit 1
   fi
   pull_evidence "$id" || exit 1
