@@ -96,6 +96,15 @@ void main() {
     expect(structured.options.body, '{"a":1}');
     expect(structured.options.jsonBody, isTrue);
 
+    // A value holding an unbalanced brace does not cost the options after it.
+    // Strict JSON reads the object the brace scan frames, and when that frame
+    // lands inside the value instead (`'a}b'`), the lenient reader takes the
+    // whole remainder and stops after the object itself — so `webView` survives.
+    final braceInValue = splitSourceUrlOptions("/s,{'body': 'a}b', webView:true}");
+    expect(braceInValue.path, '/s');
+    expect(braceInValue.options.body, 'a}b');
+    expect(braceInValue.options.webView, isTrue);
+
     // The strict reading still decides first, and its own typed refusals stay:
     // a value the option cannot use is an error, not a silent fallback.
     expect(

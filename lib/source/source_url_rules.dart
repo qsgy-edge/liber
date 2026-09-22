@@ -300,11 +300,7 @@ sourceRequestShape(
   // text keeps it exactly as the rule wrote it.
   final tail = expanded.substring(match.start);
   final start = expanded.indexOf('{', match.start);
-  final end = _jsonObjectEnd(expanded, start);
-  if (end < 0) {
-    return (path: path, tail: tail, options: const SourceUrlOptions());
-  }
-  final Object? decoded = _decodeUrlOptionTail(expanded.substring(start, end));
+  final Object? decoded = _decodeUrlOptionTail(expanded.substring(start));
   if (decoded is! Map) {
     return (path: path, tail: tail, options: const SourceUrlOptions());
   }
@@ -442,27 +438,34 @@ String sourceUrlOptionTailOf(String address) =>
 /// Decodes a URL option tail the way the frozen Gson reader does, or null when
 /// it is not an object.
 ///
-/// Strict JSON is tried first, so a well-formed tail costs one `jsonDecode`.
-/// Gson's reader is lenient and imported sources use those leniencies:
-/// `{webView:true}` and `{'webView': true}` are both common (255 of the
-/// operator's 8787 sources write single-quoted option text) and strict JSON
-/// rejects both, so a tail strict JSON refuses falls back to [_LenientJson].
+/// [optionText] is the tail from its `{` to the end of the address text. Strict
+/// JSON is tried first on the object [_jsonObjectEnd] finds, so a well-formed
+/// tail costs one `jsonDecode`. Gson's reader is lenient and imported sources
+/// use those leniencies: `{webView:true}` and `{'webView': true}` are both common
+/// (255 of the operator's 8787 sources write single-quoted option text) and
+/// strict JSON rejects both, so a tail strict JSON refuses falls back to
+/// [_LenientJson] over the whole remainder — the reader consumes exactly one
+/// value, so it does not need the object's end to be found first, and a value
+/// holding an unbalanced brace cannot cost the options after it.
 ///
 /// Null means "no options": the frozen `AnalyzeUrl.kt:222` applies a
 /// `UrlOption` only when Gson returned one, so a tail that does not decode
 /// leaves the URL bare and is not an error.
-Map<String, Object?>? _decodeUrlOptionTail(String tail) {
-  try {
-    final strict = jsonDecode(tail);
-    return strict is Map
-        ? {for (final entry in strict.entries) '${entry.key}': entry.value}
-        : null;
-  } on FormatException {
-    // The reader below is what decides.
+Map<String, Object?>? _decodeUrlOptionTail(String optionText) {
+  final end = _jsonObjectEnd(optionText, 0);
+  if (end > 0) {
+    try {
+      final strict = jsonDecode(optionText.substring(0, end));
+      if (strict is Map) {
+        return {for (final entry in strict.entries) '${entry.key}': entry.value};
+      }
+    } on FormatException {
+      // The reader below is what decides.
+    }
   }
   final Object? lenient;
   try {
-    lenient = _LenientJson(tail).readDocument();
+    lenient = _LenientJson(optionText).readDocument();
   } on _LenientJsonError {
     return null;
   }
