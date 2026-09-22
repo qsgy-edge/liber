@@ -173,13 +173,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
   /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
   /// stage's own `AnalyzeUrl`).
-  ({
-    Uri url,
-    SourceUrlOptions options,
-    String address,
-    Uri base,
-    String keyword,
-  })?
+  ({Uri url, SourceUrlOptions options, String address, Uri base})?
   _stageRequest;
 
   bool get cancelled => _cancellation.isCancelled;
@@ -222,10 +216,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       throw UnsupportedError('暂不支持代理配置');
     }
     return Map<String, String>.from(parsed);
-  }
-
-  void _validate() {
-    _cancellation.throwIfCancelled();
   }
 
   Map<String, Object?> _scriptInput(String keyword, Object? result) => {
@@ -295,7 +285,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       options: stage.options,
       address: stage.address,
       base: stage.base,
-      keyword: stage.keyword,
     );
   }
 
@@ -307,14 +296,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final (url, options) = await _request(
       stage.base,
       stage.address,
-      stage.keyword,
+      _keyword,
     );
     _stageRequest = (
       url: url,
       options: options,
       address: stage.address,
       base: stage.base,
-      keyword: stage.keyword,
     );
   }
 
@@ -524,17 +512,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     SourceUrlOptions options = const SourceUrlOptions(),
     String? address,
     Uri? base,
-    String? keyword,
   }) async {
-    final stageKeyword = keyword ?? _keyword;
     _stageRequest = (
       url: url,
       options: options,
       address: address ?? '$url',
       base: base ?? url,
-      keyword: stageKeyword,
     );
-    _validate();
+    _cancellation.throwIfCancelled();
     final sourceHeaders = await _headers();
     final merged = {...sourceHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
@@ -605,7 +590,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _book = null;
     _chapter = null;
     _chapterTitle = null;
-    _validate();
+    _cancellation.throwIfCancelled();
     // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it are
     // the source check and the debug page's search box, not this stage, so a
     // search runs on the keyword it was given whatever the field holds.

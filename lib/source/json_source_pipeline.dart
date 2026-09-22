@@ -93,13 +93,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
   /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
   /// stage's own `AnalyzeUrl`).
-  ({
-    Uri url,
-    SourceUrlOptions options,
-    String address,
-    Uri base,
-    String keyword,
-  })?
+  ({Uri url, SourceUrlOptions options, String address, Uri base})?
   _stageRequest;
 
   final _cancellation = SourceCancellation();
@@ -242,7 +236,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       options: stage.options,
       address: stage.address,
       base: stage.base,
-      keyword: stage.keyword,
     );
   }
 
@@ -254,14 +247,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final (url, options) = await _request(
       stage.base,
       stage.address,
-      stage.keyword,
+      _keyword,
     );
     _stageRequest = (
       url: url,
       options: options,
       address: stage.address,
       base: stage.base,
-      keyword: stage.keyword,
     );
   }
 
@@ -412,15 +404,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     SourceUrlOptions options = const SourceUrlOptions(),
     String? address,
     Uri? base,
-    String? keyword,
   }) async {
-    final stageKeyword = keyword ?? _keyword;
     _stageRequest = (
       url: url,
       options: options,
       address: address ?? '$url',
       base: base ?? url,
-      keyword: stageKeyword,
     );
     _cancellation.throwIfCancelled();
     final merged = {..._activeHeaders, ...options.headers};

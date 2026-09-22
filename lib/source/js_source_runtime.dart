@@ -1568,9 +1568,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // only drive the frozen WebView path, and have no used-source call site, so
     // that form refuses by name.
     getResponse: () => stageResponse('java.getResponse'),
-    getStrResponse: (jsStr, sourceRegex) => {
+    getStrResponse: (jsStr, sourceRegex, useWebView) => {
       if (jsStr !== undefined && jsStr !== null) return refuseStage('java.getStrResponse(jsStr, …)');
       if (sourceRegex !== undefined && sourceRegex !== null) return refuseStage('java.getStrResponse(jsStr, …)');
+      if (useWebView !== undefined && useWebView !== true) return refuseStage('java.getStrResponse(jsStr, …)');
       return stageResponse('java.getStrResponse');
     },
     initUrl: () => {

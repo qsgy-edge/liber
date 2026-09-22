@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
+import 'package:liber/source/book_source_webview_adapter.dart';
+import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
@@ -387,6 +389,72 @@ result;
         );
       },
     );
+
+    test('java.ajaxAll applies each URL its own option tail', () async {
+      final site = await _Site.start({
+        ..._htmlPages(),
+        '/verify2': [const _Page('ok')],
+      });
+      addTearDown(site.close);
+      final check = '''
+var body = result.body();
+if (body.indexOf('1234') > -1) {
+  java.ajaxAll([
+    '${site.origin}/verify,' + JSON.stringify({method: 'POST', body: 'a=1'}),
+    '${site.origin}/verify2,' + JSON.stringify({method: 'POST', body: 'b=2'})
+  ]);
+  result = java.getStrResponse();
+}
+result;
+''';
+      final pipeline = _pipeline(_htmlSource(site.origin, checkJs: check));
+      final hits = await pipeline.search('书');
+      expect(hits.single.title, '书');
+      // One `AnalyzeUrl` per URL (`JsExtensions.kt:111-125`): each entry keeps
+      // its own method and body, in input order.
+      final posts = site.seen
+          .where((request) => request.method == 'POST')
+          .toList();
+      expect(posts.map((request) => request.path), ['/verify', '/verify2']);
+      expect(posts.map((request) => utf8.decode(request.body)), ['a=1', 'b=2']);
+    });
+
+    test('the hook sees a rendered document and may re-render it', () async {
+      final adapter = _RenderedAdapter(
+        '<div class="item"><h3><a href="/book/">书</a></h3></div>',
+      );
+      final state = SourceHostState();
+      final source = _htmlSource(
+        'http://source.test',
+        checkJs: '''
+cache.put('wv-code', result.code());
+cache.put('wv-headers', JSON.stringify(result.headers()));
+cache.put('wv-url', result.url());
+result = java.getStrResponse();
+result;
+''',
+      );
+      source['searchUrl'] = '/search,{"webView":true}';
+      final pipeline = HtmlSourcePipeline(
+        source,
+        HttpSourceTransport(),
+        hostState: state,
+        webViewFactory: _RenderedFactory(adapter),
+      );
+      final hits = await pipeline.search('书');
+      expect(hits.single.title, '书');
+      // The frozen WebView response is the synthetic `StrResponse(url, body)`:
+      // status 200 with no headers of its own.
+      expect(await state.entry('http://source.test', 'wv-code'), 200);
+      expect(await state.entry('http://source.test', 'wv-headers'), '{}');
+      expect(
+        await state.entry('http://source.test', 'wv-url'),
+        'http://source.test/search',
+      );
+      // The stage rendered once, the check's re-request rendered again, and the
+      // rules read the second document.
+      expect(adapter.requests, hasLength(2));
+    });
 
     test(
       'the pixiv shape reads a response header and re-requests with getStrResponse(null, null)',
@@ -807,4 +875,34 @@ class _Transport implements SourceHttpTransport {
         body: 'ok',
         url: request.url,
       );
+}
+
+/// One rendered-document adapter the WebView path is handed in a test.
+class _RenderedAdapter implements BookSourceWebViewAdapter {
+  _RenderedAdapter(this.body);
+  final String body;
+  final requests = <SourceWebViewRequest>[];
+
+  @override
+  Future<SourceWebViewResponse> load(SourceWebViewRequest request) async {
+    requests.add(request);
+    return SourceWebViewResponse.page(request.url ?? '', body);
+  }
+
+  @override
+  void destroy() {}
+
+  @override
+  bool get isDisposed => false;
+
+  @override
+  bool get hasWebView => true;
+}
+
+class _RenderedFactory extends BookSourceWebViewAdapterFactory {
+  _RenderedFactory(this.adapter, {super.sourceRef = 'http://source.test'});
+  final _RenderedAdapter adapter;
+
+  @override
+  BookSourceWebViewAdapter create() => adapter;
 }
