@@ -12,6 +12,7 @@ import 'native_library.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_login.dart';
 import 'source_url_rules.dart';
 
 typedef SourceHostCall =
@@ -133,6 +134,24 @@ abstract interface class SourceScriptRuntime {
     required String script,
     required Map<String, Object?> input,
     required SourceStageRequest stage,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  });
+
+  /// Evaluates one source's login script — the frozen `BaseSource.login()`
+  /// (`BaseSource.kt:84-96`): the `loginUrl`'s script with the `login` function
+  /// it has to define applied, failing with the frozen
+  /// `Function login not implements!!!` when it defines none.
+  ///
+  /// The same call evaluates a `loginUi` button's `action`, which the frozen
+  /// dialog builds as the source's login script followed by the action
+  /// (`SourceLoginDialog.kt:126-153`); [input] carries the form's collected data
+  /// as `result` there and nothing for the login script. A failure is recorded
+  /// in the source log as a `login` message — the frozen dialog's 登录出错 — and
+  /// carried to the caller with the script's own error.
+  Future<void> evaluateLogin({
+    required String script,
+    required Map<String, Object?> input,
     required Duration timeout,
     SourceCancellation? cancellation,
   });
@@ -324,12 +343,40 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
+  @override
+  Future<void> evaluateLogin({
+    required String script,
+    required Map<String, Object?> input,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  }) async {
+    try {
+      await _evaluate(
+        source: script,
+        input: input,
+        timeout: timeout,
+        cancellation: cancellation,
+        keepScriptMessage: true,
+      );
+    } catch (error) {
+      // The frozen dialog logs 登录出错 with the script's own message and keeps
+      // the dialog open; this product keeps the same message in the source's log
+      // and hands it to the surface that ran the action.
+      final failure = error is SourceScriptError ? error : _classifyScript(error);
+      final message = SourceHostMessage('login', '$failure');
+      _record(message);
+      onMessage?.call(message);
+      throw failure;
+    }
+  }
+
   Future<Object?> _evaluate({
     required String source,
     required Map<String, Object?> input,
     required Duration timeout,
     SourceCancellation? cancellation,
     bool checkResponse = false,
+    bool keepScriptMessage = false,
     SourceStageRequest? stage,
   }) async {
     final sourceRef = input['sourceKey'] is String
@@ -422,11 +469,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           } else if (method == 'state') {
             answer = await _handleState(payload, sourceRef);
           } else if (method == 'headers') {
-            answer = await _headers(input, request.id, token);
+            answer = await _headers(
+              input,
+              request.id,
+              token,
+              hasLoginHeader:
+                  payload is Map && payload['hasLoginHeader'] == true,
+            );
           } else if (method == 'cache') {
             answer = await _handleCache(payload, sourceRef);
           } else if (method == 'cookie') {
             answer = await _handleCookie(payload, cookies);
+          } else if (method == 'loginHeader') {
+            answer = await _handleLoginHeader(payload, sourceRef, cookies);
+          } else if (method == 'loginInfo') {
+            answer = await _handleLoginInfo(payload, sourceRef);
           } else if (method == 'log') {
             answer = _handleLog(payload);
           } else if (method == 'identity') {
@@ -535,7 +592,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (error is JsError_Timeout) throw const SourceScriptError('timeout');
       if (token.isCancelled) throw const SourceScriptError('cancelled');
       throw hostFailure ??
-          (checkResponse ? _classifyCheck(error) : _classify(error));
+          (checkResponse || keepScriptMessage
+              ? _classifyScript(error)
+              : _classify(error));
     } finally {
       unsubscribe?.call();
       unlisten();
@@ -620,7 +679,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     String? text(Object? value) => value == null ? null : '$value';
     final operation = '${payload['op']}';
-    final rawHeaders = await _headers(outerInput, requestId, token);
+    final rawHeaders = await _headers(
+      outerInput,
+      requestId,
+      token,
+      // The frozen `java.webView*` helpers all pass
+      // `getSource()?.getHeaderMap(true)` (`JsExtensions.kt:170,186,202`).
+      hasLoginHeader: true,
+    );
     final headers = <String, String>{
       for (final entry in rawHeaders.entries)
         if (entry.value != null) entry.key: entry.value!,
@@ -761,6 +827,69 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
+  /// Frozen `BaseSource.putLoginHeader`/`getLoginHeader`/`removeLoginHeader`
+  /// (`BaseSource.kt:132-155`): the header text a source stored under
+  /// `loginHeader_<sourceKey>`, which every source request then carries
+  /// ([SourceHostDispatcher] merges it) and whose `Cookie` entry replaces the
+  /// source's cookie-jar entry for its own site.
+  ///
+  /// The map read is the frozen `getLoginHeaderMap`; it is not a JavaScript
+  /// member of its own — `source.getHeaderMap(true)` is what reads it.
+  Future<Object?> _handleLoginHeader(
+    Object? payload,
+    String sourceRef,
+    SourceCookieJar jar,
+  ) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid loginHeader call');
+    }
+    switch (payload['op']) {
+      case 'get':
+        return getSourceLoginHeader(hostState, sourceRef);
+      case 'put':
+        final header = payload['header'];
+        if (header is! String) {
+          throw const SourceScriptError('host-input', 'invalid login header');
+        }
+        await putSourceLoginHeader(hostState, sourceRef, header, jar);
+        return null;
+      case 'remove':
+        await removeSourceLoginHeader(hostState, sourceRef, jar);
+        return null;
+      default:
+        throw const SourceScriptError('host-method', 'loginHeader op refused');
+    }
+  }
+
+  /// Frozen `BaseSource.getLoginInfo`/`getLoginInfoMap`/`putLoginInfo`/
+  /// `removeLoginInfo` (`BaseSource.kt:160-196`): the login information the
+  /// user's form collected, sealed with the installation's own id and owned by
+  /// the source that wrote it (ADR 0011 §3). `put` answers the frozen Boolean:
+  /// `false` when the installation id cannot carry the AES key, and then nothing
+  /// is stored.
+  Future<Object?> _handleLoginInfo(Object? payload, String sourceRef) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid loginInfo call');
+    }
+    switch (payload['op']) {
+      case 'get':
+        return getSourceLoginInfo(hostState, sourceRef, androidId);
+      case 'map':
+        return getSourceLoginInfoMap(hostState, sourceRef, androidId);
+      case 'put':
+        final info = payload['info'];
+        if (info is! String) {
+          throw const SourceScriptError('host-input', 'invalid login info');
+        }
+        return putSourceLoginInfo(hostState, sourceRef, info, androidId);
+      case 'remove':
+        await removeSourceLoginInfo(hostState, sourceRef);
+        return null;
+      default:
+        throw const SourceScriptError('host-method', 'loginInfo op refused');
+    }
+  }
+
   /// Frozen `JsURL`: the frozen `java.toURL` parses with `java.net.URL`. QuickJS
   /// has no `URL` global, so the parse happens here. Query values are decoded
   /// like the frozen constructor does; keys are not, and a pair without `=`
@@ -866,12 +995,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     return const SourceScriptError('host');
   }
 
-  /// The classification a `loginCheckJs` failure gets: the same category the
-  /// ordinary rule path reports, with the script's own message kept so the
-  /// stage that fails can name what the script threw. The frozen check's
-  /// exception is what fails the stage (`WebBook.kt:71`), so nothing here is
-  /// swallowed.
-  static SourceScriptError _classifyCheck(Object error) {
+  /// The classification a failure of a script whose own message the caller has
+  /// to show gets: the `loginCheckJs` hook and the login script both keep it.
+  /// The category is the one the ordinary rule path reports, with the script's
+  /// own message kept so the stage or the login action can name what the script
+  /// threw. The frozen check's exception is what fails the stage (`WebBook.kt:71`)
+  /// and the frozen dialog's is what it toasts, so nothing here is swallowed.
+  static SourceScriptError _classifyScript(Object error) {
     final failure = _classify(error);
     if (failure.category != 'js') return failure;
     final message = error is JsError ? _jsErrorText(error) : null;
@@ -958,11 +1088,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
 
   /// BaseSource.kt:103-130: evaluate the header afresh, tolerate malformed
   /// JSON, and add User-Agent only if no case-insensitive slot exists.
+  ///
+  /// `hasLoginHeader` is the frozen `getHeaderMap` argument: with it, the stored
+  /// login header is merged last — after the source's own rule and the default
+  /// user agent — which is what the frozen `AnalyzeUrl` asks for and what
+  /// `source.getHeaderMap(true)` reads.
   Future<Map<String, String?>> _headers(
     Map<String, Object?> input,
     BigInt requestId,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    bool hasLoginHeader = false,
+  }) async {
     final source = input['source'];
     final raw = source is Map ? source['header'] : null;
     Object? value = raw;
@@ -1009,6 +1145,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     if (!headers.keys.any((key) => key.toLowerCase() == 'user-agent')) {
       headers['User-Agent'] = sourceDefaultUserAgent;
+    }
+    if (hasLoginHeader) {
+      final sourceRef = input['sourceKey'] is String
+          ? input['sourceKey'] as String
+          : '';
+      final login = await getSourceLoginHeaderMap(hostState, sourceRef);
+      if (login != null) headers.addAll(login);
     }
     token.throwIfCancelled();
     return headers;
@@ -1151,7 +1294,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final target = script == null
         ? split.path
         : '${await _evaluateNested(script, split.path, requestId, input, token)}';
-    final declared = await _headers(input, requestId, token);
+    final declared = await _headers(
+      input,
+      requestId,
+      token,
+      // `java.ajax`/`java.ajaxAll` build an `AnalyzeUrl`
+      // (`JsExtensions.kt:94,117`), whose header map is
+      // `source.getHeaderMap(true)`.
+      hasLoginHeader: true,
+    );
     final headers = <String, String>{
       for (final entry in declared.entries)
         if (entry.value != null) entry.key: entry.value!,
@@ -1262,9 +1413,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         const parsed = JSON.parse(headers);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
       } catch (_) {}
-      return call('headers', null);
+      return call('headers', {hasLoginHeader: true});
     }
-    return headers == null ? call('headers', null) : headers;
+    return headers == null ? call('headers', {hasLoginHeader: true}) : headers;
   }
   function request(method, url, body, headers) {
     const result = call('request', {
@@ -1394,9 +1545,20 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getTag: () => sourceFields.bookSourceName || '',
     getHeaderMap: (...args) => {
       if (args.length > 1) throw new Error('source.getHeaderMap expects zero or one argument');
-      if (args[0]) return call('refuse', {member:'source.getHeaderMap(true)', policy:'login headers (#13)'});
+      if (args[0]) return call('headers', {hasLoginHeader: true});
       return call('headers', null);
     },
+    // Frozen `BaseSource.getLoginHeader`/`putLoginHeader`/`removeLoginHeader`
+    // (`BaseSource.kt:132-155`) and `getLoginInfo`/`putLoginInfo`/
+    // `removeLoginInfo` (`:160-196`): the login state the source's own scripts
+    // read and write, which is what a `loginUrl` script stores a session with.
+    getLoginHeader: () => call('loginHeader', {op:'get'}),
+    putLoginHeader: header => { call('loginHeader', {op:'put', header:String(header)}); },
+    removeLoginHeader: () => { call('loginHeader', {op:'remove'}); },
+    getLoginInfo: () => call('loginInfo', {op:'get'}),
+    getLoginInfoMap: () => call('loginInfo', {op:'map'}),
+    putLoginInfo: info => call('loginInfo', {op:'put', info:String(info)}),
+    removeLoginInfo: () => { call('loginInfo', {op:'remove'}); },
     getVariable: () => call('cache', {op:'get', key:'sourceVariable_' + input.sourceKey}) || '',
     // Frozen `BaseSource.setVariable` (`BaseSource.kt:200-212`): the same
     // `sourceVariable_<key>` entry `getVariable` reads, and a null deletes it.

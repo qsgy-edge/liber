@@ -205,6 +205,21 @@ class SourceHostState {
     return stored.value;
   }
 
+  /// The value one source wrote under [key] — an expired one reported as none —
+  /// read synchronously from what is already loaded.
+  ///
+  /// This is the read a caller on a path that cannot afford a microtask needs:
+  /// the outbound header of a request, which [SourceHostDispatcher] builds, and
+  /// a jar read inside one synchronous JavaScript call. It never loads the store
+  /// and never deletes the expired row it refuses to serve; a caller whose state
+  /// is not [isLoaded] awaits [ready] first, and the asynchronous [entry] is the
+  /// read that collects an expired row.
+  Object? entryIfLoaded(String sourceRef, String key) {
+    final stored = _cache[sourceRef]?[key];
+    if (stored == null) return null;
+    return isExpired(stored.expiresAt, _clock()) ? null : stored.value;
+  }
+
   /// Stores [value] for one source, JSON-encoded so any JSON value round-trips
   /// through the store unchanged. [saveTime] is the frozen `cache.put`
   /// parameter, read by [expiryOf].
