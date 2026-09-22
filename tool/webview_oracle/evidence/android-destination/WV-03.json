@@ -9,20 +9,20 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-08-22T10:18:05.542055Z",
-  "completedAtUtc": "2026-08-22T10:18:06.960782Z",
+  "startedAtUtc": "2026-09-22T05:52:29.266992Z",
+  "completedAtUtc": "2026-09-22T05:52:30.778447Z",
   "device": {
     "manufacturer": "Xiaomi",
     "model": "25102RKBEC",
     "device": "myron",
     "androidRelease": "17",
     "sdk": 37,
-    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys"
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
   },
   "runtime": {
     "webViewPackage": "com.google.android.webview",
-    "webViewVersion": "152.0.7977.42",
-    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+    "webViewVersion": "154.0.8037.22",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
@@ -30,7 +30,7 @@
     "responseCode": 200,
     "responseBody": "<html><head></head><body><main id=\"oracle\">inline-no-base</main><script>window.inlineValue='ok'</script></body></html>|INLINE=ok",
     "priorResponseCode": null,
-    "durationMs": 1373
+    "durationMs": 1468
   },
   "requests": [],
   "checks": {

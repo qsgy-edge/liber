@@ -9,33 +9,33 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-08-22T10:20:35.616278Z",
-  "completedAtUtc": "2026-08-22T10:20:38.086492Z",
+  "startedAtUtc": "2026-09-22T05:56:08.220790Z",
+  "completedAtUtc": "2026-09-22T05:56:10.759999Z",
   "device": {
     "manufacturer": "Xiaomi",
     "model": "25102RKBEC",
     "device": "myron",
     "androidRelease": "17",
     "sdk": 37,
-    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys"
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
   },
   "runtime": {
     "webViewPackage": "com.google.android.webview",
-    "webViewVersion": "152.0.7977.42",
-    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+    "webViewVersion": "154.0.8037.22",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": [
     {
-      "responseUrl": "http://127.0.0.1:35369/storage",
+      "responseUrl": "http://127.0.0.1:36305/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:35369\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:36305\"}",
       "priorResponseCode": null
     },
     {
-      "responseUrl": "http://127.0.0.1:35369/storage",
+      "responseUrl": "http://127.0.0.1:36305/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:35369\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:36305\"}",
       "priorResponseCode": null
     }
   ],
@@ -44,45 +44,45 @@
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:35369",
+        "host": "127.0.0.1:36305",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Android\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
         "sec-ch-ua-mobile": "?1",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "x-requested-with": "io.legado.ticket13.ticket13_adapter",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:35369/storage",
+        "referer": "http://127.0.0.1:36305/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
       },
       "body": "",
-      "startedAtElapsedMs": 406
+      "startedAtElapsedMs": 412
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:35369",
+        "host": "127.0.0.1:36305",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Android\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Android WebView\";v=\"152\"",
+        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
         "sec-ch-ua-mobile": "?1",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "x-requested-with": "io.legado.ticket13.ticket13_adapter",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:35369/storage",
+        "referer": "http://127.0.0.1:36305/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
       },
       "body": "",
-      "startedAtElapsedMs": 1439
+      "startedAtElapsedMs": 1468
     }
   ],
   "checks": {
@@ -97,18 +97,41 @@
   "executionVerdict": "pass",
   "restart": {
     "response": {
-      "responseUrl": "http://127.0.0.1:35369/storage",
+      "responseUrl": "http://127.0.0.1:36305/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:35369\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:36305\"}",
       "priorResponseCode": null
     },
     "checks": {
       "localStorageAfterRestart": true,
       "sessionStorageAfterRestartAbsent": true
     },
-    "requests": []
+    "requests": [
+      {
+        "method": "GET",
+        "target": "/favicon.ico",
+        "headers": {
+          "host": "127.0.0.1:36305",
+          "connection": "keep-alive",
+          "sec-ch-ua-platform": "\"Android\"",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+          "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
+          "sec-ch-ua-mobile": "?1",
+          "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "x-requested-with": "io.legado.ticket13.ticket13_adapter",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "no-cors",
+          "sec-fetch-dest": "image",
+          "referer": "http://127.0.0.1:36305/storage",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+        },
+        "body": "",
+        "startedAtElapsedMs": 385
+      }
+    ]
   },
-  "restartCompletedAtUtc": "2026-08-22T10:20:54.049967Z",
+  "restartCompletedAtUtc": "2026-09-22T05:56:29.609615Z",
   "restartProvenance": {
     "device": {
       "manufacturer": "Xiaomi",
@@ -116,14 +139,14 @@
       "device": "myron",
       "androidRelease": "17",
       "sdk": 37,
-      "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.19.XPMCNXM:user/release-keys"
+      "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
     },
     "runtime": {
       "webViewPackage": "com.google.android.webview",
-      "webViewVersion": "152.0.7977.42",
-      "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/152.0.7977.42 Mobile Safari/537.36",
+      "webViewVersion": "154.0.8037.22",
+      "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
       "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     },
-    "startedAtUtc": "2026-08-22T10:20:52.628118Z"
+    "startedAtUtc": "2026-09-22T05:56:28.172552Z"
   }
 }

@@ -143,11 +143,17 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
   /// there.
   bool get _canResetNativeSessionCookies => !Platform.isWindows;
 
-  Future<void>? _sessionCookieReset;
+  /// Process-wide, not per adapter instance: the frozen semantics this restores
+  /// are "the session cookies live as long as the process does", so the native
+  /// store is cleaned once when the process first needs a WebView. A per-instance
+  /// latch also ran before a second operation in the same process, which deleted
+  /// the cookies a live page had just set — the next request must still send them,
+  /// and the source's durable jar must keep them (WV-07).
+  static Future<void>? _processSessionCookieReset;
 
   Future<void> _dropNativeSessionCookiesOnce() {
     if (!_canResetNativeSessionCookies) return Future<void>.value();
-    return _sessionCookieReset ??= CookieManager.instance()
+    return _processSessionCookieReset ??= CookieManager.instance()
         .removeSessionCookies()
         .then((_) {});
   }
