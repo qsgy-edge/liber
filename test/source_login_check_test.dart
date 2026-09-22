@@ -736,6 +736,32 @@ result;
       );
     });
 
+    test('a check failure is recorded in the source log with the script error', () async {
+      final runtime = InProcessSourceScriptRuntime();
+      await expectLater(
+        _check(
+          runtime,
+          'throw new Error("gate failed")',
+          response: {
+            'statusCode': 200,
+            'headers': const <String, List<String>>{},
+            'body': 'gate 1234',
+            'url': 'http://a.test/search',
+          },
+        ),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'message',
+            contains('gate failed'),
+          ),
+        ),
+      );
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.kind, 'loginCheckJs');
+      expect(runtime.messages.single.message, contains('gate failed'));
+    });
+
     test('the stage response is result and only a response may replace it', () async {
       final response = {
         'statusCode': 200,
