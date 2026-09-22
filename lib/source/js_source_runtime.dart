@@ -21,6 +21,98 @@ typedef SourceHostCall =
       SourceCancellation cancellation,
     );
 
+/// One stage response as the pipeline reads it and as a source's `loginCheckJs`
+/// sees it.
+///
+/// It is the frozen `StrResponse` (`help/http/StrResponse.kt`): the body the
+/// stage's rules parse, the URL the request resolved to, and — for a script
+/// that reads them — the status and headers. [toJson] is the same response as
+/// the JavaScript boundary carries it, and the shape the check script's
+/// `result.body()`/`result.url()`/`result.headers()` accessors read.
+class SourceStageResponse {
+  const SourceStageResponse({
+    required this.body,
+    required this.url,
+    this.statusCode = 200,
+    this.headers = const {},
+  });
+
+  /// The frozen `StrResponse(analyzeUrl.url, body)` a rendered document comes
+  /// back as (`BackstageWebView`): status 200 and no headers, because the
+  /// frozen WebView path has no HTTP response of its own to report.
+  factory SourceStageResponse.webView({required String body, required Uri url}) =>
+      SourceStageResponse(body: body, url: url);
+
+  /// The response a `loginCheckJs` returned, as the script's payload crossed
+  /// the boundary. A value that is not a response never reaches this — the
+  /// frozen cast `as StrResponse` is what it fails — so a payload that does not
+  /// carry a response's fields is a boundary error.
+  factory SourceStageResponse.fromJson(Object? value) {
+    if (value is! Map) {
+      throw const SourceScriptError(
+        'host-input',
+        'loginCheckJs must return a response object',
+      );
+    }
+    final body = value['body'];
+    final url = value['url'];
+    if (body is! String || url is! String) {
+      throw const SourceScriptError(
+        'host-input',
+        'loginCheckJs must return a response object',
+      );
+    }
+    final status = value['statusCode'];
+    final headers = value['headers'];
+    return SourceStageResponse(
+      body: body,
+      url: SourceHttpUri.parse(url),
+      statusCode: status is num ? status.toInt() : 200,
+      headers: headers is Map
+          ? {
+              for (final entry in headers.entries)
+                if (entry.value is List)
+                  '${entry.key}': [
+                    for (final item in entry.value as List) '$item',
+                  ],
+            }
+          : const {},
+    );
+  }
+
+  final String body;
+  final Uri url;
+  final int statusCode;
+
+  /// The response's header values by name, as the transport reported them.
+  final Map<String, List<String>> headers;
+
+  Map<String, Object?> toJson() => {
+    'statusCode': statusCode,
+    'headers': headers,
+    'body': body,
+    'url': '$url',
+  };
+}
+
+/// The two things only the pipeline can do for a `loginCheckJs` hook.
+///
+/// The frozen check script's `java` is the stage's own `AnalyzeUrl`
+/// (`AnalyzeUrl.kt:139,465-526`): `java.getStrResponse()`/`java.getResponse()`
+/// repeat the request the stage made, and `java.initUrl()` re-runs its address
+/// analysis. The runtime owns the `java` surface and the pipeline owns the
+/// request, so the pipeline hands both operations over for the duration of one
+/// check.
+class SourceStageRequest {
+  const SourceStageRequest({required this.resend, required this.reanalyze});
+
+  /// Sends the stage's current request again and answers its response.
+  final Future<SourceStageResponse> Function() resend;
+
+  /// Re-runs the address analysis of the stage's own address text.
+  final Future<void> Function() reanalyze;
+}
+
 abstract interface class SourceScriptRuntime {
   Future<Object?> evaluate({
     required String source,
@@ -28,9 +120,26 @@ abstract interface class SourceScriptRuntime {
     required Duration timeout,
     SourceCancellation? cancellation,
   });
+
+  /// Evaluates one source's `loginCheckJs` against one stage response — the
+  /// frozen `res = analyzeUrl.evalJS(checkJs, res) as StrResponse`
+  /// (`WebBook.kt:71,121,178,253,336`).
+  ///
+  /// [input] is the same binding set a rule script of that stage gets, with the
+  /// stage response as `result`; [stage] is what `java.getStrResponse()`,
+  /// `java.getResponse()` and `java.initUrl()` reach. A script that throws, or
+  /// whose value is not a response, fails the stage.
+  Future<SourceStageResponse> evaluateLoginCheck({
+    required String script,
+    required Map<String, Object?> input,
+    required SourceStageRequest stage,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  });
 }
 
-/// One `java.toast`/`java.log` message a source produced.
+/// One `java.toast`/`java.log` message a source produced, one refusal it
+/// asked for, or one `loginCheckJs` failure the source log has to keep.
 class SourceHostMessage {
   const SourceHostMessage(this.kind, this.message);
   final String kind;
@@ -176,6 +285,52 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     required Map<String, Object?> input,
     required Duration timeout,
     SourceCancellation? cancellation,
+  }) => _evaluate(
+    source: source,
+    input: input,
+    timeout: timeout,
+    cancellation: cancellation,
+  );
+
+  @override
+  Future<SourceStageResponse> evaluateLoginCheck({
+    required String script,
+    required Map<String, Object?> input,
+    required SourceStageRequest stage,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  }) async {
+    try {
+      final value = await _evaluate(
+        source: script,
+        input: input,
+        timeout: timeout,
+        cancellation: cancellation,
+        checkResponse: true,
+        stage: stage,
+      );
+      return SourceStageResponse.fromJson(value);
+    } catch (error) {
+      // The frozen `evalJS` throws straight through the `as StrResponse` cast
+      // and the stage fails; this product keeps the script's own message, puts
+      // it in the source's log, and shows it as a source notice, so a source
+      // that fails at a stage says why. A failure happens at most once per
+      // stage, so the toast rate limit does not apply to it.
+      final failure = error is SourceScriptError ? error : _classify(error);
+      final message = SourceHostMessage('loginCheckJs', '$failure');
+      _record(message);
+      onMessage?.call(message);
+      throw failure;
+    }
+  }
+
+  Future<Object?> _evaluate({
+    required String source,
+    required Map<String, Object?> input,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+    bool checkResponse = false,
+    SourceStageRequest? stage,
   }) async {
     final sourceRef = input['sourceKey'] is String
         ? input['sourceKey'] as String
@@ -289,49 +444,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           } else if (method == 'request') {
             answer = await _dispatch(host, payload, request.id, input, token);
           } else if (method == 'ajax') {
-            answer = await _dispatch(
+            answer = await _handleAjax(host, payload, request.id, input, token);
+          } else if (method == 'ajaxAll') {
+            answer = await _handleAjaxAll(
               host,
-              {
-                'method': 'connect',
-                'url': payload,
-                'headers': await _headers(input, request.id, token),
-              },
+              payload,
               request.id,
               input,
               token,
             );
-          } else if (method == 'ajaxAll') {
-            if (host == null || payload is! Map || payload['urls'] is! List) {
-              throw const SourceScriptError(
-                'host-input',
-                'invalid ajaxAll call',
-              );
-            }
-            final rawUrls = payload['urls'] as List;
-            if (rawUrls.any((url) => url is! String)) {
-              throw const SourceScriptError(
-                'host-input',
-                'invalid ajaxAll url',
-              );
-            }
-            final rawHeaders = payload['headers'];
-            final headers = rawHeaders is Map
-                ? Map<String, String>.from(rawHeaders)
-                : const <String, String>{};
-            final urls = <String>[];
-            for (final url in rawUrls.cast<String>()) {
-              urls.add(await _expandHostUrl(url, request.id, input, token));
-            }
-            final responses = await host.ajaxAll(urls, headers: headers);
-            answer = [
-              for (final response in responses)
-                {
-                  'statusCode': response.statusCode,
-                  'headers': response.headers,
-                  'body': response.body,
-                  'url': response.url.toString(),
-                },
-            ];
+          } else if (method == 'stageResend') {
+            answer = await _handleStageResend(stage);
+          } else if (method == 'stageInitUrl') {
+            answer = await _handleStageInitUrl(stage);
           } else {
             throw const SourceScriptError('host-method', 'method refused');
           }
@@ -393,7 +518,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         await pending[id];
       };
       token.throwIfCancelled();
-      final wrapped = _wrap(source, input);
+      final wrapped = _wrap(source, input, checkResponse: checkResponse);
       final result = (await engine.evalScoped(
         id: executionId,
         source: wrapped,
@@ -409,7 +534,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // the category the pipeline saw when a Dart `Timer` held the clock.
       if (error is JsError_Timeout) throw const SourceScriptError('timeout');
       if (token.isCancelled) throw const SourceScriptError('cancelled');
-      throw hostFailure ?? _classify(error);
+      throw hostFailure ??
+          (checkResponse ? _classifyCheck(error) : _classify(error));
     } finally {
       unsubscribe?.call();
       unlisten();
@@ -740,43 +866,94 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     return const SourceScriptError('host');
   }
 
-  static String _wrap(String source, Map<String, Object?> input) =>
-      '__liberRun(($_facade)(${jsonEncode(input)}), ${jsonEncode(source)})';
+  /// The classification a `loginCheckJs` failure gets: the same category the
+  /// ordinary rule path reports, with the script's own message kept so the
+  /// stage that fails can name what the script threw. The frozen check's
+  /// exception is what fails the stage (`WebBook.kt:71`), so nothing here is
+  /// swallowed.
+  static SourceScriptError _classifyCheck(Object error) {
+    final failure = _classify(error);
+    if (failure.category != 'js') return failure;
+    final message = error is JsError ? _jsErrorText(error) : null;
+    return message == null || message.isEmpty
+        ? failure
+        : SourceScriptError('js', message);
+  }
+
+  static String? _jsErrorText(JsError error) => switch (error) {
+    JsError_Runtime(:final field0) => field0,
+    JsError_Generic(:final field0) => field0,
+    JsError_Type(:final field0) => field0,
+    JsError_Reference(:final field0) => field0,
+    JsError_Bridge(:final field0) => field0,
+    JsError_Syntax(:final message) => message,
+    _ => null,
+  };
+
+  static String _wrap(
+    String source,
+    Map<String, Object?> input, {
+    bool checkResponse = false,
+  }) => checkResponse
+      ? '__liberCheckResponse(__liberRun('
+            '($_facade)(${jsonEncode(input)}, true), ${jsonEncode(source)}))'
+      : '__liberRun(($_facade)(${jsonEncode(input)}), ${jsonEncode(source)})';
 
   Future<String> _expandHostUrl(
     String rawUrl,
     BigInt requestId,
     Map<String, Object?> outerInput,
-    SourceCancellation token,
-  ) async {
-    final url = await expandSourceUrl(rawUrl, (script, result) async {
-      token.throwIfCancelled();
-      final value = await evalBridgeRequestGlobal(
-        id: requestId,
-        source: _wrap(script, {
-          'sourceKey': outerInput['sourceKey'],
-          'source': outerInput['source'],
-          'headers': outerInput['headers'],
-          'key': null,
-          'page': null,
-          'baseUrl': '',
-          'result': result,
-        }),
-      );
-      token.throwIfCancelled();
-      final decoded = value.value;
-      if (utf8.encode(jsonEncode(decoded)).length > maxHostBytes) {
-        throw const SourceScriptError('host-output-cap');
-      }
-      return decoded;
-    });
-    if (url.contains(',{') || url.contains(', {')) {
+    SourceCancellation token, {
+    bool allowUrlOptions = false,
+  }) async {
+    final url = await expandSourceUrl(
+      rawUrl,
+      (script, result) async =>
+          await _evaluateNested(script, result, requestId, outerInput, token),
+    );
+    // Frozen `java.get`/`head`/`post` hand the URL text to Jsoup
+    // (`JsExtensions.kt:131-160`), which parses no option tail; a URL that
+    // carries one keeps this product's existing refusal by name. `java.ajax`
+    // and `java.ajaxAll` build an `AnalyzeUrl` and do parse it (`:91-125`).
+    // `java.connect` shares the refusal: the frozen builds an `AnalyzeUrl` there
+    // too, so a tail on `java.connect` is a recorded divergence, not scope here.
+    if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
       throw const SourceScriptError(
         'host-input',
         'nested URL options unsupported',
       );
     }
     return url;
+  }
+
+  /// One nested script evaluation on this execution's own bridge: what a
+  /// `{{…}}`/`@js:` URL segment and a URL option's `js` run as.
+  Future<Object?> _evaluateNested(
+    String script,
+    Object? result,
+    BigInt requestId,
+    Map<String, Object?> outerInput,
+    SourceCancellation token,
+  ) async {
+    token.throwIfCancelled();
+    final value = await evalBridgeRequestGlobal(
+      id: requestId,
+      source: _wrap(script, {
+        'sourceKey': outerInput['sourceKey'],
+        'source': outerInput['source'],
+        'headers': outerInput['headers'],
+        'key': null,
+        'page': null,
+        'baseUrl': '',
+        'result': result,
+      }),
+    );
+    token.throwIfCancelled();
+    final decoded = value.value;
+    if (utf8.encode(jsonEncode(decoded)).length > maxHostBytes) {
+      throw const SourceScriptError('host-output-cap');
+    }
+    return decoded;
   }
 
   /// BaseSource.kt:103-130: evaluate the header afresh, tolerate malformed
@@ -870,31 +1047,215 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       'connect' => await host.connect(url, headers: headers),
       _ => throw const SourceScriptError('host-method', 'HTTP method refused'),
     };
-    return {
-      'statusCode': response.statusCode,
-      'headers': response.headers,
-      'body': response.body,
-      'url': response.url.toString(),
-    };
+    return _responseJson(response);
   }
+
+  /// Frozen `JsExtensions.ajax` (`help/JsExtensions.kt:91-105`): one
+  /// `AnalyzeUrl` built from the URL — its `,{…}` option tail included — whose
+  /// `getStrResponse().body` is the answer. The frozen failure fallback (a
+  /// stack trace as the body, `:104-106`) is a recorded divergence: a failure
+  /// here fails the execution with its own error.
+  Future<Object?> _handleAjax(
+    SourceHostDispatcher? host,
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> input,
+    SourceCancellation token,
+  ) async {
+    if (host == null || payload is! String) {
+      throw const SourceScriptError('host-input', 'invalid ajax url');
+    }
+    final request = await _shapeAjaxRequest(payload, requestId, input, token);
+    final response = await host.request(
+      request.method,
+      request.url,
+      headers: request.headers,
+      body: request.body,
+      retry: request.retry,
+    );
+    return _responseJson(response);
+  }
+
+  /// Frozen `JsExtensions.ajaxAll` (`help/JsExtensions.kt:111-125`): one
+  /// `AnalyzeUrl` per URL, so each entry keeps its own options, sent as one
+  /// ordered batch.
+  Future<Object?> _handleAjaxAll(
+    SourceHostDispatcher? host,
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> input,
+    SourceCancellation token,
+  ) async {
+    if (host == null || payload is! Map || payload['urls'] is! List) {
+      throw const SourceScriptError('host-input', 'invalid ajaxAll call');
+    }
+    final rawUrls = payload['urls'] as List;
+    if (rawUrls.any((url) => url is! String)) {
+      throw const SourceScriptError('host-input', 'invalid ajaxAll url');
+    }
+    final requests = <SourceBatchRequest>[];
+    for (final url in rawUrls.cast<String>()) {
+      final shaped = await _shapeAjaxRequest(url, requestId, input, token);
+      requests.add((
+        method: shaped.method,
+        url: shaped.url,
+        headers: shaped.headers,
+        body: shaped.body,
+        retry: shaped.retry,
+      ));
+    }
+    final responses = await host.ajaxAll(requests);
+    return [for (final response in responses) _responseJson(response)];
+  }
+
+  /// The shaped request one `java.ajax`/`java.ajaxAll` URL becomes: the URL
+  /// text expanded (the frozen `analyzeJs`/`replaceKeyPageJs`), its `,{…}`
+  /// option tail read through the same [SourceUrlOptions] model the stages use,
+  /// and the same request shaping ([sourceRequestShape]) — `method`, `body`,
+  /// `charset`, `headers` and `retry` apply (`AnalyzeUrl.kt:208-334`).
+  Future<
+    ({
+      String url,
+      String method,
+      String? body,
+      Map<String, String> headers,
+      int retry,
+    })
+  >
+  _shapeAjaxRequest(
+    String rawUrl,
+    BigInt requestId,
+    Map<String, Object?> input,
+    SourceCancellation token,
+  ) async {
+    final expanded = await _expandHostUrl(
+      rawUrl,
+      requestId,
+      input,
+      token,
+      allowUrlOptions: true,
+    );
+    final ({String path, String tail, SourceUrlOptions options}) split;
+    try {
+      split = splitSourceUrlOptions(expanded);
+    } on UnsupportedError catch (error) {
+      throw _refuseAjaxOption('${error.message}');
+    } on FormatException catch (error) {
+      throw _refuseAjaxOption(error.message);
+    }
+    final options = split.options;
+    if (options.webView) {
+      throw _refuseAjaxOption('webView: true 需要阶段请求的 WebView 路径（ADR 0011 §4）');
+    }
+    final script = options.js;
+    final target = script == null
+        ? split.path
+        : '${await _evaluateNested(script, split.path, requestId, input, token)}';
+    final declared = await _headers(input, requestId, token);
+    final headers = <String, String>{
+      for (final entry in declared.entries)
+        if (entry.value != null) entry.key: entry.value!,
+      ...options.headers,
+    };
+    final (method: method, body: body, headers: extra) =
+        await sourceRequestShape(options, headers);
+    return (
+      url: options.isPost
+          ? target
+          : await encodeSourceQuery(target, charset: options.charset),
+      method: method,
+      body: body,
+      headers: {...headers, ...extra},
+      retry: options.retry,
+    );
+  }
+
+  /// A URL option a `java.ajax` tail carries but this path cannot apply refuses
+  /// by name, into the source log, like every other unsupported member.
+  SourceScriptError _refuseAjaxOption(String policy) => _handleRefusal({
+    'member': 'java.ajax(url, {…})',
+    'policy': policy,
+  });
+
+  /// Frozen `AnalyzeUrl.getStrResponse`/`getResponse` (`AnalyzeUrl.kt:465-526`):
+  /// the stage's own request repeated, answered as the response object the
+  /// check script reads.
+  Future<Object?> _handleStageResend(SourceStageRequest? stage) async {
+    if (stage == null) throw _refuseStageRequest('java.getStrResponse');
+    return (await stage.resend()).toJson();
+  }
+
+  /// Frozen `AnalyzeUrl.initUrl` (`AnalyzeUrl.kt:139`): the stage's address
+  /// analysis re-run, so the requests the check makes after it use the result.
+  Future<Object?> _handleStageInitUrl(SourceStageRequest? stage) async {
+    if (stage == null) throw _refuseStageRequest('java.initUrl');
+    await stage.reanalyze();
+    return null;
+  }
+
+  /// The stage request surface belongs to the `loginCheckJs` hook; a rule script
+  /// that asks for it refuses by name instead of failing as a `TypeError`.
+  SourceScriptError _refuseStageRequest(String member) => _handleRefusal({
+    'member': member,
+    'policy': '只有书源 loginCheckJs 钩子持有阶段请求（#59）',
+  });
+
+  static Map<String, Object?> _responseJson(SourceHttpResponse response) => {
+    'statusCode': response.statusCode,
+    'headers': response.headers,
+    'body': response.body,
+    'url': response.url.toString(),
+  };
 
   /// The JavaScript surface one source sees: the frozen runtime's bindings
   /// (`AnalyzeUrl.buildScriptBindings` plus `JsExtensions`), with the host
   /// half bridged into Dart.
   static const _facade = r'''
-(input) => {
+(input, checkResponse) => {
   const bridge = fjs.bridge_call;
   const call = (method, payload) =>
     JSON.parse(bridge(JSON.stringify({method: method, payload: payload}))).value;
+  // The frozen `StrResponse.headers()` is an OkHttp `Headers`: `headers().get(name)
+  // is case-insensitive and answers the first value, and a script that indexes
+  // the object directly (`headers()["x-path"]`) sees the same values.
+  function responseHeaders(values) {
+    const source = values && typeof values === 'object' ? values : {};
+    const get = name => {
+      const wanted = String(name).toLowerCase();
+      for (const key in source) {
+        if (key.toLowerCase() !== wanted) continue;
+        const value = source[key];
+        if (Array.isArray(value)) return value.length ? String(value[0]) : null;
+        return value === null || value === undefined ? null : String(value);
+      }
+      return null;
+    };
+    return Object.freeze({...source, get: get});
+  }
+  // A response as a source reads it, tagged (`__response`) so the
+  // `loginCheckJs` boundary can tell it from any other value the script
+  // returned, the way the frozen `as StrResponse` cast does.
   function response(result) {
     return Object.freeze({
       body: () => result.body,
       code: () => result.statusCode,
       url: () => result.url,
-      headers: () => result.headers,
-      raw: () => Object.freeze({request: () => Object.freeze({url: () => result.url})})
+      headers: () => responseHeaders(result.headers),
+      raw: () => Object.freeze({request: () => Object.freeze({url: () => result.url})}),
+      __response: () => result
     });
   }
+  // The frozen check script's `java` is the stage's own `AnalyzeUrl`
+  // (`AnalyzeUrl.kt:139,465-526`): these two members repeat the stage request
+  // and re-run its address analysis, and they belong to the `loginCheckJs`
+  // hook, which is the one evaluation the pipeline hands that request to.
+  const refuseStage = member => call('refuse', {
+    member: member,
+    policy: 'the stage request surface belongs to a loginCheckJs hook (#59)'
+  });
+  const stageResponse = member => checkResponse
+    ? response(call('stageResend', null))
+    : refuseStage(member);
   function connectHeaders(headers) {
     if (typeof headers === 'string') {
       try {
@@ -1037,6 +1398,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       return call('headers', null);
     },
     getVariable: () => call('cache', {op:'get', key:'sourceVariable_' + input.sourceKey}) || '',
+    // Frozen `BaseSource.setVariable` (`BaseSource.kt:200-212`): the same
+    // `sourceVariable_<key>` entry `getVariable` reads, and a null deletes it.
+    setVariable: value => {
+      if (value === null || value === undefined) {
+        call('cache', {op:'delete', key:'sourceVariable_' + input.sourceKey});
+        return;
+      }
+      call('cache', {op:'put', key:'sourceVariable_' + input.sourceKey, value:String(value)});
+    },
     put: (key, value) => call('cache', {op:'put', key:'v_' + input.sourceKey + '_' + key, value:String(value)}),
     get: key => call('cache', {op:'get', key:'v_' + input.sourceKey + '_' + key}) || ''
   });
@@ -1193,7 +1563,22 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     ajaxAll: (...args) => {
       if (args.length !== 1 || !Array.isArray(args[0])) throw new Error('java.ajaxAll expects one URL array');
       if (args[0].length === 0) return [];
-      return call('ajaxAll', {urls:args[0].map(String), headers:call('headers', null)}).map(response);
+      return call('ajaxAll', {urls:args[0].map(String)}).map(response);
+    },
+    // Frozen `AnalyzeUrl.getResponse`/`getStrResponse` (`AnalyzeUrl.kt:478-526`):
+    // the stage's current request repeated. The `jsStr`/`sourceRegex` arguments
+    // only drive the frozen WebView path, and have no used-source call site, so
+    // that form refuses by name.
+    getResponse: () => stageResponse('java.getResponse'),
+    getStrResponse: (jsStr, sourceRegex, useWebView) => {
+      if (jsStr !== undefined && jsStr !== null) return refuseStage('java.getStrResponse(jsStr, …)');
+      if (sourceRegex !== undefined && sourceRegex !== null) return refuseStage('java.getStrResponse(jsStr, …)');
+      if (useWebView !== undefined && useWebView !== true) return refuseStage('java.getStrResponse(jsStr, …)');
+      return stageResponse('java.getStrResponse');
+    },
+    initUrl: () => {
+      if (!checkResponse) return refuseStage('java.initUrl');
+      call('stageInitUrl', null);
     },
     get: (...args) => {
       if (args.length === 1) return call('state', {op:'get', key:String(args[0])});
@@ -1306,7 +1691,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   });
 
   return {key:null, page:null, book:book, chapter:chapter, result:null, speakText:null, speakSpeed:null,
-    ...input, __LIBER_INPUT__: input, book, chapter, source, java, cookie, cache};
+    ...input, __LIBER_INPUT__: input, book, chapter, source, java, cookie, cache,
+    // The `loginCheckJs` hook sees the stage's response as `result` through the
+    // response accessors; every other evaluation keeps the raw value the rule
+    // field produced.
+    result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result)) : input.result};
 }
 ''';
 }
@@ -1361,7 +1750,13 @@ class _ScriptSession {
           'get: (target,name) => typeof name === "symbol" ? undefined : Reflect.has(target,name) ? target[name] : __read(name),\n'
           'set: (target,name,value) => Reflect.set(target,name,value)\n'
           '}); with(__bindings){ return eval(__code); } };\n}; '
-          'return function(scope,code){ if (!run) run=create(); return run.call(scope,scope,code); }; })();',
+          'return function(scope,code){ if (!run) run=create(); return run.call(scope,scope,code); }; })(); '
+          // The `loginCheckJs` boundary: the script's value must be a response
+          // object, the way the frozen `as StrResponse` cast requires one; a
+          // response crosses back as its plain payload.
+          'globalThis.__liberCheckResponse = function(value){ '
+          'if (value !== null && typeof value === "object" && typeof value.__response === "function") return value.__response(); '
+          'throw new Error("loginCheckJs must return a response object (result, java.getStrResponse() or java.getResponse()); got " + (value === null ? "null" : typeof value)); };',
         ),
       );
       return session;

@@ -162,7 +162,28 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   String? _chapterTitle;
   HtmlBook? _book;
   SourceChapter? _chapter;
-  final _bookOptions = <Uri, SourceUrlOptions>{};
+
+  /// The book URLs of this analysis with the address text they came from and
+  /// the base that text resolved against, kept for the stage that fetches the
+  /// book: a book URL is handed around without them, and `java.initUrl` re-runs
+  /// the analysis of that text (`SourceStageRequest.reanalyze`).
+  final _bookRequests =
+      <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
+
+  /// The request the stage currently running made: what the stage's
+  /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
+  /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
+  /// stage's own `AnalyzeUrl`). [BookSourceStage] is only the trace entry such a
+  /// repeat records.
+  ({
+    Uri url,
+    BookSourceStage stage,
+    SourceUrlOptions options,
+    String address,
+    Uri base,
+  })?
+  _stageRequest;
+
   bool get cancelled => _cancellation.isCancelled;
   @override
   void cancel() => _cancellation.cancel();
@@ -205,46 +226,94 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return Map<String, String>.from(parsed);
   }
 
-  void _validate() {
-    _cancellation.throwIfCancelled();
-    for (final key in ['loginUrl', 'loginCheckJs']) {
-      if ((source[key]?.toString() ?? '').isNotEmpty) {
-        throw UnsupportedError('暂不支持 $key');
-      }
-    }
-  }
+  Map<String, Object?> _scriptInput(String keyword, Object? result) => {
+    'sourceKey': _sourceRef,
+    'source': _sourceFields,
+    'key': keyword,
+    'page': _page,
+    'result': result,
+    'baseUrl': source['bookSourceUrl'],
+    'title': _chapterTitle,
+    'book': _book == null
+        ? null
+        : {
+            'name': _book!.title,
+            'bookUrl': '${_book!.url}',
+            'author': _book!.author,
+            'intro': _book!.intro,
+            'coverUrl': _book!.cover,
+            'kind': _book!.kind,
+            'latestChapterTitle': _book!.lastChapter,
+            'wordCount': _book!.wordCount,
+          },
+    'chapter': _chapter == null
+        ? null
+        : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
+    'headers': const <String, String>{},
+  };
 
   Future<Object?> _evalJs(String script, String keyword, Object? result) =>
       _runtime.evaluate(
         source: script,
-        input: {
-          'sourceKey': _sourceRef,
-          'source': _sourceFields,
-          'key': keyword,
-          'page': _page,
-          'result': result,
-          'baseUrl': source['bookSourceUrl'],
-          'title': _chapterTitle,
-          'book': _book == null
-              ? null
-              : {
-                  'name': _book!.title,
-                  'bookUrl': '${_book!.url}',
-                  'author': _book!.author,
-                  'intro': _book!.intro,
-                  'coverUrl': _book!.cover,
-                  'kind': _book!.kind,
-                  'latestChapterTitle': _book!.lastChapter,
-                  'wordCount': _book!.wordCount,
-                },
-          'chapter': _chapter == null
-              ? null
-              : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
-          'headers': const <String, String>{},
-        },
+        input: _scriptInput(keyword, result),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
+
+  /// The frozen `res = analyzeUrl.evalJS(checkJs, res) as StrResponse`
+  /// (`WebBook.kt:71` and its four siblings): the source's `loginCheckJs` after
+  /// one stage response, with that response as the script's `result`, and the
+  /// response the script returns in its place for the rest of the stage.
+  ///
+  /// The hook runs once per stage, on the stage's first response — the frozen
+  /// call sites are the four stage entries, and the `nextTocUrl`/
+  /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
+  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
+    final checkJs = '${source['loginCheckJs'] ?? ''}';
+    if (checkJs.trim().isEmpty) return response;
+    return _runtime.evaluateLoginCheck(
+      script: checkJs,
+      input: _scriptInput(_keyword, response.toJson()),
+      stage: SourceStageRequest(
+        resend: _resendStage,
+        reanalyze: _reanalyzeStage,
+      ),
+      timeout: const Duration(seconds: 30),
+      cancellation: _cancellation,
+    );
+  }
+
+  /// Frozen `AnalyzeUrl.getStrResponse` (`AnalyzeUrl.kt:465`): the stage's own
+  /// request, with its own options and headers, sent again.
+  Future<SourceStageResponse> _resendStage() {
+    final stage = _stageRequest!;
+    return _fetch(
+      stage.url,
+      stage.stage,
+      options: stage.options,
+      address: stage.address,
+      base: stage.base,
+    );
+  }
+
+  /// Frozen `AnalyzeUrl.initUrl` (`AnalyzeUrl.kt:139`): the stage's address text
+  /// expanded and its options parsed again, so a request after the check uses
+  /// the result.
+  Future<void> _reanalyzeStage() async {
+    final stage = _stageRequest!;
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      _keyword,
+    );
+    _stageRequest = (
+      url: url,
+      stage: stage.stage,
+      options: options,
+      address: stage.address,
+      base: stage.base,
+    );
+  }
 
   /// The shared rule-field path's edges for this adapter: the scripts go through
   /// the runtime the adapter already owns, a value rule is extracted by a
@@ -439,20 +508,34 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return uri;
   }
 
-  Future<(String, Uri)> _fetch(
+  /// Sends one stage request and answers the stage response as the rules and
+  /// the stage's `loginCheckJs` read it.
+  ///
+  /// [address] is the address text this request came from and [base] the URL it
+  /// resolved against; both are kept for `java.initUrl`, which re-runs the
+  /// address analysis (`SourceStageRequest.reanalyze`). A caller that only has
+  /// the resolved URL passes neither: the URL text is then the address.
+  Future<SourceStageResponse> _fetch(
     Uri url,
     BookSourceStage stage, {
     SourceUrlOptions options = const SourceUrlOptions(),
+    String? address,
+    Uri? base,
   }) async {
-    _validate();
+    _stageRequest = (
+      url: url,
+      stage: stage,
+      options: options,
+      address: address ?? '$url',
+      base: base ?? url,
+    );
+    _cancellation.throwIfCancelled();
     final sourceHeaders = await _headers();
     final merged = {...sourceHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
         await sourceRequestShape(options, merged);
     final headers = {...merged, ...extra};
     final host = _host;
-    String text;
-    var finalUrl = url;
     if (options.webView) {
       // The frozen `AnalyzeUrl` WebView path, under this source's rate limit:
       // `withLimit` encloses the whole operation, bootstrap and load alike.
@@ -474,8 +557,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 .withSourceRateLimit(render);
       _cancellation.throwIfCancelled();
       trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
-      return (result.body, result.url);
+      // A rendered document has no HTTP response of its own: the frozen
+      // `StrResponse(url, body)` reports status 200 and no headers.
+      return SourceStageResponse.webView(body: result.body, url: result.url);
     }
+    final String text;
+    var finalUrl = url;
+    var statusCode = 200;
+    var responseHeaders = const <String, List<String>>{};
     if (host != null) {
       final response = await host
           .forExecution(_cancellation)
@@ -488,6 +577,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           );
       text = response.body;
       finalUrl = response.url;
+      statusCode = response.statusCode;
+      responseHeaders = response.headers;
     } else {
       if (method != 'GET' || headers.isNotEmpty) {
         throw UnsupportedError('当前 transport 不支持 HTTP 请求选项');
@@ -496,7 +587,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     }
     _cancellation.throwIfCancelled();
     trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
-    return (text, finalUrl);
+    return SourceStageResponse(
+      body: text,
+      url: finalUrl,
+      statusCode: statusCode,
+      headers: responseHeaders,
+    );
   }
 
   @override
@@ -504,7 +600,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _book = null;
     _chapter = null;
     _chapterTitle = null;
-    _validate();
+    _cancellation.throwIfCancelled();
     // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it are
     // the source check and the debug page's search box, not this stage, so a
     // search runs on the keyword it was given whatever the field holds.
@@ -517,11 +613,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       source['searchUrl'] as String,
       keyword,
     );
-    final (html, finalUrl) = await _fetch(
-      url,
-      BookSourceStage.search,
-      options: options,
+    // The check sees the stage's own response and may replace it, so the rules
+    // below read what it returned (`WebBook.kt:71`).
+    final checked = await _loginCheck(
+      await _fetch(
+        url,
+        BookSourceStage.search,
+        options: options,
+        address: source['searchUrl'] as String,
+        base: base,
+      ),
     );
+    final html = checked.body;
+    final finalUrl = checked.url;
     final batch = HtmlRuleBatch(html);
     final listRule = await _field(
       _rule('ruleSearch', 'bookList'),
@@ -591,7 +695,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         finalUrl,
         _required(links, index, 'ruleSearch.bookUrl'),
       );
-      _bookOptions[bookUrlTarget] = bookOptions;
+      _bookRequests[bookUrlTarget] = (
+        address: _required(links, index, 'ruleSearch.bookUrl'),
+        base: finalUrl,
+        options: bookOptions,
+      );
       books.add(
         HtmlBook(
           url: bookUrlTarget,
@@ -613,11 +721,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _page = null;
-    final (html, infoUrl) = await _fetch(
-      hit.url,
-      BookSourceStage.bookInfo,
-      options: _bookOptions.remove(hit.url) ?? const SourceUrlOptions(),
+    final bookRequest = _bookRequests.remove(hit.url);
+    final bookInfo = await _loginCheck(
+      await _fetch(
+        hit.url,
+        BookSourceStage.bookInfo,
+        options: bookRequest?.options ?? const SourceUrlOptions(),
+        address: bookRequest?.address,
+        base: bookRequest?.base,
+      ),
     );
+    final html = bookInfo.body;
+    final infoUrl = bookInfo.url;
     final batch = HtmlRuleBatch(html);
     final name = await _field(_rule('ruleBookInfo', 'name'), content: html);
     final nameValue = _declare(batch, 'name', name);
@@ -693,25 +808,39 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
     );
     _book = book;
-    final (tocTarget, tocOptions) = await _extracted(
-      infoUrl,
-      await _documentValue(tocValue, tocUrl, html),
-    );
+    final tocText = await _documentValue(tocValue, tocUrl, html);
+    final (tocTarget, tocOptions) = await _extracted(infoUrl, tocText);
     var url = tocTarget;
     var options = tocOptions;
+    // The address text of the TOC page about to be fetched and the base it
+    // resolves against, kept for `java.initUrl`.
+    var address = tocText;
+    var base = infoUrl;
     final visited = <Uri>{};
     final chapterUrls = <Uri>{};
     final chapters = <SourceChapter>[];
     tocPages = 0;
+    var firstPage = true;
     while (true) {
       if (!visited.add(url) || visited.length > 30) {
         throw StateError('目录分页循环或超出 30 页');
       }
-      final (page, pageUrl) = await _fetch(
+      var fetched = await _fetch(
         url,
         BookSourceStage.tableOfContents,
         options: options,
+        address: address,
+        base: base,
       );
+      // The frozen TOC stage checks login once, on its first response
+      // (`WebBook.kt:253`); the `nextTocUrl` pages `BookChapterList` fetches
+      // afterwards never run the check.
+      if (firstPage) {
+        fetched = await _loginCheck(fetched);
+        firstPage = false;
+      }
+      final page = fetched.body;
+      final pageUrl = fetched.url;
       tocPages++;
       final batch = HtmlRuleBatch(page);
       final listRule = await _field(
@@ -771,6 +900,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final (nextUrl, nextOptions) = await _extracted(pageUrl, nextText);
       url = nextUrl;
       options = nextOptions;
+      address = nextText;
+      base = pageUrl;
     }
     return (book, chapters);
   }
@@ -811,18 +942,35 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // (the frozen `BookContent` fetches `chapter.url` through `AnalyzeUrl`, so a
     // chapter address that asked for the WebView is rendered).
     var options = chapter.options;
+    // The chapter's own address text and the base it resolves against, kept for
+    // `java.initUrl`. A chapter reached from the shelf carries an absolute
+    // address, and the address the TOC rule produced resolves against the
+    // chapter's own URL for everything but a bare relative path.
+    var address = chapter.address;
+    var base = chapter.url;
     final visited = <Uri>{};
     final parts = <String>[];
     String? contentTitle;
+    var firstPage = true;
     while (true) {
       if (!visited.add(url) || visited.length > 20) {
         throw StateError('正文分页循环或超出 20 页');
       }
-      final (html, pageUrl) = await _fetch(
+      var fetched = await _fetch(
         url,
         BookSourceStage.content,
         options: options,
+        address: address,
+        base: base,
       );
+      // The frozen content stage checks login once, on its first response
+      // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
+      if (firstPage) {
+        fetched = await _loginCheck(fetched);
+        firstPage = false;
+      }
+      final html = fetched.body;
+      final pageUrl = fetched.url;
       // Frozen BookContent applies the first-page title before parsing content
       // rules: their scripts and {{chapter.title}} see the updated value.
       if (parts.isEmpty) {
@@ -879,6 +1027,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // every other page of a content request.
       options = nextOptions;
       url = nextUrl;
+      address = nextText;
+      base = pageUrl;
     }
     return HtmlChapterBody(
       _shapeJoinedContent(parts.join('\n')),

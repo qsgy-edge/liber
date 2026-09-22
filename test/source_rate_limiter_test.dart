@@ -136,11 +136,19 @@ void main() {
       concurrentRate: '3/1000',
       rateLimiter: limiter,
     );
-    final responses = await dispatcher.ajaxAll([
-      'http://a.test/1',
-      'http://a.test/2',
-      'http://a.test/3',
-    ], concurrency: 2);
+    final responses = await dispatcher.ajaxAll(
+      [
+        for (final path in ['1', '2', '3'])
+          (
+            method: 'GET',
+            url: 'http://a.test/$path',
+            headers: const <String, String>{},
+            body: null,
+            retry: 0,
+          ),
+      ],
+      concurrency: 2,
+    );
     // The declared batch preserves input order regardless of which worker
     // finishes first...
     expect(responses.map((response) => response.body), ['/1', '/2', '/3']);
