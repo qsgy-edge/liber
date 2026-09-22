@@ -169,10 +169,16 @@ void main() {
     () async {
       final transport = ControlledTransport();
       final dispatcher = SourceHostDispatcher(transport: transport);
+      SourceBatchRequest request(String path) => (
+        method: 'GET',
+        url: 'http://localhost/$path',
+        headers: const {'X-Batch': 'yes'},
+        body: null,
+        retry: 0,
+      );
       final result = dispatcher.ajaxAll(
-        ['http://localhost/a', 'http://localhost/b', 'http://localhost/c'],
+        [request('a'), request('b'), request('c')],
         concurrency: 2,
-        headers: {'X-Batch': 'yes'},
       );
       expect(transport.requests.length, 2);
       expect(transport.requests.first.headers['X-Batch'], 'yes');

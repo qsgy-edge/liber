@@ -81,12 +81,26 @@ class JsonSourcePipeline implements BookSourcePipeline {
   HtmlBook? _book;
   SourceChapter? _chapter;
 
-  /// The frozen `AnalyzeUrl` options one analysis owns: the options a book URL
-  /// carried, kept for the stage that fetches it, because a book URL is handed
-  /// around without them. A *chapter*'s options do not need this map: the
-  /// chapter keeps its own address text, so they survive the hand-off and a
-  /// restart.
-  final _bookOptions = <Uri, SourceUrlOptions>{};
+  /// The frozen `AnalyzeUrl` options one analysis owns: a book URL's address
+  /// text, the base it resolved against and the options it carried, kept for
+  /// the stage that fetches it, because a book URL is handed around without
+  /// them. A *chapter*'s options do not need this map: the chapter keeps its
+  /// own address text, so they survive the hand-off and a restart.
+  final _bookRequests =
+      <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
+
+  /// The request the stage currently running made: what the stage's
+  /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
+  /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
+  /// stage's own `AnalyzeUrl`).
+  ({
+    Uri url,
+    SourceUrlOptions options,
+    String address,
+    Uri base,
+    String keyword,
+  })?
+  _stageRequest;
 
   final _cancellation = SourceCancellation();
 
@@ -139,9 +153,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// Refuses what this adapter cannot run, before a request is sent.
   void _validate() {
     _cancellation.throwIfCancelled();
-    if ((source['loginCheckJs']?.toString() ?? '').isNotEmpty) {
-      throw UnsupportedError('Source field is not supported yet: loginCheckJs');
-    }
     final rawHeader = source['header'];
     if (rawHeader != null && rawHeader is! String) {
       throw const FormatException('书源 header 必须是 JSON 字符串或 JS 规则');
@@ -164,37 +175,95 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'loginUrl': source['loginUrl'],
   };
 
+  Map<String, Object?> _scriptInput(String keyword, Object? result) => {
+    'sourceKey': _sourceRef,
+    'source': _sourceFields,
+    'key': keyword,
+    'page': _page,
+    'baseUrl': '$_base',
+    'result': result,
+    'title': _chapterTitle,
+    'book': _book == null
+        ? null
+        : {
+            'name': _book!.title,
+            'bookUrl': '${_book!.url}',
+            'author': _book!.author,
+            'intro': _book!.intro,
+            'coverUrl': _book!.cover,
+            'kind': _book!.kind,
+            'latestChapterTitle': _book!.lastChapter,
+            'wordCount': _book!.wordCount,
+          },
+    'chapter': _chapter == null
+        ? null
+        : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
+    'headers': _activeHeaders,
+  };
+
   Future<Object?> _evalJs(String script, String keyword, Object? result) =>
       _runtime.evaluate(
         source: script,
-        input: {
-          'sourceKey': _sourceRef,
-          'source': _sourceFields,
-          'key': keyword,
-          'page': _page,
-          'baseUrl': '$_base',
-          'result': result,
-          'title': _chapterTitle,
-          'book': _book == null
-              ? null
-              : {
-                  'name': _book!.title,
-                  'bookUrl': '${_book!.url}',
-                  'author': _book!.author,
-                  'intro': _book!.intro,
-                  'coverUrl': _book!.cover,
-                  'kind': _book!.kind,
-                  'latestChapterTitle': _book!.lastChapter,
-                  'wordCount': _book!.wordCount,
-                },
-          'chapter': _chapter == null
-              ? null
-              : {'title': _chapter!.name, 'url': '${_chapter!.url}'},
-          'headers': _activeHeaders,
-        },
+        input: _scriptInput(keyword, result),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
+
+  /// The frozen `res = analyzeUrl.evalJS(checkJs, res) as StrResponse`
+  /// (`WebBook.kt:71` and its four siblings): the source's `loginCheckJs` after
+  /// one stage response, with that response as the script's `result`, and the
+  /// response the script returns in its place for the rest of the stage.
+  ///
+  /// The hook runs once per stage, on the stage's first response — the frozen
+  /// call sites are the four stage entries, and the `nextTocUrl`/
+  /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
+  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
+    final checkJs = '${source['loginCheckJs'] ?? ''}';
+    if (checkJs.trim().isEmpty) return response;
+    return _runtime.evaluateLoginCheck(
+      script: checkJs,
+      input: _scriptInput(_keyword, response.toJson()),
+      stage: SourceStageRequest(
+        resend: _resendStage,
+        reanalyze: _reanalyzeStage,
+      ),
+      timeout: const Duration(seconds: 30),
+      cancellation: _cancellation,
+    );
+  }
+
+  /// Frozen `AnalyzeUrl.getStrResponse` (`AnalyzeUrl.kt:465`): the stage's own
+  /// request, with its own options and headers, sent again.
+  Future<SourceStageResponse> _resendStage() {
+    final stage = _stageRequest!;
+    return _fetch(
+      BookSourceStage.search,
+      stage.url,
+      options: stage.options,
+      address: stage.address,
+      base: stage.base,
+      keyword: stage.keyword,
+    );
+  }
+
+  /// Frozen `AnalyzeUrl.initUrl` (`AnalyzeUrl.kt:139`): the stage's address text
+  /// expanded and its options parsed again, so a request after the check uses
+  /// the result.
+  Future<void> _reanalyzeStage() async {
+    final stage = _stageRequest!;
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      stage.keyword,
+    );
+    _stageRequest = (
+      url: url,
+      options: options,
+      address: stage.address,
+      base: stage.base,
+      keyword: stage.keyword,
+    );
+  }
 
   /// The shared rule-field path's edges for this adapter: the scripts go through
   /// the runtime the adapter already owns, a value rule is extracted by the
@@ -328,11 +397,31 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return (url, split.options);
   }
 
-  Future<Object?> _fetch(
+  /// Sends one stage request and answers the stage response as the JSON rules
+  /// and the stage's `loginCheckJs` read it: the raw body, not the decoded
+  /// document, because the frozen rules parse the `StrResponse` body and a
+  /// check script may replace it.
+  ///
+  /// [address] is the address text this request came from and [base] the URL it
+  /// resolved against; both are kept for `java.initUrl`, which re-runs the
+  /// address analysis (`SourceStageRequest.reanalyze`). A caller that only has
+  /// the resolved URL passes neither: the URL text is then the address.
+  Future<SourceStageResponse> _fetch(
     BookSourceStage stage,
     Uri url, {
     SourceUrlOptions options = const SourceUrlOptions(),
+    String? address,
+    Uri? base,
+    String? keyword,
   }) async {
+    final stageKeyword = keyword ?? _keyword;
+    _stageRequest = (
+      url: url,
+      options: options,
+      address: address ?? '$url',
+      base: base ?? url,
+      keyword: stageKeyword,
+    );
     _cancellation.throwIfCancelled();
     final merged = {..._activeHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
@@ -360,7 +449,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 .withSourceRateLimit(render);
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
-      return jsonDecode(result.body);
+      // A rendered document has no HTTP response of its own: the frozen
+      // `StrResponse(url, body)` reports status 200 and no headers.
+      return SourceStageResponse.webView(body: result.body, url: result.url);
     }
     if (host != null) {
       // The same dispatcher every other source request goes through, so the
@@ -377,7 +468,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
           );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
-      return jsonDecode(response.body);
+      return SourceStageResponse(
+        body: response.body,
+        url: response.url,
+        statusCode: response.statusCode,
+        headers: response.headers,
+      );
     }
     if (method != 'GET' || headers.isNotEmpty) {
       throw UnsupportedError('当前 transport 不支持 HTTP 请求选项');
@@ -385,7 +481,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final text = await transport.request(stage: stage, path: url.toString());
     trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
     _cancellation.throwIfCancelled();
-    return jsonDecode(text);
+    return SourceStageResponse(body: text, url: url);
   }
 
   /// The rule map of one stage, refusing an unsupported rule by name.
@@ -462,11 +558,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
       source['searchUrl'] as String,
       keyword,
     );
-    final document = await _fetch(
-      BookSourceStage.search,
-      url,
-      options: options,
+    final checked = await _loginCheck(
+      await _fetch(
+        BookSourceStage.search,
+        url,
+        options: options,
+        address: source['searchUrl'] as String,
+        base: _base,
+      ),
     );
+    final document = jsonDecode(checked.body);
+    final finalUrl = checked.url;
     final found = await _elementList(document, search['bookList']!);
     final books = <HtmlBook>[];
     for (final entry in found) {
@@ -475,12 +577,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // for the details fetch. The URL keeps the adapter's existing
       // `template` + `expandSourceUrl` path: the request-time substitution and
       // the `,{...}` options are that path's, not the rule-field path's.
+      final bookAddress = JsonSourceRules.template(entry, search['bookUrl']!);
       final (bookUrl, bookOptions) = await _request(
-        url,
-        JsonSourceRules.template(entry, search['bookUrl']!),
+        checked.url,
+        bookAddress,
         keyword,
       );
-      _bookOptions[bookUrl] = bookOptions;
+      _bookRequests[bookUrl] = (
+        address: bookAddress,
+        base: finalUrl,
+        options: bookOptions,
+      );
       final name = await _text(entry, search['name']!);
       final author = await _optional(entry, search['author'] ?? '');
       final intro = await _optional(entry, search['intro'] ?? '');
@@ -512,11 +619,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _activeHeaders = await _ensureHeaders();
     final info = _rules('ruleBookInfo', ['name', 'tocUrl']);
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
-    final document = await _fetch(
-      BookSourceStage.bookInfo,
-      hit.url,
-      options: _bookOptions.remove(hit.url) ?? const SourceUrlOptions(),
+    final bookRequest = _bookRequests.remove(hit.url);
+    final bookInfo = await _loginCheck(
+      await _fetch(
+        BookSourceStage.bookInfo,
+        hit.url,
+        options: bookRequest?.options ?? const SourceUrlOptions(),
+        address: bookRequest?.address,
+        base: bookRequest?.base,
+      ),
     );
+    final document = jsonDecode(bookInfo.body);
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
     // read into a subtree of the response; it is a rule field too, so a `@js:`
     // or `{{...}}` in it is resolved the same way as every other value rule.
@@ -554,17 +667,25 @@ class JsonSourcePipeline implements BookSourcePipeline {
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
     _book = book;
+    final tocAddress = JsonSourceRules.template(page, info['tocUrl']!);
     final (tocUrl, tocOptions) = await _request(
       hit.url,
-      JsonSourceRules.template(page, info['tocUrl']!),
+      tocAddress,
       _keyword,
     );
-    final listing = await _fetch(
-      BookSourceStage.tableOfContents,
-      tocUrl,
-      options: tocOptions,
+    final tocPage = await _loginCheck(
+      await _fetch(
+        BookSourceStage.tableOfContents,
+        tocUrl,
+        options: tocOptions,
+        address: tocAddress,
+        base: hit.url,
+      ),
     );
-    final entries = await _elementList(listing, toc['chapterList']!);
+    final entries = await _elementList(
+      jsonDecode(tocPage.body),
+      toc['chapterList']!,
+    );
     final chapters = <SourceChapter>[];
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
@@ -614,13 +735,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _chapterTitle = chapter.name;
     _activeHeaders = await _ensureHeaders();
     final content = _rules('ruleContent', ['content']);
-    final document = await _fetch(
-      BookSourceStage.content,
-      chapter.url,
-      // The chapter's own address text carries its options (the frozen
-      // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
-      options: chapter.options,
+    final contentPage = await _loginCheck(
+      await _fetch(
+        BookSourceStage.content,
+        chapter.url,
+        // The chapter's own address text carries its options (the frozen
+        // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
+        options: chapter.options,
+        address: chapter.address,
+        base: chapter.url,
+      ),
     );
+    final document = jsonDecode(contentPage.body);
     final titleRule = content['title'];
     final title = titleRule == null
         ? null

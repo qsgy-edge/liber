@@ -24,14 +24,17 @@ void main() {
                 data: {
                   'bookSourceName': 'Default keyword',
                   'bookSourceUrl': 'https://example.invalid',
-                  // Stop before networking/native code; inspect the submitted keyword.
-                  'loginCheckJs': 'true',
                   'searchUrl': '/search?key={{key}}',
                   'ruleSearch': {
                     'bookList': r'$.items',
                     'name': r'$.name',
                     'bookUrl': r'$.url',
                     'checkKeyWord': '  source query  ',
+                    // Stop before networking/native code so the submitted
+                    // keyword is what this row observes: a rule field the JSON
+                    // adapter refuses by name fails the stage before its first
+                    // request.
+                    'unsupportedRule': r'$.x',
                   },
                 },
               ),
@@ -67,7 +70,6 @@ void main() {
                   'bookSourceUrl': 'https://example.invalid',
                   // Stop before networking/native code; the submitted keyword is
                   // what this row observes.
-                  'loginCheckJs': 'true',
                   'searchUrl': '/search?key={{key}}',
                   'ruleSearch': {
                     'bookList': r'$.items',
@@ -79,6 +81,7 @@ void main() {
                     'checkKeyWord': declared == 'numeric'
                         ? 42
                         : <String, Object>{'nested': 1},
+                    'unsupportedRule': r'$.x',
                   },
                 },
               ),
@@ -103,6 +106,55 @@ void main() {
   }
 
   testWidgets(
+    'a loginUrl/loginCheckJs source opens instead of being refused by name',
+    (tester) async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SourceTrialPage(
+            service: ShelfService(store),
+            sources: const [
+              ImportedBookSource(
+                id: 'login-fields',
+                data: {
+                  'bookSourceName': 'Login fields',
+                  'bookSourceUrl': 'https://example.invalid',
+                  // The fields this product used to refuse before any request
+                  // (#59): a source that declares them opens like any other. A
+                  // rule field the JSON adapter refuses by name still stops the
+                  // stage before its first request, so this row is deterministic
+                  // without a network.
+                  'loginUrl': 'https://example.invalid/user/login',
+                  'loginCheckJs': 'result',
+                  'searchUrl': '/search?key={{key}}',
+                  'ruleSearch': {
+                    'bookList': r'$.items',
+                    'name': r'$.name',
+                    'bookUrl': r'$.url',
+                    'unsupportedRule': r'$.x',
+                  },
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'test');
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(find.byType(HtmlSourceBrowser), findsOneWidget);
+      expect(
+        tester.widget<HtmlSourceBrowser>(find.byType(HtmlSourceBrowser)).keyword,
+        'test',
+      );
+      expect(find.textContaining('loginCheckJs'), findsNothing);
+      expect(find.textContaining('loginUrl'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'source trial opens the browser, where an unsupported field fails without a success result',
     (tester) async {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
@@ -119,13 +171,14 @@ void main() {
                   'bookSourceUrl': 'https://example.invalid',
                   // A JSON-shaped rule set sends the source to the JSON adapter,
                   // so the failure below is reached without the native library;
-                  // `loginCheckJs` is the field this product refuses by name.
-                  'loginCheckJs': 'true',
+                  // `ruleSearch.unsupportedRule` is the rule this product
+                  // refuses by name.
                   'searchUrl': '/search?key={{key}}',
                   'ruleSearch': {
                     'bookList': r'$.items',
                     'name': r'$.name',
                     'bookUrl': r'$.url',
+                    'unsupportedRule': r'$.x',
                   },
                 },
               ),
@@ -138,7 +191,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(HtmlSourceBrowser), findsOneWidget);
       expect(find.textContaining('读取失败'), findsOneWidget);
-      expect(find.textContaining('loginCheckJs'), findsOneWidget);
+      expect(find.textContaining('unsupportedRule'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

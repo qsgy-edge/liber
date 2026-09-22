@@ -6,6 +6,18 @@ import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_rate_limiter.dart';
 
+/// One request of a batch ([SourceHostDispatcher.ajaxAll]): the shape one
+/// batch entry sends, so each URL `java.ajaxAll` is handed carries its own
+/// `,{…}` options the way the frozen per-URL `AnalyzeUrl` does
+/// (`help/JsExtensions.kt:111-125`).
+typedef SourceBatchRequest = ({
+  String method,
+  String url,
+  Map<String, String> headers,
+  String? body,
+  int retry,
+});
+
 class SourceHostDispatcher {
   factory SourceHostDispatcher({
     required SourceHttpTransport transport,
@@ -163,13 +175,16 @@ class SourceHostDispatcher {
     Map<String, String> headers = const {},
   }) => _send('POST', url, headers: headers, body: body);
 
+  /// Sends one batch of already-shaped requests, at most [concurrency] at a
+  /// time, in the order it was handed to the frozen `ajaxAll`
+  /// (`JsExtensions.kt:111-125`): each request keeps its own method, body and
+  /// headers, and a batch's responses are returned in input order.
   Future<List<SourceHttpResponse>> ajaxAll(
-    Iterable<String> urls, {
+    Iterable<SourceBatchRequest> requests, {
     int concurrency = 4,
-    Map<String, String> headers = const {},
   }) async {
     if (concurrency < 1) throw ArgumentError.value(concurrency, 'concurrency');
-    final values = urls.toList(growable: false);
+    final values = requests.toList(growable: false);
     if (values.isEmpty) return const [];
     final output = List<SourceHttpResponse?>.filled(values.length, null);
     var next = 0;
@@ -177,7 +192,15 @@ class SourceHostDispatcher {
       while (true) {
         final index = next++;
         if (index >= values.length) return;
-        output[index] = await connect(values[index], headers: headers);
+        final request = values[index];
+        output[index] = await _send(
+          request.method,
+          request.url,
+          headers: request.headers,
+          body: request.body,
+          followRedirects: true,
+          retry: request.retry,
+        );
       }
     }
 
