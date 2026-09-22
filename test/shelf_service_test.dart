@@ -92,6 +92,33 @@ void main() {
     expect((await reopened.sources()).single.id, sourceUrl);
   });
 
+  test('章节地址文本进的是 url，键仍是裸地址', () async {
+    // #58: the row's `url` is the address text the TOC rule produced, option
+    // tail included, while `chapter_key` stays the bare request target so the
+    // progress rows written before and after keep matching.
+    await shelf.add(source, book('C'), [
+      SourceChapter(
+        '第一章',
+        Uri.parse('$sourceUrl/C/1'),
+        rawAddress: '$sourceUrl/C/1,{"webView":true}',
+      ),
+      SourceChapter('第二章', Uri.parse('$sourceUrl/C/2')),
+    ]);
+
+    final entry = await entryOf('C');
+    expect(entry.chapters.first.url, '$sourceUrl/C/1,{"webView":true}');
+    expect(entry.chapters.first.chapterKey, '$sourceUrl/C/1');
+    expect(entry.chapters.last.url, '$sourceUrl/C/2');
+    expect(entry.chapters.last.chapterKey, '$sourceUrl/C/2');
+
+    // A restart keeps both fields; the address text is what the content request
+    // parses its options from.
+    await restart();
+    final again = await entryOf('C');
+    expect(again.chapters.first.url, '$sourceUrl/C/1,{"webView":true}');
+    expect(again.chapters.first.chapterKey, '$sourceUrl/C/1');
+  });
+
   test('重复加入不新建书籍，刷新目录保留进度与书架位置', () async {
     await shelf.add(source, book('A', title: '甲'), chapters('A'));
     final before = await entryOf('A');

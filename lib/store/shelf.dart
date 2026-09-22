@@ -313,6 +313,13 @@ class ShelfService {
 
   /// A network chapter's key is its URL (D4): progress refers to the chapter,
   /// not to a position in the TOC, which drifts when the TOC changes.
+  ///
+  /// The key stays the bare request target, while `url` keeps the address text
+  /// with that target resolved and the TOC rule's option tail kept — the frozen
+  /// `BookChapter.url` shape — because the content request parses its options
+  /// from it (#58). A row written before this holds a bare target there, which
+  /// is address text with no options and parses to itself, so no migration is
+  /// needed and no progress key drifts.
   static List<BookChapter> _chapterRows(
     String bookId,
     List<SourceChapter> chapters,
@@ -322,7 +329,7 @@ class ShelfService {
         bookId: bookId,
         chapterKey: '${chapters[index].url}',
         name: chapters[index].name,
-        url: '${chapters[index].url}',
+        url: chapters[index].persistedAddress,
         chapterIndex: index,
       ),
   ];

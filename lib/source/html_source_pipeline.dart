@@ -741,9 +741,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final urls2 = await _perElement(urlField, urls.values);
       final nextText = await _documentValue(nextValue, next, page);
       for (var index = 0; index < items.length; index++) {
+        // The address text the rule produced, option tail included: this is what
+        // the chapter keeps, so the fetch parses the options the frozen
+        // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
+        final rawAddress = _required(urls2, index, 'ruleToc.chapterUrl');
         final (chapterUrl, chapterOptions) = await _extracted(
           pageUrl,
-          _required(urls2, index, 'ruleToc.chapterUrl'),
+          rawAddress,
         );
         if (chapterOptions.isPost ||
             chapterOptions.body != null ||
@@ -759,6 +763,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           SourceChapter(
             _required(names2, index, 'ruleToc.chapterName'),
             chapterUrl,
+            rawAddress: rawAddress,
           ),
         );
       }
@@ -802,10 +807,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _page = null;
     _chapterTitle = chapter.name;
     var url = chapter.url;
+    // The chapter's own address text carries the options this request applies
+    // (the frozen `BookContent` fetches `chapter.url` through `AnalyzeUrl`, so a
+    // chapter address that asked for the WebView is rendered).
+    var options = chapter.options;
     final visited = <Uri>{};
     final parts = <String>[];
     String? contentTitle;
-    var retry = 0;
     while (true) {
       if (!visited.add(url) || visited.length > 20) {
         throw StateError('正文分页循环或超出 20 页');
@@ -813,7 +821,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final (html, pageUrl) = await _fetch(
         url,
         BookSourceStage.content,
-        options: SourceUrlOptions(retry: retry),
+        options: options,
       );
       // Frozen BookContent applies the first-page title before parsing content
       // rules: their scripts and {{chapter.title}} see the updated value.
@@ -827,12 +835,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           final extracted = await _documentValue(titleValue, title, html);
           if (extracted.trim().isNotEmpty) {
             contentTitle = _chapterTitle = extracted;
-            _chapter = SourceChapter(extracted, chapter.url);
+            _chapter = SourceChapter(
+              extracted,
+              chapter.url,
+              rawAddress: chapter.rawAddress,
+            );
           }
         }
       }
       final content = await _field(
-        _contentRule(SourceChapter(_chapterTitle!, chapter.url)),
+        _contentRule(
+          SourceChapter(
+            _chapterTitle!,
+            chapter.url,
+            rawAddress: chapter.rawAddress,
+          ),
+        ),
         content: html,
       );
       final next = await _field(
@@ -857,7 +875,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           nextOptions.js != null) {
         throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
       }
-      retry = nextOptions.retry;
+      // The next page's own address text carries its options, as it does for
+      // every other page of a content request.
+      options = nextOptions;
       url = nextUrl;
     }
     return HtmlChapterBody(
