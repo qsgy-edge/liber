@@ -106,7 +106,10 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const Text('搜索后选书，再查看目录和正文。当前支持速读谷及就爱文学所用的部分规则；登录和共享脚本库尚未支持。'),
+          const Text(
+            '搜索后选书，再查看目录和正文。当前支持速读谷及就爱文学所用的部分规则；'
+            '登录（loginUrl / loginUi / loginCheckJs）已支持，远程共享脚本库尚未支持。',
+          ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(

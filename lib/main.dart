@@ -1007,7 +1007,7 @@ class _MigrationPage extends StatelessWidget {
               leading: const Icon(Icons.public),
               title: Text('${source.data['bookSourceName'] ?? source.id}'),
               subtitle: Text(
-                '${source.data['bookSourceUrl'] ?? '未提供 URL'} · 等待 WebView2 transport',
+                '${source.data['bookSourceUrl'] ?? '未提供 URL'}',
               ),
               // A source's row identity is its URL, so the two actions a source
               // has are deleting it and moving it to another URL (#53).
