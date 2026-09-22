@@ -171,6 +171,27 @@ JavaPattern _refused(List<String> translations, String refusal) =>
       translations: translations,
     );
 
+/// Java's `String.matches` (`Matcher.matches`) over one value: the whole of
+/// [value] must match Java pattern [pattern], or the pattern a Dart engine
+/// cannot run is refused by name.
+///
+/// Dart's `RegExp.hasMatch` accepts a *partial* match, so the anchored form is
+/// spelled out here rather than written as `^(?:…)$`: the port's `multiLine`
+/// flag keeps Java's meaning for `^`/`$` inside the pattern, and the match's
+/// own start and end carry the anchoring `String.matches` adds.
+///
+/// The frozen readers are the `bookUrlPattern` checks — the search stage
+/// (`BookList.kt:53`) and the shelf's pasted-URL match. [label] names the
+/// source field the pattern came from, so a refusal points at it.
+bool javaMatchesWhole(String pattern, String value, {required String label}) {
+  final translated = translateJavaPattern(pattern);
+  if (!translated.isRunnable) {
+    throw UnsupportedError('$label 不可用：${translated.refusal}');
+  }
+  final match = translated.compile().firstMatch(value);
+  return match != null && match.start == 0 && match.end == value.length;
+}
+
 /// Java's replacement-string syntax (`Matcher.appendReplacement`), expanded
 /// against [match]; null when the replacement refers to a group that does not
 /// exist, which Java raises on and the frozen `runCatching` turns into a

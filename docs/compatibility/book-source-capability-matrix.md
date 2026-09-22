@@ -76,7 +76,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `jsLib` | `BaseSource.kt:245-252`, `JsExtensions.kt:253` | 🟡 local shared library ✅; remote URL and `importScript` ❌ |
 | `enabledCookieJar` | `AnalyzeUrl.kt:597-615` | ✅ the flag decides whether a response's `Set-Cookie` reaches the jar, which stays per space and scoped to a source's own site group (ADR 0011 §3, #21); a source whose flag is off still sends what the jar holds, as the frozen `setCookie` does. One divergence is recorded: the frozen session/persistent split does not survive a restart here |
 | `bookSourceType` | `BookSource.kt:41` | 🟡 text (`0`) only; audio/image/file sources deferred beyond the first slice, not refused (ADR 0011 §7) |
-| `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ `bookUrlPattern` is #61 (36 of the 150 used sources non-empty). `coverDecodeJs` and the `variable` field are **0 non-empty among the 150** — not v1 rows; `variableComment` is a comment field. `concurrentRate` is implemented with the request layer (see the per-source limiter row) |
+| `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | 🟡 `bookUrlPattern` is ✅ since #61 (36 of the 150 used sources non-empty; the search stage in [Pipeline features](#e-pipeline-features)). `coverDecodeJs` and the `variable` field are **0 non-empty among the 150** — not v1 rows; `variableComment` is a comment field. `concurrentRate` is implemented with the request layer (see the per-source limiter row) |
 
 `✅` in this field inventory means implemented with product tests. The seven #41
 field observations now have an executed frozen golden
@@ -177,7 +177,7 @@ Frozen bindings: `AnalyzeUrl.kt:338-352` — `java`, `baseUrl`, `cookie`, `cache
 | Source variables (`variable`, `getVariable`, `setVariable`) | `BaseSource.kt:202-228` | 🟡 `source.getVariable`/`source.setVariable(value)` are the frozen `sourceVariable_<sourceKey>` entry since #59 — persistent in the space's store (ADR 0011 §3), deleted by `setVariable(null)`, capped like every other entry (#37); the source JSON `variable`/`variableComment` fields are still unread |
 | Table-of-contents pre-processing and formatting (`preUpdateJs`, `formatJs`) | `WebBook.kt:211`, `BookChapterList.kt` | ❌ |
 | Volume/VIP/paid markers (`isVolume`, `isVip`, `isPay`) | `TocRule.kt`, `BookChapterList.kt` | ❌ |
-| `bookUrlPattern` matching | `BookSource.kt:43` | ❌ |
+| `bookUrlPattern` matching | `BookSource.kt:43`, `BookList.kt:53-70,88-99` | ✅ since #61: the search stage matches the pattern against the response's **final** URL (after redirects) through the Java-pattern port — `String.matches`, the whole URL — and a match reads that page's one book from `ruleBookInfo` without consulting `ruleSearch.bookList`; an empty element list with no pattern takes the same path. A pattern the port cannot translate faithfully is ⛔ refused by name instead of mis-matched. The rule is implemented in both pipeline search stages; the shelf-side uses (`AddToBookshelfDialog.kt:132`, `BookshelfViewModel.kt:58`) stay out of scope |
 | Cover decoding (`coverDecodeJs`) | `BookCover.kt` | ❌ |
 | Content source validation (`sourceRegex`) | `ContentRule.kt`, `WebBook.kt` | ❌ |
 | Image style/decoding/pay actions | `ContentRule.kt` | ❌ |

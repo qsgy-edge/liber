@@ -5,6 +5,7 @@ import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'book_source_webview_adapter.dart';
 import 'html_rule_adapter.dart';
+import 'java_regex.dart';
 import 'js_source_runtime.dart';
 import 'rule_field.dart';
 import 'source_host_dispatcher.dart';
@@ -626,6 +627,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final html = checked.body;
     final finalUrl = checked.url;
+    final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
+    // The frozen search stage asks first whether the response is a book detail
+    // page, and returns that one book when it is; the element-list rules below
+    // are never read (`BookList.kt:53-70`).
+    if (bookUrlPattern.isNotEmpty &&
+        javaMatchesWhole(
+          bookUrlPattern,
+          '$finalUrl',
+          label: 'bookUrlPattern',
+        )) {
+      return _detailPageBooks(finalUrl, html);
+    }
     final batch = HtmlRuleBatch(html);
     final listRule = await _field(
       _rule('ruleSearch', 'bookList'),
@@ -677,6 +690,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final kinds = batch.elementsText('kind', kind.extractionRule!, items);
     await batch.run();
+    // The frozen companion to the branch above: an empty element list and no
+    // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
+    if (items.isEmpty && bookUrlPattern.isEmpty) {
+      return _detailPageBooks(finalUrl, html);
+    }
 
     final titles = await _perElement(name, names.values);
     final links = await _perElement(bookUrl, urls.values);
@@ -733,82 +751,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
-    final batch = HtmlRuleBatch(html);
-    final name = await _field(_rule('ruleBookInfo', 'name'), content: html);
-    final nameValue = _declare(batch, 'name', name);
-    final author = await _field(
-      _rule('ruleBookInfo', 'author', optional: true),
-      content: html,
-    );
-    final authorValue = _declare(batch, 'author', author);
-    final intro = await _field(
-      _rule('ruleBookInfo', 'intro', optional: true),
-      content: html,
-    );
-    final introValue = _declare(batch, 'intro', intro);
-    final cover = await _field(
-      _rule('ruleBookInfo', 'coverUrl', optional: true),
-      content: html,
-    );
-    final coverValue = _declare(batch, 'cover', cover);
-    final kind = await _field(
-      _rule('ruleBookInfo', 'kind', optional: true),
-      content: html,
-    );
-    final kindValue = _declare(batch, 'kind', kind);
-    final lastChapter = await _field(
-      _rule('ruleBookInfo', 'lastChapter', optional: true),
-      content: html,
-    );
-    final lastChapterValue = _declare(batch, 'lastChapter', lastChapter);
-    final wordCount = await _field(
-      _rule('ruleBookInfo', 'wordCount', optional: true),
-      content: html,
-    );
-    final wordCountValue = _declare(batch, 'wordCount', wordCount);
-    final canReName = _rule(
-      'ruleBookInfo',
-      'canReName',
-      optional: true,
-    ).trim().isNotEmpty;
-    final tocUrl = await _field(_rule('ruleBookInfo', 'tocUrl'), content: html);
-    final tocValue = _declare(batch, 'tocUrl', tocUrl);
-    await batch.run();
-
-    final coverText = await _documentValue(coverValue, cover, html);
-    final detailsTitle = await _documentValue(nameValue, name, html);
-    final detailsAuthor = await _documentValue(authorValue, author, html);
-    final detailsLastChapter = await _documentValue(
-      lastChapterValue,
-      lastChapter,
+    final (book, tocText) = await _readBookInfo(
       html,
+      infoUrl,
+      hit,
+      withTocUrl: true,
     );
-    final detailsWordCount = formatSourceWordCount(
-      await _documentValue(wordCountValue, wordCount, html),
-    );
-    final detailsIntro = formatSourceIntro(
-      await _documentValue(introValue, intro, html),
-    );
-    final book = HtmlBook(
-      url: hit.url,
-      // Legado only permits a detail page to replace the search title/author
-      // when `canReName` is declared (BookInfo.kt:65-70).
-      title: detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
-          ? detailsTitle
-          : hit.title,
-      author: detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
-          ? detailsAuthor
-          : hit.author,
-      intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
-      cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
-      kind: await _documentValue(kindValue, kind, html),
-      lastChapter: detailsLastChapter.isEmpty
-          ? hit.lastChapter
-          : detailsLastChapter,
-      wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
-    );
-    _book = book;
-    final tocText = await _documentValue(tocValue, tocUrl, html);
     final (tocTarget, tocOptions) = await _extracted(infoUrl, tocText);
     var url = tocTarget;
     var options = tocOptions;
@@ -904,6 +852,132 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       base = pageUrl;
     }
     return (book, chapters);
+  }
+
+  /// The single book a response that is a book detail page describes, or an
+  /// empty list when that page carries no name — the frozen `getInfoItem`
+  /// answers null then and the search stage returns what it collected
+  /// (`BookList.kt:174-179`).
+  ///
+  /// A source that declares no `ruleBookInfo.name` has no book to read here
+  /// either, where the details stage would refuse the missing field by name.
+  ///
+  /// The book's URL is the response's final URL: the frozen `getInfoItem`
+  /// keeps `baseUrl` for a redirected response and the request's own address
+  /// text otherwise (`BookList.kt:159-163`), and both are the URL this response
+  /// was produced for, which is what the details stage fetches afterwards.
+  Future<List<HtmlBook>> _detailPageBooks(Uri finalUrl, String html) async {
+    if (_rule('ruleBookInfo', 'name', optional: true).isEmpty) {
+      return const <HtmlBook>[];
+    }
+    final (book, _) = await _readBookInfo(
+      html,
+      finalUrl,
+      HtmlBook(url: finalUrl, title: ''),
+      withTocUrl: false,
+    );
+    return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
+  }
+
+  /// The `ruleBookInfo` rules over a response this pipeline already has.
+  ///
+  /// [details] fetches its own response and reads the TOC address from it; the
+  /// search stage calls this for a response whose final URL matched
+  /// `bookUrlPattern` (`BookList.kt:53-70`) or for the empty-element-list
+  /// fallback (`BookList.kt:91`), where the frozen `getInfoItem` runs the same
+  /// rules over the response it has and reads no TOC address — [withTocUrl] is
+  /// false there and the text it returns is empty.
+  ///
+  /// [hit] is the book the rules start from. A search synthesizes an empty one,
+  /// so the detail page's own name and author are taken, exactly as the frozen
+  /// empty `Book` takes them (`BookInfo.kt:60-73`).
+  Future<(HtmlBook, String)> _readBookInfo(
+    String html,
+    Uri infoUrl,
+    HtmlBook hit, {
+    required bool withTocUrl,
+  }) async {
+    final batch = HtmlRuleBatch(html);
+    final name = await _field(_rule('ruleBookInfo', 'name'), content: html);
+    final nameValue = _declare(batch, 'name', name);
+    final author = await _field(
+      _rule('ruleBookInfo', 'author', optional: true),
+      content: html,
+    );
+    final authorValue = _declare(batch, 'author', author);
+    final intro = await _field(
+      _rule('ruleBookInfo', 'intro', optional: true),
+      content: html,
+    );
+    final introValue = _declare(batch, 'intro', intro);
+    final cover = await _field(
+      _rule('ruleBookInfo', 'coverUrl', optional: true),
+      content: html,
+    );
+    final coverValue = _declare(batch, 'cover', cover);
+    final kind = await _field(
+      _rule('ruleBookInfo', 'kind', optional: true),
+      content: html,
+    );
+    final kindValue = _declare(batch, 'kind', kind);
+    final lastChapter = await _field(
+      _rule('ruleBookInfo', 'lastChapter', optional: true),
+      content: html,
+    );
+    final lastChapterValue = _declare(batch, 'lastChapter', lastChapter);
+    final wordCount = await _field(
+      _rule('ruleBookInfo', 'wordCount', optional: true),
+      content: html,
+    );
+    final wordCountValue = _declare(batch, 'wordCount', wordCount);
+    final canReName = _rule(
+      'ruleBookInfo',
+      'canReName',
+      optional: true,
+    ).trim().isNotEmpty;
+    final tocUrl = withTocUrl
+        ? await _field(_rule('ruleBookInfo', 'tocUrl'), content: html)
+        : null;
+    final tocValue = tocUrl == null ? null : _declare(batch, 'tocUrl', tocUrl);
+    await batch.run();
+
+    final coverText = await _documentValue(coverValue, cover, html);
+    final detailsTitle = await _documentValue(nameValue, name, html);
+    final detailsAuthor = await _documentValue(authorValue, author, html);
+    final detailsLastChapter = await _documentValue(
+      lastChapterValue,
+      lastChapter,
+      html,
+    );
+    final detailsWordCount = formatSourceWordCount(
+      await _documentValue(wordCountValue, wordCount, html),
+    );
+    final detailsIntro = formatSourceIntro(
+      await _documentValue(introValue, intro, html),
+    );
+    final book = HtmlBook(
+      url: hit.url,
+      // Legado only permits a detail page to replace the search title/author
+      // when `canReName` is declared (BookInfo.kt:65-70).
+      title: detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+          ? detailsTitle
+          : hit.title,
+      author: detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+          ? detailsAuthor
+          : hit.author,
+      intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
+      cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
+      kind: await _documentValue(kindValue, kind, html),
+      lastChapter: detailsLastChapter.isEmpty
+          ? hit.lastChapter
+          : detailsLastChapter,
+      wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
+    );
+    _book = book;
+    final tocText = tocUrl == null
+        ? ''
+        : await _documentValue(tocValue, tocUrl, html);
+    return (book, tocText);
   }
 
   /// `ruleContent.content` with the source's `replaceRegex` field appended.
