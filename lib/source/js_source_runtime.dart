@@ -827,14 +827,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
-  /// Frozen `BaseSource.putLoginHeader`/`getLoginHeader`/`removeLoginHeader`
-  /// (`BaseSource.kt:132-155`): the header text a source stored under
-  /// `loginHeader_<sourceKey>`, which every source request then carries
-  /// ([SourceHostDispatcher] merges it) and whose `Cookie` entry replaces the
-  /// source's cookie-jar entry for its own site.
-  ///
-  /// The map read is the frozen `getLoginHeaderMap`; it is not a JavaScript
-  /// member of its own — `source.getHeaderMap(true)` is what reads it.
+  /// Frozen `BaseSource.putLoginHeader`/`getLoginHeader`/`getLoginHeaderMap`/
+  /// `removeLoginHeader` (`BaseSource.kt:132-155`): the header text a source
+  /// stored under `loginHeader_<sourceKey>`, which every source request then
+  /// carries ([SourceHostDispatcher] merges it) and whose `Cookie` entry
+  /// replaces the source's cookie-jar entry for its own site.
   Future<Object?> _handleLoginHeader(
     Object? payload,
     String sourceRef,
@@ -846,6 +843,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     switch (payload['op']) {
       case 'get':
         return getSourceLoginHeader(hostState, sourceRef);
+      case 'map':
+        return getSourceLoginHeaderMap(hostState, sourceRef);
       case 'put':
         final header = payload['header'];
         if (header is! String) {
@@ -1553,6 +1552,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // `removeLoginInfo` (`:160-196`): the login state the source's own scripts
     // read and write, which is what a `loginUrl` script stores a session with.
     getLoginHeader: () => call('loginHeader', {op:'get'}),
+    getLoginHeaderMap: () => call('loginHeader', {op:'map'}),
     putLoginHeader: header => { call('loginHeader', {op:'put', header:String(header)}); },
     removeLoginHeader: () => { call('loginHeader', {op:'remove'}); },
     getLoginInfo: () => call('loginInfo', {op:'get'}),

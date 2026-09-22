@@ -63,6 +63,7 @@ const expectedMembers = <String>[
   'source.bookSourceName',
   'source.getHeaderMap',
   'source.getLoginHeader',
+  'source.getLoginHeaderMap',
   'source.putLoginHeader',
   'source.removeLoginHeader',
   'source.getLoginInfo',
@@ -331,13 +332,15 @@ Future<void> main(List<String> args) async {
     // the form collected.
     final loginHeader = await run(
       '''source.putLoginHeader(JSON.stringify({Cookie:'sid=login','X-Login':'yes'}));
-        JSON.stringify([source.getLoginHeader(), source.getHeaderMap(true)['X-Login'],
+        JSON.stringify([source.getLoginHeader(), source.getLoginHeaderMap()['Cookie'],
+          source.getHeaderMap(true)['X-Login'],
           cookie.getCookie(source.getKey()), source.getHeaderMap()['X-Login']])''',
     );
     checks['loginHeaderStoredAndInHeaderMap'] =
         loginHeader ==
         jsonEncode([
           '{"Cookie":"sid=login","X-Login":"yes"}',
+          'sid=login',
           'yes',
           'sid=login',
           null,
