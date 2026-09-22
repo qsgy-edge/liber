@@ -218,18 +218,16 @@ void main() {
     },
   );
 
-  test('login headers defer by name', () async {
-    await expectLater(
-      run('source.getHeaderMap(true)'),
-      throwsA(
-        isA<SourceScriptError>()
-            .having(
-              (e) => e.message,
-              'member',
-              contains('source.getHeaderMap(true)'),
-            )
-            .having((e) => e.message, 'owner', contains('#13')),
+  test('login headers are served instead of deferred', () async {
+    // Since #60 the stored login header is part of the source's header map
+    // (`BaseSource.getHeaderMap(true)`), not a named refusal.
+    expect(
+      await run(
+        "source.putLoginHeader(JSON.stringify({'X-Login':'yes'})); "
+        'JSON.stringify([source.getHeaderMap()["X-Login"], '
+        'source.getHeaderMap(true)["X-Login"], source.getLoginHeader()])',
       ),
+      jsonEncode([null, 'yes', '{"X-Login":"yes"}']),
     );
   });
 

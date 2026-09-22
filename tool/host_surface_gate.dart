@@ -62,6 +62,13 @@ const expectedMembers = <String>[
   'source.bookSourceUrl',
   'source.bookSourceName',
   'source.getHeaderMap',
+  'source.getLoginHeader',
+  'source.putLoginHeader',
+  'source.removeLoginHeader',
+  'source.getLoginInfo',
+  'source.getLoginInfoMap',
+  'source.putLoginInfo',
+  'source.removeLoginInfo',
   'java.connect',
   'java.ajax',
   'java.ajaxAll',
@@ -315,10 +322,49 @@ Future<void> main(List<String> args) async {
     } on SourceScriptError catch (error) {
       loginFailure = error;
     }
-    checks['loginHeaderDeferredByName'] =
-        loginFailure?.category == 'policy' &&
-        loginFailure!.message.contains('source.getHeaderMap(true)') &&
-        loginFailure.message.contains('#13');
+    checks['loginHeaderIsServedNotDeferred'] = loginFailure == null;
+
+    // The frozen `BaseSource` login members (#60): the header a source's login
+    // script stores is part of its header map and reaches the wire, its `Cookie`
+    // entry replaces the jar, and `removeLoginHeader` clears both. The login
+    // information is sealed with the installation id and reads back as the map
+    // the form collected.
+    final loginHeader = await run(
+      '''source.putLoginHeader(JSON.stringify({Cookie:'sid=login','X-Login':'yes'}));
+        JSON.stringify([source.getLoginHeader(), source.getHeaderMap(true)['X-Login'],
+          cookie.getCookie(source.getKey()), source.getHeaderMap()['X-Login']])''',
+    );
+    checks['loginHeaderStoredAndInHeaderMap'] =
+        loginHeader ==
+        jsonEncode([
+          '{"Cookie":"sid=login","X-Login":"yes"}',
+          'yes',
+          'sid=login',
+          null,
+        ]);
+    await run('java.ajax(${jsonEncode('$origin/echo')})');
+    // The header reaches the wire (the gate's `/echo` answers the cookie it was
+    // sent), which is the frozen `getHeaderMap(hasLoginHeader = true)` path the
+    // request layer merges.
+    checks['loginHeaderReachesTheWire'] =
+        requests.last.contains('GET /echo') &&
+        requests.last.contains('cookie=sid=login');
+    final loginInfo = await run(
+      '''source.putLoginInfo('{"user":"gate"}');
+        JSON.stringify([source.getLoginInfo(), source.getLoginInfoMap()['user']])''',
+    );
+    checks['loginInfoRoundTrip'] =
+        loginInfo == jsonEncode(['{"user":"gate"}', 'gate']);
+    final removedLogin = await run(
+      '''source.removeLoginHeader(); source.removeLoginInfo();
+        JSON.stringify([source.getLoginHeader(), source.getLoginInfo(),
+          cookie.getCookie(source.getKey())])''',
+    );
+    checks['loginRemoved'] = removedLogin == jsonEncode([null, null, '']);
+    await run('java.ajax(${jsonEncode('$origin/echo')})');
+    // Nothing of the login header or its cookie reaches the next request, and
+    // the jar entry `putLoginHeader` replaced went with it.
+    checks['loginHeaderGoneFromTheWire'] = requests.last == 'GET /echo';
 
     // 3. Rule state is the source's own persistent variables, not one
     //    analysis's: it survives an evaluation that shares nothing with the last
