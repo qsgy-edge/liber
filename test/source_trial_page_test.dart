@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/html_source_browser.dart';
+import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/source_trial_page.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
@@ -52,7 +53,9 @@ void main() {
     });
   }
   for (final declared in <Object>['numeric', 'structured']) {
-    testWidgets('source check keyword: a $declared checkKeyWord', (tester) async {
+    testWidgets('source check keyword: a $declared checkKeyWord', (
+      tester,
+    ) async {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
       addTearDown(store.close);
       await tester.pumpWidget(
@@ -90,7 +93,9 @@ void main() {
       await tester.pumpAndSettle();
       if (declared == 'numeric') {
         expect(
-          tester.widget<HtmlSourceBrowser>(find.byType(HtmlSourceBrowser)).keyword,
+          tester
+              .widget<HtmlSourceBrowser>(find.byType(HtmlSourceBrowser))
+              .keyword,
           '42',
         );
       } else {
@@ -101,6 +106,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('续读一本书源已被删除的书：说明原因，不开空的浏览器', (tester) async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = ShelfService(store);
+    const sourceUrl = 'https://example.invalid';
+    await shelf.add({
+      'bookSourceUrl': sourceUrl,
+      'bookSourceName': 'Example',
+    }, HtmlBook(url: Uri.parse('$sourceUrl/book'), title: '斗破苍穹'));
+    final id = (await shelf.find(sourceUrl, '$sourceUrl/book'))!.id;
+    await shelf.saveProgress(id, chapterKey: '', textOffset: 10);
+    // The delete removes the source object the resume path would hand the
+    // browser (#53), while the book and its position stay on the shelf.
+    await shelf.deleteSource(sourceUrl);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SourceTrialPage(service: shelf, sources: const []),
+      ),
+    );
+    await tester.tap(find.text('继续上次阅读'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HtmlSourceBrowser), findsNothing);
+    expect(find.textContaining('书源已删除'), findsOneWidget);
+    expect((await shelf.lastRead())!.sourceMissing, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'source trial opens the browser, where an unsupported field fails without a success result',
