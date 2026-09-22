@@ -16,6 +16,10 @@ import 'source_login.dart';
 /// `true` comes back from [showDialog] when the OK action stored what the user
 /// entered and ran the login script — the point at which the frozen dialog
 /// dismisses.
+///
+/// One divergence is recorded: a row's `style` (`RowUi.style`, a FlexChildStyle)
+/// is not applied, because the frozen layout engine it describes is not this
+/// dialog's.
 class SourceLoginDialog extends StatefulWidget {
   const SourceLoginDialog({super.key, required this.session});
 

@@ -12,8 +12,10 @@ import 'source_host_state.dart';
 /// (`data/entities/rule/RowUi.kt`): a field the user fills, or a button whose
 /// `action` is a script.
 ///
-/// `type` is `text`, `password` or `button`; the frozen dialog's `when` renders
-/// nothing for any other value, so a caller renders only these three.
+/// `type` is `text`, `password` or `button`; an absent `type` is the `RowUi`
+/// field's own default of `text`, and the frozen dialog's `when` renders nothing
+/// for any other value — including an explicit null — so a caller renders only
+/// these three.
 class SourceLoginRow {
   const SourceLoginRow({
     required this.name,
@@ -24,9 +26,9 @@ class SourceLoginRow {
   /// The row's label and the key its value is collected under (`RowUi.name`).
   final String name;
 
-  /// `text`, `password` or `button` (`RowUi.Type`); `text` is the frozen
-  /// default when the field is absent.
-  final String type;
+  /// `text`, `password` or `button` (`RowUi.Type`), or a value the frozen dialog
+  /// does not render.
+  final String? type;
 
   /// A button's `action` (`RowUi.action`): an absolute URL or a script.
   final String? action;
@@ -56,18 +58,12 @@ List<SourceLoginRow> sourceLoginRows(Object? loginUi) {
   for (final value in decoded) {
     if (value is! Map) return const [];
     final name = value['name'];
-    final type = value['type'];
+    final type = value.containsKey('type') ? value['type'] : 'text';
     final action = value['action'];
     if (name is! String) return const [];
     if (type is! String?) return const [];
     if (action is! String?) return const [];
-    rows.add(
-      SourceLoginRow(
-        name: name,
-        type: type == null || type.isEmpty ? 'text' : type,
-        action: action,
-      ),
-    );
+    rows.add(SourceLoginRow(name: name, type: type, action: action));
   }
   return rows;
 }
