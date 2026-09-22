@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "target": "frozen-legado-android-oracle",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia/Shanghai"
+  },
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
+    "legadoUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+  },
+  "applicationApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+  "instrumentationApkSha256": "10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6",
+  "installedApplicationApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+  "installedInstrumentationApkSha256": "10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6",
+  "harnessSha256": {
+    "oracle/android/Ticket13OracleTest.kt": "3d8e4ff81096ef6fa2b05e4ea1b201a90fbb0eb4ec1d438afc7ed35fade08f05"
+  },
+  "fixtureSha256": {
+    "WV-01.json": "29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec",
+    "WV-02.json": "c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6",
+    "WV-03.json": "5dcf73eda93359ad787cfdbd7b4f9a97863d5192e65f04e79388262cca38c154",
+    "WV-04.json": "b049b549c4d104cf5f8cac19b47042eac5d0765217057253f7ddaa10bb044a67",
+    "WV-05.json": "6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4",
+    "WV-06.json": "6903d9ad37ec1a9aae5f8f527d0656ab47b1341bb7791fa7cd8b1b30d98c5651",
+    "WV-07.json": "10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b",
+    "WV-08.json": "6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143",
+    "WV-09.json": "c4044d8e012bf29f0e0a5c8944a5c467f99918e48afbeb49c6204b7ff487fddf",
+    "WV-10.json": "0446f3e4661e1ebeeec5aeccbb76eed1d5aa64846aed94396e38905f25b7c4b3",
+    "WV-11.json": "6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be",
+    "WV-12.json": "c05f766b1d1d57ab9c83c19974f07c227c7634b3d0d2ce9abc378aead0b3364b",
+    "WV-13.json": "6385814046fa99fff64f1fdf278f1f55988be9c50129886ae73173ba0b1b2bda",
+    "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
+  },
+  "evidenceSha256": {
+    "WV-01.json": "9b7d77f56bd37b5accb38e49c4aa965115b481b31388a6bd81d87f2293b1b096",
+    "WV-02.json": "4245fb695267d3233116e53de33d5d374500f9dc80063de025561a9a91e8a364",
+    "WV-03.json": "3c347a915305f74cfdf64303071b19291dd33abfe250d08cefbe8c6737606041",
+    "WV-04.json": "377a8a215d8645705d50e4b0d1238c4c956c9228ec0d98a5c2bd218622d171ec",
+    "WV-05.json": "595fb6726e1dd0f756fdb47a19d53b36c5bc6cc4d952e095aaf53c27acf7d5f7",
+    "WV-06.json": "debbd7de32a082901a6104aec8a87a6085b052fdd7f621c80f567fafbe815bd9",
+    "WV-07.json": "44373527797a63e43558d973e85e9d7b82cf4b29a669c685491e9e7ecda64e3e",
+    "WV-08.json": "0aad779814f45680eaf2ae017faa905ee20fc6e480f46f74623bffa630628754",
+    "WV-09.json": "7d676f1e56d2fa12832e9314559ccc214e2e0aeb729a9f0a8ff824629a4f79fc",
+    "WV-10.json": "48ce82fe37b923c2e1bbed13b1e271a95475736d3a2f30837fdc35d83073c503",
+    "WV-11.json": "8c62a8fca84ae9e6c3cb1d9eedbecc6835abe69a2c76f064db9acc17a2ca9740",
+    "WV-12.json": "c02dad55930a7f82251b324cc149274830df918458e9a7abdcef40e8827fca41",
+    "WV-13.json": "b84a5aad9c7f095196cc2ca9bb38b8dfb1925bcdda2156e523678bc6923381c3",
+    "WV-14.json": "6684031e4d28b91903b9f7e1d2c19e714c6afd8ebcee34f9d2ea0b1f2d9823d4"
+  },
+  "run": {
+    "startedAtUtc": "2026-09-22T04:46:50.653Z",
+    "completedAtUtc": "2026-09-22T04:49:35.333Z",
+    "logSha256": "21a7ebf59f0976dc0e3c7fd65f6d839490303f7e63dedeb4cfc892bd3eee8c95"
+  },
+  "verdicts": {
+    "WV-01": "pass",
+    "WV-02": "pass",
+    "WV-03": "pass",
+    "WV-04": "pass",
+    "WV-05": "pass",
+    "WV-06": "pass",
+    "WV-07": "pass",
+    "WV-08": "pass",
+    "WV-09": "pass",
+    "WV-10": "pass",
+    "WV-11": "pass",
+    "WV-12": "pass",
+    "WV-13": "pass",
+    "WV-14": "policy-rejected"
+  }
+}

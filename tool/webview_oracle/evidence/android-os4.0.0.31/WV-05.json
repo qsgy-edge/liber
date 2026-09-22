@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-05",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "startedAtUtc": "2026-09-22T04:47:03.698Z",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia\/Shanghai"
+  },
+  "operation": {
+    "responseUrl": "http:\/\/127.0.0.1:38275\/sniff",
+    "responseCode": 200,
+    "responseBody": "http:\/\/127.0.0.1:38275\/asset\/target?token=abc",
+    "priorResponseCode": null,
+    "durationMs": 3047
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "target": "\/sniff",
+      "headers": {
+        "host": "127.0.0.1:38275",
+        "connection": "keep-alive",
+        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": "\"Android\"",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36",
+        "accept": "text\/html,application\/xhtml+xml,application\/xml;q=0.9,image\/avif,image\/webp,image\/apng,*\/*;q=0.8,application\/signed-exchange;v=b3;q=0.7",
+        "x-requested-with": "io.legado.app.debug",
+        "sec-fetch-site": "none",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-user": "?1",
+        "sec-fetch-dest": "document",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 347755266
+    }
+  ],
+  "checks": {
+    "matchCallbackVisible": true,
+    "subresourceRequestAtMostOnce": true,
+    "firstMatchCleanup": true,
+    "sourceResponseOrigin": true
+  },
+  "executionVerdict": "pass",
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "defaultUserAgent": "Mozilla\/5.0 (Linux; Android 17; 25102RKBEC Build\/CP2A.260605.016; wv) AppleWebKit\/537.36 (KHTML, like Gecko) Version\/4.0 Chrome\/154.0.8037.22 Mobile Safari\/537.36",
+    "legadoUserAgent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36"
+  },
+  "completedAtUtc": "2026-09-22T04:47:06.749Z"
+}

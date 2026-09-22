@@ -1,0 +1,504 @@
+[2026-09-22T04:46:44Z] ANDROID-OS4.0.0.31-GOLDEN-RUN-BEGIN
+BASELINE=14dd24945b2914ce2708b8abaa4ee67ceef892af
+FINGERPRINT=Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys
+WEBVIEW=154.0.8037.22
+APP_SHA256=cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6
+TEST_SHA256=10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6
+HARNESS_SHA256=3d8e4ff81096ef6fa2b05e4ea1b201a90fbb0eb4ec1d438afc7ed35fade08f05
+FIXTURE_SHA256 WV-01.json 29c7a95ec7a8b47761d306198fb116d2afdd3b0637221727e47bb49110b38aec
+FIXTURE_SHA256 WV-02.json c1b9dabfc9a5e0c59732f8121cfa4b228df35f5dddff9a7b64b334d730411da6
+FIXTURE_SHA256 WV-03.json 5dcf73eda93359ad787cfdbd7b4f9a97863d5192e65f04e79388262cca38c154
+FIXTURE_SHA256 WV-04.json b049b549c4d104cf5f8cac19b47042eac5d0765217057253f7ddaa10bb044a67
+FIXTURE_SHA256 WV-05.json 6ffe8893dff29d0e2859f7be61a836cb1b34598821f4f0b32fb1eb4313d185e4
+FIXTURE_SHA256 WV-06.json 6903d9ad37ec1a9aae5f8f527d0656ab47b1341bb7791fa7cd8b1b30d98c5651
+FIXTURE_SHA256 WV-07.json 10ff7e54c1314adac35124e7ffdc0416ba5a458422eff71df9027c5ac277d99b
+FIXTURE_SHA256 WV-08.json 6942e9022b859031e238edd0fbad9afac87f4cc11c5aa36b06a9b1265948e143
+FIXTURE_SHA256 WV-09.json c4044d8e012bf29f0e0a5c8944a5c467f99918e48afbeb49c6204b7ff487fddf
+FIXTURE_SHA256 WV-10.json 0446f3e4661e1ebeeec5aeccbb76eed1d5aa64846aed94396e38905f25b7c4b3
+FIXTURE_SHA256 WV-11.json 6d507cc15418fa8048d9c270d4520ee08fa6c8e8b8e980c231111cc6be6377be
+FIXTURE_SHA256 WV-12.json c05f766b1d1d57ab9c83c19974f07c227c7634b3d0d2ce9abc378aead0b3364b
+FIXTURE_SHA256 WV-13.json 6385814046fa99fff64f1fdf278f1f55988be9c50129886ae73173ba0b1b2bda
+FIXTURE_SHA256 WV-14.json 92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db
+[2026-09-22T04:46:47Z] INSTALL application
+Performing Streamed Install
+Success
+[2026-09-22T04:46:49Z] INSTALL instrumentation
+Performing Streamed Install
+Success
+[2026-09-22T04:46:49Z] CLEAR WV-01
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:46:49Z] RUN WV-01 wv01HiddenDirectGet attempt=1 limit=90s
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv01HiddenDirectGet
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv01HiddenDirectGet
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.175
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-01.json: 1 file pulled, 0 skipped. 1.6 MB/s (3587 bytes in 0.002s)
+PULLED WV-01
+[2026-09-22T04:46:52Z] CLEAR WV-02
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:46:52Z] RUN WV-02 wv02HttpPostBootstrap attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv02HttpPostBootstrap
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv02HttpPostBootstrap
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.342
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-02.json: 1 file pulled, 0 skipped. 1.7 MB/s (4069 bytes in 0.002s)
+PULLED WV-02
+[2026-09-22T04:46:55Z] CLEAR WV-03
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:46:56Z] RUN WV-03 wv03InlineHtmlWithoutBaseUrl attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv03InlineHtmlWithoutBaseUrl
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv03InlineHtmlWithoutBaseUrl
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.247
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-03.json: 1 file pulled, 0 skipped. 0.4 MB/s (1413 bytes in 0.004s)
+PULLED WV-03
+[2026-09-22T04:46:59Z] CLEAR WV-04
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:46:59Z] RUN WV-04 wv04RedirectAndSyntheticResponse attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv04RedirectAndSyntheticResponse
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv04RedirectAndSyntheticResponse
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.254
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-04.json: 1 file pulled, 0 skipped. 3.0 MB/s (5595 bytes in 0.002s)
+PULLED WV-04
+[2026-09-22T04:47:02Z] CLEAR WV-05
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:02Z] RUN WV-05 wv05ResourceSnifferFirstMatch attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv05ResourceSnifferFirstMatch
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv05ResourceSnifferFirstMatch
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 4.173
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-05.json: 1 file pulled, 0 skipped. 1.8 MB/s (2452 bytes in 0.001s)
+PULLED WV-05
+[2026-09-22T04:47:08Z] CLEAR WV-06
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:08Z] RUN WV-06 wv06OverrideSnifferBlocksNavigation attempt=1 limit=90s
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv06OverrideSnifferBlocksNavigation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv06OverrideSnifferBlocksNavigation
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 0.133
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-06.json: 1 file pulled, 0 skipped. 2.0 MB/s (2415 bytes in 0.001s)
+PULLED WV-06
+[2026-09-22T04:47:10Z] CLEAR WV-07
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:10Z] RUN WV-07 wv07CookiesAcrossOperationAndStore attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv07CookiesAcrossOperationAndStore
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv07CookiesAcrossOperationAndStore
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 4.597
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:16Z] RUN WV-07 wv07CookiesAfterProcessRestart attempt=1 limit=90s
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv07CookiesAfterProcessRestart
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv07CookiesAfterProcessRestart
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 2.172
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-07.json: 1 file pulled, 0 skipped. 1.8 MB/s (9171 bytes in 0.005s)
+PULLED WV-07
+[2026-09-22T04:47:20Z] CLEAR WV-08
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:21Z] RUN WV-08 wv08StorageAcrossWebViewInstances attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv08StorageAcrossWebViewInstances
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv08StorageAcrossWebViewInstances
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 2.176
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:24Z] RUN WV-08 wv08StorageAfterProcessRestart attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv08StorageAfterProcessRestart
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv08StorageAfterProcessRestart
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.19
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-08.json: 1 file pulled, 0 skipped. 1.2 MB/s (5144 bytes in 0.004s)
+PULLED WV-08
+[2026-09-22T04:47:27Z] CLEAR WV-09
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:47:28Z] RUN WV-09 wv09NullResultRetryTimeout attempt=1 limit=240s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv09NullResultRetryTimeout
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv09NullResultRetryTimeout
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 33.586
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-09.json: 1 file pulled, 0 skipped. 0.7 MB/s (1357 bytes in 0.002s)
+PULLED WV-09
+[2026-09-22T04:48:03Z] CLEAR WV-10
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:48:03Z] RUN WV-10 wv10OuterTimeoutStopsPostTerminalActivity attempt=1 limit=300s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv10OuterTimeoutStopsPostTerminalActivity
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv10OuterTimeoutStopsPostTerminalActivity
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 68.087
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-10.json: 1 file pulled, 0 skipped. 0.6 MB/s (2436 bytes in 0.004s)
+PULLED WV-10
+[2026-09-22T04:49:13Z] CLEAR WV-11
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:49:13Z] RUN WV-11 wv11ExplicitCancellationBeforeLoadAndInFlight attempt=1 limit=240s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv11ExplicitCancellationBeforeLoadAndInFlight
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv11ExplicitCancellationBeforeLoadAndInFlight
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 7.69
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-11.json: 1 file pulled, 0 skipped. 0.8 MB/s (2450 bytes in 0.003s)
+PULLED WV-11
+[2026-09-22T04:49:22Z] CLEAR WV-12
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:49:23Z] RUN WV-12 wv12OverlapLimiterSiblingCancellationAndOrdering attempt=1 limit=120s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv12OverlapLimiterSiblingCancellationAndOrdering
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv12OverlapLimiterSiblingCancellationAndOrdering
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 4.72
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-12.json: 1 file pulled, 0 skipped. 6.2 MB/s (10254 bytes in 0.002s)
+PULLED WV-12
+[2026-09-22T04:49:29Z] CLEAR WV-13
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:49:29Z] RUN WV-13 wv13HttpAndMainFrameErrors attempt=1 limit=90s
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv13HttpAndMainFrameErrors
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv13HttpAndMainFrameErrors
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.291
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-13.json: 1 file pulled, 0 skipped. 1.1 MB/s (4729 bytes in 0.004s)
+PULLED WV-13
+[2026-09-22T04:49:32Z] CLEAR WV-14
+Success
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+[2026-09-22T04:49:33Z] RUN WV-14 wv14InvalidTlsPolicyAndSetupCleanup attempt=1 limit=90s
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+io.legado.app.ticket13.Ticket13OracleTest:
+INSTRUMENTATION_STATUS: test=wv14InvalidTlsPolicyAndSetupCleanup
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=io.legado.app.ticket13.Ticket13OracleTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=wv14InvalidTlsPolicyAndSetupCleanup
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.359
+
+OK (1 test)
+
+
+INSTRUMENTATION_CODE: -1
+/sdcard/Android/data/io.legado.app.debug/files/ticket13-oracle/WV-14.json: 1 file pulled, 0 skipped. 0.8 MB/s (3693 bytes in 0.004s)
+PULLED WV-14
+Starting: Intent { cmp=io.legado.app.debug/io.legado.app.ui.welcome.WelcomeActivity }
+DEVICE_APP_SHA256=cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6
+DEVICE_TEST_SHA256=10d382a75cbb98dd6d4f9f3b49e35777cbbc53c8809426e2aa5148465642afa6
+[2026-09-22T04:49:37Z] ANDROID-OS4.0.0.31-GOLDEN-RUN-COMPLETE acceptedMethods=16

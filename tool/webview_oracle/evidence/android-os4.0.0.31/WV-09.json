@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "WV-09",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "startedAtUtc": "2026-09-22T04:47:29.259Z",
+  "device": {
+    "manufacturer": "Xiaomi",
+    "model": "25102RKBEC",
+    "device": "myron",
+    "androidRelease": "17",
+    "sdk": 37,
+    "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
+    "locale": "zh-CN",
+    "timezone": "Asia\/Shanghai"
+  },
+  "operation": {
+    "durationMs": 32342,
+    "error": {
+      "type": "io.legado.app.exception.NoStackTraceException",
+      "message": "js执行超时"
+    }
+  },
+  "requests": [],
+  "checks": {
+    "expectedErrorType": true,
+    "expectedErrorMessage": true,
+    "retriedForAtLeast30Seconds": true,
+    "completedBeforeOuterTimeout": true,
+    "errorCleanup": true
+  },
+  "executionVerdict": "pass",
+  "runtime": {
+    "webViewPackage": "com.google.android.webview",
+    "webViewVersion": "154.0.8037.22",
+    "defaultUserAgent": "Mozilla\/5.0 (Linux; Android 17; 25102RKBEC Build\/CP2A.260605.016; wv) AppleWebKit\/537.36 (KHTML, like Gecko) Version\/4.0 Chrome\/154.0.8037.22 Mobile Safari\/537.36",
+    "legadoUserAgent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/128.0.0.0 Safari\/537.36"
+  },
+  "completedAtUtc": "2026-09-22T04:48:01.615Z"
+}
