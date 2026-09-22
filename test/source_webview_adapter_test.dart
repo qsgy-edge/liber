@@ -303,6 +303,16 @@ void main() {
       final (_, chapters) = await pipeline.details(_chapterHit());
       expect(chapters.single.address, '/chapter/1');
       expect(chapters.single.options.webView, isFalse);
+      // No option at all: the request is the one this stage has always made
+      // (`SourceUrlOptions(retry: 0)` was every field's default).
+      final options = chapters.single.options;
+      expect(options.method, 'GET');
+      expect(options.headers, isEmpty);
+      expect(options.body, isNull);
+      expect(options.retry, 0);
+      expect(options.charset, isNull);
+      expect(options.webJs, isNull);
+      expect(options.webViewDelayTime, 0);
 
       final body = await pipeline.chapter(chapters.single);
       expect(body.text, '纯正文');
@@ -311,6 +321,25 @@ void main() {
     },
   );
 
+
+  test('a chapter address option family this product lacks is refused by name', () async {
+    // Nothing is silently dropped: the families the TOC guard cannot express
+    // keep their named refusal, at the same place (#58).
+    final pipeline = HtmlSourcePipeline(
+      _chapterSource('tag.a@href##\$##,{"body":"a=1"}'),
+      _Pages({'/book/1': _bookPage, '/toc/1': _tocPage}),
+    );
+    await expectLater(
+      pipeline.details(_chapterHit()),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => error.message,
+          'message',
+          contains('章节地址的 URL 选项'),
+        ),
+      ),
+    );
+  });
   test(
     'a chapter address survives the shelf and comes back with its options',
     () async {
