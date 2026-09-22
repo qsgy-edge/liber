@@ -203,6 +203,37 @@ void sourceManagementTest(Directory Function() root) {
       await tester.pump();
     });
   });
+  testWidgets('迁移页登录书源：书源行的登录项打开登录界面（#60）', (tester) async {
+    final workspaceRoot = root();
+    await tester.runAsync(() async {
+      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pump();
+      await tester.tap(find.text('迁移'));
+      await tester.pump();
+      await _waitFor(tester, find.textContaining('本次导入旧数据'));
+
+      final actions = find.byKey(
+        const ValueKey('source-actions-https://example.test'),
+      );
+      await tester.ensureVisible(actions);
+      await _pumpFrames(tester);
+      await tester.tap(actions);
+      await _waitFor(tester, find.text('登录'));
+      await _pumpFrames(tester);
+      await tester.tap(find.text('登录'));
+      // The migrated source declares no `loginUi`: the surface says so instead
+      // of showing an empty form, and nothing of the login runs.
+      await _waitFor(tester, find.textContaining('没有可显示的登录界面'));
+      expect(find.text('登录书源：Example'), findsOneWidget);
+
+      await tester.tap(find.text('取消'));
+      await _waitForGone(tester, find.textContaining('没有可显示的登录界面'));
+      await _pumpFrames(tester);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
 }
 
 /// Pumps the frames an animated route needs. `runAsync` has no `pumpAndSettle`:
