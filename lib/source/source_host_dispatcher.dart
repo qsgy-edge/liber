@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../domain/contracts.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_login.dart';
 import 'source_rate_limiter.dart';
 
 /// One request of a batch ([SourceHostDispatcher.ajaxAll]): the shape one
@@ -230,7 +231,22 @@ class SourceHostDispatcher {
       _sourceRef,
       uri.host,
     );
-    final merged = <String, String>{...headers};
+    // Frozen `BaseSource.getHeaderMap(hasLoginHeader = true)` (`:103-130`), which
+    // every `AnalyzeUrl` reads with the login header on (`AnalyzeUrl.kt:89,124`):
+    // the header a source stored through `source.putLoginHeader` is part of its
+    // header map, so every request of that source carries it. It goes under the
+    // caller's own headers, which is the frozen order against a request's `,{…}`
+    // options and against a script's own header map; the one divergence is a key
+    // the source's static `header` rule declares too, where the frozen login
+    // header would win (recorded in the capability matrix).
+    //
+    // Read from the loaded state without an `await`: the wait above only happens
+    // when there is something to load, so a request whose state is already in
+    // memory still starts in the same turn it was asked for.
+    final merged = <String, String>{
+      ...?loadedSourceLoginHeaderMap(_hostState, _sourceRef),
+      ...headers,
+    };
     final cookie = _cookieHeader(uri.host);
     if (cookie.isNotEmpty &&
         !merged.keys.any((key) => key.toLowerCase() == 'cookie')) {
