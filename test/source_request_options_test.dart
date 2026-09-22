@@ -55,7 +55,71 @@ void main() {
       () => splitSourceUrlOptions('/s,{"retry":-1}'),
       throwsFormatException,
     );
-    expect(() => splitSourceUrlOptions('/s,{"method":'), throwsFormatException);
+    // A tail the reader cannot read is not an error: the frozen
+    // `AnalyzeUrl.kt:222` applies a `UrlOption` only when Gson returned one, so
+    // the URL stays bare and nothing is applied (#58).
+    final unreadable = splitSourceUrlOptions('/s,{"method":');
+    expect(unreadable.path, '/s');
+    expect(unreadable.options.method, 'GET');
+    expect(unreadable.options.body, isNull);
+    final notAnObject = splitSourceUrlOptions('/s,{"body":{');
+    expect(notAnObject.path, '/s');
+    expect(notAnObject.options.webView, isFalse);
+  });
+
+  test('the option tail is read the way the frozen Gson reader reads it', () {
+    // Gson is lenient: unquoted names and single-quoted strings are both
+    // accepted, and imported sources use both (255 of the operator's 8787 write
+    // single-quoted option text). Strict JSON rejects every one of these.
+    final unquotedName = splitSourceUrlOptions('/s,{webView:true}');
+    expect(unquotedName.path, '/s');
+    expect(unquotedName.options.webView, isTrue);
+
+    final singleQuoted = splitSourceUrlOptions("/s,{'webView': true}");
+    expect(singleQuoted.path, '/s');
+    expect(singleQuoted.options.webView, isTrue);
+
+    final mixed = splitSourceUrlOptions(
+      "/s,{method:'POST',body:'a=1',headers:{'X-A':1},"
+      'webJs:"document.title",webViewDelayTime:"250",retry:2,}',
+    );
+    expect(mixed.options.method, 'POST');
+    expect(mixed.options.body, 'a=1');
+    expect(mixed.options.headers, {'X-A': '1'});
+    expect(mixed.options.webJs, 'document.title');
+    expect(mixed.options.webViewDelayTime, 250);
+    expect(mixed.options.retry, 2);
+
+    // A structured body keeps being re-serialized as JSON, leniently read or
+    // not, because the frozen `UrlOption.body` is written as JSON on the wire.
+    final structured = splitSourceUrlOptions('/s,{body:{a:1}}');
+    expect(structured.options.body, '{"a":1}');
+    expect(structured.options.jsonBody, isTrue);
+
+    // The strict reading still decides first, and its own typed refusals stay:
+    // a value the option cannot use is an error, not a silent fallback.
+    expect(
+      () => splitSourceUrlOptions('/s,{unknown:1}'),
+      throwsUnsupportedError,
+    );
+    expect(
+      () => splitSourceUrlOptions('/s,{webJs:1}'),
+      throwsFormatException,
+    );
+  });
+
+  test('an address text splits into its request target', () {
+    expect(
+      sourceUrlTargetOf('https://a.test/c/1,{webView:true}'),
+      'https://a.test/c/1',
+    );
+    expect(sourceUrlTargetOf('https://a.test/c/1'), 'https://a.test/c/1');
+    expect(sourceUrlTargetOf('/c/1,{"method":'), '/c/1');
+    expect(
+      sourceUrlOptionTailOf('/c/1,{"webView":true}'),
+      ',{"webView":true}',
+    );
+    expect(sourceUrlOptionTailOf('/c/1'), '');
   });
 
   test('the WebView options are parsed the way the frozen UrlOption reads them', () {
