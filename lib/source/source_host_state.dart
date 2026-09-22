@@ -75,11 +75,15 @@ abstract interface class SourceHostStatePersistence {
   Future<void> deleteCacheEntry(String sourceRef, String key);
 
   /// Removes every host-surface row one source owns (#36): its `source_entries`
-  /// rows and the `source_cookies` rows it wrote. A pair another source of the
-  /// same site wrote belongs to that source, so it stays (ADR 0011 §3).
+  /// rows, the `source_cookies` rows it wrote, and the `source_tls_exceptions`
+  /// rows the user confirmed for it (#53). A pair another source of the same
+  /// site wrote belongs to that source, so it stays (ADR 0011 §3).
   ///
   /// A source delete and a `bookSourceUrl` change both reclaim the rows this
-  /// way; the source row itself is not this interface's to remove.
+  /// way; the source row itself is not this interface's to remove. A TLS
+  /// exception is keyed by the pair (source, host) and never one of them alone
+  /// (ADR 0011 §5), so the URL is the only handle that finds it again: a row
+  /// nothing can consult any more goes with the URL it was confirmed for.
   Future<void> deleteSource(String sourceRef);
 
   Future<List<SourceTlsException>> loadTlsExceptions();
@@ -240,17 +244,24 @@ class SourceHostState {
   }
 
   /// Drops everything one source holds (#36): its cache entries and variables,
-  /// and the cookies it wrote. What another source of the same site wrote — the
+  /// the cookies it wrote, and the TLS exceptions the user confirmed for it
+  /// (ADR 0011 §5, #53). What another source of the same site wrote — the
   /// shared session (ADR 0011 §3) — and a pair no source wrote stay.
   ///
-  /// The in-memory copy and the store are updated together, so a later read in
-  /// this process cannot see a row the store no longer holds. It does not remove
-  /// the source row itself: a delete and a re-point both call this before the
-  /// source is written again, and a re-point's new URL starts with no host
-  /// surface of its own.
+  /// The store is written first and the in-memory copy is dropped once it
+  /// accepted the change, so a store write that fails leaves this process with
+  /// the rows the store still holds. It does not remove the source row itself: a
+  /// delete and a re-point both call this before the source is written again,
+  /// and a re-point's new URL starts with no host surface of its own.
+  ///
+  /// A caller that runs this inside a wider transaction which is then rolled
+  /// back accepts the one case the order above cannot cover: the in-process copy
+  /// has already forgotten the source's rows while the store kept them.
   Future<void> deleteSource(String sourceRef) async {
     await ready();
+    await _persistence?.deleteSource(sourceRef);
     _cache.remove(sourceRef);
+    _tlsExceptions.removeWhere((exception) => exception.$1 == sourceRef);
     for (final domain in _writers.keys.toList()) {
       final writers = _writers[domain]!;
       for (final name in writers.keys.toList()) {
@@ -262,7 +273,6 @@ class SourceHostState {
       }
       if (writers.isEmpty) _writers.remove(domain);
     }
-    await _persistence?.deleteSource(sourceRef);
   }
 
   static Object? _decode(String? value) =>

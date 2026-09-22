@@ -188,10 +188,17 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
         .go();
   }
 
-  /// Removes every host-surface row [sourceRef] owns (#36), in one transaction:
-  /// its `source_entries` rows and the `source_cookies` pairs whose
-  /// `writer_ref` is the source. A pair another source of the same site wrote
-  /// keeps its own `writer_ref` and stays (ADR 0011 §3).
+  /// Removes every host-surface row [sourceRef] owns (#36, #53), in one
+  /// transaction: its `source_entries` rows, the `source_cookies` pairs whose
+  /// `writer_ref` is the source, and the `source_tls_exceptions` the user
+  /// confirmed for it. A pair another source of the same site wrote keeps its
+  /// own `writer_ref` and stays (ADR 0011 §3).
+  ///
+  /// The TLS rows go with the URL for the same reason the other two do (#53):
+  /// the exception's key is the pair (source, host), so a source row that is
+  /// gone or renamed can never consult the row again — and a source imported
+  /// later under the same URL must not silently inherit a confirmation the user
+  /// gave for an earlier definition of it.
   @override
   Future<void> deleteSource(String sourceRef) async {
     await _db.transaction(() async {
@@ -201,6 +208,10 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
           .go();
       await (_db.delete(_db.sourceCookies)..where(
             (cookie) => cookie.writerRef.equals(sourceRef),
+          ))
+          .go();
+      await (_db.delete(_db.sourceTlsExceptions)..where(
+            (exception) => exception.sourceRef.equals(sourceRef),
           ))
           .go();
     });

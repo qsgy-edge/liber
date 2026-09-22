@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
+import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/online_bookshelf.dart';
 import 'package:liber/store/database.dart';
@@ -93,5 +94,38 @@ void main() {
     expect((await store.bookById(bookId))!.shelved, isFalse);
     expect((await store.progressOf(bookId))!.textOffset, 77);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('书源被删除后，书留在书架上并标记为打不开', (tester) async {
+    await shelf.deleteSource(sourceUrl);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(children: [OnlineBookshelf(service: shelf)]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('保留的书'), findsOneWidget, reason: '书还在书架上');
+    expect(find.textContaining('书源已删除'), findsOneWidget);
+    expect(find.text('第二章'), findsNothing, reason: '打不开的书不报它读到哪，先报它为什么打不开');
+
+    // Nothing opens it: there is no source object to run.
+    await tester.tap(find.text('保留的书'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HtmlSourceBrowser), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // The one action left is taking it off the shelf, and the position the book
+    // already had is not the source's to take.
+    await tester.tap(find.byTooltip('书籍操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('更新目录'), findsNothing);
+    await tester.tap(find.text('移出书架（保留进度）'));
+    await tester.pumpAndSettle();
+    expect(find.text('保留的书'), findsNothing);
+    expect((await store.bookById(bookId))!.shelved, isFalse);
+    expect((await store.progressOf(bookId))!.textOffset, 77);
+    expect((await store.chaptersOf(bookId)).map((c) => c.name), ['第二章']);
   });
 }

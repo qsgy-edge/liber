@@ -15,7 +15,9 @@ import 'source_tls_confirmation.dart';
 ///
 /// The list comes from the space's store: a book is on the shelf because
 /// `books.shelved` says so, and removing one keeps its chapters and its
-/// position.
+/// position. A book whose source was deleted (#53) stays in the list marked as
+/// unopenable — its row, its chapters and its position are what the shelf has to
+/// keep — and only its removal is offered for it.
 class OnlineBookshelf extends StatefulWidget {
   const OnlineBookshelf({
     super.key,
@@ -164,11 +166,19 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         ListTile(
           title: Text(entry.title),
           subtitle: Text(
-            entry.chapterKey.isEmpty ? '尚未阅读' : entry.chapterName ?? '继续上次章节',
+            entry.sourceMissing
+                ? '书源已删除 · 保留书目与进度'
+                : entry.chapterKey.isEmpty
+                ? '尚未阅读'
+                : entry.chapterName ?? '继续上次章节',
           ),
-          leading: const Icon(Icons.menu_book_outlined),
+          leading: Icon(
+            entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
+          ),
           enabled: busyId == null,
-          onTap: () => open(entry),
+          // Nothing can open a book whose source is gone: the only action that
+          // makes sense for it is taking it off the shelf.
+          onTap: entry.sourceMissing ? null : () => open(entry),
           trailing: busyId == entry.id
               ? const SizedBox(
                   width: 20,
@@ -179,9 +189,16 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                   enabled: busyId == null,
                   tooltip: '书籍操作',
                   onSelected: (value) => action(value, entry),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'refresh', child: Text('更新目录')),
-                    PopupMenuItem(value: 'remove', child: Text('移出书架（保留进度）')),
+                  itemBuilder: (_) => [
+                    if (!entry.sourceMissing)
+                      const PopupMenuItem(
+                        value: 'refresh',
+                        child: Text('更新目录'),
+                      ),
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Text('移出书架（保留进度）'),
+                    ),
                   ],
                 ),
         ),

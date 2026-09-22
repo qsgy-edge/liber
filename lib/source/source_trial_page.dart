@@ -118,6 +118,12 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                     setState(() => status = '尚无在线阅读记录');
                     return;
                   }
+                  // A book whose source was deleted (#53) has no source object
+                  // to hand the browser: say so instead of opening an empty one.
+                  if (saved.sourceMissing) {
+                    setState(() => status = '上次阅读的书源已删除，重新导入同一 URL 的书源后可以继续。');
+                    return;
+                  }
                   if (!context.mounted) return;
                   await Navigator.of(context).push<void>(
                     MaterialPageRoute(

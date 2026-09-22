@@ -27,6 +27,14 @@ class SpaceStore {
 
   Future<void> close() => db.close();
 
+  /// Runs [action] as one store transaction: every intent-level write inside it
+  /// lands together, and a failure rolls all of them back, so no caller sees a
+  /// half-written step. A caller that needs two writes to be one user-visible
+  /// action (a source's host-surface reclaim and its row removal, #53) composes
+  /// them here instead of opening the database itself.
+  Future<T> transaction<T>(Future<T> Function() action) =>
+      db.transaction(action);
+
   // --- Book Sources (D7) ---------------------------------------------------
 
   /// Stores a source keyed by `bookSourceUrl`. The imported object stays in
@@ -114,6 +122,18 @@ class SpaceStore {
             (s) => OrderingTerm(expression: s.bookSourceUrl),
           ]))
           .get();
+
+  /// Removes one Book Source row, keyed by its `bookSourceUrl` — the row
+  /// identity a book's `sourceRef` resolves against (D7). It leaves every other
+  /// row alone: the host surface a source owns is `SourceHostState.deleteSource`'s
+  /// (#36), and the books that resolved this URL stay as they are (D2's
+  /// `originName` keeps the shelf readable), so a caller composes the row's
+  /// removal with those in one [transaction].
+  Future<void> deleteSource(String bookSourceUrl) async {
+    await (db.delete(
+      db.sources,
+    )..where((s) => s.bookSourceUrl.equals(bookSourceUrl))).go();
+  }
 
   // --- Shelf books (D2) ----------------------------------------------------
 
