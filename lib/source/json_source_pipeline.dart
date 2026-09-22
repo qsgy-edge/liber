@@ -4,6 +4,7 @@ import '../domain/contracts.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'book_source_webview_adapter.dart';
+import 'java_regex.dart';
 import 'json_source_rules.dart';
 import 'js_source_runtime.dart';
 import 'rule_field.dart';
@@ -567,7 +568,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = jsonDecode(checked.body);
     final finalUrl = checked.url;
+    final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
+    // The frozen search stage asks first whether the response is a book detail
+    // page, and returns that one book when it is; the element-list rules below
+    // are never evaluated over the response (`BookList.kt:53-70`).
+    if (bookUrlPattern.isNotEmpty &&
+        javaMatchesWhole(
+          bookUrlPattern,
+          '$finalUrl',
+          label: 'bookUrlPattern',
+        )) {
+      return _detailPageBooks(document, finalUrl);
+    }
     final found = await _elementList(document, search['bookList']!);
+    // The frozen companion to the branch above: an empty element list and no
+    // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
+    if (found.isEmpty && bookUrlPattern.isEmpty) {
+      return _detailPageBooks(document, finalUrl);
+    }
     final books = <HtmlBook>[];
     for (final entry in found) {
       // A book URL is resolved against the search request's own URL, the way the
@@ -628,43 +646,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       ),
     );
     final document = jsonDecode(bookInfo.body);
-    // The frozen `ruleBookInfo.init` moves the document the remaining rules
-    // read into a subtree of the response; it is a rule field too, so a `@js:`
-    // or `{{...}}` in it is resolved the same way as every other value rule.
-    final initRule = source['ruleBookInfo'] is Map
-        ? (source['ruleBookInfo'] as Map)['init']
-        : null;
-    final page = initRule is String
-        ? await _field(document, initRule)
-        : document;
-    final cover = await _optional(page, info['coverUrl'] ?? '');
-    final canReName = info['canReName']?.trim().isNotEmpty == true;
-    final infoTitle = await _optional(page, info['name']!);
-    final infoAuthor = await _optional(page, info['author'] ?? '');
-    final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
-    final infoWordCount = formatSourceWordCount(
-      await _optional(page, info['wordCount'] ?? ''),
-    );
-    final infoIntro = formatSourceIntro(
-      await _optional(page, info['intro'] ?? ''),
-    );
-    final book = HtmlBook(
-      url: hit.url,
-      // Legado only permits a detail page to replace the search title/author
-      // when `canReName` is declared (BookInfo.kt:65-70).
-      title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
-          ? infoTitle
-          : hit.title,
-      author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
-          ? infoAuthor
-          : hit.author,
-      intro: infoIntro.isEmpty ? hit.intro : infoIntro,
-      cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: await _optional(page, info['kind'] ?? ''),
-      lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
-      wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
-    );
-    _book = book;
+    final (book, page) = await _readBookInfo(document, hit, info);
     final tocAddress = JsonSourceRules.template(page, info['tocUrl']!);
     final (tocUrl, tocOptions) = await _request(
       hit.url,
@@ -718,6 +700,94 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     if (chapters.isEmpty) throw StateError('Empty table of contents');
     return (book, chapters);
+  }
+
+  /// The single book a response that is a book detail page describes, or an
+  /// empty list when that page carries no name — the frozen `getInfoItem`
+  /// answers null then and the search stage returns what it collected
+  /// (`BookList.kt:174-179`).
+  ///
+  /// The frozen `getInfoItem` reads `ruleBookInfo` off the response the search
+  /// stage already has, issuing no second request, and the book's URL is that
+  /// response's final URL, which is what the details stage fetches afterwards.
+  ///
+  /// The JSON rule reader validates a whole `ruleBookInfo` group at once, so
+  /// unlike the HTML branch this one requires the same declared fields the
+  /// details stage requires — `tocUrl` included — and answers with the missing
+  /// field's name instead of returning an empty result. A group with no `name`
+  /// rule is not one it has to refuse: a source that declares none has no book
+  /// to read here, where the details stage would refuse the missing field.
+  Future<List<HtmlBook>> _detailPageBooks(
+    Object? document,
+    Uri finalUrl,
+  ) async {
+    final infoRules = source['ruleBookInfo'];
+    final nameRule = infoRules is Map ? infoRules['name'] : null;
+    if (nameRule == null || nameRule == '') {
+      return const <HtmlBook>[];
+    }
+    final (book, _) = await _readBookInfo(
+      document,
+      HtmlBook(url: finalUrl, title: ''),
+      _rules('ruleBookInfo', ['name', 'tocUrl']),
+    );
+    return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
+  }
+
+  /// `ruleBookInfo` over one response document this pipeline already has.
+  ///
+  /// [details] decodes its own response and reads the TOC address from the page
+  /// this returns; the search stage calls it for a response whose final URL
+  /// matched `bookUrlPattern` (`BookList.kt:53-70`) or for the
+  /// empty-element-list fallback (`BookList.kt:91`), where the frozen
+  /// `getInfoItem` runs the same rules over the response it has.
+  ///
+  /// [hit] is the book the rules start from. A search synthesizes an empty one,
+  /// so the detail page's own name and author are taken, exactly as the frozen
+  /// empty `Book` takes them (`BookInfo.kt:60-73`).
+  Future<(HtmlBook, Object?)> _readBookInfo(
+    Object? document,
+    HtmlBook hit,
+    Map<String, String> info,
+  ) async {
+    // The frozen `ruleBookInfo.init` moves the document the remaining rules
+    // read into a subtree of the response; it is a rule field too, so a `@js:`
+    // or `{{...}}` in it is resolved the same way as every other value rule.
+    final initRule = source['ruleBookInfo'] is Map
+        ? (source['ruleBookInfo'] as Map)['init']
+        : null;
+    final page = initRule is String
+        ? await _field(document, initRule)
+        : document;
+    final cover = await _optional(page, info['coverUrl'] ?? '');
+    final canReName = info['canReName']?.trim().isNotEmpty == true;
+    final infoTitle = await _optional(page, info['name']!);
+    final infoAuthor = await _optional(page, info['author'] ?? '');
+    final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
+    final infoWordCount = formatSourceWordCount(
+      await _optional(page, info['wordCount'] ?? ''),
+    );
+    final infoIntro = formatSourceIntro(
+      await _optional(page, info['intro'] ?? ''),
+    );
+    final book = HtmlBook(
+      url: hit.url,
+      // Legado only permits a detail page to replace the search title/author
+      // when `canReName` is declared (BookInfo.kt:65-70).
+      title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+          ? infoTitle
+          : hit.title,
+      author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+          ? infoAuthor
+          : hit.author,
+      intro: infoIntro.isEmpty ? hit.intro : infoIntro,
+      cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
+      kind: await _optional(page, info['kind'] ?? ''),
+      lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
+      wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
+    );
+    _book = book;
+    return (book, page);
   }
 
   /// `ruleContent`: one chapter's text.
