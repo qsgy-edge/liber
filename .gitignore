@@ -11,3 +11,8 @@ target/
 /build-webview.log
 /build-webview-verbose.log
 /.ci-results/
+
+# The JSONPath probe's downloaded jars and compiled classes (`run.sh` fetches
+# them; `jars.sha256` is the pin).
+tool/jsonpath_probe/jars/
+tool/jsonpath_probe/out/
