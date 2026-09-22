@@ -241,6 +241,98 @@ class _LiberHomePageState extends State<LiberHomePage> {
     if (mounted) setState(() => _trace = result.trace);
   }
 
+  /// Deletes a Book Source: the host surface it owned, the TLS exceptions the
+  /// user confirmed for it and its row, in one store step (#53).
+  ///
+  /// The confirmation states what the delete does and what it does not: the
+  /// books that resolved this URL stay on the shelf, marked, because their rows,
+  /// their chapters and their positions are not the source's to take.
+  Future<void> _deleteSource(String sourceRef, String sourceName) async {
+    final shelf = _shelf;
+    if (shelf == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除书源'),
+        content: Text(
+          '删除书源“$sourceName”？（$sourceRef）\n\n'
+          '它的缓存、变量、写入的 Cookie 和已确认的证书例外会一起清理，不能撤销。'
+          '书架上由它加入的书会保留（标记为书源已删除），重新导入同一 URL 的书源即可继续阅读。',
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await shelf.deleteSource(sourceRef);
+      if (!mounted) return;
+      setState(() => _migrationMessage = '已删除书源：$sourceName');
+      await _refreshShelfViews();
+    } on Object catch (error) {
+      if (mounted) setState(() => _migrationMessage = '删除书源失败：$error');
+    }
+  }
+
+  /// Edits a Book Source's `bookSourceUrl` (#53): the old URL's host surface and
+  /// its TLS exceptions go, and the source is written under the new URL, in one
+  /// store step. The books that resolved the old URL stay on the shelf, marked.
+  Future<void> _editSourceUrl(String sourceRef, String sourceName) async {
+    final shelf = _shelf;
+    if (shelf == null) return;
+    var draft = sourceRef;
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('修改书源 URL：$sourceName'),
+        content: TextFormField(
+          initialValue: sourceRef,
+          autofocus: true,
+          onChanged: (value) => draft = value,
+          decoration: const InputDecoration(labelText: 'bookSourceUrl'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(draft),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (entered == null || !mounted) return;
+    final newUrl = entered.trim();
+    if (newUrl.isEmpty) {
+      setState(() => _migrationMessage = '书源 URL 不能为空');
+      return;
+    }
+    if (newUrl == sourceRef) return;
+    if (_sources.any((source) => source.id == newUrl)) {
+      setState(() => _migrationMessage = '已存在 URL 相同的书源：$newUrl');
+      return;
+    }
+    try {
+      await shelf.repointSource(sourceRef, newUrl);
+      if (!mounted) return;
+      setState(() => _migrationMessage = '已修改书源 URL：$sourceRef → $newUrl');
+      await _refreshShelfViews();
+    } on Object catch (error) {
+      if (mounted) setState(() => _migrationMessage = '修改书源 URL 失败：$error');
+    }
+  }
+
   @override
   void dispose() {
     // The page owns the space for its lifetime; letting go of it here is what
@@ -335,6 +427,8 @@ class _LiberHomePageState extends State<LiberHomePage> {
         spaceImport: _spaceImport,
         spaceStorePath: _spaceStorePath,
         spaceMessage: _spaceMessage,
+        onDeleteSource: _deleteSource,
+        onEditSourceUrl: _editSourceUrl,
         onImportFile: (path) async {
           if (store == null) return;
           try {
@@ -762,6 +856,8 @@ class _MigrationPage extends StatelessWidget {
     required this.spaceStorePath,
     required this.spaceMessage,
     required this.onImportFile,
+    required this.onDeleteSource,
+    required this.onEditSourceUrl,
   });
 
   final MigrationImportRecord? result;
@@ -774,6 +870,13 @@ class _MigrationPage extends StatelessWidget {
   /// Called with the picked file's path: the importer reads it, because the two
   /// accepted containers need different readers (a Legado full backup is a ZIP).
   final ValueChanged<String> onImportFile;
+
+  /// The source-management actions of one listed source (#53), called with its
+  /// `bookSourceUrl` and the name the user sees it under; the page owns the
+  /// confirmation its delete asks for, because the row and what it owned go
+  /// together.
+  final Future<void> Function(String ref, String name) onDeleteSource;
+  final Future<void> Function(String ref, String name) onEditSourceUrl;
 
   /// What the one-time import of this installation's own JSON stores did. It
   /// runs by itself on the first launch, so it reports here instead of behind a
@@ -863,6 +966,24 @@ class _MigrationPage extends StatelessWidget {
               title: Text('${source.data['bookSourceName'] ?? source.id}'),
               subtitle: Text(
                 '${source.data['bookSourceUrl'] ?? '未提供 URL'} · 等待 WebView2 transport',
+              ),
+              // A source's row identity is its URL, so the two actions a source
+              // has are deleting it and moving it to another URL (#53).
+              trailing: PopupMenuButton<String>(
+                key: ValueKey('source-actions-${source.id}'),
+                tooltip: '书源操作',
+                onSelected: (action) {
+                  final name = '${source.data['bookSourceName'] ?? source.id}';
+                  if (action == 'edit') {
+                    onEditSourceUrl(source.id, name);
+                  } else {
+                    onDeleteSource(source.id, name);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('修改书源 URL')),
+                  PopupMenuItem(value: 'delete', child: Text('删除书源')),
+                ],
               ),
             ),
         ],
