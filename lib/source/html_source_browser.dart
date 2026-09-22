@@ -8,7 +8,6 @@ import 'book_source_service.dart';
 import 'http_source_transport.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'online_reader_page.dart';
-import 'source_http_uri.dart';
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
 
@@ -129,9 +128,12 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
             inShelf = entry.shelved;
             chapters = [
               for (final chapter in entry.chapters)
-                SourceChapter(
+                // The stored row's `url` is the address text the TOC rule
+                // produced; the request targets the part before its option tail
+                // and the fetch re-parses the options (#58).
+                SourceChapter.fromAddress(
                   chapter.name,
-                  SourceHttpUri.parse(chapter.url ?? chapter.chapterKey),
+                  chapter.url ?? chapter.chapterKey,
                 ),
             ];
             busy = false;

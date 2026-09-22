@@ -81,11 +81,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   HtmlBook? _book;
   SourceChapter? _chapter;
 
-  /// The frozen `AnalyzeUrl` options one analysis owns: the options a stage's
-  /// URL carried, kept for the stage that fetches it, because a book URL and a
-  /// chapter URL are handed around without them.
+  /// The frozen `AnalyzeUrl` options one analysis owns: the options a book URL
+  /// carried, kept for the stage that fetches it, because a book URL is handed
+  /// around without them. A *chapter*'s options do not need this map: the
+  /// chapter keeps its own address text, so they survive the hand-off and a
+  /// restart.
   final _bookOptions = <Uri, SourceUrlOptions>{};
-  final _chapterOptions = <Uri, SourceUrlOptions>{};
 
   final _cancellation = SourceCancellation();
 
@@ -587,14 +588,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
           '0123456789abcdef',
         );
       }
-      final (resolved, chapterOptions) = await _request(
-        tocUrl,
-        chapterUrl,
-        _keyword,
-      );
-      _chapterOptions[resolved] = chapterOptions;
+      final (resolved, _) = await _request(tocUrl, chapterUrl, _keyword);
       chapters.add(
-        SourceChapter(await _text(entry, toc['chapterName']!), resolved),
+        SourceChapter(
+          await _text(entry, toc['chapterName']!),
+          resolved,
+          rawAddress: chapterUrl,
+        ),
       );
     }
     if (chapters.isEmpty) throw StateError('Empty table of contents');
@@ -617,7 +617,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final document = await _fetch(
       BookSourceStage.content,
       chapter.url,
-      options: _chapterOptions.remove(chapter.url) ?? const SourceUrlOptions(),
+      // The chapter's own address text carries its options (the frozen
+      // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
+      options: chapter.options,
     );
     final titleRule = content['title'];
     final title = titleRule == null
@@ -626,7 +628,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final contentTitle = title == null || title.trim().isEmpty ? null : title;
     if (contentTitle != null) {
       _chapterTitle = contentTitle;
-      _chapter = SourceChapter(contentTitle, chapter.url);
+      _chapter = SourceChapter(
+        contentTitle,
+        chapter.url,
+        rawAddress: chapter.rawAddress,
+      );
     }
     final text = await _text(document, content['content']!);
     return HtmlChapterBody(text, 1, title: contentTitle);
@@ -695,10 +701,49 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }
 }
 
+/// One chapter of a source's table of contents.
+///
+/// [url] is the resolved request target, without any option tail. [rawAddress]
+/// is the address text the TOC rule produced, options included — the frozen
+/// `BookChapter.url` (`BookChapterList.kt:222`) — so the request that fetches
+/// the chapter can parse its options the way the frozen `AnalyzeUrl` does
+/// (`AnalyzeUrl.kt:214-222`).
 class SourceChapter {
-  const SourceChapter(this.name, this.url);
+  const SourceChapter(this.name, this.url, {this.rawAddress});
+
+  /// The chapter a stored row describes: [address] is the row's address text,
+  /// option tail included, and the request target is the part before it.
+  factory SourceChapter.fromAddress(String name, String address) =>
+      SourceChapter(
+        name,
+        SourceHttpUri.parse(sourceUrlTargetOf(address)),
+        rawAddress: address,
+      );
+
   final String name;
   final Uri url;
+
+  /// The rule's own address text, or null when the caller only has a URL.
+  final String? rawAddress;
+
+  /// The text a fetch parses: the rule's address when it was kept. A bare URL
+  /// carries no options, so it parses to itself.
+  String get address => rawAddress ?? '$url';
+
+  /// The options this chapter's own request applies. Parsed where the chapter
+  /// is fetched, not where the TOC was read, which is what keeps them across a
+  /// restart once the address text is what the store holds.
+  SourceUrlOptions get options => splitSourceUrlOptions(address).options;
+
+  /// The address text to persist: the request target resolved, the option tail
+  /// kept verbatim.
+  ///
+  /// A stored row has no TOC page left to resolve a relative address against, so
+  /// the target is written absolute. The frozen stores the rule's own text and
+  /// resolves it against the book's URL when it fetches the chapter; the options
+  /// and the URL a request targets are the same either way, and a row written by
+  /// [SourceChapter.fromAddress] keeps parsing to itself.
+  String get persistedAddress => '$url${sourceUrlOptionTailOf(address)}';
 }
 
 class SourceReadingResult {

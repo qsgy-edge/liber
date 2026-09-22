@@ -209,7 +209,8 @@ String _percentEncodeBytes(List<int> bytes, {required bool form}) {
         continue;
       }
       final character = String.fromCharCode(byte);
-      final safe = _isAsciiLetterOrDigit(byte) ||
+      final safe =
+          _isAsciiLetterOrDigit(byte) ||
           (form
               ? '*-._'.contains(character)
               : '-._~'.contains(character) ||
@@ -234,11 +235,7 @@ sourceRequestShape(
   Map<String, String> headers,
 ) async {
   if (!options.isPost) {
-    return (
-      method: 'GET',
-      body: null,
-      headers: const <String, String>{},
-    );
+    return (method: 'GET', body: null, headers: const <String, String>{});
   }
   final raw = options.body ?? '';
   final declared = headers.keys.any(
@@ -275,11 +272,7 @@ sourceRequestShape(
       headers: const {'Content-Type': 'application/json; charset=UTF-8'},
     );
   }
-  return (
-    method: 'POST',
-    body: raw,
-    headers: const <String, String>{},
-  );
+  return (method: 'POST', body: raw, headers: const <String, String>{});
 }
 
 /// Splits an expanded rule into its URL text and its supported options.
@@ -289,25 +282,30 @@ sourceRequestShape(
 /// `origin` is parsed by the frozen runtime and never read on the HTTP path;
 /// the WebView and upload options are rejected here instead of being applied
 /// differently from the baseline.
-({String path, SourceUrlOptions options}) splitSourceUrlOptions(
+///
+/// A tail the reader cannot read is **not** an error: the frozen
+/// `AnalyzeUrl.kt:222` calls `GSON.fromJsonObject<UrlOption>(…)` and applies the
+/// result only when it is non-null (`?.let { … }`), so the URL stays bare and no
+/// option is applied. Only a tail that decodes into an object can refuse a
+/// family by name.
+({String path, String tail, SourceUrlOptions options}) splitSourceUrlOptions(
   String expanded,
 ) {
   final match = RegExp(r'\s*,\s*(?=\{)').firstMatch(expanded);
   if (match == null) {
-    return (path: expanded.trim(), options: const SourceUrlOptions());
+    return (path: expanded.trim(), tail: '', options: const SourceUrlOptions());
   }
+  final path = expanded.substring(0, match.start).trim();
+  // The tail verbatim, comma included: a caller that has to persist an address
+  // text keeps it exactly as the rule wrote it.
+  final tail = expanded.substring(match.start);
   final start = expanded.indexOf('{', match.start);
-  final end = _jsonObjectEnd(expanded, start);
-  if (end < 0) throw const FormatException('请求选项不是合法的 JSON 对象');
-  final Object? decoded;
-  try {
-    decoded = jsonDecode(expanded.substring(start, end));
-  } on FormatException catch (error) {
-    throw FormatException('请求选项不是合法 JSON：${error.message}');
+  final Object? decoded = _decodeUrlOptionTail(expanded.substring(start));
+  if (decoded is! Map) {
+    return (path: path, tail: tail, options: const SourceUrlOptions());
   }
-  if (decoded is! Map) throw const FormatException('请求选项必须是 JSON 对象');
   for (final entry in decoded.entries) {
-    final key = '${entry.key}';
+    final key = entry.key;
     final unsupported = _unsupportedUrlOptions[key];
     if (unsupported != null) throw UnsupportedError(unsupported);
     if (!const {
@@ -404,6 +402,7 @@ sourceRequestShape(
   }
   return (
     path: expanded.substring(0, match.start).trim(),
+    tail: tail,
     options: SourceUrlOptions(
       method: rawMethod.toUpperCase() == 'POST' ? 'POST' : 'GET',
       headers: headers,
@@ -421,6 +420,209 @@ sourceRequestShape(
       webViewDelayTime: webViewDelayTime,
     ),
   );
+}
+
+/// The request target inside an address text: everything before its `,{…}`
+/// option tail.
+///
+/// The frozen `AnalyzeUrl.analyzeUrl` computes its `urlNoOption` the same way
+/// for every stage, so text that was stored as a chapter's own address (the
+/// frozen `BookChapter.url`) turns back into the URL a request targets.
+String sourceUrlTargetOf(String address) => splitSourceUrlOptions(address).path;
+
+/// The `,{…}` option tail of an address text verbatim, or an empty string when
+/// it has none. Used by the row that persists an address text.
+String sourceUrlOptionTailOf(String address) =>
+    splitSourceUrlOptions(address).tail;
+
+/// Decodes a URL option tail the way the frozen Gson reader does, or null when
+/// it is not an object.
+///
+/// [optionText] is the tail from its `{` to the end of the address text. Strict
+/// JSON is tried first on the object [_jsonObjectEnd] finds, so a well-formed
+/// tail costs one `jsonDecode`. Gson's reader is lenient and imported sources
+/// use those leniencies: `{webView:true}` and `{'webView': true}` are both common
+/// (255 of the operator's 8787 sources write single-quoted option text) and
+/// strict JSON rejects both, so a tail strict JSON refuses falls back to
+/// [_LenientJson] over the whole remainder — the reader consumes exactly one
+/// value, so it does not need the object's end to be found first, and a value
+/// holding an unbalanced brace cannot cost the options after it.
+///
+/// Null means "no options": the frozen `AnalyzeUrl.kt:222` applies a
+/// `UrlOption` only when Gson returned one, so a tail that does not decode
+/// leaves the URL bare and is not an error.
+Map<String, Object?>? _decodeUrlOptionTail(String optionText) {
+  final end = _jsonObjectEnd(optionText, 0);
+  if (end > 0) {
+    try {
+      final strict = jsonDecode(optionText.substring(0, end));
+      if (strict is Map) {
+        return {for (final entry in strict.entries) '${entry.key}': entry.value};
+      }
+    } on FormatException {
+      // The reader below is what decides.
+    }
+  }
+  final Object? lenient;
+  try {
+    lenient = _LenientJson(optionText).readDocument();
+  } on _LenientJsonError {
+    return null;
+  }
+  return lenient is Map<String, Object?> ? lenient : null;
+}
+
+/// Thrown inside [_LenientJson]; every caller turns it into "no options".
+class _LenientJsonError implements Exception {
+  const _LenientJsonError();
+}
+
+/// A JSON reader with the leniencies the frozen Gson reader has: unquoted names,
+/// single-quoted strings, unquoted scalar words, and a trailing comma before a
+/// closer. It exists for the one JSON a Book Source writes by hand — the `,{…}`
+/// option tail — and is deliberately not a general JSON parser.
+class _LenientJson {
+  _LenientJson(this._text);
+
+  final String _text;
+  var _at = 0;
+
+  /// Reads one value. Content after it is left unread, as the frozen Gson call
+  /// consumes exactly one `UrlOption` and ignores what follows.
+  Object? readDocument() => _readValue();
+
+  Object? _readValue() {
+    _skipSpace();
+    if (_at >= _text.length) throw const _LenientJsonError();
+    return switch (_text[_at]) {
+      '{' => _readObject(),
+      '[' => _readList(),
+      '"' => _readString('"'),
+      "'" => _readString("'"),
+      _ => _readWord(),
+    };
+  }
+
+  Map<String, Object?> _readObject() {
+    _at++; // the opening brace
+    final value = <String, Object?>{};
+    _skipSpace();
+    if (_consume('}')) return value;
+    while (true) {
+      _skipSpace();
+      final key = _readKey();
+      _skipSpace();
+      if (!_consume(':')) throw const _LenientJsonError();
+      value[key] = _readValue();
+      _skipSpace();
+      if (!_consume(',')) {
+        if (_consume('}')) return value;
+        throw const _LenientJsonError();
+      }
+      _skipSpace();
+      if (_consume('}')) return value; // a trailing comma
+    }
+  }
+
+  List<Object?> _readList() {
+    _at++; // the opening bracket
+    final value = <Object?>[];
+    _skipSpace();
+    if (_consume(']')) return value;
+    while (true) {
+      value.add(_readValue());
+      _skipSpace();
+      if (!_consume(',')) {
+        if (_consume(']')) return value;
+        throw const _LenientJsonError();
+      }
+      _skipSpace();
+      if (_consume(']')) return value; // a trailing comma
+    }
+  }
+
+  /// A name: a quoted string, or the bare word Gson's lenient reader accepts.
+  String _readKey() {
+    if (_at >= _text.length) throw const _LenientJsonError();
+    final quote = _text[_at];
+    if (quote == '"' || quote == "'") return _readString(quote);
+    return '${_readWord()}';
+  }
+
+  String _readString(String quote) {
+    _at++; // the opening quote
+    final buffer = StringBuffer();
+    while (true) {
+      if (_at >= _text.length) throw const _LenientJsonError();
+      final character = _text[_at++];
+      if (character == quote) return buffer.toString();
+      if (character != r'\') {
+        buffer.write(character);
+        continue;
+      }
+      if (_at >= _text.length) throw const _LenientJsonError();
+      switch (_text[_at++]) {
+        case 'n':
+          buffer.write('\n');
+        case 't':
+          buffer.write('\t');
+        case 'r':
+          buffer.write('\r');
+        case 'b':
+          buffer.write('\b');
+        case 'f':
+          buffer.write('\f');
+        case 'u':
+          if (_at + 4 > _text.length) throw const _LenientJsonError();
+          final code = int.tryParse(_text.substring(_at, _at + 4), radix: 16);
+          if (code == null) throw const _LenientJsonError();
+          _at += 4;
+          buffer.writeCharCode(code);
+        case final escaped:
+          buffer.write(escaped);
+      }
+    }
+  }
+
+  /// A number, `true`/`false`/`null`, or — the way Gson's lenient reader reads
+  /// an unquoted scalar — a string.
+  Object? _readWord() {
+    final start = _at;
+    while (_at < _text.length && !_isDelimiter(_text[_at])) {
+      _at++;
+    }
+    if (_at == start) throw const _LenientJsonError();
+    final word = _text.substring(start, _at);
+    return switch (word) {
+      'true' => true,
+      'false' => false,
+      'null' => null,
+      _ => int.tryParse(word) ?? double.tryParse(word) ?? word,
+    };
+  }
+
+  bool _isDelimiter(String character) =>
+      character == ',' ||
+      character == ':' ||
+      character == '{' ||
+      character == '}' ||
+      character == '[' ||
+      character == ']' ||
+      character.trim().isEmpty;
+
+  void _skipSpace() {
+    while (_at < _text.length && _text[_at].trim().isEmpty) {
+      _at++;
+    }
+  }
+
+  bool _consume(String character) {
+    if (_at < _text.length && _text[_at] == character) {
+      _at++;
+      return true;
+    }
+    return false;
+  }
 }
 
 /// Frozen `UrlOption.useWebView()`.

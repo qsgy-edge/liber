@@ -125,6 +125,48 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('a stored chapter address resumes with its options', (
+    tester,
+  ) async {
+    final pipeline = ScriptedPipeline();
+    final bookId = await shelf.ensureBook(
+      source,
+      HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+    );
+    await store.putChapters(bookId, [
+      BookChapter(
+        bookId: bookId,
+        chapterKey: '$sourceUrl/1',
+        name: '第一章',
+        // What the shelf writes (#58): the key is the bare request target, the
+        // url is the address text the TOC rule produced.
+        url: '$sourceUrl/1,{"webView":true,"webViewDelayTime":25}',
+        chapterIndex: 0,
+      ),
+    ]);
+    final entry = (await shelf.find(sourceUrl, bookUrl))!;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          pipeline: pipeline,
+          service: shelf,
+          resume: entry,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final reader = tester.widget<OnlineReaderPage>(
+      find.byType(OnlineReaderPage),
+    );
+    final chapter = reader.chapters.single;
+    expect('${chapter.url}', '$sourceUrl/1', reason: '请求目标不带选项');
+    expect(chapter.options.webView, isTrue, reason: '重启后选项仍在');
+    expect(chapter.options.webViewDelayTime, 25);
+  });
+
   testWidgets(
     'disposing the browser leaves the pipeline its reader holds alone',
     (tester) async {
