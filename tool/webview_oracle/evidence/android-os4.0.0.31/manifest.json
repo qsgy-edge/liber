@@ -77,5 +77,14 @@
     "WV-12": "pass",
     "WV-13": "pass",
     "WV-14": "policy-rejected"
+  },
+  "diagnosticEvidence": {
+    "WV-05-subresource-delivered.json": {
+      "path": "evidence/android-os4.0.0.31/diagnostics/WV-05-subresource-delivered.json",
+      "sha256": "7a45b13f4e1c6c8ad529b890446f79094d0023b92664f1611dd4751bf27444e4",
+      "accepted": false,
+      "producedBy": "the same frozen APKs and device fingerprint as this golden",
+      "reason": "preserves the request-delivered side of the sourceRegex destruction race on this fingerprint; the accepted golden landed on the not-delivered side, and both sides were observed across repeated runs of the same binary (10 runs on 2026-09-22 landed on the delivered side once)"
+    }
   }
 }

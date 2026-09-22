@@ -150,6 +150,29 @@ const manifest = {
   ),
 };
 
+// Declared race diagnostics are the only part of this manifest that is not
+// derived from the run: the comparator widens a permitted trace only for a file
+// the manifest declares, so the declaration is carried over from the manifest
+// being rewritten while its bytes are re-hashed here. A declaration whose file
+// is missing or whose bytes changed fails instead of silently disappearing.
+const manifestPath = path.join(directory, 'manifest.json');
+if (fs.existsSync(manifestPath)) {
+  const declared = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).diagnosticEvidence;
+  if (declared) {
+    for (const [name, entry] of Object.entries(declared)) {
+      const file = path.join(directory, 'diagnostics', name);
+      if (!fs.existsSync(file)) {
+        throw Error(`declared diagnostic ${name} is missing`);
+      }
+      const actual = sha256(file);
+      if (actual !== entry.sha256) {
+        throw Error(`declared diagnostic ${name} changed: ${actual}`);
+      }
+    }
+    manifest.diagnosticEvidence = declared;
+  }
+}
+
 const output = path.join(directory, 'manifest.json');
 fs.writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`wrote ${path.relative(root, output)}`);
