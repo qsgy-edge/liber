@@ -1,44 +1,58 @@
-[2026-09-21T16:36:05Z] DESTINATION-RUN-BEGIN
-SOURCE_SHA256 9fc8cc664416892a18bdd797d40dd777f4f2fc9de6f4832225d9115126b82047 D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/lib/product_webview.dart
-SOURCE_SHA256 086beb2d20cd6bd0d1134631c94ba54ae0fe0cd252af793f9848dffc4c54599e D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/lib/fixture_runner.dart
-SOURCE_SHA256 210d8d88fb0cfac0c0e5d441cfa0944e14fa5340f6dece0b9a14333b9b797ba1 D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/lib/fixtures_concurrency.dart
-SOURCE_SHA256 e454789980dc0e9fbecc5ac823fc756aa8a09968817fbe7b917962b36c302167 D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/lib/fixtures_error_paths.dart
-SOURCE_SHA256 4d4425bca31c35fa3bbf03d9253cc268cb0f07dcb87f7c0e072e51780af582c8 D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/integration_test/destination_test.dart
-SOURCE_SHA256 1ffeb9ba753f9e9cdcf972fb999aa09e985f3384ab0cd320d010ffa7ef512273 D:/GithubRepositories/Flutter/liber-55/tool/webview_oracle/adapter/test_driver/integration_test.dart
+[2026-09-22T06:09:28Z] DESTINATION-RUN-BEGIN
+SOURCE_SHA256 9fc8cc664416892a18bdd797d40dd777f4f2fc9de6f4832225d9115126b82047 D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/lib/product_webview.dart
+SOURCE_SHA256 086beb2d20cd6bd0d1134631c94ba54ae0fe0cd252af793f9848dffc4c54599e D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/lib/fixture_runner.dart
+SOURCE_SHA256 210d8d88fb0cfac0c0e5d441cfa0944e14fa5340f6dece0b9a14333b9b797ba1 D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/lib/fixtures_concurrency.dart
+SOURCE_SHA256 e454789980dc0e9fbecc5ac823fc756aa8a09968817fbe7b917962b36c302167 D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/lib/fixtures_error_paths.dart
+SOURCE_SHA256 4d4425bca31c35fa3bbf03d9253cc268cb0f07dcb87f7c0e072e51780af582c8 D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/integration_test/destination_test.dart
+SOURCE_SHA256 1ffeb9ba753f9e9cdcf972fb999aa09e985f3384ab0cd320d010ffa7ef512273 D:/GithubRepositories/Flutter/liber/tool/webview_oracle/adapter/test_driver/integration_test.dart
 SOURCE_SHA256 4716166794eefc178b7b4187ed566b2da444e472879c32c1b8e20922d8dad71e lib/source/book_source_webview_adapter.dart
-SOURCE_SHA256 560fd95e8036ee29b4d8e1e1d8e8c76629c07a3e2f8832202558ffa92fae1c65 lib/source/inappwebview_book_source_adapter.dart
-Building Windows application...                                    13.3s
+SOURCE_SHA256 5636601a2981c2f5a5d490c5862538b71e5bf76bbdc8b8ea149695de81ea1378 lib/source/inappwebview_book_source_adapter.dart
+Building Windows application...                                    16.3s
 √ Built build\windows\x64\runner\Debug\ticket13_adapter.exe
-9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-EXE_SHA256_BEFORE=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:36:42Z] RUN WV-01 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:37:02Z] RUN WV-02 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:37:23Z] RUN WV-03 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:37:43Z] RUN WV-04 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:38:04Z] RUN WV-05 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:38:24Z] RUN WV-06 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:38:44Z] RUN WV-07 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:39:29Z] RUN WV-08 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:40:10Z] RUN WV-09 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:41:02Z] RUN WV-10 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:42:28Z] RUN WV-11 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:42:54Z] RUN WV-12 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:43:19Z] RUN WV-13 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=match status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:43:39Z] RUN WV-14 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-  verdict=policy-rejected status=0 EXE_SHA256=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-EXE_SHA256_AFTER=9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39
-[2026-09-21T16:44:58Z] DESTINATION-RUN-COMPLETE
+6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+FAIL WV-02: no comparison report
+are in the `integration_test/` directory of your package and use
+`flutter test $path_to_test` to run it instead.
+
+If you're running the tests with Android instrumentation or XCTest, this means
+that you are not capturing test results properly! See the following link for
+how to set up the integration_test plugin:
+
+https://docs.flutter.dev/testing/integration-tests
+
+00:02 +2: All tests passed!
+All tests passed.
+evidence written: D:/GithubRepositories/Flutter/liber/tool/webview_oracle/evidence/windows-destination/WV-01.json
+FAIL WV-02: no evidence written
+EXE_SHA256_BEFORE=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:10:13Z] RUN WV-01 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:10:36Z] RUN WV-02 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:11:00Z] RUN WV-03 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:11:25Z] RUN WV-04 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:11:48Z] RUN WV-05 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:12:11Z] RUN WV-06 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:12:35Z] RUN WV-07 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:13:27Z] RUN WV-08 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:14:17Z] RUN WV-09 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:15:13Z] RUN WV-10 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:16:43Z] RUN WV-11 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:17:12Z] RUN WV-12 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:17:42Z] RUN WV-13 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=match status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:18:07Z] RUN WV-14 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+  verdict=policy-rejected status=0 EXE_SHA256=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+EXE_SHA256_AFTER=6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625
+[2026-09-22T06:19:30Z] DESTINATION-RUN-COMPLETE
 destination verification: 13 match, 0 match against a declared race alternative, 1 policy-rejected

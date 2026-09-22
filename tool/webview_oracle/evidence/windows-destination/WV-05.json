@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-21T16:38:22.116124Z",
-  "completedAtUtc": "2026-09-21T16:38:22.907059Z",
+  "startedAtUtc": "2026-09-22T06:12:08.853687Z",
+  "completedAtUtc": "2026-09-22T06:12:10.186122Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -26,18 +26,18 @@
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "responseUrl": "http://127.0.0.1:51894/sniff",
+    "responseUrl": "http://127.0.0.1:53999/sniff",
     "responseCode": 200,
-    "responseBody": "http://127.0.0.1:51894/asset/target?token=abc",
+    "responseBody": "http://127.0.0.1:53999/asset/target?token=abc",
     "priorResponseCode": null,
-    "durationMs": 436
+    "durationMs": 731
   },
   "requests": [
     {
       "method": "GET",
       "target": "/sniff",
       "headers": {
-        "host": "127.0.0.1:51894",
+        "host": "127.0.0.1:53999",
         "connection": "keep-alive",
         "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
         "sec-ch-ua-mobile": "?0",
@@ -53,7 +53,7 @@
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 414
+      "startedAtElapsedMs": 703
     }
   ],
   "checks": {

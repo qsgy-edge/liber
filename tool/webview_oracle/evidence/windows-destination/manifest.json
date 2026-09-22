@@ -5,7 +5,7 @@
   "goldenEvidence": "evidence/android",
   "adapter": {
     "implementation": "flutter_inappwebview",
-    "applicationExecutableSha256": "9a2a1acc91274ac2d8a18ddb954e10a43cb76d74d184fd3761033150002bac39",
+    "applicationExecutableSha256": "6802ba401c90de04b5dd269377c02b1c44bd423208470748c513a6ab175c7625",
     "applicationExecutableUnchangedAcrossSweep": true,
     "applicationExecutableHashSamples": 30
   },
@@ -24,9 +24,9 @@
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "run": {
-    "startedAtUtc": "2026-09-21T16:37:00.143088Z",
-    "completedAtUtc": "2026-09-21T16:44:57.596220Z",
-    "logSha256": "65215c3d9e8904c80f7b99d196cd7f5e0bb32f8fb947406a8d43e58b28be166d"
+    "startedAtUtc": "2026-09-22T06:10:33.590123Z",
+    "completedAtUtc": "2026-09-22T06:19:29.001224Z",
+    "logSha256": "79e680c3116476af5a1638021bc868c79d363eaf75804abd2ee5ef6b68a7406b"
   },
   "verdicts": {
     "WV-01": "pass",
@@ -86,7 +86,7 @@
     "rate_limiter.dart": "20484fc5c26cc45ba7f8513204b2b515ae81431e3363ae736571a9393b95b03f",
     "replay_server.dart": "f753042e386ff97d9fdc8666be6dbcfe45eaee4393b8e724394aff7087d14fa4",
     "liber:lib/source/book_source_webview_adapter.dart": "4716166794eefc178b7b4187ed566b2da444e472879c32c1b8e20922d8dad71e",
-    "liber:lib/source/inappwebview_book_source_adapter.dart": "560fd95e8036ee29b4d8e1e1d8e8c76629c07a3e2f8832202558ffa92fae1c65"
+    "liber:lib/source/inappwebview_book_source_adapter.dart": "5636601a2981c2f5a5d490c5862538b71e5bf76bbdc8b8ea149695de81ea1378"
   },
   "harnessSha256": {
     "integration_test/destination_test.dart": "4d4425bca31c35fa3bbf03d9253cc268cb0f07dcb87f7c0e072e51780af582c8",
@@ -126,20 +126,20 @@
     "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
   },
   "evidenceSha256": {
-    "WV-01.json": "207db563872e990264b0ccc80f7f911849a6247ff97ef2f0b082b82345b154a6",
-    "WV-02.json": "b6ff52c00aff1f651d7d936a038ca0954c2436296b94b28cd6e8180eedfec604",
-    "WV-03.json": "8bdad4395e685104500b7793544eccd91358149be090d26c7bbb74bc5d7b5e58",
-    "WV-04.json": "3424fadbb6638ae056d976a994e3507181aa51d5e8312d9e8680aadf8ec23b5f",
-    "WV-05.json": "692e3955c85dcd44e1504b16996b4edb346f7d8636673792434da340290ff9b0",
-    "WV-06.json": "b489460bda706a6200b9c0a8660a534849c96273f7ed7ec2bebcc29d03bc9b15",
-    "WV-07.json": "39cde50625fff88f484bb6b5df4c3f06baad16856b7b9c642a63bb57edd4f8bd",
-    "WV-08.json": "37dcca912acc214fcf55caa9b1f9b3fb53a88fab5a7daf4caf8c4212313b0bc4",
-    "WV-09.json": "3cc667a9aa24074c09f377fa0593df629e796c1fa943ed69d74e12a6c8512658",
-    "WV-10.json": "cf881e25bc0276a62d986b736055e51b1cde4f6384d4ddbd6699f6a6ee41e25c",
-    "WV-11.json": "0bc4d802013bdb4fb21d762aa865a108ae59e09a7272bdb6d9d8930c70e2e1a0",
-    "WV-12.json": "047682cb9d763b06e94a456494e564dfcf8e86c76c4e47943a497d429ae625d7",
-    "WV-13.json": "f5d4e6bc99cea98034e4d52e1913d50c475d7c192e5b0ae40b54678a9043e9d0",
-    "WV-14.json": "bac4069de25dc19943c51dde2c5faea47c0be422c4fdb1253754479923a11e6f"
+    "WV-01.json": "db09ad3ae5d4b2efce56328cb27c799d0c876dc4ca02ae415966fbbad39a64c2",
+    "WV-02.json": "ab2c2d8d6d7fca9de09a30ea6757638f4e530a54782097aca850e47b2a12d113",
+    "WV-03.json": "67c2fe59c655557ebd0d55082d3d82a0306840bb5f1ba891fbdc627e6294561b",
+    "WV-04.json": "0dc811ad7d65f96686ee06f6a2faf208d04e4e894e96dfaaa4a6f61ee2c3daa0",
+    "WV-05.json": "77df3ddbc99bff49ec8560ac376e5b21b5140a0eeb84f3d7e5d33589519da2a0",
+    "WV-06.json": "56f9ad720e2673427d0201b4b41aad318be7ae9aa68fce4d9689804cdf34edf3",
+    "WV-07.json": "12a0cc22af02c235e7aa5fab5e2a2c022c677bf76759f9e66df43c520a4f04bd",
+    "WV-08.json": "b10537b42d0b9b493f0329334058dea7016007c0672b05e782376c396d4d2408",
+    "WV-09.json": "7dc97a097214d493e71cdff706cccbddf8d7c4874d05c10648f5ed28f589131f",
+    "WV-10.json": "410ec2422d3b002a05f39af29ba88fc4e343f0a86aa01207e29025a3d564405e",
+    "WV-11.json": "bae7f6dcb4b92fdc1cd560eae77f4f6871898b65b9fb89199dfd41847eddc40c",
+    "WV-12.json": "0759955f41443840df18aa8bc0cd497e43dfc44c3ef2a401bbc82f67cb84a67a",
+    "WV-13.json": "5e381bae3066fe4f2cf07a20132749be138d3e6f0f3de650efc7d92bb708d4cd",
+    "WV-14.json": "430668ff6ca23091fc1c27db153d5e1511f2a1d365b3ad6f6339105f17e021a0"
   },
   "reportSha256": {
     "WV-01.json": "68767107d4fbfcc0dd4a19759a8918e3e3014360e5d886541e7aa4b10f00ee90",

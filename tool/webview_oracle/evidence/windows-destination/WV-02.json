@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-21T16:37:20.852818Z",
-  "completedAtUtc": "2026-09-21T16:37:22.593757Z",
+  "startedAtUtc": "2026-09-22T06:10:57.048959Z",
+  "completedAtUtc": "2026-09-22T06:10:59.267300Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -26,11 +26,11 @@
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "responseUrl": "http://127.0.0.1:58257/post",
+    "responseUrl": "http://127.0.0.1:62841/post",
     "responseCode": 200,
-    "responseBody": "<html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>|ASSET=true|BASE=http://127.0.0.1:58257/post",
+    "responseBody": "<html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>|ASSET=true|BASE=http://127.0.0.1:62841/post",
     "priorResponseCode": null,
-    "durationMs": 1462
+    "durationMs": 1704
   },
   "requests": [
     {
@@ -44,17 +44,17 @@
         "accept-encoding": "gzip",
         "content-length": "15",
         "x-wayfinder": "wv02",
-        "host": "127.0.0.1:58257",
+        "host": "127.0.0.1:62841",
         "content-type": "application/json; charset=UTF-8"
       },
       "body": "{\"key\":\"value\"}",
-      "startedAtElapsedMs": 39
+      "startedAtElapsedMs": 83
     },
     {
       "method": "GET",
       "target": "/relative.js",
       "headers": {
-        "host": "127.0.0.1:58257",
+        "host": "127.0.0.1:62841",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -64,18 +64,18 @@
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "script",
-        "referer": "http://127.0.0.1:58257/post",
+        "referer": "http://127.0.0.1:62841/post",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 468
+      "startedAtElapsedMs": 764
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:58257",
+        "host": "127.0.0.1:62841",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -85,12 +85,12 @@
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:58257/post",
+        "referer": "http://127.0.0.1:62841/post",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 489
+      "startedAtElapsedMs": 798
     }
   ],
   "checks": {

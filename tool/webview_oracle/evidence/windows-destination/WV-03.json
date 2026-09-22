@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-21T16:37:40.924943Z",
-  "completedAtUtc": "2026-09-21T16:37:42.625209Z",
+  "startedAtUtc": "2026-09-22T06:11:21.884147Z",
+  "completedAtUtc": "2026-09-22T06:11:23.908719Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -30,7 +30,7 @@
     "responseCode": 200,
     "responseBody": "<html><head></head><body><main id=\"oracle\">inline-no-base</main><script>window.inlineValue='ok'</script></body></html>|INLINE=ok",
     "priorResponseCode": null,
-    "durationMs": 1444
+    "durationMs": 1636
   },
   "requests": [],
   "checks": {

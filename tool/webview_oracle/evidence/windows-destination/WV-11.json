@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-21T16:42:45.779851Z",
-  "completedAtUtc": "2026-09-21T16:42:52.944349Z",
+  "startedAtUtc": "2026-09-22T06:17:03.846585Z",
+  "completedAtUtc": "2026-09-22T06:17:11.595301Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -35,7 +35,7 @@
       "method": "GET",
       "target": "/flight-cancel",
       "headers": {
-        "host": "127.0.0.1:56752",
+        "host": "127.0.0.1:64288",
         "connection": "keep-alive",
         "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
         "sec-ch-ua-mobile": "?0",
@@ -51,7 +51,7 @@
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 659
+      "startedAtElapsedMs": 1080
     }
   ],
   "checks": {

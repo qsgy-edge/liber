@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-21T16:39:47.570452Z",
-  "completedAtUtc": "2026-09-21T16:39:50.444437Z",
+  "startedAtUtc": "2026-09-22T06:13:48.907041Z",
+  "completedAtUtc": "2026-09-22T06:13:52.276036Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -27,15 +27,15 @@
   },
   "operation": [
     {
-      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseUrl": "http://127.0.0.1:59747/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:56517\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:59747\"}",
       "priorResponseCode": null
     },
     {
-      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseUrl": "http://127.0.0.1:59747/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:56517\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59747\"}",
       "priorResponseCode": null
     }
   ],
@@ -44,7 +44,7 @@
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:56517",
+        "host": "127.0.0.1:59747",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -54,18 +54,18 @@
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:56517/storage",
+        "referer": "http://127.0.0.1:59747/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 492
+      "startedAtElapsedMs": 699
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:56517",
+        "host": "127.0.0.1:59747",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -75,12 +75,12 @@
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:56517/storage",
+        "referer": "http://127.0.0.1:59747/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 1627
+      "startedAtElapsedMs": 1926
     }
   ],
   "checks": {
@@ -95,9 +95,9 @@
   "executionVerdict": "pass",
   "restart": {
     "response": {
-      "responseUrl": "http://127.0.0.1:56517/storage",
+      "responseUrl": "http://127.0.0.1:59747/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:56517\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59747\"}",
       "priorResponseCode": null
     },
     "checks": {
@@ -109,7 +109,7 @@
         "method": "GET",
         "target": "/favicon.ico",
         "headers": {
-          "host": "127.0.0.1:56517",
+          "host": "127.0.0.1:59747",
           "connection": "keep-alive",
           "sec-ch-ua-platform": "\"Windows\"",
           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -119,16 +119,16 @@
           "sec-fetch-site": "same-origin",
           "sec-fetch-mode": "no-cors",
           "sec-fetch-dest": "image",
-          "referer": "http://127.0.0.1:56517/storage",
+          "referer": "http://127.0.0.1:59747/storage",
           "accept-encoding": "gzip, deflate, br, zstd",
           "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
         },
         "body": "",
-        "startedAtElapsedMs": 453
+        "startedAtElapsedMs": 669
       }
     ]
   },
-  "restartCompletedAtUtc": "2026-09-21T16:40:09.618936Z",
+  "restartCompletedAtUtc": "2026-09-22T06:14:16.517102Z",
   "restartProvenance": {
     "device": {
       "manufacturer": "Microsoft",
@@ -144,6 +144,6 @@
       "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
       "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     },
-    "startedAtUtc": "2026-09-21T16:40:07.964061Z"
+    "startedAtUtc": "2026-09-22T06:14:14.447341Z"
   }
 }
