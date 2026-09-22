@@ -234,6 +234,12 @@ void main() {
         'GET /search',
       ]);
       expect(site.seen.first.query, 'key=%E4%B9%A6');
+      // The check's re-request is a request this stage made, and the trace says
+      // so.
+      expect(pipeline.trace.map((entry) => entry.stage), [
+        BookSourceStage.search,
+        BookSourceStage.search,
+      ]);
     });
 
     test('the book information rules read the response the check returned', () async {

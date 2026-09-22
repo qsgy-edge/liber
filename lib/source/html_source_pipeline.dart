@@ -167,13 +167,21 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the base that text resolved against, kept for the stage that fetches the
   /// book: a book URL is handed around without them, and `java.initUrl` re-runs
   /// the analysis of that text (`SourceStageRequest.reanalyze`).
-  final _bookRequests = <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
+  final _bookRequests =
+      <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
 
   /// The request the stage currently running made: what the stage's
   /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
   /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
-  /// stage's own `AnalyzeUrl`).
-  ({Uri url, SourceUrlOptions options, String address, Uri base})?
+  /// stage's own `AnalyzeUrl`). [BookSourceStage] is only the trace entry such a
+  /// repeat records.
+  ({
+    Uri url,
+    BookSourceStage stage,
+    SourceUrlOptions options,
+    String address,
+    Uri base,
+  })?
   _stageRequest;
 
   bool get cancelled => _cancellation.isCancelled;
@@ -281,7 +289,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final stage = _stageRequest!;
     return _fetch(
       stage.url,
-      BookSourceStage.search,
+      stage.stage,
       options: stage.options,
       address: stage.address,
       base: stage.base,
@@ -300,6 +308,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     _stageRequest = (
       url: url,
+      stage: stage.stage,
       options: options,
       address: stage.address,
       base: stage.base,
@@ -515,6 +524,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }) async {
     _stageRequest = (
       url: url,
+      stage: stage,
       options: options,
       address: address ?? '$url',
       base: base ?? url,

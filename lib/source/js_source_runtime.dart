@@ -911,10 +911,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       (script, result) async =>
           await _evaluateNested(script, result, requestId, outerInput, token),
     );
-    // Frozen `java.get`/`head`/`post`/`connect` hand the URL text to Jsoup
-    // (`JsExtensions.kt:131-160`): they parse no option tail, so a URL that
-    // carries one keeps refusing by name. `java.ajax`/`ajaxAll` build an
-    // `AnalyzeUrl` and do parse it. (`JsExtensions.kt:91-125`.)
+    // Frozen `java.get`/`head`/`post` hand the URL text to Jsoup
+    // (`JsExtensions.kt:131-160`), which parses no option tail; a URL that
+    // carries one keeps this product's existing refusal by name. `java.ajax`
+    // and `java.ajaxAll` build an `AnalyzeUrl` and do parse it (`:91-125`).
+    // `java.connect` shares the refusal: the frozen builds an `AnalyzeUrl` there
+    // too, so a tail on `java.connect` is a recorded divergence, not scope here.
     if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
       throw const SourceScriptError(
         'host-input',

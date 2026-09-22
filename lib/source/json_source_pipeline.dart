@@ -92,8 +92,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// The request the stage currently running made: what the stage's
   /// `loginCheckJs` repeats through `java.getStrResponse`/`java.getResponse` and
   /// re-analyzes through `java.initUrl` (the frozen check script's `java` is the
-  /// stage's own `AnalyzeUrl`).
-  ({Uri url, SourceUrlOptions options, String address, Uri base})?
+  /// stage's own `AnalyzeUrl`). [BookSourceStage] is only the trace entry such a
+  /// repeat records.
+  ({
+    Uri url,
+    BookSourceStage stage,
+    SourceUrlOptions options,
+    String address,
+    Uri base,
+  })?
   _stageRequest;
 
   final _cancellation = SourceCancellation();
@@ -231,7 +238,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<SourceStageResponse> _resendStage() {
     final stage = _stageRequest!;
     return _fetch(
-      BookSourceStage.search,
+      stage.stage,
       stage.url,
       options: stage.options,
       address: stage.address,
@@ -251,6 +258,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     _stageRequest = (
       url: url,
+      stage: stage.stage,
       options: options,
       address: stage.address,
       base: stage.base,
@@ -407,6 +415,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     _stageRequest = (
       url: url,
+      stage: stage,
       options: options,
       address: address ?? '$url',
       base: base ?? url,
