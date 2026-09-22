@@ -76,7 +76,7 @@ The sample is therefore evidence for *legacy* rule syntax and rule-level JavaScr
 | `jsLib` | `BaseSource.kt:245-252`, `JsExtensions.kt:253` | 🟡 local shared library ✅; remote URL and `importScript` ❌ |
 | `enabledCookieJar` | `AnalyzeUrl.kt:597-615` | ✅ the flag decides whether a response's `Set-Cookie` reaches the jar, which stays per space and scoped to a source's own site group (ADR 0011 §3, #21); a source whose flag is off still sends what the jar holds, as the frozen `setCookie` does. One divergence is recorded: the frozen session/persistent split does not survive a restart here |
 | `bookSourceType` | `BookSource.kt:41` | 🟡 text (`0`) only; audio/image/file sources deferred beyond the first slice, not refused (ADR 0011 §7) |
-| `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment`, `concurrentRate` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ |
+| `bookUrlPattern`, `coverDecodeJs`, `variable`, `variableComment` | `BookSource.kt:43-97`, `BaseSource.kt:202-228` | ❌ `bookUrlPattern` is #61 (36 of the 150 used sources non-empty). `coverDecodeJs` and the `variable` field are **0 non-empty among the 150** — not v1 rows; `variableComment` is a comment field. `concurrentRate` is implemented with the request layer (see the per-source limiter row) |
 
 `✅` in this field inventory means implemented with product tests. The seven #41
 field observations now have an executed frozen golden
