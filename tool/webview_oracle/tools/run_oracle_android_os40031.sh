@@ -83,8 +83,19 @@ run_method() {
     adb wait-for-device
     log "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] RUN $id $method attempt=$attempt limit=${limit}s"
     set +e
-    output="$(timeout "$limit" adb shell am instrument -w -r -e class "$CLASS#$method" "$RUNNER" 2>&1 | tr -d '\r')"
+    # The app's window has to come up *after* the instrumentation starts:
+    # AndroidJUnitRunner finishes the app's activities when a test begins, so an
+    # activity started before the instrument command does not survive, and the
+    # process is throttled again within seconds (see `wake_app`). The side
+    # process does it while the instrument command is already in flight.
+    instrument_out="$(mktemp)"
+    timeout "$limit" adb shell am instrument -w -r -e class "$CLASS#$method" "$RUNNER" >"$instrument_out" 2>&1 &
+    instrument_pid=$!
+    (sleep 4; wake_app) &
+    wait "$instrument_pid"
     status=$?
+    output="$(tr -d '\r' <"$instrument_out")"
+    rm -f "$instrument_out"
     set -e
     printf '%s\n' "$output" | tee -a "$LOG"
     if [[ $status -eq 0 ]] && grep -Fq 'OK (1 test)' <<<"$output"; then
@@ -168,12 +179,14 @@ done
 }
 # The device freezes a background process while a heavy foreground app runs,
 # which stalls the Kotlin timers WV-09 and WV-10 depend on. Keeping the screen on
-# and the launcher in front avoids that.
+# and the launcher in front avoids that; on the current build the app's own window
+# is what has to stay in front instead (`wake_app`), so this loop only wakes the
+# screen — pressing HOME here would push the app back into the background and the
+# two timer-dependent fixtures would hang again.
 (
   while true; do
     sleep 20
     adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
-    adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1 || true
   done
 ) &
 keep_awake_pid="$!"
