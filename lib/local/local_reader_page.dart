@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
+import '../settings/reader_script.dart';
+import '../settings/reader_script_page.dart';
 import 'local_reader.dart';
 
 /// The local reader: one bounded window of a local file at a time, opened at the
@@ -9,7 +12,10 @@ import 'local_reader.dart';
 ///
 /// The page owns nothing but the session it was handed: [LocalReader] holds the
 /// index, the position and the window, so a widget test can drive this page with
-/// a fake engine instead of the native library.
+/// a fake engine instead of the native library. It is also where the reader's
+/// conversion setting (#27) is consumed: the page resolves it before opening the
+/// book and again after the settings screen closes, which re-renders the window
+/// without reopening the book.
 class LocalReaderPage extends StatefulWidget {
   const LocalReaderPage({super.key, required this.reader});
 
@@ -23,8 +29,43 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_run(widget.reader.open));
+    unawaited(_open());
   }
+
+  /// Resolves this book's script once and opens the book with it, so a book
+  /// whose system locale asks for 繁體 opens in 繁體 without the setting being
+  /// touched.
+  Future<void> _open() async {
+    final reader = widget.reader;
+    await reader.applyScript(await _resolve());
+    if (!mounted) return;
+    await _run(reader.open);
+  }
+
+  /// Opens the conversion screen for the book being read, then re-renders the
+  /// page in the new script: no index pass, no reopen. A window in the file's
+  /// own text is re-rendered from the page it already holds; a processed unit is
+  /// run through the one text entry again.
+  Future<void> _openScriptSettings() async {
+    final reader = widget.reader;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScriptPage(
+          store: reader.library.store,
+          bookId: reader.book.id,
+          bookTitle: reader.book.title,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await reader.applyScript(await _resolve());
+    if (mounted) setState(() {});
+  }
+
+  Future<ConvertTarget?> _resolve() => ReaderScriptSetting.resolve(
+    widget.reader.library.store,
+    bookId: widget.reader.book.id,
+  );
 
   Future<void> _run(Future<void> Function() action) async {
     await action();
@@ -47,6 +88,11 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
       appBar: AppBar(
         title: Text(reader.book.title),
         actions: [
+          IconButton(
+            onPressed: reader.busy ? null : _openScriptSettings,
+            tooltip: '中文转换',
+            icon: const Icon(Icons.translate),
+          ),
           FilledButton.icon(
             onPressed: reader.busy || reader.error != null ? null : _save,
             icon: const Icon(Icons.bookmark_add),

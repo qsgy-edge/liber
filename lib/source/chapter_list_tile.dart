@@ -15,7 +15,9 @@ import 'book_source_pipeline.dart' show SourceChapter;
 ///
 /// The title is the chapter's own name: the frozen list replaces a title only
 /// when `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`), which
-/// defaults to false.
+/// defaults to false. [title] is the name the row shows when a caller has
+/// already run it through the reader's conversion (#27); null shows the
+/// chapter's raw name.
 ///
 /// The frozen's own 购买 action (`ReadMenu.kt:372-375`) has no counterpart in
 /// this product: the lock is where its state is surfaced.
@@ -24,10 +26,14 @@ class ChapterListTile extends StatelessWidget {
     super.key,
     required this.chapter,
     required this.onTap,
+    this.title,
     this.selected = false,
   });
 
   final SourceChapter chapter;
+
+  /// The converted chapter name, when the caller has one.
+  final String? title;
   final VoidCallback onTap;
 
   /// Whether this is the chapter the reader is on.
@@ -40,7 +46,11 @@ class ChapterListTile extends StatelessWidget {
     return ListTile(
       selected: selected,
       tileColor: chapter.isVolume ? colors.surfaceContainerHighest : null,
-      title: Text(chapter.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        title ?? chapter.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: chapter.isVolume || tag == null || tag.isEmpty
           ? null
           : Text(tag, maxLines: 1, overflow: TextOverflow.ellipsis),

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/local/local_reader.dart';
@@ -40,7 +41,7 @@ void main() {
     int pageCodeUnits = 256,
     int unitCodeUnits = 102400,
     int readChunkCodeUnits = 64 * 1024,
-    ReaderScript? script,
+    ConvertTarget? script,
   }) async {
     await file.writeAsString(text);
     final space = await admittedBook(file);

@@ -20,6 +20,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:drift/native.dart';
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/local/local_reader.dart';
 import 'package:liber/local/reader_engine.dart';
@@ -125,7 +126,7 @@ class CountingEngine implements ReaderEngine {
   }
 
   @override
-  String render(String text, ReaderScript? script) =>
+  String render(String text, ConvertTarget? script) =>
       engine.render(text, script);
 }
 

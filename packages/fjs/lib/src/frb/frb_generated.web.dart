@@ -260,6 +260,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   BridgeRequest dco_decode_bridge_request(dynamic raw);
 
   @protected
+  ConvertTarget dco_decode_convert_target(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
@@ -648,6 +651,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   BridgeRequest sse_decode_bridge_request(SseDeserializer deserializer);
+
+  @protected
+  ConvertTarget sse_decode_convert_target(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
@@ -1075,6 +1081,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void sse_encode_bridge_request(BridgeRequest self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_convert_target(ConvertTarget self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);

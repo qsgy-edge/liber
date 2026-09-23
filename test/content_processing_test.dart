@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart' show SourceCancellation;
-import 'package:liber/local/reader_engine.dart' show ReaderScript;
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/store/database.dart';
@@ -50,7 +50,7 @@ void main() {
 
   ContentProcessing processing(
     List<ReplaceRule> rules, {
-    ReaderScript? script,
+    ConvertTarget? script,
     String bookName = name,
     String bookOrigin = origin,
     void Function(String)? onNotice,
@@ -587,7 +587,7 @@ void main() {
     test('the rules see converted content', () async {
       final content = (await processing(
         [rule(pattern: '龙', replacement: '龙（已转换）', isRegex: false)],
-        script: ReaderScript.simplified,
+        script: ConvertTarget.simplifiedMainland,
       ).content('龍與鳳', chapterTitle: '第一章')).text;
       expect(content, contains('龙（已转换）'));
     });
@@ -595,8 +595,27 @@ void main() {
     test('a converted title is what the title rules match', () async {
       final title = await processing([
         rule(pattern: r'^龙', replacement: '龙首', scopeTitle: true),
-      ], script: ReaderScript.simplified).displayTitle('龍鳳');
+      ], script: ConvertTarget.simplifiedMainland).displayTitle('龍鳳');
       expect(title, '龙首凤');
+    });
+
+    test('目录行只转换标题：规则留给阅读页本身', () async {
+      // The frozen list applies the title rules only when
+      // `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`, default
+      // false), while the reader's own title converts first and then runs them.
+      final titleRules = processing([
+        rule(pattern: '凤', replacement: '凤首', scopeTitle: true),
+      ], script: ConvertTarget.simplifiedMainland);
+      expect(titleRules.listTitle('龍鳳'), '龙凤');
+      expect(await titleRules.displayTitle('龍鳳'), '龙凤首');
+    });
+
+    test('没有目标时目录行不转换，阅读页的标题规则照旧', () async {
+      final none = processing([
+        rule(pattern: '龍', replacement: '龙首', scopeTitle: true),
+      ]);
+      expect(none.listTitle('龍鳳'), '龍鳳');
+      expect(await none.displayTitle('龍鳳'), '龙首鳳');
     });
   });
 }

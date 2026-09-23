@@ -74,4 +74,15 @@ class TextEngine {
   /// Simplified to Traditional, the frozen `java.s2t`.
   static String s2t(String text) =>
       textConvert(text: text, direction: TextDirection.simplifiedToTraditional);
+
+  /// Renders [text] for a reader: characters plus the regional wording the
+  /// target asks for (`liber_text::convert_to`, ADR 0010).
+  ///
+  /// This is deliberately not [t2s]: the character-only direction exists for a
+  /// Book Source rule (`java.t2s`), which matches on what it returns, while a
+  /// reader wants 简体 with mainland wording and 繁體 in the norm and wording of
+  /// the place it reads in. Synchronous for the same reason [t2s] is — the
+  /// caller already holds the native library through [NativeLibrary].
+  static String convertTo(String text, ConvertTarget target) =>
+      textConvertTo(text: text, target: target);
 }

@@ -33,9 +33,9 @@ pub use html::{
 };
 pub use error::{JsError, JsResult};
 pub use text::{
-    TextAnchor, TextChapter, TextDetection, TextDirection, TextEngineError, TextIndex,
-    TextIndexOptions, TextWindow, TextWindowRequest, text_convert, text_default_options,
-    text_detect_encoding, text_index_file, text_read_window,
+    ConvertTarget, TextAnchor, TextChapter, TextDetection, TextDirection, TextEngineError,
+    TextIndex, TextIndexOptions, TextWindow, TextWindowRequest, text_convert, text_convert_to,
+    text_default_options, text_detect_encoding, text_index_file, text_read_window,
 };
 pub use module::{DynamicModuleLoader, DynamicModuleResolver, GlobalAttachment, ModuleBuilder};
 pub use runtime::{JsAsyncContext, JsAsyncRuntime, JsContext, JsRuntime, MemoryUsage};

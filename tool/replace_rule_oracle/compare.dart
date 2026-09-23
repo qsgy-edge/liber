@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:liber/local/reader_engine.dart' show ReaderScript;
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
@@ -186,8 +186,8 @@ Future<List<Map<String, Object?>>> observeProduct(
       rules: selected,
       bookName: input['bookName'] as String,
       script: switch (input['script']) {
-        't2s' => ReaderScript.simplified,
-        's2t' => ReaderScript.traditional,
+        't2s' => ConvertTarget.simplifiedMainland,
+        's2t' => ConvertTarget.traditionalGeneric,
         _ => null,
       },
       useReSegment: input['reSegment'] as bool? ?? false,

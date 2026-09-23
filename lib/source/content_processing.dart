@@ -81,9 +81,10 @@ library;
 
 import 'dart:isolate';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
+
 import '../domain/contracts.dart'
     show SourceCancellation, SourceRequestCancelled;
-import '../local/reader_engine.dart' show ReaderScript;
 import '../local/text_engine.dart' show TextEngine;
 import '../store/database.dart' show ReplaceRule;
 import 'content_re_segment.dart';
@@ -259,6 +260,7 @@ class ContentProcessing {
     required this.rules,
     required this.bookName,
     this.script,
+    this.convert = TextEngine.convertTo,
     this.scriptRuntime,
     this.cancellation,
     this.useReplaceRule = true,
@@ -277,9 +279,21 @@ class ContentProcessing {
   final String bookName;
 
   /// The script the page was asked to render, or null for the text as it is.
-  /// Which one a reader wants is #27's choice; the conversion itself is ADR
-  /// 0010's, and the frozen engine converts inside this same stage.
-  final ReaderScript? script;
+  /// Which one a reader wants is #27's choice
+  /// (`lib/settings/reader_script.dart`); the conversion itself is ADR 0010's,
+  /// and the frozen engine converts inside this same stage.
+  ///
+  /// A reader that changes the choice while a book is open sets this and runs
+  /// the stage again, so the text is re-rendered without reopening the book.
+  ConvertTarget? script;
+
+  /// The conversion itself: the engine's reader target (ADR 0010), through
+  /// `TextEngine.convertTo`.
+  ///
+  /// The default is the native call. A widget test injects a pure-Dart double
+  /// because its binding cannot load the native library — the same seam reason
+  /// [scriptRuntime] exists.
+  final String Function(String text, ConvertTarget target) convert;
 
   /// The approved JavaScript boundary used for `@js:` replacements. Tests may
   /// inject a boundary double; the product uses the in-process source runtime.
@@ -323,6 +337,20 @@ class ContentProcessing {
   /// adopted only when it is not blank.
   Future<String> displayTitle(String title) =>
       _titleWithRules(title, rules.titleRules, convert: true);
+
+  /// The chapter title as the table-of-contents list shows it: the frozen
+  /// `BookChapter.getDisplayTitle`'s own steps without the title rules, which
+  /// the frozen list applies only when `AppConfig.tocUiUseReplace` is on
+  /// (`ChapterListAdapter.kt:78`, default false). Synchronous, because a list
+  /// row builds without awaiting.
+  String listTitle(String title) =>
+      converted(title.replaceAll(RegExp(r'[\r\n]'), ''));
+
+  /// [text] in the reader's script, or as it is when no target is set.
+  String converted(String text) {
+    final target = script;
+    return target == null ? text : convert(text, target);
+  }
 
   /// The chapter body as the frozen reader reads it
   /// (`ContentProcessor.getContent(..., includeTitle = false)`), in the frozen
@@ -377,7 +405,7 @@ class ContentProcessing {
       text = next;
     }
     if (script != null) {
-      final next = _convert(text);
+      final next = converted(text);
       trace = trace.after(_conversionEdits(text, next), next);
       text = next;
     }
@@ -413,7 +441,7 @@ class ContentProcessing {
     required bool convert,
   }) async {
     var text = title.replaceAll(RegExp(r'[\r\n]'), '');
-    if (convert && script != null) text = _convert(text);
+    if (convert && script != null) text = converted(text);
     if (!useReplaceRule) return text;
     for (final rule in source) {
       if (rule.pattern.isEmpty) continue;
@@ -524,12 +552,6 @@ class ContentProcessing {
   Duration _deadlineFor(ReplaceRule rule) => rule.timeoutMillisecond <= 0
       ? timeoutFallback
       : Duration(milliseconds: rule.timeoutMillisecond);
-
-  String _convert(String text) => switch (script) {
-    null => text,
-    ReaderScript.simplified => TextEngine.t2s(text),
-    ReaderScript.traditional => TextEngine.s2t(text),
-  };
 
   /// Applies the frozen JavaScript replacement once per match. The stopwatch
   /// carries one rule deadline across all matches, matching the frozen worker

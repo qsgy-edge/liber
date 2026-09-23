@@ -15,6 +15,16 @@ void defaultAppTest(Directory Function() root) {
     expect(find.text('书架'), findsNWidgets(2));
     expect(find.text('Wayfinder 受控书源'), findsOneWidget);
     expect(find.text('尚未运行'), findsOneWidget);
+    // The conversion screen has an entry point in the app bar (#27); the space
+    // is not open yet, so it is disabled until it is.
+    final settings = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.translate),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(settings.tooltip, '中文转换');
+    expect(settings.onPressed, isNull);
   });
 }
 

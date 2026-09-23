@@ -77,7 +77,7 @@ class LibFjs extends BaseEntrypoint<LibFjsApi, LibFjsApiImpl, LibFjsWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -560221836;
+  int get rustContentHash => 885283798;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -536,6 +536,9 @@ abstract class LibFjsApi extends BaseApi {
 
   String crateApiTextTextConvert(
       {required String text, required TextDirection direction});
+
+  String crateApiTextTextConvertTo(
+      {required String text, required ConvertTarget target});
 
   Future<String> crateApiTextTextDecodeBytes(
       {required List<int> bytes, String? encoding});
@@ -4783,6 +4786,31 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
       );
 
   @override
+  String crateApiTextTextConvertTo(
+      {required String text, required ConvertTarget target}) {
+    return handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(text, serializer);
+        sse_encode_convert_target(target, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 159)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiTextTextConvertToConstMeta,
+      argValues: [text, target],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiTextTextConvertToConstMeta => const TaskConstMeta(
+        debugName: "text_convert_to",
+        argNames: ["text", "target"],
+      );
+
+  @override
   Future<String> crateApiTextTextDecodeBytes(
       {required List<int> bytes, String? encoding}) {
     return handler.executeNormal(NormalTask(
@@ -4791,7 +4819,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         sse_encode_list_prim_u_8_loose(bytes, serializer);
         sse_encode_opt_String(encoding, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 159, port: port_);
+            funcId: 160, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -4814,7 +4842,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     return handler.executeSync(SyncTask(
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 160)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 161)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_index_options,
@@ -4839,7 +4867,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(path, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 161, port: port_);
+            funcId: 162, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_detection,
@@ -4866,7 +4894,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         sse_encode_String(text, serializer);
         sse_encode_String(encoding, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 162, port: port_);
+            funcId: 163, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -4893,7 +4921,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         sse_encode_String(path, serializer);
         sse_encode_box_autoadd_text_index_options(options, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 163, port: port_);
+            funcId: 164, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_index,
@@ -4918,7 +4946,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_box_autoadd_text_window_request(request, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 164, port: port_);
+            funcId: 165, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_text_window,
@@ -5493,6 +5521,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
       executionId: dco_decode_opt_box_autoadd_u_64(arr[1]),
       value: dco_decode_js_value(arr[2]),
     );
+  }
+
+  @protected
+  ConvertTarget dco_decode_convert_target(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ConvertTarget.values[raw as int];
   }
 
   @protected
@@ -6610,6 +6644,13 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     var var_value = sse_decode_js_value(deserializer);
     return BridgeRequest(
         id: var_id, executionId: var_executionId, value: var_value);
+  }
+
+  @protected
+  ConvertTarget sse_decode_convert_target(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ConvertTarget.values[inner];
   }
 
   @protected
@@ -7889,6 +7930,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     sse_encode_u_64(self.id, serializer);
     sse_encode_opt_box_autoadd_u_64(self.executionId, serializer);
     sse_encode_js_value(self.value, serializer);
+  }
+
+  @protected
+  void sse_encode_convert_target(ConvertTarget self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected

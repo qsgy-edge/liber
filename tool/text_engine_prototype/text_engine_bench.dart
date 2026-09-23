@@ -25,6 +25,11 @@
 //                     through the bridge, timed on its own
 //   rust-convert      [traditional, simplified] t2s and s2t over two
 //                     chapter-sized strings through the bridge
+//   rust-convert-target [path, repeats?] the reader's four conversion targets
+//                     (`ConvertTarget`) over one chapter-sized text, each timed
+//                     on its own — #27's "is a chapter-sized conversion cheap
+//                     enough for the UI isolate" row. `repeats` runs each
+//                     target that many times and records the mean.
 //
 // Resident set size comes from the Dart VM (`ProcessInfo.currentRss` at the
 // start of the phase and `ProcessInfo.maxRss` at the end), which reads the
@@ -278,6 +283,33 @@ Future<void> main(List<String> args) async {
           't2s_changed': t2s == traditional ? 0 : 1,
           's2t_changed': s2t == simplified ? 0 : 1,
         };
+      });
+    case 'rust-convert-target':
+      // The reader's own conversions: `TextEngine.convertTo` for each target,
+      // over a chapter-sized text. Each target's mean is recorded in
+      // microseconds; the code-unit count travels with it so a later reader can
+      // turn it into a per-unit cost.
+      final text = File(parameters['path'] as String).readAsStringSync();
+      final repeats = parameters['repeats'] as int? ?? 1;
+      await run(() async {
+        final row = <String, Object?>{'code_units': text.length};
+        const targets = <(String, ConvertTarget)>[
+          ('simplified_mainland', ConvertTarget.simplifiedMainland),
+          ('traditional_generic', ConvertTarget.traditionalGeneric),
+          ('traditional_taiwan', ConvertTarget.traditionalTaiwan),
+          ('traditional_hong_kong', ConvertTarget.traditionalHongKong),
+        ];
+        for (final (name, target) in targets) {
+          String converted = '';
+          final watch = Stopwatch()..start();
+          for (var attempt = 0; attempt < repeats; attempt++) {
+            converted = TextEngine.convertTo(text, target);
+          }
+          watch.stop();
+          row['${name}_micros'] = watch.elapsedMicroseconds ~/ repeats;
+          row['${name}_changed'] = converted == text ? 0 : 1;
+        }
+        return row;
       });
     default:
       stderr.writeln('unknown phase $phase');
