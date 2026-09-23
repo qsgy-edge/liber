@@ -56,7 +56,16 @@ class LegacyHome {
             'chapterName': '第二章',
             'textOffset': 120,
             'chapters': [
-              {'name': '第一章', 'url': 'https://example.test/book/1/1'},
+              {
+                'name': '第一章',
+                'url': 'https://example.test/book/1/1',
+                // A record that carries the frozen markers keeps them; the
+                // retired writer stored `{name, url}` only.
+                'tag': '2026-01-01',
+                'isVolume': false,
+                'isVip': true,
+                'isPay': false,
+              },
               {'name': '第二章', 'url': 'https://example.test/book/1/2'},
             ],
             'shelved': true,
@@ -206,6 +215,15 @@ void main() {
     final chapters = await store.chaptersOf(network.id);
     expect(chapters.map((c) => c.name), ['第一章', '第二章']);
     expect(chapters.last.chapterKey, 'https://example.test/book/1/2');
+    expect(chapters.first.tag, '2026-01-01');
+    expect(chapters.first.isVolume, isFalse);
+    expect(chapters.first.isVip, isTrue);
+    expect(chapters.first.isPay, isFalse);
+    // A chapter entry without the markers imports as the store's defaults.
+    expect(chapters.last.tag, isNull);
+    expect(chapters.last.isVolume, isFalse);
+    expect(chapters.last.isVip, isFalse);
+    expect(chapters.last.isPay, isFalse);
     final progress = (await store.progressOf(network.id))!;
     expect(progress.textOffset, 120);
     expect(progress.chapterKey, 'https://example.test/book/1/2');

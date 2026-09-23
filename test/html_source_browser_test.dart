@@ -94,6 +94,25 @@ class _UnusedTransport implements BookSourceTransport {
   }) => throw StateError('该测试不经过传输层');
 }
 
+/// A details stage that returns table-of-contents markers (#13), so the TOC
+/// list's rendering of them can be driven without the rule adapter.
+class _MarkerPipeline extends ScriptedPipeline {
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async => (
+    hit,
+    [
+      SourceChapter('第一章', Uri.parse('$sourceUrl/1'), tag: '2026-01-01'),
+      SourceChapter.volume(
+        '第一卷',
+        0,
+        tocUrl: Uri.parse('$sourceUrl/v'),
+        tag: '卷首',
+      ),
+      SourceChapter('第二章', Uri.parse('$sourceUrl/2'), isVip: true),
+    ],
+  );
+}
+
 void main() {
   late SpaceStore store;
   late ShelfService shelf;
@@ -131,6 +150,35 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('the TOC list shows the tag, the volume heading and the lock', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          directBook: HtmlBook(url: Uri.parse(bookUrl), title: ''),
+          pipeline: _MarkerPipeline(),
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // A non-volume chapter's `tag` is its secondary line and a volume is a
+    // heading that keeps its own `tag` hidden (`ChapterListAdapter.kt:138-150`).
+    expect(find.text('2026-01-01'), findsOneWidget);
+    expect(find.text('第一卷'), findsOneWidget);
+    expect(find.text('卷首'), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('第一卷')).style?.fontWeight,
+      FontWeight.bold,
+    );
+    // The lock is `isVip && !isPay` (`ChapterListAdapter.kt:162-165`).
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('disposing a direct-book analysis cancels its pipeline', (
     tester,
@@ -210,6 +258,9 @@ void main() {
         // url is the address text the TOC rule produced.
         url: '$sourceUrl/1,{"webView":true,"webViewDelayTime":25}',
         chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
       ),
     ]);
     final entry = (await shelf.find(sourceUrl, bookUrl))!;
@@ -388,6 +439,9 @@ void main() {
           name: '第一章',
           url: '$sourceUrl/1',
           chapterIndex: 0,
+          isVolume: false,
+          isVip: false,
+          isPay: false,
         ),
       ]);
       final entry = (await shelf.find(sourceUrl, bookUrl))!;

@@ -238,3 +238,17 @@ Future<void> migrateToV4(Migrator m, Schema4 schema) async {
 Future<void> migrateToV5(Migrator m, Schema5 schema) async {
   await m.addColumn(schema.sourceEntries, schema.sourceEntries.writtenAt);
 }
+
+/// v5 → v6: a chapter carries the table-of-contents markers (#13).
+///
+/// `tag` is null for every v5 row — nothing extracted one before, and the
+/// frozen's `BookChapter.tag` has no value to backfill — and the three flags
+/// default to false, which is what a chapter with no `isVolume`/`isVip`/`isPay`
+/// rule reads as. Every existing row, its `chapter_key` included, is untouched,
+/// so a stored position still resolves to the chapter it named (D4).
+Future<void> migrateToV6(Migrator m, Schema6 schema) async {
+  await m.addColumn(schema.chapters, schema.chapters.tag);
+  await m.addColumn(schema.chapters, schema.chapters.isVolume);
+  await m.addColumn(schema.chapters, schema.chapters.isVip);
+  await m.addColumn(schema.chapters, schema.chapters.isPay);
+}

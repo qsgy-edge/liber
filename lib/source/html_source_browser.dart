@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
+import 'chapter_list_tile.dart';
 import 'http_source_transport.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'online_reader_page.dart';
@@ -140,6 +141,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                   chapter.url ?? chapter.chapterKey,
                   bookUrl: hit.url,
                   chapterKey: chapter.chapterKey,
+                  tag: chapter.tag,
+                  isVolume: chapter.isVolume,
+                  isVip: chapter.isVip,
+                  isPay: chapter.isPay,
                 ),
             ];
             busy = false;
@@ -359,8 +364,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                 ),
                 SliverList.builder(
                   itemCount: chapters.length,
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text(chapters[i].name),
+                  itemBuilder: (_, i) => ChapterListTile(
+                    chapter: chapters[i],
                     onTap: () => read(i),
                   ),
                 ),

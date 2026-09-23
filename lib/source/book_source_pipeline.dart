@@ -39,6 +39,57 @@ String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
   return text.trim().isNotEmpty ? text : fallback;
 }
 
+/// Frozen `String?.isTrue()` (`StringExtensions.kt:74-79`): null, a blank value
+/// and the literal `null` are false, a value that trims to `false`, `no`, `not`
+/// or `0` (case-insensitively) is false, and every other value — `true`, `TRUE`,
+/// `1`, `是`, any other text — is true. The `ruleToc.isVolume`/`isVip`/`isPay`
+/// markers are read through it.
+///
+/// The trim is Java's `String.trim()` (code units at or below U+0020), not
+/// Dart's Unicode one, and the blank test is Java's `Character.isWhitespace`
+/// set, which excludes the non-breaking spaces Dart's `trim()` removes: the
+/// frozen `" false "` and `"　false"` answers depend on both.
+bool sourceIsTrue(String? value) {
+  if (value == null || _sourceIsBlank(value) || value == 'null') return false;
+  return !RegExp(
+    r'^(false|no|not|0)$',
+    caseSensitive: false,
+  ).hasMatch(_sourceJavaTrim(value));
+}
+
+/// Java's `String.trim()`: it strips code units at or below U+0020, where Dart's
+/// `trim()` strips every Unicode whitespace code unit.
+String _sourceJavaTrim(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && value.codeUnitAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && value.codeUnitAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
+/// Kotlin's `isBlank()`: every code unit is whitespace in Java's
+/// `Character.isWhitespace` set, which leaves the non-breaking spaces out.
+bool _sourceIsBlank(String value) =>
+    value.codeUnits.every(_sourceIsJavaWhitespace);
+
+bool _sourceIsJavaWhitespace(int unit) =>
+    (unit >= 0x09 && unit <= 0x0D) ||
+    (unit >= 0x1C && unit <= 0x1F) ||
+    unit == 0x20 ||
+    // The Unicode spaces Java counts, minus the non-breaking ones (`\u00A0`,
+    // `\u2007`, `\u202F`).
+    unit == 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x2006) ||
+    (unit >= 0x2008 && unit <= 0x200A) ||
+    unit == 0x2028 ||
+    unit == 0x2029 ||
+    unit == 0x205F ||
+    unit == 0x3000;
+
 /// Frozen HtmlFormatter.format used for search and book-information intros.
 String formatSourceIntro(String value) => value
     .replaceAll(RegExp(r'(&nbsp;)+'), ' ')

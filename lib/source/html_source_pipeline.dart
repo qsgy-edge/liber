@@ -779,7 +779,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     var address = tocText;
     var base = infoUrl;
     final visited = <Uri>{};
-    final chapterUrls = <Uri>{};
+    final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
     tocPages = 0;
     var firstPage = true;
@@ -811,16 +811,44 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         allowScripts: false,
       );
       final items = batch.elements('items', listRule.extractionRule!);
-      final name = await _elementField(
+      final nameField = await _elementField(
         _rule('ruleToc', 'chapterName'),
         content: page,
       );
-      final names = batch.elementsText('name', name.extractionRule!, items);
+      final names = batch.elementsText(
+        'name',
+        nameField.extractionRule!,
+        items,
+      );
       final urlField = await _elementField(
         _rule('ruleToc', 'chapterUrl'),
         content: page,
       );
       final urls = batch.elementsText('url', urlField.extractionRule!, items);
+      final tagField = await _elementField(
+        _rule('ruleToc', 'updateTime', optional: true),
+        content: page,
+      );
+      final tags = batch.elementsText('tag', tagField.extractionRule!, items);
+      final volumeField = await _elementField(
+        _rule('ruleToc', 'isVolume', optional: true),
+        content: page,
+      );
+      final volumes = batch.elementsText(
+        'volume',
+        volumeField.extractionRule!,
+        items,
+      );
+      final vipField = await _elementField(
+        _rule('ruleToc', 'isVip', optional: true),
+        content: page,
+      );
+      final vips = batch.elementsText('vip', vipField.extractionRule!, items);
+      final payField = await _elementField(
+        _rule('ruleToc', 'isPay', optional: true),
+        content: page,
+      );
+      final pays = batch.elementsText('pay', payField.extractionRule!, items);
       final next = await _field(
         _rule('ruleToc', 'nextTocUrl', optional: true),
         content: page,
@@ -828,35 +856,79 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final nextValue = _declare(batch, 'next', next);
       await batch.run();
       if (items.isEmpty) throw StateError('目录页为空');
-      final names2 = await _perElement(name, names.values);
+      final names2 = await _perElement(nameField, names.values);
       final urls2 = await _perElement(urlField, urls.values, url: true);
+      final tagValues = await _perElement(tagField, tags.values);
+      final volumeValues = await _perElement(volumeField, volumes.values);
+      final vipValues = await _perElement(vipField, vips.values);
+      final payValues = await _perElement(payField, pays.values);
       final nextText = await _documentValue(nextValue, next, page);
       for (var index = 0; index < items.length; index++) {
-        // The address text the rule produced, option tail included: this is what
-        // the chapter keeps, so the fetch parses the options the frozen
-        // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
-        final rawAddress = _required(urls2, index, 'ruleToc.chapterUrl');
-        final (chapterUrl, chapterOptions) = await _extracted(
-          pageUrl,
-          rawAddress,
-        );
-        if (chapterOptions.isPost ||
-            chapterOptions.body != null ||
-            chapterOptions.headers.isNotEmpty ||
-            chapterOptions.retry != 0 ||
-            chapterOptions.js != null) {
-          throw UnsupportedError('暂不支持章节地址的 URL 选项');
-        }
-        if (!chapterUrls.add(chapterUrl)) {
-          throw StateError('目录含重复章节：$chapterUrl');
-        }
-        chapters.add(
-          SourceChapter(
-            _required(names2, index, 'ruleToc.chapterName'),
+        // The frozen adds a chapter only when its title is non-empty
+        // (`BookChapterList.kt:244`), so an element the name rule matched
+        // nothing on is skipped instead of failing the whole TOC.
+        final title = names2[index];
+        if (title.isEmpty) continue;
+        final tag = tagValues[index].isEmpty ? null : tagValues[index];
+        final isVolume = sourceIsTrue(volumeValues[index]);
+        final isVip = sourceIsTrue(vipValues[index]);
+        final isPay = sourceIsTrue(payValues[index]);
+        final SourceChapter chapter;
+        if (urls2[index].isEmpty) {
+          // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
+          // volume takes the identity text `title + index`, every other chapter
+          // takes the address of the TOC page being parsed, which resolves to
+          // that same page (`BookChapter.kt:143-149`).
+          chapter = isVolume
+              ? SourceChapter.volume(
+                  title,
+                  index,
+                  tocUrl: pageUrl,
+                  tag: tag,
+                  isVip: isVip,
+                  isPay: isPay,
+                )
+              : SourceChapter(
+                  title,
+                  pageUrl,
+                  rawAddress: address,
+                  tag: tag,
+                  isVip: isVip,
+                  isPay: isPay,
+                );
+        } else {
+          // The address text the rule produced, option tail included: this is
+          // what the chapter keeps, so the fetch parses the options the frozen
+          // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
+          final rawAddress = urls2[index];
+          final (chapterUrl, chapterOptions) = await _extracted(
+            pageUrl,
+            rawAddress,
+          );
+          if (chapterOptions.isPost ||
+              chapterOptions.body != null ||
+              chapterOptions.headers.isNotEmpty ||
+              chapterOptions.retry != 0 ||
+              chapterOptions.js != null) {
+            throw UnsupportedError('暂不支持章节地址的 URL 选项');
+          }
+          chapter = SourceChapter(
+            title,
             chapterUrl,
             rawAddress: rawAddress,
-          ),
-        );
+            tag: tag,
+            isVolume: isVolume,
+            isVip: isVip,
+            isPay: isPay,
+          );
+        }
+        // The frozen deduplicates its list by chapter URL
+        // (`BookChapterList.kt:123`); a duplicate key cannot be stored (D4), so
+        // it is refused here by name.
+        if (!chapterKeys.add(chapter.storeKey)) {
+          throw StateError('目录含重复章节：${chapter.storeKey}');
+        }
+        chapters.add(chapter);
       }
       if (nextText.isEmpty) break;
       final (nextUrl, nextOptions) = await _extracted(pageUrl, nextText);
@@ -865,6 +937,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       address = nextText;
       base = pageUrl;
     }
+    if (chapters.isEmpty) throw StateError('目录为空');
     return (book, chapters);
   }
 
@@ -1025,6 +1098,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapter = chapter;
     _page = null;
     _chapterTitle = chapter.name;
+    // The frozen content stage reads the content rule before the volume
+    // shortcut (`WebBook.kt:303-306`), so a source that declares none keeps
+    // failing by name; the shortcut (`:307-310`) then answers the chapter's
+    // `tag` without building a request or reading the source headers.
+    _rule('ruleContent', 'content');
+    if (chapter.rendersTagAsContent) {
+      return HtmlChapterBody(chapter.tag ?? '', 0);
+    }
     var url = chapter.url;
     // The chapter's own address text carries the options this request applies
     // (the frozen `BookContent` fetches `chapter.url` through `AnalyzeUrl`, so a

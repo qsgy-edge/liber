@@ -398,6 +398,10 @@ class ShelfService {
   /// from it (#58). A row written before this holds a bare target there, which
   /// is address text with no options and parses to itself, so no migration is
   /// needed and no progress key drifts.
+  ///
+  /// A volume the rules left without a URL has no target: its key and its
+  /// address text are both the frozen identity text `title + index`
+  /// ([SourceChapter.storeKey]), and the content stage never fetches it.
   static List<BookChapter> _chapterRows(
     String bookId,
     List<SourceChapter> chapters,
@@ -405,10 +409,14 @@ class ShelfService {
     for (var index = 0; index < chapters.length; index++)
       BookChapter(
         bookId: bookId,
-        chapterKey: '${chapters[index].url}',
+        chapterKey: chapters[index].storeKey,
         name: chapters[index].name,
         url: chapters[index].persistedAddress,
         chapterIndex: index,
+        tag: chapters[index].tag,
+        isVolume: chapters[index].isVolume,
+        isVip: chapters[index].isVip,
+        isPay: chapters[index].isPay,
       ),
   ];
 }

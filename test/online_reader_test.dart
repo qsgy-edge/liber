@@ -77,6 +77,9 @@ void main() {
             name: chapters[index].$1,
             url: chapters[index].$2,
             chapterIndex: index,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
           ),
       ]);
 
@@ -251,6 +254,50 @@ void main() {
     await tester.tap(find.text('目录'));
     await tester.pumpAndSettle();
     expect(find.text('第一章 广告'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reader table of contents shows the tag, the volume and the lock', (
+    tester,
+  ) async {
+    final chapters = [
+      SourceChapter('第一章', Uri.parse('$sourceUrl/1'), tag: '2026-01-01'),
+      SourceChapter.volume(
+        '第一卷',
+        0,
+        tocUrl: Uri.parse('$sourceUrl/v'),
+        tag: '卷首',
+      ),
+      SourceChapter('第二章', Uri.parse('$sourceUrl/2'), isVip: true),
+      SourceChapter('第三章', Uri.parse('$sourceUrl/3'), isVip: true, isPay: true),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OnlineReaderPage(
+          pipeline: ScriptedPipeline(),
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: chapters,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('目录'));
+    await tester.pumpAndSettle();
+
+    // A non-volume chapter's `tag` is its secondary line
+    // (`ChapterListAdapter.kt:146-150`).
+    expect(find.text('2026-01-01'), findsOneWidget);
+    // A volume is a heading and keeps its `tag` hidden (`:138-150`).
+    expect(find.text('第一卷'), findsOneWidget);
+    expect(find.text('卷首'), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('第一卷')).style?.fontWeight,
+      FontWeight.bold,
+    );
+    // The lock is `isVip && !isPay` (`:162-165`), so the paid chapter has none.
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

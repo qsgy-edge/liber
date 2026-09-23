@@ -65,6 +65,9 @@ void main() {
         name: '第一章',
         url: 'https://example.test/book/1/1',
         chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
       ),
       BookChapter(
         bookId: bookId,
@@ -72,6 +75,9 @@ void main() {
         name: '第二章',
         url: 'https://example.test/book/1/2',
         chapterIndex: 1,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
       ),
     ]);
 

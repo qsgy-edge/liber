@@ -2828,6 +2828,56 @@ class $ChaptersTable extends Chapters
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tagMeta = const VerificationMeta('tag');
+  @override
+  late final GeneratedColumn<String> tag = GeneratedColumn<String>(
+    'tag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isVolumeMeta = const VerificationMeta(
+    'isVolume',
+  );
+  @override
+  late final GeneratedColumn<bool> isVolume = GeneratedColumn<bool>(
+    'is_volume',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_volume" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _isVipMeta = const VerificationMeta('isVip');
+  @override
+  late final GeneratedColumn<bool> isVip = GeneratedColumn<bool>(
+    'is_vip',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_vip" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _isPayMeta = const VerificationMeta('isPay');
+  @override
+  late final GeneratedColumn<bool> isPay = GeneratedColumn<bool>(
+    'is_pay',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_pay" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _variableMeta = const VerificationMeta(
     'variable',
   );
@@ -2846,6 +2896,10 @@ class $ChaptersTable extends Chapters
     name,
     url,
     chapterIndex,
+    tag,
+    isVolume,
+    isVip,
+    isPay,
     variable,
   ];
   @override
@@ -2901,6 +2955,30 @@ class $ChaptersTable extends Chapters
     } else if (isInserting) {
       context.missing(_chapterIndexMeta);
     }
+    if (data.containsKey('tag')) {
+      context.handle(
+        _tagMeta,
+        tag.isAcceptableOrUnknown(data['tag']!, _tagMeta),
+      );
+    }
+    if (data.containsKey('is_volume')) {
+      context.handle(
+        _isVolumeMeta,
+        isVolume.isAcceptableOrUnknown(data['is_volume']!, _isVolumeMeta),
+      );
+    }
+    if (data.containsKey('is_vip')) {
+      context.handle(
+        _isVipMeta,
+        isVip.isAcceptableOrUnknown(data['is_vip']!, _isVipMeta),
+      );
+    }
+    if (data.containsKey('is_pay')) {
+      context.handle(
+        _isPayMeta,
+        isPay.isAcceptableOrUnknown(data['is_pay']!, _isPayMeta),
+      );
+    }
     if (data.containsKey('variable')) {
       context.handle(
         _variableMeta,
@@ -2936,6 +3014,22 @@ class $ChaptersTable extends Chapters
         DriftSqlType.int,
         data['${effectivePrefix}chapter_index'],
       )!,
+      tag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tag'],
+      ),
+      isVolume: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_volume'],
+      )!,
+      isVip: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_vip'],
+      )!,
+      isPay: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_pay'],
+      )!,
       variable: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}variable'],
@@ -2960,6 +3054,20 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
   final String? url;
   final int chapterIndex;
 
+  /// The frozen `ruleToc.updateTime` value: the chapter's own extra information
+  /// (`BookChapter.tag`), null when the source declares no such rule or the rule
+  /// matched nothing.
+  final String? tag;
+
+  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  final bool isVolume;
+
+  /// A chapter the source marks as VIP (`ruleToc.isVip`).
+  final bool isVip;
+
+  /// A chapter the source marks as already paid for (`ruleToc.isPay`).
+  final bool isPay;
+
   /// Opaque per-chapter variables.
   final String? variable;
   const BookChapter({
@@ -2968,6 +3076,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     required this.name,
     this.url,
     required this.chapterIndex,
+    this.tag,
+    required this.isVolume,
+    required this.isVip,
+    required this.isPay,
     this.variable,
   });
   @override
@@ -2980,6 +3092,12 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       map['url'] = Variable<String>(url);
     }
     map['chapter_index'] = Variable<int>(chapterIndex);
+    if (!nullToAbsent || tag != null) {
+      map['tag'] = Variable<String>(tag);
+    }
+    map['is_volume'] = Variable<bool>(isVolume);
+    map['is_vip'] = Variable<bool>(isVip);
+    map['is_pay'] = Variable<bool>(isPay);
     if (!nullToAbsent || variable != null) {
       map['variable'] = Variable<String>(variable);
     }
@@ -2993,6 +3111,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       name: Value(name),
       url: url == null && nullToAbsent ? const Value.absent() : Value(url),
       chapterIndex: Value(chapterIndex),
+      tag: tag == null && nullToAbsent ? const Value.absent() : Value(tag),
+      isVolume: Value(isVolume),
+      isVip: Value(isVip),
+      isPay: Value(isPay),
       variable: variable == null && nullToAbsent
           ? const Value.absent()
           : Value(variable),
@@ -3010,6 +3132,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       name: serializer.fromJson<String>(json['name']),
       url: serializer.fromJson<String?>(json['url']),
       chapterIndex: serializer.fromJson<int>(json['chapterIndex']),
+      tag: serializer.fromJson<String?>(json['tag']),
+      isVolume: serializer.fromJson<bool>(json['isVolume']),
+      isVip: serializer.fromJson<bool>(json['isVip']),
+      isPay: serializer.fromJson<bool>(json['isPay']),
       variable: serializer.fromJson<String?>(json['variable']),
     );
   }
@@ -3022,6 +3148,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       'name': serializer.toJson<String>(name),
       'url': serializer.toJson<String?>(url),
       'chapterIndex': serializer.toJson<int>(chapterIndex),
+      'tag': serializer.toJson<String?>(tag),
+      'isVolume': serializer.toJson<bool>(isVolume),
+      'isVip': serializer.toJson<bool>(isVip),
+      'isPay': serializer.toJson<bool>(isPay),
       'variable': serializer.toJson<String?>(variable),
     };
   }
@@ -3032,6 +3162,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     String? name,
     Value<String?> url = const Value.absent(),
     int? chapterIndex,
+    Value<String?> tag = const Value.absent(),
+    bool? isVolume,
+    bool? isVip,
+    bool? isPay,
     Value<String?> variable = const Value.absent(),
   }) => BookChapter(
     bookId: bookId ?? this.bookId,
@@ -3039,6 +3173,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     name: name ?? this.name,
     url: url.present ? url.value : this.url,
     chapterIndex: chapterIndex ?? this.chapterIndex,
+    tag: tag.present ? tag.value : this.tag,
+    isVolume: isVolume ?? this.isVolume,
+    isVip: isVip ?? this.isVip,
+    isPay: isPay ?? this.isPay,
     variable: variable.present ? variable.value : this.variable,
   );
   BookChapter copyWithCompanion(ChaptersCompanion data) {
@@ -3052,6 +3190,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       chapterIndex: data.chapterIndex.present
           ? data.chapterIndex.value
           : this.chapterIndex,
+      tag: data.tag.present ? data.tag.value : this.tag,
+      isVolume: data.isVolume.present ? data.isVolume.value : this.isVolume,
+      isVip: data.isVip.present ? data.isVip.value : this.isVip,
+      isPay: data.isPay.present ? data.isPay.value : this.isPay,
       variable: data.variable.present ? data.variable.value : this.variable,
     );
   }
@@ -3064,14 +3206,28 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
           ..write('name: $name, ')
           ..write('url: $url, ')
           ..write('chapterIndex: $chapterIndex, ')
+          ..write('tag: $tag, ')
+          ..write('isVolume: $isVolume, ')
+          ..write('isVip: $isVip, ')
+          ..write('isPay: $isPay, ')
           ..write('variable: $variable')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(bookId, chapterKey, name, url, chapterIndex, variable);
+  int get hashCode => Object.hash(
+    bookId,
+    chapterKey,
+    name,
+    url,
+    chapterIndex,
+    tag,
+    isVolume,
+    isVip,
+    isPay,
+    variable,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3081,6 +3237,10 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
           other.name == this.name &&
           other.url == this.url &&
           other.chapterIndex == this.chapterIndex &&
+          other.tag == this.tag &&
+          other.isVolume == this.isVolume &&
+          other.isVip == this.isVip &&
+          other.isPay == this.isPay &&
           other.variable == this.variable);
 }
 
@@ -3090,6 +3250,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
   final Value<String> name;
   final Value<String?> url;
   final Value<int> chapterIndex;
+  final Value<String?> tag;
+  final Value<bool> isVolume;
+  final Value<bool> isVip;
+  final Value<bool> isPay;
   final Value<String?> variable;
   final Value<int> rowid;
   const ChaptersCompanion({
@@ -3098,6 +3262,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     this.name = const Value.absent(),
     this.url = const Value.absent(),
     this.chapterIndex = const Value.absent(),
+    this.tag = const Value.absent(),
+    this.isVolume = const Value.absent(),
+    this.isVip = const Value.absent(),
+    this.isPay = const Value.absent(),
     this.variable = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3107,6 +3275,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     required String name,
     this.url = const Value.absent(),
     required int chapterIndex,
+    this.tag = const Value.absent(),
+    this.isVolume = const Value.absent(),
+    this.isVip = const Value.absent(),
+    this.isPay = const Value.absent(),
     this.variable = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : bookId = Value(bookId),
@@ -3119,6 +3291,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     Expression<String>? name,
     Expression<String>? url,
     Expression<int>? chapterIndex,
+    Expression<String>? tag,
+    Expression<bool>? isVolume,
+    Expression<bool>? isVip,
+    Expression<bool>? isPay,
     Expression<String>? variable,
     Expression<int>? rowid,
   }) {
@@ -3128,6 +3304,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
       if (name != null) 'name': name,
       if (url != null) 'url': url,
       if (chapterIndex != null) 'chapter_index': chapterIndex,
+      if (tag != null) 'tag': tag,
+      if (isVolume != null) 'is_volume': isVolume,
+      if (isVip != null) 'is_vip': isVip,
+      if (isPay != null) 'is_pay': isPay,
       if (variable != null) 'variable': variable,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3139,6 +3319,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     Value<String>? name,
     Value<String?>? url,
     Value<int>? chapterIndex,
+    Value<String?>? tag,
+    Value<bool>? isVolume,
+    Value<bool>? isVip,
+    Value<bool>? isPay,
     Value<String?>? variable,
     Value<int>? rowid,
   }) {
@@ -3148,6 +3332,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
       name: name ?? this.name,
       url: url ?? this.url,
       chapterIndex: chapterIndex ?? this.chapterIndex,
+      tag: tag ?? this.tag,
+      isVolume: isVolume ?? this.isVolume,
+      isVip: isVip ?? this.isVip,
+      isPay: isPay ?? this.isPay,
       variable: variable ?? this.variable,
       rowid: rowid ?? this.rowid,
     );
@@ -3171,6 +3359,18 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     if (chapterIndex.present) {
       map['chapter_index'] = Variable<int>(chapterIndex.value);
     }
+    if (tag.present) {
+      map['tag'] = Variable<String>(tag.value);
+    }
+    if (isVolume.present) {
+      map['is_volume'] = Variable<bool>(isVolume.value);
+    }
+    if (isVip.present) {
+      map['is_vip'] = Variable<bool>(isVip.value);
+    }
+    if (isPay.present) {
+      map['is_pay'] = Variable<bool>(isPay.value);
+    }
     if (variable.present) {
       map['variable'] = Variable<String>(variable.value);
     }
@@ -3188,6 +3388,10 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
           ..write('name: $name, ')
           ..write('url: $url, ')
           ..write('chapterIndex: $chapterIndex, ')
+          ..write('tag: $tag, ')
+          ..write('isVolume: $isVolume, ')
+          ..write('isVip: $isVip, ')
+          ..write('isPay: $isPay, ')
           ..write('variable: $variable, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -9111,6 +9315,10 @@ typedef $$ChaptersTableCreateCompanionBuilder =
       required String name,
       Value<String?> url,
       required int chapterIndex,
+      Value<String?> tag,
+      Value<bool> isVolume,
+      Value<bool> isVip,
+      Value<bool> isPay,
       Value<String?> variable,
       Value<int> rowid,
     });
@@ -9121,6 +9329,10 @@ typedef $$ChaptersTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> url,
       Value<int> chapterIndex,
+      Value<String?> tag,
+      Value<bool> isVolume,
+      Value<bool> isVip,
+      Value<bool> isPay,
       Value<String?> variable,
       Value<int> rowid,
     });
@@ -9173,6 +9385,26 @@ class $$ChaptersTableFilterComposer
 
   ColumnFilters<int> get chapterIndex => $composableBuilder(
     column: $table.chapterIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tag => $composableBuilder(
+    column: $table.tag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isVolume => $composableBuilder(
+    column: $table.isVolume,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isVip => $composableBuilder(
+    column: $table.isVip,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isPay => $composableBuilder(
+    column: $table.isPay,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9234,6 +9466,26 @@ class $$ChaptersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get tag => $composableBuilder(
+    column: $table.tag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isVolume => $composableBuilder(
+    column: $table.isVolume,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isVip => $composableBuilder(
+    column: $table.isVip,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isPay => $composableBuilder(
+    column: $table.isPay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get variable => $composableBuilder(
     column: $table.variable,
     builder: (column) => ColumnOrderings(column),
@@ -9287,6 +9539,18 @@ class $$ChaptersTableAnnotationComposer
     column: $table.chapterIndex,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get tag =>
+      $composableBuilder(column: $table.tag, builder: (column) => column);
+
+  GeneratedColumn<bool> get isVolume =>
+      $composableBuilder(column: $table.isVolume, builder: (column) => column);
+
+  GeneratedColumn<bool> get isVip =>
+      $composableBuilder(column: $table.isVip, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPay =>
+      $composableBuilder(column: $table.isPay, builder: (column) => column);
 
   GeneratedColumn<String> get variable =>
       $composableBuilder(column: $table.variable, builder: (column) => column);
@@ -9348,6 +9612,10 @@ class $$ChaptersTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> url = const Value.absent(),
                 Value<int> chapterIndex = const Value.absent(),
+                Value<String?> tag = const Value.absent(),
+                Value<bool> isVolume = const Value.absent(),
+                Value<bool> isVip = const Value.absent(),
+                Value<bool> isPay = const Value.absent(),
                 Value<String?> variable = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChaptersCompanion(
@@ -9356,6 +9624,10 @@ class $$ChaptersTableTableManager
                 name: name,
                 url: url,
                 chapterIndex: chapterIndex,
+                tag: tag,
+                isVolume: isVolume,
+                isVip: isVip,
+                isPay: isPay,
                 variable: variable,
                 rowid: rowid,
               ),
@@ -9366,6 +9638,10 @@ class $$ChaptersTableTableManager
                 required String name,
                 Value<String?> url = const Value.absent(),
                 required int chapterIndex,
+                Value<String?> tag = const Value.absent(),
+                Value<bool> isVolume = const Value.absent(),
+                Value<bool> isVip = const Value.absent(),
+                Value<bool> isPay = const Value.absent(),
                 Value<String?> variable = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ChaptersCompanion.insert(
@@ -9374,6 +9650,10 @@ class $$ChaptersTableTableManager
                 name: name,
                 url: url,
                 chapterIndex: chapterIndex,
+                tag: tag,
+                isVolume: isVolume,
+                isVip: isVip,
+                isPay: isPay,
                 variable: variable,
                 rowid: rowid,
               ),

@@ -197,6 +197,20 @@ class Chapters extends Table {
 
   IntColumn get chapterIndex => integer()();
 
+  /// The frozen `ruleToc.updateTime` value: the chapter's own extra information
+  /// (`BookChapter.tag`), null when the source declares no such rule or the rule
+  /// matched nothing.
+  TextColumn get tag => text().nullable()();
+
+  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  BoolColumn get isVolume => boolean().withDefault(const Constant(false))();
+
+  /// A chapter the source marks as VIP (`ruleToc.isVip`).
+  BoolColumn get isVip => boolean().withDefault(const Constant(false))();
+
+  /// A chapter the source marks as already paid for (`ruleToc.isPay`).
+  BoolColumn get isPay => boolean().withDefault(const Constant(false))();
+
   /// Opaque per-chapter variables.
   TextColumn get variable => text().nullable()();
 
@@ -472,7 +486,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 5;
+  static const latestVersion = 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -492,11 +506,14 @@ class SpaceDatabase extends _$SpaceDatabase {
       // v3 → v4 only creates the TLS-exception table (ADR 0011 §5), likewise.
       // v4 → v5 adds `source_entries.written_at`, the per-source eviction order
       // (#37).
+      // v5 → v6 adds the table-of-contents markers (`chapters.tag`,
+      // `is_volume`, `is_vip`, `is_pay`, #13).
       await stepByStep(
         from1To2: migrateToV2,
         from2To3: migrateToV3,
         from3To4: migrateToV4,
         from4To5: migrateToV5,
+        from5To6: migrateToV6,
       )(m, from, to);
     },
     beforeOpen: (details) async {
