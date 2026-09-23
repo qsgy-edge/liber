@@ -527,6 +527,42 @@ result;
       expect(await state.entry(site.origin, 'qbi-after'), '');
     });
 
+    for (final json in [false, true]) {
+      test('reopened relative ${json ? 'JSON' : 'HTML'} chapter reanalysis keeps its book base', () async {
+        final site = await _Site.start({
+          '/book/chapter/2': [
+            _Page(json ? _gateJson : _gatePage),
+            _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
+          ],
+        });
+        addTearDown(site.close);
+        const check = '''
+if (result.body().indexOf('1234') > -1) {
+  java.initUrl();
+  result = java.getStrResponse();
+}
+result;
+''';
+        final source = json
+            ? _jsonSource(site.origin, check)
+            : _htmlSource(site.origin, checkJs: check);
+        final pipeline = _pipeline(source);
+        final book = HtmlBook(url: Uri.parse('${site.origin}/book/1'), title: '书');
+        final chapter = SourceChapter.fromAddress(
+          '第二章',
+          'chapter/2,{"webView":false}',
+          bookUrl: book.url,
+          chapterKey: 'chapter/2,{"webView":false}',
+        );
+        expect((await pipeline.chapter(chapter, book: book)).text, '正文');
+        expect(site.seen.map((request) => request.path), [
+          '/book/chapter/2',
+          '/book/chapter/2',
+        ]);
+        expect(chapter.progressKey, 'chapter/2,{"webView":false}');
+      });
+    }
+
     test('the 🔞🔲第一版主 shape re-runs the address analysis with initUrl', () async {
       final site = await _Site.start({
         '/search': [

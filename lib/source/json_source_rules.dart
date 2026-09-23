@@ -122,7 +122,7 @@ class JsonSourceRules {
     } else {
       result = part;
     }
-    return result == null ? '' : applyRuleReplacement(result, fields);
+    return applyRuleReplacement(result ?? '', fields);
   }
 
   static String? _mergedText(Object? value, String rule) {

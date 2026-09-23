@@ -32,8 +32,12 @@ const source = <String, dynamic>{
 /// (`_page`/`_ruleState`/`_bookOptions` in the real pipeline), so a second
 /// analysis overwriting them under a running one is observable.
 class ScriptedPipeline extends HtmlSourcePipeline {
-  ScriptedPipeline({this.detailsGate, this.chapterGate, this.detailsError})
-    : super(source, const _UnusedTransport());
+  ScriptedPipeline({
+    this.detailsGate,
+    this.chapterGate,
+    this.detailsError,
+    this.chapterText = '正文',
+  }) : super(source, const _UnusedTransport());
 
   /// Holds a `details()` response so the overlap can be driven.
   final Completer<void>? detailsGate;
@@ -41,6 +45,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   /// Holds a `chapter()` response so a `details()` can run under it.
   final Completer<void>? chapterGate;
   final Object? detailsError;
+  final String chapterText;
   int searchCalls = 0;
 
   final detailsCalls = <String>[];
@@ -76,7 +81,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
     final marker = analysisMarker;
     if (chapterGate != null) await chapterGate!.future;
     if (analysisMarker != marker) chapterSawMarkerChange = true;
-    return HtmlChapterBody('正文', 1);
+    return HtmlChapterBody(chapterText, 1);
   }
 }
 
@@ -294,6 +299,79 @@ void main() {
       }
     });
   }
+
+  testWidgets(
+    'catalog reorder resumes an imported chapter by resolved identity',
+    (tester) async {
+      const chapterA = '../chapters/a';
+      const chapterB = '../chapters/b';
+      final pipeline = ScriptedPipeline(
+        chapterText: '${List.filled(77, 'x').join()}\n正文',
+      );
+      final home = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('liber-refresh-chapter-'),
+      );
+      try {
+        await tester.runAsync(() async {
+          await File('${home!.path}/online_reading.json').writeAsString(
+            jsonEncode({
+              'version': 2,
+              'records': [
+                {
+                  'source': source,
+                  'book': {'url': '$bookUrl/1', 'title': '书'},
+                  'chapterUrl': chapterB,
+                  'chapterName': 'B',
+                  'textOffset': 78,
+                  'chapters': [
+                    {'name': 'A', 'url': chapterA},
+                    {'name': 'B', 'url': chapterB},
+                  ],
+                  'shelved': true,
+                },
+              ],
+            }),
+          );
+          await LegacyImport(home: home).run(store);
+        });
+        final initial = (await shelf.find(sourceUrl, '$bookUrl/1'))!;
+        expect(initial.chapterKey, chapterB);
+        expect(initial.chapterIndex, 1);
+        await shelf.updateCatalog(sourceUrl, initial.htmlBook, [
+          SourceChapter('B', Uri.parse('$sourceUrl/chapters/b')),
+          SourceChapter('A', Uri.parse('$sourceUrl/chapters/a')),
+        ]);
+        final refreshed = (await shelf.find(sourceUrl, '$bookUrl/1'))!;
+        expect(refreshed.chapterKey, chapterB);
+        expect(refreshed.chapterIndex, 1);
+        expect(refreshed.chapters.map((chapter) => chapter.name), ['B', 'A']);
+        expect(refreshed.textOffset, 78);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HtmlSourceBrowser(
+              source: source,
+              keyword: '',
+              pipeline: pipeline,
+              service: shelf,
+              resume: refreshed,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(pipeline.chapterCalls.single, '$sourceUrl/chapters/b');
+        final reader = tester.widget<OnlineReaderPage>(
+          find.byType(OnlineReaderPage),
+        );
+        expect(reader.chapterIndex, 0);
+        expect(reader.textOffset, 78);
+        expect(find.text('B'), findsWidgets);
+        final progress = (await store.progressOf(refreshed.id))!;
+        expect(progress.chapterKey, '$sourceUrl/chapters/b');
+      } finally {
+        await tester.runAsync(() => home!.delete(recursive: true));
+      }
+    },
+  );
 
   testWidgets(
     'disposing the browser leaves the pipeline its reader holds alone',

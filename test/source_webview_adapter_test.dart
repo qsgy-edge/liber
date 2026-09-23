@@ -323,6 +323,7 @@ void main() {
 
 
 
+
   test('a chapter address option family this product lacks is refused by name', () async {
     // Nothing is silently dropped: the families the TOC guard cannot express
     // keep their named refusal, at the same place (#58).
@@ -423,6 +424,22 @@ void main() {
     expect(body.text, '第一页\n第二页渲染');
     expect(adapter.requests.single.url, 'https://a.test/chapter/2');
     expect(transport.requests, isNot(contains('https://a.test/chapter/2')));
+  });
+
+  test('a missing HTML toc URL value can append a fallback', () async {
+    final source = _chapterSource('tag.a@href');
+    source['ruleBookInfo'] = {
+      'name': 'class.title@text',
+      'tocUrl': 'class.missing@href##\$##/toc',
+    };
+    final transport = _Pages({
+      '/book/1': '<div class="title">书</div>',
+      '/toc': _tocPage,
+    });
+    final pipeline = HtmlSourcePipeline(source, transport);
+    final (_, chapters) = await pipeline.details(_chapterHit());
+    expect(chapters.single.url, Uri.parse('https://a.test/chapter/1'));
+    expect(transport.requests, contains('https://a.test/toc'));
   });
 
   test('an absent next page append rule stops after the first page', () async {

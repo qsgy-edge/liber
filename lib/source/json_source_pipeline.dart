@@ -816,7 +816,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
         options: chapter.options,
         address: chapter.address,
-        base: chapter.url,
+        base: chapter.addressBase ?? chapter.url,
       ),
     );
     final document = jsonDecode(contentPage.body);
@@ -831,6 +831,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
         contentTitle,
         chapter.url,
         rawAddress: chapter.rawAddress,
+        storedKey: chapter.storedKey,
+        addressBase: chapter.addressBase,
       );
     }
     final text = await _text(document, content['content']!);
@@ -908,7 +910,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
 /// the chapter can parse its options the way the frozen `AnalyzeUrl` does
 /// (`AnalyzeUrl.kt:214-222`).
 class SourceChapter {
-  const SourceChapter(this.name, this.url, {this.rawAddress, this.storedKey});
+  const SourceChapter(
+    this.name,
+    this.url, {
+    this.rawAddress,
+    this.storedKey,
+    this.addressBase,
+  });
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
   /// their owning book at fetch time; the raw address remains the store's key.
@@ -924,6 +932,7 @@ class SourceChapter {
       SourceHttpUri.parse('${bookUrl?.resolve(target) ?? target}'),
       rawAddress: address,
       storedKey: chapterKey,
+      addressBase: bookUrl,
     );
   }
 
@@ -936,6 +945,9 @@ class SourceChapter {
   /// Existing store identity; new TOC chapters still key by their resolved URL.
   final String? storedKey;
   String get progressKey => storedKey ?? '$url';
+
+  /// Base used to reanalyse a stored address via `java.initUrl()`.
+  final Uri? addressBase;
 
   /// The text a fetch parses: the rule's address when it was kept. A bare URL
   /// carries no options, so it parses to itself.

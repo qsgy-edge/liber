@@ -413,10 +413,18 @@ void main() {
         document,
         r'$.data[?(@.missing)].content##$##,{"webView":true}',
       ),
-      '',
+      ',{"webView":true}',
     );
     expect(
-      JsonSourceRules.extract(document, r'$.data[0].content##$##,{"webView":true}'),
+      JsonSourceRules.text(document, r'$.missing##$##Fallback'),
+      'Fallback',
+    );
+    expect(JsonSourceRules.list(document, r'$.missing'), isEmpty);
+    expect(
+      JsonSourceRules.extract(
+        document,
+        r'$.data[0].content##$##,{"webView":true}',
+      ),
       'A,{"webView":true}',
     );
     // `list()` is the frozen `getStringList`, which hands the list back itself.

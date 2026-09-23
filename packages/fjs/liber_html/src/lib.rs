@@ -48,7 +48,8 @@ pub struct JobFailure {
 #[derive(Debug, Clone)]
 pub struct JobOutcome {
     pub id: String,
-    /// Number of elements an `Elements` job matched (zero for `Text` jobs).
+    /// Number of element matches, or extracted strings before replacement for
+    /// a `Text` job (zero when its rule did not match).
     pub count: usize,
     /// One value per context for `Text` jobs.
     pub values: Vec<String>,
@@ -109,10 +110,14 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
             }
             JobOutput::Text => {
                 let mut values = Vec::with_capacity(context.len());
+                let mut count = 0;
                 let mut failure = None;
                 for node in &context {
-                    match rule::string(&dom, *node, &job.rule) {
-                        Ok(value) => values.push(value),
+                    match rule::string_with_count(&dom, *node, &job.rule) {
+                        Ok((value, matched)) => {
+                            values.push(value);
+                            count += matched;
+                        }
                         Err(error) => {
                             failure = Some(failure_of(error));
                             break;
@@ -121,7 +126,7 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
                 }
                 JobOutcome {
                     id: job.id.clone(),
-                    count: 0,
+                    count: if failure.is_some() { 0 } else { count },
                     values: if failure.is_some() { Vec::new() } else { values },
                     failure,
                 }
@@ -147,6 +152,18 @@ fn failure_of(error: rule::RuleError) -> JobFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_job_reports_no_match_even_when_replacement_provides_a_value() {
+        let result = analyze("<div>book</div>", &[JobSpec {
+            id: "toc".to_string(),
+            rule: "class.missing@href##$##/toc".to_string(),
+            parent: None,
+            output: JobOutput::Text,
+        }]);
+        assert_eq!(result.jobs[0].values, vec!["/toc"]);
+        assert_eq!(result.jobs[0].count, 0);
+    }
 
     #[test]
     fn one_document_many_jobs() {
