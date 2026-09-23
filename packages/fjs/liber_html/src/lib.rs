@@ -154,14 +154,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_job_reports_no_match_even_when_replacement_provides_a_value() {
+    fn text_job_skips_replacement_when_nothing_matched() {
         let result = analyze("<div>book</div>", &[JobSpec {
             id: "toc".to_string(),
             rule: "class.missing@href##$##/toc".to_string(),
             parent: None,
             output: JobOutput::Text,
         }]);
-        assert_eq!(result.jobs[0].values, vec!["/toc"]);
+        assert_eq!(result.jobs[0].values, vec![""]);
         assert_eq!(result.jobs[0].count, 0);
     }
 

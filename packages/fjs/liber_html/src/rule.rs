@@ -853,6 +853,10 @@ pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(Stri
     let source = SourceRule::parse(rule)?;
     let values = string_list(dom, context, rule)?;
     let count = values.len();
+    // The default getString sees null when jsoup matched nothing, so ## has no value to replace.
+    if count == 0 {
+        return Ok((String::new(), 0));
+    }
     let joined = match values.len() {
         0 => String::new(),
         1 => values[0].clone(),
@@ -940,14 +944,11 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_replacement_keeps_the_value_fallback_and_empty_list() {
+    fn unmatched_replacement_keeps_default_value_and_list_empty() {
         let dom = Dom::parse("<div class='body'>first</div>");
         let rule = "a.next@href##$##,{\"webView\":true}";
         assert!(string_list(&dom, 0, rule).unwrap().is_empty());
-        assert_eq!(
-            string_with_count(&dom, 0, rule).unwrap(),
-            (",{\"webView\":true}".to_string(), 0)
-        );
+        assert_eq!(string_with_count(&dom, 0, rule).unwrap(), (String::new(), 0));
     }
 
     #[test]

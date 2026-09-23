@@ -383,9 +383,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<String> _documentValue(
     HtmlString? job,
     RuleField field,
-    String content,
-  ) async =>
-      '${await field.apply(field.isScriptOnly ? content : job!.value) ?? ''}';
+    String content, {
+    bool url = false,
+  }) async {
+    final value = field.isScriptOnly ? content : job!.value;
+    final resolved = url && value.isEmpty && !field.isScriptOnly
+        ? applyRuleReplacement(
+            '',
+            splitRuleFields(field.extractionRule!),
+            label: 'HTML',
+          )
+        : value;
+    return '${await field.apply(resolved) ?? ''}';
+  }
 
   /// One rule through the Rust adapter on its own, for the rule-field forms that
   /// need a value *before* the stage's batch is declared: a `@put:` value and a
@@ -404,8 +414,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// extraction produced.
   Future<List<String>> _perElement(
     RuleField field,
-    List<String> values,
-  ) async => [for (final value in values) '${await field.apply(value) ?? ''}'];
+    List<String> values, {
+    bool url = false,
+  }) async => [
+    for (final value in values)
+      '${await field.apply(url && value.isEmpty ? applyRuleReplacement('', splitRuleFields(field.extractionRule!), label: 'HTML') : value) ?? ''}',
+  ];
 
   /// The source fields a script can read, as the frozen `source` object exposes
   /// them, including the header rule that `source.getHeaderMap` evaluates.
@@ -697,7 +711,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     }
 
     final titles = await _perElement(name, names.values);
-    final links = await _perElement(bookUrl, urls.values);
+    final links = await _perElement(bookUrl, urls.values, url: true);
     final authorValues = await _perElement(author, authors.values);
     final introValues = await _perElement(intro, intros.values);
     final lastChapterValues = await _perElement(
@@ -815,7 +829,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await batch.run();
       if (items.isEmpty) throw StateError('目录页为空');
       final names2 = await _perElement(name, names.values);
-      final urls2 = await _perElement(urlField, urls.values);
+      final urls2 = await _perElement(urlField, urls.values, url: true);
       final nextText = await _documentValue(nextValue, next, page);
       for (var index = 0; index < items.length; index++) {
         // The address text the rule produced, option tail included: this is what
@@ -941,7 +955,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final tocValue = tocUrl == null ? null : _declare(batch, 'tocUrl', tocUrl);
     await batch.run();
 
-    final coverText = await _documentValue(coverValue, cover, html);
+    final coverText = await _documentValue(coverValue, cover, html, url: true);
     final detailsTitle = await _documentValue(nameValue, name, html);
     final detailsAuthor = await _documentValue(authorValue, author, html);
     final detailsLastChapter = await _documentValue(
@@ -976,7 +990,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _book = book;
     final tocText = tocUrl == null
         ? ''
-        : await _documentValue(tocValue, tocUrl, html);
+        : await _documentValue(tocValue, tocUrl, html, url: true);
     return (book, tocText);
   }
 

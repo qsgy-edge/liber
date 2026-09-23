@@ -102,3 +102,67 @@ tool/html_oracle/fixtures.json sha256:   911e85df1b5bd8d01ad05fbf0a3af8be3500543
 golden.json sha256:                       39af1618078aebd4d4ec04c5376ea33b4639c8084160a259f3673e54b794ed6f
 gate-report.json sha256:                  32aab322ef794ffe3587118d110f4d8ac3ea825724965894ac495dfed2e1c232
 tool/nested_oracle/HtmlOracle.java sha256: c8265692c7e824bdc3cb233c0ee20c3d96b90ae877b861b3e872eeff784ad0ab
+
+== #65 run, 2026-09-23T09:46:07Z (UTC) ==
+Ticket worktree: D:/GithubRepositories/Flutter/liber-65 (based on integrated dd58f78d).
+Frozen APK: io.legado.app.debug at 14dd24945b2914ce2708b8abaa4ee67ceef892af;
+  installed bytes pulled before the run, sha256 cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6.
+Device: 5615f742, Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys;
+  WebView 154.0.8037.22. No OS-level or UI input was sent.
+Existing oracle test APK backed up before installation: sha256 c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28.
+$ pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh batch12-oracle65/harness-45final> -JavaHome 'C:/Users/17945/AppData/Local/Programs/Android Studio/jbr'
+JBR OpenJDK 21.0.4; Android build-tools 35.0.1. The bundled assets/html-fixtures.json and
+  tool/html_oracle/fixtures.json both hash 18ac764a83b8dd01293e8afc1084c8f0cd972e9d7bc5d236dded7127fbe63d60.
+Harness APK sha256 e38e9c77baadf65804332543089d5ec987ec41ed4b721b17463970ad61a6f029.
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness-45final/nested-oracle.apk>
+Success
+$ adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.HtmlOracle
+INSTRUMENTATION_RESULT: stream=Html oracle recorded 45 observations
+INSTRUMENTATION_CODE: -1
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 pull /sdcard/Android/data/io.legado.app.debug/files/html-oracle.json <frozen-45final.json>
+Golden sha256 95c59a8ae76df5b7db7ee2aa0e690af26252067467c304cfc743c7e36eeb6a17;
+  45 observations, 0 errors; 39 shared with #51, 0 changed, 6 added:
+  no-match-html-value-append = ""; no-match-html-url-append = "/missing";
+  no-match-html-list-append = []; no-match-json-value-append = "Fallback";
+  no-match-json-url-append = "Fallback"; no-match-json-list-append = [].
+The original oracle test APK was reinstalled after the run; pulled restored bytes hash
+  c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28 (identical backup).
+$ dart run tool/html_adapter_gate.dart build/windows/x64/runner/Debug/fjs.dll <frozen-45final.json> <gate-45final.json>
+adapter corpus: pass (45 cases, frozen golden compared)
+Gate report sha256 ef38db7bfe9658b6ed0b90936073939a4f6b6a008571fc458ecd409b6d031f24;
+  expectationMismatches 0; frozenMismatches 0; candidate fjs.dll sha256
+  72b0a7162910e00a21e98f1567d09341b1cfadfab0a865cb3eb57393d63bbd88.
+Candidate worktree: Rust liber_html 24/24, libfjs 625/625, targeted Flutter 116/116,
+  full Flutter 547/547, Dart MCP analyze_files no errors. No platform CI or Android
+  destination build was run on this unmerged branch.
+$ dart run tool/html_adapter_gate.dart build/windows/x64/runner/Debug/fjs.dll tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json <gate-45repo.json>
+adapter corpus: pass (45 cases, frozen golden compared)
+The byte-for-byte generated report was copied to the tracked gate-report.json; sha256
+  c414988234cf7d170f6740c42f3ebceef444ed31ac05767d0ff2aec9b3461a95.
+
+== #65 byte-stable final run, 2026-09-23T10:02:20Z (UTC) ==
+The first #65 run passed, but the fixture and harness sources were CRLF while
+  device output was LF, with no Git attributes. The #65 worktree now pins those
+  hashed inputs and tool/html_oracle/evidence/** to text eol=lf. The actual
+  files were normalized before rebuilding, not just the Git index.
+$ pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh batch12-oracle65/harness-45lf> -JavaHome 'C:/Users/17945/AppData/Local/Programs/Android Studio/jbr'
+Fixture and bundled asset sha256 e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342.
+HtmlOracle.java sha256 78d369e16940eb47f8c3d5bd501a4253443a4fa93f3d1ec7d6650c65bf233ac0;
+  build.ps1 sha256 e1f4d1853c60001db609e9a10e5658546bdebc2856699beb8c5edae00a0e41ac;
+  AndroidManifest.xml sha256 7985c842925b0f11ef76ae1301b2297028ab3d6db86c72646cc20dd4746bc9dc.
+Harness APK sha256 ef878e3ca9384f4e831307e003ab1c9bc54188c670f782f13ad921cbeca428c9.
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness-45lf/nested-oracle.apk>
+Success
+$ adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.HtmlOracle
+INSTRUMENTATION_RESULT: stream=Html oracle recorded 45 observations
+INSTRUMENTATION_CODE: -1
+$ MSYS_NO_PATHCONV=1 adb -s 5615f742 pull /sdcard/Android/data/io.legado.app.debug/files/html-oracle.json <frozen-45lf.json>
+Report sha256 95c59a8ae76df5b7db7ee2aa0e690af26252067467c304cfc743c7e36eeb6a17:
+  byte-for-byte identical to the previous #65 report, still 39 unchanged + 6 added, 0 errors.
+Restored original test APK; pulled installed bytes sha256
+  c01874414c27c46afd86f155ac68ab913436161ece9b2a28fed0bd2a4de92c28.
+$ dart run tool/html_adapter_gate.dart build/windows/x64/runner/Debug/fjs.dll tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json <gate-45lf.json>
+adapter corpus: pass (45 cases, frozen golden compared)
+Final generated gate report copied to tracked gate-report.json, sha256
+  3087ba7a11f08a37657eb055bd42500f0cd00ec16456b3ce68a073d910c4990a;
+  expectations 0 mismatches, frozen 0 mismatches, fixture sha256 e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342.

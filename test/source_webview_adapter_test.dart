@@ -442,6 +442,28 @@ void main() {
     expect(transport.requests, contains('https://a.test/toc'));
   });
 
+  test('unmatched search and chapter URL fields append their URL fallback', () async {
+    final source = _chapterSource('a.absent@href##\$##/chapter/1');
+    source['searchUrl'] = '/search?key={{key}}';
+    source['ruleSearch'] = {
+      'bookList': 'class.item',
+      'name': 'tag.h3@tag.a@text',
+      'bookUrl': 'a.absent@href##\$##/book/1',
+    };
+    final transport = _Pages({
+      '/search': '<div class="item"><h3><a>书</a></h3></div>',
+      '/book/1': _bookPage,
+      '/toc/1': _tocPage,
+      '/chapter/1': _httpChapter,
+    });
+    final pipeline = HtmlSourcePipeline(source, transport);
+    final hits = await pipeline.search('书');
+    expect(hits.single.url, Uri.parse('https://a.test/book/1'));
+    final (_, chapters) = await pipeline.details(hits.single);
+    expect(chapters.single.url, Uri.parse('https://a.test/chapter/1'));
+    expect((await pipeline.chapter(chapters.single)).text, '纯正文');
+  });
+
   test('an absent next page append rule stops after the first page', () async {
     final transport = _Pages({
       '/book/1': _bookPage,

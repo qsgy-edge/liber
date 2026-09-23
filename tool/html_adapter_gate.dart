@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:fjs/fjs.dart';
 import 'package:liber/source/html_rule_adapter.dart';
+import 'package:liber/source/json_source_rules.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/rule_field.dart';
@@ -61,6 +62,7 @@ Future<void> main(List<String> args) async {
   for (final entry in cases) {
     final id = entry['id'] as String;
     final rule = entry['rule'] as String;
+    final method = entry['method'] as String? ?? 'getString';
     final html = documents[entry['document']] ?? '';
     final observation = <String, Object?>{'id': id, 'rule': rule};
     try {
@@ -70,6 +72,24 @@ Future<void> main(List<String> args) async {
           rule,
           baseUrl: baseUrl,
         );
+      } else if (entry['path'] == 'json') {
+        final document = jsonDecode(html);
+        if (method == 'getStringListUrl' || method == 'getStringList') {
+          final values = JsonSourceRules.list(
+            document,
+            splitRuleFields(rule).rule,
+          );
+          if (values.isNotEmpty) {
+            throw UnsupportedError(
+              'The oracle corpus only compares empty URL lists',
+            );
+          }
+          observation['value'] = <String>[];
+        } else if (method == 'getString' || method == 'getStringUrl') {
+          observation['value'] = JsonSourceRules.extract(document, rule);
+        } else {
+          throw UnsupportedError('Unknown oracle method: $method');
+        }
       } else {
         final outcomes = htmlAnalyze(
           html: html,
@@ -82,12 +102,27 @@ Future<void> main(List<String> args) async {
             ),
           ],
         );
-        final failure = outcomes.single.failure;
+        final outcome = outcomes.single;
+        final failure = outcome.failure;
         if (failure != null) {
           observation['error'] = '${failure.kind}: ${failure.message}';
+        } else if (method == 'getStringListUrl' || method == 'getStringList') {
+          if (outcome.count != 0) {
+            throw UnsupportedError(
+              'The oracle corpus only compares empty URL lists',
+            );
+          }
+          observation['value'] = <String>[];
+        } else if (method == 'getStringUrl' && outcome.count == 0) {
+          observation['value'] = applyRuleReplacement(
+            '',
+            splitRuleFields(rule),
+            label: 'HTML',
+          );
+        } else if (method == 'getString' || method == 'getStringUrl') {
+          observation['value'] = outcome.values.firstOrNull ?? '';
         } else {
-          final values = outcomes.single.values;
-          observation['value'] = values.isEmpty ? '' : values.first;
+          throw UnsupportedError('Unknown oracle method: $method');
         }
       }
     } catch (error) {
@@ -99,10 +134,11 @@ Future<void> main(List<String> args) async {
   final expectedFailures = <String>[];
   for (final entry in cases) {
     final id = entry['id'] as String;
-    final expected = entry['expected'] as String?;
+    final expected = entry['expected'];
     final observed = observations.firstWhere((item) => item['id'] == id);
     if (expected == null) continue;
-    if (observed['value'] != expected) {
+    if (!observed.containsKey('value') ||
+        jsonEncode(observed['value']) != jsonEncode(expected)) {
       failed = true;
       expectedFailures.add(
         '$id\n  expected: ${jsonEncode(expected)}\n  observed: '
@@ -111,7 +147,9 @@ Future<void> main(List<String> args) async {
     }
   }
   if (expectedFailures.isNotEmpty) {
-    stderr.writeln('Corpus expectations differ:\n${expectedFailures.join('\n')}');
+    stderr.writeln(
+      'Corpus expectations differ:\n${expectedFailures.join('\n')}',
+    );
   }
 
   final mismatches = <String>[];
@@ -128,8 +166,10 @@ Future<void> main(List<String> args) async {
         continue;
       }
       final observed = item['value'] ?? item['error'];
-      if ('$observed' != '$frozen') {
-        mismatches.add('$id: frozen=${jsonEncode(frozen)} windows=${jsonEncode(observed)}');
+      if (jsonEncode(observed) != jsonEncode(frozen)) {
+        mismatches.add(
+          '$id: frozen=${jsonEncode(frozen)} windows=${jsonEncode(observed)}',
+        );
       }
     }
     if (mismatches.isNotEmpty) failed = true;
@@ -206,11 +246,8 @@ Future<String> _ruleFieldValue(
       );
       return value is String ? value : '';
     },
-    writeVariable: (key, value) => state.putEntry(
-      sourceRef,
-      sourceRuleVariableKey(sourceRef, key),
-      value,
-    ),
+    writeVariable: (key, value) =>
+        state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), value),
   );
   final field = await RuleField.resolve(rule, context, content: html);
   final Object? extracted;

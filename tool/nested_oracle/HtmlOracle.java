@@ -18,9 +18,9 @@ import java.nio.charset.StandardCharsets;
  * The frozen side of the HTML extraction corpus: loads
  * {@code io.legado.app.model.analyzeRule.AnalyzeRule} from the installed,
  * hash-pinned {@code io.legado.app.debug}, calls
- * {@code setContent(html, baseUrl)} and then {@code getString(rule)} for every
- * case of {@code tool/html_oracle/fixtures.json} (bundled in the harness assets),
- * and writes the report the corpus names. No Legado class is rebuilt; the entry
+ * {@code setContent(html, baseUrl)} and then {@code getString(rule)} or
+ * {@code getStringList(rule)} as each case declares (the original cases use
+ * {@code getString}). No Legado class is rebuilt; the entry
  * points are reached by reflection.
  *
  * <p>The base URL handed to {@code setContent} is the corpus' {@code baseUrl}:
@@ -57,6 +57,9 @@ public final class HtmlOracle extends Instrumentation {
             if (ctor == null) throw new IllegalStateException("Frozen AnalyzeRule constructor absent");
             Method setContent = ruleClass.getMethod("setContent", Object.class, String.class);
             Method getString = ruleClass.getMethod("getString", String.class);
+            Method getStringUrl = ruleClass.getMethod("getString", String.class, Object.class, boolean.class);
+            Method getStringList = ruleClass.getMethod("getStringList", String.class);
+            Method getStringListUrl = ruleClass.getMethod("getStringList", String.class, Object.class, boolean.class);
             JSONArray observations = new JSONArray();
             for (int i = 0; i < cases.length(); i++) {
                 JSONObject entry = cases.getJSONObject(i);
@@ -64,7 +67,23 @@ public final class HtmlOracle extends Instrumentation {
                 try {
                     Object rule = ctor.newInstance(new Object[ctor.getParameterCount()]);
                     setContent.invoke(rule, documents.getString(entry.getString("document")), baseUrl);
-                    result.put("value", getString.invoke(rule, entry.getString("rule")));
+                    String method = entry.optString("method", "getString");
+                    String text = entry.getString("rule");
+                    Object value;
+                    if ("getStringUrl".equals(method)) {
+                        value = getStringUrl.invoke(rule, text, null, true);
+                    } else if ("getStringListUrl".equals(method)) {
+                        value = getStringListUrl.invoke(rule, text, null, true);
+                    } else if ("getStringList".equals(method)) {
+                        value = getStringList.invoke(rule, text);
+                    } else if ("getString".equals(method)) {
+                        value = getString.invoke(rule, text);
+                    } else {
+                        throw new IllegalArgumentException("Unknown oracle method: " + method);
+                    }
+                    result.put("value", value instanceof java.util.Collection<?>
+                        ? new JSONArray((java.util.Collection<?>) value)
+                        : value == null ? JSONObject.NULL : value);
                 } catch (InvocationTargetException error) {
                     Throwable cause = error.getCause();
                     result.put("error", (cause == null ? error : cause).getClass().getName());

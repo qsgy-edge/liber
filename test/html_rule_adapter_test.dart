@@ -43,6 +43,25 @@ void main() {
     expect(html.value, '<a href="/ad">忽略</a>\n<a href="/1">第一章</a>');
   });
 
+  test('no-match scalar and element values skip append replacement', () async {
+    final batch = HtmlRuleBatch(document);
+    final missing = batch.documentText(
+      'missing',
+      'a.absent@href##\$##Fallback',
+    );
+    final chapters = batch.elements('chapters', '.chapters li');
+    final urls = batch.elementsText(
+      'urls',
+      'a.absent@href##\$##Fallback',
+      chapters,
+    );
+    await batch.run();
+
+    expect(missing.value, isEmpty);
+    expect(missing.hasMatch, isFalse);
+    expect(urls.values, ['', '']);
+  });
+
   test('CSS mode and legacy sub-syntax reach the same jsoup semantics', () async {
     final batch = HtmlRuleBatch(document);
     final selection = batch.elements('list', '@CSS:ul.chapters li:first-child');

@@ -22,6 +22,13 @@ tool/result_field_oracle/evidence/** text eol=lf
 # The harness serves the corpus out of its assets, so the runner is not shipped;
 # this line keeps the matching-rule reference byte-stable alongside it.
 tool/first_slice/runner.dart text eol=lf
+# The #65 HTML/JSON no-match oracle pins the on-device corpus and harness
+# source bytes as well as its reports; keep those hashes stable on every host.
+tool/html_oracle/fixtures.json text eol=lf
+tool/html_oracle/evidence/** text eol=lf
+tool/nested_oracle/HtmlOracle.java text eol=lf
+tool/nested_oracle/build.ps1 text eol=lf
+tool/nested_oracle/AndroidManifest.xml text eol=lf
 # The REPLACE-JS-01 corpus, its harness sources and the evidence that pins their
 # bytes are all hashed: the harness serves the corpus out of its assets, the
 # manifest pins the harness sources, and the golden records the corpus hash the
