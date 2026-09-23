@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:fjs/fjs.dart' show ConvertTarget;
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/local/local_reader.dart';
 import 'package:liber/local/local_reader_page.dart';
+import 'package:liber/local/reader_engine.dart' show ReaderIndex;
 import 'package:liber/settings/reader_script.dart';
 import 'package:liber/settings/reader_script_page.dart';
 
@@ -25,6 +27,20 @@ String fakeConvert(String text, ConvertTarget target) => switch (target) {
     text.replaceAll('龍', '龙').replaceAll('鳳', '凤'),
   _ => text,
 };
+
+/// An engine whose index pass waits on a gate, so a test can hold a book in the
+/// middle of opening and call into the reader from that window.
+class GatedIndexEngine extends FakeEngine {
+  GatedIndexEngine(super.text, {super.chapters, super.anchorStrideCodeUnits});
+
+  final Completer<void> gate = Completer<void>();
+
+  @override
+  Future<ReaderIndex> index(String path) async {
+    await gate.future;
+    return super.index(path);
+  }
+}
 
 void main() {
   late Directory root;
@@ -168,6 +184,48 @@ void main() {
         'traditional_taiwan',
       );
     });
+  });
+
+  test('打开还没结束时收到脚本请求：不打断这次打开', () async {
+    const text = '第一章 起点\n龍與鳳就在這裡。\n';
+    await file.writeAsString(text);
+    final space = await admittedBook(file);
+    final engine = GatedIndexEngine(
+      text,
+      chapters: chaptersOf(text),
+      anchorStrideCodeUnits: 512,
+    );
+    final reader = LocalReader(
+      engine: engine,
+      library: space.library,
+      book: space.book,
+      processing: literalProcessing(const [], convert: fakeConvert),
+      pageCodeUnits: 4096,
+    );
+
+    // What the page does before opening: it hands the resolved script over.
+    await reader.applyScript(ConvertTarget.simplifiedMainland);
+    final opened = reader.open();
+    // The index pass is held on the gate, so the open is in flight here.
+    await Future<void>.delayed(Duration.zero);
+    await reader.applyScript(ConvertTarget.traditionalTaiwan);
+    expect(
+      reader.script,
+      ConvertTarget.simplifiedMainland,
+      reason: '打开过程中的请求不能落在半开的会话上',
+    );
+
+    engine.gate.complete();
+    await opened;
+
+    expect(reader.error, isNull);
+    expect(reader.text, contains('龙'));
+    expect(reader.text, isNot(contains('龍')), reason: '这本书用它拿到脚本时的目标开');
+    expect(
+      reader.position!.textOffset,
+      text.indexOf('龍與鳳'),
+      reason: '正文第一行，没有被两次物质化搬动',
+    );
   });
 }
 

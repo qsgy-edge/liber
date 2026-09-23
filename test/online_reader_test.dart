@@ -460,4 +460,52 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('转换失败时页面报错，而不是让异常逃出设置回调', (tester) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale(
+      'zh',
+      'CN',
+    );
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+    final pipeline = ScriptedPipeline();
+    final chapters = [SourceChapter('第一章', Uri.parse('$sourceUrl/1'))];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OnlineReaderPage(
+          pipeline: pipeline,
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: chapters,
+          service: shelf,
+          // The target the settings screen changes to is the one that fails,
+          // the way a native conversion error or a rule failure would.
+          convert: (text, target) => target == ConvertTarget.traditionalGeneric
+              ? throw StateError('转换失败')
+              : markTarget(text, target),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('<<simplifiedMainland>>'), findsWidgets);
+    final fetches = pipeline.fetches;
+
+    await tester.tap(find.byTooltip('中文转换'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-script-book-traditional_generic')),
+      300,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('reader-script-book-traditional_generic')),
+    );
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // The reader is told on the error line it already has, nothing escapes the
+    // app-bar callback, and the chapter is still not fetched again.
+    expect(find.textContaining('中文转换失败'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(pipeline.fetches, fetches, reason: '失败的重渲染也不重新抓取章节');
+  });
 }
