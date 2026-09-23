@@ -55,7 +55,11 @@ jobs:
             os: macos-15
             target: aarch64-apple-ios-sim
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # 90 rather than 60: the Linux and macOS jobs gain a release native build and
+    # the runtime-limits harness (three QuickJS probe compiles, eleven product
+    # cases and a second gate sweep), and the mobile jobs now build the app. A
+    # job timeout would kill those rows instead of recording them. (#68)
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -75,7 +79,17 @@ jobs:
           restore-keys: native-${{ matrix.target }}-
       - name: Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev cmake ninja-build pkg-config libssl-dev
+        run: |
+          # clang/cmake/ninja/pkg-config and libclang build the native library on
+          # every Linux job. Only the Linux desktop job needs the GTK 3, lzma and
+          # libstdc++ development packages that `flutter build linux` links
+          # against, so the Android job does not pay for them. (#68)
+          desktop=''
+          if [ '${{ matrix.platform }}' = 'linux' ]; then
+            desktop='libgtk-3-dev liblzma-dev libstdc++-12-dev'
+          fi
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev cmake ninja-build pkg-config libssl-dev $desktop
       - name: Windows libclang
         if: runner.os == 'Windows'
         run: echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
@@ -91,6 +105,16 @@ jobs:
           echo "AR_aarch64_linux_android=$toolchain/bin/llvm-ar" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$toolchain/bin/aarch64-linux-android26-clang" >> "$GITHUB_ENV"
           echo "BINDGEN_EXTRA_CLANG_ARGS=--sysroot=$toolchain/sysroot --target=aarch64-linux-android26" >> "$GITHUB_ENV"
+      - name: Android JDK
+        if: matrix.platform == 'android'
+        run: |
+          # The app build runs AGP 8.13.1, which needs JDK 17 or newer (the
+          # native cross-build above only needs the sdkmanager's Java). The
+          # runner image installs several JDKs and exports each as
+          # JAVA_HOME_<version>_X64; the `:?` fails this step loudly if the image
+          # ever stops providing 17 instead of building with whatever `java`
+          # happens to be first on PATH. (#68)
+          echo "JAVA_HOME=${JAVA_HOME_17_X64:?the runner image no longer exports JAVA_HOME_17_X64}" >> "$GITHUB_ENV"
       - name: Build native runtime
         run: cargo build --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
       - name: HTML adapter tests
@@ -107,14 +131,14 @@ jobs:
       - name: Runtime tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
+      # Every job builds its platform's app now, so Flutter is installed for the
+      # mobile jobs too; only the Dart tests stay desktop-only. (#68)
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        if: matrix.platform != 'android' && matrix.platform != 'ios'
         with:
           flutter-version: '3.44.6'
           channel: stable
           cache: true
       - name: Flutter dependencies
-        if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: flutter pub get --enforce-lockfile
       - name: Analyze and shared tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
@@ -149,20 +173,79 @@ jobs:
             echo "$untracked"
             exit 1
           fi
+      # One app build per platform. Windows stays first: its gates load the DLL
+      # the build drops into the runner's Debug directory (tool/ci_runtime.py,
+      # library_path). The other four are the P4 shell rows — an app that builds,
+      # which is a build verdict and never a runtime one (ADR 0002/0009). (#68)
       - name: Build Windows app
         if: matrix.platform == 'windows'
         run: flutter build windows --debug --no-pub
+      - name: Build Linux app
+        if: matrix.platform == 'linux'
+        run: flutter build linux --debug --no-pub
+      - name: Build macOS app
+        if: matrix.platform == 'macos'
+        run: flutter build macos --debug --no-pub
+      - name: Build Android app
+        if: matrix.platform == 'android'
+        run: flutter build apk --debug --no-pub
+      - name: Build iOS app
+        if: matrix.platform == 'ios'
+        run: flutter build ios --simulator --no-codesign --no-pub
       - name: Runtime gates
         if: matrix.platform != 'android' && matrix.platform != 'ios'
         run: python tool/ci_runtime.py '${{ matrix.platform }}' '${{ matrix.target }}'
+      # `tool/ci_runtime.py` recreates `.ci-results/` when it starts, so a row
+      # written by a build step would be deleted before the artifact upload. The
+      # build rows are recorded here instead, once the gates have written theirs:
+      # each names the artifact the build produced (path, sha256, bytes) and, for
+      # a bundled app, the package directory around it, so the uploaded
+      # `evidence-<platform>` artifact records what was built rather than leaving
+      # it in a log. (`tool/ci_runtime.py` gains no build rows: a build in that
+      # list would run the build twice.)
+      - name: Record app build rows
+        run: python tool/ci_build_row.py '${{ matrix.platform }}'
+      # The limits harness is platform-neutral, but it has only ever run on
+      # Windows: its compiler flags and clock branch were written from a Windows
+      # host. Running it here is what can turn Linux/macOS limits rows from
+      # `not-run` into executed evidence. A probe that does not compile or does
+      # not reproduce on POSIX is a finding for the ticket, never a row to
+      # delete, so the step copies whatever evidence exists before it fails.
+      # It must follow "Generated tree is current": it writes untracked files
+      # under tool/runtime_limits_prototype/evidence/, which that gate rejects.
+      - name: Runtime limits harness
+        if: matrix.platform == 'linux' || matrix.platform == 'macos'
+        run: |
+          suffix=so
+          if [ '${{ matrix.platform }}' = 'macos' ]; then suffix=dylib; fi
+          library="packages/fjs/libfjs/target/${{ matrix.target }}"
+          cargo build --release --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
+          status=0
+          python tool/runtime_limits_prototype/verify.py \
+            "$library/release/libfjs.$suffix" "$library/debug/libfjs.$suffix" || status=$?
+          # Only this run's files are uploaded: the committed manifest.json,
+          # gates.log and windows-*.json next to them are the Windows record, and
+          # the harness has not touched them if it did not reach its end.
+          mkdir -p ".ci-results/runtime-limits-${{ matrix.platform }}"
+          cp tool/runtime_limits_prototype/evidence/'${{ matrix.platform }}'-*.json \
+             ".ci-results/runtime-limits-${{ matrix.platform }}/" 2>/dev/null \
+            || echo 'the harness wrote no per-platform evidence; see this step log'
+          if ! git diff --quiet -- tool/runtime_limits_prototype/evidence/manifest.json; then
+            cp tool/runtime_limits_prototype/evidence/manifest.json \
+               tool/runtime_limits_prototype/evidence/gates.log \
+               ".ci-results/runtime-limits-${{ matrix.platform }}/"
+          fi
+          exit "$status"
       - name: Coverage boundaries
         if: always()
         run: |
           echo '### Coverage boundaries' >> "$GITHUB_STEP_SUMMARY"
           echo '- Native compilation is checked for the selected target; a build is not a runtime verdict.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Windows: app build and bounded runtime/differential gates; CI does not perform manual UI review.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Linux/macOS: the same shared gate list as Windows (runtime, host surface, HTML adapter, brokers, scoped/nested execution, both frozen differentials) and Dart tests. The product app and WebView integration are not covered, and these platforms limits rows are not-run.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Android/iOS: native cross-build only. App entrypoints, simulator execution and physical-device acceptance are not covered.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Every platform job now builds the app (debug): Windows, Linux and macOS desktop bundles, an Android debug APK and an unsigned iOS simulator app. The artifact each build produced is recorded with its path and sha256 in .ci-results/, and uploaded with this run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Windows: the app build and the bounded runtime/differential gates, and the limits rows executed on a Windows host (committed under tool/runtime_limits_prototype/evidence/). CI does not perform manual UI review or a driven run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Linux/macOS: the app build, the same shared gate list as Windows (runtime, host surface, HTML adapter, brokers, scoped/nested execution, both frozen differentials), the Dart tests, and the runtime-limits harness executed on the runner — the first execution of probes that had only run from a Windows host. WebView integration is not covered: it stays the rows #2 owns.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Android/iOS: the app builds, and the native library is cross-built. No device or simulator is attached, so launch smoke, driven runs and the limits rows for these platforms stay not-run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- An app build is a shell row: it does not make any platform compatible. ADR 0002/0009 still require the limits rows and the #2 WebView rows of that platform before it can claim a capability.' >> "$GITHUB_STEP_SUMMARY"
           echo '- No full frozen-Legado compatibility claim follows from a green workflow.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Runtime gate commands fail when their log contains the Dart VM crash marker, even if the process exited 0.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

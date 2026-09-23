@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The frozen baseline permits cleartext: the Book Sources this product reads
+     are user-imported and many of them are plain http (Legado
+     app/src/main/res/xml/network_security_config.xml at
+     14dd24945b2914ce2708b8abaa4ee67ceef892af, `base-config
+     cleartextTrafficPermitted="true"`). The debug overrides are the baseline's
+     too: a debuggable build trusts the user's certificate store, which is what
+     a proxy needs to inspect a source request. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration" />
+
+    <debug-overrides cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="user" />
+            <certificates src="system"/>
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
