@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import 'js_source_runtime.dart' show SourceScriptError;
 import 'source_login.dart';
 
@@ -69,7 +70,13 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
         }
       });
     } on Object catch (error) {
-      if (mounted) setState(() => _status = '读取登录信息失败：${_message(error)}');
+      if (mounted) {
+        setState(
+          () => _status = AppLocalizations.of(
+            context,
+          ).readLoginInfoFailed(_message(error)),
+        );
+      }
     }
   }
 
@@ -94,7 +101,7 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
       if (!stored) {
         setState(() {
           _busy = false;
-          _status = '无法保存登录信息：安装标识不足以生成 AES 密钥（BaseSource.kt:180-192）';
+          _status = AppLocalizations.of(context).loginInfoUnavailable;
         });
         return;
       }
@@ -103,7 +110,7 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _status = '登录出错：${_message(error)}';
+        _status = AppLocalizations.of(context).loginError(_message(error));
       });
     }
   }
@@ -118,25 +125,28 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _status = '已执行“${row.name}”';
+        _status = AppLocalizations.of(context).buttonExecuted(row.name);
       });
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _status = '“${row.name}”执行失败：${_message(error)}';
+        _status = AppLocalizations.of(
+          context,
+        ).buttonFailed(row.name, _message(error));
       });
     }
   }
 
   Future<void> _showLoginHeader() async {
+    final l10n = AppLocalizations.of(context);
     final header = await widget.session.loginHeader();
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('登录头部信息'),
-        content: SelectableText(header ?? '（没有保存登录头部信息）'),
+        title: Text(l10n.loginHeaderTitle),
+        content: SelectableText(header ?? l10n.noLoginHeader),
         actions: [
           if (header != null)
             TextButton(
@@ -144,11 +154,11 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
                 Clipboard.setData(ClipboardData(text: header));
                 Navigator.of(context).pop();
               },
-              child: const Text('复制'),
+              child: Text(l10n.copy),
             ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
+            child: Text(l10n.close),
           ),
         ],
       ),
@@ -157,7 +167,9 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
 
   Future<void> _removeLoginHeader() async {
     await widget.session.removeLoginHeader();
-    if (mounted) setState(() => _status = '已清除登录头部信息');
+    if (mounted) {
+      setState(() => _status = AppLocalizations.of(context).loginHeaderCleared);
+    }
   }
 
   static String _message(Object error) => error is SourceScriptError
@@ -192,9 +204,10 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final name = widget.session.source['bookSourceName'];
     return AlertDialog(
-      title: Text('登录书源：${name ?? widget.session.sourceRef}'),
+      title: Text(l10n.loginSourceTitle('${name ?? widget.session.sourceRef}')),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -203,16 +216,13 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_rows.isEmpty)
-                const Text('该书源的 loginUi 没有可显示的登录界面。')
+                Text(l10n.loginUiEmpty)
               else
                 for (final row in _rows) _row(row),
               if (_status.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _status,
-                    key: const ValueKey('login-status'),
-                  ),
+                  child: Text(_status, key: const ValueKey('login-status')),
                 ),
             ],
           ),
@@ -221,19 +231,19 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : _showLoginHeader,
-          child: const Text('登录头部'),
+          child: Text(l10n.loginHeaderAction),
         ),
         TextButton(
           onPressed: _busy ? null : _removeLoginHeader,
-          child: const Text('清除登录头部'),
+          child: Text(l10n.removeLoginHeader),
         ),
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.cancel),
         ),
         FilledButton(
           onPressed: _busy ? null : _submit,
-          child: const Text('确定'),
+          child: Text(l10n.confirm),
         ),
       ],
     );

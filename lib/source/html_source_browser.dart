@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
@@ -63,7 +64,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   HtmlBook? selected;
   List<SourceChapter> chapters = [];
   bool busy = true;
-  String status = '正在读取';
+
+  /// What the page last did, or null before it has done anything: the
+  /// initial line is the build's, because it is copy (`lib/l10n/`).
+  String? status;
   String? error;
 
   String get sourceUrl => '${widget.source['bookSourceUrl'] ?? ''}';
@@ -124,6 +128,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   }
 
   Future<void> start() async {
+    final l10n = AppLocalizations.of(context);
     try {
       if (widget.resume case final entry?) {
         final hit = entry.htmlBook;
@@ -175,7 +180,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         if (index < 0 || index >= chapters.length) {
           final fallback = entry.chapterIndex;
           if (fallback < 0 || fallback >= chapters.length) {
-            throw StateError('原章节已不在目录中，进度仍保留，请选择章节');
+            throw StateError(l10n.chapterNotInToc);
           }
           index = fallback;
         }
@@ -183,13 +188,13 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       } else if (widget.directBook case final hit?) {
         await _details(hit);
       } else {
-        setState(() => status = '正在搜索');
+        setState(() => status = l10n.searching);
         final output = await _withTls(() => pipeline.search(widget.keyword));
         if (mounted) {
           setState(() {
             hits = output;
             busy = false;
-            status = '找到 ${hits.length} 本书';
+            status = l10n.booksFound(hits.length);
           });
         }
       }
@@ -221,7 +226,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     setState(() {
       busy = true;
       error = null;
-      status = '正在读取详情和完整目录';
+      status = AppLocalizations.of(context).readingDetailsAndToc;
     });
     try {
       final (book, items) = await _withTls(() => pipeline.details(hit));
@@ -257,11 +262,17 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       setState(() {
         if (selected?.url == book.url) inShelf = true;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('已加入书架：${book.title}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).addedToShelf(book.title)),
+        ),
+      );
     } catch (e) {
-      if (mounted) setState(() => error = '加入书架失败：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(context).addToShelfFailed('$e'),
+        );
+      }
     }
   }
 
@@ -302,95 +313,101 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(selected?.title ?? '搜索结果')),
-    body: busy
-        ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(status),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final status = this.status ?? l10n.reading;
+    return Scaffold(
+      appBar: AppBar(title: Text(selected?.title ?? l10n.searchResults)),
+      body: busy
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(status),
+                ],
+              ),
+            )
+          : CustomScrollView(
+              slivers: [
+                if (error != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(l10n.readSourceFailed('$error')),
+                    ),
+                  ),
+                if (selected case final book?) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(book.author),
+                          const SizedBox(height: 12),
+                          Text(book.intro),
+                          const SizedBox(height: 16),
+                          Text(l10n.tableOfContentsCount(chapters.length)),
+                          Wrap(
+                            spacing: 12,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: inShelf
+                                    ? null
+                                    : () => add(book, chapters),
+                                icon: const Icon(Icons.playlist_add),
+                                label: Text(
+                                  inShelf ? l10n.inShelf : l10n.addEntryToShelf,
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => details(book),
+                                icon: const Icon(Icons.refresh),
+                                label: Text(l10n.updateTableOfContents),
+                              ),
+                            ],
+                          ),
+                          if (hits.isNotEmpty)
+                            TextButton(
+                              onPressed: () => setState(() => selected = null),
+                              child: Text(l10n.backToSearchResults),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SliverList.builder(
+                    itemCount: chapters.length,
+                    itemBuilder: (_, i) => ChapterListTile(
+                      chapter: chapters[i],
+                      onTap: () => read(i),
+                    ),
+                  ),
+                ] else ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(status),
+                    ),
+                  ),
+                  SliverList.builder(
+                    itemCount: hits.length,
+                    itemBuilder: (_, i) => ListTile(
+                      title: Text(hits[i].title),
+                      subtitle: Text(hits[i].author),
+                      trailing: IconButton(
+                        tooltip: l10n.addEntryToShelf,
+                        icon: const Icon(Icons.playlist_add),
+                        onPressed: () => add(hits[i]),
+                      ),
+                      onTap: () => details(hits[i]),
+                    ),
+                  ),
+                ],
               ],
             ),
-          )
-        : CustomScrollView(
-            slivers: [
-              if (error != null)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text('读取失败：$error'),
-                  ),
-                ),
-              if (selected case final book?) ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(book.author),
-                        const SizedBox(height: 12),
-                        Text(book.intro),
-                        const SizedBox(height: 16),
-                        Text('目录 · ${chapters.length} 章'),
-                        Wrap(
-                          spacing: 12,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: inShelf
-                                  ? null
-                                  : () => add(book, chapters),
-                              icon: const Icon(Icons.playlist_add),
-                              label: Text(inShelf ? '已在书架' : '加入书架'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: () => details(book),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('更新目录'),
-                            ),
-                          ],
-                        ),
-                        if (hits.isNotEmpty)
-                          TextButton(
-                            onPressed: () => setState(() => selected = null),
-                            child: const Text('返回搜索结果'),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                SliverList.builder(
-                  itemCount: chapters.length,
-                  itemBuilder: (_, i) => ChapterListTile(
-                    chapter: chapters[i],
-                    onTap: () => read(i),
-                  ),
-                ),
-              ] else ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(status),
-                  ),
-                ),
-                SliverList.builder(
-                  itemCount: hits.length,
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text(hits[i].title),
-                    subtitle: Text(hits[i].author),
-                    trailing: IconButton(
-                      tooltip: '加入书架',
-                      icon: const Icon(Icons.playlist_add),
-                      onPressed: () => add(hits[i]),
-                    ),
-                    onTap: () => details(hits[i]),
-                  ),
-                ),
-              ],
-            ],
-          ),
-  );
+    );
+  }
 }

@@ -9,6 +9,8 @@ import 'package:liber/store/workspace.dart';
 
 import 'native_library.dart';
 
+import 'l10n_support.dart';
+
 void main() {
   group('SourceNoticeLimiter', () {
     test('delivers the first notice and suppresses the window', () {
@@ -23,7 +25,7 @@ void main() {
   testWidgets('a source notice is shown as one capped line', (tester) async {
     late BuildContext context;
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Builder(
           builder: (buildContext) {
             context = buildContext;

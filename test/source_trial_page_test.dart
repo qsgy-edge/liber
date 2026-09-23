@@ -8,6 +8,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 void main() {
   for (final entered in ['', 'user query']) {
     testWidgets('source check keyword is a fallback only ($entered)', (
@@ -16,7 +18,7 @@ void main() {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
       addTearDown(store.close);
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: SourceTrialPage(
             service: ShelfService(store),
             sources: const [
@@ -62,7 +64,7 @@ void main() {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
       addTearDown(store.close);
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: SourceTrialPage(
             service: ShelfService(store),
             sources: [
@@ -126,7 +128,7 @@ void main() {
     await shelf.deleteSource(sourceUrl);
 
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: SourceTrialPage(service: shelf, sources: const []),
       ),
     );
@@ -144,7 +146,7 @@ void main() {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
       addTearDown(store.close);
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: SourceTrialPage(
             service: ShelfService(store),
             sources: const [
@@ -193,7 +195,7 @@ void main() {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
       addTearDown(store.close);
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: SourceTrialPage(
             service: ShelfService(store),
             sources: const [

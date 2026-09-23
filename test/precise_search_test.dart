@@ -13,6 +13,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 /// One source's scripted answers: what its search returns, what its details
 /// stage answers with, and how often it was asked.
 class FakeSource {
@@ -133,7 +135,7 @@ void main() {
 
   Future<void> pumpEntry(WidgetTester tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -306,7 +308,7 @@ void main() {
 
     var popped = false;
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {

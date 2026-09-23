@@ -12,6 +12,8 @@ import 'package:liber/settings/reader_script_page.dart';
 
 import 'local_reader_support.dart';
 
+import 'l10n_support.dart';
+
 /// The local reader's conversion (#27): the page resolves the setting before it
 /// opens the book, and changing it re-renders what is on screen without opening
 /// the book again.
@@ -69,7 +71,9 @@ void main() {
   }
 
   Future<void> openPage(WidgetTester tester, LocalReader reader) async {
-    await tester.pumpWidget(MaterialApp(home: LocalReaderPage(reader: reader)));
+    await tester.pumpWidget(
+      localizedApp(home: LocalReaderPage(reader: reader)),
+    );
     await _waitFor(tester, find.byKey(const ValueKey('reader-window')));
   }
 
@@ -96,7 +100,7 @@ void main() {
     );
     await tester.tap(find.byKey(ValueKey(key)));
     await tester.pump();
-    await tester.pageBack();
+    await tapBack(tester);
     await _waitUntil(tester, applied);
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../domain/contracts.dart' show SourceCancellation;
 import '../local/reader_offset_map.dart' show ReaderOffsetMap;
 import '../local/text_engine.dart' show TextEngine;
+import '../l10n/app_localizations.dart';
 import '../settings/reader_script.dart';
 import '../settings/reader_script_page.dart';
 import '../store/shelf.dart';
@@ -110,6 +111,7 @@ class OnlineReaderPage extends StatefulWidget {
 
 class _OnlineReaderPageState extends State<OnlineReaderPage> {
   final scroll = ScrollController();
+
   /// The scroll view's own box: the reader measures what is on screen with it
   /// (`track`) and passes its constraints to the image shapes.
   final viewportKey = GlobalKey();
@@ -213,7 +215,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         ),
       );
     } catch (e) {
-      if (mounted) setState(() => error = '替换规则读取失败：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(context).replaceRulesFailed('$e'),
+        );
+      }
     }
     if (!mounted) return;
     processing = built;
@@ -248,7 +254,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         textOffset: offset,
       );
     } catch (e) {
-      if (mounted) setState(() => error = '进度保存失败：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(context).saveProgressFailed('$e'),
+        );
+      }
     }
   }
 
@@ -312,7 +322,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (mounted) {
         setState(() {
           busy = false;
-          error = '章节读取失败：$e';
+          error = AppLocalizations.of(context).chapterLoadFailed('$e');
         });
       }
     }
@@ -414,7 +424,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
             : _columnMaxWidth) -
         _contentPadding.horizontal;
     final cell = _bodyTextStyle.fontSize!;
-    if (image.src.trim().isEmpty) return _imageNotice('图片地址为空');
+    if (image.src.trim().isEmpty) return _imageNotice(l10n.imageEmptyAddress);
     return switch (imageStyle) {
       SourceImageStyle.full => SizedBox(
         width: column,
@@ -453,33 +463,32 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// placeholder. A refused confirmation, or a request that still fails, is that
   /// placeholder: the frozen layout draws its own error bitmap and the chapter
   /// keeps reading.
-  Future<Uint8List> _loadImage(SourceChapterImage image) =>
-      _images.putIfAbsent(
-        image.src,
-        () => withTlsExceptionConfirmation(
-          context: context,
-          hostState: widget.service.hostState,
-          sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
-          sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-          run: () => widget.pipeline.chapterImage(image.src, base: _chapterUrl),
-        ),
-      );
+  Future<Uint8List> _loadImage(SourceChapterImage image) => _images.putIfAbsent(
+    image.src,
+    () => withTlsExceptionConfirmation(
+      context: context,
+      hostState: widget.service.hostState,
+      sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
+      sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
+      run: () => widget.pipeline.chapterImage(image.src, base: _chapterUrl),
+    ),
+  );
 
   /// One image's bytes as the shape draws them.
   Widget _imageBytes(SourceChapterImage image, {required BoxFit fit}) =>
       FutureBuilder<Uint8List>(
         future: _loadImage(image),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return _imageNotice('图片加载失败');
+          if (snapshot.hasError) return _imageNotice(l10n.imageLoadFailed);
           final bytes = snapshot.data;
-          if (bytes == null) return _imageNotice('图片加载中…');
+          if (bytes == null) return _imageNotice(l10n.imageLoading);
           return Image.memory(
             bytes,
             fit: fit,
             alignment: Alignment.center,
             // A response that is not an image at all (a login page, an empty
             // body) is a failed image, not a failed chapter.
-            errorBuilder: (_, _, _) => _imageNotice('图片加载失败'),
+            errorBuilder: (_, _, _) => _imageNotice(l10n.imageLoadFailed),
           );
         },
       );
@@ -575,6 +584,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   }
 
   Future<void> chooseChapter() async {
+    final l10n = AppLocalizations.of(context);
     final choice = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -583,9 +593,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         child: Column(
           children: [
             ListTile(
-              title: Text('目录 · ${widget.chapters.length} 章'),
+              title: Text(l10n.tableOfContentsCount(widget.chapters.length)),
               trailing: IconButton(
-                tooltip: '关闭目录',
+                tooltip: l10n.closeTableOfContents,
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.pop(context),
               ),
@@ -625,98 +635,101 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.book.title),
-      actions: [
-        IconButton(
-          onPressed: busy ? null : openScriptSettings,
-          tooltip: '中文转换',
-          icon: const Icon(Icons.translate),
-        ),
-        TextButton.icon(
-          onPressed: busy ? null : chooseChapter,
-          icon: const Icon(Icons.list),
-          label: const Text('目录'),
-        ),
-      ],
-    ),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(
-            // The chapter name is blank while a chapter loads: the previous
-            // name would contradict the incoming chapter, and the target name
-            // would read as if it were already displayed. The line keeps its
-            // height so the content area does not jump.
-            busy ? '' : chapterTitle,
-            style: Theme.of(context).textTheme.titleLarge,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.book.title),
+        actions: [
+          IconButton(
+            onPressed: busy ? null : openScriptSettings,
+            tooltip: l10n.readerScriptTitle,
+            icon: const Icon(Icons.translate),
           ),
-        ),
-        if (error != null)
-          Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
-        Expanded(
-          child: busy
-              ? const Center(child: CircularProgressIndicator())
-              // The viewport's own box is what the `SINGLE` shape and the image
-              // widths are expressed in; the reader scrolls it instead of
-              // measuring pages.
-              : LayoutBuilder(
-                  builder: (context, viewport) => SingleChildScrollView(
-                    key: viewportKey,
-                    controller: scroll,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: _columnMaxWidth,
-                        ),
-                        child: Padding(
-                          padding: _contentPadding,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var i = 0; i < rows.length; i++)
-                                Padding(
-                                  key: keys[i],
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _row(rows[i], viewport),
-                                ),
-                            ],
+          TextButton.icon(
+            onPressed: busy ? null : chooseChapter,
+            icon: const Icon(Icons.list),
+            label: Text(l10n.tableOfContentsAction),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              // The chapter name is blank while a chapter loads: the previous
+              // name would contradict the incoming chapter, and the target name
+              // would read as if it were already displayed. The line keeps its
+              // height so the content area does not jump.
+              busy ? '' : chapterTitle,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          if (error != null)
+            Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
+          Expanded(
+            child: busy
+                ? const Center(child: CircularProgressIndicator())
+                // The viewport's own box is what the `SINGLE` shape and the image
+                // widths are expressed in; the reader scrolls it instead of
+                // measuring pages.
+                : LayoutBuilder(
+                    builder: (context, viewport) => SingleChildScrollView(
+                      key: viewportKey,
+                      controller: scroll,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: _columnMaxWidth,
+                          ),
+                          child: Padding(
+                            padding: _contentPadding,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < rows.length; i++)
+                                  Padding(
+                                    key: keys[i],
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _row(rows[i], viewport),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 16,
-              children: [
-                OutlinedButton(
-                  onPressed: busy || index == 0
-                      ? null
-                      : () => load(index - 1, 0),
-                  child: const Text('上一章'),
-                ),
-                TextButton(
-                  onPressed: busy ? null : () => load(index, offset),
-                  child: const Text('重新加载'),
-                ),
-                FilledButton(
-                  onPressed: busy || index + 1 == widget.chapters.length
-                      ? null
-                      : () => load(index + 1, 0),
-                  child: const Text('下一章'),
-                ),
-              ],
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 16,
+                children: [
+                  OutlinedButton(
+                    onPressed: busy || index == 0
+                        ? null
+                        : () => load(index - 1, 0),
+                    child: Text(l10n.previousChapter),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () => load(index, offset),
+                    child: Text(l10n.reloadChapter),
+                  ),
+                  FilledButton(
+                    onPressed: busy || index + 1 == widget.chapters.length
+                        ? null
+                        : () => load(index + 1, 0),
+                    child: Text(l10n.nextChapter),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

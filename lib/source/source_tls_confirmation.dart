@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/contracts.dart';
+import '../l10n/app_localizations.dart';
 import 'source_host_state.dart';
 
 /// Runs one source operation under ADR 0011 §5's per-source TLS exception.
@@ -47,24 +48,24 @@ Future<bool> showTlsExceptionConfirmation(
   required String sourceName,
   required SourceTlsCertificateFailure failure,
 }) async {
+  final l10n = AppLocalizations.of(context);
   final name = sourceName.isEmpty ? failure.sourceRef : sourceName;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('证书校验失败'),
+      title: Text(l10n.certificateFailedTitle),
       content: Text(
-        '书源“$name”访问 ${failure.host} 时，TLS 证书校验失败：${failure.reason}。\n\n'
-        '继续访问可能让你的连接被窃听或篡改。是否仅为此书源记住此次例外？',
+        l10n.certificateFailedBody(name, failure.host, failure.reason),
       ),
       actions: [
         TextButton(
           autofocus: true,
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('取消'),
+          child: Text(l10n.cancel),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('继续（不安全）'),
+          child: Text(l10n.unsafeContinue),
         ),
       ],
     ),

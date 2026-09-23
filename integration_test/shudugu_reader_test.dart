@@ -12,6 +12,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import '../test/l10n_support.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
@@ -41,7 +43,7 @@ void main() {
               as Map<String, dynamic>;
       service = await open();
       await tester.pumpWidget(
-        const MaterialApp(
+        localizedApp(
           home: Scaffold(body: Text('Live source test running')),
         ),
       );
@@ -65,7 +67,7 @@ void main() {
         EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 90),
       );
-      Widget shelf(ShelfService current) => MaterialApp(
+      Widget shelf(ShelfService current) => localizedApp(
         home: Scaffold(
           body: ListView(children: [OnlineBookshelf(service: current)]),
         ),

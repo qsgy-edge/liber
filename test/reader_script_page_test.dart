@@ -6,6 +6,8 @@ import 'package:liber/settings/reader_script_page.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 /// The conversion screen (#27): the five manual choices plus the default, the
 /// installation's row and the open book's override, and what the two together
 /// resolve to.
@@ -21,7 +23,7 @@ void main() {
     String? bookTitle,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: ReaderScriptPage(
           store: store,
           bookId: bookId,

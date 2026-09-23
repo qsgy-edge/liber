@@ -16,6 +16,8 @@ import 'package:liber/source/source_rate_limiter.dart';
 
 import 'native_library.dart';
 
+import 'l10n_support.dart';
+
 /// The confirmation surface a test installs: it records what the runtime asked
 /// for — naming the source, the member and the address — and answers what the
 /// test programs, so refuse, answer, timeout and cancel are all driven without a
@@ -695,7 +697,7 @@ void main() {
 
     Future<void> pumpApp(WidgetTester tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           navigatorKey: sourceHatchNavigatorKey,
           home: const Scaffold(body: SizedBox()),
         ),

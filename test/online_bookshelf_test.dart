@@ -17,6 +17,8 @@ import 'package:liber/store/space_store.dart';
 
 import 'native_library.dart';
 
+import 'l10n_support.dart';
+
 class OfflineTransport implements BookSourceTransport {
   @override
   Future<String> request({
@@ -123,7 +125,7 @@ void main() {
     BookSourceTransport transport,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Scaffold(
           body: ListView(
             children: [OnlineBookshelf(service: shelf, transport: transport)],
@@ -263,7 +265,7 @@ void main() {
 
   testWidgets('失败的目录刷新不动书架与进度；移出只改成员资格', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Scaffold(
           body: ListView(
             children: [
@@ -299,7 +301,7 @@ void main() {
   testWidgets('书源被删除后，书留在书架上并标记为打不开', (tester) async {
     await shelf.deleteSource(sourceUrl);
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Scaffold(
           body: ListView(children: [OnlineBookshelf(service: shelf)]),
         ),

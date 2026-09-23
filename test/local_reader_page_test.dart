@@ -9,6 +9,8 @@ import 'package:liber/store/space_store.dart';
 
 import 'local_reader_support.dart';
 
+import 'l10n_support.dart';
+
 /// The reader page with the engine faked: the test binding never settles
 /// `flutter_rust_bridge`'s pending work, so the native library is out of reach
 /// here — which is why the page is written against [ReaderEngine] at all.
@@ -64,7 +66,7 @@ void main() {
     await tester.runAsync(() async {
       final opened = await openBook();
       await tester.pumpWidget(
-        MaterialApp(home: LocalReaderPage(reader: opened.reader)),
+        localizedApp(home: LocalReaderPage(reader: opened.reader)),
       );
       await _waitFor(tester, find.byKey(const ValueKey('reader-window')));
 
@@ -100,7 +102,7 @@ void main() {
     await tester.runAsync(() async {
       final opened = await openBook();
       await tester.pumpWidget(
-        MaterialApp(home: LocalReaderPage(reader: opened.reader)),
+        localizedApp(home: LocalReaderPage(reader: opened.reader)),
       );
       await _waitFor(tester, find.byKey(const ValueKey('reader-window')));
       await tester.tap(find.text('下一页'));
@@ -122,7 +124,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       await tester.pumpWidget(
-        MaterialApp(home: LocalReaderPage(reader: reopened)),
+        localizedApp(home: LocalReaderPage(reader: reopened)),
       );
       await _waitFor(tester, find.byKey(const ValueKey('reader-notice')));
 
@@ -142,7 +144,7 @@ void main() {
         pageCodeUnits: 256,
       );
       await tester.pumpWidget(
-        MaterialApp(home: LocalReaderPage(reader: reopened)),
+        localizedApp(home: LocalReaderPage(reader: reopened)),
       );
       await _waitFor(tester, find.textContaining('文件不存在'));
 
