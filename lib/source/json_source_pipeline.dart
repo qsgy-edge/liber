@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../domain/contracts.dart';
 import 'book_source_pipeline.dart';
@@ -994,7 +995,41 @@ class JsonSourcePipeline implements BookSourcePipeline {
       },
     );
     // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
-    return HtmlChapterBody(parts.join('\n'), pages, title: contentTitle);
+    final text = parts.join('\n');
+    return HtmlChapterBody(
+      text,
+      pages,
+      title: contentTitle,
+      images: extractChapterImages(text),
+    );
+  }
+
+  /// One chapter image's bytes, through the same source session the JSON stages
+  /// use: the source's `header` rule, the login header, the cookie jar, the
+  /// per-source `concurrentRate` and the per-source TLS exception
+  /// (`ImageProvider.getImageSize` → `BookHelp.saveImage` → `AnalyzeUrl(src,
+  /// source = bookSource).getByteArrayAwait()`).
+  ///
+  /// A relative [src] resolves against the chapter's URL, which is what the
+  /// frozen download path resolves one against (`BookHelp.flowImages`, `:196-205`).
+  @override
+  Future<Uint8List> chapterImage(String src, {Uri? base}) async {
+    _cancellation.throwIfCancelled();
+    final target = base == null ? SourceHttpUri.parse(src) : _url(base, src);
+    final host = _host;
+    if (host == null) {
+      // A transport without a source session answers text, which cannot carry an
+      // image back; the reader shows its own failure row rather than a
+      // half-decoded one.
+      throw UnsupportedError('当前 transport 不支持图片请求');
+    }
+    final response = await host
+        .forExecution(_cancellation)
+        .get('$target', headers: await _ensureHeaders(), readBytes: true);
+    _cancellation.throwIfCancelled();
+    final bytes = response.bodyBytes;
+    if (bytes == null) throw StateError('图片响应没有字节：$target');
+    return bytes;
   }
 
   /// The raw address texts one page's next-page rule declared, in the frozen
