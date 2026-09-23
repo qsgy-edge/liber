@@ -136,6 +136,8 @@ void main() {
       server.listen((request) async {
         final body = switch (request.uri.path) {
           '/search' => {
+            'scalar': 'not a list',
+            'nul': null,
             'books': [
               {'name': 'A', 'other': 'B', 'url': '/book'},
             ],
@@ -149,7 +151,7 @@ void main() {
               {'name': 'Two', 'url': '/chapter'},
             ],
           },
-          '/chapter' => {'main': 'Paragraph', 'extra': 'Tail'},
+          '/chapter' => {'main': null, 'extra': 'Tail'},
           _ => {'error': 'Unexpected path'},
         };
         request.response.write(jsonEncode(body));
@@ -169,7 +171,7 @@ void main() {
           'tocUrl': r'@Json:$.toc',
         },
         'ruleToc': {
-          'chapterList': r'@JSON:$.first&&$.second',
+          'chapterList': r'@JSON:$.first%%$.second',
           'chapterName': r'$.name',
           'chapterUrl': r'$.url',
         },
@@ -182,7 +184,11 @@ void main() {
       final output = await pipeline.run('query', (_) {});
       expect(output.title, 'Detail');
       expect(output.chapters.map((chapter) => chapter.name), ['One', 'Two']);
-      expect(output.content, 'Paragraph');
+      expect(output.content, 'Tail');
+      expect((await pipeline.search('query')).single.title, 'A\nB');
+      (source['ruleSearch'] as Map)['bookList'] = r'$.scalar||$.books';
+      expect((await pipeline.search('query')).single.title, 'A\nB');
+      (source['ruleSearch'] as Map)['bookList'] = r'$.nul||$.books';
       expect((await pipeline.search('query')).single.title, 'A\nB');
     },
   );
@@ -254,6 +260,19 @@ void main() {
     // refused shape is one the JSON reader genuinely cannot run.
     source['ruleContent'] = {'content': r'$.rows[?(@.hasContent=1)].content'};
     await expectLater(pipeline.run('x', (_) {}), throwsUnsupportedError);
+    expect(paths, hasLength(4));
+
+    source['ruleContent'] = {'content': r'$.body%%$.missing'};
+    await expectLater(
+      JsonSourcePipeline(source, HttpSourceTransport()).run('x', (_) {}),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => '$error',
+          'field',
+          contains('ruleContent.content'),
+        ),
+      ),
+    );
     expect(paths, hasLength(4));
 
     // Missing response data fails, rather than announcing canned success.

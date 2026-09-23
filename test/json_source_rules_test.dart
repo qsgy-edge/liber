@@ -436,6 +436,11 @@ void main() {
       expect(JsonSourceRules.extract(root, r'$.a&&$.missing||$.b'), 'A\nB');
       expect(JsonSourceRules.extract(root, r'$.a||$.b&&$.arr'), 'A');
       expect(JsonSourceRules.extract(root, r'$.missing||$.blank'), '');
+      expect(JsonSourceRules.extract({'a': null, 'b': 'B'}, r'$.a||$.b'), 'B');
+      expect(
+        JsonSourceRules.extract({'a': 'null', 'b': 'B'}, r'$.a||$.b'),
+        'null',
+      );
     },
   );
 
@@ -472,9 +477,46 @@ void main() {
         '3',
       ]);
       expect(
-        () => JsonSourceRules.validate(r'$.short%%$.long'),
+        () => JsonSourceRules.validate(r'$.short%%$.long', forList: true),
         returnsNormally,
       );
+      expect(
+        () => JsonSourceRules.validate(r'$.short%%$.long'),
+        throwsA(isA<UnsupportedError>()),
+      );
+    },
+  );
+
+  test(
+    'source-derived: list merge skips definite scalar and null branches',
+    () {
+      const root = {
+        'scalar': 'x',
+        'nul': null,
+        'chapters': [
+          {'name': 'One'},
+        ],
+        'rows': [
+          {'name': 'Two'},
+        ],
+      };
+      expect(
+        JsonSourceRules.list(root, r'$.scalar||$.chapters'),
+        root['chapters'],
+      );
+      expect(
+        JsonSourceRules.list(root, r'$.nul||$.chapters'),
+        root['chapters'],
+      );
+      expect(
+        JsonSourceRules.list(root, r'$.scalar&&$.chapters'),
+        root['chapters'],
+      );
+      expect(JsonSourceRules.list(root, r'$.rows[*].name||$.chapters'), [
+        'Two',
+      ]);
+      // Existing simple-list callers still receive a scalar as one result.
+      expect(JsonSourceRules.list(root, r'$.scalar'), ['x']);
     },
   );
 

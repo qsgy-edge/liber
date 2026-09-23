@@ -76,21 +76,21 @@ class JsonSourceRules {
   /// *shape* a document's own types could reject (a slice at the root of a
   /// document that is a map, say) is a rule this reader can run, and the shape
   /// refusal belongs to the document it meets.
-  static void validate(String rule) {
+  static void validate(String rule, {bool forList = false}) {
     final text = _withoutJsonMode(
       splitRuleFields(rule).rule.replaceAll(_ruleFieldToken, '').trim(),
     );
     if (text.contains('{{')) return;
-    _validateParts(text);
+    _validateParts(text, forList: forList);
   }
 
-  static void _validateParts(String rule) {
-    final parts = _splitMerge(rule, includeInterleave: true);
+  static void _validateParts(String rule, {required bool forList}) {
+    final parts = _splitMerge(rule, includeInterleave: forList);
     if (parts == null) {
       _parseRule(rule);
     } else {
       for (final part in parts.rules) {
-        if (part.isNotEmpty) _validateParts(part);
+        if (part.isNotEmpty) _validateParts(part, forList: forList);
       }
     }
   }
@@ -156,6 +156,7 @@ class JsonSourceRules {
     final matches = _matches(value, rule);
     if (matches.results.isEmpty) return null;
     final joined = matches.definite ? matches.results.single : matches.results;
+    if (joined == null) return null;
     if (joined is List) return joined.map((item) => '$item').join('\n');
     return '$joined';
   }
@@ -171,18 +172,26 @@ class JsonSourceRules {
   static List<dynamic> list(Object? value, String rule) =>
       _mergedList(value, _withoutJsonMode(rule.trim()));
 
-  static List<dynamic> _mergedList(Object? value, String rule) {
+  static List<dynamic> _mergedList(
+    Object? value,
+    String rule, {
+    bool mergedBranch = false,
+  }) {
     final parts = _splitMerge(rule, includeInterleave: true);
     if (parts == null) {
-      final result = values(value, rule);
+      final matches = _matches(value, rule);
+      if (!matches.definite) return matches.results;
+      final result = matches.results;
       if (result.length == 1 && result.first is List) {
         return result.first as List<dynamic>;
       }
-      return result;
+      return mergedBranch ? [] : result;
     }
     final lists = <List<dynamic>>[];
     for (final part in parts.rules) {
-      final items = part.isEmpty ? <dynamic>[] : _mergedList(value, part);
+      final items = part.isEmpty
+          ? <dynamic>[]
+          : _mergedList(value, part, mergedBranch: true);
       if (items.isNotEmpty) {
         lists.add(items);
         if (parts.operator == '||') break;

@@ -498,7 +498,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
         // result fields: malformed rules fail with their field context.
         final extraction = RuleField.extractionText(entry.value as String);
         try {
-          if (extraction != null) JsonSourceRules.validate(extraction);
+          if (extraction != null) {
+            JsonSourceRules.validate(
+              extraction,
+              forList: entry.key == 'bookList' || entry.key == 'chapterList',
+            );
+          }
         } on UnsupportedError catch (error) {
           throw UnsupportedError('$key.${entry.key}: $error');
         }
