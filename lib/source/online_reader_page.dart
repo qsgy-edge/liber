@@ -280,6 +280,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// Opens the reader's conversion screen (#27) for this book, then re-resolves
   /// and re-renders the chapter it is already showing. Nothing is fetched again
   /// and the book is not reopened: only the characters change.
+  ///
+  /// A conversion that fails is reported on the same error line a failed chapter
+  /// fetch uses; the choice itself is already stored, so the next render (another
+  /// chapter, a reload) uses it. Without the `try` the failure would leave the
+  /// reader with the old text and no notice at all.
   Future<void> openScriptSettings() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -298,7 +303,16 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     if (!mounted || target == script) return;
     script = target;
     processing?.script = target;
-    await _render(index, offset);
+    try {
+      await _render(index, offset);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = '中文转换失败：$e';
+        });
+      }
+    }
   }
 
   Future<void> chooseChapter() async {

@@ -135,6 +135,14 @@ class LocalReader {
   String? _error;
   bool _busy = true;
 
+  /// True from [open]'s first line until it settles, so [applyScript] never
+  /// starts a second materialisation under an open that is still running.
+  ///
+  /// It is its own flag rather than a guard on [_busy]: that field starts `true`,
+  /// and the page's legitimate call *before* [open] (it resolves the script and
+  /// hands it over first) has to get through.
+  bool _opening = false;
+
   _ReaderUnit? _unit;
   int _pageStart = 0;
   String _page = '';
@@ -193,6 +201,7 @@ class LocalReader {
   /// says it is — the file is indexed again, and the record is restored against
   /// the file as it is now.
   Future<void> open() async {
+    _opening = true;
     _busy = true;
     _error = null;
     try {
@@ -276,6 +285,7 @@ class LocalReader {
       _error = '$error';
     } finally {
       _busy = false;
+      _opening = false;
     }
   }
 
@@ -359,9 +369,12 @@ class LocalReader {
   /// In the file's own text the page is re-rendered from the window the reader
   /// already holds; in processed mode the unit the position falls in is run
   /// through the one text entry again, because that entry is what converts
-  /// there. A book that is still opening ignores the call — [open] resolves the
-  /// script it opens with.
+  /// there. A book that is still opening ignores the call ([_opening]): the two
+  /// materialisations would interleave `_unit` and `_pageStart`, and this
+  /// method's `finally` would clear `_busy` under the open. The book opens with
+  /// the script it was already given.
   Future<void> applyScript(ConvertTarget? target) async {
+    if (_opening) return;
     processing?.script = target;
     if (script == target) return;
     script = target;
