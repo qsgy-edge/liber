@@ -110,7 +110,27 @@ List<Map<String, dynamic>> seedSources() => [
   _source(exactSourceRef, '回放精确源'),
   _source(nearSourceRef, '回放近似源'),
   _source(currentSourceRef, '回放当前源'),
+  _pagedSource(),
 ];
+
+/// The fixture's fourth source, added by the batch-13 controller for the driven
+/// reviews of #27 (a chapter body to convert) and #66 (a page-chained TOC whose
+/// `nextTocUrl` matches two items at once and carries a `##` field, which the
+/// frozen list read applies **per item**). Its book is a different one, so the
+/// #40 candidate flow's four rows are unchanged.
+const pagedSourceRef = '$seedOrigin/pages';
+
+Map<String, dynamic> _pagedSource() => <String, dynamic>{
+  ..._source(pagedSourceRef, '回放分页源'),
+  'ruleToc': {
+    'chapterList': '.chapters li a',
+    'chapterName': 'text',
+    'chapterUrl': 'href',
+    // Two matches, and an anchored replacement that prefixes each: page 3 is
+    // only reachable when the `##` field runs on every item (ticket #66).
+    'nextTocUrl': '.pages a@href##^##/pages/book/1/toc/',
+  },
+};
 
 Map<String, dynamic> _source(String sourceRef, String name) {
   final slug = sourceRef.substring(seedOrigin.length + 1);
@@ -192,17 +212,32 @@ const _nearSearchItems = <(String, String)>[('凡人修仙传', '忘语著')];
 
 const _currentSearchItems = <(String, String)>[('凡人修仙传', '其他作者')];
 
+/// The chapters the paged fixture source reaches over its three TOC pages.
+const _pagedChapterNames = <String>[
+  '第一章 分页一',
+  '第二章 分页一',
+  '第三章 分页二',
+  '第四章 分页二',
+  '第五章 分页三',
+];
+
 List<String> _chapterNames(String slug) => switch (slug) {
   'exact' => exactChapterNames,
   'near' => _nearChapterNames,
+  'pages' => _pagedChapterNames,
   _ => currentChapterNames,
 };
 
 List<(String, String)> _searchItems(String slug) => switch (slug) {
   'exact' => _exactSearchItems,
   'near' => _nearSearchItems,
+  'pages' => _pagedSearchItems,
   _ => _currentSearchItems,
 };
+
+/// The paged source's own book: never the shelf's, so the #40 flow's candidate
+/// list is exactly the four rows it was.
+const _pagedSearchItems = <(String, String)>[('分页测试书', '测试作者')];
 
 String _searchPage(String slug) {
   final items = [
@@ -227,6 +262,7 @@ String _detailPage(String slug) {
 }
 
 String _tocPage(String slug) {
+  if (slug == 'pages') return _pagedTocPage(1);
   final items = [
     for (var i = 0; i < _chapterNames(slug).length; i++)
       '<li><a href="/$slug/book/1/chapter/$i">${_chapterNames(slug)[i]}</a></li>',
@@ -234,12 +270,43 @@ String _tocPage(String slug) {
   return '<html><body><ul class="chapters">\n$items\n</ul></body></html>';
 }
 
+/// One TOC page of the paged source. Page 1 declares the next two pages as a
+/// list of relative addresses; only pages 1 and 2 carry a `.pages` block, so the
+/// walk stops after page 3.
+String _pagedTocPage(int page) {
+  final indexes = switch (page) {
+    1 => const <int>[0, 1],
+    2 => const <int>[2, 3],
+    _ => const <int>[4],
+  };
+  final items = [
+    for (final index in indexes)
+      '<li><a href="/pages/book/1/chapter/$index">'
+          '${_pagedChapterNames[index]}</a></li>',
+  ].join('\n');
+  final more = page == 1
+      ? '<div class="pages"><a href="2">下一批</a><a href="3">再下一批</a></div>'
+      : '';
+  return '<html><body><ul class="chapters">\n$items\n</ul>$more</body></html>';
+}
+
+/// One chapter's body. The text is Simplified on purpose: the conversion
+/// setting is what a driven run watches it change to Traditional with.
+String _chapterPage(String slug, int index) {
+  final name = _chapterNames(slug)[index];
+  return '<html><body><div class="content">$name 的正文。他说这门功法很难练，'
+      '练成之后就能御剑飞行，飞剑会随着心念变化。故事继续：他从山下走来，'
+      '看见远处有一条大河，河水很冷，鱼也很多。</div></body></html>';
+}
+
 /// The one response for one path, or null when the fixture declares none.
 String? _pageFor(Uri uri) {
   final segments = uri.pathSegments;
   if (segments.isEmpty) return null;
   final slug = segments.first;
-  if (!const ['exact', 'near', 'current'].contains(slug)) return null;
+  if (!const ['exact', 'near', 'current', 'pages'].contains(slug)) {
+    return null;
+  }
   if (segments.length == 2 && segments[1] == 'search') {
     return _searchPage(slug);
   }
@@ -251,6 +318,23 @@ String? _pageFor(Uri uri) {
       segments[2] == '1' &&
       segments[3] == 'toc') {
     return _tocPage(slug);
+  }
+  if (segments.length == 5 &&
+      segments[1] == 'book' &&
+      segments[2] == '1' &&
+      segments[3] == 'toc') {
+    final page = int.tryParse(segments[4]);
+    return page == null ? null : _pagedTocPage(page);
+  }
+  if (segments.length == 5 &&
+      segments[1] == 'book' &&
+      segments[2] == '1' &&
+      segments[3] == 'chapter') {
+    final index = int.tryParse(segments[4]);
+    if (index == null || index < 0 || index >= _chapterNames(slug).length) {
+      return null;
+    }
+    return _chapterPage(slug, index);
   }
   return null;
 }
