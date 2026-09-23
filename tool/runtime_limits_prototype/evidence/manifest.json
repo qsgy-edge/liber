@@ -2,18 +2,11 @@
   "status": "pass",
   "platform": "windows",
   "scope": "windows only; every other platform stays not-run until this file runs there",
-  "recordedAt": "2026-09-17T01:00:02+0800",
-  "repositoryHead": "1795443cd9308fd61b5dffafb8142ea3c4a16412",
+  "recordedAt": "2026-09-23T23:27:08+0800",
+  "repositoryHead": "4fef34f62444396f4d83a0fcbd41cc3f2659aa10",
   "repositoryBranch": "master",
   "uncommittedChanges": [
-    "M drift_schemas/drift_schema_v3.json",
-    " M lib/store/database.g.dart",
-    " M lib/store/schema_versions.dart",
-    " M test/generated_migrations/schema.dart",
-    " M test/generated_migrations/schema_v1.dart",
-    " M test/generated_migrations/schema_v2.dart",
-    " M test/generated_migrations/schema_v3.dart",
-    " M tool/runtime_limits_prototype/evidence/gates.log",
+    "M tool/runtime_limits_prototype/evidence/gates.log",
     " M tool/runtime_limits_prototype/evidence/windows-native.json",
     " M tool/runtime_limits_prototype/evidence/windows-product.json",
     " M tool/runtime_limits_prototype/evidence/windows-quantum.json"
@@ -21,20 +14,20 @@
   "libraries": {
     "release": {
       "path": "D:\\GithubRepositories\\Flutter\\liber\\packages\\fjs\\libfjs\\target\\release\\fjs.dll",
-      "sha256": "50f3eb77efc716f4063c88179243b35b413c69a2ee57056207fd1e8bd464d1d4",
-      "bytes": 20070912,
-      "mtime": "2026-09-16T22:01:07"
+      "sha256": "6d96d8a2d11282dcc903ca7914caced038cf5615f4786442717968892d561bda",
+      "bytes": 20116480,
+      "mtime": "2026-09-23T22:14:33"
     },
     "gates": {
       "path": "D:\\GithubRepositories\\Flutter\\liber\\build\\windows\\x64\\runner\\Debug\\fjs.dll",
-      "sha256": "1def19b352a9f26c18d018b6cddefab7ebe39eb34ec7cb99afbbfe2f6b175cc0",
-      "bytes": 51896320,
-      "mtime": "2026-09-16T21:51:32"
+      "sha256": "6f3b297eaa9a31869e26e34efe8a5c3124194a35a5ae1f4d6f9cc81d7a450a7d",
+      "bytes": 52139008,
+      "mtime": "2026-09-23T22:10:40"
     }
   },
   "nativeProbe": {
     "path": "C:\\Users\\17945\\AppData\\Local\\Temp\\liber-runtime-limits-prototype\\native_probe.exe",
-    "sha256": "2074f5d7026792baaa409c860ada75be7594587325b506b06d9cfcd1ce43f323"
+    "sha256": "6d8801cfe0f8f2282218015249c06f957fd78c2296190a381323acc8bfde4f0b"
   },
   "engines": {
     "quickjs": "QuickJS 0.15.1 (pinned vendored sources)",
@@ -141,152 +134,152 @@
   "evidenceHashes": [
     {
       "path": "tool/runtime_limits_prototype/evidence/manifest.json",
-      "sha256": "ccf2aa3f908319829b08d9a7cf399394d93316986a0b25f731b3d29a8d6a91a5"
+      "sha256": "6c762b6afa816849de1d3e88572b979492f388c658907b6793198c4543d5eaba"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-native.json",
-      "sha256": "2a7ad7cc61590e8c70ab5a9d8bb3b891ca3757e34d88d888a10bb7c05fa61986"
+      "sha256": "893dde4a34d02f3232db805fbd553bd6a085068f95cb3c91e20c1b925372997f"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-product.json",
-      "sha256": "df96781b5bc54fd25a13f64d1d329f7f13085d9284a115d67b11614124208c25"
+      "sha256": "197fbee17774093a0204ec5568b5e62d4040f06f73269fd4b4e9323dce197953"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/windows-quantum.json",
-      "sha256": "fe1c0fc7ed230b46dd644713c0fdc2e97e81e00be6110a384230e6925eb4ffa2"
+      "sha256": "3655fee533e3ee160e1d062da829065399dcd86de62ef8aa04915dec3484d859"
     },
     {
       "path": "tool/runtime_limits_prototype/evidence/gates.log",
-      "sha256": "d4b39ac88aac21b9eebe5dbdd6423b64d1055e85f42ee0104bd3fc136133377f"
+      "sha256": "d0977fb358aeecfe21bb130c12d9c870fad2d0e9dd196fce52f3340148f144f5"
     }
   ],
   "gates": {
     "runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.645
+      "seconds": 7.022
     },
     "runtime_host_integration": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.54
+      "seconds": 9.459
     },
     "host_surface_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.818
+      "seconds": 11.006
     },
     "broker_lifecycle_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.229
+      "seconds": 4.449
     },
     "broker_loader_regression": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 2.898
+      "seconds": 2.899
     },
     "scoped_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 7.032
+      "seconds": 8.511
     },
     "nested_runtime_gate": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 5.063
+      "seconds": 6.251
     },
     "html-adapter": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 5.191
+      "seconds": 5.611
     },
     "broker_gate_regression-queued-close": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.664
+      "seconds": 2.932
     },
     "broker_gate_regression-throw-start": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.182
+      "seconds": 2.817
     },
     "broker_gate_regression-throw-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.108
+      "seconds": 2.912
     },
     "broker_gate_regression-same-runtime-nested": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.193
+      "seconds": 2.96
     },
     "broker_gate_regression-same-runtime-queued-release": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 3.217
+      "seconds": 2.86
     },
     "broker_gate_regression-same-runtime-cancel": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.667
+      "seconds": 4.747
     },
     "state-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 5.782
+      "seconds": 6.62
     },
     "nested-differential": {
       "exitCode": 0,
       "timedOut": false,
-      "seconds": 4.194
+      "seconds": 4.11
     }
   },
   "findings": {
     "heapLimitEnforced": true,
     "deadlineInterruptsInterpreterWork": true,
     "deadlineIsHardBound": false,
-    "deadlineHeavyLoopBodyOvershootMs": 381.6,
-    "deadlineOomRetryOvershootMs": 22001.1,
-    "deadlineSingleNativeCallMeasuredMs": 213.8,
+    "deadlineHeavyLoopBodyOvershootMs": 255.2,
+    "deadlineOomRetryOvershootMs": 19098.8,
+    "deadlineSingleNativeCallMeasuredMs": 152.1,
     "deadlineSingleNativeCallInterrupted": false,
     "quantumSensitivity": {
       "10000": {
-        "heavyLoopWorstOvershootMs": 587.22,
-        "allocationLoopWorstOvershootMs": 92.61,
-        "oomRetryWorstOvershootMs": 1983.0,
-        "throughputLoopFastestMs": 1038.28,
-        "throughputOnlyFastestMs": 1043.28
+        "heavyLoopWorstOvershootMs": 392.66,
+        "allocationLoopWorstOvershootMs": 61.86,
+        "oomRetryWorstOvershootMs": 1724.61,
+        "throughputLoopFastestMs": 876.19,
+        "throughputOnlyFastestMs": 865.91
       },
       "1000": {
-        "heavyLoopWorstOvershootMs": 33.74,
-        "allocationLoopWorstOvershootMs": 27.79,
-        "oomRetryWorstOvershootMs": 256.25,
-        "throughputLoopFastestMs": 1089.18,
-        "throughputOnlyFastestMs": 1059.64
+        "heavyLoopWorstOvershootMs": 30.88,
+        "allocationLoopWorstOvershootMs": 16.61,
+        "oomRetryWorstOvershootMs": 121.07,
+        "throughputLoopFastestMs": 1451.14,
+        "throughputOnlyFastestMs": 1463.91
       },
       "256": {
-        "heavyLoopWorstOvershootMs": 12.75,
-        "allocationLoopWorstOvershootMs": 11.95,
-        "oomRetryWorstOvershootMs": 64.08,
-        "throughputLoopFastestMs": 1077.16,
-        "throughputOnlyFastestMs": 1060.75
+        "heavyLoopWorstOvershootMs": 3.97,
+        "allocationLoopWorstOvershootMs": 16.34,
+        "oomRetryWorstOvershootMs": 91.21,
+        "throughputLoopFastestMs": 1558.74,
+        "throughputOnlyFastestMs": 1579.14
       }
     }
   },
   "measured": {
     "productDeadlineBasicOvershootMs": [
-      5.1200000000000045,
-      1.1059999999999945,
-      0.7810000000000059
+      21.024,
+      1.8810000000000002,
+      1.7320000000000277
     ],
-    "productHeavyLoopOvershootMs": 32.21199999999999,
-    "productSingleNativeCallMeasuredMs": 882.638,
-    "productOomRetryOvershootMs": 38.875999999999976,
-    "productHostCallOvershootMs": 50.077,
-    "productIsolateBlockedMeasuredMs": 445.916,
-    "productIsolateBlockedElapsedAfterUnblockMs": 3.771,
-    "productRssGrowthOverHeapLimitBytes": -1802240
+    "productHeavyLoopOvershootMs": 58.81099999999998,
+    "productSingleNativeCallMeasuredMs": 1369.831,
+    "productOomRetryOvershootMs": 86.31299999999999,
+    "productHostCallOvershootMs": 74.03800000000001,
+    "productIsolateBlockedMeasuredMs": 447.17,
+    "productIsolateBlockedElapsedAfterUnblockMs": 5.213,
+    "productRssGrowthOverHeapLimitBytes": 100343808
   },
   "failures": []
 }

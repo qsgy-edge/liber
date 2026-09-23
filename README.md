@@ -158,6 +158,20 @@ entered with that source selected), a caret position (`保存位置` writes the
 cursor's offset, which the driver does not move), and any judgement about how
 the screen looks.
 
+Three driver mechanics cost a session before they are known. A `tap` matches
+with `hitTestable()`, so a target below the fold is never tappable and the
+command hangs until its timeout — `scrollIntoView` it first, and the same tap
+returns at once. A wait whose target is *absent* needs a new frame
+(`_waitUntilFrame` re-arms through `addPostFrameCallback`), and an idle app
+produces none, so it too hangs; a dialog nobody has answered is exactly that
+case, and the app's own log records
+`FlutterDriverExtension: Timeout while executing …`. Waits whose target is
+already present return immediately, so probe with something you know exists.
+And a `PrintWindow` capture can come back stale or partially composited — two
+captures taken minutes apart can carry identical bytes — so read layout from
+the widget inspector (`widget_inspector` → `get_widget_tree`, which needs no
+frame) or from a widget test, and treat a capture as evidence of content only.
+
 A driven review is recorded like any other executed evidence: the exact strings
 and rows the app showed, the database rows behind them, and the commands that
 produced them.
