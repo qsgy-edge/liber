@@ -18,6 +18,7 @@ class HtmlSourceBrowser extends StatefulWidget {
     required this.keyword,
     required this.service,
     this.resume,
+    this.directBook,
     this.pipeline,
     this.transport,
   });
@@ -29,6 +30,9 @@ class HtmlSourceBrowser extends StatefulWidget {
 
   /// The shelf book this browser was opened from, when it was.
   final ShelfEntry? resume;
+
+  /// A pasted book URL opens the detail/TOC stage without a search request.
+  final HtmlBook? directBook;
 
   /// The pipeline this page runs its first analysis on, when the caller built
   /// one (the shelf hands its own over). Otherwise the page builds a pipeline
@@ -58,7 +62,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   HtmlBook? selected;
   List<SourceChapter> chapters = [];
   bool busy = true;
-  String status = '正在搜索';
+  String status = '正在读取';
   String? error;
 
   String get sourceUrl => '${widget.source['bookSourceUrl'] ?? ''}';
@@ -154,7 +158,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           index = fallback;
         }
         await read(index, entry.textOffset);
+      } else if (widget.directBook case final hit?) {
+        await _details(hit);
       } else {
+        setState(() => status = '正在搜索');
         final output = await _withTls(() => pipeline.search(widget.keyword));
         if (mounted) {
           setState(() {

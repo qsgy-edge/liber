@@ -7,6 +7,7 @@ import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'html_source_browser.dart';
 import 'http_source_transport.dart';
+import 'java_regex.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
@@ -39,6 +40,15 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   List<ShelfEntry> books = const <ShelfEntry>[];
   bool loading = true;
   String? busyId, error;
+  final _bookUrl = TextEditingController();
+  bool matchingUrl = false;
+  String? urlResult;
+
+  @override
+  void dispose() {
+    _bookUrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -102,6 +112,99 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     if (mounted) await reload();
   }
 
+  Future<void> openUrl() async {
+    if (matchingUrl) return;
+    final text = _bookUrl.text.trim();
+    final url = Uri.tryParse(text);
+    if (url == null ||
+        !url.hasAuthority ||
+        (url.scheme != 'http' && url.scheme != 'https')) {
+      setState(() => urlResult = '请输入有效的 http(s) 书籍链接');
+      return;
+    }
+    setState(() {
+      matchingUrl = true;
+      urlResult = null;
+    });
+    try {
+      final matches = <ImportedBookSource>[];
+      final failures = <String>[];
+      for (final source in await widget.service.sources()) {
+        final pattern = '${source.data['bookUrlPattern'] ?? ''}';
+        if (pattern.isEmpty) continue;
+        try {
+          if (javaMatchesWhole(pattern, text, label: 'bookUrlPattern')) {
+            matches.add(source);
+          }
+        } on UnsupportedError catch (e) {
+          failures.add('${source.data['bookSourceName'] ?? source.id}：$e');
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        matchingUrl = false;
+        urlResult = [if (matches.isEmpty) '没有匹配此链接的书源', ...failures].join('\n');
+      });
+      if (matches.isEmpty) return;
+      final ImportedBookSource? chosen;
+      if (matches.length == 1) {
+        chosen = matches.single;
+      } else {
+        chosen = await showDialog<ImportedBookSource>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('选择书源'),
+            content: SizedBox(
+              width: (MediaQuery.sizeOf(dialogContext).width - 80).clamp(
+                0.0,
+                360.0,
+              ),
+              height: (80.0 * matches.length +
+                      (failures.isEmpty ? 0.0 : 120.0))
+                  .clamp(0.0, MediaQuery.sizeOf(dialogContext).height * 0.6),
+              child: ListView(
+                children: [
+                  for (final source in matches)
+                    ListTile(
+                      title: Text(
+                        '${source.data['bookSourceName'] ?? source.id}',
+                      ),
+                      subtitle: Text(source.id),
+                      onTap: () => Navigator.pop(dialogContext, source),
+                    ),
+                  if (failures.isNotEmpty) Text(failures.join('\n')),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (!mounted || chosen == null) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => HtmlSourceBrowser(
+            source: chosen!.data,
+            keyword: '',
+            directBook: HtmlBook(url: url, title: ''),
+            service: widget.service,
+            transport: widget.transport,
+          ),
+        ),
+      );
+      if (mounted) await reload();
+    } catch (e) {
+      if (mounted) setState(() => urlResult = '打开链接失败：$e');
+    } finally {
+      if (mounted) setState(() => matchingUrl = false);
+    }
+  }
+
   /// Shows a source's rate-limited `toast`/`longToast` notice on this widget's
   /// messenger; a disposed widget drops it silently.
   void _showHostNotice(SourceHostMessage message) {
@@ -149,6 +252,39 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text('在线书架', style: Theme.of(context).textTheme.titleLarge),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _bookUrl,
+                decoration: const InputDecoration(
+                  labelText: '书籍链接',
+                  prefixIcon: Icon(Icons.link),
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.url,
+                onSubmitted: (_) => openUrl(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              tooltip: '打开书籍链接',
+              onPressed: matchingUrl ? null : openUrl,
+              icon: matchingUrl
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_forward),
+            ),
+          ],
+        ),
+      ),
+      if (urlResult != null && urlResult!.isNotEmpty)
+        Text(urlResult!, style: Theme.of(context).textTheme.bodySmall),
       if (loading) const LinearProgressIndicator(),
       if (error != null)
         Row(
