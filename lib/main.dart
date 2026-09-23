@@ -17,6 +17,7 @@ import 'source/source_login.dart';
 import 'source/source_login_dialog.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
+import 'source/precise_search_page.dart';
 import 'store/legacy_import.dart';
 import 'store/local_library.dart';
 import 'store/shelf.dart';
@@ -491,7 +492,24 @@ class _LiberHomePageState extends State<LiberHomePage> {
 
     return Scaffold(
       appBar: AppBar(
+        // #40 entry region: the app bar's actions. `精确搜索` is the
+        // multi-source search entry (`PreciseSearchPage`); the page reads the
+        // space's sources itself, so this hunk needs nothing but the shelf.
         actions: [
+          TextButton.icon(
+            onPressed: shelf == null
+                ? null
+                : () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => PreciseSearchPage(service: shelf),
+                      ),
+                    );
+                    if (mounted) setState(() => _onlineRevision++);
+                  },
+            icon: const Icon(Icons.manage_search),
+            label: const Text('精确搜索'),
+          ),
           TextButton.icon(
             onPressed: shelf == null
                 ? null
