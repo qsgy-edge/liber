@@ -9,6 +9,7 @@ import 'html_source_browser.dart';
 import 'http_source_transport.dart';
 import 'java_regex.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
+import 'precise_search_page.dart';
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
 
@@ -214,6 +215,21 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   }
 
   Future<void> action(String action, ShelfEntry entry) async {
+    // 换源 is not a write on its own: the page it opens searches, and
+    // `ShelfService.switchSource` writes when a candidate is picked.
+    if (action == 'switch') {
+      final switched = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PreciseSearchPage(
+            service: widget.service,
+            switchBook: entry,
+            transport: widget.transport,
+          ),
+        ),
+      );
+      if (mounted && switched == true) await reload();
+      return;
+    }
     setState(() {
       busyId = entry.id;
       error = null;
@@ -332,6 +348,8 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                         value: 'refresh',
                         child: Text('更新目录'),
                       ),
+                    if (!entry.sourceMissing)
+                      const PopupMenuItem(value: 'switch', child: Text('换源')),
                     const PopupMenuItem(
                       value: 'remove',
                       child: Text('移出书架（保留进度）'),

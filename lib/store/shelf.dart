@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
 
+import '../source/chapter_position.dart';
 import '../source/html_source_pipeline.dart';
 import '../source/json_source_pipeline.dart' show SourceChapter;
 import '../source/source_host_state.dart';
@@ -233,6 +234,106 @@ class ShelfService {
       ),
     );
     await store.putChapters(existing.id, _chapterRows(existing.id, chapters));
+  }
+
+  /// Moves a shelved network book onto another source's copy of the same book,
+  /// keeping the row the reader already has.
+  ///
+  /// [source] is the new Book Source as the space holds it (or as it arrived,
+  /// when the space does not hold it yet); [book] and [chapters] are what that
+  /// source's book-information and table-of-contents stages produced. The row
+  /// keeps its minted id — D2 mints one exactly so a source change does not
+  /// rewrite a book's identity, `docs/user-data-contract.md` D2 and the
+  /// migration contract's rule 3 — and its `bookOrder`, its `shelved` flag, its
+  /// custom title/cover/intro/tag, its group memberships, its per-book settings
+  /// and its `raw` all stay where they are. What changes is the source it
+  /// resolves, its denormalized origin name, the metadata the new source
+  /// answered with, the `chapters` rows, and the position.
+  ///
+  /// The position moves the way the frozen `Book.migrateTo` moves it
+  /// (`data/entities/Book.kt:341-358`, from `ReadBookViewModel.changeTo` and
+  /// `BookInfoViewModel.changeTo`): the old chapter's ordinal and title and the
+  /// old table of contents' size decide the new ordinal through
+  /// [mapChapterIndex], the text offset is carried verbatim (the frozen
+  /// `durChapterPos`), and the row's timestamp is left alone (the frozen carries
+  /// `durChapterTime` and writes nothing of its own). A book that was never read
+  /// has no position row and gets none: merely switching a source does not
+  /// invent a position (D4).
+  ///
+  /// The frozen flow instead *deletes* the old row and inserts a new one, because
+  /// its primary key is the book URL; what it carries by hand — group, order,
+  /// custom cover/intro/tag, `canUpdate`, the reading config — survives here by
+  /// construction. Its `Book.durChapterTitle` still has no column (the migration
+  /// contract's family 10 records that gap): the shelf shows the new table of
+  /// contents' own chapter name, which is what [ShelfEntry.chapterName] reads.
+  ///
+  /// A switch to a source that already holds this book as another row is refused
+  /// rather than merged: `(name, author)` is only ever a hint in this product
+  /// (D2), and the frozen's answer to the same situation is a `REPLACE` that
+  /// silently drops one of the two rows (the migration contract's rule 3 records
+  /// that the baseline "can overwrite a shelf entry and its progress").
+  Future<ShelfEntry> switchSource(
+    String bookId,
+    Map<String, dynamic> source,
+    HtmlBook book,
+    List<SourceChapter> chapters,
+  ) async {
+    final existing = await store.bookById(bookId);
+    if (existing == null) throw StateError('书籍不存在：$bookId');
+    if (existing.kind != 'network') {
+      throw StateError('只有网络书籍可以换源：${existing.title}');
+    }
+    final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
+    if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
+    if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
+    final bookUrl = '${book.url}';
+    final oldChapters = await store.chaptersOf(bookId);
+    final progress = await store.progressOf(bookId);
+    final oldIndex = progress?.chapterIndex ?? 0;
+    final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
+        ? oldChapters[oldIndex].name
+        : null;
+    final newIndex = mapChapterIndex(
+      oldIndex: oldIndex,
+      oldTitle: oldTitle,
+      newTitles: [for (final chapter in chapters) chapter.name],
+      oldChapterCount: oldChapters.length,
+    );
+    await store.transaction(() async {
+      final existingSource = await store.sourceByUrl(sourceUrl);
+      final sourceRow = existingSource ?? await store.putSourceJson(source);
+      final clash = await store.bookByNaturalKey(sourceUrl, bookUrl);
+      if (clash != null && clash.id != bookId) {
+        throw StateError(
+          '该书籍已在书源“${sourceRow.name}”下：${clash.title}（$bookUrl）',
+        );
+      }
+      await store.putBook(
+        BooksCompanion(
+          id: Value(bookId),
+          sourceRef: Value(sourceRow.bookSourceUrl),
+          sourceBookUrl: Value(bookUrl),
+          originName: Value(sourceRow.name),
+          title: Value(book.title),
+          author: Value(book.author),
+          intro: Value(book.intro),
+          coverUrl: Value(book.cover),
+          latestChapterTitle: Value(book.lastChapter),
+        ),
+      );
+      await store.putChapters(bookId, _chapterRows(bookId, chapters));
+      if (progress != null) {
+        await store.putProgress(
+          ProgressCompanion(
+            bookId: Value(bookId),
+            chapterKey: Value(chapters[newIndex].storeKey),
+            chapterIndex: Value(newIndex),
+            textOffset: Value(progress.textOffset),
+          ),
+        );
+      }
+    });
+    return _entry((await store.bookById(bookId))!);
   }
 
   /// Takes a book off the shelf. Its chapters and its progress stay, so adding
