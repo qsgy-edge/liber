@@ -156,7 +156,10 @@ page whose content only exists after scripts run, and it is executed headlessly 
 #2 owns, sharing the session cookie jar with the HTTP path, with a fixed timeout and http(s) only.
 
 `java.startBrowser`, `startBrowserAwait`, `getVerificationCode` and `openUrl` require the user's confirmation,
-naming the source and the URL, and the source waits with a timeout and a cancel path. These members exist to
+naming the source and the URL, and the source waits with a timeout and a cancel path. The interaction has an
+absolute cap (five minutes, #32): the wait parks the source's execution and its deadline resumes when the user
+answers, so a source can neither hold a page open forever nor spend its own budget while a person is working.
+These members exist to
 hand a person a page or an input box and take the answer back — `SourceVerificationHelp.kt:29-58` parks the
 source's thread on the user's answer, with `startBrowser` showing the page (`:72-92`) and
 `getVerificationCode` an image dialog. Without a confirmation a source can phish: a page that looks like a
