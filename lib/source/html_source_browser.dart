@@ -138,6 +138,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                 SourceChapter.fromAddress(
                   chapter.name,
                   chapter.url ?? chapter.chapterKey,
+                  bookUrl: hit.url,
+                  chapterKey: chapter.chapterKey,
                 ),
             ];
             busy = false;
@@ -149,7 +151,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         final savedUrl = entry.chapterKey;
         var index = savedUrl.isEmpty
             ? entry.chapterIndex
-            : chapters.indexWhere((c) => '${c.url}' == savedUrl);
+            : chapters.indexWhere((c) => c.progressKey == savedUrl);
         if (index < 0 || index >= chapters.length) {
           final fallback = entry.chapterIndex;
           if (fallback < 0 || fallback >= chapters.length) {

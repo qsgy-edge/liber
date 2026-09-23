@@ -122,21 +122,23 @@ class JsonSourceRules {
     } else {
       result = part;
     }
-    return applyRuleReplacement(result, fields);
+    return result == null ? '' : applyRuleReplacement(result, fields);
   }
 
-  static String _mergedText(Object? value, String rule) {
+  static String? _mergedText(Object? value, String rule) {
     final parts = _splitMerge(rule);
-    if (parts == null) return _fieldText(value, rule) ?? '';
+    if (parts == null) return _fieldText(value, rule);
     final results = <String>[];
+    var matched = false;
     for (final part in parts.rules) {
-      final text = part.isEmpty ? '' : _mergedText(value, part);
-      if (text.isNotEmpty) {
+      final text = part.isEmpty ? null : _mergedText(value, part);
+      if (text != null) matched = true;
+      if (text != null && text.isNotEmpty) {
         results.add(text);
         if (parts.operator == '||') break;
       }
     }
-    return results.join('\n');
+    return matched ? results.join('\n') : null;
   }
 
   /// The text one path rule carries, the frozen `AnalyzeByJSonPath.getString`:

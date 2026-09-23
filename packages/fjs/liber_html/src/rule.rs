@@ -851,8 +851,12 @@ pub fn string_list(dom: &Dom, context: NodeId, rule: &str) -> Result<Vec<String>
 pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleError> {
     let source = SourceRule::parse(rule)?;
     let values = string_list(dom, context, rule)?;
+    // The frozen getStringList returns no values when extraction misses; there
+    // is no string on which its replacement can run.
+    if values.is_empty() {
+        return Ok(String::new());
+    }
     let joined = match values.len() {
-        0 => String::new(),
         1 => values[0].clone(),
         _ => values.join("\n"),
     };
@@ -931,6 +935,15 @@ mod tests {
         assert_eq!(list("#meta@data-id"), vec!["42"]);
         assert_eq!(list(".chapters a@href"), vec!["/ad", "/1"]);
         assert_eq!(text("#meta@text##^作者：##"), "忘语");
+    }
+
+    #[test]
+    fn unmatched_replacement_has_no_value_to_append_to() {
+        let dom = Dom::parse("<div class='body'>first</div>");
+        assert_eq!(
+            string(&dom, 0, "a.next@href##$##,{\"webView\":true}").unwrap(),
+            ""
+        );
     }
 
     #[test]

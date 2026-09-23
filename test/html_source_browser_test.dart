@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/store/database.dart';
+import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
@@ -226,6 +229,71 @@ void main() {
     expect(chapter.options.webView, isTrue, reason: '重启后选项仍在');
     expect(chapter.options.webViewDelayTime, 25);
   });
+
+  for (final address in [
+    '../chapter/1',
+    '../chapter/1,{"webView":true}',
+    'https://example.test/chapter/1',
+  ]) {
+    testWidgets('an imported chapter $address resolves for reading only', (
+      tester,
+    ) async {
+      final pipeline = ScriptedPipeline();
+      final home = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('liber-relative-chapter-'),
+      );
+      try {
+        await tester.runAsync(() async {
+          await File('${home!.path}/online_reading.json').writeAsString(
+            jsonEncode({
+              'version': 2,
+              'records': [
+                {
+                  'source': source,
+                  'book': {'url': '$bookUrl/1', 'title': '书'},
+                  'chapterUrl': address,
+                  'chapterName': '第一章',
+                  'textOffset': 0,
+                  'chapters': [
+                    {'name': '第一章', 'url': address},
+                  ],
+                  'shelved': true,
+                },
+              ],
+            }),
+          );
+          await LegacyImport(home: home).run(store);
+        });
+        final entry = (await shelf.find(sourceUrl, '$bookUrl/1'))!;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HtmlSourceBrowser(
+              source: source,
+              keyword: '',
+              pipeline: pipeline,
+              service: shelf,
+              resume: entry,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final chapter = tester
+            .widget<OnlineReaderPage>(find.byType(OnlineReaderPage))
+            .chapters
+            .single;
+        expect('${chapter.url}', 'https://example.test/chapter/1');
+        expect(chapter.address, address);
+        expect(chapter.options.webView, address.contains('webView'));
+        expect(entry.chapters.single.chapterKey, address);
+        expect(entry.chapters.single.url, address);
+        expect(pipeline.chapterCalls.single, 'https://example.test/chapter/1');
+        expect(chapter.progressKey, address);
+        expect((await store.progressOf(entry.id))!.chapterKey, address);
+      } finally {
+        await tester.runAsync(() => home!.delete(recursive: true));
+      }
+    });
+  }
 
   testWidgets(
     'disposing the browser leaves the pipeline its reader holds alone',
