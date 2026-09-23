@@ -517,6 +517,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'wordCount',
             'lastChapter',
             'updateTime',
+            'isVolume',
+            'isVip',
+            'isPay',
             'canReName',
             'downloadUrls',
             'init',
@@ -679,14 +682,26 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final catEye = toc['chapterUrl']!.contains(
       '@js:java.aesBase64DecodeToString',
     );
-    for (final entry in entries) {
+    for (var index = 0; index < entries.length; index++) {
+      final entry = entries[index];
+      // The frozen adds a chapter only when its title is non-empty
+      // (`BookChapterList.kt:244`), so an element the name rule matched nothing
+      // on is skipped instead of failing the whole TOC.
+      final name = await _optional(entry, toc['chapterName']!);
+      if (name.isEmpty) continue;
+      final tag = await _optional(entry, toc['updateTime'] ?? '');
+      final isVolume = sourceIsTrue(
+        await _optional(entry, toc['isVolume'] ?? ''),
+      );
+      final isVip = sourceIsTrue(await _optional(entry, toc['isVip'] ?? ''));
+      final isPay = sourceIsTrue(await _optional(entry, toc['isPay'] ?? ''));
       var chapterUrl = catEye
           ? (JsonSourceRules.extract(
                   entry,
                   RuleField.extractionText(toc['chapterUrl']!) ?? '',
                 )?.toString() ??
                 '')
-          : await _text(entry, toc['chapterUrl']!);
+          : await _optional(entry, toc['chapterUrl']!);
       if (catEye) {
         chapterUrl = aesBase64DecodeToString(
           chapterUrl,
@@ -694,14 +709,48 @@ class JsonSourcePipeline implements BookSourcePipeline {
           '0123456789abcdef',
         );
       }
-      final (resolved, _) = await _request(tocUrl, chapterUrl, _keyword);
-      chapters.add(
-        SourceChapter(
-          await _text(entry, toc['chapterName']!),
+      final SourceChapter chapter;
+      if (chapterUrl.isEmpty) {
+        // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
+        // volume takes the identity text `title + index`, every other chapter
+        // takes the TOC page's own address, which resolves to the page it was
+        // read from.
+        chapter = isVolume
+            ? SourceChapter.volume(
+                name,
+                index,
+                tocUrl: tocPage.url,
+                tag: tag.isEmpty ? null : tag,
+                isVip: isVip,
+                isPay: isPay,
+              )
+            : SourceChapter(
+                name,
+                tocPage.url,
+                rawAddress: tocAddress,
+                tag: tag.isEmpty ? null : tag,
+                isVip: isVip,
+                isPay: isPay,
+              );
+      } else {
+        final (resolved, _) = await _request(tocUrl, chapterUrl, _keyword);
+        chapter = SourceChapter(
+          name,
           resolved,
           rawAddress: chapterUrl,
-        ),
-      );
+          tag: tag.isEmpty ? null : tag,
+          isVolume: isVolume,
+          isVip: isVip,
+          isPay: isPay,
+        );
+      }
+      // A repeated chapter address is kept, as this path always has: the frozen
+      // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
+      // path refuses the repeat by name, but a JSON TOC that names one address
+      // twice has always produced both chapters here. Such a pair would name one
+      // row twice, which is a store-level limit (D4), not a rule decision taken
+      // at this point.
+      chapters.add(chapter);
     }
     if (chapters.isEmpty) throw StateError('Empty table of contents');
     return (book, chapters);
@@ -806,8 +855,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _validate();
     _page = null;
     _chapterTitle = chapter.name;
-    _activeHeaders = await _ensureHeaders();
+    // The frozen content stage checks for a content rule first
+    // (`WebBook.kt:303-306`), then answers a volume's `tag` without building a
+    // request (`:307-310`); the request's headers are read after both.
     final content = _rules('ruleContent', ['content']);
+    if (chapter.rendersTagAsContent) {
+      return HtmlChapterBody(chapter.tag ?? '', 0);
+    }
+    _activeHeaders = await _ensureHeaders();
     final contentPage = await _loginCheck(
       await _fetch(
         BookSourceStage.content,
@@ -909,6 +964,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
 /// `BookChapter.url` (`BookChapterList.kt:222`) — so the request that fetches
 /// the chapter can parse its options the way the frozen `AnalyzeUrl` does
 /// (`AnalyzeUrl.kt:214-222`).
+///
+/// [tag], [isVolume], [isVip] and [isPay] are the frozen `BookChapter` marker
+/// fields: `ruleToc.updateTime`/`isVolume`/`isVip`/`isPay` read through the
+/// frozen `String.isTrue()` (`BookChapterList.kt:219-253`).
 class SourceChapter {
   const SourceChapter(
     this.name,
@@ -916,7 +975,37 @@ class SourceChapter {
     this.rawAddress,
     this.storedKey,
     this.addressBase,
+    this.tag,
+    this.isVolume = false,
+    this.isVip = false,
+    this.isPay = false,
   });
+
+  /// A volume chapter whose URL rule produced nothing.
+  ///
+  /// The frozen substitutes the identity text `title + index` for the chapter's
+  /// URL (`BookChapterList.kt:229-243`) and never fetches it: `getAbsoluteURL()`
+  /// answers the TOC page's own URL for such a chapter
+  /// (`BookChapter.kt:143-149`) and the content stage answers its `tag`
+  /// (`WebBook.kt:307-310`). [tocUrl] is that TOC page URL, and the identity
+  /// text is the chapter's address, which is what [storeKey] and
+  /// [persistedAddress] keep.
+  factory SourceChapter.volume(
+    String title,
+    int index, {
+    required Uri tocUrl,
+    String? tag,
+    bool isVip = false,
+    bool isPay = false,
+  }) => SourceChapter(
+    title,
+    tocUrl,
+    rawAddress: '$title$index',
+    tag: tag,
+    isVolume: true,
+    isVip: isVip,
+    isPay: isPay,
+  );
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
   /// their owning book at fetch time; the raw address remains the store's key.
@@ -925,6 +1014,10 @@ class SourceChapter {
     String address, {
     Uri? bookUrl,
     String? chapterKey,
+    String? tag,
+    bool isVolume = false,
+    bool isVip = false,
+    bool isPay = false,
   }) {
     final target = sourceUrlTargetOf(address);
     return SourceChapter(
@@ -933,6 +1026,10 @@ class SourceChapter {
       rawAddress: address,
       storedKey: chapterKey,
       addressBase: bookUrl,
+      tag: tag,
+      isVolume: isVolume,
+      isVip: isVip,
+      isPay: isPay,
     );
   }
 
@@ -944,7 +1041,27 @@ class SourceChapter {
 
   /// Existing store identity; new TOC chapters still key by their resolved URL.
   final String? storedKey;
-  String get progressKey => storedKey ?? '$url';
+
+  /// The `ruleToc.updateTime` value (the frozen `BookChapter.tag`), null when
+  /// the source declares no such rule or the rule matched nothing.
+  final String? tag;
+
+  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  final bool isVolume;
+
+  /// A chapter the source marks as VIP (`ruleToc.isVip`).
+  final bool isVip;
+
+  /// A chapter the source marks as already paid for (`ruleToc.isPay`).
+  final bool isPay;
+
+  /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
+  /// resolved target, except a volume the rules left without a URL: it has no
+  /// page, so the frozen identity text is what the row keeps and what tells it
+  /// apart from its siblings on the same TOC page.
+  String get storeKey => rendersTagAsContent ? address : '$url';
+
+  String get progressKey => storedKey ?? storeKey;
 
   /// Base used to reanalyse a stored address via `java.initUrl()`.
   final Uri? addressBase;
@@ -966,7 +1083,20 @@ class SourceChapter {
   /// resolves it against the book's URL when it fetches the chapter; the options
   /// and the URL a request targets are the same either way, and a row written by
   /// [SourceChapter.fromAddress] keeps parsing to itself.
-  String get persistedAddress => '$url${sourceUrlOptionTailOf(address)}';
+  ///
+  /// A volume the rules left without a URL has no target to write absolute
+  /// (`rendersTagAsContent`): the frozen keeps the identity text
+  /// `title + index` as that chapter's whole state, so the row keeps it too and
+  /// the shortcut reads it again after a restart.
+  String get persistedAddress =>
+      rendersTagAsContent ? address : '$url${sourceUrlOptionTailOf(address)}';
+
+  /// The frozen `WebBook.getContentAwait` volume shortcut
+  /// (`WebBook.kt:307-310`): a volume chapter whose own URL text starts with its
+  /// title has no page behind it, so the chapter's `tag` is its content and
+  /// nothing is fetched. The empty-URL fallback (`BookChapterList.kt:229-243`)
+  /// writes exactly `title + index` into the URL, which is the shape this reads.
+  bool get rendersTagAsContent => isVolume && address.startsWith(name);
 }
 
 class SourceReadingResult {

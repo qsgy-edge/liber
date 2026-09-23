@@ -99,6 +99,9 @@ void main() {
         name: '第二章',
         url: '$sourceUrl/c2',
         chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
       ),
     ]);
     await shelf.saveProgress(

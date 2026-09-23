@@ -204,6 +204,15 @@ class LegacyImport {
   /// carrying the whole source object, the book, the chapters and the position.
   /// A file holding a single record without the envelope is the version this
   /// format replaced.
+  ///
+  /// A chapter of this file is `{name, url}`: the retired writer's
+  /// `OnlineReadingStore.save` wrote exactly those two fields and nothing else,
+  /// so an imported chapter carries the frozen `tag`/`isVolume`/`isVip`/`isPay`
+  /// markers only when a record actually has them. An old file has none to
+  /// carry — no data is lost, because the format could not express them — and
+  /// the chapter imports with the store's defaults. The Legado full backup is
+  /// the same on its own side: it holds no chapter table at all
+  /// (`legado_full_backup.dart`, rule 6).
   Future<_Counts> _importOnlineReading(
     SpaceStore store,
     int now,
@@ -270,6 +279,7 @@ class LegacyImport {
         final url = '${chapter['url'] ?? ''}';
         if (url.isEmpty) continue;
         indexes.putIfAbsent(url, () => rows.length);
+        final tag = _string(chapter['tag']);
         rows.add(
           BookChapter(
             bookId: id,
@@ -277,6 +287,10 @@ class LegacyImport {
             name: '${chapter['name'] ?? ''}',
             url: url,
             chapterIndex: rows.length,
+            tag: tag.isEmpty ? null : tag,
+            isVolume: chapter['isVolume'] == true,
+            isVip: chapter['isVip'] == true,
+            isPay: chapter['isPay'] == true,
           ),
         );
       }

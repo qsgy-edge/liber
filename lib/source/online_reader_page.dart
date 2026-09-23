@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../domain/contracts.dart' show SourceCancellation;
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
+import 'chapter_list_tile.dart';
 import 'content_processing.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
@@ -250,13 +251,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
             Expanded(
               child: ListView.builder(
                 itemCount: widget.chapters.length,
-                itemBuilder: (_, i) => ListTile(
+                itemBuilder: (_, i) => ChapterListTile(
+                  chapter: widget.chapters[i],
                   selected: i == index,
-                  // The frozen table-of-contents list replaces a title only when
-                  // `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`),
-                  // which defaults to false, so the raw titles are what the
-                  // frozen reader lists.
-                  title: Text(widget.chapters[i].name),
                   onTap: () => Navigator.pop(context, i),
                 ),
               ),

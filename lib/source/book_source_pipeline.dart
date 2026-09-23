@@ -39,6 +39,64 @@ String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
   return text.trim().isNotEmpty ? text : fallback;
 }
 
+/// Frozen `String?.isTrue()` (`StringExtensions.kt:74-79`): null, a blank value
+/// and the literal `null` are false, a value that trims to `false`, `no`, `not`
+/// or `0` (case-insensitively) is false, and every other value — `true`, `TRUE`,
+/// `1`, `是`, any other text — is true. The `ruleToc.isVolume`/`isVip`/`isPay`
+/// markers are read through it.
+///
+/// Blank and trim are Kotlin's `Char.isWhitespace()`, which on the JVM and on
+/// ART is `Character.isWhitespace(c) || Character.isSpaceChar(c)`: the ASCII
+/// controls Java counts (`0x09`–`0x0D`, `0x1C`–`0x1F`), every Unicode space
+/// separator (`0x20`, `0xA0`, `0x1680`, `0x2000`–`0x200A`, `0x202F`, `0x205F`,
+/// `0x3000`) and the line/paragraph separators `0x2028`/`0x2029`. So a
+/// non-breaking space or an ideographic space is blank and is trimmed — unlike
+/// Java's `String.trim()`, which stops at `0x20`, and unlike Dart's `trim()`,
+/// which also strips `0x85` and leaves `0x1C`–`0x1F` alone. The Unicode version
+/// behind that table is the runtime's, so a code point that changed category
+/// between versions (U+180E) is not covered by a claim here.
+bool sourceIsTrue(String? value) {
+  if (value == null || _sourceIsBlank(value) || value == 'null') return false;
+  return !RegExp(
+    r'^(false|no|not|0)$',
+    caseSensitive: false,
+  ).hasMatch(_sourceKotlinTrim(value));
+}
+
+/// Kotlin's `String.trim()`, which is `trim(Char::isWhitespace)`.
+String _sourceKotlinTrim(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && _sourceIsKotlinWhitespace(value.codeUnitAt(start))) {
+    start++;
+  }
+  while (end > start && _sourceIsKotlinWhitespace(value.codeUnitAt(end - 1))) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
+/// Kotlin's `isBlank()`: every code unit is `Char.isWhitespace()`.
+bool _sourceIsBlank(String value) =>
+    value.codeUnits.every(_sourceIsKotlinWhitespace);
+
+/// `Character.isWhitespace(c) || Character.isSpaceChar(c)`, the Kotlin
+/// `Char.isWhitespace()` predicate. The `isSpaceChar` half is the full Zs/Zl/Zp
+/// set, so the non-breaking spaces (`0xA0`, `0x2007` — inside `0x2000`–`0x200A`
+/// — and `0x202F`) are members, where Java's `isWhitespace` alone excludes them.
+bool _sourceIsKotlinWhitespace(int unit) =>
+    (unit >= 0x09 && unit <= 0x0D) ||
+    (unit >= 0x1C && unit <= 0x1F) ||
+    unit == 0x20 ||
+    unit == 0xA0 ||
+    unit == 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x200A) ||
+    unit == 0x2028 ||
+    unit == 0x2029 ||
+    unit == 0x202F ||
+    unit == 0x205F ||
+    unit == 0x3000;
+
 /// Frozen HtmlFormatter.format used for search and book-information intros.
 String formatSourceIntro(String value) => value
     .replaceAll(RegExp(r'(&nbsp;)+'), ' ')
