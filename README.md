@@ -96,6 +96,18 @@ flutter build windows --debug --no-pub          # writes build/windows/x64/runne
 python tool/ci_runtime.py windows x86_64-pc-windows-msvc
 ```
 
+The Darwin platforms (macOS, iOS) build through **CocoaPods**, not Swift Package
+Manager: `packages/fjs/darwin/fjs/Package.swift`'s SwiftPM target is a binary
+target that expects a pre-built `Binaries/fjs.xcframework.zip` (the upstream
+package downloads that from its own release), while this product builds every
+native platform from its vendored source — the `Podfile`'s script phase is that
+build for iOS and macOS, exactly as the Windows CMake and Android Gradle paths
+are. Flutter 3.44 enables SwiftPM by default and would otherwise inject it and
+fail at package resolution, so build those platforms with
+`FLUTTER_SWIFT_PACKAGE_MANAGER=false` (CI sets it for the whole job; a local
+shell needs `flutter config --no-enable-swift-package-manager` or the same
+variable).
+
 `tool/ci_runtime.py` is the same runner CI uses. It writes per-command logs and
 a manifest with the library hash, the script hashes, and every exit code, and it
 fails a command whose log contains the Dart VM crash marker even when the

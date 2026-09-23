@@ -60,6 +60,16 @@ jobs:
     # cases and a second gate sweep), and the mobile jobs now build the app. A
     # job timeout would kill those rows instead of recording them. (#68)
     timeout-minutes: 90
+    # The Darwin platforms build through CocoaPods, not Swift Package Manager:
+    # the vendored `fjs` package's SwiftPM target is a *binary* target that
+    # expects `Binaries/fjs.xcframework.zip`, which only exists once someone has
+    # built it (the upstream package downloads it from its own release), while
+    # this product builds every native platform from its vendored source. The
+    # Podfile's script phase is that build for iOS and macOS. Flutter 3.44
+    # enables SwiftPM by default and would otherwise inject it into the project
+    # and fail at package resolution. (#68)
+    env:
+      FLUTTER_SWIFT_PACKAGE_MANAGER: 'false'
     defaults:
       run:
         shell: bash
