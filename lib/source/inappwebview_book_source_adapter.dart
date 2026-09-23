@@ -7,6 +7,21 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'book_source_webview_adapter.dart';
 
+/// The cookies the platform's cookie store holds for [pageUrl], joined the way
+/// the frozen `CookieStore.setCookie` receives them.
+///
+/// Both the headless adapter's page-finished write and the visible confirmed
+/// page's use it: one spelling for what a finished page contributes to the
+/// source's own jar.
+Future<String> inAppWebViewPageCookies(String pageUrl) async {
+  final cookies = await CookieManager.instance().getCookies(
+    url: WebUri(pageUrl),
+  );
+  return cookies
+      .map((cookie) => '${cookie.name}=${cookie.value}')
+      .join('; ');
+}
+
 /// Installs the native adapter as the model layer's WebView binding.
 ///
 /// Called once by the application entry point (`lib/main.dart`) and by the
@@ -78,13 +93,7 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
   Future<void> _storePageCookies(String pageUrl) async {
     final sink = _scope.onPageCookies;
     if (sink == null || pageUrl.isEmpty) return;
-    final cookies = await CookieManager.instance().getCookies(
-      url: WebUri(pageUrl),
-    );
-    await sink(
-      pageUrl,
-      cookies.map((cookie) => '${cookie.name}=${cookie.value}').join('; '),
-    );
+    await sink(pageUrl, await inAppWebViewPageCookies(pageUrl));
   }
 
   Map<String, String> _webViewHeaders(SourceWebViewRequest request) =>

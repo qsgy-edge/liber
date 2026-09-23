@@ -296,16 +296,25 @@ class SourceHostDispatcher {
         ),
       );
       cancellation?.throwIfCancelled();
-      if (utf8
-              .encode(
-                jsonEncode({
-                  'headers': response.headers,
-                  'body': response.body,
-                  'url': '${response.url}',
-                }),
-              )
-              .length >
-          maxResponseBytes) {
+      // The 8 MiB response cap is measured on what this response actually is. A
+      // caller that asked for bytes gets the bytes that arrived (the transport
+      // already refuses a longer one at the same number): measuring the JSON
+      // escaping of a decoded body cannot carry them back and would reject an
+      // image the transport read inside the cap.
+      final bytes = response.bodyBytes;
+      final oversized = readBytes
+          ? (bytes?.length ?? 0) > maxResponseBytes
+          : utf8
+                    .encode(
+                      jsonEncode({
+                        'headers': response.headers,
+                        'body': response.body,
+                        'url': '${response.url}',
+                      }),
+                    )
+                    .length >
+                maxResponseBytes;
+      if (oversized) {
         throw const SourceIoLimitExceeded('response');
       }
       if (_enabledCookieJar) {

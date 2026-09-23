@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/inappwebview_source_hatch.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_hatch.dart';
+import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_rate_limiter.dart';
 
 import 'native_library.dart';
@@ -36,6 +40,10 @@ class _TestSurface implements SourceHatchSurface {
   /// the application's own surface does.
   final bool fetchesImage;
 
+  /// The cookie string the surface hands the source's jar for the confirmed
+  /// page, the write the visible page's page-finished hook makes.
+  String pageCookies = '';
+
   final requests = <SourceHatchRequest>[];
   final images = <SourceHatchImage>[];
   final stops = <SourceHatchStop>[];
@@ -51,6 +59,9 @@ class _TestSurface implements SourceHatchSurface {
     stops.add(stop);
     unawaited(stop.ended.then((_) => stopped = true));
     if (!entered.isCompleted) entered.complete();
+    if (pageCookies.isNotEmpty && request.onPageCookies != null) {
+      await request.onPageCookies!(request.url, pageCookies);
+    }
     if (fetchesImage && request.fetchImage != null) {
       images.add(await request.fetchImage!());
     }
@@ -70,6 +81,11 @@ class _Transport implements SourceHttpTransport, BookSourceTransport {
       '<div class="item"><h3><a href="/book/">书</a></h3></div>';
 
   final pages = <String, String>{};
+
+  /// The bytes an image request answers, when a caller wants a response whose
+  /// decoded text is not the same size as the bytes.
+  Uint8List? imageBytes;
+
   final requests = <SourceHttpRequest>[];
 
   String _body(String path) =>
@@ -84,16 +100,22 @@ class _Transport implements SourceHttpTransport, BookSourceTransport {
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
     requests.add(request);
+    final bytes = request.readBytes ? imageBytes : null;
     return SourceHttpResponse(
       statusCode: 200,
-      body: _body(request.url.path),
+      // A binary response's decoded text is the transport's own business; this
+      // fake answers the bytes as characters, which is what the escaping cap
+      // sees.
+      body: bytes == null
+          ? _body(request.url.path)
+          : String.fromCharCodes(bytes),
       url: request.url,
       headers: const {},
       // Only the verification-code image asks for bytes; the transport contract
       // answers them only then.
-      bodyBytes: request.readBytes
+      bodyBytes: bytes ?? (request.readBytes
           ? Uint8List.fromList(const [137, 80, 78, 71])
-          : null,
+          : null),
     );
   }
 }
@@ -301,6 +323,69 @@ void main() {
       expect(surface.requests.single.member, 'java.openUrl');
     });
 
+    test('the confirmed pages cookies reach the refetch', () async {
+      final surface = _TestSurface(answer: SourceHatchAnswer.answered(''))
+        ..pageCookies = 'sid=fromPage';
+      SourceHatchSurface.installed = surface;
+      final transport = _Transport();
+      final pipeline = HtmlSourcePipeline(
+        _source(
+          'tag.h3@tag.a@text@js:'
+          'java.startBrowserAwait("$_pageUrl", "t").body()',
+        ),
+        transport,
+      );
+
+      final hits = await pipeline.search('书');
+      expect(hits.single.title, 'refetched:/verify');
+      // The session the page established is the one the refetch carries: the
+      // frozen `WebViewActivity.onPageFinished` writes it into the source's own
+      // cookie store, and every later request reads that store.
+      expect(transport.requests.last.headers['Cookie'], 'sid=fromPage');
+    });
+
+    test('a hatch address with an option tail is normalized', () async {
+      final surface = _TestSurface(answer: SourceHatchAnswer.presented);
+      SourceHatchSurface.installed = surface;
+      final tail = ',${jsonEncode({
+        'headers': {'X-Tail': '1'},
+      })}';
+      final pipeline = HtmlSourcePipeline(
+        _source(
+          'tag.h3@tag.a@text@js:'
+          'java.startBrowser("$_pageUrl" + ${jsonEncode(tail)}, "标题"); '
+          '"shown"',
+        ),
+        _Transport(),
+      );
+
+      expect((await pipeline.search('书')).single.title, 'shown');
+      final asked = surface.requests.single;
+      // The page loads (and the confirmation names) the address before the tail,
+      // with the tail's own headers on the load — what the frozen `AnalyzeUrl`
+      // normalizes and what `WebViewActivity` uses.
+      expect(asked.url, _pageUrl);
+      expect(asked.headers['X-Tail'], '1');
+      expect(asked.headers['X-Contract'], 'yes');
+      expect(asked.headers['User-Agent'], isNotNull);
+    });
+
+    test('a hatch address keeps its query through the shaping', () async {
+      final surface = _TestSurface(answer: SourceHatchAnswer.presented);
+      SourceHatchSurface.installed = surface;
+      const url = 'http://source.test/verify?x=%E4%B9%A6&y=1';
+      final pipeline = HtmlSourcePipeline(
+        _source('tag.h3@tag.a@text@js:java.startBrowser("$url"); "ran"'),
+        _Transport(),
+      );
+
+      expect((await pipeline.search('书')).single.title, 'ran');
+      // The address the page loads is the script's own, query included: the
+      // shaping strips the option tail and merges its headers, and touches
+      // nothing else.
+      expect(surface.requests.single.url, url);
+    });
+
     test('cancelling the analysis ends a parked hatch', () async {
       final surface = _TestSurface(blocking: true);
       SourceHatchSurface.installed = surface;
@@ -448,6 +533,177 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('the park is taken for the hatch and released when it ends', () async {
+      final paused = <BigInt>[];
+      final resumed = <BigInt>[];
+      final surface = _TestSurface(
+        answer: SourceHatchAnswer.answered('1234'),
+        fetchesImage: true,
+      );
+      final runtime = InProcessSourceScriptRuntime(
+        hatchSurface: surface,
+        pauseDeadline: (id) async {
+          paused.add(id);
+          return true;
+        },
+        resumeDeadline: (id) async {
+          resumed.add(id);
+          return true;
+        },
+      );
+
+      expect(
+        await _run(runtime, 'java.getVerificationCode("$_codeUrl")'),
+        '1234',
+      );
+      // One park around the interaction, released when the wait is over: a park
+      // left behind would suspend the execution's deadline for good.
+      expect(paused, hasLength(1));
+      expect(resumed, paused);
+    });
+
+    test('a hatch for an execution that is already gone shows nothing', () async {
+      final surface = _TestSurface(answer: SourceHatchAnswer.answered('1234'));
+      var resumed = 0;
+      final runtime = InProcessSourceScriptRuntime(
+        hatchSurface: surface,
+        pauseDeadline: (id) async => false,
+        resumeDeadline: (id) async {
+          resumed++;
+          return false;
+        },
+      );
+
+      await expectLater(
+        _run(runtime, 'java.getVerificationCode("$_codeUrl")'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having(
+                (error) => error.message,
+                'message',
+                contains('执行已经结束'),
+              ),
+        ),
+      );
+      // Nothing was shown for it, and nothing was released: there was no park.
+      expect(surface.requests, isEmpty);
+      expect(surface.images, isEmpty);
+      expect(resumed, 0);
+    });
+
+    test('the image cap counts the bytes that arrived', () async {
+      // 40 NUL bytes are inside a 64-byte cap, but 240 characters once the
+      // response's text is JSON-escaped; the transport's own cap is on bytes.
+      final transport = _Transport()
+        ..imageBytes = Uint8List.fromList(List<int>.filled(40, 0));
+      final surface = _TestSurface(
+        answer: SourceHatchAnswer.answered('1234'),
+        fetchesImage: true,
+      );
+      final runtime = InProcessSourceScriptRuntime(
+        dispatcher: SourceHostDispatcher(
+          transport: transport,
+          maxResponseBytes: 64,
+        ),
+        hatchSurface: surface,
+      );
+      expect(
+        await _run(runtime, 'java.getVerificationCode("$_codeUrl")'),
+        '1234',
+      );
+      expect(surface.images.single.bytes, hasLength(40));
+
+      // The cap still bites when the bytes themselves exceed it: the image is
+      // the dialog's placeholder, and the member still takes the user's answer.
+      transport.imageBytes = Uint8List.fromList(List<int>.filled(80, 0));
+      final over = _TestSurface(
+        answer: SourceHatchAnswer.answered('5678'),
+        fetchesImage: true,
+      );
+      final capped = InProcessSourceScriptRuntime(
+        dispatcher: SourceHostDispatcher(
+          transport: transport,
+          maxResponseBytes: 64,
+        ),
+        hatchSurface: over,
+      );
+      expect(
+        await _run(capped, 'java.getVerificationCode("$_codeUrl")'),
+        '5678',
+      );
+      expect(over.images.single.bytes, isNull);
+      expect(over.images.single.failure, contains('cap'));
+    });
+  });
+
+  group('the visible surface', () {
+    /// One request to show: the kind does not matter for these rows, because
+    /// nothing may be shown at all.
+    SourceHatchRequest request({SourceHatchKind kind = SourceHatchKind.openUrl}) =>
+        SourceHatchRequest(
+          member: 'java.openUrl',
+          kind: kind,
+          sourceRef: 'http://source.test',
+          sourceName: '验证源',
+          url: _pageUrl,
+        );
+
+    Future<void> pumpApp(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: sourceHatchNavigatorKey,
+          home: const Scaffold(body: SizedBox()),
+        ),
+      );
+      await tester.pump();
+      addTearDown(() => sourceHatchNavigatorKey.currentState?.popUntil(
+        (route) => route.isFirst,
+      ));
+    }
+
+    testWidgets('a wait that has already ended shows nothing', (tester) async {
+      await pumpApp(tester);
+      final stop = SourceHatchStop()..end();
+      SourceHatchAnswer? answer;
+      // The surface is driven through pumps rather than by awaiting it: a row
+      // that awaited the call would sit on a dialog only the test's own frames
+      // can close.
+      unawaited(
+        InAppWebViewSourceHatch()
+            .interact(request(), stop)
+            .then((value) => answer = value),
+      );
+      await tester.pump();
+      // The confirmation included: a source that has stopped waiting is not
+      // still asking whether its page may be shown, so not even a dialog is
+      // built.
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.pump();
+      expect(find.byType(SourceHatchPage), findsNothing);
+      expect(answer?.outcome, SourceHatchOutcome.refused);
+    });
+
+    testWidgets('a stop while the confirmation is up refuses it', (tester) async {
+      await pumpApp(tester);
+      final stop = SourceHatchStop();
+      SourceHatchAnswer? answer;
+      unawaited(
+        InAppWebViewSourceHatch()
+            .interact(request(), stop)
+            .then((value) => answer = value),
+      );
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      stop.end();
+      await tester.pump();
+      await tester.pump();
+      expect(answer?.outcome, SourceHatchOutcome.refused);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(SourceHatchPage), findsNothing);
     });
   });
 }

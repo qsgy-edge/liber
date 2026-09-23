@@ -722,8 +722,14 @@ Future<void> main(List<String> args) async {
       final refused =
           failure?.category == 'policy' &&
           failure!.message.contains(member) &&
+          // The member exists and this process cannot serve it, so the reason
+          // names the policy; a deferral would be the wrong claim and must fail
+          // here rather than mislead a reader.
+          !failure.message.contains('deferred') &&
+          failure.message.contains('确认界面') &&
           logged.length == 1 &&
-          logged.single.message.contains(member);
+          logged.single.message.contains(member) &&
+          !logged.single.message.contains('deferred');
       if (!refused) hatchRefusals[member] = true;
     }
     checks['hatchesRefuseWithoutAConfirmationSurface'] = hatchRefusals.isEmpty;
@@ -793,6 +799,40 @@ Future<void> main(List<String> args) async {
           pageBody == '<html>页面</html>' &&
           !surface.requests.last.refetchAfterSuccess &&
           !requests.any((entry) => entry.contains('/page-only'));
+
+      // The confirmed page's cookies are the source's session: the frozen
+      // `WebViewActivity.onPageFinished` writes them into the source's store, so
+      // the refetch (and every later request of that source) carries them.
+      surface.answer = SourceHatchAnswer.answered('');
+      surface.pageCookies = 'sid=fromPage';
+      final cookieBody = await run(
+        'java.startBrowserAwait(${jsonEncode('$origin/echo')}, "t").body()',
+      );
+      checks['theConfirmedPagesCookiesReachTheRefetch'] =
+          cookieBody == 'sid=fromPage' &&
+          requests.last == 'GET /echo cookie=sid=fromPage';
+      surface.pageCookies = '';
+      await run(
+        'cookie.removeCookie(${jsonEncode(origin)})',
+        sourceKey: origin,
+      );
+
+      // The address the frozen loads and names is the shaped one: before the
+      // `,{…}` tail, with the tail's headers on the load.
+      surface.answer = SourceHatchAnswer.presented;
+      final tail =
+          ',${jsonEncode({
+            'headers': {'X-Tail': '1'},
+          })}';
+      final tailValue = await run(
+        'java.startBrowser(${jsonEncode('$origin/headers')} + '
+        '${jsonEncode(tail)}, "标题"); "ran"',
+      );
+      checks['aHatchAddressIsShapedBeforeThePageLoads'] =
+          tailValue == 'ran' &&
+          surface.requests.last.url == '$origin/headers' &&
+          surface.requests.last.headers['X-Tail'] == '1' &&
+          surface.requests.last.headers['X-Contract'] == 'yes';
 
       // A closed page is the frozen empty result, and a refused confirmation is
       // an explicit failure for the waiting members.
@@ -910,6 +950,11 @@ class GateHatchSurface implements SourceHatchSurface {
   final bool neverAnswers;
 
   SourceHatchAnswer answer = SourceHatchAnswer.refused;
+
+  /// What the confirmed page hands the source's jar, as the visible page's
+  /// page-finished hook does.
+  String pageCookies = '';
+
   final requests = <SourceHatchRequest>[];
   final images = <SourceHatchImage>[];
 
@@ -920,8 +965,11 @@ class GateHatchSurface implements SourceHatchSurface {
   ) async {
     requests.add(request);
     if (neverAnswers) return Completer<SourceHatchAnswer>().future;
-    // The image request happens only after the user agreed, as the
-    // application's own surface does it.
+    // The page's cookies and the image request happen only after the user
+    // agreed, as the application's own surface does them.
+    if (pageCookies.isNotEmpty && request.onPageCookies != null) {
+      await request.onPageCookies!(request.url, pageCookies);
+    }
     final fetch = request.fetchImage;
     if (fetch != null) images.add(await fetch());
     return answer;

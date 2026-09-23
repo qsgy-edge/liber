@@ -23,6 +23,11 @@ typedef SourceHostCall =
       SourceCancellation cancellation,
     );
 
+/// One hatch's park step: asks the Rust deadline clock to suspend one
+/// execution's deadline for as long as the user works, or to release it and
+/// give the parked budget back. `false` means the execution is gone.
+typedef SourceDeadlinePark = Future<bool> Function(BigInt executionId);
+
 /// One stage response as the pipeline reads it and as a source's `loginCheckJs`
 /// sees it.
 ///
@@ -228,7 +233,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.webViewFactory,
     this.hatchSurface,
     this.hatchWaitCap = sourceHatchWaitCap,
-  }) : _providedState = hostState;
+    SourceDeadlinePark? pauseDeadline,
+    SourceDeadlinePark? resumeDeadline,
+  }) : _providedState = hostState,
+       pauseDeadline = pauseDeadline ?? _pauseExecution,
+       resumeDeadline = resumeDeadline ?? _resumeExecution;
   final String jsLib;
 
   /// The installation's opaque `androidId` this runtime answers `java.androidId`
@@ -264,6 +273,18 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// The absolute cap on one hatch interaction. [sourceHatchWaitCap] in the
   /// product; a test shortens it so the cap's own outcome is observable.
   final Duration hatchWaitCap;
+
+  /// The park this runtime performs around one hatch interaction. The product
+  /// passes the Rust deadline clock's own functions; a test substitutes its own,
+  /// because the park's answer and its release are what it checks.
+  final SourceDeadlinePark pauseDeadline;
+  final SourceDeadlinePark resumeDeadline;
+
+  static Future<bool> _pauseExecution(BigInt id) =>
+      pauseScopedExecutionGlobal(id: id);
+
+  static Future<bool> _resumeExecution(BigInt id) =>
+      resumeScopedExecutionGlobal(id: id);
 
   /// The host surface this runtime reads and writes (ADR 0011 §3): what the
   /// caller passed, the dispatcher's when a transport is attached — the
@@ -796,24 +817,40 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       SourceHatchKind.waitingImage => 'java.getVerificationCode',
       SourceHatchKind.openUrl => 'java.openUrl',
     };
-    final surface = hatchSurface ?? SourceHatchSurface.installed;
-    final address = payload['url'];
-    if (address is! String || !_isHatchAddress(address)) {
-      // The address is the script's own input, so it is named as such whatever
-      // this process can show: only http(s) can be shown in the in-app page.
-      final message =
-          '$member 需要一个绝对的 http(s) 地址：${address is String ? address : ''}';
-      _record(SourceHostMessage('verification', message));
-      throw SourceScriptError('host-input', message);
+    final rawAddress = payload['url'];
+    if (rawAddress is! String ||
+        rawAddress.isEmpty ||
+        !_hatchAddressMayBecomeHttp(rawAddress)) {
+      // A named non-http(s) scheme (`file:`, `javascript:`) is refused before
+      // anything is expanded: the in-app page and the image request can only use
+      // http(s). A template or an `@js:` expression has no scheme yet and is
+      // checked again after the shaping below.
+      throw _refuseHatchAddress(member, rawAddress);
     }
+    // The address the frozen loads and names is the shaped one: the text before
+    // its `,{…}` tail, with the tail's own headers (`AnalyzeUrl.headerMap`), not
+    // the script's raw argument.
+    final shaped = await _shapeAnalyzeUrlRequest(
+      rawAddress,
+      requestId,
+      outerInput,
+      token,
+      member: member,
+    );
+    final address = shaped.url;
+    if (!_isHatchAddress(address)) {
+      throw _refuseHatchAddress(member, rawAddress);
+    }
+    final surface = hatchSurface ?? SourceHatchSurface.installed;
     if (surface == null) {
       // A process with no window (a gate, a tool, a unit test) has no
       // confirmation to ask, and asking is the whole policy: the member refuses
-      // by name, into the source log, instead of showing nothing silently.
-      throw _handleRefusal({
-        'member': member,
-        'policy': '需要用户确认后才能显示的页面或图片，此进程没有确认界面（ADR 0011 §4）',
-      });
+      // by name, into the source log, instead of showing nothing silently. It is
+      // implemented, so the reason names the policy and not a deferral.
+      throw _refuseMember(
+        member,
+        '$member 需要用户确认后才能显示页面或图片；此进程没有确认界面（ADR 0011 §4）',
+      );
     }
     final hostRef = host?.sourceRef ?? '';
     final sourceRef = hostRef.isNotEmpty
@@ -821,14 +858,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         : '${outerInput['sourceKey'] ?? ''}';
     final source = outerInput['source'];
     final sourceName = source is Map ? '${source['bookSourceName'] ?? ''}' : '';
-    final headers = await _headers(
-      outerInput,
-      requestId,
-      token,
-      // The confirmed page speaks with the source's session, as the frozen
-      // `WebViewActivity` loads it with `getHeaderMap(true)`.
-      hasLoginHeader: true,
-    );
     final request = SourceHatchRequest(
       member: member,
       kind: kind,
@@ -836,16 +865,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       sourceName: sourceName,
       url: address,
       title: '${payload['title'] ?? ''}',
-      headers: {
-        for (final entry in headers.entries)
-          if (entry.value != null) entry.key: entry.value!,
-      },
+      // The shaped request's header map: the source's own map with the login
+      // header and the tail's headers, which is what the frozen page load and
+      // the frozen image request carry.
+      headers: shaped.headers,
       refetchAfterSuccess: kind == SourceHatchKind.waitingPage
           ? payload['refetchAfterSuccess'] == true
           : false,
       fetchImage: kind == SourceHatchKind.waitingImage
-          ? () => _fetchHatchImage(address, requestId, outerInput, host, token)
+          ? () => _fetchHatchImage(address, shaped.headers, host, token)
           : null,
+      // The frozen `WebViewActivity.onPageFinished` writes what the visible page
+      // received back into the source's cookie store, which is what makes the
+      // session the user established reach the refetch and every later request.
+      onPageCookies: (pageUrl, cookies) =>
+          hostState.cookiesFor(sourceRef).set(pageUrl, cookies),
     );
     // The `openUrl` mime type only drives the frozen system-browser Intent
     // (`OpenUrlConfirmActivity`); this product has no external-opening path, so
@@ -886,7 +920,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         throw const SourceScriptError('verification', '验证结果为空');
       case SourceHatchOutcome.answered:
         final body = request.refetchAfterSuccess
-            ? await _refetchHatch(host, request, requestId, outerInput, token)
+            ? await _refetchHatch(host, shaped, token)
             : answer.text;
         if (body.trim().isEmpty) {
           _record(SourceHostMessage('verification', '$member：验证结果为空'));
@@ -902,15 +936,42 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
   }
 
-  /// Whether one hatch address is one the in-app page or the image request can
-  /// use. The frozen members are handed their URL as they are; this product can
-  /// only show http(s) in its own page, so anything else — a `file:` or
-  /// `javascript:` address included — fails by name instead of loading.
+  /// Whether one expanded hatch address is one the in-app page or the image
+  /// request can use. Anything else — a `file:` or `javascript:` address
+  /// included — fails by name instead of loading.
   static bool _isHatchAddress(String address) {
     final parsed = Uri.tryParse(address);
     return parsed != null &&
         (parsed.scheme == 'http' || parsed.scheme == 'https') &&
         parsed.host.isNotEmpty;
+  }
+
+  /// Whether the script's raw address can still become an http(s) one once the
+  /// engine has expanded its templates. A named non-http(s) scheme cannot, and
+  /// is refused before anything is expanded or requested.
+  static bool _hatchAddressMayBecomeHttp(String address) {
+    final scheme = Uri.tryParse(address)?.scheme ?? '';
+    return scheme.isEmpty || scheme == 'http' || scheme == 'https';
+  }
+
+  /// The named failure of a hatch address this product cannot show. The address
+  /// is the script's own input, so the failure is the input's (`host-input`),
+  /// recorded in the source log like every other hatch outcome.
+  SourceScriptError _refuseHatchAddress(String member, Object? address) {
+    final message =
+        '$member 需要一个绝对的 http(s) 地址：${address is String ? address : ''}';
+    _record(SourceHostMessage('verification', message));
+    return SourceScriptError('host-input', message);
+  }
+
+  /// One named refusal of a member that exists but cannot be served here: the
+  /// message is written into the source's log and the execution fails with a
+  /// `policy` error naming the member and the policy. The deferred members keep
+  /// their own "is deferred" wording ([_handleRefusal]); this one is for a member
+  /// this slice implements.
+  SourceScriptError _refuseMember(String member, String message) {
+    _record(SourceHostMessage('refused', message));
+    return SourceScriptError('policy', message);
   }
 
   /// The cap as a source log reads it, whole minutes for the product and
@@ -937,7 +998,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         cancellation: token,
       );
     }
-    await pauseScopedExecutionGlobal(id: executionId);
+    // The park's answer is the Rust registry's: `false` means this execution is
+    // already gone (its deadline or a cancellation removed it), so a
+    // confirmation, a page or an image shown now would be something whose answer
+    // nobody receives.
+    final parked = await pauseDeadline(executionId);
+    if (!parked) {
+      throw _refuseMember(
+        request.member,
+        '${request.member} 未显示：书源的这次执行已经结束（ADR 0011 §4）',
+      );
+    }
     try {
       return await runSourceHatchInteraction(
         surface: surface,
@@ -946,7 +1017,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         cancellation: token,
       );
     } finally {
-      await resumeScopedExecutionGlobal(id: executionId);
+      await resumeDeadline(executionId);
     }
   }
 
@@ -954,13 +1025,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// with `refetchAfterSuccess` the answer is a fresh non-WebView HTTP GET of
   /// the original address, carrying the source's current header map — so the
   /// session the confirmed page established is what the source's own rules then
-  /// parse. The address goes through the same `AnalyzeUrl` shaping every host
-  /// request uses, so its `,{…}` options apply exactly as they do there.
+  /// parse. The address is the one the page was shown under, already shaped the
+  /// way the frozen `AnalyzeUrl` shapes it (its `,{…}` options included), so it
+  /// is expanded once and this refetch never re-applies them.
   Future<String> _refetchHatch(
     SourceHostDispatcher? host,
-    SourceHatchRequest request,
-    BigInt requestId,
-    Map<String, Object?> outerInput,
+    ({
+      String url,
+      String method,
+      String? body,
+      Map<String, String> headers,
+      int retry,
+    })
+    shaped,
     SourceCancellation token,
   ) async {
     if (host == null) {
@@ -969,13 +1046,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         'the verification refetch needs a source session',
       );
     }
-    final shaped = await _shapeAnalyzeUrlRequest(
-      request.url,
-      requestId,
-      outerInput,
-      token,
-      member: request.member,
-    );
     final response = await host.request(
       shaped.method,
       shaped.url,
@@ -995,8 +1065,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// because a user can still type the code.
   Future<SourceHatchImage> _fetchHatchImage(
     String url,
-    BigInt requestId,
-    Map<String, Object?> outerInput,
+    Map<String, String> headers,
     SourceHostDispatcher? host,
     SourceCancellation token,
   ) async {
@@ -1004,16 +1073,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       return const SourceHatchImage.failed('没有书源会话，无法获取验证码图片');
     }
     try {
-      final shaped = await _shapeAnalyzeUrlRequest(
-        url,
-        requestId,
-        outerInput,
-        token,
-        member: 'java.getVerificationCode',
-      );
       final response = await host.get(
-        shaped.url,
-        headers: shaped.headers,
+        url,
+        headers: headers,
         readBytes: true,
       );
       final bytes = response.bodyBytes;
@@ -1683,7 +1745,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// A URL option this host-request path cannot apply refuses
   /// by name, into the source log, like every other unsupported member.
   SourceScriptError _refuseUrlOption(String member, String policy) =>
-      _handleRefusal({'member': '$member(url, {…})', 'policy': policy});
+      _refuseMember(
+        member,
+        // The member exists; what cannot be served is this URL's option, so the
+        // message does not report the member as unimplemented.
+        '$member(url, {…}) 的 URL 选项无法应用：$policy',
+      );
 
   /// Frozen `AnalyzeUrl.getStrResponse`/`getResponse` (`AnalyzeUrl.kt:465-526`):
   /// the stage's own request repeated, answered as the response object the

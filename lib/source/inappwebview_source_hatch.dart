@@ -37,9 +37,15 @@ class InAppWebViewSourceHatch implements SourceHatchSurface {
   ) async {
     final context = sourceHatchNavigatorKey.currentContext;
     if (context == null || !context.mounted) return SourceHatchAnswer.refused;
-    if (!await showSourceHatchConfirmation(context, request)) {
+    // A wait that has already ended (its cap, or the analysis the user
+    // cancelled) shows nothing at all: the confirmation included.
+    if (stop.isEnded) return SourceHatchAnswer.refused;
+    if (!await showSourceHatchConfirmation(context, request, stop: stop)) {
       return SourceHatchAnswer.refused;
     }
+    // The wait can end while the user is deciding; the answer is already the
+    // cap's or the cancellation's, and nothing must be shown for it.
+    if (stop.isEnded) return SourceHatchAnswer.refused;
     return switch (request.kind) {
       SourceHatchKind.waitingImage => _showImage(request, stop),
       SourceHatchKind.waitingPage => _showPage(request, stop),
@@ -105,36 +111,50 @@ class InAppWebViewSourceHatch implements SourceHatchSurface {
 /// It names the source and the address, states whether the source will wait, and
 /// defaults to refusing: 取消 carries the focus, so Escape, Enter and a tap
 /// outside all mean "do not show this".
+///
+/// With a [stop], the wait's end dismisses the confirmation as a refusal: a
+/// source that has stopped waiting (its cap, or an analysis the user cancelled)
+/// must not still be asking whether its page may be shown.
 Future<bool> showSourceHatchConfirmation(
   BuildContext context,
-  SourceHatchRequest request,
-) async {
+  SourceHatchRequest request, {
+  SourceHatchStop? stop,
+}) async {
   final name = request.sourceName.isEmpty
       ? request.sourceRef
       : request.sourceName;
   final image = request.kind == SourceHatchKind.waitingImage;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(image ? '书源请求显示验证码图片' : '书源请求在应用内显示页面'),
-      content: SelectableText(
-        '书源“$name”请求${image ? '显示下面的验证码图片' : '在应用内打开下面的地址'}：\n\n'
-        '${request.url}\n\n'
-        '${request.waits ? '书源会一直等待你的操作，最长 5 分钟。' : '页面显示后，书源不会等待。'}\n'
-        '页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。',
-      ),
-      actions: [
-        TextButton(
-          autofocus: true,
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('取消'),
+    builder: (context) {
+      if (stop != null) {
+        unawaited(
+          stop.ended.then((_) {
+            if (context.mounted) Navigator.of(context).pop(false);
+          }),
+        );
+      }
+      return AlertDialog(
+        title: Text(image ? '书源请求显示验证码图片' : '书源请求在应用内显示页面'),
+        content: SelectableText(
+          '书源“$name”请求${image ? '显示下面的验证码图片' : '在应用内打开下面的地址'}：\n\n'
+          '${request.url}\n\n'
+          '${request.waits ? '书源会一直等待你的操作，最长 5 分钟。' : '页面显示后，书源不会等待。'}\n'
+          '页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。',
         ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: Text(image ? '显示图片' : '打开页面'),
-        ),
-      ],
-    ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(image ? '显示图片' : '打开页面'),
+          ),
+        ],
+      );
+    },
   );
   return confirmed ?? false;
 }
@@ -305,6 +325,11 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
         ),
         onWebViewCreated: (controller) => _controller = controller,
         onLoadStop: (controller, url) async {
+          // The frozen `WebViewActivity.onPageFinished` writes what the page
+          // received back into the source's own cookie store, which is what the
+          // refetch and the source's later requests then carry. A navigation
+          // that just finished is exactly the moment the frozen writes.
+          await _writePageCookies(url?.toString() ?? request.url);
           final title = await controller.getTitle();
           if (!mounted) return;
           setState(() {
@@ -313,6 +338,20 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
         },
       ),
     );
+  }
+
+  /// Hands the platform store's cookies for the finished page to the source's
+  /// jar. A store this process cannot read leaves the jar as it was, exactly as
+  /// the headless adapter's page-cookie write does.
+  Future<void> _writePageCookies(String pageUrl) async {
+    final sink = widget.request.onPageCookies;
+    if (sink == null || pageUrl.isEmpty) return;
+    try {
+      await sink(pageUrl, await inAppWebViewPageCookies(pageUrl));
+    } on Object {
+      // A cookie store the platform refuses to read is not a reason to close the
+      // page the user is working in.
+    }
   }
 
   static String? _userAgent(SourceHatchRequest request) {

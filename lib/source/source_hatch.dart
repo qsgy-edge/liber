@@ -48,6 +48,7 @@ class SourceHatchRequest {
     this.headers = const {},
     this.refetchAfterSuccess = true,
     this.fetchImage,
+    this.onPageCookies,
   });
 
   /// The frozen member's name (`java.startBrowser`), which the source log, the
@@ -62,15 +63,18 @@ class SourceHatchRequest {
   /// The source's name for the confirmation, empty when the caller has none.
   final String sourceName;
 
-  /// The page or image address, as the source named it.
+  /// The page or image address, normalized the way the frozen `AnalyzeUrl`
+  /// normalizes it: the text before the first `,{…}` option tail, with the
+  /// tail's headers merged into [headers]. The frozen `WebViewActivity` loads
+  /// and names that address, not the script's raw argument.
   final String url;
 
   /// The page title the source passed (`startBrowser*`), or empty.
   final String title;
 
-  /// The source's header map, login header included — the frozen
-  /// `WebViewActivity`'s `headerMap`, so the confirmed page speaks with the
-  /// source's session.
+  /// The source's header map with the login header and the option tail's own
+  /// headers — the frozen `WebViewActivity`'s `headerMap`, so the confirmed page
+  /// speaks with the source's session, and the image request the same.
   final Map<String, String> headers;
 
   /// The frozen third argument of `startBrowserAwait`: with it, the answer is a
@@ -83,6 +87,14 @@ class SourceHatchRequest {
   /// call once the user has agreed. Null for every kind but
   /// [SourceHatchKind.waitingImage].
   final Future<SourceHatchImage> Function()? fetchImage;
+
+  /// Receives the cookies the confirmed page left in the platform's cookie
+  /// store for [pageUrl], the write the frozen `WebViewActivity.onPageFinished`
+  /// makes for the source's key (`CookieStore.setCookie`). That write is what
+  /// makes the session the user just established reach
+  /// `startBrowserAwait`'s refetch and the source's later requests; the
+  /// surface hands over the platform store's string form of them.
+  final Future<void> Function(String pageUrl, String cookies)? onPageCookies;
 
   /// Whether the source's execution parks until the user answers.
   bool get waits =>
@@ -112,6 +124,10 @@ class SourceHatchStop {
 
   /// Completes when the wait ended without the user's answer.
   Future<void> get ended => _ended.future;
+
+  /// Whether the wait has already ended, so a surface can tell without waiting
+  /// whether showing anything is still meaningful.
+  bool get isEnded => _ended.isCompleted;
 
   void end() {
     if (!_ended.isCompleted) _ended.complete();

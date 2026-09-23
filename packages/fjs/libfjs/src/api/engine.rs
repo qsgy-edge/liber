@@ -226,6 +226,10 @@ struct ScopedExecution {
     /// deadline by however long the park lasted, so the interaction cannot
     /// consume the execution's own budget.
     parked_at: AtomicU64,
+    /// How many user interactions have this execution parked. A hatch can run
+    /// inside another hatch's nested evaluation, which parks the same execution
+    /// twice; only the outermost resume ends the park and gives the budget back.
+    park_depth: AtomicU64,
     /// The budget the deadline was derived from, carried into the error.
     timeout_ms: u64,
     wake: Notify,
@@ -253,7 +257,7 @@ impl ScopedExecution {
     /// Whether the host has parked this scope's deadline for a user
     /// interaction (ADR 0011 §4).
     fn parked(&self) -> bool {
-        self.parked_at.load(Ordering::Acquire) != NO_DEADLINE
+        self.park_depth.load(Ordering::Acquire) > 0
     }
 
     /// Whether the Rust clock has reached this scope's deadline.
@@ -332,37 +336,51 @@ fn abort_execution_requests(execution_id: u64) {
 /// Park a scoped execution's deadline while its host performs a user
 /// interaction (ADR 0011 §4): the deadline neither expires inside the
 /// interrupt closure nor wakes the parked host wait, so the interaction does
-/// not consume the execution's budget. A park is idempotent; `false` means the
-/// execution is gone.
+/// not consume the execution's budget. A park is counted — an interaction that
+/// runs inside another one's nested evaluation parks the same execution twice —
+/// and `false` means the execution is gone.
 pub fn pause_scoped_execution_global(id: u64) -> bool {
     let scope = executions().lock().unwrap().get(&id).cloned();
     let Some(scope) = scope else { return false; };
-    let _ = scope.parked_at.compare_exchange(
-        NO_DEADLINE,
-        deadline_millis(),
-        Ordering::AcqRel,
-        Ordering::Acquire,
-    );
+    if scope.park_depth.fetch_add(1, Ordering::AcqRel) == 0 {
+        scope.parked_at.store(deadline_millis(), Ordering::Release);
+    }
     true
 }
 
-/// End a park and give the execution back the budget the interaction spent:
-/// the deadline moves forward by the parked duration. `false` means the
-/// execution is gone.
+/// End one park. Only the outermost resume gives the budget back — the deadline
+/// moves forward by the whole parked duration — and an inner resume under an
+/// outer park leaves the suspension in place. A resume without a park does
+/// nothing; `false` means the execution is gone.
 pub fn resume_scoped_execution_global(id: u64) -> bool {
     let scope = executions().lock().unwrap().get(&id).cloned();
     let Some(scope) = scope else { return false; };
-    let parked_at = scope.parked_at.swap(NO_DEADLINE, Ordering::AcqRel);
-    if parked_at != NO_DEADLINE {
-        let parked = deadline_millis().saturating_sub(parked_at);
-        let deadline = scope.deadline.load(Ordering::Acquire);
-        if deadline != NO_DEADLINE {
-            scope
-                .deadline
-                .store(deadline.saturating_add(parked), Ordering::Release);
+    loop {
+        let depth = scope.park_depth.load(Ordering::Acquire);
+        if depth == 0 {
+            return true;
         }
+        if scope
+            .park_depth
+            .compare_exchange(depth, depth - 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            continue;
+        }
+        if depth == 1 {
+            let parked_at = scope.parked_at.swap(NO_DEADLINE, Ordering::AcqRel);
+            if parked_at != NO_DEADLINE {
+                let parked = deadline_millis().saturating_sub(parked_at);
+                let deadline = scope.deadline.load(Ordering::Acquire);
+                if deadline != NO_DEADLINE {
+                    scope
+                        .deadline
+                        .store(deadline.saturating_add(parked), Ordering::Release);
+                }
+            }
+        }
+        return true;
     }
-    true
 }
 
 /// Release a reservation that was never submitted.
@@ -1044,6 +1062,7 @@ impl JsEngine {
                 None => NO_DEADLINE,
             }),
             parked_at: AtomicU64::new(NO_DEADLINE),
+            park_depth: AtomicU64::new(0),
             timeout_ms: deadline_ms.unwrap_or(0), wake: Notify::new(),
         }));
         Ok(id)
