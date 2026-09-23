@@ -827,6 +827,15 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get readerScriptTitle => '中文轉換';
 
   @override
+  String get imageLoadFailed => '圖片加載失敗';
+
+  @override
+  String get imageLoading => '圖片加載中…';
+
+  @override
+  String get imageEmptyAddress => '圖片地址為空';
+
+  @override
   String get actionInterfaceLanguage => '界面語言';
 
   @override
@@ -1616,6 +1625,15 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get readerScriptTitle => '中文轉換';
+
+  @override
+  String get imageLoadFailed => '圖片載入失敗';
+
+  @override
+  String get imageLoading => '圖片載入中…';
+
+  @override
+  String get imageEmptyAddress => '圖片地址為空';
 
   @override
   String get actionInterfaceLanguage => '介面語言';
