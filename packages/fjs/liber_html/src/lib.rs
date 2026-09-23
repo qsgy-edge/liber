@@ -21,12 +21,15 @@ pub use dom::{Dom, NodeId};
 
 use std::collections::HashMap;
 
-/// What a job returns: matched elements (only their count leaves the adapter) or
-/// one extracted string per context element.
+/// What a job returns: matched elements (only their count leaves the adapter),
+/// one extracted string per context element, or the extracted values as a list.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum JobOutput {
     Elements,
     Text,
+    /// The frozen `AnalyzeRule.getStringList` answer: the rule's matches, one
+    /// value each, with the `##` field applied per value and no entity unescape.
+    TextList,
 }
 
 #[derive(Debug, Clone)]
@@ -48,10 +51,12 @@ pub struct JobFailure {
 #[derive(Debug, Clone)]
 pub struct JobOutcome {
     pub id: String,
-    /// Number of element matches, or extracted strings before replacement for
-    /// a `Text` job (zero when its rule did not match).
+    /// Number of element matches, or the number of extracted values for a
+    /// `Text`/`TextList` job before replacement (zero when its rule did not
+    /// match; a `TextList` job's count is the length of its `values`).
     pub count: usize,
-    /// One value per context for `Text` jobs.
+    /// One value per context for `Text` jobs; every matched value for a
+    /// `TextList` job.
     pub values: Vec<String>,
     pub failure: Option<JobFailure>,
 }
@@ -108,14 +113,19 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
                     failure,
                 }
             }
-            JobOutput::Text => {
-                let mut values = Vec::with_capacity(context.len());
+            JobOutput::Text | JobOutput::TextList => {
+                let mut values = Vec::new();
                 let mut count = 0;
                 let mut failure = None;
                 for node in &context {
-                    match rule::string_with_count(&dom, *node, &job.rule) {
-                        Ok((value, matched)) => {
-                            values.push(value);
+                    let extracted = match job.output {
+                        JobOutput::TextList => rule::string_list_with_count(&dom, *node, &job.rule),
+                        _ => rule::string_with_count(&dom, *node, &job.rule)
+                            .map(|(value, matched)| (vec![value], matched)),
+                    };
+                    match extracted {
+                        Ok((found, matched)) => {
+                            values.extend(found);
                             count += matched;
                         }
                         Err(error) => {
@@ -208,6 +218,22 @@ mod tests {
         assert_eq!(analysis.jobs[2].values, vec!["/1", "/2"]);
         assert_eq!(analysis.jobs[3].values, vec!["正文强调"]);
         assert!(analysis.jobs.iter().all(|job| job.failure.is_none()));
+    }
+
+    #[test]
+    fn a_text_list_job_answers_the_per_item_read() {
+        let result = analyze(
+            "<div id=\"pages\"><a href=\"/p/1\">1</a><a href=\"/p/2\">2</a></div>",
+            &[JobSpec {
+                id: "next".to_string(),
+                rule: "#pages a@href##^/p/##/page/".to_string(),
+                parent: None,
+                output: JobOutput::TextList,
+            }],
+        );
+        assert_eq!(result.jobs[0].values, vec!["/page/1", "/page/2"]);
+        assert_eq!(result.jobs[0].count, 2);
+        assert!(result.jobs[0].failure.is_none());
     }
 
     #[test]

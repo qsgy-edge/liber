@@ -20,6 +20,9 @@ pub enum HtmlJobOutput {
     Elements,
     /// One extracted string per context element.
     Text,
+    /// The frozen `AnalyzeRule.getStringList` answer: one value per match, with
+    /// the `##` field applied to each value and no entity unescape.
+    TextList,
 }
 
 /// One rule to evaluate against the document.
@@ -33,7 +36,8 @@ pub struct HtmlRuleJob {
     /// An earlier `Elements` job id whose matches are this job's contexts.
     /// `None` means the document itself.
     pub parent: Option<String>,
-    /// Whether the job returns element count or extracted strings.
+    /// Whether the job returns element count, one joined string per context, or
+    /// the matched values as a list.
     pub output: HtmlJobOutput,
 }
 
@@ -51,10 +55,11 @@ pub struct HtmlJobFailure {
 pub struct HtmlJobOutcome {
     /// The job id this outcome answers.
     pub id: String,
-    /// Matched element count, or extracted string count for `Text` jobs before
-    /// replacement (zero when a document rule did not match).
+    /// Matched element count, or extracted value count for `Text`/`TextList`
+    /// jobs before replacement (zero when a document rule did not match).
     pub count: u32,
-    /// One value per context element for `Text` jobs.
+    /// One value per context element for `Text` jobs, every matched value for a
+    /// `TextList` job.
     pub values: Vec<String>,
     /// Set when the rule could not be evaluated; the values are then empty.
     pub failure: Option<HtmlJobFailure>,
@@ -78,6 +83,7 @@ pub fn html_analyze(html: String, jobs: Vec<HtmlRuleJob>) -> Vec<HtmlJobOutcome>
             output: match job.output {
                 HtmlJobOutput::Elements => JobOutput::Elements,
                 HtmlJobOutput::Text => JobOutput::Text,
+                HtmlJobOutput::TextList => JobOutput::TextList,
             },
         })
         .collect();

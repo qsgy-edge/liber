@@ -49,11 +49,12 @@ class HtmlJobOutcome {
   /// The job id this outcome answers.
   final String id;
 
-  /// Matched element count, or extracted string count for `Text` jobs before
-  /// replacement (zero when a document rule did not match).
+  /// Matched element count, or extracted value count for `Text`/`TextList`
+  /// jobs before replacement (zero when a document rule did not match).
   final int count;
 
-  /// One value per context element for `Text` jobs.
+  /// One value per context element for `Text` jobs, every matched value for a
+  /// `TextList` job.
   final List<String> values;
 
   /// Set when the rule could not be evaluated; the values are then empty.
@@ -89,6 +90,10 @@ enum HtmlJobOutput {
 
   /// One extracted string per context element.
   text,
+
+  /// The frozen `AnalyzeRule.getStringList` answer: one value per match, with
+  /// the `##` field applied to each value and no entity unescape.
+  textList,
   ;
 }
 
@@ -105,7 +110,8 @@ class HtmlRuleJob {
   /// `None` means the document itself.
   final String? parent;
 
-  /// Whether the job returns element count or extracted strings.
+  /// Whether the job returns element count, one joined string per context, or
+  /// the matched values as a list.
   final HtmlJobOutput output;
 
   const HtmlRuleJob({

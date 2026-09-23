@@ -384,6 +384,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   HtmlString? _declare(HtmlRuleBatch batch, String id, RuleField field) =>
       field.isScriptOnly ? null : batch.documentText(id, field.extractionRule!);
 
+  /// Declares the *list* read of one field (the frozen
+  /// `AnalyzeRule.getStringList`), or none when the field is a script only. The
+  /// frozen reads a page's next-page rule only as a list, so a `##` field on it
+  /// runs per declared item and its values reach the walk as the extraction left
+  /// them; a single-value field keeps [_declare].
+  HtmlStringList? _declareList(
+    HtmlRuleBatch batch,
+    String id,
+    RuleField field,
+  ) => field.isScriptOnly
+      ? null
+      : batch.documentTextList(id, field.extractionRule!);
+
   /// Reads one declared document job with the field's scripts applied. A
   /// script-only field is applied to the page's HTML text, where the frozen
   /// reader passes the parsed tree a JavaScript boundary cannot carry — a
@@ -874,7 +887,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 content: page,
               )
             : null;
-        final nextValue = next == null ? null : _declare(batch, 'next', next);
+        final nextValue = next == null
+            ? null
+            : _declareList(batch, 'next', next);
         await batch.run();
         if (items.isEmpty) throw StateError('目录页为空');
         final names2 = await _perElement(nameField, names.values);
@@ -1221,7 +1236,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             : null;
         final batch = HtmlRuleBatch(html);
         final contentValue = _declare(batch, 'content', content);
-        final nextValue = next == null ? null : _declare(batch, 'next', next);
+        final nextValue = next == null
+            ? null
+            : _declareList(batch, 'next', next);
         await batch.run();
         final text = await _documentValue(contentValue, content, html);
         if (text.isEmpty) {
@@ -1244,7 +1261,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// The raw address texts one page's next-page rule declared, in the frozen
   /// `AnalyzeRule.getStringList` shape (`AnalyzeRule.kt:159-235`): every match of
   /// the rule, in declared order, with the field's `@js:`/`<js>` segments
-  /// applied.
+  /// applied. The values are the bridge's own list read, so a `##` field ran on
+  /// each value and no entity unescape happened.
   ///
   /// A rule that matched nothing declares no page, and unlike the single-value
   /// read ([_documentValue]) the list read has no `##`-replacement fallback: the
@@ -1257,16 +1275,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// is null when the page must not read its list at all (a page the declared
   /// walk fetched, `BookChapterList.kt:104-121`).
   Future<List<String>> _pageTexts(
-    HtmlString? job,
+    HtmlStringList? job,
     RuleField? field,
     String page,
   ) async {
     if (field == null) return const <String>[];
     if (job == null) return sourceScriptTexts(await field.apply(page));
-    if (!job.hasMatch && field.scripts.isEmpty) return const <String>[];
-    final values = job.hasMatch ? job.values : const <String>[''];
+    final values = job.values;
+    if (values.isEmpty && field.scripts.isEmpty) return const <String>[];
     final texts = <String>[];
-    for (final value in values) {
+    for (final value in values.isEmpty ? const <String>[''] : values) {
       final applied = await field.apply(value);
       if (applied == null) continue;
       texts.add('$applied');

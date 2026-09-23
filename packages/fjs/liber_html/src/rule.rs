@@ -870,6 +870,35 @@ pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(Stri
     Ok((unescape_html(&replaced), count))
 }
 
+/// Frozen `AnalyzeRule.getStringList` (`AnalyzeRule.kt:159-235`): the per-item
+/// list read. It builds on the same extraction as [`string_with_count`]
+/// (`AnalyzeByJSoup.getStringList`) but takes the two steps that read takes
+/// differently: the `##` field runs on *each* value instead of on the joined
+/// value (`:209-219`), and no entity unescape happens - the unescape is
+/// `AnalyzeRule.getString`'s own last step (`:309-313`) and the list read never
+/// reaches it.
+///
+/// A page's next-page rule is read this way (`BookChapterList.kt:194`,
+/// `BookContent.kt:187`), so its `##` runs per declared item and its values
+/// reach the caller as the extraction left them.
+pub fn string_list_with_count(
+    dom: &Dom,
+    context: NodeId,
+    rule: &str,
+) -> Result<(Vec<String>, usize), RuleError> {
+    let source = SourceRule::parse(rule)?;
+    let values = string_list(dom, context, rule)?;
+    let values = match &source.replace {
+        Some(replace) => values
+            .into_iter()
+            .map(|value| apply_replace(&value, replace))
+            .collect(),
+        None => values,
+    };
+    let count = values.len();
+    Ok((values, count))
+}
+
 pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleError> {
     string_with_count(dom, context, rule).map(|(value, _)| value)
 }
@@ -977,6 +1006,46 @@ mod tests {
         assert_eq!(
             (replace.regex.as_str(), replace.replacement.as_str(), replace.replace_first),
             ("忘语", "忘语先生", true)
+        );
+    }
+
+    #[test]
+    fn analyze_string_list_replaces_each_item_and_keeps_entities() {
+        let dom = Dom::parse(
+            "<div id=\"e\">A&amp;amp;B</div><ul class=\"pages\">\
+             <li><a href=\"/p/1\">1</a></li><li><a href=\"/p/2\">2</a></li></ul>",
+        );
+        // The `##` field runs on each value, so an anchored pattern rewrites
+        // every item; the single-value read runs the same field on the join,
+        // where the same anchor reaches only the first line.
+        let (values, count) =
+            string_list_with_count(&dom, 0, ".pages li@a@href##^/p/##/page/").unwrap();
+        assert_eq!(values, vec!["/page/1", "/page/2"]);
+        assert_eq!(count, 2);
+        assert_eq!(string(&dom, 0, ".pages li@a@href##^/p/##/page/").unwrap(), "/page/1\n/p/2");
+        // The list read answers the extraction as it is; only the single-value
+        // read unescapes entities, and it does so last.
+        assert_eq!(string_list_with_count(&dom, 0, "#e@text").unwrap().0, vec!["A&amp;B"]);
+        assert_eq!(string(&dom, 0, "#e@text").unwrap(), "A&B");
+        // A single match is the same value either read: no join happens.
+        assert_eq!(
+            string_list_with_count(&dom, 0, ".pages li.0@a@href##^/p/##/page/").unwrap(),
+            (vec!["/page/1".to_string()], 1)
+        );
+    }
+
+    #[test]
+    fn a_list_item_keeps_its_own_newline() {
+        let dom = Dom::parse(
+            "<ul class=\"pages\"><li><a href=\"/p/1\">1</a></li>\
+             <li><a href=\"/p/2\n/p/3\">2</a></li></ul>",
+        );
+        // Two matches, and the second value carries a newline of its own: the
+        // list read keeps it as one value, where a joined value split back
+        // apart would answer three.
+        assert_eq!(
+            string_list_with_count(&dom, 0, ".pages li@a@href").unwrap(),
+            (vec!["/p/1".to_string(), "/p/2\n/p/3".to_string()], 2)
         );
     }
 
