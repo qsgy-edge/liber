@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -674,10 +675,23 @@ void main() {
       url: _pageUrl,
     );
 
-    /// One real PNG: `Image.memory` decodes it instead of failing the row.
-    final pngBytes = base64Decode(
-      'iVBORw0KGgoAAAANSUhEUgAAADwAAAAUCAYAAACdDh9/AAAAGklEQVR42mP8//8/AybIQAEwCkYBo2AUjAAAAA/4/wGj1PDiAAAAAElFTkSuQmCC',
-    );
+    /// One real PNG, encoded by the engine itself: `Image.memory` decodes it
+    /// on every platform, so a broken fixture cannot pass as a rendered image
+    /// (a hand-written PNG did exactly that on one platform).
+    Future<Uint8List> pngBytes(WidgetTester tester) async {
+      final bytes = await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 60, 20),
+          Paint()..color = const Color(0xFF3355AA),
+        );
+        final image = await recorder.endRecording().toImage(60, 20);
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        image.dispose();
+        return data!.buffer.asUint8List();
+      });
+      return bytes!;
+    }
 
     Future<void> pumpApp(WidgetTester tester) async {
       await tester.pumpWidget(
@@ -781,7 +795,7 @@ void main() {
         showSourceHatchImageDialog(
           sourceHatchNavigatorKey.currentContext!,
           request: request(kind: SourceHatchKind.waitingImage),
-          image: SourceHatchImage(pngBytes),
+          image: SourceHatchImage(await pngBytes(tester)),
           stop: SourceHatchStop(),
         ).then((value) => answer = value),
       );
@@ -832,7 +846,7 @@ void main() {
         showSourceHatchImageDialog(
           sourceHatchNavigatorKey.currentContext!,
           request: request(kind: SourceHatchKind.waitingImage),
-          image: SourceHatchImage(pngBytes),
+          image: SourceHatchImage(await pngBytes(tester)),
           stop: SourceHatchStop(),
         ),
       );
