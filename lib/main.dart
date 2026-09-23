@@ -12,6 +12,7 @@ import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
 import 'source/http_source_transport.dart';
 import 'source/inappwebview_book_source_adapter.dart';
+import 'source/inappwebview_source_hatch.dart';
 import 'source/source_login.dart';
 import 'source/source_login_dialog.dart';
 import 'source/source_trial_page.dart';
@@ -45,6 +46,7 @@ void main() {
 /// entry point.
 void installApplicationBindings() {
   installInAppWebViewBookSourceAdapter();
+  installInAppWebViewSourceHatch();
 }
 
 class LiberApp extends StatelessWidget {
@@ -59,6 +61,9 @@ class LiberApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Liber',
+      // The confirmed pages a hatch shows are pushed on this navigator, so the
+      // source runtime can reach a navigator from inside an execution.
+      navigatorKey: sourceHatchNavigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
         useMaterial3: true,

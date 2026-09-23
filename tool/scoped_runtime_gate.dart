@@ -434,7 +434,15 @@ Future<void> main(List<String> args) async {
     final deadlineEngine = await JsEngine.create(
       builtins: JsBuiltinOptions.none(),
     );
-    final deadlineEntered = Completer<BigInt>();
+    // One entry per parked host call, in the order the calls start: the rows
+    // below park several scopes one after another.
+    final deadlineEntered = <Completer<BigInt>>[];
+    Future<BigInt> nextDeadlineEntry() {
+      final completer = Completer<BigInt>();
+      deadlineEntered.add(completer);
+      return completer.future.timeout(const Duration(seconds: 3));
+    }
+
     final deadlineCancels = <BigInt>[];
     Future<Object?> runScopedWithBudget(String source, BigInt? budgetMs) async {
       final id = await deadlineEngine.createScopedExecution(
@@ -451,7 +459,9 @@ Future<void> main(List<String> args) async {
     try {
       await deadlineEngine.initBroker(
         start: (request) {
-          if (!deadlineEntered.isCompleted) deadlineEntered.complete(request.id);
+          if (deadlineEntered.isNotEmpty) {
+            deadlineEntered.removeAt(0).complete(request.id);
+          }
         },
         cancel: (id) async {
           deadlineCancels.add(id);
@@ -470,9 +480,7 @@ Future<void> main(List<String> args) async {
         'fjs.bridge_call("parked")',
         BigInt.from(150),
       );
-      final parkedRequest = await deadlineEntered.future.timeout(
-        const Duration(seconds: 3),
-      );
+      final parkedRequest = await nextDeadlineEntry();
       final parkedResult = await parked.timeout(const Duration(seconds: 3));
       final deadlineCancelWait = DateTime.now().add(const Duration(seconds: 2));
       while (deadlineCancels.isEmpty &&
@@ -486,6 +494,51 @@ Future<void> main(List<String> args) async {
           await runScopedWithBudget('6*7', BigInt.from(2000)) == 42;
       checks['executionWithoutBudgetRuns'] =
           await runScopedWithBudget('7*6', null) == 42;
+
+      // A host interaction parks the deadline (ADR 0011 §4): the parked wait
+      // survives its own budget, and the resume gives the budget back so the
+      // script's own work afterwards still runs under the shifted deadline.
+      // The 700 ms budget with a 1200 ms park and a 200 ms loop afterwards can
+      // only answer 'paused:ran' when both halves hold: without the park the
+      // wait is torn down at 700 ms, and without the shift the interrupt closure
+      // stops the loop the moment it resumes.
+      final pausedId = await deadlineEngine.createScopedExecution(
+        deadlineMs: BigInt.from(700),
+      );
+      final pausedWait = deadlineEngine
+          .evalScoped(
+            id: pausedId,
+            source:
+                'const answer = fjs.bridge_call("paused"); '
+                'const until = Date.now() + 200; while (Date.now() < until) {} '
+                'answer + ":ran"',
+          )
+          .then<Object?>(
+            (value) => value.value,
+            onError: (Object error) => error,
+          );
+      final pausedRequest = await nextDeadlineEntry();
+      checks['deadlinePauseAccepted'] = await pauseScopedExecutionGlobal(
+        id: pausedId,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      checks['deadlineResumeAccepted'] = await resumeScopedExecutionGlobal(
+        id: pausedId,
+      );
+      await completeBridgeRequestGlobal(
+        id: pausedRequest,
+        result: JsResult.ok(JsValue.string('paused')),
+      );
+      final pausedResult = await pausedWait.timeout(const Duration(seconds: 5));
+      checks['pausedWaitOutlivesItsDeadline'] = pausedResult is! JsError;
+      checks['resumeKeepsTheRemainingBudget'] = pausedResult == 'paused:ran';
+      // A park that races the execution's end is refused rather than accepted
+      // silently, so a host can tell that its interaction outlived the analysis.
+      final unknown = BigInt.parse('18446744073709551615');
+      checks['pauseUnknownScopeRefused'] =
+          await pauseScopedExecutionGlobal(id: unknown) == false;
+      checks['resumeUnknownScopeRefused'] =
+          await resumeScopedExecutionGlobal(id: unknown) == false;
     } finally {
       if (!deadlineEngine.closed) await deadlineEngine.close();
     }

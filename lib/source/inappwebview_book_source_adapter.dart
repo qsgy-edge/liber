@@ -18,6 +18,24 @@ void installInAppWebViewBookSourceAdapter() {
       InAppWebViewBookSourceAdapter.new;
 }
 
+/// The headers one WebView load carries.
+///
+/// Android's WebView silently ignores a `Cookie` entry in a load's additional
+/// headers, so the frozen baseline never sends an app-supplied cookie on the
+/// first request even though it passes the header map straight through; only
+/// cookies the page itself sets appear later. The Windows engine honours the
+/// entry instead, so passing it through there would make the destination send a
+/// cookie the contract says is not sent. The visible confirmed page applies the
+/// same rule, because it is the same load.
+Map<String, String> inAppWebViewLoadHeaders(Map<String, String> headers) {
+  final load = <String, String>{};
+  for (final entry in headers.entries) {
+    if (entry.key.toLowerCase() == 'cookie') continue;
+    load[entry.key] = entry.value;
+  }
+  return load;
+}
+
 /// The platform-native adapter: `flutter_inappwebview`'s engine driven to the
 /// frozen `BackstageWebView` contract rather than to that plugin's defaults.
 ///
@@ -69,20 +87,8 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
     );
   }
 
-  Map<String, String> _webViewHeaders(SourceWebViewRequest request) {
-    // Android's WebView silently ignores a `Cookie` entry in a load's additional
-    // headers, so the frozen baseline never sends an app-supplied cookie on the
-    // first request even though it passes the header map straight through; only
-    // cookies the page itself sets appear later. The Windows engine honours the
-    // entry instead, so passing it through there would make the destination send
-    // a cookie the contract says is not sent.
-    final headers = <String, String>{};
-    for (final entry in request.headers.entries) {
-      if (entry.key.toLowerCase() == 'cookie') continue;
-      headers[entry.key] = entry.value;
-    }
-    return headers;
-  }
+  Map<String, String> _webViewHeaders(SourceWebViewRequest request) =>
+      inAppWebViewLoadHeaders(request.headers);
 
   String _configuredUserAgent(SourceWebViewRequest request) {
     for (final entry in request.headers.entries) {

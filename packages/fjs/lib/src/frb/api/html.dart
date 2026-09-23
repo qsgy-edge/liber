@@ -49,7 +49,8 @@ class HtmlJobOutcome {
   /// The job id this outcome answers.
   final String id;
 
-  /// Number of elements an `Elements` job matched.
+  /// Matched element count, or extracted string count for `Text` jobs before
+  /// replacement (zero when a document rule did not match).
   final int count;
 
   /// One value per context element for `Text` jobs.

@@ -219,6 +219,13 @@ struct ScopedExecution {
     deadline: AtomicU64,
     /// Set when the Rust clock, not the host, stopped this execution.
     deadline_hit: AtomicBool,
+    /// Milliseconds since [`DEADLINE_EPOCH`] at which the host parked this
+    /// execution in a user interaction, or [`NO_DEADLINE`] when it is not
+    /// parked. While it is parked the deadline neither expires nor wakes the
+    /// parked host wait, and [`resume_scoped_execution_global`] shifts the
+    /// deadline by however long the park lasted, so the interaction cannot
+    /// consume the execution's own budget.
+    parked_at: AtomicU64,
     /// The budget the deadline was derived from, carried into the error.
     timeout_ms: u64,
     wake: Notify,
@@ -243,16 +250,23 @@ fn deadline_millis() -> u64 {
 }
 
 impl ScopedExecution {
+    /// Whether the host has parked this scope's deadline for a user
+    /// interaction (ADR 0011 §4).
+    fn parked(&self) -> bool {
+        self.parked_at.load(Ordering::Acquire) != NO_DEADLINE
+    }
+
     /// Whether the Rust clock has reached this scope's deadline.
     fn deadline_expired(&self) -> bool {
         let deadline = self.deadline.load(Ordering::Acquire);
-        deadline != NO_DEADLINE && deadline_millis() >= deadline
+        !self.parked() && deadline != NO_DEADLINE && deadline_millis() >= deadline
     }
 
-    /// Time left before the deadline; `None` when the scope has none.
+    /// Time left before the deadline; `None` when the scope has none or is
+    /// parked, so the parked host wait's select arm stays inert.
     fn remaining(&self) -> Option<Duration> {
         let deadline = self.deadline.load(Ordering::Acquire);
-        (deadline != NO_DEADLINE)
+        (deadline != NO_DEADLINE && !self.parked())
             .then(|| Duration::from_millis(deadline.saturating_sub(deadline_millis())))
     }
 
@@ -315,6 +329,42 @@ fn abort_execution_requests(execution_id: u64) {
         crate::runtime::executor::spawn_js(async move { let _ = (entry.cancel)(request_id).await; });
     }
 }
+/// Park a scoped execution's deadline while its host performs a user
+/// interaction (ADR 0011 §4): the deadline neither expires inside the
+/// interrupt closure nor wakes the parked host wait, so the interaction does
+/// not consume the execution's budget. A park is idempotent; `false` means the
+/// execution is gone.
+pub fn pause_scoped_execution_global(id: u64) -> bool {
+    let scope = executions().lock().unwrap().get(&id).cloned();
+    let Some(scope) = scope else { return false; };
+    let _ = scope.parked_at.compare_exchange(
+        NO_DEADLINE,
+        deadline_millis(),
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
+    true
+}
+
+/// End a park and give the execution back the budget the interaction spent:
+/// the deadline moves forward by the parked duration. `false` means the
+/// execution is gone.
+pub fn resume_scoped_execution_global(id: u64) -> bool {
+    let scope = executions().lock().unwrap().get(&id).cloned();
+    let Some(scope) = scope else { return false; };
+    let parked_at = scope.parked_at.swap(NO_DEADLINE, Ordering::AcqRel);
+    if parked_at != NO_DEADLINE {
+        let parked = deadline_millis().saturating_sub(parked_at);
+        let deadline = scope.deadline.load(Ordering::Acquire);
+        if deadline != NO_DEADLINE {
+            scope
+                .deadline
+                .store(deadline.saturating_add(parked), Ordering::Release);
+        }
+    }
+    true
+}
+
 /// Release a reservation that was never submitted.
 pub fn discard_scoped_execution_global(id: u64) {
     let mut entries = executions().lock().unwrap();
@@ -993,6 +1043,7 @@ impl JsEngine {
                 Some(timeout_ms) => deadline_millis().saturating_add(timeout_ms),
                 None => NO_DEADLINE,
             }),
+            parked_at: AtomicU64::new(NO_DEADLINE),
             timeout_ms: deadline_ms.unwrap_or(0), wake: Notify::new(),
         }));
         Ok(id)
@@ -2097,7 +2148,11 @@ fn new_broker_bridge_call<'js>(
                     _ = deadline_timeout(&scope) => {
                         // The Rust clock owns the deadline, so a parked host wait
                         // ends here even when no completion arrives; the requests
-                        // this execution owns are torn down with it.
+                        // this execution owns are torn down with it. A *paused*
+                        // execution's deadline is suspended (ADR 0011 §4): this
+                        // arm's timer was armed from the budget the host parked
+                        // under, so it re-arms instead of ending a paused wait.
+                        if scope.as_ref().is_some_and(|scope| scope.parked()) { continue; }
                         if let Some(scope) = &scope { scope.mark_deadline(); abort_execution_requests(scope.id); }
                         return Err(rquickjs::Error::new_from_js_message("bridge", "JsValue", "Execution deadline exceeded"));
                     }

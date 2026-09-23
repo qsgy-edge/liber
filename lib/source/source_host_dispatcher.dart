@@ -163,7 +163,8 @@ class SourceHostDispatcher {
   Future<SourceHttpResponse> get(
     String url, {
     Map<String, String> headers = const {},
-  }) => _send('GET', url, headers: headers);
+    bool readBytes = false,
+  }) => _send('GET', url, headers: headers, readBytes: readBytes);
 
   Future<SourceHttpResponse> head(
     String url, {
@@ -218,6 +219,7 @@ class SourceHostDispatcher {
     String? body,
     bool followRedirects = false,
     int retry = 0,
+    bool readBytes = false,
   }) async {
     cancellation?.throwIfCancelled();
     final uri = SourceHttpUri.parse(url);
@@ -290,6 +292,7 @@ class SourceHostDispatcher {
           maxResponseBytes: maxResponseBytes,
           sourceRef: _sourceRef,
           allowInvalidCertificate: allowInvalidCertificate,
+          readBytes: readBytes,
         ),
       );
       cancellation?.throwIfCancelled();
