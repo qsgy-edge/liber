@@ -3,8 +3,39 @@ import 'dart:async';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../store/space_store.dart';
 import 'reader_script.dart';
+
+/// The name the settings screen shows for one conversion choice.
+///
+/// The labels are the screen's copy, from `lib/l10n/`; the model keeps the
+/// ASCII slugs (`ReaderScriptChoice.slug`), so a stored row never has to be
+/// translated and the three Chinese interfaces can name the same slug
+/// differently.
+String readerScriptChoiceLabel(
+  AppLocalizations l10n,
+  ReaderScriptChoice choice,
+) => switch (choice) {
+  ReaderScriptChoice.followLocale => l10n.followSystemLanguage,
+  ReaderScriptChoice.followGlobal => l10n.scriptFollowInstallation,
+  ReaderScriptChoice.simplified => l10n.scriptSimplified,
+  ReaderScriptChoice.traditionalTaiwan => l10n.scriptTraditionalTaiwan,
+  ReaderScriptChoice.traditionalHongKong => l10n.scriptTraditionalHongKong,
+  ReaderScriptChoice.traditionalGeneric => l10n.scriptTraditionalGeneric,
+  ReaderScriptChoice.none => l10n.scriptNone,
+};
+
+/// What a resolved target renders, in words: the settings screen shows it so a
+/// reader can see what a choice and a locale together produce.
+String describeReaderScript(AppLocalizations l10n, ConvertTarget? target) =>
+    switch (target) {
+      null => l10n.scriptNone,
+      ConvertTarget.simplifiedMainland => l10n.describeSimplified,
+      ConvertTarget.traditionalTaiwan => l10n.scriptTraditionalTaiwan,
+      ConvertTarget.traditionalHongKong => l10n.scriptTraditionalHongKong,
+      ConvertTarget.traditionalGeneric => l10n.scriptTraditionalGeneric,
+    };
 
 /// The reader's Chinese-conversion setting: the installation's choice and, when
 /// the screen is opened from a book, that book's override.
@@ -46,6 +77,10 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
     unawaited(_load());
   }
 
+  /// The interface's words, read at build time so the screen re-renders in the
+  /// language it was last built in (#28).
+  AppLocalizations get _l10n => AppLocalizations.of(context);
+
   /// Reads the two rows once: the installation's choice and, when this screen
   /// was opened from a book, that book's override.
   Future<void> _load() async {
@@ -65,7 +100,10 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
             : ReaderScriptSetting.bookChoice(override);
       });
     } on Object catch (error) {
-      if (mounted) setState(() => _error = '读取设置失败：$error');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        setState(() => _error = l10n.readSettingsFailed('$error'));
+      }
     }
   }
 
@@ -74,7 +112,10 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
     try {
       await ReaderScriptSetting.putGlobal(widget.store, choice);
     } on Object catch (error) {
-      if (mounted) setState(() => _error = '保存设置失败：$error');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        setState(() => _error = l10n.saveSettingsFailed('$error'));
+      }
     }
   }
 
@@ -83,7 +124,10 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
     try {
       await ReaderScriptSetting.putBook(widget.store, widget.bookId, choice);
     } on Object catch (error) {
-      if (mounted) setState(() => _error = '保存设置失败：$error');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        setState(() => _error = l10n.saveSettingsFailed('$error'));
+      }
     }
   }
 
@@ -109,27 +153,29 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = _l10n;
     final global = _global;
     final book = _book;
     return Scaffold(
-      appBar: AppBar(title: const Text('中文转换')),
+      appBar: AppBar(title: Text(l10n.readerScriptTitle)),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           Text(
-            '默认跟随系统语言：zh-CN → 简体（大陆用词），zh-TW → 繁體（台灣），'
-            'zh-HK → 繁體（香港），其他语言 → 不转换。',
+            l10n.readerScriptDefault,
             key: const ValueKey('reader-script-default'),
           ),
           const SizedBox(height: 8),
           Text(
-            '当前系统语言：${ReaderScriptSetting.systemLocale().toLanguageTag()}',
+            l10n.systemLocaleLine(
+              ReaderScriptSetting.systemLocale().toLanguageTag(),
+            ),
             key: const ValueKey('reader-script-locale'),
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
           Text(
-            '当前生效：${describeReaderScript(_effective)}',
+            l10n.effectiveLine(describeReaderScript(l10n, _effective)),
             key: const ValueKey('reader-script-effective'),
             style: theme.textTheme.titleMedium,
           ),
@@ -138,9 +184,9 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
             Text(_error!, key: const ValueKey('reader-script-error')),
           ],
           const SizedBox(height: 16),
-          Text('安装设置', style: theme.textTheme.titleLarge),
+          Text(l10n.installationSettings, style: theme.textTheme.titleLarge),
           if (global == null)
-            const ListTile(title: Text('正在读取…'))
+            ListTile(title: Text(l10n.loading))
           else
             RadioGroup<ReaderScriptChoice>(
               groupValue: global,
@@ -153,7 +199,7 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
                     RadioListTile<ReaderScriptChoice>(
                       key: ValueKey('reader-script-global-${choice.slug}'),
                       value: choice,
-                      title: Text(choice.label),
+                      title: Text(readerScriptChoiceLabel(l10n, choice)),
                     ),
                 ],
               ),
@@ -161,11 +207,11 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
           if (widget.bookId.isNotEmpty) ...[
             const Divider(height: 32),
             Text(
-              '本书覆盖：${widget.bookTitle ?? widget.bookId}',
+              l10n.bookOverride(widget.bookTitle ?? widget.bookId),
               style: theme.textTheme.titleLarge,
             ),
             if (book == null)
-              const ListTile(title: Text('正在读取…'))
+              ListTile(title: Text(l10n.loading))
             else
               RadioGroup<ReaderScriptChoice>(
                 groupValue: book,
@@ -178,7 +224,7 @@ class _ReaderScriptPageState extends State<ReaderScriptPage> {
                       RadioListTile<ReaderScriptChoice>(
                         key: ValueKey('reader-script-book-${choice.slug}'),
                         value: choice,
-                        title: Text(choice.label),
+                        title: Text(readerScriptChoiceLabel(l10n, choice)),
                       ),
                   ],
                 ),

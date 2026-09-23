@@ -5,9 +5,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'domain/contracts.dart';
+import 'l10n/app_localizations.dart';
 import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
+import 'settings/interface_language.dart';
+import 'settings/interface_language_page.dart';
 import 'settings/reader_script_page.dart';
 import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
@@ -51,13 +54,39 @@ void installApplicationBindings() {
   installInAppWebViewSourceHatch();
 }
 
-class LiberApp extends StatelessWidget {
-  const LiberApp({super.key, this.workspaceRoot});
+class LiberApp extends StatefulWidget {
+  const LiberApp({super.key, this.workspaceRoot, this.interfaceLanguage});
 
   /// The installation directory (`manifest.json` and `spaces\`), the default
   /// `%APPDATA%\Liber` when null. Tests point it at a directory of their own so
   /// a test run never touches the user's library.
   final Directory? workspaceRoot;
+
+  /// Pins the interface language instead of resolving it from the space store.
+  ///
+  /// A widget test — and a driven run — says which language it expects rather
+  /// than inheriting the machine's locale; null leaves the resolution to the
+  /// `interface.language` row and the system locale (#28).
+  final Locale? interfaceLanguage;
+
+  @override
+  State<LiberApp> createState() => _LiberAppState();
+}
+
+class _LiberAppState extends State<LiberApp> {
+  /// What the open space's store resolved the interface language to, reported
+  /// by [LiberHomePage]; null until the space is open.
+  Locale? _resolved;
+
+  /// The locale the widgets read: the pinned language first, else the stored
+  /// choice, else what the system locale asks for — the state for the frames
+  /// before the space opens.
+  Locale get _locale =>
+      widget.interfaceLanguage ??
+      _resolved ??
+      InterfaceLanguageSetting.followSystem(
+        InterfaceLanguageSetting.systemLocale(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -70,15 +99,30 @@ class LiberApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
         useMaterial3: true,
       ),
-      home: LiberHomePage(workspaceRoot: workspaceRoot),
+      // The interface's own words (#28): the four locales `lib/l10n/` carries,
+      // resolved by `InterfaceLanguageSetting` rather than by Flutter's own
+      // matching. Rebuilding this widget with another locale is what applies a
+      // language change — there is no restart.
+      locale: _locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: InterfaceLanguageSetting.supportedLocales,
+      home: LiberHomePage(
+        workspaceRoot: widget.workspaceRoot,
+        onInterfaceLocale: (locale) => setState(() => _resolved = locale),
+      ),
     );
   }
 }
 
 class LiberHomePage extends StatefulWidget {
-  const LiberHomePage({super.key, this.workspaceRoot});
+  const LiberHomePage({super.key, this.workspaceRoot, this.onInterfaceLocale});
 
   final Directory? workspaceRoot;
+
+  /// Reports the interface language the space store resolved (#28), so the
+  /// application above rebuilds its `MaterialApp` in it. Null when nothing owns
+  /// the application's locale.
+  final ValueChanged<Locale>? onInterfaceLocale;
 
   @override
   State<LiberHomePage> createState() => _LiberHomePageState();
@@ -135,7 +179,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
           home: workspace.root,
         ).run(store, force: true, retireOriginals: true);
       } on Object catch (error) {
-        importError = '旧数据导入失败：$error';
+        if (mounted) {
+          importError = AppLocalizations.of(
+            context,
+          ).legacyImportFailed('$error');
+        }
       }
       await library.load();
       final imported = await shelf.migratedBooks();
@@ -153,10 +201,38 @@ class _LiberHomePageState extends State<LiberHomePage> {
         if (importError != null) _spaceMessage = importError;
       });
       await _refreshFolder();
+      await _resolveInterfaceLanguage(store);
     } on Object catch (error) {
-      if (mounted) setState(() => _spaceMessage = '空间存储不可用：$error');
+      if (mounted) {
+        setState(
+          () => _spaceMessage = AppLocalizations.of(
+            context,
+          ).spaceStoreUnavailable('$error'),
+        );
+      }
     }
   }
+
+  /// Reads the interface language once the space is open and hands it to the
+  /// application (#28).
+  ///
+  /// A row that cannot be read leaves the interface on the system locale: the
+  /// space's own message already reports a store that does not work, and the
+  /// language must not be the second thing to fail.
+  Future<void> _resolveInterfaceLanguage(SpaceStore store) async {
+    try {
+      final locale = await InterfaceLanguageSetting.resolve(store);
+      if (mounted) widget.onInterfaceLocale?.call(locale);
+    } on Object {
+      // The system locale stands.
+    }
+  }
+
+  /// Applies a language chosen on the settings screen (#28): the application
+  /// rebuilds its `MaterialApp` with it, and every widget below re-resolves its
+  /// copy on the next frame.
+  void _applyInterfaceLocale(Locale locale) =>
+      widget.onInterfaceLocale?.call(locale);
 
   Future<void> _refreshFolder() async {
     final library = _library;
@@ -260,24 +336,21 @@ class _LiberHomePageState extends State<LiberHomePage> {
   Future<void> _deleteSource(String sourceRef, String sourceName) async {
     final shelf = _shelf;
     if (shelf == null) return;
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除书源'),
-        content: Text(
-          '删除书源“$sourceName”？（$sourceRef）\n\n'
-          '它的缓存、变量、写入的 Cookie 和已确认的证书例外会一起清理，不能撤销。'
-          '书架上由它加入的书会保留（标记为书源已删除），重新导入同一 URL 的书源即可继续阅读。',
-        ),
+        title: Text(l10n.deleteSource),
+        content: Text(l10n.deleteSourceQuestion(sourceName, sourceRef)),
         actions: [
           TextButton(
             autofocus: true,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -286,10 +359,20 @@ class _LiberHomePageState extends State<LiberHomePage> {
     try {
       await shelf.deleteSource(sourceRef);
       if (!mounted) return;
-      setState(() => _migrationMessage = '已删除书源：$sourceName');
+      setState(
+        () => _migrationMessage = AppLocalizations.of(
+          context,
+        ).sourceDeleted(sourceName),
+      );
       await _refreshShelfViews();
     } on Object catch (error) {
-      if (mounted) setState(() => _migrationMessage = '删除书源失败：$error');
+      if (mounted) {
+        setState(
+          () => _migrationMessage = AppLocalizations.of(
+            context,
+          ).deleteSourceFailed('$error'),
+        );
+      }
     }
   }
 
@@ -300,10 +383,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
     final shelf = _shelf;
     if (shelf == null) return;
     var draft = sourceRef;
+    final l10n = AppLocalizations.of(context);
     final entered = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('修改书源 URL：$sourceName'),
+        title: Text(l10n.editSourceUrlTitle(sourceName)),
         content: TextFormField(
           initialValue: sourceRef,
           autofocus: true,
@@ -313,11 +397,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(draft),
-            child: const Text('保存'),
+            child: Text(l10n.save),
           ),
         ],
       ),
@@ -325,21 +409,31 @@ class _LiberHomePageState extends State<LiberHomePage> {
     if (entered == null || !mounted) return;
     final newUrl = entered.trim();
     if (newUrl.isEmpty) {
-      setState(() => _migrationMessage = '书源 URL 不能为空');
+      setState(() => _migrationMessage = l10n.sourceUrlEmpty);
       return;
     }
     if (newUrl == sourceRef) return;
     if (_sources.any((source) => source.id == newUrl)) {
-      setState(() => _migrationMessage = '已存在 URL 相同的书源：$newUrl');
+      setState(() => _migrationMessage = l10n.sourceUrlTaken(newUrl));
       return;
     }
     try {
       await shelf.repointSource(sourceRef, newUrl);
       if (!mounted) return;
-      setState(() => _migrationMessage = '已修改书源 URL：$sourceRef → $newUrl');
+      setState(
+        () => _migrationMessage = AppLocalizations.of(
+          context,
+        ).sourceUrlChanged(sourceRef, newUrl),
+      );
       await _refreshShelfViews();
     } on Object catch (error) {
-      if (mounted) setState(() => _migrationMessage = '修改书源 URL 失败：$error');
+      if (mounted) {
+        setState(
+          () => _migrationMessage = AppLocalizations.of(
+            context,
+          ).editSourceUrlFailed('$error'),
+        );
+      }
     }
   }
 
@@ -367,7 +461,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
     }
     final data = source;
     if (data == null) {
-      setState(() => _migrationMessage = '找不到书源：$sourceRef');
+      setState(
+        () => _migrationMessage = AppLocalizations.of(
+          context,
+        ).sourceNotFound(sourceRef),
+      );
       return;
     }
     final loggedIn = await showDialog<bool>(
@@ -382,11 +480,16 @@ class _LiberHomePageState extends State<LiberHomePage> {
       ),
     );
     if (!mounted || loggedIn != true) return;
-    setState(() => _migrationMessage = '已登录书源：$sourceName');
+    setState(
+      () => _migrationMessage = AppLocalizations.of(
+        context,
+      ).sourceLoggedIn(sourceName),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final shelf = _shelf;
     final library = _library;
     final store = _store;
@@ -431,7 +534,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
           setState(() {
             if (entries != null) _folderEntries = entries;
             if (root != null) {
-              _libraryMessage = '已选择根目录：${root.displayName}';
+              _libraryMessage = AppLocalizations.of(
+                context,
+              ).rootSelected(root.displayName);
             }
           });
         },
@@ -440,8 +545,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
           if (!mounted) return;
           setState(() {
             if (entries != null) _folderEntries = entries;
-            _libraryMessage =
-                '递归扫描完成：发现 ${entries?.length ?? 0} 个 TXT/Markdown 文件';
+            _libraryMessage = AppLocalizations.of(
+              context,
+            ).scanFinished(entries?.length ?? 0);
           });
         },
         onAdd: () async {
@@ -449,8 +555,8 @@ class _LiberHomePageState extends State<LiberHomePage> {
           if (!mounted) return;
           setState(() {
             _libraryMessage = books == null || books.isEmpty
-                ? '没有新的文件加入书架'
-                : '已显式加入 ${books.length} 本书';
+                ? l10n.noNewFiles
+                : l10n.filesAdded(books.length);
           });
         },
 
@@ -459,8 +565,8 @@ class _LiberHomePageState extends State<LiberHomePage> {
           if (!mounted) return;
           setState(() {
             _libraryMessage = books == null || books.isEmpty
-                ? '该文件已经在书架中'
-                : '已加入 ${books.first.title}';
+                ? l10n.fileAlreadyOnShelf
+                : l10n.fileAdded(books.first.title);
           });
         },
       ),
@@ -481,7 +587,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
             if (!mounted) return;
             setState(() {
               _migrationResult = result;
-              _migrationMessage = '导入预览完成';
+              _migrationMessage = AppLocalizations.of(
+                context,
+              ).importPreviewDone;
             });
             await _refreshShelfViews();
           } on FormatException catch (error) {
@@ -496,7 +604,22 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // #40 entry region: the app bar's actions. `精确搜索` is the
         // multi-source search entry (`PreciseSearchPage`); the page reads the
         // space's sources itself, so this hunk needs nothing but the shelf.
+        // #28's own entry is `界面语言`, beside #27's `中文转换`.
         actions: [
+          IconButton(
+            onPressed: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => InterfaceLanguagePage(
+                        store: shelf.store,
+                        onLocaleChanged: _applyInterfaceLocale,
+                      ),
+                    ),
+                  ),
+            tooltip: l10n.actionInterfaceLanguage,
+            icon: const Icon(Icons.language),
+          ),
           IconButton(
             onPressed: shelf == null
                 ? null
@@ -505,7 +628,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
                       builder: (_) => ReaderScriptPage(store: shelf.store),
                     ),
                   ),
-            tooltip: '中文转换',
+            tooltip: l10n.readerScriptTitle,
             icon: const Icon(Icons.translate),
           ),
           TextButton.icon(
@@ -520,7 +643,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
                     if (mounted) setState(() => _onlineRevision++);
                   },
             icon: const Icon(Icons.manage_search),
-            label: const Text('精确搜索'),
+            label: Text(l10n.actionPreciseSearch),
           ),
           TextButton.icon(
             onPressed: shelf == null
@@ -536,7 +659,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
                     await _refreshShelfViews();
                   },
             icon: const Icon(Icons.travel_explore),
-            label: const Text('书源试读'),
+            label: Text(l10n.actionSourceTrial),
           ),
         ],
       ),
@@ -548,21 +671,21 @@ class _LiberHomePageState extends State<LiberHomePage> {
               setState(() => _selectedIndex = index);
             },
             labelType: NavigationRailLabelType.all,
-            destinations: const [
+            destinations: [
               NavigationRailDestination(
-                icon: Icon(Icons.menu_book_outlined),
-                selectedIcon: Icon(Icons.menu_book),
-                label: Text('书架'),
+                icon: const Icon(Icons.menu_book_outlined),
+                selectedIcon: const Icon(Icons.menu_book),
+                label: Text(l10n.shelfTitle),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.folder_outlined),
-                selectedIcon: Icon(Icons.folder),
-                label: Text('本地书库'),
+                icon: const Icon(Icons.folder_outlined),
+                selectedIcon: const Icon(Icons.folder),
+                label: Text(l10n.navLocalLibrary),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.import_export_outlined),
-                selectedIcon: Icon(Icons.import_export),
-                label: Text('迁移'),
+                icon: const Icon(Icons.import_export_outlined),
+                selectedIcon: const Icon(Icons.import_export),
+                label: Text(l10n.navMigration),
               ),
             ],
           ),
@@ -607,17 +730,15 @@ class _BookshelfPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('书架', style: theme.textTheme.headlineMedium),
+          Text(l10n.shelfTitle, style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
-          Text(
-            'Windows-first MVP · 共享书源契约验证台',
-            style: theme.textTheme.bodyLarge,
-          ),
+          Text(l10n.shelfSubtitle, style: theme.textTheme.bodyLarge),
           const SizedBox(height: 28),
           Card(
             child: Padding(
@@ -632,14 +753,14 @@ class _BookshelfPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Wayfinder 受控书源',
+                          l10n.controlledSourceTitle,
                           style: theme.textTheme.titleLarge,
                         ),
                         const SizedBox(height: 6),
-                        const Text('用于验证搜索、书籍信息、目录和正文的最小链路。'),
+                        Text(l10n.controlledSourceDescription),
                         const SizedBox(height: 18),
                         Text(
-                          run.message.isEmpty ? '尚未运行' : run.message,
+                          run.message.isEmpty ? l10n.notRunYet : run.message,
                           key: const ValueKey('run-status'),
                         ),
                         const SizedBox(height: 12),
@@ -648,7 +769,7 @@ class _BookshelfPage extends StatelessWidget {
                               ? null
                               : onRunSource,
                           icon: const Icon(Icons.play_arrow),
-                          label: const Text('运行受控书源'),
+                          label: Text(l10n.runControlledSource),
                         ),
                       ],
                     ),
@@ -666,10 +787,13 @@ class _BookshelfPage extends StatelessWidget {
                 else
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(spaceMessage ?? '正在打开空间存储…'),
+                    child: Text(spaceMessage ?? l10n.openingSpaceStore),
                   ),
                 if (importedBooks.isNotEmpty) ...[
-                  Text('已迁移书籍', style: theme.textTheme.titleLarge),
+                  Text(
+                    l10n.migratedBooksTitle,
+                    style: theme.textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 8),
                   for (final entry in importedBooks)
                     Card(
@@ -678,8 +802,8 @@ class _BookshelfPage extends StatelessWidget {
                         title: Text(entry.title),
                         subtitle: Text(
                           entry.book.needsRelink
-                              ? '需要重新关联本地文件 · offset：${entry.textOffset}'
-                              : '迁移进度 offset：${entry.textOffset}',
+                              ? l10n.needsRelinkOffset(entry.textOffset)
+                              : l10n.migratedProgressOffset(entry.textOffset),
                         ),
                         trailing: const Icon(Icons.info_outline),
                       ),
@@ -687,14 +811,14 @@ class _BookshelfPage extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
                 if (localBooks.isNotEmpty) ...[
-                  Text('本地书', style: theme.textTheme.titleLarge),
+                  Text(l10n.localBooksTitle, style: theme.textTheme.titleLarge),
                   const SizedBox(height: 8),
                   for (final book in localBooks)
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.description),
                         title: Text(book.title),
-                        subtitle: Text('进度 offset：${book.textOffset}'),
+                        subtitle: Text(l10n.progressOffset(book.textOffset)),
                         onTap: () => onOpenBook(book),
                       ),
                     ),
@@ -707,7 +831,10 @@ class _BookshelfPage extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('请求 trace', style: theme.textTheme.titleMedium),
+                          Text(
+                            l10n.requestTraceTitle,
+                            style: theme.textTheme.titleMedium,
+                          ),
                           for (final entry in trace)
                             Text('${entry.stage.name}: ${entry.path}'),
                         ],
@@ -733,11 +860,12 @@ class _StageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const stages = <(BookSourceStage, String)>[
-      (BookSourceStage.search, '搜索'),
-      (BookSourceStage.bookInfo, '书籍信息'),
-      (BookSourceStage.tableOfContents, '目录'),
-      (BookSourceStage.content, '正文'),
+    final l10n = AppLocalizations.of(context);
+    final stages = <(BookSourceStage, String)>[
+      (BookSourceStage.search, l10n.stageSearch),
+      (BookSourceStage.bookInfo, l10n.stageBookInfo),
+      (BookSourceStage.tableOfContents, l10n.stageTableOfContents),
+      (BookSourceStage.content, l10n.stageContent),
     ];
     final currentIndex = stages.indexWhere((item) => item.$1 == current);
     return Column(
@@ -768,12 +896,10 @@ class _ContractNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Card(
+    return Card(
       child: Padding(
-        padding: EdgeInsets.all(20),
-        child: Text(
-          '当前阶段只运行受控 fixture。fjs 的 host callback 生命周期和不可信书源隔离仍是明确门禁；Windows MVP 不代表五平台兼容性已完成。',
-        ),
+        padding: const EdgeInsets.all(20),
+        child: Text(AppLocalizations.of(context).contractNotice),
       ),
     );
   }
@@ -812,6 +938,7 @@ class _LocalLibraryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final root = service?.root;
     final current = service?.currentPath;
     return Padding(
@@ -819,13 +946,17 @@ class _LocalLibraryPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('本地书库', style: Theme.of(context).textTheme.headlineMedium),
+          Text(
+            l10n.navLocalLibrary,
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
           const SizedBox(height: 8),
           Text(
             root == null
-                ? '尚未授权目录'
-                : '当前位置：${current ?? root.displayName}'
-                      '${root.needsRelink ? '（目录不可用，请重新选择根目录）' : ''}',
+                ? l10n.noRootFolder
+                : root.needsRelink
+                ? l10n.currentFolderRelink(current ?? root.displayName)
+                : l10n.currentFolder(current ?? root.displayName),
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -837,22 +968,22 @@ class _LocalLibraryPage extends StatelessWidget {
                   if (path != null) await onRootSelected(path);
                 },
                 icon: const Icon(Icons.folder_open),
-                label: const Text('选择根目录'),
+                label: Text(l10n.chooseRootFolder),
               ),
               OutlinedButton.icon(
                 onPressed: root == null ? null : onGoUp,
                 icon: const Icon(Icons.arrow_upward),
-                label: const Text('返回上级'),
+                label: Text(l10n.goUp),
               ),
               OutlinedButton.icon(
                 onPressed: root == null ? null : onScan,
                 icon: const Icon(Icons.search),
-                label: const Text('递归扫描当前目录'),
+                label: Text(l10n.scanRecursively),
               ),
               OutlinedButton.icon(
                 onPressed: entries.isEmpty ? null : onAdd,
                 icon: const Icon(Icons.playlist_add),
-                label: const Text('显式加入书架'),
+                label: Text(l10n.addToShelf),
               ),
             ],
           ),
@@ -873,7 +1004,7 @@ class _LocalLibraryPage extends StatelessWidget {
                       ),
                       title: Text(entry.path),
                       subtitle: Text(
-                        entry is Directory ? '文件夹' : 'TXT/Markdown 文件',
+                        entry is Directory ? l10n.folder : l10n.textFile,
                       ),
                       trailing: PopupMenuButton<String>(
                         onSelected: (action) {
@@ -885,14 +1016,14 @@ class _LocalLibraryPage extends StatelessWidget {
                         },
                         itemBuilder: (_) => [
                           if (entry is Directory)
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'open',
-                              child: Text('打开文件夹'),
+                              child: Text(l10n.openFolder),
                             ),
                           if (entry is File)
-                            const PopupMenuItem(
+                            PopupMenuItem(
                               value: 'add',
-                              child: Text('加入书架'),
+                              child: Text(l10n.addEntryToShelf),
                             ),
                         ],
                       ),
@@ -900,18 +1031,18 @@ class _LocalLibraryPage extends StatelessWidget {
                           ? () => onEnterFolder(entry.path)
                           : null,
                     ),
-                  if (entries.isEmpty) const ListTile(title: Text('扫描结果为空')),
+                  if (entries.isEmpty) ListTile(title: Text(l10n.scanEmpty)),
                 ],
               ),
             ),
           ),
-          Text('书架已加入 ${books.length} 本本地书'),
+          Text(l10n.shelfLocalBookCount(books.length)),
           for (final book in books)
             ListTile(
               dense: true,
               leading: const Icon(Icons.menu_book_outlined),
               title: Text(book.title),
-              subtitle: Text('进度 offset：${book.textOffset}'),
+              subtitle: Text(l10n.progressOffset(book.textOffset)),
               onTap: () => onOpenBook(book),
             ),
         ],
@@ -960,6 +1091,7 @@ class _MigrationPage extends StatelessWidget {
   /// button.
   Widget _spaceCard(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final report = spaceImport;
     return Card(
       child: Padding(
@@ -967,10 +1099,10 @@ class _MigrationPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('空间存储', style: theme.textTheme.titleLarge),
+            Text(l10n.spaceStoreTitle, style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              spaceStorePath ?? '尚未创建',
+              spaceStorePath ?? l10n.notCreatedYet,
               key: const ValueKey('space-store-path'),
               style: theme.textTheme.bodySmall,
             ),
@@ -978,17 +1110,20 @@ class _MigrationPage extends StatelessWidget {
             if (spaceMessage != null)
               Text(spaceMessage!, key: const ValueKey('space-store-status'))
             else if (report == null)
-              const Text('正在打开…')
+              Text(l10n.opening)
             else if (report.imported)
               Text(
-                '本次导入旧数据（${report.importedAt}）：${report.summary()}',
+                l10n.importedNow(report.importedAt, report.summary()),
                 key: const ValueKey('space-store-status'),
               )
             else if (report.importedAt.isEmpty)
-              const Text('没有可导入的旧数据', key: ValueKey('space-store-status'))
+              Text(
+                l10n.nothingToImport,
+                key: const ValueKey('space-store-status'),
+              )
             else
               Text(
-                '已在 ${report.importedAt} 导入过：${report.summary()}，本次未重复导入',
+                l10n.alreadyImported(report.importedAt, report.summary()),
                 key: const ValueKey('space-store-status'),
               ),
             if (report != null && report.losses.isNotEmpty) ...[
@@ -1003,14 +1138,18 @@ class _MigrationPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     // The source list grows with the space, so the page scrolls rather than
     // clipping what does not fit.
     return ListView(
       padding: const EdgeInsets.all(32),
       children: [
-        Text('迁移', style: Theme.of(context).textTheme.headlineMedium),
+        Text(
+          l10n.navMigration,
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
         const SizedBox(height: 8),
-        const Text('选择 Legado 的备份 ZIP（推荐）或 JSON 文件，先做导入预览并报告无法迁移的数据。'),
+        Text(l10n.migrationIntro),
         const SizedBox(height: 20),
         _spaceCard(context),
         const SizedBox(height: 20),
@@ -1027,7 +1166,7 @@ class _MigrationPage extends StatelessWidget {
               onImportFile(path);
             },
             icon: const Icon(Icons.file_open),
-            label: const Text('选择 Legado 备份'),
+            label: Text(l10n.chooseLegadoBackup),
           ),
         ),
         if (message != null) ...[
@@ -1036,19 +1175,22 @@ class _MigrationPage extends StatelessWidget {
         ],
         if (sources.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text('已导入书源', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            l10n.importedSourcesTitle,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           for (final source in sources)
             ListTile(
               leading: const Icon(Icons.public),
               title: Text('${source.data['bookSourceName'] ?? source.id}'),
               subtitle: Text(
-                '${source.data['bookSourceUrl'] ?? '未提供 URL'}',
+                '${source.data['bookSourceUrl'] ?? l10n.urlMissing}',
               ),
               // A source's row identity is its URL, so the two actions a source
               // has are deleting it and moving it to another URL (#53).
               trailing: PopupMenuButton<String>(
                 key: ValueKey('source-actions-${source.id}'),
-                tooltip: '书源操作',
+                tooltip: l10n.sourceActions,
                 onSelected: (action) {
                   final name = '${source.data['bookSourceName'] ?? source.id}';
                   if (action == 'login') {
@@ -1059,10 +1201,16 @@ class _MigrationPage extends StatelessWidget {
                     onDeleteSource(source.id, name);
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'login', child: Text('登录')),
-                  PopupMenuItem(value: 'edit', child: Text('修改书源 URL')),
-                  PopupMenuItem(value: 'delete', child: Text('删除书源')),
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'login', child: Text(l10n.loginAction)),
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Text(l10n.editSourceUrlAction),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(l10n.deleteSource),
+                  ),
                 ],
               ),
             ),
@@ -1075,10 +1223,13 @@ class _MigrationPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('导入预览', style: Theme.of(context).textTheme.titleLarge),
-                  Text('Book Sources：${result!.sourceCount}'),
-                  Text('书架：${result!.bookCount}'),
-                  Text('阅读进度：${result!.progressCount}'),
+                  Text(
+                    l10n.importPreviewTitle,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Text(l10n.previewSources(result!.sourceCount)),
+                  Text(l10n.previewBooks(result!.bookCount)),
+                  Text(l10n.previewProgress(result!.progressCount)),
                   const SizedBox(height: 12),
                   for (final loss in result!.losses) Text('• $loss'),
                 ],

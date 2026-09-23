@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart' show sourceCheckKeyword;
 import 'html_source_browser.dart';
@@ -26,7 +27,11 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
   final keyword = TextEditingController();
   late List<Map<String, dynamic>> sources;
   int? selected;
-  String status = '选择书源并输入关键词。';
+
+  /// What the page last did, or null before it has done anything: the initial
+  /// line is the build's, because it is copy (`lib/l10n/`) and a `State` field
+  /// has no context to read it with.
+  String? status;
 
   @override
   void initState() {
@@ -42,6 +47,7 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
   }
 
   Future<void> openSource() async {
+    final l10n = AppLocalizations.of(context);
     try {
       final file = await FilePicker.pickFile(
         type: FileType.custom,
@@ -56,16 +62,16 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                 item is! Map<String, dynamic> ||
                 item['bookSourceUrl'] is! String,
           )) {
-        throw const FormatException('请选择 Legado 单个书源或书源数组 JSON');
+        throw FormatException(l10n.sourceJsonRequired);
       }
       if (!mounted) return;
       setState(() {
         sources = items.cast<Map<String, dynamic>>();
         selected = 0;
-        status = '已载入 ${sources.length} 个书源，仅用于本次试读';
+        status = l10n.sourcesLoaded(sources.length);
       });
     } catch (error) {
-      if (mounted) setState(() => status = '载入失败：$error');
+      if (mounted) setState(() => status = l10n.loadSourceFailed('$error'));
     }
   }
 
@@ -75,17 +81,18 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
   /// rules need, so a JSON source is searched, shelved and read exactly like an
   /// HTML one instead of stopping at a text preview (ticket #29).
   Future<void> run() async {
+    final l10n = AppLocalizations.of(context);
     var keywordText = keyword.text.trim();
     if (keywordText.isEmpty) {
       try {
         keywordText = sourceCheckKeyword(sources[selected!], '');
       } on FormatException catch (error) {
-        setState(() => status = '读取失败：${error.message}');
+        setState(() => status = l10n.readSourceFailed(error.message));
         return;
       }
     }
     if (keywordText.isEmpty) {
-      setState(() => status = '请输入关键词。');
+      setState(() => status = l10n.enterKeyword);
       return;
     }
     await Navigator.of(context).push<void>(
@@ -101,15 +108,14 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final message = status ?? l10n.chooseSourceAndKeyword;
     return Scaffold(
-      appBar: AppBar(title: const Text('书源试读')),
+      appBar: AppBar(title: Text(l10n.actionSourceTrial)),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const Text(
-            '搜索后选书，再查看目录和正文。当前支持速读谷及就爱文学所用的部分规则；'
-            '登录（loginUrl / loginUi / loginCheckJs）已支持，远程共享脚本库尚未支持。',
-          ),
+          Text(l10n.sourceTrialIntro),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
@@ -118,13 +124,13 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                   final saved = await widget.service.lastRead();
                   if (!mounted) return;
                   if (saved == null) {
-                    setState(() => status = '尚无在线阅读记录');
+                    setState(() => status = l10n.noOnlineReading);
                     return;
                   }
                   // A book whose source was deleted (#53) has no source object
                   // to hand the browser: say so instead of opening an empty one.
                   if (saved.sourceMissing) {
-                    setState(() => status = '上次阅读的书源已删除，重新导入同一 URL 的书源后可以继续。');
+                    setState(() => status = l10n.lastReadSourceDeleted);
                     return;
                   }
                   if (!context.mounted) return;
@@ -139,11 +145,11 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                     ),
                   );
                 } catch (e) {
-                  if (mounted) setState(() => status = '恢复失败：$e');
+                  if (mounted) setState(() => status = l10n.resumeFailed('$e'));
                 }
               },
               icon: const Icon(Icons.history),
-              label: const Text('继续上次阅读'),
+              label: Text(l10n.continueLastReading),
             ),
           ),
           Align(
@@ -163,13 +169,15 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
                     sources = data.cast<Map<String, dynamic>>();
                     selected = 0;
                     keyword.text = '凡人修仙传';
-                    status = '已载入速读谷，点击搜索后选择书籍';
+                    status = l10n.shuduguLoaded;
                   });
                 } catch (e) {
-                  if (mounted) setState(() => status = '载入失败：$e');
+                  if (mounted) {
+                    setState(() => status = l10n.loadSourceFailed('$e'));
+                  }
                 }
               },
-              child: const Text('使用速读谷书源'),
+              child: Text(l10n.useShuduguSource),
             ),
           ),
           const SizedBox(height: 16),
@@ -177,7 +185,7 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
             alignment: Alignment.centerLeft,
             child: OutlinedButton(
               onPressed: openSource,
-              child: const Text('选择书源 JSON'),
+              child: Text(l10n.chooseSourceJson),
             ),
           ),
           if (sources.isNotEmpty)
@@ -199,7 +207,7 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
             ),
           TextField(
             controller: keyword,
-            decoration: const InputDecoration(labelText: '搜索关键词'),
+            decoration: InputDecoration(labelText: l10n.searchKeyword),
             onSubmitted: (_) => run(),
           ),
           const SizedBox(height: 16),
@@ -207,11 +215,11 @@ class _SourceTrialPageState extends State<SourceTrialPage> {
             alignment: Alignment.centerLeft,
             child: FilledButton(
               onPressed: selected == null ? null : run,
-              child: const Text('搜索'),
+              child: Text(l10n.search),
             ),
           ),
           const SizedBox(height: 16),
-          SelectableText(status),
+          SelectableText(message),
         ],
       ),
     );

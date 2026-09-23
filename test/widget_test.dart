@@ -6,25 +6,37 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:liber/main.dart';
 
+import 'l10n_support.dart';
+
 void defaultAppTest(Directory Function() root) {
   testWidgets('Windows MVP shows the controlled source workbench', (
     tester,
   ) async {
-    await tester.pumpWidget(LiberApp(workspaceRoot: root()));
+    await tester.pumpWidget(
+      LiberApp(workspaceRoot: root(), interfaceLanguage: testLocale),
+    );
 
     expect(find.text('书架'), findsNWidgets(2));
     expect(find.text('Wayfinder 受控书源'), findsOneWidget);
     expect(find.text('尚未运行'), findsOneWidget);
-    // The conversion screen has an entry point in the app bar (#27); the space
-    // is not open yet, so it is disabled until it is.
-    final settings = tester.widget<IconButton>(
+    // The two settings screens have an entry point in the app bar (#27, #28);
+    // the space is not open yet, so both are disabled until it is.
+    final script = tester.widget<IconButton>(
       find.ancestor(
         of: find.byIcon(Icons.translate),
         matching: find.byType(IconButton),
       ),
     );
-    expect(settings.tooltip, '中文转换');
-    expect(settings.onPressed, isNull);
+    expect(script.tooltip, '中文转换');
+    expect(script.onPressed, isNull);
+    final language = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.language),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(language.tooltip, '界面语言');
+    expect(language.onPressed, isNull);
   });
 }
 
@@ -35,7 +47,9 @@ void spaceStoreTest(Directory Function() root) {
   testWidgets('迁移页报告旧数据导入结果，原文件退休后书架仍从空间读取', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
-      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
       await tester.pump();
       await tester.tap(find.text('迁移'));
       await tester.pump();
@@ -75,7 +89,9 @@ void spaceStoreTest(Directory Function() root) {
       // space with them already gone and the shelf is still there.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
       await tester.pump();
       await tester.tap(find.text('迁移'));
       await tester.pump();
@@ -103,7 +119,9 @@ void sourceManagementTest(Directory Function() root) {
   testWidgets('迁移页删除书源：书源行消失，书架上的书保留并标记', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
-      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
       await tester.pump();
       await tester.tap(find.text('迁移'));
       await tester.pump();
@@ -163,7 +181,9 @@ void sourceManagementTest(Directory Function() root) {
   testWidgets('迁移页修改书源 URL：旧 URL 消失，书架上的书保留并标记', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
-      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
       await tester.pump();
       await tester.tap(find.text('迁移'));
       await tester.pump();
@@ -216,7 +236,9 @@ void sourceManagementTest(Directory Function() root) {
   testWidgets('迁移页登录书源：书源行的登录项打开登录界面（#60）', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
-      await tester.pumpWidget(LiberApp(workspaceRoot: workspaceRoot));
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
       await tester.pump();
       await tester.tap(find.text('迁移'));
       await tester.pump();

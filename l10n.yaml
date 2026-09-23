@@ -1,0 +1,20 @@
+# The interface's own words (#28).
+#
+# `lib/l10n/app_zh.arb` is the template and holds today's Simplified copy; the
+# other three interfaces read the same key set. `app_zh_Hant_TW.arb` and
+# `app_zh_Hant_HK.arb` are generated from the template by
+# `tool/l10n/generate_traditional.dart`, through the same `liber_text` word
+# tables the reader's conversion uses (ADR 0010), and stay editable: the
+# generator's override list keeps a hand correction across a regeneration.
+#
+# The generated Dart files live in `lib/l10n/` (the default output directory is
+# the ARB directory) and are committed, so the analyzer, the tests and the gate
+# tools read exactly what a build compiles.
+arb-dir: lib/l10n
+template-arb-file: app_zh.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+
+# The app always installs the delegates, so a missing `AppLocalizations` is a
+# bug and `of(context)` says so instead of returning null.
+nullable-getter: false

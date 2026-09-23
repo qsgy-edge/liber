@@ -1,7 +1,8 @@
 import 'package:fjs/fjs.dart' show ConvertTarget;
-import 'package:flutter/widgets.dart' show Locale, WidgetsBinding;
+import 'package:flutter/widgets.dart' show Locale;
 
 import '../store/space_store.dart';
+import 'interface_language.dart';
 
 /// The reader's conversion choice, as the settings screen presents it.
 ///
@@ -35,7 +36,9 @@ enum ReaderScriptChoice {
   /// The value the store holds for this choice.
   ///
   /// The slugs are ASCII and independent of the UI labels, so a later settings
-  /// surface (#28) reads the same rows without translating them.
+  /// surface (#28) reads the same rows without translating them. The label the
+  /// settings screen shows is the screen's own, from `lib/l10n/`
+  /// (`readerScriptChoiceLabel`): the interface's words are not the model's.
   String get slug => switch (this) {
     followLocale => 'follow_locale',
     followGlobal => 'follow_global',
@@ -44,17 +47,6 @@ enum ReaderScriptChoice {
     traditionalHongKong => 'traditional_hongkong',
     traditionalGeneric => 'traditional_generic',
     none => 'none',
-  };
-
-  /// The label the settings screen shows.
-  String get label => switch (this) {
-    followLocale => '跟随系统语言',
-    followGlobal => '跟随全局设置',
-    simplified => '简体',
-    traditionalTaiwan => '繁體（台灣）',
-    traditionalHongKong => '繁體（香港）',
-    traditionalGeneric => '繁體（通用）',
-    none => '不转换',
   };
 
   /// The choice a stored slug names, or null when the row holds something else.
@@ -170,9 +162,9 @@ class ReaderScriptSetting {
 
   /// The locale a resolution follows: the widget tree's dispatcher, so a test's
   /// `tester.binding.platformDispatcher.localeTestValue` is what the product
-  /// reads.
-  static Locale systemLocale() =>
-      WidgetsBinding.instance.platformDispatcher.locale;
+  /// reads. It is [InterfaceLanguageSetting.systemLocale] — one read per
+  /// resolution, shared by the interface and by this setting (#28).
+  static Locale systemLocale() => InterfaceLanguageSetting.systemLocale();
 
   /// Persists the installation's choice.
   static Future<void> putGlobal(SpaceStore store, ReaderScriptChoice choice) =>
@@ -185,13 +177,3 @@ class ReaderScriptSetting {
     ReaderScriptChoice choice,
   ) => store.putSetting(key, choice.slug, bookId: bookId);
 }
-
-/// What a resolved target renders, in words: the settings screen shows it so a
-/// reader can see what a choice and a locale together produce.
-String describeReaderScript(ConvertTarget? target) => switch (target) {
-  null => '不转换',
-  ConvertTarget.simplifiedMainland => '简体（大陆用词）',
-  ConvertTarget.traditionalTaiwan => '繁體（台灣）',
-  ConvertTarget.traditionalHongKong => '繁體（香港）',
-  ConvertTarget.traditionalGeneric => '繁體（通用）',
-};

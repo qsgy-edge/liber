@@ -98,7 +98,7 @@ void main() {
         expect(
           await ReaderScriptSetting.resolve(store),
           entry.value,
-          reason: '${entry.key.label} 应解析为 ${entry.value}',
+          reason: '${entry.key.slug} 应解析为 ${entry.value}',
         );
       }
     });

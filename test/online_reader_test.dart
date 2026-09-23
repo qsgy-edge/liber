@@ -16,6 +16,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 /// The conversion the reader runs is the engine's; a widget test cannot load the
 /// native library, so it injects this double and reads the target it was given.
 String markTarget(String text, ConvertTarget target) =>
@@ -116,7 +118,7 @@ void main() {
       final entry = (await shelf.find(sourceUrl, bookUrl))!;
 
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: Builder(
             builder: (context) => TextButton(
               onPressed: () => Navigator.of(context).push<void>(
@@ -151,7 +153,7 @@ void main() {
       ];
       // Each reader owns the pipeline it fetches through, so a remount gets a
       // fresh one and the replaced reader cancelling its own is the point.
-      Widget page(int index, int offset) => MaterialApp(
+      Widget page(int index, int offset) => localizedApp(
         home: OnlineReaderPage(
           pipeline: ScriptedPipeline(),
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -199,7 +201,7 @@ void main() {
         SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
       ];
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: OnlineReaderPage(
             pipeline: pipeline,
             book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -229,7 +231,7 @@ void main() {
       SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
     ];
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: pipeline,
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -284,7 +286,7 @@ void main() {
     );
     final chapters = [SourceChapter('第一章 广告', Uri.parse('$sourceUrl/1'))];
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: ScriptedPipeline(),
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -324,7 +326,7 @@ void main() {
       SourceChapter('第四章', Uri.parse('$sourceUrl/4'), tag: _longTag),
     ];
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: ScriptedPipeline(),
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -382,7 +384,7 @@ void main() {
       addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
       final chapters = [SourceChapter('第一章 龍鳳', Uri.parse('$sourceUrl/1'))];
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: OnlineReaderPage(
             pipeline: ScriptedPipeline(),
             book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -416,7 +418,7 @@ void main() {
     final pipeline = ScriptedPipeline();
     final chapters = [SourceChapter('第一章', Uri.parse('$sourceUrl/1'))];
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: pipeline,
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -441,7 +443,7 @@ void main() {
       find.byKey(const ValueKey('reader-script-book-traditional_generic')),
     );
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await tapBack(tester);
     await tester.pumpAndSettle();
 
     // The override is what the open chapter renders in, and the chapter was not
