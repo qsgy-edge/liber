@@ -172,6 +172,23 @@ void main() {
     },
   );
 
+  testWidgets(
+    'credential-bearing URL is rejected before a permissive source can fetch',
+    (tester) async {
+      final transport = RecordedPages();
+      await store.putSourceJson(matchingSource('书源甲', sourceUrl, r'.*'));
+      await showShelf(tester, transport);
+      await paste(tester, 'https://user:pass@example.test/book/73');
+      expect(find.textContaining('请输入有效的 http(s)'), findsOneWidget);
+      expect(find.byType(HtmlSourceBrowser), findsNothing);
+      expect(transport.paths, isEmpty);
+      expect(transport.stages, isEmpty);
+      await paste(tester, 'https://');
+      expect(find.textContaining('请输入有效的 http(s)'), findsOneWidget);
+      expect(transport.paths, isEmpty);
+    },
+  );
+
   testWidgets('unmatched and invalid URLs report a result without requesting', (
     tester,
   ) async {

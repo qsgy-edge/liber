@@ -118,6 +118,8 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     final url = Uri.tryParse(text);
     if (url == null ||
         !url.hasAuthority ||
+        url.host.isEmpty ||
+        url.userInfo.isNotEmpty ||
         (url.scheme != 'http' && url.scheme != 'https')) {
       setState(() => urlResult = '请输入有效的 http(s) 书籍链接');
       return;
@@ -159,8 +161,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                 0.0,
                 360.0,
               ),
-              height: (80.0 * matches.length +
-                      (failures.isEmpty ? 0.0 : 120.0))
+              height: (80.0 * matches.length + (failures.isEmpty ? 0.0 : 120.0))
                   .clamp(0.0, MediaQuery.sizeOf(dialogContext).height * 0.6),
               child: ListView(
                 children: [
