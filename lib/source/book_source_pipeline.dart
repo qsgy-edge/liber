@@ -9,7 +9,8 @@ import 'source_host_state.dart';
 /// The shapes the pages hold come with the interface, so a caller that runs a
 /// source needs one import for them: [HtmlBook] and [HtmlChapterBody] from the
 /// HTML adapter's file, [SourceChapter] from the JSON adapter's.
-export 'html_source_pipeline.dart' show HtmlBook, HtmlChapterBody;
+export 'html_source_pipeline.dart'
+    show HtmlBook, HtmlChapterBody, SourceChapterImage, extractChapterImages;
 export 'json_source_pipeline.dart' show SourceChapter;
 
 /// The frozen source's check keyword (`BookSource.getCheckKeyword`).
@@ -139,6 +140,45 @@ String formatSourceWordCount(String value) {
   return '$tenThousands万字';
 }
 
+/// The frozen `Book.imageStyle` values (`Book.kt:386-389`), resolved from a
+/// source's content rule.
+enum SourceImageStyle {
+  /// `DEFAULT` (also every value the frozen does not know): the image's own
+  /// size, centred.
+  natural,
+
+  /// `FULL`: the full width of the reading column.
+  full,
+
+  /// `TEXT`: inline in the text, one character cell.
+  text,
+
+  /// `SINGLE`: one image per screen.
+  single,
+}
+
+/// The image style a source declares, from its `ruleContent.imageStyle`.
+///
+/// The frozen `ReadBook.upWebBook` (`ReadBook.kt:163-177`) reads the field off
+/// the content rule when the book carries no style of its own and compares it
+/// case-insensitively against `Book.imgStyleFull`/`TEXT`/`SINGLE`; a blank or
+/// unknown value is the `DEFAULT` behavior the layouts give their `else`
+/// branch.
+SourceImageStyle sourceImageStyle(Map<String, dynamic> source) {
+  final content = source['ruleContent'];
+  final value = content is Map ? content['imageStyle'] : null;
+  switch ('$value'.toUpperCase()) {
+    case 'FULL':
+      return SourceImageStyle.full;
+    case 'TEXT':
+      return SourceImageStyle.text;
+    case 'SINGLE':
+      return SourceImageStyle.single;
+    default:
+      return SourceImageStyle.natural;
+  }
+}
+
 /// One analysis of one Book Source, as the pages that run a source hold it.
 ///
 /// A source's rules decide which adapter actually runs: [HtmlSourcePipeline]
@@ -191,6 +231,17 @@ abstract interface class BookSourcePipeline {
     HtmlBook? book,
     String? nextChapterUrl,
   });
+
+  /// One content image's bytes, through this source's own session.
+  ///
+  /// The frozen reader loads a content image the way it loads any other source
+  /// address (`ImageProvider.getImageSize` → `BookHelp.saveImage` →
+  /// `AnalyzeUrl(src, source = bookSource).getByteArrayAwait()`): the source's
+  /// `header` rule, its login header, its cookie jar, its `concurrentRate` and
+  /// its per-source TLS exception. [src] is one image's own address text, as
+  /// [HtmlChapterBody.images] carries it; [base] resolves a relative one, and
+  /// the chapter's own URL is what the frozen download path resolves against.
+  Future<Uint8List> chapterImage(String src, {Uri? base});
 
   /// Ends this analysis: a stage in flight stops at its next check, and every
   /// stage after it refuses to start.

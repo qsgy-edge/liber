@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
@@ -99,8 +100,8 @@ const exactSourceRef = '$seedOrigin/exact';
 /// searched one without equalling it.
 const nearSourceRef = '$seedOrigin/near';
 
-/// The three Book Sources, as the scratch installation stores them and as the
-/// fixture site serves them.
+/// The Book Sources, as the scratch installation stores them and as the fixture
+/// site serves them.
 ///
 /// Each is a complete source over the fixture's own HTML: `ruleSearch` over
 /// `.result li`, the detail page's `ruleBookInfo`, and `ruleToc` over
@@ -111,7 +112,25 @@ List<Map<String, dynamic>> seedSources() => [
   _source(nearSourceRef, '回放近似源'),
   _source(currentSourceRef, '回放当前源'),
   _pagedSource(),
+  _imageSource(),
 ];
+
+/// The fixture's fifth source, added by batch 13's #67 lane for the reader's
+/// images: its chapter body is HTML that carries a real `<img>` element, its
+/// content rule reads that HTML (`.content@html`, where the other sources read
+/// `.content@textNodes` and lose their tags), and its own book is a different
+/// one, so the #40 flow's candidate rows are unchanged.
+///
+/// `ruleContent.imageStyle` is the frozen field the reader shapes images with:
+/// `FULL` here draws each image at the reading column's width. Flipping the
+/// value to `TEXT` or `SINGLE` is what a driven run changes when it watches
+/// another shape; the site answers the same bytes for both chapters' images.
+const imageSourceRef = '$seedOrigin/image';
+
+Map<String, dynamic> _imageSource() => <String, dynamic>{
+  ..._source(imageSourceRef, '回放图片源'),
+  'ruleContent': {'content': '.content@html', 'imageStyle': 'FULL'},
+};
 
 /// The fixture's fourth source, added by the batch-13 controller for the driven
 /// reviews of #27 (a chapter body to convert) and #66 (a page-chained TOC whose
@@ -221,10 +240,17 @@ const _pagedChapterNames = <String>[
   '第五章 分页三',
 ];
 
+/// The image source's own book and chapters: a different book again, so no
+/// other source's search rows change.
+const _imageSearchItems = <(String, String)>[('图片测试书', '测试作者')];
+
+const _imageChapterNames = <String>['第一章 有图', '第二章 也有图'];
+
 List<String> _chapterNames(String slug) => switch (slug) {
   'exact' => exactChapterNames,
   'near' => _nearChapterNames,
   'pages' => _pagedChapterNames,
+  'image' => _imageChapterNames,
   _ => currentChapterNames,
 };
 
@@ -232,6 +258,7 @@ List<(String, String)> _searchItems(String slug) => switch (slug) {
   'exact' => _exactSearchItems,
   'near' => _nearSearchItems,
   'pages' => _pagedSearchItems,
+  'image' => _imageSearchItems,
   _ => _currentSearchItems,
 };
 
@@ -291,9 +318,19 @@ String _pagedTocPage(int page) {
 }
 
 /// One chapter's body. The text is Simplified on purpose: the conversion
-/// setting is what a driven run watches it change to Traditional with.
+/// setting is what a driven run watches it change to Traditional with. The image
+/// source's chapters are HTML with a real `<img>` element instead, because its
+/// content rule reads HTML (`.content@html`) and the reader's images come out of
+/// that text.
 String _chapterPage(String slug, int index) {
   final name = _chapterNames(slug)[index];
+  if (slug == 'image') {
+    return '<html><body><div class="content">'
+        '<p>$name 的正文，图片在马下：</p>'
+        '<img src="/image/$index.png">'
+        '<p>这一段在图片后面，图片是从这个 fixture 站点取回来的。</p>'
+        '</div></body></html>';
+  }
   return '<html><body><div class="content">$name 的正文。他说这门功法很难练，'
       '练成之后就能御剑飞行，飞剑会随着心念变化。故事继续：他从山下走来，'
       '看见远处有一条大河，河水很冷，鱼也很多。</div></body></html>';
@@ -304,7 +341,7 @@ String? _pageFor(Uri uri) {
   final segments = uri.pathSegments;
   if (segments.isEmpty) return null;
   final slug = segments.first;
-  if (!const ['exact', 'near', 'current', 'pages'].contains(slug)) {
+  if (!const ['exact', 'near', 'current', 'pages', 'image'].contains(slug)) {
     return null;
   }
   if (segments.length == 2 && segments[1] == 'search') {
@@ -406,9 +443,15 @@ class FixtureSite {
   Future<void> stop() => _server.close(force: true);
 
   Future<void> _handle(HttpRequest request) async {
-    final page = request.method == 'GET' ? _pageFor(request.uri) : null;
+    final image = request.method == 'GET' ? _imageBytesFor(request.uri) : null;
+    final page = image == null && request.method == 'GET'
+        ? _pageFor(request.uri)
+        : null;
     requests.add('${request.method} ${request.uri}');
-    if (page == null) {
+    if (image != null) {
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.add(image);
+    } else if (page == null) {
       request.response.statusCode = HttpStatus.notFound;
       request.response.write('undeclared fixture request');
     } else {
@@ -417,7 +460,37 @@ class FixtureSite {
     }
     await request.response.close();
   }
+
+  /// The PNG an image source's chapter asks for, or null when the path is not
+  /// one: `/image/<chapter index>.png`. Both chapters get the same bytes.
+  Uint8List? _imageBytesFor(Uri uri) {
+    final segments = uri.pathSegments;
+    if (segments.length != 2 || segments.first != 'image') return null;
+    final name = segments[1];
+    if (!name.endsWith('.png')) return null;
+    final index = int.tryParse(name.substring(0, name.length - 4));
+    if (index == null || index < 0 || index >= _imageChapterNames.length) {
+      return null;
+    }
+    return fixturePng;
+  }
 }
+
+/// The bytes the fixture site answers an image request with: a 60×120 PNG, one
+/// solid colour.
+///
+/// A hand-written PNG is the trap the batch's handoff records — Skia accepts a
+/// malformed one on Windows and the other platforms' decoders reject it — so
+/// these bytes are a complete, CRC-checked file and the dimensions are a
+/// portrait ratio, which is what makes a `SINGLE` image visibly one per screen.
+/// The producer was `python -c` over `zlib.compress` + `struct.pack` (IHDR 8-bit
+/// truecolour, one `IDAT`, `IEND`; the IDAT inflates to exactly
+/// `120 * (1 + 60 * 3)` bytes).
+final Uint8List fixturePng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAADwAAAB4CAIAAAAhVwZfAAAAc0lEQVR42u3OAQkAAAgDsHcyiyVNaQwR'
+  'BguwVM87kZaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaW'
+  'lpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpa+TC8ZTKAwU367ZQAAAABJRU5ErkJggg==',
+);
 
 /// Runs the flow the driven run performs, headless: the three sources' searches
 /// through the product's own pipelines, the exact hit, its table of contents,
@@ -555,6 +628,51 @@ Future<void> _check(String? libraryPath) async {
         'textOffset': switched.textOffset,
         'shelfRows': (await shelf.onlineShelf()).length,
       };
+      // The image source's own chapter through the product's pipeline: what the
+      // extraction read out of its rules, and the bytes the fixture site serves
+      // for the first of them — the row #67's reader draws.
+      final imageSource = seedSources().firstWhere(
+        (source) => source['bookSourceUrl'] == imageSourceRef,
+      );
+      final imagePipeline = openBookSourcePipeline(
+        imageSource,
+        HttpSourceTransport(),
+        hostState: shelf.hostState,
+      );
+      final imageChapterUrl = Uri.parse('$imageSourceRef/book/1/chapter/0');
+      final imageChapter = await imagePipeline.chapter(
+        SourceChapter(_imageChapterNames.first, imageChapterUrl),
+      );
+      report['imageChapter'] = {
+        'style': '${(imageSource['ruleContent'] as Map)['imageStyle']}',
+        'body': imageChapter.text,
+        'images': [
+          for (final image in imageChapter.images)
+            {
+              'src': image.src,
+              'offset': image.offset,
+              'length': image.length,
+              'element': imageChapter.text.substring(
+                image.offset,
+                image.offset + image.length,
+              ),
+            },
+        ],
+      };
+      if (imageChapter.images.isNotEmpty) {
+        final bytes = await imagePipeline.chapterImage(
+          imageChapter.images.first.src,
+          base: imageChapterUrl,
+        );
+        report['imageBytes'] = {
+          'length': bytes.length,
+          'png': bytes.length > 24 &&
+              bytes.sublist(0, 8).join(',') == '137,80,78,71,13,10,26,10',
+          'width': ByteData.sublistView(bytes, 16, 20).getUint32(0),
+          'height': ByteData.sublistView(bytes, 20, 24).getUint32(0),
+        };
+      }
+      imagePipeline.cancel();
       report['requests'] = site.requests;
     } finally {
       await shelf.close();

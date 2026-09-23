@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../domain/contracts.dart';
 import 'book_source_pipeline.dart';
@@ -50,14 +51,78 @@ class HtmlBook {
 }
 
 class HtmlChapterBody {
-  const HtmlChapterBody(this.text, this.pages, {this.title});
+  const HtmlChapterBody(
+    this.text,
+    this.pages, {
+    this.title,
+    this.images = const [],
+  });
   final String text;
   final int pages;
 
   /// The content-stage `ruleContent.title`, or null when the source did not
   /// declare a title rule or it returned an empty value.
   final String? title;
+
+  /// The content images [text] carries, in document order.
+  final List<SourceChapterImage> images;
 }
+
+/// One content image of a chapter body.
+///
+/// The frozen reader reads images out of the content string rather than through
+/// a rule: the string keeps the source's own `<img …>` markup and the layout
+/// finds every image with `AppPattern.imgPattern`
+/// (`ChapterProvider.kt:204-236`, `TextChapterLayout.kt:229-263`), while the
+/// image bytes come from that address through the source's own session
+/// (`ImageProvider.getImageSize` → `BookHelp.saveImage`). This product extracts
+/// the same matches once, where the chapter body is produced, and carries them
+/// with that body.
+///
+/// [offset] and [length] are the element's own range in
+/// [HtmlChapterBody.text], so an image is keyed like the text beside it: the
+/// reader addresses an image by the code-unit offset its text is stored at, the
+/// same space its progress record speaks.
+class SourceChapterImage {
+  const SourceChapterImage({
+    required this.src,
+    required this.offset,
+    required this.length,
+  });
+
+  /// The element's own `src` attribute text, verbatim: a relative address is
+  /// resolved by the loader that fetches it, exactly as the frozen download path
+  /// resolves one against the chapter's URL (`BookHelp.flowImages`, `:201`).
+  final String src;
+
+  /// Where the `<img …>` element begins in [HtmlChapterBody.text].
+  final int offset;
+
+  /// The element's own length in code units — the whole tag, so a reader can
+  /// drop the markup it replaced from the text it displays.
+  final int length;
+}
+
+/// The frozen `AppPattern.imgPattern` (`AppPattern.kt:12`), the one pattern the
+/// frozen reader's layouts and its image downloads both use:
+/// `<img[^>]*src="([^"]*(?:"[^>]+\})?)"[^>]*>`.
+///
+/// It keeps the frozen pattern's own limits, which are recorded rather than
+/// improved on: a double-quoted `src` only, a case-sensitive `<img`, and the
+/// attribute before `src` matched without crossing a `>`.
+final RegExp _imagePattern = RegExp(
+  '<img[^>]*src="([^"]*(?:"[^>]+\\})?)"[^>]*>',
+);
+
+/// The images one chapter body carries, in document order.
+List<SourceChapterImage> extractChapterImages(String text) => [
+  for (final match in _imagePattern.allMatches(text))
+    SourceChapterImage(
+      src: match.group(1)!,
+      offset: match.start,
+      length: match.end - match.start,
+    ),
+];
 
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
 ///
@@ -1251,11 +1316,50 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         );
       },
     );
+    final text = _shapeJoinedContent(parts.join('\n'));
     return HtmlChapterBody(
-      _shapeJoinedContent(parts.join('\n')),
+      text,
       pages,
       title: contentTitle,
+      images: extractChapterImages(text),
     );
+  }
+
+  /// One chapter image's bytes, through this source's own session.
+  ///
+  /// The frozen reader fetches a content image like any other source address —
+  /// `ImageProvider.cacheImage` → `BookHelp.saveImage` →
+  /// `AnalyzeUrl(src, source = bookSource).getByteArrayAwait()`
+  /// (`ImageProvider.kt:110-150`, `BookHelp.kt:219-262`, `AnalyzeUrl.kt:528-549`)
+  /// — so the source's `header` rule, its login header, its cookie jar, its
+  /// per-source `concurrentRate` and its per-source TLS exception all apply.
+  /// Every request of this source already goes through [SourceHostDispatcher],
+  /// and so does this one; there is no bare `HttpClient` for an image.
+  ///
+  /// A relative [src] resolves against the chapter's URL, which is what the
+  /// frozen download path resolves one against (`BookHelp.flowImages`, `:196-205`);
+  /// the frozen layout path hands its raw text to `AnalyzeUrl` with no base at
+  /// all.
+  @override
+  Future<Uint8List> chapterImage(String src, {Uri? base}) async {
+    _cancellation.throwIfCancelled();
+    final target = base == null
+        ? SourceHttpUri.parse(src)
+        : _resolve(base, src);
+    final host = _host;
+    if (host == null) {
+      // A transport without a source session answers text, which cannot carry an
+      // image back; the reader shows its own failure row rather than a
+      // half-decoded one.
+      throw UnsupportedError('当前 transport 不支持图片请求');
+    }
+    final response = await host
+        .forExecution(_cancellation)
+        .get('$target', headers: await _headers(), readBytes: true);
+    _cancellation.throwIfCancelled();
+    final bytes = response.bodyBytes;
+    if (bytes == null) throw StateError('图片响应没有字节：$target');
+    return bytes;
   }
 
   /// The raw address texts one page's next-page rule declared, in the frozen
