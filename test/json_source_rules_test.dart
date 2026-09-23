@@ -35,8 +35,12 @@ List<Object?> data = document['data']! as List<Object?>;
 Map<String, Object?> meta = document['meta']! as Map<String, Object?>;
 
 /// The `content` of the rows a filter kept.
-List<Object?> contents(String filter) =>
-    JsonSourceRules.values(document, r'$.data' '$filter' r'.content');
+List<Object?> contents(String filter) => JsonSourceRules.values(
+  document,
+  r'$.data'
+  '$filter'
+  r'.content',
+);
 
 void main() {
   test('supports arrays and recursive JSONPath values', () {
@@ -51,7 +55,13 @@ void main() {
     expect(JsonSourceRules.text(root, r'$.data[0].novelId'), '1');
     expect(JsonSourceRules.values(root, r'$..className'), ['玄幻']);
     expect(
-      JsonSourceRules.template(root, 'id=' '{{' r'$.data[1].novelId' '}}'),
+      JsonSourceRules.template(
+        root,
+        'id='
+        '{{'
+        r'$.data[1].novelId'
+        '}}',
+      ),
       'id=2',
     );
   });
@@ -93,13 +103,7 @@ void main() {
 
     test('a comparison against a missing key is false, not an error', () {
       expect(contents('[?(@.missing==1)]'), <Object?>[]);
-      expect(contents('[?(@.missing != 1)]'), [
-        'A',
-        'B',
-        'C',
-        'D',
-        'E',
-      ]);
+      expect(contents('[?(@.missing != 1)]'), ['A', 'B', 'C', 'D', 'E']);
     });
 
     test('existence: the compiler form, not the `exists` operator', () {
@@ -161,7 +165,9 @@ void main() {
     test('a filter over scalars, and over the map it points at', () {
       expect(JsonSourceRules.values(document, r'$.nums[?(@>2)]'), [3, 4]);
       expect(JsonSourceRules.values(document, r"$.plain[?(@=='p2')]"), ['p2']);
-      expect(JsonSourceRules.values(document, r'$.meta[?(@.className)]'), [meta]);
+      expect(JsonSourceRules.values(document, r'$.meta[?(@.className)]'), [
+        meta,
+      ]);
       expect(
         JsonSourceRules.values(document, r"$.meta[?(@.className=='玄幻')]"),
         [meta],
@@ -169,18 +175,20 @@ void main() {
     });
 
     test('a filter after another filter keeps reading the matches', () {
-      expect(JsonSourceRules.values(document, r'$.data[?(@.hasContent)].content'), [
-        'A',
-        'B',
-        'C',
-        'E',
-      ]);
+      expect(
+        JsonSourceRules.values(document, r'$.data[?(@.hasContent)].content'),
+        ['A', 'B', 'C', 'E'],
+      );
     });
   });
 
   group('slices', () {
-    List<Object?> slice(String text) =>
-        JsonSourceRules.values(document, r'$.data' '$text' r'.content');
+    List<Object?> slice(String text) => JsonSourceRules.values(
+      document,
+      r'$.data'
+      '$text'
+      r'.content',
+    );
 
     test('the frozen slice forms', () {
       expect(slice('[1:3]'), ['B', 'C']);
@@ -207,12 +215,15 @@ void main() {
       ]);
     });
 
-    test('a third slice field is ignored, exactly as the frozen parse ignores it', () {
-      // `ArraySliceOperation.parse` reads two fields and drops the rest, so the
-      // jar returns the same matches for `[1:3:2]` and `[1:3]`.
-      expect(slice('[1:3:2]'), slice('[1:3]'));
-      expect(slice('[1:3:2]'), ['B', 'C']);
-    });
+    test(
+      'a third slice field is ignored, exactly as the frozen parse ignores it',
+      () {
+        // `ArraySliceOperation.parse` reads two fields and drops the rest, so the
+        // jar returns the same matches for `[1:3:2]` and `[1:3]`.
+        expect(slice('[1:3:2]'), slice('[1:3]'));
+        expect(slice('[1:3:2]'), ['B', 'C']);
+      },
+    );
 
     test('a slice reads its matches as a set, not as one value', () {
       // The frozen `ArraySliceToken` is indefinite, so a token after it sees
@@ -253,7 +264,11 @@ void main() {
       // element and reports a property leaf only for the element whose index the
       // token before the leaf names, so `$..[0].content` answers a set decided by
       // that comparison. Nothing uses the form, so the adapter refuses it.
-      for (final rule in [r'$..[0].content', r'$..[1:2].content', r'$..*.content']) {
+      for (final rule in [
+        r'$..[0].content',
+        r'$..[1:2].content',
+        r'$..*.content',
+      ]) {
         expect(
           () => JsonSourceRules.values(document, rule),
           throwsA(isA<UnsupportedError>()),
@@ -304,7 +319,7 @@ void main() {
         r'$.data[:]',
         r'$.data[+1:2]',
         // A rule that is not a path at all.
-        r'@Json:$.a',
+        r'@Other:$.a',
       ];
       for (final rule in unsupported) {
         expect(
@@ -333,41 +348,48 @@ void main() {
         r'.[?(@.title)]',
         r'$.data[1:2]',
       ]) {
-        expect(() => JsonSourceRules.validate(rule), returnsNormally, reason: rule);
+        expect(
+          () => JsonSourceRules.validate(rule),
+          returnsNormally,
+          reason: rule,
+        );
       }
       // The gate is the parse, not a probe against an empty document: a rule
       // whose shape the *document* would refuse is still a rule the reader runs.
-      expect(
-        () => JsonSourceRules.validate(r'$[1:2]'),
-        returnsNormally,
-      );
+      expect(() => JsonSourceRules.validate(r'$[1:2]'), returnsNormally);
     });
   });
 
-  test('a dot-leading rule is read as a path rather than answered with its text', () {
-    // The frozen reader decides a rule's mode from the content it was given, so
-    // a rule a JSON body sees is a path whatever its first character is.
-    expect(JsonSourceRules.extract({'content': 'A'}, '.content'), 'A');
-    expect(JsonSourceRules.extract(document, '.[?(@.title)]'), isNotNull);
-    // A dot-leading rule that is not a path is refused by name, where the frozen
-    // reader answers with the library's swallowed exception.
-    expect(
-      () => JsonSourceRules.extract({'content': 'A'}, '.content@text'),
-      throwsA(isA<UnsupportedError>()),
-    );
-  });
+  test(
+    'a dot-leading rule is read as a path rather than answered with its text',
+    () {
+      // The frozen reader decides a rule's mode from the content it was given, so
+      // a rule a JSON body sees is a path whatever its first character is.
+      expect(JsonSourceRules.extract({'content': 'A'}, '.content'), 'A');
+      expect(JsonSourceRules.extract(document, '.[?(@.title)]'), isNotNull);
+      // A dot-leading rule that is not a path is refused by name, where the frozen
+      // reader answers with the library's swallowed exception.
+      expect(
+        () => JsonSourceRules.extract({'content': 'A'}, '.content@text'),
+        throwsA(isA<UnsupportedError>()),
+      );
+    },
+  );
 
   test('extract and list keep the field shapes the pipelines pass', () {
-    expect(JsonSourceRules.list(document, r'$.data[?(@.hasContent==1)].content'), [
-      'A',
-      'C',
-    ]);
+    expect(
+      JsonSourceRules.list(document, r'$.data[?(@.hasContent==1)].content'),
+      ['A', 'C'],
+    );
     expect(
       JsonSourceRules.text(document, r'$.data[?(@.content=="D")].content'),
       'D',
     );
     expect(JsonSourceRules.read(document, r'$.data[0].content'), 'A');
-    expect(JsonSourceRules.read(document, r'$.data[?(@.missing)].content'), isNull);
+    expect(
+      JsonSourceRules.read(document, r'$.data[?(@.missing)].content'),
+      isNull,
+    );
   });
 
   test('a value rule joins what it matched, as the frozen getString does', () {
@@ -382,11 +404,121 @@ void main() {
     // One match is the same text it always was, and no match is the empty field
     // the missing value leaves.
     expect(JsonSourceRules.extract(document, r'$.data[0].title'), 'T1');
-    expect(JsonSourceRules.extract(document, r'$.data[?(@.missing)].content'), '');
+    expect(
+      JsonSourceRules.extract(document, r'$.data[?(@.missing)].content'),
+      '',
+    );
     // `list()` is the frozen `getStringList`, which hands the list back itself.
-    expect(JsonSourceRules.list(document, r'$.data[?(@.hasContent==1)].content'), [
-      'A',
-      'C',
-    ]);
+    expect(
+      JsonSourceRules.list(document, r'$.data[?(@.hasContent==1)].content'),
+      ['A', 'C'],
+    );
   });
+
+  test(
+    'source-derived: value merges join or stop at the first nonempty part',
+    () {
+      const root = {
+        'a': 'A',
+        'b': 'B',
+        'blank': '',
+        'arr': ['x', 'y'],
+      };
+      expect(JsonSourceRules.extract(root, r'$.a&&$.b'), 'A\nB');
+      expect(
+        JsonSourceRules.extract(root, r'$.missing||$.blank||$.b||$.a'),
+        'B',
+      );
+      expect(JsonSourceRules.extract(root, r'$.arr&&$.a'), 'x\ny\nA');
+      expect(JsonSourceRules.extract(root, r'$.a&&$.b##B##C'), 'A\nC');
+      // RuleAnalyzer splits on the first top-level operator; getString then
+      // evaluates each split part recursively (no invented global precedence).
+      expect(JsonSourceRules.extract(root, r'$.a&&$.missing||$.b'), 'A\nB');
+      expect(JsonSourceRules.extract(root, r'$.a||$.b&&$.arr'), 'A');
+      expect(JsonSourceRules.extract(root, r'$.missing||$.blank'), '');
+    },
+  );
+
+  test(
+    'source-derived: list merges concatenate, stop, or interleave to first length',
+    () {
+      const root = {
+        'short': ['a', 'b'],
+        'long': ['1', '2', '3'],
+        'empty': [],
+      };
+      expect(JsonSourceRules.list(root, r'$.short&&$.long'), [
+        'a',
+        'b',
+        '1',
+        '2',
+        '3',
+      ]);
+      expect(JsonSourceRules.list(root, r'$.empty||$.short||$.long'), [
+        'a',
+        'b',
+      ]);
+      expect(JsonSourceRules.list(root, r'$.short%%$.long'), [
+        'a',
+        '1',
+        'b',
+        '2',
+      ]);
+      expect(JsonSourceRules.list(root, r'$.long%%$.short'), [
+        '1',
+        'a',
+        '2',
+        'b',
+        '3',
+      ]);
+      expect(
+        () => JsonSourceRules.validate(r'$.short%%$.long'),
+        returnsNormally,
+      );
+    },
+  );
+
+  test(
+    'source-derived: filter operators and quoted delimiters stay in one path',
+    () {
+      const root = {
+        'rows': [
+          {'a': true, 'b': false, 'tag': 'x&&y', 'value': 'A'},
+          {'a': false, 'b': true, 'tag': 'x||y', 'value': 'B'},
+        ],
+        'tail': 'C',
+      };
+      const rule = r'$.rows[?(@.a || @.b)].value&&$.tail';
+      expect(JsonSourceRules.extract(root, rule), 'A\nB\nC');
+      expect(
+        JsonSourceRules.list(
+          root,
+          r'$.rows[?(@.tag=="x&&y")].value&&$.rows[?(@.tag=="x||y")].value',
+        ),
+        ['A', 'B'],
+      );
+      expect(() => JsonSourceRules.validate(rule), returnsNormally);
+      expect(
+        JsonSourceRules.extract(root, r"$.rows[?(@.tag=='x&&y')].value||$.tail"),
+        'A',
+      );
+    },
+  );
+
+  test(
+    'source-derived: @Json: selects JSON mode without entering the path',
+    () {
+      const root = {
+        'a': 'A',
+        'b': ['B'],
+      };
+      expect(JsonSourceRules.extract(root, r'@Json:$.a&&$.b'), 'A\nB');
+      expect(JsonSourceRules.list(root, r'@jSoN:$.b'), ['B']);
+      expect(JsonSourceRules.template(root, r'@JSON:$.a'), 'A');
+      expect(
+        () => JsonSourceRules.validate(r'@JSON:$.a||$.b'),
+        returnsNormally,
+      );
+    },
+  );
 }

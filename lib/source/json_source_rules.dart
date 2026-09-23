@@ -77,11 +77,22 @@ class JsonSourceRules {
   /// document that is a map, say) is a rule this reader can run, and the shape
   /// refusal belongs to the document it meets.
   static void validate(String rule) {
-    final text = splitRuleFields(rule).rule
-        .replaceAll(_ruleFieldToken, '')
-        .trim();
+    final text = _withoutJsonMode(
+      splitRuleFields(rule).rule.replaceAll(_ruleFieldToken, '').trim(),
+    );
     if (text.contains('{{')) return;
-    _parseRule(text);
+    _validateParts(text);
+  }
+
+  static void _validateParts(String rule) {
+    final parts = _splitMerge(rule, includeInterleave: true);
+    if (parts == null) {
+      _parseRule(rule);
+    } else {
+      for (final part in parts.rules) {
+        if (part.isNotEmpty) _validateParts(part);
+      }
+    }
   }
 
   static Object? read(Object? value, String rule) =>
@@ -102,16 +113,30 @@ class JsonSourceRules {
   static Object? extract(Object? value, String rule) {
     final fields = splitRuleFields(rule);
     final part = fields.rule;
-    final trimmed = part.trim();
+    final trimmed = _withoutJsonMode(part.trim());
     final String? result;
     if (trimmed.isEmpty) {
       result = value?.toString() ?? '';
     } else if (trimmed.startsWith(r'$') || trimmed.startsWith('.')) {
-      result = _fieldText(value, trimmed);
+      result = _mergedText(value, trimmed);
     } else {
       result = part;
     }
-    return applyRuleReplacement(result ?? '', fields);
+    return applyRuleReplacement(result, fields);
+  }
+
+  static String _mergedText(Object? value, String rule) {
+    final parts = _splitMerge(rule);
+    if (parts == null) return _fieldText(value, rule) ?? '';
+    final results = <String>[];
+    for (final part in parts.rules) {
+      final text = part.isEmpty ? '' : _mergedText(value, part);
+      if (text.isNotEmpty) {
+        results.add(text);
+        if (parts.operator == '||') break;
+      }
+    }
+    return results.join('\n');
   }
 
   /// The text one path rule carries, the frozen `AnalyzeByJSonPath.getString`:
@@ -130,9 +155,7 @@ class JsonSourceRules {
   static String? _fieldText(Object? value, String rule) {
     final matches = _matches(value, rule);
     if (matches.results.isEmpty) return null;
-    final joined = matches.definite
-        ? matches.results.single
-        : matches.results;
+    final joined = matches.definite ? matches.results.single : matches.results;
     if (joined is List) return joined.map((item) => '$item').join('\n');
     return '$joined';
   }
@@ -145,22 +168,98 @@ class JsonSourceRules {
     return result.toString();
   }
 
-  static List<dynamic> list(Object? value, String rule) {
-    final result = values(value, rule);
-    if (result.length == 1 && result.first is List) {
-      return result.first as List<dynamic>;
+  static List<dynamic> list(Object? value, String rule) =>
+      _mergedList(value, _withoutJsonMode(rule.trim()));
+
+  static List<dynamic> _mergedList(Object? value, String rule) {
+    final parts = _splitMerge(rule, includeInterleave: true);
+    if (parts == null) {
+      final result = values(value, rule);
+      if (result.length == 1 && result.first is List) {
+        return result.first as List<dynamic>;
+      }
+      return result;
     }
-    return result;
+    final lists = <List<dynamic>>[];
+    for (final part in parts.rules) {
+      final items = part.isEmpty ? <dynamic>[] : _mergedList(value, part);
+      if (items.isNotEmpty) {
+        lists.add(items);
+        if (parts.operator == '||') break;
+      }
+    }
+    if (lists.isEmpty) return [];
+    if (parts.operator != '%%') return lists.expand((items) => items).toList();
+    return [
+      for (var index = 0; index < lists.first.length; index++)
+        for (final items in lists)
+          if (index < items.length) items[index],
+    ];
   }
 
   static String template(Object? value, String input) {
     final rule = input.split(',{').first.trim();
-    if (rule.startsWith(r'$')) return text(value, rule);
+    if (rule.startsWith(r'$') || rule.toLowerCase().startsWith('@json:')) {
+      return text(value, rule);
+    }
     return rule.replaceAllMapped(RegExp(r'\{\{(\$[^}]+)\}\}'), (m) {
       final result = read(value, m[1]!);
       return result?.toString() ?? '';
     });
   }
+}
+
+String _withoutJsonMode(String rule) =>
+    rule.toLowerCase().startsWith('@json:') ? rule.substring(6) : rule;
+
+/// RuleAnalyzer.splitRule protects quoted text and balanced selectors. Its
+/// first top-level delimiter chooses the merge; other delimiters in a part are
+/// processed when that part is evaluated recursively.
+({String operator, List<String> rules})? _splitMerge(
+  String rule, {
+  bool includeInterleave = false,
+}) {
+  final stack = <String>[];
+  String? quote;
+  String? operator;
+  final rules = <String>[];
+  var start = 0;
+  for (var i = 0; i < rule.length; i++) {
+    final char = rule[i];
+    if (char == r'\' && i + 1 < rule.length) {
+      i++;
+      continue;
+    }
+    if (quote != null) {
+      if (char == quote) quote = null;
+      continue;
+    }
+    if (char == "'" || char == '"') {
+      quote = char;
+      continue;
+    }
+    if (char == '[' || char == '(') {
+      stack.add(char);
+      continue;
+    }
+    if (char == ']' || char == ')') {
+      if (stack.isNotEmpty) stack.removeLast();
+      continue;
+    }
+    if (stack.isNotEmpty || i + 1 == rule.length) continue;
+    final pair = rule.substring(i, i + 2);
+    if (pair != '&&' && pair != '||' && (!includeInterleave || pair != '%%')) {
+      continue;
+    }
+    operator ??= pair;
+    if (operator != pair) continue;
+    rules.add(rule.substring(start, i));
+    start = i + 2;
+    i++;
+  }
+  if (operator == null) return null;
+  rules.add(rule.substring(start));
+  return (operator: operator, rules: rules);
 }
 
 /// The frozen `AnalyzeRule.replaceRegex` (`AnalyzeRule.kt:650-665`) for a JSON
@@ -242,10 +341,7 @@ _JsonPath _parseRule(String rule) {
   // json-path's `PathCompiler.compile` prefixes `$.` to a path that starts with
   // neither `$` nor `@`, so `.[?(@.title)]` reads as `$..[?(@.title)]` — through
   // the root and a scan, which is why the used form matches nested objects.
-  return _parsePath(
-    text.startsWith(r'$') ? text : r'$.' + text,
-    rule,
-  );
+  return _parsePath(text.startsWith(r'$') ? text : r'$.' + text, rule);
 }
 
 /// The frozen `PathCompiler` for a path that carries its own context token,
@@ -622,7 +718,9 @@ List<Object?> _walk(
         final matches = <Object?>[];
         for (final value in model) {
           if (filter.accepts(value, root)) {
-            matches.addAll(_walk(value, steps, index + 1, definite, root, rule));
+            matches.addAll(
+              _walk(value, steps, index + 1, definite, root, rule),
+            );
           }
         }
         return matches;
@@ -688,7 +786,12 @@ bool _isArrayFor(
 /// `SLICE_FROM` and `SLICE_TO` resolve a negative bound against the length;
 /// `SLICE_BETWEEN` does not, so `[1:-1]` selects nothing where `[:-2]` gives all
 /// but the last two — the jar's own asymmetry.
-Iterable<int> _sliceOffsets(_SliceKind kind, int? open, int? close, int length) {
+Iterable<int> _sliceOffsets(
+  _SliceKind kind,
+  int? open,
+  int? close,
+  int length,
+) {
   switch (kind) {
     case _SliceKind.from:
       var start = open!;
@@ -791,11 +894,17 @@ class _RelationalFilter extends _Filter {
       _JsonOperator.equal => _nodeEquals(left, right),
       _JsonOperator.notEqual => !_nodeEquals(left, right),
       _JsonOperator.lessThan => _ordered(left, right, (order) => order < 0),
-      _JsonOperator.lessThanOrEqual =>
-        _ordered(left, right, (order) => order <= 0),
+      _JsonOperator.lessThanOrEqual => _ordered(
+        left,
+        right,
+        (order) => order <= 0,
+      ),
       _JsonOperator.greaterThan => _ordered(left, right, (order) => order > 0),
-      _JsonOperator.greaterThanOrEqual =>
-        _ordered(left, right, (order) => order >= 0),
+      _JsonOperator.greaterThanOrEqual => _ordered(
+        left,
+        right,
+        (order) => order >= 0,
+      ),
       _JsonOperator.regex => _regexMatches(left, right),
       _JsonOperator.inList => _inList(left, right),
       _JsonOperator.notInList => !_inList(left, right),
@@ -1395,8 +1504,7 @@ class _JsonLiteralReader {
   /// json-smart's permissive mode reads an unquoted key as its own text.
   String _bareKey() {
     final start = position;
-    while (position < text.length &&
-        !' \t\r\n:,}[]'.contains(text[position])) {
+    while (position < text.length && !' \t\r\n:,}[]'.contains(text[position])) {
       position++;
     }
     if (position == start) _refuse(rule);
@@ -1426,8 +1534,7 @@ class _JsonLiteralReader {
 
   Object? _word(Map<String, Object?> words) {
     final start = position;
-    while (position < text.length &&
-        _isNameBodyChar(text[position])) {
+    while (position < text.length && _isNameBodyChar(text[position])) {
       position++;
     }
     final word = text.substring(start, position);
@@ -1446,8 +1553,7 @@ class _JsonLiteralReader {
   }
 
   void _skipBlanks() {
-    while (position < text.length &&
-        ' \t\r\n'.contains(text[position])) {
+    while (position < text.length && ' \t\r\n'.contains(text[position])) {
       position++;
     }
   }
@@ -1500,7 +1606,9 @@ bool _deepEquals(Object? left, Object? right) {
     }
     return true;
   }
-  if (left is List || right is List || left is Map || right is Map) return false;
+  if (left is List || right is List || left is Map || right is Map) {
+    return false;
+  }
   return _nodeEquals(left, right);
 }
 
@@ -1624,7 +1732,10 @@ String _unescape(String text) {
     }
     final escaped = text[index + 1];
     if (escaped == 'u' && index + 5 < text.length) {
-      final code = int.tryParse(text.substring(index + 2, index + 6), radix: 16);
+      final code = int.tryParse(
+        text.substring(index + 2, index + 6),
+        radix: 16,
+      );
       if (code == null) {
         throw const FormatException('Unable to parse unicode value');
       }

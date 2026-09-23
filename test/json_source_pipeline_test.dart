@@ -112,6 +112,13 @@ void main() {
       }, transport),
       isA<HtmlSourcePipeline>(),
     );
+    expect(
+      openBookSourcePipeline(const {
+        'bookSourceUrl': 'https://example.test',
+        'ruleSearch': {'bookList': '@jSoN:\$.items'},
+      }, transport),
+      isA<JsonSourcePipeline>(),
+    );
     // A source with no rule shape at all is not a JSON source.
     expect(
       openBookSourcePipeline(const {
@@ -120,6 +127,65 @@ void main() {
       isA<HtmlSourcePipeline>(),
     );
   });
+
+  test(
+    'JSON mode and rule-level merges reach search and content fields',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        final body = switch (request.uri.path) {
+          '/search' => {
+            'books': [
+              {'name': 'A', 'other': 'B', 'url': '/book'},
+            ],
+          },
+          '/book' => {'title': 'Detail', 'toc': '/toc'},
+          '/toc' => {
+            'first': [
+              {'name': 'One', 'url': '/chapter'},
+            ],
+            'second': [
+              {'name': 'Two', 'url': '/chapter'},
+            ],
+          },
+          '/chapter' => {'main': 'Paragraph', 'extra': 'Tail'},
+          _ => {'error': 'Unexpected path'},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+        'searchUrl': '/search',
+        'ruleSearch': {
+          'bookList': r'@jSoN:$.books',
+          'name': r'@Json:$.name&&$.other',
+          'bookUrl': r'@JSON:$.url',
+        },
+        'ruleBookInfo': {
+          'canReName': 'true',
+          'name': r'$.title',
+          'tocUrl': r'@Json:$.toc',
+        },
+        'ruleToc': {
+          'chapterList': r'@JSON:$.first&&$.second',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+        'ruleContent': {'content': r'$.main||$.extra'},
+      };
+      final pipeline =
+          openBookSourcePipeline(source, HttpSourceTransport())
+              as JsonSourcePipeline;
+      expect(pipeline, isA<JsonSourcePipeline>());
+      final output = await pipeline.run('query', (_) {});
+      expect(output.title, 'Detail');
+      expect(output.chapters.map((chapter) => chapter.name), ['One', 'Two']);
+      expect(output.content, 'Paragraph');
+      expect((await pipeline.search('query')).single.title, 'A\nB');
+    },
+  );
 
   test('run reads one book end to end with the stage stream', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -186,7 +252,7 @@ void main() {
     // Unsupported rules fail before sending any request: every rule group is
     // read before the first one. A `@js:` field is supported now, so the
     // refused shape is one the JSON reader genuinely cannot run.
-    source['ruleContent'] = {'content': r'@Json:$.a'};
+    source['ruleContent'] = {'content': r'$.rows[?(@.hasContent=1)].content'};
     await expectLater(pipeline.run('x', (_) {}), throwsUnsupportedError);
     expect(paths, hasLength(4));
 
@@ -200,92 +266,95 @@ void main() {
     expect(states.last, BookSourceStage.failed);
     expect(states, isNot(contains(BookSourceStage.completed)));
   });
-  test('a source whose rules filter and slice reads through the stages', () async {
-    // The used filter shape through the product's own path: the book list and
-    // the chapter body are filters, the table of contents is a slice, and the
-    // content rule carries every row it matched joined with "\n"
-    // (`AnalyzeByJSonPath.getString`).
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    final paths = <String>[];
-    server.listen((request) async {
-      paths.add(request.uri.path);
-      final body = switch (request.uri.path) {
-        '/search' => {
-          'list': [
-            {'hasContent': 1, 'name': '书甲', 'url': '/b/1', 'author': '作者'},
-            {'hasContent': 0, 'name': '跳过', 'url': '/b/0'},
-          ],
+  test(
+    'a source whose rules filter and slice reads through the stages',
+    () async {
+      // The used filter shape through the product's own path: the book list and
+      // the chapter body are filters, the table of contents is a slice, and the
+      // content rule carries every row it matched joined with "\n"
+      // (`AnalyzeByJSonPath.getString`).
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        final body = switch (request.uri.path) {
+          '/search' => {
+            'list': [
+              {'hasContent': 1, 'name': '书甲', 'url': '/b/1', 'author': '作者'},
+              {'hasContent': 0, 'name': '跳过', 'url': '/b/0'},
+            ],
+          },
+          '/b/1' => {
+            'info': {'title': '真实标题'},
+            'toc': '/toc/1',
+          },
+          '/toc/1' => {
+            'chapters': [
+              {'label': '第一章', 'href': '/ch/1'},
+              {'label': '第二章', 'href': '/ch/2'},
+              {'label': '第三章', 'href': '/ch/3'},
+            ],
+          },
+          '/ch/1' => {
+            'rows': [
+              {'hasContent': 1, 'content': '段落一'},
+              {'hasContent': 0, 'content': '跳过'},
+              {'hasContent': 1, 'content': '段落二'},
+            ],
+          },
+          _ => {'error': 'Unexpected path'},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': r'$.list[?(@.hasContent==1)]',
+          'name': r'$.name',
+          'bookUrl': r'$.url',
+          'author': r'$.author',
         },
-        '/b/1' => {
-          'info': {'title': '真实标题'},
-          'toc': '/toc/1',
+        'ruleBookInfo': {
+          'canReName': 'true',
+          'name': r'$.info.title',
+          'tocUrl': r'$.toc',
         },
-        '/toc/1' => {
-          'chapters': [
-            {'label': '第一章', 'href': '/ch/1'},
-            {'label': '第二章', 'href': '/ch/2'},
-            {'label': '第三章', 'href': '/ch/3'},
-          ],
+        'ruleToc': {
+          'chapterList': r'$.chapters[0:2]',
+          'chapterName': r'$.label',
+          'chapterUrl': r'$.href',
         },
-        '/ch/1' => {
-          'rows': [
-            {'hasContent': 1, 'content': '段落一'},
-            {'hasContent': 0, 'content': '跳过'},
-            {'hasContent': 1, 'content': '段落二'},
-          ],
-        },
-        _ => {'error': 'Unexpected path'},
+        'ruleContent': {'content': r'$.rows[?(@.hasContent==1)].content'},
       };
-      request.response.write(jsonEncode(body));
-      await request.response.close();
-    });
-    final source = <String, dynamic>{
-      'bookSourceUrl': 'http://127.0.0.1:${server.port}',
-      'searchUrl': '/search?key={{key}}',
-      'ruleSearch': {
-        'bookList': r'$.list[?(@.hasContent==1)]',
-        'name': r'$.name',
-        'bookUrl': r'$.url',
-        'author': r'$.author',
-      },
-      'ruleBookInfo': {
-        'canReName': 'true',
-        'name': r'$.info.title',
-        'tocUrl': r'$.toc',
-      },
-      'ruleToc': {
-        'chapterList': r'$.chapters[0:2]',
-        'chapterName': r'$.label',
-        'chapterUrl': r'$.href',
-      },
-      'ruleContent': {'content': r'$.rows[?(@.hasContent==1)].content'},
-    };
-    final pipeline = JsonSourcePipeline(source, HttpSourceTransport());
-    final output = await pipeline.run('书', (_) {});
+      final pipeline = JsonSourcePipeline(source, HttpSourceTransport());
+      final output = await pipeline.run('书', (_) {});
 
-    expect(output.title, '真实标题');
-    // The slice kept the first two of the three declared chapters.
-    expect(output.chapters.map((chapter) => chapter.name), ['第一章', '第二章']);
-    // The filter kept two rows and the frozen join carries both.
-    expect(output.content, '段落一\n段落二');
-    expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
+      expect(output.title, '真实标题');
+      // The slice kept the first two of the three declared chapters.
+      expect(output.chapters.map((chapter) => chapter.name), ['第一章', '第二章']);
+      // The filter kept two rows and the frozen join carries both.
+      expect(output.content, '段落一\n段落二');
+      expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
 
-    // An unsupported form is refused with its field name before any request is
-    // sent: the run reads every rule group first.
-    source['ruleContent'] = {'content': r'$.rows[?(@.hasContent=1)].content'};
-    await expectLater(
-      JsonSourcePipeline(source, HttpSourceTransport()).run('书', (_) {}),
-      throwsA(
-        isA<UnsupportedError>().having(
-          (error) => '$error',
-          'message',
-          contains('ruleContent.content'),
+      // An unsupported form is refused with its field name before any request is
+      // sent: the run reads every rule group first.
+      source['ruleContent'] = {'content': r'$.rows[?(@.hasContent=1)].content'};
+      await expectLater(
+        JsonSourcePipeline(source, HttpSourceTransport()).run('书', (_) {}),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (error) => '$error',
+            'message',
+            contains('ruleContent.content'),
+          ),
         ),
-      ),
-    );
-    expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
-  });
+      );
+      expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
+    },
+  );
 }
 
 class _UnusedTransport implements BookSourceTransport {

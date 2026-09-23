@@ -132,14 +132,12 @@ abstract interface class BookSourcePipeline {
 ///
 /// The frozen `AnalyzeUrl` picks its mode per rule, and this product has two
 /// adapters, so one place decides which pipeline a source gets — the search
-/// list rule's own shape. `@Json:`-prefixed rules are classified JSON, as they
-/// already were in the trial page, even though the JSON rule reader does not
-/// accept the prefix yet: the error it raises then names the rule that has to
-/// change instead of blaming the HTML adapter.
+/// list rule's own shape. `@Json:`-prefixed rules are classified JSON,
+/// case-insensitively, as in the frozen `SourceRule` mode selection.
 bool isJsonRuleSource(Map<String, dynamic> source) {
   final search = source['ruleSearch'];
   final listRule = search is Map ? '${search['bookList'] ?? ''}' : '';
-  return listRule.startsWith('@Json:') ||
+  return listRule.toLowerCase().startsWith('@json:') ||
       listRule.startsWith(r'$.') ||
       listRule.startsWith(r'$[');
 }
