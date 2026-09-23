@@ -11,6 +11,7 @@ import 'rule_field.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_page_results.dart';
 import 'source_url_rules.dart';
 
 class HtmlBook {
@@ -161,6 +162,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
   /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+
+  /// The next chapter's URL while the content stage runs — the frozen
+  /// `AnalyzeRule.nextChapterUrl` (`AnalyzeRule.kt:58,761`), bound for that
+  /// stage's rules and read by its own next-content guard. Null when the caller
+  /// has no next chapter.
+  String? _nextChapterUrl;
   HtmlBook? _book;
   SourceChapter? _chapter;
 
@@ -235,6 +242,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     'result': result,
     'baseUrl': source['bookSourceUrl'],
     'title': _chapterTitle,
+    'nextChapterUrl': _nextChapterUrl,
     'book': _book == null
         ? null
         : {
@@ -772,171 +780,182 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       withTocUrl: true,
     );
     final (tocTarget, tocOptions) = await _extracted(infoUrl, tocText);
-    var url = tocTarget;
-    var options = tocOptions;
-    // The address text of the TOC page about to be fetched and the base it
-    // resolves against, kept for `java.initUrl`.
-    var address = tocText;
-    var base = infoUrl;
-    final visited = <Uri>{};
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
     tocPages = 0;
     var firstPage = true;
-    while (true) {
-      if (!visited.add(url) || visited.length > 30) {
-        throw StateError('目录分页循环或超出 30 页');
-      }
-      var fetched = await _fetch(
-        url,
-        BookSourceStage.tableOfContents,
-        options: options,
-        address: address,
-        base: base,
-      );
-      // The frozen TOC stage checks login once, on its first response
-      // (`WebBook.kt:253`); the `nextTocUrl` pages `BookChapterList` fetches
-      // afterwards never run the check.
-      if (firstPage) {
-        fetched = await _loginCheck(fetched);
-        firstPage = false;
-      }
-      final page = fetched.body;
-      final pageUrl = fetched.url;
-      tocPages++;
-      final batch = HtmlRuleBatch(page);
-      final listRule = await _field(
-        _rule('ruleToc', 'chapterList'),
-        content: page,
-        allowScripts: false,
-      );
-      final items = batch.elements('items', listRule.extractionRule!);
-      final nameField = await _elementField(
-        _rule('ruleToc', 'chapterName'),
-        content: page,
-      );
-      final names = batch.elementsText(
-        'name',
-        nameField.extractionRule!,
-        items,
-      );
-      final urlField = await _elementField(
-        _rule('ruleToc', 'chapterUrl'),
-        content: page,
-      );
-      final urls = batch.elementsText('url', urlField.extractionRule!, items);
-      final tagField = await _elementField(
-        _rule('ruleToc', 'updateTime', optional: true),
-        content: page,
-      );
-      final tags = batch.elementsText('tag', tagField.extractionRule!, items);
-      final volumeField = await _elementField(
-        _rule('ruleToc', 'isVolume', optional: true),
-        content: page,
-      );
-      final volumes = batch.elementsText(
-        'volume',
-        volumeField.extractionRule!,
-        items,
-      );
-      final vipField = await _elementField(
-        _rule('ruleToc', 'isVip', optional: true),
-        content: page,
-      );
-      final vips = batch.elementsText('vip', vipField.extractionRule!, items);
-      final payField = await _elementField(
-        _rule('ruleToc', 'isPay', optional: true),
-        content: page,
-      );
-      final pays = batch.elementsText('pay', payField.extractionRule!, items);
-      final next = await _field(
-        _rule('ruleToc', 'nextTocUrl', optional: true),
-        content: page,
-      );
-      final nextValue = _declare(batch, 'next', next);
-      await batch.run();
-      if (items.isEmpty) throw StateError('目录页为空');
-      final names2 = await _perElement(nameField, names.values);
-      final urls2 = await _perElement(urlField, urls.values, url: true);
-      final tagValues = await _perElement(tagField, tags.values);
-      final volumeValues = await _perElement(volumeField, volumes.values);
-      final vipValues = await _perElement(vipField, vips.values);
-      final payValues = await _perElement(payField, pays.values);
-      final nextText = await _documentValue(nextValue, next, page);
-      for (var index = 0; index < items.length; index++) {
-        // The frozen adds a chapter only when its title is non-empty
-        // (`BookChapterList.kt:244`), so an element the name rule matched
-        // nothing on is skipped instead of failing the whole TOC.
-        final title = names2[index];
-        if (title.isEmpty) continue;
-        final tag = tagValues[index].isEmpty ? null : tagValues[index];
-        final isVolume = sourceIsTrue(volumeValues[index]);
-        final isVip = sourceIsTrue(vipValues[index]);
-        final isPay = sourceIsTrue(payValues[index]);
-        final SourceChapter chapter;
-        if (urls2[index].isEmpty) {
-          // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
-          // volume takes the identity text `title + index`, every other chapter
-          // takes the address of the TOC page being parsed, which resolves to
-          // that same page (`BookChapter.kt:143-149`).
-          chapter = isVolume
-              ? SourceChapter.volume(
-                  title,
-                  index,
-                  tocUrl: pageUrl,
-                  tag: tag,
-                  isVip: isVip,
-                  isPay: isPay,
-                )
-              : SourceChapter(
-                  title,
-                  pageUrl,
-                  rawAddress: address,
-                  tag: tag,
-                  isVip: isVip,
-                  isPay: isPay,
-                );
-        } else {
-          // The address text the rule produced, option tail included: this is
-          // what the chapter keeps, so the fetch parses the options the frozen
-          // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
-          final rawAddress = urls2[index];
-          final (chapterUrl, chapterOptions) = await _extracted(
-            pageUrl,
-            rawAddress,
-          );
-          if (chapterOptions.isPost ||
-              chapterOptions.body != null ||
-              chapterOptions.headers.isNotEmpty ||
-              chapterOptions.retry != 0 ||
-              chapterOptions.js != null) {
-            throw UnsupportedError('暂不支持章节地址的 URL 选项');
+    // The frozen page walk (`BookChapterList.kt:48-121`): this page, then the
+    // pages its `nextTocUrl` list declares, one at a time and in declared order.
+    await walkSourcePages(
+      first: (
+        url: tocTarget,
+        options: tocOptions,
+        address: tocText,
+        base: infoUrl,
+      ),
+      maxPages: 30,
+      cycleError: '目录分页循环或超出 30 页',
+      // The frozen drops an item equal to the page it was read from
+      // (`BookChapterList.kt:96-100`).
+      dropSelf: true,
+      resolve: (address, pageUrl) async {
+        final (url, options) = await _extracted(pageUrl, address);
+        return (url: url, options: options);
+      },
+      visit: (request, {required readNext}) async {
+        var fetched = await _fetch(
+          request.url,
+          BookSourceStage.tableOfContents,
+          options: request.options,
+          address: request.address,
+          base: request.base,
+        );
+        // The frozen TOC stage checks login once, on its first response
+        // (`WebBook.kt:253`); the `nextTocUrl` pages `BookChapterList` fetches
+        // afterwards never run the check.
+        if (firstPage) {
+          fetched = await _loginCheck(fetched);
+          firstPage = false;
+        }
+        final page = fetched.body;
+        final pageUrl = fetched.url;
+        tocPages++;
+        final batch = HtmlRuleBatch(page);
+        final listRule = await _field(
+          _rule('ruleToc', 'chapterList'),
+          content: page,
+          allowScripts: false,
+        );
+        final items = batch.elements('items', listRule.extractionRule!);
+        final nameField = await _elementField(
+          _rule('ruleToc', 'chapterName'),
+          content: page,
+        );
+        final names = batch.elementsText(
+          'name',
+          nameField.extractionRule!,
+          items,
+        );
+        final urlField = await _elementField(
+          _rule('ruleToc', 'chapterUrl'),
+          content: page,
+        );
+        final urls = batch.elementsText('url', urlField.extractionRule!, items);
+        final tagField = await _elementField(
+          _rule('ruleToc', 'updateTime', optional: true),
+          content: page,
+        );
+        final tags = batch.elementsText('tag', tagField.extractionRule!, items);
+        final volumeField = await _elementField(
+          _rule('ruleToc', 'isVolume', optional: true),
+          content: page,
+        );
+        final volumes = batch.elementsText(
+          'volume',
+          volumeField.extractionRule!,
+          items,
+        );
+        final vipField = await _elementField(
+          _rule('ruleToc', 'isVip', optional: true),
+          content: page,
+        );
+        final vips = batch.elementsText('vip', vipField.extractionRule!, items);
+        final payField = await _elementField(
+          _rule('ruleToc', 'isPay', optional: true),
+          content: page,
+        );
+        final pays = batch.elementsText('pay', payField.extractionRule!, items);
+        // The frozen reads a page's next-URL rule only on the pages it walks
+        // through; the declared-list branch parses its pages with
+        // `getNextUrl = false` (`BookChapterList.kt:104-121`).
+        final next = readNext
+            ? await _field(
+                _rule('ruleToc', 'nextTocUrl', optional: true),
+                content: page,
+              )
+            : null;
+        final nextValue = next == null ? null : _declare(batch, 'next', next);
+        await batch.run();
+        if (items.isEmpty) throw StateError('目录页为空');
+        final names2 = await _perElement(nameField, names.values);
+        final urls2 = await _perElement(urlField, urls.values, url: true);
+        final tagValues = await _perElement(tagField, tags.values);
+        final volumeValues = await _perElement(volumeField, volumes.values);
+        final vipValues = await _perElement(vipField, vips.values);
+        final payValues = await _perElement(payField, pays.values);
+        for (var index = 0; index < items.length; index++) {
+          // The frozen adds a chapter only when its title is non-empty
+          // (`BookChapterList.kt:244`), so an element the name rule matched
+          // nothing on is skipped instead of failing the whole TOC.
+          final title = names2[index];
+          if (title.isEmpty) continue;
+          final tag = tagValues[index].isEmpty ? null : tagValues[index];
+          final isVolume = sourceIsTrue(volumeValues[index]);
+          final isVip = sourceIsTrue(vipValues[index]);
+          final isPay = sourceIsTrue(payValues[index]);
+          final SourceChapter chapter;
+          if (urls2[index].isEmpty) {
+            // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
+            // volume takes the identity text `title + index`, every other chapter
+            // takes the address of the TOC page being parsed, which resolves to
+            // that same page (`BookChapter.kt:143-149`).
+            chapter = isVolume
+                ? SourceChapter.volume(
+                    title,
+                    index,
+                    tocUrl: pageUrl,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  )
+                : SourceChapter(
+                    title,
+                    pageUrl,
+                    rawAddress: request.address,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  );
+          } else {
+            // The address text the rule produced, option tail included: this is
+            // what the chapter keeps, so the fetch parses the options the frozen
+            // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
+            final rawAddress = urls2[index];
+            final (chapterUrl, chapterOptions) = await _extracted(
+              pageUrl,
+              rawAddress,
+            );
+            if (chapterOptions.isPost ||
+                chapterOptions.body != null ||
+                chapterOptions.headers.isNotEmpty ||
+                chapterOptions.retry != 0 ||
+                chapterOptions.js != null) {
+              throw UnsupportedError('暂不支持章节地址的 URL 选项');
+            }
+            chapter = SourceChapter(
+              title,
+              chapterUrl,
+              rawAddress: rawAddress,
+              tag: tag,
+              isVolume: isVolume,
+              isVip: isVip,
+              isPay: isPay,
+            );
           }
-          chapter = SourceChapter(
-            title,
-            chapterUrl,
-            rawAddress: rawAddress,
-            tag: tag,
-            isVolume: isVolume,
-            isVip: isVip,
-            isPay: isPay,
-          );
+          // The frozen deduplicates its list by chapter URL
+          // (`BookChapterList.kt:123`); a duplicate key cannot be stored (D4), so
+          // it is refused here by name.
+          if (!chapterKeys.add(chapter.storeKey)) {
+            throw StateError('目录含重复章节：${chapter.storeKey}');
+          }
+          chapters.add(chapter);
         }
-        // The frozen deduplicates its list by chapter URL
-        // (`BookChapterList.kt:123`); a duplicate key cannot be stored (D4), so
-        // it is refused here by name.
-        if (!chapterKeys.add(chapter.storeKey)) {
-          throw StateError('目录含重复章节：${chapter.storeKey}');
-        }
-        chapters.add(chapter);
-      }
-      if (nextText.isEmpty) break;
-      final (nextUrl, nextOptions) = await _extracted(pageUrl, nextText);
-      url = nextUrl;
-      options = nextOptions;
-      address = nextText;
-      base = pageUrl;
-    }
+        return (
+          pageUrl: pageUrl,
+          items: await _pageTexts(nextValue, next, page),
+        );
+      },
+    );
     if (chapters.isEmpty) throw StateError('目录为空');
     return (book, chapters);
   }
@@ -1093,11 +1112,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<HtmlChapterBody> chapter(
     SourceChapter chapter, {
     HtmlBook? book,
+    String? nextChapterUrl,
   }) async {
     if (book != null) _book = book;
     _chapter = chapter;
     _page = null;
     _chapterTitle = chapter.name;
+    // The frozen content stage binds the next chapter's URL for its rules
+    // (`AnalyzeRule.kt:761`) and stops before fetching it (`BookContent.kt:85-88`).
+    _nextChapterUrl = nextChapterUrl;
     // The frozen content stage reads the content rule before the volume
     // shortcut (`WebBook.kt:303-306`), so a source that declares none keeps
     // failing by name; the shortcut (`:307-310`) then answers the chapter's
@@ -1106,109 +1129,149 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (chapter.rendersTagAsContent) {
       return HtmlChapterBody(chapter.tag ?? '', 0);
     }
-    var url = chapter.url;
-    // The chapter's own address text carries the options this request applies
-    // (the frozen `BookContent` fetches `chapter.url` through `AnalyzeUrl`, so a
-    // chapter address that asked for the WebView is rendered).
-    var options = chapter.options;
-    var address = chapter.address;
-    // Reanalysis of a stored relative address uses the book URL that first
-    // resolved it; TOC-generated addresses keep their existing fetch base.
-    var base = chapter.addressBase ?? chapter.url;
-    final visited = <Uri>{};
     final parts = <String>[];
     String? contentTitle;
     var firstPage = true;
-    while (true) {
-      if (!visited.add(url) || visited.length > 20) {
-        throw StateError('正文分页循环或超出 20 页');
-      }
-      var fetched = await _fetch(
-        url,
-        BookSourceStage.content,
-        options: options,
-        address: address,
-        base: base,
-      );
-      // The frozen content stage checks login once, on its first response
-      // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
-      if (firstPage) {
-        fetched = await _loginCheck(fetched);
-        firstPage = false;
-      }
-      final html = fetched.body;
-      final pageUrl = fetched.url;
-      // Frozen BookContent applies the first-page title before parsing content
-      // rules: their scripts and {{chapter.title}} see the updated value.
-      if (parts.isEmpty) {
-        final titleRule = _rule('ruleContent', 'title', optional: true);
-        if (titleRule.trim().isNotEmpty) {
-          final title = await _field(titleRule, content: html);
-          final titleBatch = HtmlRuleBatch(html);
-          final titleValue = _declare(titleBatch, 'title', title);
-          await titleBatch.run();
-          final extracted = await _documentValue(titleValue, title, html);
-          if (extracted.trim().isNotEmpty) {
-            contentTitle = _chapterTitle = extracted;
-            _chapter = SourceChapter(
-              extracted,
+    // The chapter's own address text carries the options its first request
+    // applies (the frozen `BookContent` fetches `chapter.url` through
+    // `AnalyzeUrl`, so a chapter address that asked for the WebView is
+    // rendered), and reanalysis of a stored relative address uses the book URL
+    // that first resolved it.
+    final pages = await walkSourcePages(
+      first: (
+        url: chapter.url,
+        options: chapter.options,
+        address: chapter.address,
+        base: chapter.addressBase ?? chapter.url,
+      ),
+      maxPages: 20,
+      cycleError: '正文分页循环或超出 20 页',
+      // The frozen stops the one-URL walk before fetching the next chapter's
+      // own URL (`BookContent.kt:85-88`); the declared-list walk has no guard.
+      nextChapterUrl: nextChapterUrl == null || nextChapterUrl.isEmpty
+          ? null
+          : SourceHttpUri.parse(nextChapterUrl),
+      resolve: (address, pageUrl) async {
+        // The next page's own address text carries its options, as it does for
+        // every other page of a content request.
+        final (url, options) = await _extracted(pageUrl, address);
+        if (options.isPost ||
+            options.body != null ||
+            options.headers.isNotEmpty ||
+            options.js != null) {
+          throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
+        }
+        return (url: url, options: options);
+      },
+      visit: (request, {required readNext}) async {
+        var fetched = await _fetch(
+          request.url,
+          BookSourceStage.content,
+          options: request.options,
+          address: request.address,
+          base: request.base,
+        );
+        // The frozen content stage checks login once, on its first response
+        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
+        if (firstPage) {
+          fetched = await _loginCheck(fetched);
+          firstPage = false;
+        }
+        final html = fetched.body;
+        final pageUrl = fetched.url;
+        // Frozen BookContent applies the first-page title before parsing content
+        // rules: their scripts and {{chapter.title}} see the updated value.
+        if (parts.isEmpty) {
+          final titleRule = _rule('ruleContent', 'title', optional: true);
+          if (titleRule.trim().isNotEmpty) {
+            final title = await _field(titleRule, content: html);
+            final titleBatch = HtmlRuleBatch(html);
+            final titleValue = _declare(titleBatch, 'title', title);
+            await titleBatch.run();
+            final extracted = await _documentValue(titleValue, title, html);
+            if (extracted.trim().isNotEmpty) {
+              contentTitle = _chapterTitle = extracted;
+              _chapter = SourceChapter(
+                extracted,
+                chapter.url,
+                rawAddress: chapter.rawAddress,
+                storedKey: chapter.storedKey,
+                addressBase: chapter.addressBase,
+              );
+            }
+          }
+        }
+        final content = await _field(
+          _contentRule(
+            SourceChapter(
+              _chapterTitle!,
               chapter.url,
               rawAddress: chapter.rawAddress,
               storedKey: chapter.storedKey,
               addressBase: chapter.addressBase,
-            );
-          }
-        }
-      }
-      final content = await _field(
-        _contentRule(
-          SourceChapter(
-            _chapterTitle!,
-            chapter.url,
-            rawAddress: chapter.rawAddress,
-            storedKey: chapter.storedKey,
-            addressBase: chapter.addressBase,
+            ),
           ),
-        ),
-        content: html,
-      );
-      final next = await _field(
-        _rule('ruleContent', 'nextContentUrl', optional: true),
-        content: html,
-      );
-      final batch = HtmlRuleBatch(html);
-      final contentValue = _declare(batch, 'content', content);
-      final nextValue = _declare(batch, 'next', next);
-      await batch.run();
-      final text = await _documentValue(contentValue, content, html);
-      if (text.isEmpty) {
-        throw const FormatException('ruleContent.content 未匹配到内容');
-      }
-      parts.add(text);
-      final nextText =
-          nextValue != null && !nextValue.hasMatch && next.scripts.isEmpty
-          ? ''
-          : await _documentValue(nextValue, next, html);
-      if (nextText.isEmpty) break;
-      final (nextUrl, nextOptions) = await _extracted(pageUrl, nextText);
-      if (nextOptions.isPost ||
-          nextOptions.body != null ||
-          nextOptions.headers.isNotEmpty ||
-          nextOptions.js != null) {
-        throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
-      }
-      // The next page's own address text carries its options, as it does for
-      // every other page of a content request.
-      options = nextOptions;
-      url = nextUrl;
-      address = nextText;
-      base = pageUrl;
-    }
+          content: html,
+        );
+        final next = readNext
+            ? await _field(
+                _rule('ruleContent', 'nextContentUrl', optional: true),
+                content: html,
+              )
+            : null;
+        final batch = HtmlRuleBatch(html);
+        final contentValue = _declare(batch, 'content', content);
+        final nextValue = next == null ? null : _declare(batch, 'next', next);
+        await batch.run();
+        final text = await _documentValue(contentValue, content, html);
+        if (text.isEmpty) {
+          throw const FormatException('ruleContent.content 未匹配到内容');
+        }
+        parts.add(text);
+        return (
+          pageUrl: pageUrl,
+          items: await _pageTexts(nextValue, next, html),
+        );
+      },
+    );
     return HtmlChapterBody(
       _shapeJoinedContent(parts.join('\n')),
-      visited.length,
+      pages,
       title: contentTitle,
     );
+  }
+
+  /// The raw address texts one page's next-page rule declared, in the frozen
+  /// `AnalyzeRule.getStringList` shape (`AnalyzeRule.kt:159-235`): every match of
+  /// the rule, in declared order, with the field's `@js:`/`<js>` segments
+  /// applied.
+  ///
+  /// A rule that matched nothing declares no page, and unlike the single-value
+  /// read ([_documentValue]) the list read has no `##`-replacement fallback: the
+  /// frozen's `getStringList` answers an empty list there. A script-only field
+  /// runs its script on the page itself; a field with scripts runs them per
+  /// declared item, where the frozen threads the whole list through the trailing
+  /// segment.
+  ///
+  /// [job] is the declared document job and [field] the resolved field; [field]
+  /// is null when the page must not read its list at all (a page the declared
+  /// walk fetched, `BookChapterList.kt:104-121`).
+  Future<List<String>> _pageTexts(
+    HtmlString? job,
+    RuleField? field,
+    String page,
+  ) async {
+    if (field == null) return const <String>[];
+    if (job == null) return sourceScriptTexts(await field.apply(page));
+    if (!job.hasMatch && field.scripts.isEmpty) return const <String>[];
+    final values = job.hasMatch ? job.values : const <String>[''];
+    final texts = <String>[];
+    for (final value in values) {
+      final applied = await field.apply(value);
+      if (applied == null) continue;
+      texts.add('$applied');
+    }
+    return texts;
   }
 
   /// The frozen content stage's final shaping (`BookContent.kt:135-142`).

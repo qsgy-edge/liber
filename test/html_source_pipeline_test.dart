@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,8 +12,13 @@ import 'package:liber/source/native_library.dart';
 import 'native_library.dart';
 
 class SitePages implements BookSourceTransport {
-  SitePages(this.pages);
+  SitePages(this.pages, {this.gatePath, this.gate});
   final Map<String, String> pages;
+
+  /// A path whose response is held until [gate] completes, so a test can cancel
+  /// a page walk between two pages.
+  final String? gatePath;
+  final Completer<void>? gate;
   final List<String> requests = [];
   @override
   Future<String> request({
@@ -21,9 +27,48 @@ class SitePages implements BookSourceTransport {
   }) async {
     final url = Uri.parse(path).path;
     requests.add(url);
+    if (url == gatePath) await gate!.future;
     return pages[url] ?? (throw StateError('Unexpected URL: $url'));
   }
 }
+
+/// The book detail page, TOC entry and chapter body shapes the multi-URL tests
+/// build their pages from.
+Map<String, dynamic> _pageSource({
+  String? nextTocUrl,
+  String? nextContentUrl,
+}) => {
+  'bookSourceUrl': 'https://a.test',
+  'ruleBookInfo': {
+    'name': '@CSS:h1 a@text',
+    'tocUrl': '@CSS:#dir a@href',
+  },
+  'ruleToc': {
+    'chapterList': '@CSS:#list li a',
+    'chapterName': '@CSS:a@text',
+    'chapterUrl': '@CSS:a@href',
+    'nextTocUrl': ?nextTocUrl,
+  },
+  'ruleContent': {
+    'content': '@CSS:.con p@text',
+    'nextContentUrl': ?nextContentUrl,
+  },
+};
+
+const _bookPage =
+    '<h1><a>书</a></h1><h2 id="dir"><a href="/toc/1">目录</a></h2>';
+const _tocLink = '/toc/1';
+const _listPage =
+    '<div id="list"><li><a href="/chapter/1">第一章</a></li></div>';
+const _pages = '<div id="pages">'
+    '<a class="gr" href="/toc/1">1</a>'
+    '<a class="gr" href="/toc/3">3</a>'
+    '<a class="gr" href="/toc/2">2</a>'
+    '<a class="gr" href="/toc/2">2</a>'
+    '</div>';
+
+HtmlBook _hit() =>
+    HtmlBook(url: Uri.parse('https://a.test/book/1'), title: '书');
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
@@ -65,6 +110,211 @@ void main() {
       await expectLater(pipeline.chapter(chapters.first), throwsStateError);
     },
   );
+
+  group('multi-URL page results (BookChapterList.kt:48-121, BookContent.kt:54-135)', () {
+    test(
+      'a declared TOC list is fetched whole, in declared order, and read no further',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1': '$_listPage$_pages',
+          // Page 3 declares page 9 of its own: the declared branch reads no
+          // page's list, so page 9 must never be fetched.
+          '/toc/3':
+              '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>'
+                  '<div id="pages"><a class="gr" href="/toc/9">9</a></div>',
+          '/toc/2':
+              '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        // Declared order (3 before 2), the page's own URL dropped, and the
+        // repeated `/toc/2` collapsed to its first occurrence.
+        expect(chapters.map((chapter) => chapter.name), [
+          '第一章',
+          '第三章',
+          '第二章',
+        ]);
+        expect(pipeline.tocPages, 3);
+        expect(transport.requests, ['/book/1', _tocLink, '/toc/3', '/toc/2']);
+      },
+    );
+
+    test('a followed TOC page follows only the first URL of its own list', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        // One URL on the first page keeps the sequential walk.
+        '/toc/1':
+            '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
+        // The page the walk follows declares two; the frozen follows only the
+        // first of them (`firstOrNull`), so `/toc/5` is never fetched.
+        '/toc/2':
+            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
+                '<div id="pages">'
+                '<a class="gr" href="/toc/4">4</a>'
+                '<a class="gr" href="/toc/5">5</a>'
+                '</div>',
+        '/toc/4':
+            '<div id="list"><li><a href="/chapter/4">第四章</a></li></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+        transport,
+      );
+      final (_, chapters) = await pipeline.details(_hit());
+      expect(chapters.map((chapter) => chapter.name), [
+        '第一章',
+        '第二章',
+        '第四章',
+      ]);
+      expect(transport.requests, ['/book/1', _tocLink, '/toc/2', '/toc/4']);
+    });
+
+    test('a TOC page that names the first page again is refused, not looped', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1':
+            '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
+        '/toc/2':
+            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
+                '<div id="pages"><a class="gr" href="/toc/1">1</a></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+        transport,
+      );
+      await expectLater(pipeline.details(_hit()), throwsStateError);
+      expect(transport.requests, ['/book/1', _tocLink, '/toc/2']);
+    });
+
+    test('a declared content list is merged in order and joined', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1': _listPage,
+        '/chapter/1':
+            '<div class="con"><p>第一页</p></div>'
+                '<div class="prenext">'
+                '<a href="/chapter/1-3">3</a>'
+                '<a href="/chapter/1-2">2</a>'
+                '</div>',
+        '/chapter/1-3': '<div class="con"><p>第三页</p></div>',
+        '/chapter/1-2': '<div class="con"><p>第二页</p></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+        transport,
+      );
+      final (_, chapters) = await pipeline.details(_hit());
+      final body = await pipeline.chapter(chapters.single);
+      expect(body.text, '第一页\n第三页\n第二页');
+      expect(body.pages, 3);
+      expect(transport.requests.skip(3), ['/chapter/1-3', '/chapter/1-2']);
+    });
+
+    test('the one-URL content walk stops before the next chapter page', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1': _listPage,
+        '/chapter/1':
+            '<div class="con"><p>第一页</p></div>'
+                '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
+        '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+        transport,
+      );
+      final (_, chapters) = await pipeline.details(_hit());
+      final body = await pipeline.chapter(
+        chapters.single,
+        nextChapterUrl: 'https://a.test/chapter/2',
+      );
+      expect(body.text, '第一页');
+      expect(body.pages, 1);
+      expect(transport.requests, isNot(contains('/chapter/2')));
+    });
+
+    test('without a next chapter URL the walk has no boundary to stop at', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1': _listPage,
+        '/chapter/1':
+            '<div class="con"><p>第一页</p></div>'
+                '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
+        '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+        transport,
+      );
+      final (_, chapters) = await pipeline.details(_hit());
+      // No caller supplied a next chapter, so the guard has nothing to compare
+      // with and the page is fetched: the frozen reads its store there instead.
+      final body = await pipeline.chapter(chapters.single);
+      expect(body.text, '第一页\n下一章正文');
+      expect(body.pages, 2);
+    });
+
+    test(
+      'a declared content list is not stopped by the next chapter URL (frozen list branch)',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1': _listPage,
+          '/chapter/1':
+              '<div class="con"><p>第一页</p></div>'
+                  '<div class="prenext">'
+                  '<a href="/chapter/1-2">2</a>'
+                  '<a href="/chapter/2">下一章</a>'
+                  '</div>',
+          '/chapter/1-2': '<div class="con"><p>第二页</p></div>',
+          '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        // Reproduced from the frozen: `BookContent.kt:114-127` reads the
+        // next-chapter guard only in its one-URL branch, so a two-URL list
+        // fetches the next chapter's page and appends its body. A source that
+        // wants that boundary must write a rule matching one page.
+        final body = await pipeline.chapter(
+          chapters.single,
+          nextChapterUrl: 'https://a.test/chapter/2',
+        );
+        expect(body.text, '第一页\n第二页\n下一章正文');
+        expect(body.pages, 3);
+      },
+    );
+
+    test('cancelling between two declared pages stops the walk', () async {
+      final gate = Completer<void>();
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1': '$_listPage$_pages',
+        '/toc/3':
+            '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>',
+        '/toc/2':
+            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
+      }, gatePath: '/toc/3', gate: gate);
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+        transport,
+      );
+      final pending = pipeline.details(_hit());
+      await pumpEventQueue();
+      expect(transport.requests, ['/book/1', _tocLink, '/toc/3']);
+      pipeline.cancel();
+      gate.complete();
+      await expectLater(pending, throwsA(isA<SourceRequestCancelled>()));
+      // The page after the one in flight is never requested.
+      expect(transport.requests, isNot(contains('/toc/2')));
+    });
+  });
 
   group('content stage final shaping (BookContent.kt:135-142)', () {
     Future<String> read(

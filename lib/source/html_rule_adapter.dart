@@ -34,9 +34,7 @@ class HtmlRuleBatch {
 
   String _add(String id, String rule, String? parent, HtmlJobOutput output) {
     if (_ran) throw StateError('该规则批次已经执行');
-    _jobs.add(
-      HtmlRuleJob(id: id, rule: rule, parent: parent, output: output),
-    );
+    _jobs.add(HtmlRuleJob(id: id, rule: rule, parent: parent, output: output));
     return id;
   }
 
@@ -102,6 +100,31 @@ class HtmlString {
   String get value {
     final values = _batch._result(id).values;
     return values.isEmpty ? '' : values.first;
+  }
+
+  /// The values a *document* rule extracted, one per match.
+  ///
+  /// A document job is answered once, by the frozen `AnalyzeByJSoup.getString`
+  /// shape: its matches joined with `"\n"` (`liber_html::rule::string_with_count`).
+  /// The job's own count still reports how many matches went into that value,
+  /// which is what this recovers:
+  ///
+  /// - no match answers no value;
+  /// - one match answers its value verbatim, because a single value may itself
+  ///   contain a newline;
+  /// - more than one match is the joined value split back apart.
+  ///
+  /// The frozen list read (`AnalyzeByJSoup.getStringList`) answers one value per
+  /// match instead, so a `##` replacement, which the adapter applies to the
+  /// joined value, runs per item there and on the join here, and the adapter's
+  /// entity unescape runs where the frozen list read leaves the value as it is.
+  /// Both are named divergences of the multi-URL page-result read (ticket #14);
+  /// a value that itself contains a newline is the third.
+  List<String> get values {
+    final outcome = _batch._result(id);
+    if (outcome.count == 0) return const <String>[];
+    final joined = outcome.values.isEmpty ? '' : outcome.values.first;
+    return outcome.count == 1 ? <String>[joined] : joined.split('\n');
   }
 
   /// Whether the rule extracted a value before its `##` replacement ran.
