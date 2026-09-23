@@ -1,9 +1,9 @@
 import 'dart:io';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/local/local_reader.dart';
-import 'package:liber/local/reader_engine.dart';
 import 'package:liber/store/local_library.dart';
 import 'package:liber/store/space_store.dart';
 
@@ -35,7 +35,7 @@ void main() {
   Future<OpenBook> openReader({
     String? text,
     int pageCodeUnits = 256,
-    ReaderScript? script,
+    ConvertTarget? script,
   }) async {
     final content = text ?? novelText(chapters: 8);
     await file.writeAsString(content);
@@ -234,10 +234,10 @@ void main() {
   test('要什么文字就渲染什么文字，位置仍然是码元偏移', () async {
     final opened = await openReader(
       pageCodeUnits: 256,
-      script: ReaderScript.simplified,
+      script: ConvertTarget.simplifiedMainland,
     );
 
-    expect(opened.reader.text, startsWith('«simplified»'));
+    expect(opened.reader.text, startsWith('«simplifiedMainland»'));
     expect(
       opened.reader.position!.textOffset,
       0,
@@ -251,7 +251,7 @@ void main() {
       first.textOffset + first.text.length,
       reason: '翻页按原始码元走，不按转换后的文字',
     );
-    expect(opened.reader.text, startsWith('«simplified»'));
+    expect(opened.reader.text, startsWith('«simplifiedMainland»'));
   });
 
   test('章节键是这一章自己在文件里的起点', () async {

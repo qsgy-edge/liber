@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/settings/reader_script.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/html_source_pipeline.dart';
@@ -13,6 +15,11 @@ import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
+
+/// The conversion the reader runs is the engine's; a widget test cannot load the
+/// native library, so it injects this double and reads the target it was given.
+String markTarget(String text, ConvertTarget target) =>
+    '<<${target.name}>>$text';
 
 /// The reader only needs chapter text. Driving the real rule adapter here would
 /// load the native library into a widget test, where the binding cannot settle
@@ -28,6 +35,10 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   final Completer<void>? gate;
   int calls = 0;
 
+  /// How many chapters were fetched, whatever the gate is doing: the count a
+  /// re-render must not raise.
+  int fetches = 0;
+
   /// The next chapter URL the reader passed with each chapter fetch, in call
   /// order: the frozen next-chapter lookup the content stage's stop guard reads.
   final nextChapterUrls = <String?>[];
@@ -38,6 +49,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
     HtmlBook? book,
     String? nextChapterUrl,
   }) async {
+    fetches += 1;
     nextChapterUrls.add(nextChapterUrl);
     if (gate != null && calls++ > 0) await gate!.future;
     return HtmlChapterBody(
@@ -357,6 +369,95 @@ void main() {
     expect(longTag.overflow, TextOverflow.ellipsis);
     // The lock is `isVip && !isPay` (`:162-165`), so the paid chapter has none.
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'reader renders the script the system locale asks for, 正文和目录标题一样',
+    (tester) async {
+      tester.binding.platformDispatcher.localeTestValue = const Locale(
+        'zh',
+        'TW',
+      );
+      addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+      final chapters = [SourceChapter('第一章 龍鳳', Uri.parse('$sourceUrl/1'))];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnlineReaderPage(
+            pipeline: ScriptedPipeline(),
+            book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+            bookId: bookId,
+            chapters: chapters,
+            service: shelf,
+            convert: markTarget,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The body and the chapter title above it carry the locale's target.
+      expect(find.textContaining('<<traditionalTaiwan>>'), findsWidgets);
+      // The table of contents converts the chapter name too, and the raw name is
+      // nowhere on the page any more.
+      await tester.tap(find.text('目录'));
+      await tester.pumpAndSettle();
+      expect(find.text('<<traditionalTaiwan>>第一章 龍鳳'), findsWidgets);
+      expect(find.text('第一章 龍鳳'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('改设置后在线章节重新渲染，且不重新抓取，本书覆盖生效', (tester) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale(
+      'zh',
+      'CN',
+    );
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+    final pipeline = ScriptedPipeline();
+    final chapters = [SourceChapter('第一章', Uri.parse('$sourceUrl/1'))];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OnlineReaderPage(
+          pipeline: pipeline,
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: chapters,
+          service: shelf,
+          convert: markTarget,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('<<simplifiedMainland>>'), findsWidgets);
+    final fetches = pipeline.fetches;
+
+    await tester.tap(find.byTooltip('中文转换'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('reader-script-book-traditional_generic')),
+      300,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('reader-script-book-traditional_generic')),
+    );
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // The override is what the open chapter renders in, and the chapter was not
+    // fetched a second time for it.
+    expect(find.textContaining('<<traditionalGeneric>>'), findsWidgets);
+    expect(find.textContaining('<<simplifiedMainland>>'), findsNothing);
+    expect(pipeline.fetches, fetches, reason: '改设置不重新抓取章节');
+    expect(
+      await store.setting(ReaderScriptSetting.key, bookId: bookId),
+      'traditional_generic',
+    );
+    expect(
+      await store.setting(ReaderScriptSetting.key),
+      isNull,
+      reason: '本书覆盖不动安装的选择',
+    );
     expect(tester.takeException(), isNull);
   });
 }

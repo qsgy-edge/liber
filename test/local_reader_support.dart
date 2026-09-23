@@ -2,9 +2,11 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:drift/native.dart';
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/local/local_reader.dart';
 import 'package:liber/local/reader_engine.dart';
+import 'package:liber/local/text_engine.dart' show TextEngine;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/local_library.dart';
@@ -86,7 +88,7 @@ class FakeEngine implements ReaderEngine {
   }
 
   @override
-  String render(String text, ReaderScript? script) =>
+  String render(String text, ConvertTarget? script) =>
       script == null ? text : '«${script.name}»$text';
 
   int _lineIndexAt(int textOffset) {
@@ -144,7 +146,7 @@ class RecordingEngine implements ReaderEngine {
   }
 
   @override
-  String render(String text, ReaderScript? script) =>
+  String render(String text, ConvertTarget? script) =>
       engine.render(text, script);
 }
 
@@ -279,7 +281,8 @@ ContentProcessing literalProcessing(
   List<({String pattern, String replacement})> rules, {
   String bookName = '本地书',
   String bookOrigin = 'loc_book',
-  ReaderScript? script,
+  ConvertTarget? script,
+  String Function(String text, ConvertTarget target)? convert,
   bool useReplaceRule = true,
 }) {
   final replaceRules = [
@@ -308,6 +311,9 @@ ContentProcessing literalProcessing(
     ),
     bookName: bookName,
     script: script,
+    // A widget test cannot load the native library, so it injects a pure-Dart
+    // double here; a plain test leaves the engine's own conversion.
+    convert: convert ?? TextEngine.convertTo,
     useReplaceRule: useReplaceRule,
     useReSegment: false,
   );

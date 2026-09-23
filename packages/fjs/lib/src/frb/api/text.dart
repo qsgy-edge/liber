@@ -9,7 +9,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'text.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `units`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 /// The defaults the frozen reader starts from: one anchor per 32 KiB, its two
 /// enabled default TXT rules, and a 4 MiB scan limit.
@@ -58,6 +58,36 @@ Future<TextWindow> textReadWindow({required TextWindowRequest request}) =>
 String textConvert({required String text, required TextDirection direction}) =>
     LibFjs.instance.api
         .crateApiTextTextConvert(text: text, direction: direction);
+
+/// Converts Chinese text for a reader: characters plus the regional wording
+/// `liber_text::convert_to` applies (ADR 0010).
+///
+/// This is the reader's path, and it is deliberately not the same output as
+/// [text_convert]: the `t2s` host surface stays character-only because a Book
+/// Source rule matches on what it returns.
+String textConvertTo({required String text, required ConvertTarget target}) =>
+    LibFjs.instance.api.crateApiTextTextConvertTo(text: text, target: target);
+
+/// What a reader wants the text to look like, wording included.
+///
+/// The character-only [TextDirection] stays for the Book Source host surface
+/// (`java.t2s`/`java.s2t`): a rule normalises text with it and must not have its
+/// words rewritten. This is the reader's own choice, and it maps to
+/// [`engine::ConvertTarget`] as `liber_text` defines it (ADR 0010).
+enum ConvertTarget {
+  /// Mainland Simplified, wording included: the 简体 reading target.
+  simplifiedMainland,
+
+  /// Traditional characters without a regional norm.
+  traditionalGeneric,
+
+  /// The Taiwan norm and wording (繁體（台灣）).
+  traditionalTaiwan,
+
+  /// The Hong Kong norm and wording (繁體（香港）).
+  traditionalHongKong,
+  ;
+}
 
 /// One sparse anchor: a line start in bytes, in code units, and in lines. These
 /// are the `text_index` rows.

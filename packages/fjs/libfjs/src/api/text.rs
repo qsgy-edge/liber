@@ -42,6 +42,35 @@ impl From<TextDirection> for engine::Direction {
     }
 }
 
+/// What a reader wants the text to look like, wording included.
+///
+/// The character-only [TextDirection] stays for the Book Source host surface
+/// (`java.t2s`/`java.s2t`): a rule normalises text with it and must not have its
+/// words rewritten. This is the reader's own choice, and it maps to
+/// [`engine::ConvertTarget`] as `liber_text` defines it (ADR 0010).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConvertTarget {
+    /// Mainland Simplified, wording included: the 简体 reading target.
+    SimplifiedMainland,
+    /// Traditional characters without a regional norm.
+    TraditionalGeneric,
+    /// The Taiwan norm and wording (繁體（台灣）).
+    TraditionalTaiwan,
+    /// The Hong Kong norm and wording (繁體（香港）).
+    TraditionalHongKong,
+}
+
+impl From<ConvertTarget> for engine::ConvertTarget {
+    fn from(target: ConvertTarget) -> Self {
+        match target {
+            ConvertTarget::SimplifiedMainland => engine::ConvertTarget::SimplifiedMainland,
+            ConvertTarget::TraditionalGeneric => engine::ConvertTarget::TraditionalGeneric,
+            ConvertTarget::TraditionalTaiwan => engine::ConvertTarget::TraditionalTaiwan,
+            ConvertTarget::TraditionalHongKong => engine::ConvertTarget::TraditionalHongKong,
+        }
+    }
+}
+
 /// What went wrong: the same cases the Rust engine reports, in a shape a Dart
 /// caller can switch on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,4 +331,15 @@ pub fn text_read_window(
 #[frb(sync)]
 pub fn text_convert(text: String, direction: TextDirection) -> String {
     engine::convert(&text, direction.into())
+}
+
+/// Converts Chinese text for a reader: characters plus the regional wording
+/// `liber_text::convert_to` applies (ADR 0010).
+///
+/// This is the reader's path, and it is deliberately not the same output as
+/// [text_convert]: the `t2s` host surface stays character-only because a Book
+/// Source rule matches on what it returns.
+#[frb(sync)]
+pub fn text_convert_to(text: String, target: ConvertTarget) -> String {
+    engine::convert_to(&text, target.into())
 }

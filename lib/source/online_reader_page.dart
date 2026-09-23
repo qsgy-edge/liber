@@ -1,8 +1,12 @@
 import 'dart:async';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
 import '../domain/contracts.dart' show SourceCancellation;
+import '../local/text_engine.dart' show TextEngine;
+import '../settings/reader_script.dart';
+import '../settings/reader_script_page.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'chapter_list_tile.dart';
@@ -21,6 +25,7 @@ class OnlineReaderPage extends StatefulWidget {
     required this.service,
     this.chapterIndex = 0,
     this.textOffset = 0,
+    this.convert,
   });
   final BookSourcePipeline pipeline;
   final HtmlBook book;
@@ -30,6 +35,12 @@ class OnlineReaderPage extends StatefulWidget {
   final List<SourceChapter> chapters;
   final ShelfService service;
   final int chapterIndex, textOffset;
+
+  /// The conversion `ContentProcessing` runs, or null for the engine's own
+  /// (`TextEngine.convertTo`). A widget test injects a pure-Dart double, because
+  /// its binding cannot load the native library — the same seam reason
+  /// `ContentProcessing.scriptRuntime` exists.
+  final String Function(String text, ConvertTarget target)? convert;
   @override
   State<OnlineReaderPage> createState() => _OnlineReaderPageState();
 }
@@ -49,6 +60,15 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// the way the frozen reader applies them. Null while the space is read;
   /// a book opens with no rules until then.
   ContentProcessing? processing;
+
+  /// The script the reader resolved on open (`lib/settings/reader_script.dart`),
+  /// or null for the source's own characters.
+  ConvertTarget? script;
+
+  /// The last fetched chapter as the source returned it: a settings change
+  /// re-renders from here instead of fetching the chapter again.
+  String sourceTitle = '';
+  String sourceBody = '';
 
   /// The current chapter's display title, replaced by the title rules.
   String chapterTitle = '';
@@ -73,6 +93,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   Future<void> _open() async {
     ContentProcessing? built;
     try {
+      final target = await ReaderScriptSetting.resolve(
+        widget.service.store,
+        bookId: widget.bookId,
+      );
+      script = target;
       final rules = await widget.service.store.replaceRules();
       built = ContentProcessing(
         rules: ReplaceRuleSet.forBook(
@@ -81,6 +106,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
           bookOrigin: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
         ),
         bookName: widget.book.title,
+        script: target,
+        convert: widget.convert ?? TextEngine.convertTo,
         cancellation: _processingCancellation,
         // The frozen `Book.getUseReplaceRule()` for a text book: the per-book
         // switch, falling back to a default that is on. The settings field set
@@ -187,54 +214,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         ),
       );
       if (!mounted) return;
-      // The frozen reader replaces the text before it reaches the screen: the
-      // chapter's display title (titles) and the body (content rules) — the title
-      // is what `ReadBook.kt:694` computes, the body is what
-      // `ContentProcessor.getContent(..., includeTitle = false)` returns.
-      final chapterName = widget.chapters[next].name;
-      final current = processing;
-      final sourceTitle = result.title ?? chapterName;
-      final title = current == null
-          ? sourceTitle
-          : await current.displayTitle(sourceTitle);
-      final body = current == null
-          ? result.text
-          // The one text entry returns the text and the run's edit script; the
-          // online reader consumes the text alone — it pages the chapter it just
-          // read, and its stored position is the source's own offset.
-          : (await current.content(
-              result.text,
-              chapterTitle: sourceTitle,
-            )).text;
-      if (!mounted) return;
-      final lines = body.split('\n');
-      var cursor = 0;
-      final starts = <int>[];
-      for (final line in lines) {
-        starts.add(cursor);
-        cursor += line.length + 1;
-      }
-      final anchor = resume.clamp(0, body.length);
-      final target = starts.lastIndexWhere((start) => start <= anchor);
-      setState(() {
-        index = next;
-        chapterTitle = title;
-        paragraphs = lines;
-        offsets = starts;
-        keys = List.generate(lines.length, (_) => GlobalKey());
-        offset = starts[target < 0 ? 0 : target];
-        busy = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        final context = keys[target < 0 ? 0 : target].currentContext;
-        if (context != null) {
-          await Scrollable.ensureVisible(context, alignment: 0);
-        }
-        if (!mounted) return;
-        tracking = true;
-        await save();
-      });
+      sourceTitle = result.title ?? widget.chapters[next].name;
+      sourceBody = result.text;
+      await _render(next, resume);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -243,6 +225,80 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         });
       }
     }
+  }
+
+  /// Renders the chapter [sourceBody]/[sourceTitle] already hold the way the
+  /// frozen reader does before the text reaches the screen: the chapter's
+  /// display title (titles) and the body (content rules) — the title is what
+  /// `ReadBook.kt:694` computes, the body is what
+  /// `ContentProcessor.getContent(..., includeTitle = false)` returns.
+  ///
+  /// Both the fetch and a settings change come through here, so re-rendering in
+  /// another script needs no second fetch of the chapter.
+  Future<void> _render(int next, int resume) async {
+    final current = processing;
+    final title = current == null
+        ? sourceTitle
+        : await current.displayTitle(sourceTitle);
+    final body = current == null
+        ? sourceBody
+        // The one text entry returns the text and the run's edit script; the
+        // online reader consumes the text alone — it pages the chapter it just
+        // read, and its stored position is the source's own offset.
+        : (await current.content(sourceBody, chapterTitle: sourceTitle)).text;
+    if (!mounted) return;
+    final lines = body.split('\n');
+    var cursor = 0;
+    final starts = <int>[];
+    for (final line in lines) {
+      starts.add(cursor);
+      cursor += line.length + 1;
+    }
+    final anchor = resume.clamp(0, body.length);
+    final target = starts.lastIndexWhere((start) => start <= anchor);
+    setState(() {
+      index = next;
+      chapterTitle = title;
+      paragraphs = lines;
+      offsets = starts;
+      keys = List.generate(lines.length, (_) => GlobalKey());
+      offset = starts[target < 0 ? 0 : target];
+      busy = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final context = keys[target < 0 ? 0 : target].currentContext;
+      if (context != null) {
+        await Scrollable.ensureVisible(context, alignment: 0);
+      }
+      if (!mounted) return;
+      tracking = true;
+      await save();
+    });
+  }
+
+  /// Opens the reader's conversion screen (#27) for this book, then re-resolves
+  /// and re-renders the chapter it is already showing. Nothing is fetched again
+  /// and the book is not reopened: only the characters change.
+  Future<void> openScriptSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScriptPage(
+          store: widget.service.store,
+          bookId: widget.bookId,
+          bookTitle: widget.book.title,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final target = await ReaderScriptSetting.resolve(
+      widget.service.store,
+      bookId: widget.bookId,
+    );
+    if (!mounted || target == script) return;
+    script = target;
+    processing?.script = target;
+    await _render(index, offset);
   }
 
   Future<void> chooseChapter() async {
@@ -266,6 +322,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
                 itemCount: widget.chapters.length,
                 itemBuilder: (_, i) => ChapterListTile(
                   chapter: widget.chapters[i],
+                  // The frozen list converts the title when the converter is on
+                  // and applies the title rules only when
+                  // `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`,
+                  // default false), which is what [ContentProcessing.listTitle]
+                  // does.
+                  title: processing?.listTitle(widget.chapters[i].name),
                   selected: i == index,
                   onTap: () => Navigator.pop(context, i),
                 ),
@@ -294,6 +356,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     appBar: AppBar(
       title: Text(widget.book.title),
       actions: [
+        IconButton(
+          onPressed: busy ? null : openScriptSettings,
+          tooltip: '中文转换',
+          icon: const Icon(Icons.translate),
+        ),
         TextButton.icon(
           onPressed: busy ? null : chooseChapter,
           icon: const Icon(Icons.list),

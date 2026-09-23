@@ -8,6 +8,7 @@ import 'domain/contracts.dart';
 import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
+import 'settings/reader_script_page.dart';
 import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
 import 'source/http_source_transport.dart';
@@ -496,6 +497,17 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // multi-source search entry (`PreciseSearchPage`); the page reads the
         // space's sources itself, so this hunk needs nothing but the shelf.
         actions: [
+          IconButton(
+            onPressed: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ReaderScriptPage(store: shelf.store),
+                    ),
+                  ),
+            tooltip: '中文转换',
+            icon: const Icon(Icons.translate),
+          ),
           TextButton.icon(
             onPressed: shelf == null
                 ? null

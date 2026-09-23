@@ -2,15 +2,6 @@ import 'package:fjs/fjs.dart';
 
 import 'text_engine.dart';
 
-/// The script a page was asked to render, or null for the file's own
-/// characters.
-///
-/// Which target a reader wants, and following the system locale, is #27's
-/// choice; this lane only carries the request through the engine's shared
-/// conversion (ADR 0010), so a local window renders the script it is asked for
-/// out of the same library the Book Source host surface converts with.
-enum ReaderScript { simplified, traditional }
-
 /// One sparse line-start anchor: the byte offset, the code-unit offset and the
 /// line index of the same position. These are `text_index`'s rows
 /// (`SpaceStore.TextIndexAnchor` is the same record type).
@@ -93,7 +84,12 @@ abstract interface class ReaderEngine {
 
   /// Renders [text] in the script the page was asked for; null leaves it as the
   /// file has it.
-  String render(String text, ReaderScript? script);
+  ///
+  /// The target is `fjs`'s own `ConvertTarget` (`liber_text::ConvertTarget`
+  /// behind the bridge), the same type `ContentProcessing.script` carries and
+  /// the same engine call the Book Source host surface converts with — only the
+  /// character-only direction differs (ADR 0010).
+  String render(String text, ConvertTarget? script);
 }
 
 /// [TextEngine] behind [ReaderEngine].
@@ -162,9 +158,8 @@ class NativeReaderEngine implements ReaderEngine {
   }
 
   @override
-  String render(String text, ReaderScript? script) => switch (script) {
+  String render(String text, ConvertTarget? script) => switch (script) {
     null => text,
-    ReaderScript.simplified => TextEngine.t2s(text),
-    ReaderScript.traditional => TextEngine.s2t(text),
+    final target => TextEngine.convertTo(text, target),
   };
 }

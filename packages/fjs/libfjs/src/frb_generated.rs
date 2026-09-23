@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -560221836;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 885283798;
 
 // Section: executor
 
@@ -7189,6 +7189,38 @@ fn wire__crate__api__text__text_convert_impl(
         },
     )
 }
+fn wire__crate__api__text__text_convert_to_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "text_convert_to",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_text = <String>::sse_decode(&mut deserializer);
+            let api_target = <crate::api::text::ConvertTarget>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::text::text_convert_to(api_text, api_target))?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__text__text_decode_bytes_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -7746,6 +7778,20 @@ impl SseDecode for crate::api::engine::BridgeRequest {
             id: var_id,
             execution_id: var_executionId,
             value: var_value,
+        };
+    }
+}
+
+impl SseDecode for crate::api::text::ConvertTarget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::text::ConvertTarget::SimplifiedMainland,
+            1 => crate::api::text::ConvertTarget::TraditionalGeneric,
+            2 => crate::api::text::ConvertTarget::TraditionalTaiwan,
+            3 => crate::api::text::ConvertTarget::TraditionalHongKong,
+            _ => unreachable!("Invalid variant for ConvertTarget: {}", inner),
         };
     }
 }
@@ -9085,11 +9131,11 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        159 => wire__crate__api__text__text_decode_bytes_impl(port, ptr, rust_vec_len, data_len),
-        161 => wire__crate__api__text__text_detect_encoding_impl(port, ptr, rust_vec_len, data_len),
-        162 => wire__crate__api__text__text_encode_bytes_impl(port, ptr, rust_vec_len, data_len),
-        163 => wire__crate__api__text__text_index_file_impl(port, ptr, rust_vec_len, data_len),
-        164 => wire__crate__api__text__text_read_window_impl(port, ptr, rust_vec_len, data_len),
+        160 => wire__crate__api__text__text_decode_bytes_impl(port, ptr, rust_vec_len, data_len),
+        162 => wire__crate__api__text__text_detect_encoding_impl(port, ptr, rust_vec_len, data_len),
+        163 => wire__crate__api__text__text_encode_bytes_impl(port, ptr, rust_vec_len, data_len),
+        164 => wire__crate__api__text__text_index_file_impl(port, ptr, rust_vec_len, data_len),
+        165 => wire__crate__api__text__text_read_window_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -9297,7 +9343,8 @@ fn pde_ffi_dispatcher_sync_impl(
         154 => wire__crate__api__value__js_value_is_string_impl(ptr, rust_vec_len, data_len),
         155 => wire__crate__api__value__js_value_type_name_impl(ptr, rust_vec_len, data_len),
         158 => wire__crate__api__text__text_convert_impl(ptr, rust_vec_len, data_len),
-        160 => wire__crate__api__text__text_default_options_impl(ptr, rust_vec_len, data_len),
+        159 => wire__crate__api__text__text_convert_to_impl(ptr, rust_vec_len, data_len),
+        161 => wire__crate__api__text__text_default_options_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -9428,6 +9475,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::engine::BridgeRequest>
     for crate::api::engine::BridgeRequest
 {
     fn into_into_dart(self) -> crate::api::engine::BridgeRequest {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::text::ConvertTarget {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::SimplifiedMainland => 0.into_dart(),
+            Self::TraditionalGeneric => 1.into_dart(),
+            Self::TraditionalTaiwan => 2.into_dart(),
+            Self::TraditionalHongKong => 3.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::text::ConvertTarget
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::text::ConvertTarget>
+    for crate::api::text::ConvertTarget
+{
+    fn into_into_dart(self) -> crate::api::text::ConvertTarget {
         self
     }
 }
@@ -10347,6 +10417,24 @@ impl SseEncode for crate::api::engine::BridgeRequest {
         <u64>::sse_encode(self.id, serializer);
         <Option<u64>>::sse_encode(self.execution_id, serializer);
         <crate::api::value::JsValue>::sse_encode(self.value, serializer);
+    }
+}
+
+impl SseEncode for crate::api::text::ConvertTarget {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::text::ConvertTarget::SimplifiedMainland => 0,
+                crate::api::text::ConvertTarget::TraditionalGeneric => 1,
+                crate::api::text::ConvertTarget::TraditionalTaiwan => 2,
+                crate::api::text::ConvertTarget::TraditionalHongKong => 3,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 

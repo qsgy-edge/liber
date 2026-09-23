@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
+
 import '../domain/contracts.dart';
 import '../source/content_processing.dart';
 import '../store/local_library.dart';
@@ -98,12 +100,16 @@ class LocalReader {
   /// The user's replace rules for this book, applied through #17's one text
   /// entry. Null shows the file's own text; a book opens with none until the
   /// space's rules are read, the way the online page does.
+  ///
+  /// [applyScript] sets the conversion on this instance and on [processing], so
+  /// the processed and the unprocessed paths always render one target.
   final ContentProcessing? processing;
 
-  /// The script the page was asked to render, or null for the file's own
-  /// characters. Which one a reader wants is #27's choice. In processed mode the
-  /// conversion is [processing]'s (it converts its own output).
-  final ReaderScript? script;
+  /// The script the page renders, or null for the file's own characters. Which
+  /// target a reader wants is `lib/settings/reader_script.dart`'s resolution.
+  /// In processed mode the conversion is [processing]'s (it converts its own
+  /// output); [applyScript] keeps this field and that instance in step.
+  ConvertTarget? script;
 
   /// A page: a few thousand code units, not a document.
   final int pageCodeUnits;
@@ -344,6 +350,40 @@ class LocalReader {
     final position = _position;
     if (position == null) return;
     await library.saveProgressRecord(book.id, position);
+  }
+
+  /// Re-renders the current page in [target] without reopening the book: the
+  /// file is not indexed again and the stored position does not move, so only
+  /// the characters on screen change.
+  ///
+  /// In the file's own text the page is re-rendered from the window the reader
+  /// already holds; in processed mode the unit the position falls in is run
+  /// through the one text entry again, because that entry is what converts
+  /// there. A book that is still opening ignores the call — [open] resolves the
+  /// script it opens with.
+  Future<void> applyScript(ConvertTarget? target) async {
+    processing?.script = target;
+    if (script == target) return;
+    script = target;
+    final unit = _unit;
+    final position = _position;
+    if (!_processed || _index == null || unit == null || position == null) {
+      return;
+    }
+    _busy = true;
+    try {
+      final next = await _materialise(unit.rawStart);
+      _unit = next;
+      _pageStart = _processedLineStartAt(
+        next.processedText,
+        next.map.processedForRaw(position.lineStart),
+      );
+      await _readProcessedPage();
+    } on Object catch (error) {
+      _error = '$error';
+    } finally {
+      _busy = false;
+    }
   }
 
   // --- The file's own text (processing is null) ----------------------------
