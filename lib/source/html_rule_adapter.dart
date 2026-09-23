@@ -24,9 +24,22 @@ class HtmlRuleBatch {
   HtmlElementSet elements(String id, String rule) =>
       HtmlElementSet._(this, _add(id, rule, null, HtmlJobOutput.elements));
 
-  /// The value [rule] yields for the document itself.
+  /// The value [rule] yields for the document itself, in the frozen
+  /// `AnalyzeByJSoup.getString` shape: a document rule's matches are joined with
+  /// `"\n"` before the `##` replacement runs on the join, and the result is
+  /// entity-unescaped last.
   HtmlString documentText(String id, String rule) =>
       HtmlString._(this, _add(id, rule, null, HtmlJobOutput.text));
+
+  /// The values [rule] yields for the document itself, in the frozen
+  /// `AnalyzeRule.getStringList` shape: one value per match, the `##` replacement
+  /// applied to each value, and no entity unescape.
+  ///
+  /// A rule whose whole value is a list is read this way by the frozen stages
+  /// ([documentText] is the joined, unescaped read of the same rule); a rule the
+  /// pipeline reads as one value keeps using [documentText].
+  HtmlStringList documentTextList(String id, String rule) =>
+      HtmlStringList._(this, _add(id, rule, null, HtmlJobOutput.textList));
 
   /// One value per element matched by [context].
   HtmlStringList elementsText(String id, String rule, HtmlElementSet context) =>
@@ -80,7 +93,9 @@ class HtmlElementSet {
   bool get isEmpty => length == 0;
 }
 
-/// One value per element of an [HtmlElementSet].
+/// The values one job extracted, one entry each: one value per element of an
+/// [HtmlElementSet] for an [HtmlRuleBatch.elementsText] job, or one value per
+/// match for an [HtmlRuleBatch.documentTextList] job.
 class HtmlStringList {
   HtmlStringList._(this._batch, this.id);
 
@@ -100,31 +115,6 @@ class HtmlString {
   String get value {
     final values = _batch._result(id).values;
     return values.isEmpty ? '' : values.first;
-  }
-
-  /// The values a *document* rule extracted, one per match.
-  ///
-  /// A document job is answered once, by the frozen `AnalyzeByJSoup.getString`
-  /// shape: its matches joined with `"\n"` (`liber_html::rule::string_with_count`).
-  /// The job's own count still reports how many matches went into that value,
-  /// which is what this recovers:
-  ///
-  /// - no match answers no value;
-  /// - one match answers its value verbatim, because a single value may itself
-  ///   contain a newline;
-  /// - more than one match is the joined value split back apart.
-  ///
-  /// The frozen list read (`AnalyzeByJSoup.getStringList`) answers one value per
-  /// match instead, so a `##` replacement, which the adapter applies to the
-  /// joined value, runs per item there and on the join here, and the adapter's
-  /// entity unescape runs where the frozen list read leaves the value as it is.
-  /// Both are named divergences of the multi-URL page-result read (ticket #14);
-  /// a value that itself contains a newline is the third.
-  List<String> get values {
-    final outcome = _batch._result(id);
-    if (outcome.count == 0) return const <String>[];
-    final joined = outcome.values.isEmpty ? '' : outcome.values.first;
-    return outcome.count == 1 ? <String>[joined] : joined.split('\n');
   }
 
   /// Whether the rule extracted a value before its `##` replacement ran.

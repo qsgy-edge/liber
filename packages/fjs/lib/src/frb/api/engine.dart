@@ -37,14 +37,16 @@ Future<bool> cancelScopedExecutionGlobal({required BigInt id}) =>
 /// Park a scoped execution's deadline while its host performs a user
 /// interaction (ADR 0011 §4): the deadline neither expires inside the
 /// interrupt closure nor wakes the parked host wait, so the interaction does
-/// not consume the execution's budget. A park is idempotent; `false` means the
-/// execution is gone.
+/// not consume the execution's budget. A park is counted — an interaction that
+/// runs inside another one's nested evaluation parks the same execution twice —
+/// and `false` means the execution is gone.
 Future<bool> pauseScopedExecutionGlobal({required BigInt id}) =>
     LibFjs.instance.api.crateApiEnginePauseScopedExecutionGlobal(id: id);
 
-/// End a park and give the execution back the budget the interaction spent:
-/// the deadline moves forward by the parked duration. `false` means the
-/// execution is gone.
+/// End one park. Only the outermost resume gives the budget back — the deadline
+/// moves forward by the whole parked duration — and an inner resume under an
+/// outer park leaves the suspension in place. A resume without a park does
+/// nothing; `false` means the execution is gone.
 Future<bool> resumeScopedExecutionGlobal({required BigInt id}) =>
     LibFjs.instance.api.crateApiEngineResumeScopedExecutionGlobal(id: id);
 

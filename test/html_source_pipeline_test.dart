@@ -112,6 +112,84 @@ void main() {
   );
 
   group('multi-URL page results (BookChapterList.kt:48-121, BookContent.kt:54-135)', () {
+    test('a multi-match nextTocUrl runs its ## field once per item', () async {
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        // The `##` field prefixes each matched href. The join would take the
+        // prefix once, on its first line, so `/x/2` would never be asked for.
+        '/toc/1':
+            '$_listPage<div id="pages">'
+            '<a class="gr" href="1">1</a>'
+            '<a class="gr" href="2">2</a>'
+            '</div>',
+        '/x/1': '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
+        '/x/2': '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>',
+      });
+      final pipeline = HtmlSourcePipeline(
+        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href##^##/x/'),
+        transport,
+      );
+      final (_, chapters) = await pipeline.details(_hit());
+      expect(chapters.map((chapter) => chapter.name), [
+        '第一章',
+        '第二章',
+        '第三章',
+      ]);
+      expect(pipeline.tocPages, 3);
+      expect(transport.requests, ['/book/1', _tocLink, '/x/1', '/x/2']);
+    });
+
+    test(
+      'a multi-match nextContentUrl runs its ## field once per item',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1': _listPage,
+          '/chapter/1':
+              '<div class="con"><p>第一页</p></div>'
+                  '<div class="prenext">'
+                  '<a href="1-2">2</a>'
+                  '<a href="1-3">3</a>'
+                  '</div>',
+          '/c/1-2': '<div class="con"><p>第二页</p></div>',
+          '/c/1-3': '<div class="con"><p>第三页</p></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextContentUrl: '@CSS:.prenext a@href##^##/c/'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        final body = await pipeline.chapter(chapters.single);
+        expect(body.text, '第一页\n第二页\n第三页');
+        expect(body.pages, 3);
+        expect(transport.requests.skip(3).toList(), ['/c/1-2', '/c/1-3']);
+      },
+    );
+
+    test(
+      'an entity-bearing page address stays as the list read leaves it',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          // `&amp;amp;` parses once into `&amp;`; only the *single-value* read
+          // unescapes that step, and the frozen list read does not.
+          '/toc/1':
+              '$_listPage<div id="pages">'
+              '<a class="gr" href="/toc/a&amp;amp;b">1</a>'
+              '</div>',
+          '/toc/a&amp;b':
+              '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        expect(chapters.map((chapter) => chapter.name), ['第一章', '第二章']);
+        expect(transport.requests, ['/book/1', _tocLink, '/toc/a&amp;b']);
+      },
+    );
+
     test(
       'a declared TOC list is fetched whole, in declared order, and read no further',
       () async {

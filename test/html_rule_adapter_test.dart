@@ -62,6 +62,50 @@ void main() {
     expect(urls.values, ['', '']);
   });
 
+  test('a document list job reads the frozen getStringList answer', () async {
+    final batch = HtmlRuleBatch(
+      '<div id="e">A&amp;amp;B</div>'
+      '<div id="pages"><a href="/p/1">1</a><a href="/p/2">2</a></div>',
+    );
+    final pages = batch.documentTextList(
+      'pages',
+      '#pages a@href##^/p/##/page/',
+    );
+    final joined = batch.documentText('joined', '#pages a@href##^/p/##/page/');
+    final entity = batch.documentTextList('entity', '#e@text');
+    final entityValue = batch.documentText('entity-value', '#e@text');
+    final single = batch.documentTextList(
+      'single',
+      '#pages a.0@href##^/p/##/page/',
+    );
+    await batch.run();
+
+    // The `##` field runs once per matched value; the single-value read runs the
+    // same field on the join, where the anchor reaches the first line only.
+    expect(pages.values, ['/page/1', '/page/2']);
+    expect(joined.value, '/page/1\n/p/2');
+    // The list read answers the extraction as it is; only the single-value read
+    // unescapes entities, and it does so last.
+    expect(entity.values, ['A&amp;B']);
+    expect(entityValue.value, 'A&B');
+    // A one-match rule is the same value either read.
+    expect(single.values, ['/page/1']);
+  });
+
+  test('a list value that contains a newline stays one value', () async {
+    final batch = HtmlRuleBatch(
+      '<div id="pages"><a href="/p/1">1</a><a href="/p/2\n/p/3">2</a></div>',
+    );
+    final pages = batch.documentTextList('pages', '#pages a@href');
+    final joined = batch.documentText('joined', '#pages a@href');
+    await batch.run();
+
+    expect(pages.values, ['/p/1', '/p/2\n/p/3']);
+    // The joined read of the same rule cannot say whether that was two values or
+    // three lines, which is why the list read exists.
+    expect(joined.value, '/p/1\n/p/2\n/p/3');
+  });
+
   test('CSS mode and legacy sub-syntax reach the same jsoup semantics', () async {
     final batch = HtmlRuleBatch(document);
     final selection = batch.elements('list', '@CSS:ul.chapters li:first-child');
