@@ -446,14 +446,29 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// One image's bytes, fetched through the source's own session on first use
   /// and kept for this chapter.
   ///
-  /// A failed load is this reader's own placeholder: the frozen layout draws an
-  /// error bitmap and the chapter keeps reading.
+  /// The request runs under the page's own TLS confirmation, the way the chapter
+  /// fetch does (`load`): ADR 0011 §5's exception is per source and host, and an
+  /// image can sit on a host no stage has asked for yet, so without this an image
+  /// behind a certificate the user has not yet accepted could only ever show the
+  /// placeholder. A refused confirmation, or a request that still fails, is that
+  /// placeholder: the frozen layout draws its own error bitmap and the chapter
+  /// keeps reading.
+  Future<Uint8List> _loadImage(SourceChapterImage image) =>
+      _images.putIfAbsent(
+        image.src,
+        () => withTlsExceptionConfirmation(
+          context: context,
+          hostState: widget.service.hostState,
+          sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
+          sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
+          run: () => widget.pipeline.chapterImage(image.src, base: _chapterUrl),
+        ),
+      );
+
+  /// One image's bytes as the shape draws them.
   Widget _imageBytes(SourceChapterImage image, {required BoxFit fit}) =>
       FutureBuilder<Uint8List>(
-        future: _images.putIfAbsent(
-          image.src,
-          () => widget.pipeline.chapterImage(image.src, base: _chapterUrl),
-        ),
+        future: _loadImage(image),
         builder: (context, snapshot) {
           if (snapshot.hasError) return _imageNotice('图片加载失败');
           final bytes = snapshot.data;
