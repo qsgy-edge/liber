@@ -28,11 +28,17 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   final Completer<void>? gate;
   int calls = 0;
 
+  /// The next chapter URL the reader passed with each chapter fetch, in call
+  /// order: the frozen next-chapter lookup the content stage's stop guard reads.
+  final nextChapterUrls = <String?>[];
+
   @override
   Future<HtmlChapterBody> chapter(
     SourceChapter chapter, {
     HtmlBook? book,
+    String? nextChapterUrl,
   }) async {
+    nextChapterUrls.add(nextChapterUrl);
     if (gate != null && calls++ > 0) await gate!.future;
     return HtmlChapterBody(
       List.generate(60, (i) => '${chapter.url} 第$i段 中文内容。').join('\n'),
@@ -168,6 +174,36 @@ void main() {
       await tester.tap(find.text('上一章'));
       await tester.pumpAndSettle();
       expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/1');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'reader passes the frozen next-chapter URL, index-0 fallback included',
+    (tester) async {
+      final pipeline = ScriptedPipeline();
+      final chapters = [
+        SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+        SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+            bookId: bookId,
+            chapters: chapters,
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('下一章'));
+      await tester.pumpAndSettle();
+      // The content stage's next-page guard reads the next chapter; the last
+      // chapter falls back to the chapter at index 0, which is the frozen
+      // lookup's own quirk (`BookContent.kt:49-53`) reproduced as it stands.
+      expect(pipeline.nextChapterUrls, ['$sourceUrl/2', '$sourceUrl/1']);
       expect(tester.takeException(), isNull);
     },
   );

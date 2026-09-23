@@ -11,6 +11,7 @@ import 'rule_field.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_page_results.dart';
 import 'source_url_rules.dart';
 
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
@@ -79,6 +80,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
   /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+
+  /// The next chapter's URL while the content stage runs — the frozen
+  /// `AnalyzeRule.nextChapterUrl` (`AnalyzeRule.kt:58,761`), bound for that
+  /// stage's rules and read by its own next-content guard. Null when the caller
+  /// has no next chapter.
+  String? _nextChapterUrl;
   HtmlBook? _book;
   SourceChapter? _chapter;
 
@@ -185,6 +192,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'baseUrl': '$_base',
     'result': result,
     'title': _chapterTitle,
+    'nextChapterUrl': _nextChapterUrl,
     'book': _book == null
         ? null
         : {
@@ -493,6 +501,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
       if (entry.value is! String) {
         throw FormatException('Invalid $key.${entry.key}');
       }
+      // The page-chaining pair is the one per-*stage* allowance: `nextTocUrl`
+      // belongs to `ruleToc` and `nextContentUrl` to `ruleContent`, and each
+      // group still refuses the other's field by name. Both are read as lists
+      // (`AnalyzeRule.getStringList`), so they validate like a list rule.
+      final chained =
+          (key == 'ruleToc' && entry.key == 'nextTocUrl') ||
+          (key == 'ruleContent' && entry.key == 'nextContentUrl');
       if (entry.key != 'checkKeyWord' && entry.key != 'canReName') {
         // Every declared extraction field is checked, including optional
         // result fields: malformed rules fail with their field context.
@@ -501,7 +516,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
           if (extraction != null) {
             JsonSourceRules.validate(
               extraction,
-              forList: entry.key == 'bookList' || entry.key == 'chapterList',
+              forList:
+                  entry.key == 'bookList' ||
+                  entry.key == 'chapterList' ||
+                  chained,
             );
           }
         } on UnsupportedError catch (error) {
@@ -509,6 +527,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         }
       }
       if (!required.contains(entry.key) &&
+          !chained &&
           !{
             'author',
             'coverUrl',
@@ -656,24 +675,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final document = jsonDecode(bookInfo.body);
     final (book, page) = await _readBookInfo(document, hit, info);
     final tocAddress = JsonSourceRules.template(page, info['tocUrl']!);
-    final (tocUrl, tocOptions) = await _request(
-      hit.url,
-      tocAddress,
-      _keyword,
-    );
-    final tocPage = await _loginCheck(
-      await _fetch(
-        BookSourceStage.tableOfContents,
-        tocUrl,
-        options: tocOptions,
-        address: tocAddress,
-        base: hit.url,
-      ),
-    );
-    final entries = await _elementList(
-      jsonDecode(tocPage.body),
-      toc['chapterList']!,
-    );
+    final (tocUrl, tocOptions) = await _request(hit.url, tocAddress, _keyword);
     final chapters = <SourceChapter>[];
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
@@ -682,76 +684,131 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final catEye = toc['chapterUrl']!.contains(
       '@js:java.aesBase64DecodeToString',
     );
-    for (var index = 0; index < entries.length; index++) {
-      final entry = entries[index];
-      // The frozen adds a chapter only when its title is non-empty
-      // (`BookChapterList.kt:244`), so an element the name rule matched nothing
-      // on is skipped instead of failing the whole TOC.
-      final name = await _optional(entry, toc['chapterName']!);
-      if (name.isEmpty) continue;
-      final tag = await _optional(entry, toc['updateTime'] ?? '');
-      final isVolume = sourceIsTrue(
-        await _optional(entry, toc['isVolume'] ?? ''),
-      );
-      final isVip = sourceIsTrue(await _optional(entry, toc['isVip'] ?? ''));
-      final isPay = sourceIsTrue(await _optional(entry, toc['isPay'] ?? ''));
-      var chapterUrl = catEye
-          ? (JsonSourceRules.extract(
-                  entry,
-                  RuleField.extractionText(toc['chapterUrl']!) ?? '',
-                )?.toString() ??
-                '')
-          : await _optional(entry, toc['chapterUrl']!);
-      if (catEye) {
-        chapterUrl = aesBase64DecodeToString(
-          chapterUrl,
-          'f041c49714d39908',
-          '0123456789abcdef',
+    var firstPage = true;
+    // The frozen page walk (`BookChapterList.kt:48-121`), the same one the HTML
+    // adapter runs: this page, then the pages its `nextTocUrl` list declares.
+    await walkSourcePages(
+      first: (
+        url: tocUrl,
+        options: tocOptions,
+        address: tocAddress,
+        base: hit.url,
+      ),
+      maxPages: 30,
+      cycleError: 'TOC page cycle',
+      // The frozen drops an item equal to the page it was read from
+      // (`BookChapterList.kt:96-100`).
+      dropSelf: true,
+      resolve: (address, pageUrl) async {
+        final (url, options) = await _request(pageUrl, address, _keyword);
+        return (url: url, options: options);
+      },
+      visit: (request, {required readNext}) async {
+        var tocPage = await _fetch(
+          BookSourceStage.tableOfContents,
+          request.url,
+          options: request.options,
+          address: request.address,
+          base: request.base,
         );
-      }
-      final SourceChapter chapter;
-      if (chapterUrl.isEmpty) {
-        // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
-        // volume takes the identity text `title + index`, every other chapter
-        // takes the TOC page's own address, which resolves to the page it was
-        // read from.
-        chapter = isVolume
-            ? SourceChapter.volume(
-                name,
-                index,
-                tocUrl: tocPage.url,
-                tag: tag.isEmpty ? null : tag,
-                isVip: isVip,
-                isPay: isPay,
-              )
-            : SourceChapter(
-                name,
-                tocPage.url,
-                rawAddress: tocAddress,
-                tag: tag.isEmpty ? null : tag,
-                isVip: isVip,
-                isPay: isPay,
-              );
-      } else {
-        final (resolved, _) = await _request(tocUrl, chapterUrl, _keyword);
-        chapter = SourceChapter(
-          name,
-          resolved,
-          rawAddress: chapterUrl,
-          tag: tag.isEmpty ? null : tag,
-          isVolume: isVolume,
-          isVip: isVip,
-          isPay: isPay,
+        // The frozen TOC stage checks login once, on its first response
+        // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check.
+        if (firstPage) {
+          tocPage = await _loginCheck(tocPage);
+          firstPage = false;
+        }
+        final document = jsonDecode(tocPage.body);
+        final entries = await _elementList(document, toc['chapterList']!);
+        for (var index = 0; index < entries.length; index++) {
+          final entry = entries[index];
+          // The frozen adds a chapter only when its title is non-empty
+          // (`BookChapterList.kt:244`), so an element the name rule matched nothing
+          // on is skipped instead of failing the whole TOC.
+          final name = await _optional(entry, toc['chapterName']!);
+          if (name.isEmpty) continue;
+          final tag = await _optional(entry, toc['updateTime'] ?? '');
+          final isVolume = sourceIsTrue(
+            await _optional(entry, toc['isVolume'] ?? ''),
+          );
+          final isVip = sourceIsTrue(
+            await _optional(entry, toc['isVip'] ?? ''),
+          );
+          final isPay = sourceIsTrue(
+            await _optional(entry, toc['isPay'] ?? ''),
+          );
+          var chapterUrl = catEye
+              ? (JsonSourceRules.extract(
+                      entry,
+                      RuleField.extractionText(toc['chapterUrl']!) ?? '',
+                    )?.toString() ??
+                    '')
+              : await _optional(entry, toc['chapterUrl']!);
+          if (catEye) {
+            chapterUrl = aesBase64DecodeToString(
+              chapterUrl,
+              'f041c49714d39908',
+              '0123456789abcdef',
+            );
+          }
+          final SourceChapter chapter;
+          if (chapterUrl.isEmpty) {
+            // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
+            // volume takes the identity text `title + index`, every other chapter
+            // takes the TOC page's own address, which resolves to the page it was
+            // read from.
+            chapter = isVolume
+                ? SourceChapter.volume(
+                    name,
+                    index,
+                    tocUrl: tocPage.url,
+                    tag: tag.isEmpty ? null : tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  )
+                : SourceChapter(
+                    name,
+                    tocPage.url,
+                    rawAddress: request.address,
+                    tag: tag.isEmpty ? null : tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  );
+          } else {
+            final (resolved, _) = await _request(
+              tocPage.url,
+              chapterUrl,
+              _keyword,
+            );
+            chapter = SourceChapter(
+              name,
+              resolved,
+              rawAddress: chapterUrl,
+              tag: tag.isEmpty ? null : tag,
+              isVolume: isVolume,
+              isVip: isVip,
+              isPay: isPay,
+            );
+          }
+          // A repeated chapter address is kept, as this path always has: the frozen
+          // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
+          // path refuses the repeat by name, but a JSON TOC that names one address
+          // twice has always produced both chapters here. Such a pair would name one
+          // row twice, which is a store-level limit (D4), not a rule decision taken
+          // at this point.
+          chapters.add(chapter);
+        }
+        // The frozen reads a page's next-URL rule only on the pages it walks
+        // through; the declared-list branch parses its pages with
+        // `getNextUrl = false` (`BookChapterList.kt:104-121`).
+        final nextRule = readNext ? toc['nextTocUrl'] : null;
+        return (
+          pageUrl: tocPage.url,
+          items: nextRule == null
+              ? const <String>[]
+              : await _pageTexts(document, nextRule),
         );
-      }
-      // A repeated chapter address is kept, as this path always has: the frozen
-      // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
-      // path refuses the repeat by name, but a JSON TOC that names one address
-      // twice has always produced both chapters here. Such a pair would name one
-      // row twice, which is a store-level limit (D4), not a rule decision taken
-      // at this point.
-      chapters.add(chapter);
-    }
+      },
+    );
     if (chapters.isEmpty) throw StateError('Empty table of contents');
     return (book, chapters);
   }
@@ -849,12 +906,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<HtmlChapterBody> chapter(
     SourceChapter chapter, {
     HtmlBook? book,
+    String? nextChapterUrl,
   }) async {
     if (book != null) _book = book;
     _chapter = chapter;
     _validate();
     _page = null;
     _chapterTitle = chapter.name;
+    // The frozen content stage binds the next chapter's URL for its rules
+    // (`AnalyzeRule.kt:761`) and stops before fetching it (`BookContent.kt:85-88`).
+    _nextChapterUrl = nextChapterUrl;
     // The frozen content stage checks for a content rule first
     // (`WebBook.kt:303-306`), then answers a volume's `tag` without building a
     // request (`:307-310`); the request's headers are read after both.
@@ -863,35 +924,113 @@ class JsonSourcePipeline implements BookSourcePipeline {
       return HtmlChapterBody(chapter.tag ?? '', 0);
     }
     _activeHeaders = await _ensureHeaders();
-    final contentPage = await _loginCheck(
-      await _fetch(
-        BookSourceStage.content,
-        chapter.url,
+    final parts = <String>[];
+    String? contentTitle;
+    var firstPage = true;
+    // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
+    // adapter runs: this page, then the pages its `nextContentUrl` list declares.
+    final pages = await walkSourcePages(
+      first: (
+        url: chapter.url,
         // The chapter's own address text carries its options (the frozen
         // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
         options: chapter.options,
         address: chapter.address,
         base: chapter.addressBase ?? chapter.url,
       ),
+      maxPages: 20,
+      cycleError: 'Content page cycle',
+      // The frozen stops the one-URL walk before fetching the next chapter's
+      // own URL (`BookContent.kt:85-88`); the declared-list walk has no guard.
+      nextChapterUrl: nextChapterUrl == null || nextChapterUrl.isEmpty
+          ? null
+          : SourceHttpUri.parse(nextChapterUrl),
+      resolve: (address, pageUrl) async {
+        final (url, options) = await _request(pageUrl, address, _keyword);
+        return (url: url, options: options);
+      },
+      visit: (request, {required readNext}) async {
+        var contentPage = await _fetch(
+          BookSourceStage.content,
+          request.url,
+          options: request.options,
+          address: request.address,
+          base: request.base,
+        );
+        // The frozen content stage checks login once, on its first response
+        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
+        if (firstPage) {
+          contentPage = await _loginCheck(contentPage);
+          firstPage = false;
+        }
+        final document = jsonDecode(contentPage.body);
+        // The frozen applies the first page's title before the content rules.
+        if (parts.isEmpty) {
+          final titleRule = content['title'];
+          final title = titleRule == null
+              ? null
+              : await _optional(document, titleRule);
+          if (title != null && title.trim().isNotEmpty) {
+            contentTitle = _chapterTitle = title;
+            _chapter = SourceChapter(
+              title,
+              chapter.url,
+              rawAddress: chapter.rawAddress,
+              storedKey: chapter.storedKey,
+              addressBase: chapter.addressBase,
+            );
+          }
+        }
+        parts.add(await _text(document, content['content']!));
+        // The frozen reads a page's next-URL rule only on the pages it walks
+        // through (`BookContent.kt:114-127`).
+        final nextRule = readNext ? content['nextContentUrl'] : null;
+        return (
+          pageUrl: contentPage.url,
+          items: nextRule == null
+              ? const <String>[]
+              : await _pageTexts(document, nextRule),
+        );
+      },
     );
-    final document = jsonDecode(contentPage.body);
-    final titleRule = content['title'];
-    final title = titleRule == null
-        ? null
-        : await _optional(document, titleRule);
-    final contentTitle = title == null || title.trim().isEmpty ? null : title;
-    if (contentTitle != null) {
-      _chapterTitle = contentTitle;
-      _chapter = SourceChapter(
-        contentTitle,
-        chapter.url,
-        rawAddress: chapter.rawAddress,
-        storedKey: chapter.storedKey,
-        addressBase: chapter.addressBase,
-      );
+    // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
+    return HtmlChapterBody(parts.join('\n'), pages, title: contentTitle);
+  }
+
+  /// The raw address texts one page's next-page rule declared, in the frozen
+  /// `AnalyzeRule.getStringList` shape (`AnalyzeRule.kt:159-235`): every match of
+  /// the rule, in declared order, with the field's `##` replacement applied per
+  /// item and its `@js:`/`<js>` segments applied to each.
+  ///
+  /// A rule that is not a JSONPath is the literal template the field already
+  /// interpolated, which names one page; a rule that matched nothing declares
+  /// none. A script-only field runs its script on the document itself.
+  Future<List<String>> _pageTexts(Object? document, String rule) async {
+    final field = await RuleField.resolve(
+      rule,
+      _ruleContext,
+      content: document,
+    );
+    if (field.isScriptOnly) {
+      return sourceScriptTexts(await field.apply(document));
     }
-    final text = await _text(document, content['content']!);
-    return HtmlChapterBody(text, 1, title: contentTitle);
+    final fields = splitRuleFields(field.extractionRule!);
+    final extraction = fields.rule.trim();
+    final lower = extraction.toLowerCase();
+    final text = lower.startsWith('@json:')
+        ? extraction.substring(6)
+        : extraction;
+    final items =
+        text.isEmpty || !(text.startsWith(r'$') || text.startsWith('.'))
+        ? <Object?>[JsonSourceRules.extract(document, fields.rule)]
+        : JsonSourceRules.list(document, fields.rule);
+    final texts = <String>[];
+    for (final item in items) {
+      final applied = await field.apply(applyRuleReplacement('$item', fields));
+      if (applied == null) continue;
+      texts.add('$applied');
+    }
+    return texts;
   }
 
   /// One book, end to end, over the three stage entries.

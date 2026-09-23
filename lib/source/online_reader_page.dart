@@ -165,13 +165,26 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (clearError) error = null;
     });
     try {
+      // The frozen content stage's next-chapter lookup (`BookContent.kt:49-53`):
+      // the chapter after this one, falling back to the chapter at index 0 — the
+      // frozen `getChapter(bookUrl, index + 1)?.url ?: getChapter(bookUrl, 0)?.url`,
+      // whose index-0 fallback is its own quirk and is reproduced as it stands.
+      // The content stage stops its page walk before a page equal to that URL
+      // (`BookContent.kt:85-88`), which is how a `nextContentUrl` rule that also
+      // matches the next chapter's link does not continue into that chapter.
+      final nextChapterUrl = next + 1 < widget.chapters.length
+          ? '${widget.chapters[next + 1].url}'
+          : '${widget.chapters.first.url}';
       final result = await withTlsExceptionConfirmation(
         context: context,
         hostState: widget.service.hostState,
         sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
         sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-        run: () =>
-            widget.pipeline.chapter(widget.chapters[next], book: widget.book),
+        run: () => widget.pipeline.chapter(
+          widget.chapters[next],
+          book: widget.book,
+          nextChapterUrl: nextChapterUrl,
+        ),
       );
       if (!mounted) return;
       // The frozen reader replaces the text before it reaches the screen: the

@@ -75,6 +75,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   Future<HtmlChapterBody> chapter(
     SourceChapter chapter, {
     HtmlBook? book,
+    String? nextChapterUrl,
   }) async {
     expect(book?.title, isNotEmpty);
     chapterCalls.add('${chapter.url}');

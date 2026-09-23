@@ -406,6 +406,162 @@ void main() {
       expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
     },
   );
+
+  test('a JSON source chains a declared nextTocUrl list and a nextContentUrl list', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final paths = <String>[];
+    server.listen((request) async {
+      paths.add(request.uri.toString());
+      final body = switch (request.uri.path) {
+        '/search' => {
+          'items': [
+            {'name': '书', 'url': '/details/1'},
+          ],
+        },
+        '/details/1' => {'title': '书', 'toc': '/chapters/1'},
+        // A declared list, out of page order and with the page's own URL in it;
+        // page 3's list names a page that must never be read.
+        '/chapters/1' => {
+          'list': [
+            {'label': '第一章', 'href': '/text/1'},
+          ],
+          'next': ['/chapters/3', '/chapters/1', '/chapters/2'],
+        },
+        '/chapters/3' => {
+          'list': [
+            {'label': '第三章', 'href': '/text/3'},
+          ],
+          'next': ['/chapters/9'],
+        },
+        '/chapters/2' => {
+          'list': [
+            {'label': '第二章', 'href': '/text/2'},
+          ],
+        },
+        '/text/1' => {
+          'body': '第一页',
+          'next': ['/text/1-3', '/text/1-2'],
+        },
+        '/text/1-3' => {'body': '第三页'},
+        '/text/1-2' => {'body': '第二页'},
+        _ => {'error': 'Unexpected path'},
+      };
+      request.response.write(jsonEncode(body));
+      await request.response.close();
+    });
+    final source = <String, dynamic>{
+      'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+      'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+      'ruleToc': {
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+        'nextTocUrl': r'$.next',
+      },
+      'ruleContent': {'content': r'$.body', 'nextContentUrl': r'$.next'},
+    };
+    final pipeline = JsonSourcePipeline(source, HttpSourceTransport());
+    final hits = await pipeline.search('书');
+    final (_, chapters) = await pipeline.details(hits.single);
+    // Declared order, the page's own URL dropped, and no page of the declared
+    // list reads its own list (`/chapters/9`).
+    expect(chapters.map((chapter) => chapter.name), ['第一章', '第三章', '第二章']);
+    final body = await pipeline.chapter(chapters.first);
+    expect(body.text, '第一页\n第三页\n第二页');
+    expect(body.pages, 3);
+    expect(paths.skip(1), [
+      '/details/1',
+      '/chapters/1',
+      '/chapters/3',
+      '/chapters/2',
+      '/text/1',
+      '/text/1-3',
+      '/text/1-2',
+    ]);
+  });
+
+  test('the JSON content walk stops before the next chapter page', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final paths = <String>[];
+    server.listen((request) async {
+      paths.add(request.uri.path);
+      final body = switch (request.uri.path) {
+        '/text/1' => {'body': '第一页', 'next': '/text/2'},
+        '/text/2' => {'body': '下一章正文'},
+        _ => {'error': 'Unexpected path'},
+      };
+      request.response.write(jsonEncode(body));
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      'ruleContent': {'content': r'$.body', 'nextContentUrl': r'$.next'},
+    }, HttpSourceTransport());
+    final body = await pipeline.chapter(
+      SourceChapter('第一章', Uri.parse('$base/text/1')),
+      nextChapterUrl: '$base/text/2',
+    );
+    expect(body.text, '第一页');
+    expect(body.pages, 1);
+    expect(paths, ['/text/1']);
+  });
+
+  test('a JSON source still refuses a chaining field outside its own stage', () async {
+    final transport = HttpSourceTransport();
+    // `nextTocUrl` belongs to `ruleToc`; declared on `ruleSearch` it is refused
+    // by name, as every other field this adapter does not implement is.
+    final search = JsonSourcePipeline({
+      'bookSourceUrl': 'http://127.0.0.1:1',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+        'nextTocUrl': r'$.next',
+      },
+    }, transport);
+    await expectLater(
+      search.search('书'),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => error.message,
+          'message',
+          'Unsupported field: ruleSearch.nextTocUrl',
+        ),
+      ),
+    );
+    // ... and `nextContentUrl` belongs to `ruleContent`.
+    final toc = JsonSourcePipeline({
+      'bookSourceUrl': 'http://127.0.0.1:1',
+      'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+      'ruleToc': {
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+        'nextContentUrl': r'$.next',
+      },
+    }, transport);
+    await expectLater(
+      toc.details(
+        HtmlBook(url: Uri.parse('http://127.0.0.1:1/book/1'), title: '书'),
+      ),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => error.message,
+          'message',
+          'Unsupported field: ruleToc.nextContentUrl',
+        ),
+      ),
+    );
+  });
 }
 
 class _UnusedTransport implements BookSourceTransport {

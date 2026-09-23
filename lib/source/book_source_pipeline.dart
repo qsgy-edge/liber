@@ -179,7 +179,18 @@ abstract interface class BookSourcePipeline {
 
   /// `ruleContent`: one chapter's text. A reader supplies its selected [book]
   /// when its fresh analysis has not run the details stage.
-  Future<HtmlChapterBody> chapter(SourceChapter chapter, {HtmlBook? book});
+  ///
+  /// [nextChapterUrl] is the next chapter's URL, which the content stage's
+  /// `nextContentUrl` walk stops before fetching (`BookContent.kt:85-88`). A
+  /// caller that has the chapter list passes it; a caller that does not leaves
+  /// it null, and the walk then has no next chapter to stop at — the frozen's
+  /// own fallback is the store's chapter at `index + 1`, falling back to the
+  /// chapter at index 0, which a pipeline holding no store cannot read.
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  });
 
   /// Ends this analysis: a stage in flight stops at its next check, and every
   /// stage after it refuses to start.
