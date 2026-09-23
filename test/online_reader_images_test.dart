@@ -9,6 +9,7 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
@@ -20,13 +21,21 @@ const _bookUrl = '$_sourceUrl/book';
 /// One recording fixture site that answers the reader's image requests.
 ///
 /// Implementing [SourceHttpTransport] is what gives the pipeline a source
-/// session, so these rows see the wire the reader's images went over — and a
-/// `failImages` site is how a failed load is driven.
+/// session, so these rows see the wire the reader's images went over — a
+/// `failImages` site is how a failed load is driven, and a
+/// `rejectsCertificate` site fails certificate verification until the source's
+/// stored exception reaches the request, which is how ADR 0011 §5's
+/// confirmation is driven.
 class _Site implements BookSourceTransport, SourceHttpTransport {
-  _Site({required this.image, this.failImages = false});
+  _Site({
+    required this.image,
+    this.failImages = false,
+    this.rejectsCertificate = false,
+  });
 
   final Uint8List image;
   final bool failImages;
+  final bool rejectsCertificate;
   final requests = <SourceHttpRequest>[];
 
   @override
@@ -38,6 +47,13 @@ class _Site implements BookSourceTransport, SourceHttpTransport {
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
     requests.add(request);
+    if (rejectsCertificate && !request.allowInvalidCertificate) {
+      throw SourceTlsCertificateFailure(
+        sourceRef: request.sourceRef,
+        host: request.url.host,
+        reason: '证书无效、过期或不受信任',
+      );
+    }
     if (failImages) throw StateError('图片站点没有应答');
     return SourceHttpResponse(
       statusCode: 200,
@@ -61,11 +77,12 @@ class _ScriptedPipeline extends HtmlSourcePipeline {
     required _Site site,
     required String imageStyle,
     required this.body,
+    required SourceHostState hostState,
   }) : super({
          'bookSourceUrl': _sourceUrl,
          'header': '{"X-Contract":"yes"}',
          'ruleContent': {'content': '@CSS:.x@html', 'imageStyle': imageStyle},
-       }, site);
+       }, site, hostState: hostState);
 
   final String body;
 
@@ -123,6 +140,7 @@ void main() {
     required String body,
     required _Site site,
     String imageStyle = 'DEFAULT',
+    int resume = 0,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -131,11 +149,17 @@ void main() {
             site: site,
             imageStyle: imageStyle,
             body: body,
+            // The page's own host surface: the TLS confirmation writes the
+            // exception here and the dispatcher reads it here, as they do in the
+            // product, where every page builds its pipeline over the shelf's
+            // state.
+            hostState: shelf.hostState,
           ),
           book: HtmlBook(url: Uri.parse(_bookUrl), title: '书'),
           bookId: bookId,
           chapters: [SourceChapter('第一章', Uri.parse('$_sourceUrl/1'))],
           service: shelf,
+          textOffset: resume,
         ),
       ),
     );
@@ -278,10 +302,102 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the progress record stays the five-field one', (tester) async {
-    final site = _Site(image: await _png(tester));
+  testWidgets(
+    'an image host with a bad certificate asks once, then loads',
+    (tester) async {
+      final site = _Site(
+        image: await _png(tester),
+        rejectsCertificate: true,
+      );
+      await mount(tester, body: imageLine, site: site);
+      await tester.pumpAndSettle();
+
+      // The image request runs under the page's own TLS confirmation, the way
+      // the chapter fetch does: the user is asked once, naming the source and
+      // the image's host.
+      expect(find.text('证书校验失败'), findsOneWidget);
+      expect(find.textContaining('img.test'), findsOneWidget);
+      expect(find.textContaining('证书无效'), findsOneWidget);
+      expect(site.requests.single.allowInvalidCertificate, isFalse);
+
+      await tester.tap(find.text('继续（不安全）'));
+      await _settleImages(tester);
+
+      // The exception is remembered for this source and host, the request is
+      // retried under it, and the image is what the shape draws.
+      expect(
+        shelf.hostState.allowsInvalidCertificate(_sourceUrl, 'img.test'),
+        isTrue,
+      );
+      expect(site.requests, hasLength(2));
+      expect(site.requests.last.allowInvalidCertificate, isTrue);
+      expect(find.text('证书校验失败'), findsNothing);
+      expect(find.byType(Image), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a refused certificate leaves the image as its placeholder', (
+    tester,
+  ) async {
+    final site = _Site(image: await _png(tester), rejectsCertificate: true);
     await mount(tester, body: imageLine, site: site);
+    await tester.pumpAndSettle();
+
+    // 取消 is the dialog's default: refusing leaves validation as it was, and
+    // the chapter still reads.
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('图片加载失败'), findsOneWidget);
+    expect(
+      shelf.hostState.allowsInvalidCertificate(_sourceUrl, 'img.test'),
+      isFalse,
+    );
+    expect(site.requests, hasLength(1));
+    expect(find.textContaining('第一行'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the progress record stays the five-field one', (tester) async {
+    // The reader pages the chapter body *after* `ContentProcessing` shaped it,
+    // and that shaping prepends the frozen paragraph indent — two ideographic
+    // spaces — to every non-empty line (`content_processing.dart`),
+    // `_shapeParagraphs`. A row's own start is therefore in the processed text's
+    // space (6, 45 …), never the raw body's (4, 41 …), which is what this row
+    // pins: a reader that stored the raw offset would fail it.
+    final lines = [
+      for (var i = 0; i < 30; i++) '第$i行 中文内容。',
+      '<img src="https://img.test/one.png">',
+      for (var i = 30; i < 40; i++) '第$i行 中文内容。',
+    ];
+    const indent = 2;
+    final rawStarts = <int>[];
+    final processedStarts = <int>[];
+    var raw = 0;
+    var processed = 0;
+    for (final line in lines) {
+      rawStarts.add(raw);
+      processedStarts.add(processed);
+      raw += line.length + 1;
+      processed += line.length + indent + 1;
+    }
+    // Well past the first screen: a mounted top position of 0 cannot pass this.
+    const row = 31;
+    expect(processedStarts[row], isNot(rawStarts[row]));
+
+    final site = _Site(image: await _png(tester));
+    await mount(
+      tester,
+      body: lines.join('\n'),
+      site: site,
+      resume: processedStarts[row] + 2,
+    );
     await _settleImages(tester);
+
+    // The row the reader settled on is displayed with its indent: the space the
+    // recorded offset measures is this one.
+    expect(find.text('　　${lines[row]}'), findsOneWidget);
 
     // D4's record, unchanged: an image has no position field of its own, because
     // where an image is follows from the text offset the row already stores.
@@ -299,11 +415,7 @@ void main() {
     final progress = (await store.progressOf(bookId))!;
     expect(progress.chapterKey, '$_sourceUrl/1');
     expect(progress.chapterIndex, 0);
-    // The offset is a line's own start in the body, images and all.
-    expect([
-      0,
-      '第一行'.length + 1,
-      '第一行\n<img src="https://img.test/one.png">'.length + 1,
-    ], contains(progress.textOffset));
+    // The offset is that line's own start in the body the reader displays.
+    expect(progress.textOffset, processedStarts[row]);
   });
 }
