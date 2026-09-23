@@ -19,7 +19,14 @@ Early and Windows-first. What runs on `master` today:
   (import a Book Source JSON and read search → details → chapters → content),
   在线书架 (shelf with per-book progress and cached tables of contents),
   本地书库 (pick a folder, add TXT/Markdown books, read them), and a Legado
-  backup importer with a loss report.
+  backup importer with a loss report. The reader draws a chapter's images through
+  the source's own session in the four `imageStyle` shapes, converts between
+  Simplified and Traditional on demand (follow the system locale, or a manual or
+  per-book choice, with `java.t2s`/`java.s2t` staying character-only for Book
+  Sources), searches several sources at once for an exact name+author match and
+  switches a book onto another source while keeping its reading position, and
+  shows its own interface in four languages independently of the content's
+  script. All five platforms build their app in CI; only Windows is driven.
 - **Source execution** for the bounded slice that the sample sources need:
   legacy and `@CSS:` selectors with `@` chains, index/exclusion/slice syntax and
   `##` replacement; a `$.`-style JSON adapter; `,{...}` request options
@@ -43,9 +50,11 @@ Early and Windows-first. What runs on `master` today:
 
 Not covered yet, and deliberately visible rather than implied:
 
-- Only Windows integrates the runtime and the application. Android, iOS, macOS,
-  and Linux compile the native library and run the shared runtime gates in CI,
-  but their limits and WebView rows are `not-run`.
+- Only Windows has been driven (P1a/P2, and batch 13's 换源 / page-chained TOC /
+  conversion / image / interface-language runs). Android, iOS, macOS and Linux
+  build their app and run the shared runtime gates (plus the limits harness on
+  Linux and macOS) in CI, but no platform's device-, simulator- or launch-level
+  rows exist yet, and their WebView rows are `not-run`.
 - The frozen four-stage differential corpus, the security boundary for
   untrusted sources, and the request/JS capabilities listed in
   [`docs/compatibility/book-source-capability-matrix.md`](docs/compatibility/book-source-capability-matrix.md)
