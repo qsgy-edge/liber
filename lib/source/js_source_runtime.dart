@@ -500,6 +500,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = _handleConvert(payload);
           } else if (method == 'request') {
             answer = await _dispatch(host, payload, request.id, input, token);
+          } else if (method == 'connect') {
+            answer = await _handleConnect(
+              host,
+              payload,
+              request.id,
+              input,
+              token,
+            );
           } else if (method == 'ajax') {
             answer = await _handleAjax(host, payload, request.id, input, token);
           } else if (method == 'ajaxAll') {
@@ -1042,10 +1050,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     );
     // Frozen `java.get`/`head`/`post` hand the URL text to Jsoup
     // (`JsExtensions.kt:131-160`), which parses no option tail; a URL that
-    // carries one keeps this product's existing refusal by name. `java.ajax`
-    // and `java.ajaxAll` build an `AnalyzeUrl` and do parse it (`:91-125`).
-    // `java.connect` shares the refusal: the frozen builds an `AnalyzeUrl` there
-    // too, so a tail on `java.connect` is a recorded divergence, not scope here.
+    // carries one keeps this product's existing refusal by name. `java.ajax`,
+    // `java.ajaxAll` and `java.connect` build an `AnalyzeUrl` and parse its tail.
     if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
       throw const SourceScriptError(
         'host-input',
@@ -1186,9 +1192,52 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       'GET' => await host.get(url, headers: headers),
       'HEAD' => await host.head(url, headers: headers),
       'POST' => await host.post(url, body as String? ?? '', headers: headers),
-      'connect' => await host.connect(url, headers: headers),
       _ => throw const SourceScriptError('host-method', 'HTTP method refused'),
     };
+    return _responseJson(response);
+  }
+
+  Future<Object?> _handleConnect(
+    SourceHostDispatcher? host,
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> input,
+    SourceCancellation token,
+  ) async {
+    if (host == null || payload is! Map || payload['url'] is! String) {
+      throw const SourceScriptError('host-input', 'invalid connect call');
+    }
+    final rawHeaders = payload['headers'];
+    if (rawHeaders != null &&
+        (rawHeaders is! Map ||
+            rawHeaders.entries.any(
+              (e) => e.key is! String || e.value is! String,
+            ))) {
+      throw const SourceScriptError('host-input', 'invalid headers');
+    }
+    // Frozen `AnalyzeUrl` chooses the explicit map or evaluates source headers
+    // in its constructor, before `initUrl()` expands URL scripts.
+    final declared = rawHeaders == null
+        ? await _headers(input, requestId, token, hasLoginHeader: true)
+        : Map<String, String>.from(rawHeaders as Map);
+    final request = await _shapeAnalyzeUrlRequest(
+      payload['url'] as String,
+      requestId,
+      input,
+      token,
+      explicitHeaders: {
+        for (final entry in declared.entries)
+          if (entry.value != null) entry.key: entry.value!,
+      },
+      member: 'java.connect',
+    );
+    final response = await host.request(
+      request.method,
+      request.url,
+      headers: request.headers,
+      body: request.body,
+      retry: request.retry,
+    );
     return _responseJson(response);
   }
 
@@ -1207,7 +1256,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (host == null || payload is! String) {
       throw const SourceScriptError('host-input', 'invalid ajax url');
     }
-    final request = await _shapeAjaxRequest(payload, requestId, input, token);
+    final request = await _shapeAnalyzeUrlRequest(
+      payload,
+      requestId,
+      input,
+      token,
+      member: 'java.ajax',
+    );
     final response = await host.request(
       request.method,
       request.url,
@@ -1237,7 +1292,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     final requests = <SourceBatchRequest>[];
     for (final url in rawUrls.cast<String>()) {
-      final shaped = await _shapeAjaxRequest(url, requestId, input, token);
+      final shaped = await _shapeAnalyzeUrlRequest(
+        url,
+        requestId,
+        input,
+        token,
+        member: 'java.ajaxAll',
+      );
       requests.add((
         method: shaped.method,
         url: shaped.url,
@@ -1250,9 +1311,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     return [for (final response in responses) _responseJson(response)];
   }
 
-  /// The shaped request one `java.ajax`/`java.ajaxAll` URL becomes: the URL
-  /// text expanded (the frozen `analyzeJs`/`replaceKeyPageJs`), its `,{…}`
-  /// option tail read through the same [SourceUrlOptions] model the stages use,
+  /// The shaped request one `java.ajax`/`java.ajaxAll`/`java.connect` URL
+  /// becomes: expanded text, then its `,{…}` option tail read through
+  /// the same [SourceUrlOptions] model the stages use,
   /// and the same request shaping ([sourceRequestShape]) — `method`, `body`,
   /// `charset`, `headers` and `retry` apply (`AnalyzeUrl.kt:208-334`).
   Future<
@@ -1264,12 +1325,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       int retry,
     })
   >
-  _shapeAjaxRequest(
+  _shapeAnalyzeUrlRequest(
     String rawUrl,
     BigInt requestId,
     Map<String, Object?> input,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    Map<String, String>? explicitHeaders,
+    required String member,
+  }) async {
     final expanded = await _expandHostUrl(
       rawUrl,
       requestId,
@@ -1281,27 +1344,31 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     try {
       split = splitSourceUrlOptions(expanded);
     } on UnsupportedError catch (error) {
-      throw _refuseAjaxOption('${error.message}');
+      throw _refuseUrlOption(member, '${error.message}');
     } on FormatException catch (error) {
-      throw _refuseAjaxOption(error.message);
+      throw _refuseUrlOption(member, error.message);
     }
     final options = split.options;
     if (options.webView) {
-      throw _refuseAjaxOption('webView: true 需要阶段请求的 WebView 路径（ADR 0011 §4）');
+      throw _refuseUrlOption(
+        member,
+        'webView: true 需要阶段请求的 WebView 路径（ADR 0011 §4）',
+      );
     }
     final script = options.js;
     final target = script == null
         ? split.path
         : '${await _evaluateNested(script, split.path, requestId, input, token)}';
-    final declared = await _headers(
-      input,
-      requestId,
-      token,
-      // `java.ajax`/`java.ajaxAll` build an `AnalyzeUrl`
-      // (`JsExtensions.kt:94,117`), whose header map is
-      // `source.getHeaderMap(true)`.
-      hasLoginHeader: true,
-    );
+    final declared =
+        explicitHeaders ??
+        await _headers(
+          input,
+          requestId,
+          token,
+          // An `AnalyzeUrl` starts with the source header map unless `connect`
+          // supplied an explicit header map (`AnalyzeUrl.kt:123-130`).
+          hasLoginHeader: true,
+        );
     final headers = <String, String>{
       for (final entry in declared.entries)
         if (entry.value != null) entry.key: entry.value!,
@@ -1320,12 +1387,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     );
   }
 
-  /// A URL option a `java.ajax` tail carries but this path cannot apply refuses
+  /// A URL option this host-request path cannot apply refuses
   /// by name, into the source log, like every other unsupported member.
-  SourceScriptError _refuseAjaxOption(String policy) => _handleRefusal({
-    'member': 'java.ajax(url, {…})',
-    'policy': policy,
-  });
+  SourceScriptError _refuseUrlOption(String member, String policy) =>
+      _handleRefusal({'member': '$member(url, {…})', 'policy': policy});
 
   /// Frozen `AnalyzeUrl.getStrResponse`/`getResponse` (`AnalyzeUrl.kt:465-526`):
   /// the stage's own request repeated, answered as the response object the
@@ -1412,9 +1477,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         const parsed = JSON.parse(headers);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
       } catch (_) {}
-      return call('headers', {hasLoginHeader: true});
+      return null;
     }
-    return headers == null ? call('headers', {hasLoginHeader: true}) : headers;
+    return headers == null ? null : headers;
   }
   function request(method, url, body, headers) {
     const result = call('request', {
@@ -1719,7 +1784,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   const java = Object.freeze({
     connect: (...args) => {
       if (args.length < 1 || args.length > 2) throw new Error('java.connect expects one or two arguments');
-      return request('connect', args[0], null, connectHeaders(args[1]));
+      return response(call('connect', {url:String(args[0]), headers:connectHeaders(args[1])}));
     },
     ajax: url => call('ajax', Array.isArray(url) ? String(url.length ? url[0] : null) : String(url)).body,
     ajaxAll: (...args) => {

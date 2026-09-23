@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,17 @@ class _Transport implements SourceHttpTransport, BookSourceTransport {
         'x-path': [request.url.path],
       },
     );
+  }
+}
+
+class _BlockingTransport implements SourceHttpTransport {
+  final started = Completer<SourceHttpRequest>();
+  final pending = Completer<SourceHttpResponse>();
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) {
+    started.complete(request);
+    return pending.future;
   }
 }
 
@@ -128,6 +140,202 @@ void main() {
       }
     },
   );
+
+  test('connect source header runs before URL expansion', () async {
+    final input = <String, Object?>{
+      'sourceKey': 'http://ordering.test',
+      'source': {'header': '@js:source.put("segment", "a"); "{}"'},
+    };
+    for (final url in [
+      'http://a.test/{{source.get("segment")}}',
+      'http://a.test/{{source.get("segment")}},'
+          '{method:"POST",body:"v=1",headers:{"X-Option":"yes"}}',
+    ]) {
+      expect(
+        await run(
+          'source.put("segment", ""); java.connect(${jsonEncode(url)}).body()',
+          input: input,
+        ),
+        '/a',
+      );
+      expect(transport.requests.last.url.path, '/a');
+    }
+    expect(transport.requests.last.method, 'POST');
+    expect(transport.requests.last.body, 'v=1');
+    expect(transport.requests.last.headers['X-Option'], 'yes');
+
+    await run(
+      'source.put("segment", ""); '
+      'java.connect("http://a.test/{{source.get(\'segment\')}}", "{}").body()',
+      input: input,
+    );
+    expect(transport.requests.last.url.path, '/');
+    expect(await run('source.get("segment")', input: input), '');
+  });
+
+  test(
+    'connect URL options shape both overloads and preserve response accessors',
+    () async {
+      final source = <String, Object?>{
+        'source': {'header': '{"X-Source":"yes"}'},
+      };
+      final url =
+          'http://a.test/a,{method:"POST",body:"v=中 文",'
+          'charset:"gbk",headers:{"X-Option":"yes"},retry:2}';
+      final result = await run(
+        'JSON.stringify([java.connect(${jsonEncode(url)}).body(),'
+        'java.connect(${jsonEncode(url)}).code(),'
+        'java.connect(${jsonEncode(url)}).headers().get("x-path"),'
+        'java.connect(${jsonEncode(url)}).raw().request().url()])',
+        input: source,
+      );
+      expect(result, jsonEncode(['/a', 200, '/a', 'http://a.test/a']));
+      expect(transport.requests, hasLength(4));
+      for (final request in transport.requests) {
+        expect(request.url.toString(), 'http://a.test/a');
+        expect(request.method, 'POST');
+        expect(request.body, 'v=%D6%D0+%CE%C4');
+        expect(request.retry, 2);
+        expect(request.followRedirects, isTrue);
+        expect(request.headers, {
+          'X-Source': 'yes',
+          'User-Agent': sourceDefaultUserAgent,
+          'X-Option': 'yes',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        });
+      }
+      final headerUrl =
+          'http://a.test/b,{method:"POST",body:{a:1},'
+          'headers:{"X-Explicit":"option"},retry:1}';
+      await run(
+        'java.connect(${jsonEncode(headerUrl)}, '
+        '${jsonEncode('{"X-Explicit":"argument"}')})',
+        input: source,
+      );
+      final explicit = transport.requests.last;
+      expect(explicit.url.toString(), 'http://a.test/b');
+      expect(explicit.method, 'POST');
+      expect(explicit.body, '{"a":1}');
+      expect(explicit.retry, 1);
+      expect(explicit.headers, {
+        'X-Explicit': 'option',
+        'Content-Type': 'application/json; charset=UTF-8',
+      });
+      await run(
+        'java.connect(${jsonEncode(headerUrl)}, "invalid")',
+        input: source,
+      );
+      expect(transport.requests.last.headers['X-Source'], 'yes');
+
+      final scopedRuntime = InProcessSourceScriptRuntime(
+        dispatcher: SourceHostDispatcher(
+          transport: transport,
+          sourceRef: 'http://source.test',
+        ),
+      );
+      await scopedRuntime.evaluate(
+        source:
+            'source.putLoginHeader(\'{"X-Login":"persisted"}\'); '
+            'java.connect(${jsonEncode(headerUrl)}, '
+            '${jsonEncode('{"X-Explicit":"argument"}')}).body()',
+        input: {'sourceKey': 'http://source.test', ...source},
+        timeout: const Duration(seconds: 5),
+      );
+      expect(transport.requests.last.headers, {
+        'X-Login': 'persisted',
+        'X-Explicit': 'option',
+        'Content-Type': 'application/json; charset=UTF-8',
+      });
+    },
+  );
+
+  test(
+    'connect GET encodes charset query and URL js, without changing get',
+    () async {
+      final url = 'http://a.test/a?q=中 文,{charset:"gbk",js:"result+\'&n=1\'"}';
+      await run('java.connect(${jsonEncode(url)})');
+      expect(
+        transport.requests.single.url.toString(),
+        'http://a.test/a?q=%D6%D0%20%CE%C4&n=1',
+      );
+      await expectLater(
+        run('java.get(${jsonEncode(url)}, {}).body()'),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'message',
+            contains('nested URL options unsupported'),
+          ),
+        ),
+      );
+      expect(transport.requests, hasLength(1));
+    },
+  );
+
+  test(
+    'connect refuses unsupported options before sending either overload',
+    () async {
+      for (final url in [
+        'http://a.test/a,{webView:true}',
+        'http://a.test/a,{type:"audio"}',
+        'http://a.test/a,{retry:-1}',
+      ]) {
+        for (final argument in ['', ', "{\\"X-A\\":\\"yes\\"}"']) {
+          await expectLater(
+            run('java.connect(${jsonEncode(url)}$argument)'),
+            throwsA(
+              isA<SourceScriptError>()
+                  .having((error) => error.category, 'category', 'policy')
+                  .having(
+                    (error) => error.message,
+                    'member',
+                    contains('java.connect'),
+                  ),
+            ),
+          );
+        }
+      }
+      expect(transport.requests, isEmpty);
+    },
+  );
+
+  test('connect option request is cancelled with its script execution', () async {
+    final blocked = _BlockingTransport();
+    final token = SourceCancellation();
+    final pending =
+        InProcessSourceScriptRuntime(
+          dispatcher: SourceHostDispatcher(transport: blocked),
+        ).evaluate(
+          source:
+              'java.connect("http://a.test/a,{method:\\"POST\\",body:\\"v=1\\"}").body()',
+          input: const {'sourceKey': 'http://source.test'},
+          timeout: const Duration(seconds: 5),
+          cancellation: token,
+        );
+    final request = await blocked.started.future;
+    expect(request.method, 'POST');
+    expect(request.cancellation?.isCancelled, isFalse);
+    token.cancel();
+    expect(request.cancellation?.isCancelled, isTrue);
+    blocked.pending.complete(
+      SourceHttpResponse(
+        statusCode: 200,
+        body: 'late',
+        url: request.url,
+        headers: const {},
+      ),
+    );
+    await expectLater(
+      pending,
+      throwsA(
+        isA<SourceScriptError>().having(
+          (error) => error.category,
+          'category',
+          'cancelled',
+        ),
+      ),
+    );
+  });
 
   test(
     'get overload selects HTTP by argument count even with undefined',
