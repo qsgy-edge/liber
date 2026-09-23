@@ -119,16 +119,50 @@ void main() {
     });
 
     test('is false for null, blank and the literal null', () {
-      for (final value in [null, '', ' ', '\t', '　']) {
+      // Kotlin's `isNullOrBlank()`: every code unit of a blank value is
+      // `Char.isWhitespace()`, which counts the non-breaking and the ideographic
+      // spaces too.
+      for (final value in [
+        null,
+        '',
+        ' ',
+        '\t',
+        '\n',
+        '\u00A0',
+        '\u1680',
+        '\u2007',
+        '\u2028',
+        '\u202F',
+        '\u205F',
+        '\u3000',
+      ]) {
         expect(sourceIsTrue(value), isFalse, reason: '$value');
       }
       expect(sourceIsTrue('null'), isFalse);
-      // The frozen compares the untrimmed value with `null` and trims Java's
-      // way (code units at or below U+0020), so a `null` with spaces around it
-      // is not the literal, and an ideographic space is not trimmed away.
+      // The frozen compares the *untrimmed* value with `null`, so spaces around
+      // the literal make it ordinary text rather than the literal `null`.
       expect(sourceIsTrue(' null '), isTrue);
-      expect(sourceIsTrue('　false'), isTrue);
-      expect(sourceIsTrue(' false '), isFalse);
+    });
+
+    test('trims the Kotlin whitespace set before the false-set match', () {
+      for (final value in [
+        ' false ',
+        '\tfalse\n',
+        '0 ',
+        '\u3000false',
+        '\u00A0false',
+        '\u2007false',
+        '\u202Ffalse',
+        '\u00A0not',
+        '\u3000 0',
+      ]) {
+        expect(sourceIsTrue(value), isFalse, reason: value);
+      }
+      // The predicate is Kotlin's `Char.isWhitespace()`, not Dart's `trim()`:
+      // the Kotlin set trims the Java controls and leaves U+0085, where Dart's
+      // set does the opposite.
+      expect(sourceIsTrue('\u001Cfalse'), isFalse);
+      expect(sourceIsTrue('\u0085false'), isTrue);
     });
   });
 

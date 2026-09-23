@@ -109,9 +109,13 @@ class _MarkerPipeline extends ScriptedPipeline {
         tag: '卷首',
       ),
       SourceChapter('第二章', Uri.parse('$sourceUrl/2'), isVip: true),
+      SourceChapter('第四章', Uri.parse('$sourceUrl/4'), tag: _longTag),
     ],
   );
 }
+
+/// A tag long enough to wrap without the frozen `singleLine="true"`.
+const _longTag = '2026-01-01 12:34:56 更新时间很长很长很长很长很长很长很长很长很长很长很长很长';
 
 void main() {
   late SpaceStore store;
@@ -171,10 +175,27 @@ void main() {
     expect(find.text('2026-01-01'), findsOneWidget);
     expect(find.text('第一卷'), findsOneWidget);
     expect(find.text('卷首'), findsNothing);
+    // A volume row differs only in its background (`:138-139`), and the frozen
+    // row is `singleLine="true"` (`res/layout/item_chapter_list.xml`), so a
+    // long name or tag stays on one line instead of growing the row.
     expect(
-      tester.widget<Text>(find.text('第一卷')).style?.fontWeight,
-      FontWeight.bold,
+      tester
+          .widget<ListTile>(
+            find.ancestor(
+              of: find.text('第一卷'),
+              matching: find.byType(ListTile),
+            ),
+          )
+          .tileColor,
+      isNotNull,
     );
+    final volumeName = tester.widget<Text>(find.text('第一卷'));
+    expect(volumeName.style?.fontWeight, isNot(FontWeight.bold));
+    expect(volumeName.maxLines, 1);
+    expect(volumeName.overflow, TextOverflow.ellipsis);
+    final longTag = tester.widget<Text>(find.text(_longTag));
+    expect(longTag.maxLines, 1);
+    expect(longTag.overflow, TextOverflow.ellipsis);
     // The lock is `isVip && !isPay` (`ChapterListAdapter.kt:162-165`).
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
     expect(tester.takeException(), isNull);

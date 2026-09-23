@@ -50,6 +50,9 @@ class _UnusedTransport implements BookSourceTransport {
   }) => throw StateError('该测试不经过传输层');
 }
 
+/// A tag long enough to wrap without the frozen `singleLine="true"`.
+const _longTag = '2026-01-01 12:34:56 更新时间很长很长很长很长很长很长很长很长很长很长很长很长';
+
 void main() {
   late SpaceStore store;
   late ShelfService shelf;
@@ -270,6 +273,7 @@ void main() {
       ),
       SourceChapter('第二章', Uri.parse('$sourceUrl/2'), isVip: true),
       SourceChapter('第三章', Uri.parse('$sourceUrl/3'), isVip: true, isPay: true),
+      SourceChapter('第四章', Uri.parse('$sourceUrl/4'), tag: _longTag),
     ];
     await tester.pumpWidget(
       MaterialApp(
@@ -292,10 +296,29 @@ void main() {
     // A volume is a heading and keeps its `tag` hidden (`:138-150`).
     expect(find.text('第一卷'), findsOneWidget);
     expect(find.text('卷首'), findsNothing);
+    // The volume row differs from its siblings only in its background
+    // (`:138-139`): no bold title.
     expect(
-      tester.widget<Text>(find.text('第一卷')).style?.fontWeight,
-      FontWeight.bold,
+      tester
+          .widget<ListTile>(
+            find.ancestor(
+              of: find.text('第一卷'),
+              matching: find.byType(ListTile),
+            ),
+          )
+          .tileColor,
+      isNotNull,
     );
+    final volumeName = tester.widget<Text>(find.text('第一卷'));
+    expect(volumeName.style?.fontWeight, isNot(FontWeight.bold));
+    // The frozen row is `singleLine="true"`
+    // (`res/layout/item_chapter_list.xml`), so a long name or tag stays on one
+    // line instead of growing the row.
+    expect(volumeName.maxLines, 1);
+    expect(volumeName.overflow, TextOverflow.ellipsis);
+    final longTag = tester.widget<Text>(find.text(_longTag));
+    expect(longTag.maxLines, 1);
+    expect(longTag.overflow, TextOverflow.ellipsis);
     // The lock is `isVip && !isPay` (`:162-165`), so the paid chapter has none.
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
     expect(tester.takeException(), isNull);
