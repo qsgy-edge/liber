@@ -7,6 +7,21 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'book_source_webview_adapter.dart';
 
+/// The cookies the platform's cookie store holds for [pageUrl], joined the way
+/// the frozen `CookieStore.setCookie` receives them.
+///
+/// Both the headless adapter's page-finished write and the visible confirmed
+/// page's use it: one spelling for what a finished page contributes to the
+/// source's own jar.
+Future<String> inAppWebViewPageCookies(String pageUrl) async {
+  final cookies = await CookieManager.instance().getCookies(
+    url: WebUri(pageUrl),
+  );
+  return cookies
+      .map((cookie) => '${cookie.name}=${cookie.value}')
+      .join('; ');
+}
+
 /// Installs the native adapter as the model layer's WebView binding.
 ///
 /// Called once by the application entry point (`lib/main.dart`) and by the
@@ -16,6 +31,24 @@ import 'book_source_webview_adapter.dart';
 void installInAppWebViewBookSourceAdapter() {
   BookSourceWebViewAdapterFactory.engineBinding =
       InAppWebViewBookSourceAdapter.new;
+}
+
+/// The headers one WebView load carries.
+///
+/// Android's WebView silently ignores a `Cookie` entry in a load's additional
+/// headers, so the frozen baseline never sends an app-supplied cookie on the
+/// first request even though it passes the header map straight through; only
+/// cookies the page itself sets appear later. The Windows engine honours the
+/// entry instead, so passing it through there would make the destination send a
+/// cookie the contract says is not sent. The visible confirmed page applies the
+/// same rule, because it is the same load.
+Map<String, String> inAppWebViewLoadHeaders(Map<String, String> headers) {
+  final load = <String, String>{};
+  for (final entry in headers.entries) {
+    if (entry.key.toLowerCase() == 'cookie') continue;
+    load[entry.key] = entry.value;
+  }
+  return load;
 }
 
 /// The platform-native adapter: `flutter_inappwebview`'s engine driven to the
@@ -60,29 +93,11 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
   Future<void> _storePageCookies(String pageUrl) async {
     final sink = _scope.onPageCookies;
     if (sink == null || pageUrl.isEmpty) return;
-    final cookies = await CookieManager.instance().getCookies(
-      url: WebUri(pageUrl),
-    );
-    await sink(
-      pageUrl,
-      cookies.map((cookie) => '${cookie.name}=${cookie.value}').join('; '),
-    );
+    await sink(pageUrl, await inAppWebViewPageCookies(pageUrl));
   }
 
-  Map<String, String> _webViewHeaders(SourceWebViewRequest request) {
-    // Android's WebView silently ignores a `Cookie` entry in a load's additional
-    // headers, so the frozen baseline never sends an app-supplied cookie on the
-    // first request even though it passes the header map straight through; only
-    // cookies the page itself sets appear later. The Windows engine honours the
-    // entry instead, so passing it through there would make the destination send
-    // a cookie the contract says is not sent.
-    final headers = <String, String>{};
-    for (final entry in request.headers.entries) {
-      if (entry.key.toLowerCase() == 'cookie') continue;
-      headers[entry.key] = entry.value;
-    }
-    return headers;
-  }
+  Map<String, String> _webViewHeaders(SourceWebViewRequest request) =>
+      inAppWebViewLoadHeaders(request.headers);
 
   String _configuredUserAgent(SourceWebViewRequest request) {
     for (final entry in request.headers.entries) {

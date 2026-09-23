@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
+import 'package:liber/source/source_hatch.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_http_uri.dart';
 
@@ -11,13 +13,11 @@ import 'package:liber/source/source_http_uri.dart';
 // rule state, cookies, cache, logging, and the encoding/utility family. Every
 // member is named in [expectedMembers], so the gate fails when one disappears.
 
-/// The members this slice defers: each refuses by name (ADR 0011 §2/§4/§6)
+/// The members this slice defers: each refuses by name (ADR 0011 §2/§6)
 /// instead of failing as an undefined JavaScript function. The file and archive
 /// family follows the frozen `JsExtensions.kt` names, including `unArchiveFile`
 /// and the `*ByteArrayContent` forms; the font family follows the ADR's
-/// `:791-903` row (`queryBase64TTF`, `queryTTF`, `replaceFont`); the
-/// user-confirmed browser and captcha hatches (`startBrowser*`,
-/// `getVerificationCode`, `openUrl`) refuse with #32's policy (§4).
+/// `:791-903` row (`queryBase64TTF`, `queryTTF`, `replaceFont`).
 /// `speakText`/`speakSpeed` are not here: they are null value bindings in the
 /// frozen runtime, not members.
 const deferredMembers = <String>[
@@ -45,6 +45,12 @@ const deferredMembers = <String>[
   'cache.getFile',
   'cache.putFile',
   'cache.getQueryTTF',
+];
+
+/// The user-confirmed hatches (ADR 0011 §4, ticket #32): they exist, and they
+/// show nothing before the user's confirmation. A process with no confirmation
+/// surface refuses each by name, which is what this gate's own rows assert.
+const hatchMembers = <String>[
   'java.startBrowser',
   'java.startBrowserAwait',
   'java.getVerificationCode',
@@ -120,18 +126,29 @@ const expectedMembers = <String>[
   'java.webView',
   'java.webViewGetSource',
   'java.webViewGetOverrideUrl',
+  ...hatchMembers,
   ...deferredMembers,
 ];
 
 Future<void> main(List<String> args) async {
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   final requests = <String>[];
+  // The one verification-code image this gate serves, with the headers the
+  // image request carried: the hatches must fetch it through the source's own
+  // request path (its header rule and its cookie jar).
+  final captchaHeaders = <String>[];
   final sub = server.listen((request) async {
     requests.add(
       '${request.method} ${request.uri}'
       '${request.headers.value('cookie') == null ? '' : ' cookie=${request.headers.value('cookie')}'}',
     );
     switch (request.uri.path) {
+      case '/captcha':
+        captchaHeaders.add(
+          '${request.headers.value('x-contract')}|'
+          '${request.headers.value('cookie')}',
+        );
+        request.response.add(const [137, 80, 78, 71, 13, 10, 26, 10]);
       case '/set-cookie':
         request.response.headers.add('set-cookie', 'sid=fromServer; Path=/');
         request.response.write('set');
@@ -685,6 +702,225 @@ Future<void> main(List<String> args) async {
         hooked.statusCode == 201 &&
         await runtime.hostState.entry(origin, 'hook-stage') == 'yes';
 
+    // 13. The user-confirmed hatches (ADR 0011 §4, ticket #32). Without a
+    //     confirmation surface every member refuses by name: a process with no
+    //     window cannot confirm, and showing nothing silently is what the
+    //     policy forbids.
+    final hatchRefusals = <String, bool>{};
+    for (final member in hatchMembers) {
+      final before = runtime.messages.length;
+      SourceScriptError? failure;
+      try {
+        await run('$member(${jsonEncode('$origin/verify')})');
+      } on SourceScriptError catch (error) {
+        failure = error;
+      }
+      final logged = runtime.messages
+          .skip(before)
+          .where((message) => message.kind == 'refused')
+          .toList();
+      final refused =
+          failure?.category == 'policy' &&
+          failure!.message.contains(member) &&
+          // The member exists and this process cannot serve it, so the reason
+          // names the policy; a deferral would be the wrong claim and must fail
+          // here rather than mislead a reader.
+          !failure.message.contains('deferred') &&
+          failure.message.contains('确认界面') &&
+          logged.length == 1 &&
+          logged.single.message.contains(member) &&
+          !logged.single.message.contains('deferred');
+      if (!refused) hatchRefusals[member] = true;
+    }
+    checks['hatchesRefuseWithoutAConfirmationSurface'] = hatchRefusals.isEmpty;
+    if (hatchRefusals.isNotEmpty) {
+      stdout.writeln(jsonEncode({'unrefused': hatchRefusals.keys.toList()}));
+    }
+
+    // With one, the ask names the source and the address before anything is
+    // shown, the waiting members answer in the frozen member's shape, and the
+    // attempt and its outcome reach the source log.
+    final surface = GateHatchSurface();
+    SourceHatchSurface.installed = surface;
+    try {
+      surface.answer = SourceHatchAnswer.answered('1234');
+      final code = await run(
+        'java.getVerificationCode(${jsonEncode('$origin/captcha')})',
+      );
+      final asked = surface.requests.last;
+      checks['getVerificationCodeAnswersTheUsersText'] = code == '1234';
+      checks['hatchAsksNamingTheSourceAndTheAddress'] =
+          asked.member == 'java.getVerificationCode' &&
+          asked.kind == SourceHatchKind.waitingImage &&
+          asked.sourceRef == origin &&
+          asked.sourceName == '契约源' &&
+          asked.url == '$origin/captcha' &&
+          asked.headers['X-Contract'] == 'yes' &&
+          asked.waits;
+      checks['hatchImageFetchedThroughTheSourcePath'] =
+          captchaHeaders.single == 'yes|null' &&
+          surface.images.single.bytes?.length == 8;
+      final hatchLog = runtime.messages
+          .where((message) => message.kind == 'verification')
+          .map((message) => message.message)
+          .toList();
+      checks['hatchAttemptAndOutcomeInTheLog'] =
+          hatchLog.any(
+            (message) =>
+                message.contains('java.getVerificationCode') &&
+                message.contains('$origin/captcha'),
+          ) &&
+          hatchLog.any((message) => message.contains('用户已给出结果'));
+
+      // `startBrowserAwait` refetches the address with the source's own header
+      // map, which is the frozen `WebViewModel.saveVerificationResult`, and
+      // answers the frozen `StrResponse(url, body)`. The page's own HTML is
+      // only the answer when the source asked for the page.
+      surface.answer = SourceHatchAnswer.answered('');
+      final refetched = await run(
+        'java.startBrowserAwait(${jsonEncode('$origin/headers')}, "标题").body()',
+      );
+      checks['startBrowserAwaitRefetchesWithTheSourcesHeaders'] =
+          refetched == 'yes' &&
+          surface.requests.last.kind == SourceHatchKind.waitingPage &&
+          surface.requests.last.refetchAfterSuccess;
+      final shape = await run(
+        'const r = java.startBrowserAwait(${jsonEncode('$origin/headers')}, "t"); '
+        'JSON.stringify([r.code(), r.url(), r.headers().get("x-path")])',
+      );
+      checks['startBrowserAwaitAnswersTheFrozenResponseShape'] =
+          shape == jsonEncode([200, '$origin/headers', null]);
+
+      surface.answer = SourceHatchAnswer.answered('<html>页面</html>');
+      final pageBody = await run(
+        'java.startBrowserAwait(${jsonEncode('$origin/page-only')}, "t", false).body()',
+      );
+      checks['startBrowserAwaitTakesThePageHtmlWhenNotRefetching'] =
+          pageBody == '<html>页面</html>' &&
+          !surface.requests.last.refetchAfterSuccess &&
+          !requests.any((entry) => entry.contains('/page-only'));
+
+      // The confirmed page's cookies are the source's session: the frozen
+      // `WebViewActivity.onPageFinished` writes them into the source's store, so
+      // the refetch (and every later request of that source) carries them.
+      surface.answer = SourceHatchAnswer.answered('');
+      surface.pageCookies = 'sid=fromPage';
+      final cookieBody = await run(
+        'java.startBrowserAwait(${jsonEncode('$origin/echo')}, "t").body()',
+      );
+      checks['theConfirmedPagesCookiesReachTheRefetch'] =
+          cookieBody == 'sid=fromPage' &&
+          requests.last == 'GET /echo cookie=sid=fromPage';
+      surface.pageCookies = '';
+      await run(
+        'cookie.removeCookie(${jsonEncode(origin)})',
+        sourceKey: origin,
+      );
+
+      // The address the frozen loads and names is the shaped one: before the
+      // `,{…}` tail, with the tail's headers on the load.
+      surface.answer = SourceHatchAnswer.presented;
+      final tail =
+          ',${jsonEncode({
+            'headers': {'X-Tail': '1'},
+          })}';
+      final tailValue = await run(
+        'java.startBrowser(${jsonEncode('$origin/headers')} + '
+        '${jsonEncode(tail)}, "标题"); "ran"',
+      );
+      checks['aHatchAddressIsShapedBeforeThePageLoads'] =
+          tailValue == 'ran' &&
+          surface.requests.last.url == '$origin/headers' &&
+          surface.requests.last.headers['X-Tail'] == '1' &&
+          surface.requests.last.headers['X-Contract'] == 'yes';
+
+      // A closed page is the frozen empty result, and a refused confirmation is
+      // an explicit failure for the waiting members.
+      surface.answer = SourceHatchAnswer.closed;
+      SourceScriptError? closedFailure;
+      try {
+        await run('java.getVerificationCode(${jsonEncode('$origin/captcha')})');
+      } on SourceScriptError catch (error) {
+        closedFailure = error;
+      }
+      checks['aClosedSurfaceAnswersTheFrozenEmptyResult'] =
+          closedFailure?.category == 'verification' &&
+          closedFailure!.message == '验证结果为空';
+
+      surface.answer = SourceHatchAnswer.refused;
+      SourceScriptError? refusedFailure;
+      try {
+        await run(
+          'java.startBrowserAwait(${jsonEncode('$origin/headers')}, "t")',
+        );
+      } on SourceScriptError catch (error) {
+        refusedFailure = error;
+      }
+      checks['aRefusedConfirmationFailsTheWaitingMember'] =
+          refusedFailure?.category == 'verification' &&
+          refusedFailure!.message.contains('java.startBrowserAwait');
+
+      // The non-waiting members show the confirmed page and the script goes on,
+      // which is the frozen `startBrowser`/`openUrl` shape.
+      surface.answer = SourceHatchAnswer.presented;
+      final browserValue = await run(
+        'java.startBrowser(${jsonEncode('$origin/browser')}, "标题"); "ran"',
+      );
+      checks['startBrowserShowsThePageWithoutWaiting'] =
+          browserValue == 'ran' &&
+          surface.requests.last.kind == SourceHatchKind.page &&
+          surface.requests.last.title == '标题';
+      final openValue = await run(
+        'java.openUrl(${jsonEncode('$origin/open')}); "ran"',
+      );
+      checks['openUrlShowsThePageWithoutWaiting'] =
+          openValue == 'ran' && surface.requests.last.kind == SourceHatchKind.openUrl;
+      surface.answer = SourceHatchAnswer.refused;
+      checks['aRefusedConfirmationOnANonWaitingMemberIsNotAFailure'] =
+          await run('java.openUrl(${jsonEncode('$origin/open')}); "ran"') ==
+          'ran';
+    } finally {
+      SourceHatchSurface.installed = null;
+    }
+
+    // The absolute cap ends a wait no one answers, and a non-http(s) address is
+    // refused by name rather than loaded.
+    final capped = InProcessSourceScriptRuntime(
+      dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
+      hatchSurface: GateHatchSurface(neverAnswers: true),
+      hatchWaitCap: const Duration(milliseconds: 120),
+    );
+    SourceScriptError? cappedFailure;
+    try {
+      await capped.evaluate(
+        source: 'java.startBrowserAwait(${jsonEncode('$origin/headers')}, "t")',
+        input: {
+          'sourceKey': origin,
+          'source': {'bookSourceUrl': origin, 'bookSourceName': '契约源'},
+        },
+        timeout: const Duration(seconds: 15),
+      );
+    } on SourceScriptError catch (error) {
+      cappedFailure = error;
+    }
+    checks['theAbsoluteCapEndsAnUnansweredWait'] =
+        cappedFailure?.category == 'verification' &&
+        cappedFailure!.message.contains('java.startBrowserAwait') &&
+        capped.messages.any(
+          (message) =>
+              message.kind == 'verification' &&
+              message.message.contains('超过'),
+        );
+    SourceScriptError? addressFailure;
+    try {
+      await run('java.openUrl("file:///etc/passwd")');
+    } on SourceScriptError catch (error) {
+      addressFailure = error;
+    }
+    checks['aNonHttpHatchAddressIsRefusedByName'] =
+        addressFailure?.category == 'host-input' &&
+        addressFailure!.message.contains('java.openUrl');
+
     final pass = checks.values.every((value) => value);
     stdout.writeln(
       jsonEncode({
@@ -699,5 +935,43 @@ Future<void> main(List<String> args) async {
     if (initialized) await InProcessSourceScriptRuntime.dispose();
     await sub.cancel();
     await server.close(force: true);
+  }
+}
+
+/// The gate's stand-in for the confirmation surface: it answers what the check
+/// programs and records what the runtime asked for, so the gate can prove that
+/// the ask happens — naming the source and the address — before anything would
+/// be shown, without a window (ADR 0011 §4).
+class GateHatchSurface implements SourceHatchSurface {
+  GateHatchSurface({this.neverAnswers = false});
+
+  /// Whether the surface leaves the user working for ever, which is what the
+  /// absolute cap exists for.
+  final bool neverAnswers;
+
+  SourceHatchAnswer answer = SourceHatchAnswer.refused;
+
+  /// What the confirmed page hands the source's jar, as the visible page's
+  /// page-finished hook does.
+  String pageCookies = '';
+
+  final requests = <SourceHatchRequest>[];
+  final images = <SourceHatchImage>[];
+
+  @override
+  Future<SourceHatchAnswer> interact(
+    SourceHatchRequest request,
+    SourceHatchStop stop,
+  ) async {
+    requests.add(request);
+    if (neverAnswers) return Completer<SourceHatchAnswer>().future;
+    // The page's cookies and the image request happen only after the user
+    // agreed, as the application's own surface does them.
+    if (pageCookies.isNotEmpty && request.onPageCookies != null) {
+      await request.onPageCookies!(request.url, pageCookies);
+    }
+    final fetch = request.fetchImage;
+    if (fetch != null) images.add(await fetch());
+    return answer;
   }
 }

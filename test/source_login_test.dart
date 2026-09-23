@@ -8,6 +8,7 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_hatch.dart';
 import 'package:liber/source/source_login.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/workspace.dart';
@@ -312,7 +313,7 @@ void main() {
       expect(session.loginJs, 'var login = function(){ };');
     });
 
-    test('a button whose action is an absolute URL refuses by name', () async {
+    test('a button whose action is an absolute URL refuses with no surface', () async {
       final session = _session(
         _source('http://a.test', loginUi: form),
         state: SourceHostState(),
@@ -323,6 +324,11 @@ void main() {
         action: 'HTTPS://a.test/verify',
       );
       expect(isAbsoluteSourceUrl(button.action), isTrue);
+      // The frozen dialog hands such an action to the system browser
+      // (`SourceLoginDialog.kt:128-130`); this product has no external-opening
+      // path, so the action is the user-confirmed page `java.openUrl` shows
+      // (ADR 0011 §4, #32). With no confirmation surface installed — every
+      // process but the application — the member refuses by name.
       await expectLater(
         session.runButton(button, const {}),
         throwsA(
@@ -330,11 +336,33 @@ void main() {
               .having((error) => error.category, 'category', 'policy')
               .having(
                 (error) => error.message,
-                'policy',
-                sourceLoginButtonUrlPolicy,
+                'message',
+                contains('java.openUrl'),
               ),
         ),
       );
+    });
+
+    test('a confirmed absolute-URL button shows the page', () async {
+      final surface = _RecordingSurface();
+      SourceHatchSurface.installed = surface;
+      addTearDown(() => SourceHatchSurface.installed = null);
+      final session = _session(
+        _source('http://a.test', loginUi: form),
+        state: SourceHostState(),
+      );
+      const button = SourceLoginRow(
+        name: 'open',
+        type: 'button',
+        action: 'https://a.test/verify',
+      );
+      await session.runButton(button, const {});
+      final asked = surface.requests.single;
+      expect(asked.member, 'java.openUrl');
+      expect(asked.kind, SourceHatchKind.openUrl);
+      expect(asked.url, 'https://a.test/verify');
+      expect(asked.sourceRef, 'http://a.test');
+      expect(asked.sourceName, '登录源');
     });
 
     test('empty login data removes the stored information and runs no script', () async {
@@ -518,4 +546,20 @@ class _CountingRuntime implements SourceScriptRuntime {
     required Duration timeout,
     SourceCancellation? cancellation,
   }) async => throw UnimplementedError();
+}
+
+/// The confirmation surface a session test installs: it records what the runtime
+/// asked for and answers the page as presented, so no route is pushed and no
+/// window is needed.
+class _RecordingSurface implements SourceHatchSurface {
+  final requests = <SourceHatchRequest>[];
+
+  @override
+  Future<SourceHatchAnswer> interact(
+    SourceHatchRequest request,
+    SourceHatchStop stop,
+  ) async {
+    requests.add(request);
+    return SourceHatchAnswer.presented;
+  }
 }

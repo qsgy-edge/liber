@@ -221,11 +221,21 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       final response = await request.close();
       if (!sourceRequest.followRedirects ||
           !_sourceRedirectStatuses.contains(response.statusCode)) {
-        return _readResponse(response, target, sourceRequest.maxResponseBytes);
+        return _readResponse(
+          response,
+          target,
+          sourceRequest.maxResponseBytes,
+          readBytes: sourceRequest.readBytes,
+        );
       }
       final location = response.headers.value(HttpHeaders.locationHeader);
       if (location == null) {
-        return _readResponse(response, target, sourceRequest.maxResponseBytes);
+        return _readResponse(
+          response,
+          target,
+          sourceRequest.maxResponseBytes,
+          readBytes: sourceRequest.readBytes,
+        );
       }
       await response.drain<void>();
       if (++hop > _maxSourceFollowUps) {
@@ -277,8 +287,9 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
   Future<SourceHttpResponse> _readResponse(
     HttpClientResponse response,
     Uri url,
-    int maxResponseBytes,
-  ) async {
+    int maxResponseBytes, {
+    bool readBytes = false,
+  }) async {
     final bytes = <int>[];
     await for (final chunk in response) {
       if (bytes.length + chunk.length > maxResponseBytes) {
@@ -290,11 +301,15 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     response.headers.forEach((name, values) {
       headers[name] = List<String>.unmodifiable(values);
     });
+    final raw = Uint8List.fromList(bytes);
     return SourceHttpResponse(
       statusCode: response.statusCode,
       headers: Map<String, List<String>>.unmodifiable(headers),
-      body: await decodeSourceResponseBody(Uint8List.fromList(bytes), headers),
+      body: await decodeSourceResponseBody(raw, headers),
       url: url,
+      // Only a caller that asked for bytes keeps them: the decoded body above
+      // cannot carry binary data back (the verification-code image).
+      bodyBytes: readBytes ? raw : null,
     );
   }
 

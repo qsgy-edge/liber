@@ -163,7 +163,8 @@ class SourceHostDispatcher {
   Future<SourceHttpResponse> get(
     String url, {
     Map<String, String> headers = const {},
-  }) => _send('GET', url, headers: headers);
+    bool readBytes = false,
+  }) => _send('GET', url, headers: headers, readBytes: readBytes);
 
   Future<SourceHttpResponse> head(
     String url, {
@@ -218,6 +219,7 @@ class SourceHostDispatcher {
     String? body,
     bool followRedirects = false,
     int retry = 0,
+    bool readBytes = false,
   }) async {
     cancellation?.throwIfCancelled();
     final uri = SourceHttpUri.parse(url);
@@ -290,19 +292,29 @@ class SourceHostDispatcher {
           maxResponseBytes: maxResponseBytes,
           sourceRef: _sourceRef,
           allowInvalidCertificate: allowInvalidCertificate,
+          readBytes: readBytes,
         ),
       );
       cancellation?.throwIfCancelled();
-      if (utf8
-              .encode(
-                jsonEncode({
-                  'headers': response.headers,
-                  'body': response.body,
-                  'url': '${response.url}',
-                }),
-              )
-              .length >
-          maxResponseBytes) {
+      // The 8 MiB response cap is measured on what this response actually is. A
+      // caller that asked for bytes gets the bytes that arrived (the transport
+      // already refuses a longer one at the same number): measuring the JSON
+      // escaping of a decoded body cannot carry them back and would reject an
+      // image the transport read inside the cap.
+      final bytes = response.bodyBytes;
+      final oversized = readBytes
+          ? (bytes?.length ?? 0) > maxResponseBytes
+          : utf8
+                    .encode(
+                      jsonEncode({
+                        'headers': response.headers,
+                        'body': response.body,
+                        'url': '${response.url}',
+                      }),
+                    )
+                    .length >
+                maxResponseBytes;
+      if (oversized) {
         throw const SourceIoLimitExceeded('response');
       }
       if (_enabledCookieJar) {

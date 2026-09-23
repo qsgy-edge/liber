@@ -1918,3 +1918,180 @@ async fn dropping_essential_bridge_engine_with_loaded_module_without_close_does_
 
     tokio::task::yield_now().await;
 }
+
+/// A parked scope's deadline does not run while the host holds it, and the
+/// budget the park spent is given back on resume (ADR 0011 §4).
+///
+/// The host parks the scope in a bridge call, pauses its deadline, holds it well
+/// past the budget, resumes it and only then completes the call. The script's
+/// own work after the call can only finish if the deadline moved forward by the
+/// parked duration: without the pause the parked wait is torn down at the
+/// budget, and without the shift the interrupt closure stops the post-call work
+/// as soon as it resumes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn paused_scoped_execution_keeps_its_budget_across_a_host_interaction() {
+    let engine = Arc::new(JsEngine::create(None, None, None).await.unwrap());
+    let (entered_tx, entered_rx) = oneshot::channel::<u64>();
+    let entered_tx = Arc::new(std::sync::Mutex::new(Some(entered_tx)));
+    engine
+        .init_broker(
+            {
+                let entered_tx = entered_tx.clone();
+                move |request| {
+                    let entered_tx = entered_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take();
+                    Box::pin(async move {
+                        if let Some(entered_tx) = entered_tx {
+                            let _ = entered_tx.send(request.id);
+                        }
+                    })
+                }
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+
+    let id = engine
+        .create_scoped_execution(Some(700))
+        .expect("reserve a scope");
+    let parked = tokio::spawn({
+        let engine = engine.clone();
+        async move {
+            // A synchronous host call, as every product script makes it: the
+            // scoped evaluation rejects a promise.
+            engine
+                .eval_scoped(
+                    id,
+                    r#"const result = fjs.bridge_call("interaction"); const until = Date.now() + 250; while (Date.now() < until) {} result"#
+                        .to_string(),
+                )
+                .await
+        }
+    });
+    let request_id = tokio::time::timeout(Duration::from_secs(5), entered_rx)
+        .await
+        .expect("the parked host call should be entered")
+        .expect("the host start callback should report its request");
+    assert!(
+        crate::api::engine::pause_scoped_execution_global(id),
+        "a live scope accepts a pause"
+    );
+    // Far past the 700 ms budget: the parked wait must still be alive.
+    tokio::time::sleep(Duration::from_millis(1_200)).await;
+    assert!(
+        crate::api::engine::resume_scoped_execution_global(id),
+        "a live scope accepts a resume"
+    );
+    crate::api::engine::complete_bridge_request_global(
+        request_id,
+        JsResult::Ok(JsValue::string("interaction")),
+    )
+    .expect("complete the parked request");
+    let result = tokio::time::timeout(Duration::from_secs(5), parked)
+        .await
+        .expect("the paused eval should finish")
+        .expect("the paused eval task should not panic");
+    match result {
+        Ok(JsValue::String(value)) => {
+            assert_eq!("interaction", value, "the paused execution returns its script's value")
+        }
+        other => panic!("a paused execution must keep its budget, got {other:?}"),
+    }
+
+    // An unknown id is refused rather than silently accepted, so the host can
+    // tell a park that landed from one that raced the execution's end.
+    assert!(!crate::api::engine::pause_scoped_execution_global(u64::MAX));
+    assert!(!crate::api::engine::resume_scoped_execution_global(u64::MAX));
+}
+
+/// A park that runs inside another park holds the deadline until the outermost
+/// one resumes (ADR 0011 §4).
+///
+/// The host parks the scope, parks it again (a hatch reached from the first
+/// interaction's nested evaluation parks the same execution), resumes the inner
+/// one, holds the scope past its whole budget and only then resumes the outer
+/// one. The script's own 300 ms of work after that can only finish when the
+/// suspension lasted until the *outermost* resume: an inner resume that cleared
+/// the park would leave the deadline in the past by then, and the interrupt
+/// closure would stop the work.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn nested_parks_hold_the_deadline_until_the_outermost_resume() {
+    let engine = Arc::new(JsEngine::create(None, None, None).await.unwrap());
+    let (entered_tx, entered_rx) = oneshot::channel::<u64>();
+    let entered_tx = Arc::new(std::sync::Mutex::new(Some(entered_tx)));
+    engine
+        .init_broker(
+            {
+                let entered_tx = entered_tx.clone();
+                move |request| {
+                    let entered_tx = entered_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take();
+                    Box::pin(async move {
+                        if let Some(entered_tx) = entered_tx {
+                            let _ = entered_tx.send(request.id);
+                        }
+                    })
+                }
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+
+    let id = engine
+        .create_scoped_execution(Some(500))
+        .expect("reserve a scope");
+    let parked = tokio::spawn({
+        let engine = engine.clone();
+        async move {
+            engine
+                .eval_scoped(
+                    id,
+                    r#"const result = fjs.bridge_call("interaction"); const until = Date.now() + 300; while (Date.now() < until) {} result"#
+                        .to_string(),
+                )
+                .await
+        }
+    });
+    let request_id = tokio::time::timeout(Duration::from_secs(5), entered_rx)
+        .await
+        .expect("the parked host call should be entered")
+        .expect("the host start callback should report its request");
+
+    assert!(
+        // A resume without a park is a no-op, not a wrapped counter.
+        crate::api::engine::resume_scoped_execution_global(id),
+        "a resume without a park leaves a live scope usable"
+    );
+    assert!(crate::api::engine::pause_scoped_execution_global(id));
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(crate::api::engine::pause_scoped_execution_global(id));
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    // The inner interaction ends first; the outer one is still parked, so the
+    // 500 ms budget must not come back yet.
+    assert!(crate::api::engine::resume_scoped_execution_global(id));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(crate::api::engine::resume_scoped_execution_global(id));
+    crate::api::engine::complete_bridge_request_global(
+        request_id,
+        JsResult::Ok(JsValue::string("interaction")),
+    )
+    .expect("complete the parked request");
+
+    let result = tokio::time::timeout(Duration::from_secs(5), parked)
+        .await
+        .expect("the paused eval should finish")
+        .expect("the paused eval task should not panic");
+    match result {
+        Ok(JsValue::String(value)) => assert_eq!(
+            "interaction", value,
+            "the outermost resume gives the whole parked duration back"
+        ),
+        other => panic!("a nested park must hold the deadline, got {other:?}"),
+    }
+}

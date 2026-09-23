@@ -448,9 +448,10 @@ class SourceLoginSession {
   }
 
   /// The frozen dialog's button action (`SourceLoginDialog.kt:126-153`): an
-  /// absolute-URL `action` opens in the system browser there and here refuses by
-  /// name ([sourceLoginButtonUrlPolicy]); any other action is the source's login
-  /// script followed by the action, with the form's data bound as `result`.
+  /// absolute-URL `action` is the user-confirmed in-app page there and here
+  /// ([sourceLoginButtonUrlPolicy] is gone with the system-browser refusal it
+  /// named); any other action is the source's login script followed by the
+  /// action, with the form's data bound as `result`.
   Future<void> runButton(
     SourceLoginRow row,
     Map<String, String> loginData,
@@ -458,7 +459,17 @@ class SourceLoginSession {
     final action = row.action;
     if (action == null) return;
     if (isAbsoluteSourceUrl(action)) {
-      throw const SourceScriptError('policy', sourceLoginButtonUrlPolicy);
+      // The frozen `handleButtonClick` hands an absolute-URL action to the
+      // system browser (`SourceLoginDialog.kt:128-130`); this product has no
+      // external-opening path, so the action is the same confirmation and page
+      // `java.openUrl` shows (ADR 0011 §4, ticket #32). A refusal shows nothing
+      // and the form stays open, as the frozen dialog's confirm does.
+      await _runtime.evaluateLogin(
+        script: 'java.openUrl(${jsonEncode(action)})',
+        input: _scriptInput(null),
+        timeout: loginTimeout,
+      );
+      return;
     }
     final js = loginJs;
     if (js == null) return;
@@ -493,13 +504,4 @@ class SourceLoginSession {
 /// `bookSourceUrl`, as the pipelines read it.
 String sourceRefOf(Map<String, dynamic> source) =>
     '${source['bookSourceUrl'] ?? ''}';
-
-/// A `loginUi` button whose `action` is an absolute URL. The frozen dialog hands
-/// it to the system browser (`SourceLoginDialog.kt:128-130`); this product has
-/// no external-opening path — the user-confirmed browser hatches are #32's
-/// (ADR 0011 §4) — so the action refuses by name instead of silently doing
-/// nothing.
-const sourceLoginButtonUrlPolicy =
-    'button action 是绝对 URL，冻结实现交给系统浏览器打开；本产品没有外部打开路径'
-    '（用户确认的浏览器与验证码入口属于 #32，ADR 0011 §4）';
 

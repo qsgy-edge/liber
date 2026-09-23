@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum BookSourceStage {
   idle,
   search,
@@ -97,6 +99,7 @@ class SourceHttpRequest {
     this.maxResponseBytes = 8 * 1024 * 1024,
     this.sourceRef = '',
     this.allowInvalidCertificate = false,
+    this.readBytes = false,
   });
   final String method;
   final Uri url;
@@ -117,6 +120,14 @@ class SourceHttpRequest {
   /// frozen `newCallResponse(retry)` loop.
   final int retry;
   final int maxResponseBytes;
+
+  /// Whether the transport must also answer the response's raw bytes.
+  ///
+  /// The frozen `ResponseBody.bytes()` a binary consumer needs: the
+  /// verification-code image's own request reads bytes rather than the decoded
+  /// text ([SourceHttpResponse.body]), which cannot carry an image back. The
+  /// default keeps the decoded-only path, so no other request pays for it.
+  final bool readBytes;
 }
 
 class SourceHttpResponse {
@@ -125,10 +136,15 @@ class SourceHttpResponse {
     required this.headers,
     required this.body,
     required this.url,
+    this.bodyBytes,
   });
   final int statusCode;
   final Map<String, List<String>> headers;
   final String body;
+
+  /// The response's raw bytes, answered only when
+  /// [SourceHttpRequest.readBytes] asked for them; null otherwise.
+  final Uint8List? bodyBytes;
   final Uri url;
 }
 

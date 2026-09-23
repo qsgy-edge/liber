@@ -12,7 +12,7 @@ import 'source.dart';
 import 'value.dart';
 part 'engine.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `abort_execution_requests`, `already_loaded_error`, `begin_close`, `begin_init`, `broker_pending`, `close_with_mode`, `deadline_expired`, `deadline_millis`, `deadline_timeout`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `executions`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `mark_deadline`, `new_bridge_call`, `new_broker_bridge_call`, `new_cancellable_bridge_call`, `register_fjs_broker`, `register_fjs_cancellable`, `register_fjs`, `remaining`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `run_scoped`, `stop_error`, `take_resources`, `with_foreground_js_result`
+// These functions are ignored because they are not marked as `pub`: `abort_execution_requests`, `already_loaded_error`, `begin_close`, `begin_init`, `broker_pending`, `close_with_mode`, `deadline_expired`, `deadline_millis`, `deadline_timeout`, `declare_dynamic_modules`, `ensure_no_unhandled_job_errors`, `ensure_running`, `ensure_runtime_accessible`, `ensure_unique_module_names`, `evaluate_dynamic_module`, `executions`, `finish_init`, `first_duplicate_name`, `format_unhandled_job_errors`, `mark_deadline`, `new_bridge_call`, `new_broker_bridge_call`, `new_cancellable_bridge_call`, `parked`, `register_fjs_broker`, `register_fjs_cancellable`, `register_fjs`, `remaining`, `resources`, `retire_resources_after_immediate_close`, `rollback_init`, `run_scoped`, `stop_error`, `take_resources`, `with_foreground_js_result`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BrokerBridgeState`, `BrokerEntry`, `BrokerEval`, `CancellableBridgeState`, `ExecutionQueue`, `JsEngineResources`, `ScopedCommand`, `ScopedExecution`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`, `fmt`, `fmt`
 
@@ -33,6 +33,20 @@ Future<JsValue> evalBridgeRequestGlobal(
 /// Cancel only this execution, retaining its shared runtime and other executions.
 Future<bool> cancelScopedExecutionGlobal({required BigInt id}) =>
     LibFjs.instance.api.crateApiEngineCancelScopedExecutionGlobal(id: id);
+
+/// Park a scoped execution's deadline while its host performs a user
+/// interaction (ADR 0011 §4): the deadline neither expires inside the
+/// interrupt closure nor wakes the parked host wait, so the interaction does
+/// not consume the execution's budget. A park is idempotent; `false` means the
+/// execution is gone.
+Future<bool> pauseScopedExecutionGlobal({required BigInt id}) =>
+    LibFjs.instance.api.crateApiEnginePauseScopedExecutionGlobal(id: id);
+
+/// End a park and give the execution back the budget the interaction spent:
+/// the deadline moves forward by the parked duration. `false` means the
+/// execution is gone.
+Future<bool> resumeScopedExecutionGlobal({required BigInt id}) =>
+    LibFjs.instance.api.crateApiEngineResumeScopedExecutionGlobal(id: id);
 
 /// Release a reservation that was never submitted.
 Future<void> discardScopedExecutionGlobal({required BigInt id}) =>

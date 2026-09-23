@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_hatch.dart';
 import 'package:liber/source/source_login.dart';
 import 'package:liber/source/source_login_dialog.dart';
 
@@ -198,7 +199,7 @@ void main() {
     });
   });
 
-  testWidgets('an absolute-URL button action refuses by name in the form', (
+  testWidgets('an absolute-URL button action asks for the confirmed page', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -206,11 +207,49 @@ void main() {
       await _open(tester, session);
       await tester.tap(find.byKey(const ValueKey('login-button-verify')));
       await _waitFor(tester, find.byKey(const ValueKey('login-status')));
+      // The frozen dialog hands an absolute-URL action to the system browser
+      // (`SourceLoginDialog.kt:128-130`); this product has no external-opening
+      // path, so the action is the user-confirmed page `java.openUrl` shows
+      // (ADR 0011 §4, ticket #32). With no confirmation surface — this test's
+      // process — the member refuses by name and the form says why instead of a
+      // bare failure.
       expect(
-        find.textContaining('绝对 URL'),
+        find.textContaining('确认界面'),
         findsOneWidget,
-        reason: 'the refusal names the policy instead of a bare failure',
+        reason: 'the refusal names the confirmation the member needs',
       );
     });
   });
+
+  testWidgets('a confirmed absolute-URL button action shows the page', (
+    tester,
+  ) async {
+    final surface = _PresentingSurface();
+    SourceHatchSurface.installed = surface;
+    addTearDown(() => SourceHatchSurface.installed = null);
+    await tester.runAsync(() async {
+      final session = _session(_source(), state: SourceHostState());
+      await _open(tester, session);
+      await tester.tap(find.byKey(const ValueKey('login-button-verify')));
+      await _waitFor(tester, find.byKey(const ValueKey('login-status')));
+      expect(surface.requests.single.member, 'java.openUrl');
+      expect(surface.requests.single.url, 'https://a.test/verify');
+      expect(find.textContaining('已执行'), findsOneWidget);
+    });
+  });
+}
+
+/// The confirmation surface these form tests install: it records what the
+/// runtime asked for and answers a presented page, so no route is pushed.
+class _PresentingSurface implements SourceHatchSurface {
+  final requests = <SourceHatchRequest>[];
+
+  @override
+  Future<SourceHatchAnswer> interact(
+    SourceHatchRequest request,
+    SourceHatchStop stop,
+  ) async {
+    requests.add(request);
+    return SourceHatchAnswer.presented;
+  }
 }

@@ -12,6 +12,7 @@ import 'native_library.dart';
 import 'source_host_dispatcher.dart';
 import 'source_host_state.dart';
 import 'source_http_uri.dart';
+import 'source_hatch.dart';
 import 'source_login.dart';
 import 'source_url_rules.dart';
 
@@ -21,6 +22,11 @@ typedef SourceHostCall =
       Object? payload,
       SourceCancellation cancellation,
     );
+
+/// One hatch's park step: asks the Rust deadline clock to suspend one
+/// execution's deadline for as long as the user works, or to release it and
+/// give the parked budget back. `false` means the execution is gone.
+typedef SourceDeadlinePark = Future<bool> Function(BigInt executionId);
 
 /// One stage response as the pipeline reads it and as a source's `loginCheckJs`
 /// sees it.
@@ -225,7 +231,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.onMessage,
     SourceHostState? hostState,
     this.webViewFactory,
-  }) : _providedState = hostState;
+    this.hatchSurface,
+    this.hatchWaitCap = sourceHatchWaitCap,
+    SourceDeadlinePark? pauseDeadline,
+    SourceDeadlinePark? resumeDeadline,
+  }) : _providedState = hostState,
+       pauseDeadline = pauseDeadline ?? _pauseExecution,
+       resumeDeadline = resumeDeadline ?? _resumeExecution;
   final String jsLib;
 
   /// The installation's opaque `androidId` this runtime answers `java.androidId`
@@ -251,6 +263,28 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// builds one from [dispatcher]'s source scope; a test substitutes its own,
   /// because the helpers' wiring is what it checks.
   final BookSourceWebViewAdapterFactory? webViewFactory;
+
+  /// The user-confirmed surface the hatches (ADR 0011 §4) run on. Null uses the
+  /// composition root's binding ([SourceHatchSurface.installed]); a test
+  /// substitutes its own, and a process with neither refuses the hatches by
+  /// name.
+  final SourceHatchSurface? hatchSurface;
+
+  /// The absolute cap on one hatch interaction. [sourceHatchWaitCap] in the
+  /// product; a test shortens it so the cap's own outcome is observable.
+  final Duration hatchWaitCap;
+
+  /// The park this runtime performs around one hatch interaction. The product
+  /// passes the Rust deadline clock's own functions; a test substitutes its own,
+  /// because the park's answer and its release are what it checks.
+  final SourceDeadlinePark pauseDeadline;
+  final SourceDeadlinePark resumeDeadline;
+
+  static Future<bool> _pauseExecution(BigInt id) =>
+      pauseScopedExecutionGlobal(id: id);
+
+  static Future<bool> _resumeExecution(BigInt id) =>
+      resumeScopedExecutionGlobal(id: id);
 
   /// The host surface this runtime reads and writes (ADR 0011 §3): what the
   /// caller passed, the dispatcher's when a transport is attached — the
@@ -496,6 +530,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = _handleUrl(payload);
           } else if (method == 'webview') {
             answer = await _handleWebView(payload, request.id, input, token);
+          } else if (method == 'verification') {
+            answer = await _handleVerificationHatch(
+              host,
+              payload,
+              request.id,
+              input,
+              token,
+              executionId,
+            );
           } else if (method == 'convert') {
             answer = _handleConvert(payload);
           } else if (method == 'request') {
@@ -734,6 +777,318 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       onPageCookies: (pageUrl, cookies) =>
           host.cookies.set(pageUrl, cookies),
     );
+  }
+
+  /// Frozen `JsExtensions.startBrowser`/`startBrowserAwait`/
+  /// `getVerificationCode`/`openUrl` (`JsExtensions.kt:222-252,974-988`),
+  /// behind the confirmation, the wait and the answer ADR 0011 §4 requires.
+  ///
+  /// The member shapes are the frozen ones: `startBrowser`/`openUrl` return
+  /// nothing and do not wait, `startBrowserAwait` answers
+  /// `StrResponse(url, body)` and `getVerificationCode` the user's text. The
+  /// frozen wait parks the source's thread with no timeout and no cancel path
+  /// (`SourceVerificationHelp.kt:29-58`); this one ends at [hatchWaitCap] or
+  /// with the analysis. The interaction does not consume the execution's own
+  /// deadline: its clock is parked for as long as the user works.
+  Future<Object?> _handleVerificationHatch(
+    SourceHostDispatcher? host,
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> outerInput,
+    SourceCancellation token,
+    BigInt? executionId,
+  ) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid verification call');
+    }
+    final kind = switch ('${payload['op']}') {
+      'startBrowser' => SourceHatchKind.page,
+      'startBrowserAwait' => SourceHatchKind.waitingPage,
+      'getVerificationCode' => SourceHatchKind.waitingImage,
+      'openUrl' => SourceHatchKind.openUrl,
+      _ => throw const SourceScriptError(
+        'host-method',
+        'verification op refused',
+      ),
+    };
+    final member = switch (kind) {
+      SourceHatchKind.page => 'java.startBrowser',
+      SourceHatchKind.waitingPage => 'java.startBrowserAwait',
+      SourceHatchKind.waitingImage => 'java.getVerificationCode',
+      SourceHatchKind.openUrl => 'java.openUrl',
+    };
+    final rawAddress = payload['url'];
+    if (rawAddress is! String ||
+        rawAddress.isEmpty ||
+        !_hatchAddressMayBecomeHttp(rawAddress)) {
+      // A named non-http(s) scheme (`file:`, `javascript:`) is refused before
+      // anything is expanded: the in-app page and the image request can only use
+      // http(s). A template or an `@js:` expression has no scheme yet and is
+      // checked again after the shaping below.
+      throw _refuseHatchAddress(member, rawAddress);
+    }
+    // The address the frozen loads and names is the shaped one: the text before
+    // its `,{…}` tail, with the tail's own headers (`AnalyzeUrl.headerMap`), not
+    // the script's raw argument.
+    final shaped = await _shapeAnalyzeUrlRequest(
+      rawAddress,
+      requestId,
+      outerInput,
+      token,
+      member: member,
+    );
+    final address = shaped.url;
+    if (!_isHatchAddress(address)) {
+      throw _refuseHatchAddress(member, rawAddress);
+    }
+    final surface = hatchSurface ?? SourceHatchSurface.installed;
+    if (surface == null) {
+      // A process with no window (a gate, a tool, a unit test) has no
+      // confirmation to ask, and asking is the whole policy: the member refuses
+      // by name, into the source log, instead of showing nothing silently. It is
+      // implemented, so the reason names the policy and not a deferral.
+      throw _refuseMember(
+        member,
+        '$member 需要用户确认后才能显示页面或图片；此进程没有确认界面（ADR 0011 §4）',
+      );
+    }
+    final hostRef = host?.sourceRef ?? '';
+    final sourceRef = hostRef.isNotEmpty
+        ? hostRef
+        : '${outerInput['sourceKey'] ?? ''}';
+    final source = outerInput['source'];
+    final sourceName = source is Map ? '${source['bookSourceName'] ?? ''}' : '';
+    final request = SourceHatchRequest(
+      member: member,
+      kind: kind,
+      sourceRef: sourceRef,
+      sourceName: sourceName,
+      url: address,
+      title: '${payload['title'] ?? ''}',
+      // The shaped request's header map: the source's own map with the login
+      // header and the tail's headers, which is what the frozen page load and
+      // the frozen image request carry.
+      headers: shaped.headers,
+      refetchAfterSuccess: kind == SourceHatchKind.waitingPage
+          ? payload['refetchAfterSuccess'] == true
+          : false,
+      fetchImage: kind == SourceHatchKind.waitingImage
+          ? () => _fetchHatchImage(address, shaped.headers, host, token)
+          : null,
+      // The frozen `WebViewActivity.onPageFinished` writes what the visible page
+      // received back into the source's cookie store, which is what makes the
+      // session the user established reach the refetch and every later request.
+      onPageCookies: (pageUrl, cookies) =>
+          hostState.cookiesFor(sourceRef).set(pageUrl, cookies),
+    );
+    // The `openUrl` mime type only drives the frozen system-browser Intent
+    // (`OpenUrlConfirmActivity`); this product has no external-opening path, so
+    // it is recorded and the page is the in-app one.
+    final mimeType = kind == SourceHatchKind.openUrl ? payload['mimeType'] : null;
+    _record(
+      SourceHostMessage(
+        'verification',
+        '${request.member} ${request.url}'
+            '${mimeType is String && mimeType.isNotEmpty ? ' mimeType=$mimeType（本产品无外部打开路径，在应用内页面显示）' : ''}',
+      ),
+    );
+    final answer = await _runHatch(surface, request, token, executionId);
+    token.throwIfCancelled();
+    switch (answer.outcome) {
+      case SourceHatchOutcome.refused:
+      case SourceHatchOutcome.ended:
+        final reason = switch (answer.outcome) {
+          SourceHatchOutcome.refused => '用户拒绝显示页面或图片（未打开，ADR 0011 §4）',
+          _ => '等待用户操作超过 ${_hatchCapText(hatchWaitCap)}'
+              '（ADR 0011 §4 的绝对上限）',
+        };
+        _record(SourceHostMessage('verification', '$member：$reason'));
+        if (!request.waits) return null;
+        throw SourceScriptError('verification', '$member：$reason');
+      case SourceHatchOutcome.presented:
+        _record(
+          SourceHostMessage('verification', '$member：已按用户确认在应用内显示页面'),
+        );
+        return null;
+      case SourceHatchOutcome.closed:
+        // The frozen dialog close sets an empty result, which the frozen
+        // `getVerificationResult` then reports as 验证结果为空.
+        _record(
+          SourceHostMessage('verification', '$member：用户关闭了页面或对话框，未给出结果'),
+        );
+        if (!request.waits) return null;
+        throw const SourceScriptError('verification', '验证结果为空');
+      case SourceHatchOutcome.answered:
+        final body = request.refetchAfterSuccess
+            ? await _refetchHatch(host, shaped, token)
+            : answer.text;
+        if (body.trim().isEmpty) {
+          _record(SourceHostMessage('verification', '$member：验证结果为空'));
+          throw const SourceScriptError('verification', '验证结果为空');
+        }
+        _record(
+          SourceHostMessage(
+            'verification',
+            '$member：用户已给出结果（${body.length} 字符）',
+          ),
+        );
+        return body;
+    }
+  }
+
+  /// Whether one expanded hatch address is one the in-app page or the image
+  /// request can use. Anything else — a `file:` or `javascript:` address
+  /// included — fails by name instead of loading.
+  static bool _isHatchAddress(String address) {
+    final parsed = Uri.tryParse(address);
+    return parsed != null &&
+        (parsed.scheme == 'http' || parsed.scheme == 'https') &&
+        parsed.host.isNotEmpty;
+  }
+
+  /// Whether the script's raw address can still become an http(s) one once the
+  /// engine has expanded its templates. A named non-http(s) scheme cannot, and
+  /// is refused before anything is expanded or requested.
+  static bool _hatchAddressMayBecomeHttp(String address) {
+    final scheme = Uri.tryParse(address)?.scheme ?? '';
+    return scheme.isEmpty || scheme == 'http' || scheme == 'https';
+  }
+
+  /// The named failure of a hatch address this product cannot show. The address
+  /// is the script's own input, so the failure is the input's (`host-input`),
+  /// recorded in the source log like every other hatch outcome.
+  SourceScriptError _refuseHatchAddress(String member, Object? address) {
+    final message =
+        '$member 需要一个绝对的 http(s) 地址：${address is String ? address : ''}';
+    _record(SourceHostMessage('verification', message));
+    return SourceScriptError('host-input', message);
+  }
+
+  /// One named refusal of a member that exists but cannot be served here: the
+  /// message is written into the source's log and the execution fails with a
+  /// `policy` error naming the member and the policy. The deferred members keep
+  /// their own "is deferred" wording ([_handleRefusal]); this one is for a member
+  /// this slice implements.
+  SourceScriptError _refuseMember(String member, String message) {
+    _record(SourceHostMessage('refused', message));
+    return SourceScriptError('policy', message);
+  }
+
+  /// The cap as a source log reads it, whole minutes for the product and
+  /// milliseconds for a caller that shortened it to observe the cap itself.
+  static String _hatchCapText(Duration cap) =>
+      cap.inMinutes >= 1 && cap.inSeconds % 60 == 0
+      ? '${cap.inMinutes} 分钟'
+      : '${cap.inMilliseconds} 毫秒';
+
+  /// One hatch interaction under the cap, with the execution's deadline parked
+  /// while the user works (ADR 0011 §4): the interaction must not consume the
+  /// analysis's own budget.
+  Future<SourceHatchAnswer> _runHatch(
+    SourceHatchSurface surface,
+    SourceHatchRequest request,
+    SourceCancellation token,
+    BigInt? executionId,
+  ) async {
+    if (executionId == null) {
+      return runSourceHatchInteraction(
+        surface: surface,
+        request: request,
+        cap: hatchWaitCap,
+        cancellation: token,
+      );
+    }
+    // The park's answer is the Rust registry's: `false` means this execution is
+    // already gone (its deadline or a cancellation removed it), so a
+    // confirmation, a page or an image shown now would be something whose answer
+    // nobody receives.
+    final parked = await pauseDeadline(executionId);
+    if (!parked) {
+      throw _refuseMember(
+        request.member,
+        '${request.member} 未显示：书源的这次执行已经结束（ADR 0011 §4）',
+      );
+    }
+    try {
+      return await runSourceHatchInteraction(
+        surface: surface,
+        request: request,
+        cap: hatchWaitCap,
+        cancellation: token,
+      );
+    } finally {
+      await resumeDeadline(executionId);
+    }
+  }
+
+  /// Frozen `WebViewModel.saveVerificationResult` (`WebViewModel.kt:101-125`):
+  /// with `refetchAfterSuccess` the answer is a fresh non-WebView HTTP GET of
+  /// the original address, carrying the source's current header map — so the
+  /// session the confirmed page established is what the source's own rules then
+  /// parse. The address is the one the page was shown under, already shaped the
+  /// way the frozen `AnalyzeUrl` shapes it (its `,{…}` options included), so it
+  /// is expanded once and this refetch never re-applies them.
+  Future<String> _refetchHatch(
+    SourceHostDispatcher? host,
+    ({
+      String url,
+      String method,
+      String? body,
+      Map<String, String> headers,
+      int retry,
+    })
+    shaped,
+    SourceCancellation token,
+  ) async {
+    if (host == null) {
+      throw const SourceScriptError(
+        'host-method',
+        'the verification refetch needs a source session',
+      );
+    }
+    final response = await host.request(
+      shaped.method,
+      shaped.url,
+      headers: shaped.headers,
+      body: shaped.body,
+      retry: shaped.retry,
+    );
+    return response.body;
+  }
+
+  /// The verification-code image, fetched through the source's own request path
+  /// (its header rule, its login header, its cookie jar and its
+  /// `concurrentRate`). The frozen dialog loads it the same way — an
+  /// `AnalyzeUrl` over the image address, GET with that request's header map
+  /// (`OkHttpStreamFetcher`) — so the address's own `,{…}` headers apply and a
+  /// failed load is the dialog's placeholder rather than a failed hatch,
+  /// because a user can still type the code.
+  Future<SourceHatchImage> _fetchHatchImage(
+    String url,
+    Map<String, String> headers,
+    SourceHostDispatcher? host,
+    SourceCancellation token,
+  ) async {
+    if (host == null) {
+      return const SourceHatchImage.failed('没有书源会话，无法获取验证码图片');
+    }
+    try {
+      final response = await host.get(
+        url,
+        headers: headers,
+        readBytes: true,
+      );
+      final bytes = response.bodyBytes;
+      if (bytes == null || bytes.isEmpty) {
+        return const SourceHatchImage.failed('验证码图片为空');
+      }
+      return SourceHatchImage(bytes);
+    } on Object catch (error) {
+      final failure = _classify(error);
+      // A cancelled analysis ends the hatch; it is not an image placeholder.
+      if (failure.category == 'cancelled') rethrow;
+      return SourceHatchImage.failed('$failure');
+    }
   }
 
   /// Frozen `JsExtensions.t2s`/`s2t`, which call `ChineseUtils`. Both go through
@@ -1390,7 +1745,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// A URL option this host-request path cannot apply refuses
   /// by name, into the source log, like every other unsupported member.
   SourceScriptError _refuseUrlOption(String member, String policy) =>
-      _handleRefusal({'member': '$member(url, {…})', 'policy': policy});
+      _refuseMember(
+        member,
+        // The member exists; what cannot be served is this URL's option, so the
+        // message does not report the member as unimplemented.
+        '$member(url, {…}) 的 URL 选项无法应用：$policy',
+      );
 
   /// Frozen `AnalyzeUrl.getStrResponse`/`getResponse` (`AnalyzeUrl.kt:465-526`):
   /// the stage's own request repeated, answered as the response object the
@@ -1775,10 +2135,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     member: 'java.importScript',
     policy: 'the local-path half comes with the file family (ADR 0011 §2) and the remote half with #13'
   });
-  const refuseVerificationHatch = member => () => call('refuse', {
-    member: member,
-    policy: 'the user-confirmed browser and captcha hatches require the confirmation UI that #32 lands (ADR 0011 §4)'
-  });
+  // A source's `title` argument is a value binding, not an optional one: the frozen
+  // member declares a String, so an absent one is the empty title.
   const optionalText = value => (value === null || value === undefined) ? null : String(value);
 
   const java = Object.freeze({
@@ -1865,10 +2223,34 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       op:'override', html:optionalText(html), url:optionalText(url), js:optionalText(js),
       regex:optionalText(overrideUrlRegex)
     }),
-    startBrowser: refuseVerificationHatch('java.startBrowser'),
-    startBrowserAwait: refuseVerificationHatch('java.startBrowserAwait'),
-    getVerificationCode: refuseVerificationHatch('java.getVerificationCode'),
-    openUrl: refuseVerificationHatch('java.openUrl'),
+    // The user-confirmed browser and captcha hatches (ADR 0011 §4). Every one of
+    // them asks the user first, naming this source and the URL or image the
+    // script wants shown; the host only shows anything after that answer. The
+    // waiting forms return the frozen member's shape — `startBrowserAwait` a
+    // `StrResponse(url, body)`, `getVerificationCode` the user's text — and a
+    // refusal, a closed page, the host's absolute cap or the analysis's
+    // cancellation fails the script instead of handing it a silent empty
+    // answer.
+    startBrowser: (url, title) => {
+      call('verification', {
+        op:'startBrowser', url:String(url), title:optionalText(title) || ''
+      });
+    },
+    startBrowserAwait: function(url, title, refetchAfterSuccess) {
+      const body = call('verification', {
+        op:'startBrowserAwait', url:String(url), title:optionalText(title) || '',
+        // The frozen two-argument overload refetches; the three-argument form
+        // coerces its own value, as Rhino coerces it to a Boolean.
+        refetchAfterSuccess: arguments.length < 3 ? true : !!refetchAfterSuccess
+      });
+      return response({body: body, url: String(url), statusCode: 200, headers: {}});
+    },
+    getVerificationCode: imageUrl => call('verification', {
+      op:'getVerificationCode', url:String(imageUrl)
+    }),
+    openUrl: (url, mimeType) => {
+      call('verification', {op:'openUrl', url:String(url), mimeType:optionalText(mimeType)});
+    },
     getFile: refuseFile('java.getFile'),
     readFile: refuseFile('java.readFile'),
     readTxtFile: refuseFile('java.readTxtFile'),
