@@ -113,9 +113,11 @@ class _Transport implements SourceHttpTransport, BookSourceTransport {
       headers: const {},
       // Only the verification-code image asks for bytes; the transport contract
       // answers them only then.
-      bodyBytes: bytes ?? (request.readBytes
-          ? Uint8List.fromList(const [137, 80, 78, 71])
-          : null),
+      bodyBytes:
+          bytes ??
+          (request.readBytes
+              ? Uint8List.fromList(const [137, 80, 78, 71])
+              : null),
     );
   }
 }
@@ -222,7 +224,9 @@ void main() {
         fetchesImage: true,
       );
       SourceHatchSurface.installed = surface;
-      final source = _source('tag.h3@tag.a@text@js:java.getVerificationCode("$_codeUrl")');
+      final source = _source(
+        'tag.h3@tag.a@text@js:java.getVerificationCode("$_codeUrl")',
+      );
       source['bookSourceUrl'] = 'http://rate.test';
       source['concurrentRate'] = '1000';
       final pipeline = HtmlSourcePipeline(source, _Transport());
@@ -239,7 +243,9 @@ void main() {
       SourceHatchSurface.installed = surface;
       final transport = _Transport();
       final pipeline = HtmlSourcePipeline(
-        _source('tag.h3@tag.a@text@js:java.startBrowserAwait("$_pageUrl", "标题").body()'),
+        _source(
+          'tag.h3@tag.a@text@js:java.startBrowserAwait("$_pageUrl", "标题").body()',
+        ),
         transport,
       );
 
@@ -270,45 +276,55 @@ void main() {
       expect(hits.single.title, '200|$_pageUrl|null');
     });
 
-    test('startBrowserAwait takes the pages own HTML when it is not refetching', () async {
-      final surface = _TestSurface(
-        answer: SourceHatchAnswer.answered('<html>页面</html>'),
-      );
-      SourceHatchSurface.installed = surface;
-      final transport = _Transport();
-      final pipeline = HtmlSourcePipeline(
-        _source('tag.h3@tag.a@text@js:java.startBrowserAwait("$_pageUrl", "t", false).body()'),
-        transport,
-      );
+    test(
+      'startBrowserAwait takes the pages own HTML when it is not refetching',
+      () async {
+        final surface = _TestSurface(
+          answer: SourceHatchAnswer.answered('<html>页面</html>'),
+        );
+        SourceHatchSurface.installed = surface;
+        final transport = _Transport();
+        final pipeline = HtmlSourcePipeline(
+          _source(
+            'tag.h3@tag.a@text@js:java.startBrowserAwait("$_pageUrl", "t", false).body()',
+          ),
+          transport,
+        );
 
-      final hits = await pipeline.search('书');
-      expect(hits.single.title, '<html>页面</html>');
-      expect(surface.requests.single.refetchAfterSuccess, isFalse);
-      expect(
-        transport.requests.where((request) => '${request.url}' == _pageUrl),
-        isEmpty,
-      );
-    });
+        final hits = await pipeline.search('书');
+        expect(hits.single.title, '<html>页面</html>');
+        expect(surface.requests.single.refetchAfterSuccess, isFalse);
+        expect(
+          transport.requests.where((request) => '${request.url}' == _pageUrl),
+          isEmpty,
+        );
+      },
+    );
 
-    test('startBrowser and openUrl show the page and the stage goes on', () async {
-      final surface = _TestSurface(answer: SourceHatchAnswer.presented);
-      SourceHatchSurface.installed = surface;
-      final browser = HtmlSourcePipeline(
-        _source('tag.h3@tag.a@text@js:java.startBrowser("$_pageUrl", "标题"); "shown"'),
-        _Transport(),
-      );
-      expect((await browser.search('书')).single.title, 'shown');
-      expect(surface.requests.single.kind, SourceHatchKind.page);
-      expect(surface.requests.single.waits, isFalse);
+    test(
+      'startBrowser and openUrl show the page and the stage goes on',
+      () async {
+        final surface = _TestSurface(answer: SourceHatchAnswer.presented);
+        SourceHatchSurface.installed = surface;
+        final browser = HtmlSourcePipeline(
+          _source(
+            'tag.h3@tag.a@text@js:java.startBrowser("$_pageUrl", "标题"); "shown"',
+          ),
+          _Transport(),
+        );
+        expect((await browser.search('书')).single.title, 'shown');
+        expect(surface.requests.single.kind, SourceHatchKind.page);
+        expect(surface.requests.single.waits, isFalse);
 
-      final open = HtmlSourcePipeline(
-        _source('tag.h3@tag.a@text@js:java.openUrl("$_pageUrl"); "opened"'),
-        _Transport(),
-      );
-      expect((await open.search('书')).single.title, 'opened');
-      expect(surface.requests.last.kind, SourceHatchKind.openUrl);
-      expect(surface.requests.last.member, 'java.openUrl');
-    });
+        final open = HtmlSourcePipeline(
+          _source('tag.h3@tag.a@text@js:java.openUrl("$_pageUrl"); "opened"'),
+          _Transport(),
+        );
+        expect((await open.search('书')).single.title, 'opened');
+        expect(surface.requests.last.kind, SourceHatchKind.openUrl);
+        expect(surface.requests.last.member, 'java.openUrl');
+      },
+    );
 
     test('a refused openUrl is not a stage failure', () async {
       final surface = _TestSurface();
@@ -347,9 +363,10 @@ void main() {
     test('a hatch address with an option tail is normalized', () async {
       final surface = _TestSurface(answer: SourceHatchAnswer.presented);
       SourceHatchSurface.installed = surface;
-      final tail = ',${jsonEncode({
-        'headers': {'X-Tail': '1'},
-      })}';
+      final tail =
+          ',${jsonEncode({
+            'headers': {'X-Tail': '1'},
+          })}';
       final pipeline = HtmlSourcePipeline(
         _source(
           'tag.h3@tag.a@text@js:'
@@ -564,35 +581,40 @@ void main() {
       expect(resumed, paused);
     });
 
-    test('a hatch for an execution that is already gone shows nothing', () async {
-      final surface = _TestSurface(answer: SourceHatchAnswer.answered('1234'));
-      var resumed = 0;
-      final runtime = InProcessSourceScriptRuntime(
-        hatchSurface: surface,
-        pauseDeadline: (id) async => false,
-        resumeDeadline: (id) async {
-          resumed++;
-          return false;
-        },
-      );
+    test(
+      'a hatch for an execution that is already gone shows nothing',
+      () async {
+        final surface = _TestSurface(
+          answer: SourceHatchAnswer.answered('1234'),
+        );
+        var resumed = 0;
+        final runtime = InProcessSourceScriptRuntime(
+          hatchSurface: surface,
+          pauseDeadline: (id) async => false,
+          resumeDeadline: (id) async {
+            resumed++;
+            return false;
+          },
+        );
 
-      await expectLater(
-        _run(runtime, 'java.getVerificationCode("$_codeUrl")'),
-        throwsA(
-          isA<SourceScriptError>()
-              .having((error) => error.category, 'category', 'policy')
-              .having(
-                (error) => error.message,
-                'message',
-                contains('执行已经结束'),
-              ),
-        ),
-      );
-      // Nothing was shown for it, and nothing was released: there was no park.
-      expect(surface.requests, isEmpty);
-      expect(surface.images, isEmpty);
-      expect(resumed, 0);
-    });
+        await expectLater(
+          _run(runtime, 'java.getVerificationCode("$_codeUrl")'),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((error) => error.category, 'category', 'policy')
+                .having(
+                  (error) => error.message,
+                  'message',
+                  contains('执行已经结束'),
+                ),
+          ),
+        );
+        // Nothing was shown for it, and nothing was released: there was no park.
+        expect(surface.requests, isEmpty);
+        expect(surface.images, isEmpty);
+        expect(resumed, 0);
+      },
+    );
 
     test('the image cap counts the bytes that arrived', () async {
       // 40 NUL bytes are inside a 64-byte cap, but 240 characters once the
@@ -642,14 +664,20 @@ void main() {
   group('the visible surface', () {
     /// One request to show: the kind does not matter for these rows, because
     /// nothing may be shown at all.
-    SourceHatchRequest request({SourceHatchKind kind = SourceHatchKind.openUrl}) =>
-        SourceHatchRequest(
-          member: 'java.openUrl',
-          kind: kind,
-          sourceRef: 'http://source.test',
-          sourceName: '验证源',
-          url: _pageUrl,
-        );
+    SourceHatchRequest request({
+      SourceHatchKind kind = SourceHatchKind.openUrl,
+    }) => SourceHatchRequest(
+      member: 'java.openUrl',
+      kind: kind,
+      sourceRef: 'http://source.test',
+      sourceName: '验证源',
+      url: _pageUrl,
+    );
+
+    /// One real PNG: `Image.memory` decodes it instead of failing the row.
+    final pngBytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAADwAAAAUCAYAAACdDh9/AAAAGklEQVR42mP8//8/AybIQAEwCkYBo2AUjAAAAA/4/wGj1PDiAAAAAElFTkSuQmCC',
+    );
 
     Future<void> pumpApp(WidgetTester tester) async {
       await tester.pumpWidget(
@@ -659,9 +687,11 @@ void main() {
         ),
       );
       await tester.pump();
-      addTearDown(() => sourceHatchNavigatorKey.currentState?.popUntil(
-        (route) => route.isFirst,
-      ));
+      addTearDown(
+        () => sourceHatchNavigatorKey.currentState?.popUntil(
+          (route) => route.isFirst,
+        ),
+      );
     }
 
     testWidgets('a wait that has already ended shows nothing', (tester) async {
@@ -686,7 +716,9 @@ void main() {
       expect(answer?.outcome, SourceHatchOutcome.refused);
     });
 
-    testWidgets('a stop while the confirmation is up refuses it', (tester) async {
+    testWidgets('a stop while the confirmation is up refuses it', (
+      tester,
+    ) async {
       await pumpApp(tester);
       final stop = SourceHatchStop();
       SourceHatchAnswer? answer;
@@ -704,6 +736,118 @@ void main() {
       expect(answer?.outcome, SourceHatchOutcome.refused);
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byType(SourceHatchPage), findsNothing);
+    });
+
+    testWidgets('the confirmations buttons answer what they name', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+
+      // 取消 is the default the focus lands on; a tap on it answers no.
+      bool? cancelled;
+      unawaited(
+        showSourceHatchConfirmation(
+          sourceHatchNavigatorKey.currentContext!,
+          request(kind: SourceHatchKind.waitingPage),
+        ).then((value) => cancelled = value),
+      );
+      await tester.pump();
+      await tester.tap(find.text('取消'));
+      await tester.pump();
+      await tester.pump();
+      expect(cancelled, isFalse);
+
+      // 打开页面 answers yes — the answer the page route is opened for.
+      bool? confirmed;
+      unawaited(
+        showSourceHatchConfirmation(
+          sourceHatchNavigatorKey.currentContext!,
+          request(kind: SourceHatchKind.waitingPage),
+        ).then((value) => confirmed = value),
+      );
+      await tester.pump();
+      await tester.tap(find.text('打开页面'));
+      await tester.pump();
+      await tester.pump();
+      expect(confirmed, isTrue);
+    });
+
+    testWidgets('the image dialog answers the code the user typed', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      SourceHatchAnswer? answer;
+      unawaited(
+        showSourceHatchImageDialog(
+          sourceHatchNavigatorKey.currentContext!,
+          request: request(kind: SourceHatchKind.waitingImage),
+          image: SourceHatchImage(pngBytes),
+          stop: SourceHatchStop(),
+        ).then((value) => answer = value),
+      );
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byKey(const ValueKey('hatch-image')), findsOneWidget);
+
+      await tester.enterText(find.byKey(const ValueKey('hatch-code')), '测试码');
+      await tester.tap(find.text('确定'));
+      await tester.pump();
+      await tester.pump();
+      expect(answer?.outcome, SourceHatchOutcome.answered);
+      expect(answer?.text, '测试码');
+    });
+
+    testWidgets('both dialogs fit the window they are shown in', (
+      tester,
+    ) async {
+      // A scaled 1280-wide display: the logical window is narrower than the
+      // pixels, which is where an unbounded dialog runs off the screen.
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1.5;
+      addTearDown(tester.view.reset);
+      await pumpApp(tester);
+
+      final surface = Offset.zero & tester.view.physicalSize / 1.5;
+
+      unawaited(
+        showSourceHatchConfirmation(
+          sourceHatchNavigatorKey.currentContext!,
+          request(kind: SourceHatchKind.waitingPage),
+        ),
+      );
+      await tester.pump();
+      for (final label in ['取消', '打开页面']) {
+        final rect = tester.getRect(find.text(label));
+        expect(
+          surface.contains(rect.topLeft) && surface.contains(rect.bottomRight),
+          isTrue,
+          reason: '$label is inside $surface, was $rect',
+        );
+      }
+      await tester.tap(find.text('取消'));
+      await tester.pump();
+      await tester.pump();
+
+      unawaited(
+        showSourceHatchImageDialog(
+          sourceHatchNavigatorKey.currentContext!,
+          request: request(kind: SourceHatchKind.waitingImage),
+          image: SourceHatchImage(pngBytes),
+          stop: SourceHatchStop(),
+        ),
+      );
+      await tester.pump();
+      for (final label in ['取消', '确定']) {
+        final rect = tester.getRect(find.text(label));
+        expect(
+          surface.contains(rect.topLeft) && surface.contains(rect.bottomRight),
+          isTrue,
+          reason: '$label is inside $surface, was $rect',
+        );
+      }
+      await tester.tap(find.text('取消'));
+      await tester.pump();
+      await tester.pump();
     });
   });
 }
