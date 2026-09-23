@@ -1,7 +1,7 @@
 {
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.0.31.XPMCNXM:user\/release-keys",
-  "entryPoint": "AnalyzeRule.getString",
+  "entryPoint": "AnalyzeRule.getString\/getStringList (default and URL modes)",
   "observations": [
     {
       "id": "ordered-indices",
@@ -158,6 +158,30 @@
     {
       "id": "rule-interpolation-title-null",
       "value": "[]42"
+    },
+    {
+      "id": "no-match-html-value-append",
+      "value": ""
+    },
+    {
+      "id": "no-match-html-url-append",
+      "value": "\/missing"
+    },
+    {
+      "id": "no-match-html-list-append",
+      "value": []
+    },
+    {
+      "id": "no-match-json-value-append",
+      "value": "Fallback"
+    },
+    {
+      "id": "no-match-json-url-append",
+      "value": "Fallback"
+    },
+    {
+      "id": "no-match-json-list-append",
+      "value": []
     }
   ]
 }

@@ -1,14 +1,15 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
-  "entryPoint": "AnalyzeRule.getString",
+  "entryPoint": "AnalyzeRule.getString/getStringList (default and URL modes)",
   "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit. The frozen APK run that turns these rows into device goldens is not-run; see README.md. Ticket #11 added the four `path: \"rule\"` cases: their rule carries an `@js:` segment, a `<js>` block, a `{{baseUrl}}` interpolation and the always-null `{{title}}` binding, and the golden must run them through the same `AnalyzeRule.getString` entry with `setContent(html, baseUrl)`, so `baseUrl` is the committed `http://fixture.test` above. The destination side of those cases is the product rule-field path (`lib/source/rule_field.dart` in front of the Rust adapter), not the bare adapter, which is what the `rule` path tells `tool/html_adapter_gate.dart` to run. Ticket #51 corrected one expectation: `replacement-trailing-field` was read from a Java-style split of `##`, but the frozen `SourceRule.makeUpRule` (`AnalyzeRule.kt:686-695`) uses Kotlin's `split(\"##\")`, whose default `limit` of zero keeps the trailing empty field, so that rule is the frozen `replaceFirst`; `AnalyzeRule.replaceRegex` (`:426-437`) then answers with the replaced match only, `忘语先生`, which the handset returns.",
   "documents": {
     "chapter": "<div class=\"info\"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div><script>var ad = 1;</script><style>.ad{}</style><a href=\"/2\">下一页</a><div id=\"meta\" data-id=\"42\">作者：忘语</div>",
     "toc": "<div id=\"list\"><li><a href=\"/ad\">忽略</a></li><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
     "scripted": "<div id=\"wrapped\"><p>正文</p><script>var ad=1;</script></div>",
     "entity": "<div id=\"code\">A&amp;amp;B</div>",
-    "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>"
+    "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>",
+    "json": "{\"name\":\"A\"}"
   },
   "baseUrl": "http://fixture.test",
   "cases": [
@@ -249,6 +250,49 @@
       "document": "chapter",
       "rule": "#meta@data-id@js: '[' + '{{title}}' + ']' + result",
       "expected": "[]42"
+    },
+    {
+      "id": "no-match-html-value-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "expected": ""
+    },
+    {
+      "id": "no-match-html-url-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringUrl",
+      "expected": "/missing"
+    },
+    {
+      "id": "no-match-html-list-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringListUrl",
+      "expected": []
+    },
+    {
+      "id": "no-match-json-value-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "expected": "Fallback"
+    },
+    {
+      "id": "no-match-json-url-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "method": "getStringUrl",
+      "expected": "Fallback"
+    },
+    {
+      "id": "no-match-json-list-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "method": "getStringListUrl",
+      "expected": []
     }
   ]
 }

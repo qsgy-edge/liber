@@ -1,8 +1,8 @@
 {
-  "recordedAt": "2026-09-19T02:03:54Z",
-  "kind": "frozen-html-extraction-corpus",
-  "ticket": "https://github.com/qsgy-edge/liber/issues/51",
-  "supersedes": "the ticket #23 run recorded in this same directory; the directory names the device image, not a corpus revision, and this manifest pins the current corpus hash",
+  "recordedAt": "2026-09-23T10:02:20Z",
+  "kind": "frozen-rule-extraction-corpus",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/65",
+  "supersedes": "the #51 run in this device-named directory; 39 shared observations remain identical and six no-match cases are added (the #51 record remains in Git history)",
   "baseline": {
     "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
     "application": {
@@ -11,16 +11,16 @@
       "installedBytesPulledAndVerified": true,
       "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
       "sameBytesAsTheRecordedGoldens": true,
-      "verifiedCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 pull <pm path io.legado.app.debug> then sha256sum (the #23 pin, unchanged)"
+      "verifiedCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 pull <pm path io.legado.app.debug> then sha256sum; #65 installed bytes still equal the #51 pin"
     }
   },
   "corpus": {
     "path": "tool/html_oracle/fixtures.json",
-    "sha256": "911e85df1b5bd8d01ad05fbf0a3af8be3500543ddc4d75b0a19cda375f1c005c",
-    "documents": 5,
-    "cases": 39,
+    "sha256": "e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342",
+    "documents": 6,
+    "cases": 45,
     "bundledInTheHarnessAs": "assets/html-fixtures.json (byte-identical copy, build.ps1)",
-    "expectationSource": "Derived by reading the frozen AnalyzeByJSoup.kt, AnalyzeRule.kt and jsoup 1.16.2 at the pinned commit. Ticket #51 corrected one expectation: replacement-trailing-field was read from a Java-style split of \"##\", but the frozen SourceRule.makeUpRule (AnalyzeRule.kt:686) uses Kotlin's split(\"##\"), whose default limit of zero keeps the trailing empty field, so that rule is a four-field frozen replaceFirst and AnalyzeRule.replaceRegex (AnalyzeRule.kt:426-437) answers with the replaced match only, 忘语先生, which the handset returns."
+    "expectationSource": "The original 39 rows were read from the pinned frozen source and confirmed on-device by #51. The six #65 expectations were entered only after the installed frozen APK returned them; a fresh harness rebuilt with those exact fixture bytes then returned the same six values and all 39 prior values unchanged."
   },
   "harness": {
     "sources": [
@@ -29,13 +29,13 @@
       "tool/nested_oracle/build.ps1",
       "tool/html_oracle/fixtures.json"
     ],
-    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh-dir> -JavaHome C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8",
-    "freshOutputDirectory": "C:/Users/17945/.cache/wayfinder/html-oracle-51-1789753050",
-    "reused": "the scratch build of the current tool/nested_oracle sources (HtmlOracle.java carries the #51 baseUrl change; its assets/html-fixtures.json hashes to the current tool/html_oracle/fixtures.json, 911e85df…), so no rebuild was needed",
-    "jdk": "Temurin 17.0.20+8 (portable)",
+    "buildCommand": "pwsh tool/nested_oracle/build.ps1 -OutputDirectory <fresh batch12-oracle65/harness-45lf> -JavaHome 'C:/Users/17945/AppData/Local/Programs/Android Studio/jbr'",
+    "freshOutputDirectory": "C:/Users/17945/AppData/Local/Temp/liber-handoffs/batch12-oracle65/harness-45lf",
+    "reused": "none; fresh build from #65 worktree sources, prior installed test harness backed up and restored",
+    "jdk": "Android Studio JBR OpenJDK 21.0.4",
     "androidBuildTools": "35.0.1",
     "androidJar": "platforms/android-35/android.jar",
-    "apkSha256": "b3487c7ffe42949e983332c7ee6de9250cb99dcaf57bad49126dd842bbb5fba5",
+    "apkSha256": "ef878e3ca9384f4e831307e003ab1c9bc54188c670f782f13ad921cbeca428c9",
     "apkSha256IsNotPortableBetweenBuilds": "apksigner output is not byte-stable; the 2026-09-18 #23 build of the previous HtmlOracle.java hashed 5e6507754d2ee941082bca207a9f03025f8180e6aa4542b0e6382d87df1c2de0",
     "installCommand": "MSYS_NO_PATHCONV=1 adb -s 5615f742 install -r -t <harness apk>",
     "instrumentCommand": "adb -s 5615f742 shell am instrument -w -r io.liber.oracle.nested/io.liber.oracle.nested.HtmlOracle",
@@ -43,7 +43,8 @@
       "class": "io.legado.app.model.analyzeRule.AnalyzeRule",
       "constructor": "the fewest-parameter public constructor (RuleDataInterface?, BaseSource?), both arguments null",
       "setContent": "AnalyzeRule.setContent(Object, String) - AnalyzeRule.kt:80, @JvmOverloads",
-      "getString": "AnalyzeRule.getString(String) - AnalyzeRule.kt:246, @JvmOverloads",
+      "getString": "AnalyzeRule.getString(String) by default; getString(String, Object, boolean) with isUrl=true for URL scalar cases (AnalyzeRule.kt:246-253)",
+      "getStringList": "AnalyzeRule.getStringList(String) by default; getStringList(String, Object, boolean) with isUrl=true for URL list cases (AnalyzeRule.kt:156-164)",
       "baseUrlArgument": "the corpus' baseUrl, http://fixture.test (ticket #51); the {{baseUrl}} row and the always-null {{title}} row are compared against it"
     }
   },
@@ -57,30 +58,32 @@
     "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys"
   },
   "oracleRun": {
-    "result": "INSTRUMENTATION_RESULT: stream=Html oracle recorded 39 observations",
-    "observations": 39,
+    "result": "INSTRUMENTATION_RESULT: stream=Html oracle recorded 45 observations",
+    "observations": 45,
     "errors": 0,
     "golden": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
     "supersetOfTheCommittedRun": {
-      "sharedIds": 35,
+      "sharedIds": 39,
       "sharedValueDifferences": 0,
       "removed": 0,
       "added": [
-        "rule-js-trailing",
-        "rule-js-lt-js-block",
-        "rule-interpolation-base-url",
-        "rule-interpolation-title-null"
+        "no-match-html-value-append",
+        "no-match-html-url-append",
+        "no-match-html-list-append",
+        "no-match-json-value-append",
+        "no-match-json-url-append",
+        "no-match-json-list-append"
       ]
     }
   },
   "gateRun": {
     "command": "dart run tool/html_adapter_gate.dart build/windows/x64/runner/Debug/fjs.dll tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json",
-    "library": "D:/GithubRepositories/Flutter/liber-51/build/windows/x64/runner/Debug/fjs.dll (the #51 worktree DLL, rebuilt from the changed packages/fjs/liber_html; master's DLL is not rebuilt for the Rust change)",
-    "librarySha256": "602b12213f8438af826be562fac62cb55e4b217a79e67ef8176a14cc5df24aa2",
+    "library": "D:/GithubRepositories/Flutter/liber-65/build/windows/x64/runner/Debug/fjs.dll (rebuilt from #65 Rust and copied into this worktree's bundle; master remains unchanged)",
+    "librarySha256": "72b0a7162910e00a21e98f1567d09341b1cfadfab0a865cb3eb57393d63bbd88",
     "reportedStatus": "pass",
-    "cases": 39,
+    "cases": 45,
     "expectationMismatches": 0,
-    "frozenMatches": 39,
+    "frozenMatches": 45,
     "frozenMismatches": [],
     "report": "tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json"
   },
@@ -98,12 +101,13 @@
       "Legacy sub-syntax class.x, tag.x (and id.x, children.x)",
       "Jsoup CSS extensions",
       "@js: and <js> segments inside a rule field (rule-js-trailing, rule-js-lt-js-block)",
-      "{{baseUrl}} and {{title}} interpolation inside a rule field (rule-interpolation-base-url, rule-interpolation-title-null)"
+      "{{baseUrl}} and {{title}} interpolation inside a rule field (rule-interpolation-base-url, rule-interpolation-title-null)",
+      "No-match ## replacement: HTML default scalar, URL scalar and URL list; JSON default scalar, URL scalar and URL list (only the six named cases)"
     ],
     "notPromotedRows": [
       {
-        "row": "JSONPath adapter; $1 regex captures",
-        "reason": "notCompared - outside the 39-case corpus; unchanged from the source-derived status"
+        "row": "JSONPath grammar beyond the three named no-match cases; $1 regex captures",
+        "reason": "notCompared - six #65 rows confirm only the stated empty/missing shapes, not arbitrary JSONPath or regex captures"
       },
       {
         "row": "Rule-level templates {{js}}, @get:key and inline @put:{json} parameters",
@@ -115,35 +119,35 @@
   "hashes": [
     {
       "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
-      "sha256": "39af1618078aebd4d4ec04c5376ea33b4639c8084160a259f3673e54b794ed6f"
+      "sha256": "95c59a8ae76df5b7db7ee2aa0e690af26252067467c304cfc743c7e36eeb6a17"
     },
     {
       "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/gate-report.json",
-      "sha256": "32aab322ef794ffe3587118d110f4d8ac3ea825724965894ac495dfed2e1c232"
+      "sha256": "3087ba7a11f08a37657eb055bd42500f0cd00ec16456b3ce68a073d910c4990a"
     },
     {
       "path": "tool/html_oracle/evidence/android-17-os4.0.0.31/run.log",
-      "sha256": "c5b117ac6d47ebc50aedf7b497eee2ed76516733bd20018381f0b193012d952e"
+      "sha256": "c21452faa791a3e50d609f36c8b66fbfb732894cfd9412e04b698258d72807b4"
     },
     {
       "path": "tool/nested_oracle/HtmlOracle.java",
-      "sha256": "c8265692c7e824bdc3cb233c0ee20c3d96b90ae877b861b3e872eeff784ad0ab"
+      "sha256": "78d369e16940eb47f8c3d5bd501a4253443a4fa93f3d1ec7d6650c65bf233ac0"
     },
     {
       "path": "tool/nested_oracle/AndroidManifest.xml",
-      "sha256": "bb4787670c791a0abc6802e85489b790366154c4910d90cec1ff06db2bfd1583"
+      "sha256": "7985c842925b0f11ef76ae1301b2297028ab3d6db86c72646cc20dd4746bc9dc"
     },
     {
       "path": "tool/nested_oracle/build.ps1",
-      "sha256": "b49993136c76a5217a18dc9ff47b999aef49019d51c0f9bf910dea91cb9ee37a"
+      "sha256": "e1f4d1853c60001db609e9a10e5658546bdebc2856699beb8c5edae00a0e41ac"
     },
     {
       "path": "tool/html_oracle/fixtures.json",
-      "sha256": "911e85df1b5bd8d01ad05fbf0a3af8be3500543ddc4d75b0a19cda375f1c005c"
+      "sha256": "e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342"
     }
   ],
   "deliberatelyNotDone": [
-    "No fixture expectation was edited to make a row compare equal; the one expectation that changed (replacement-trailing-field) was corrected because it was read from a Java-style split and the device contradicted it.",
+    "The six #65 expectations were filled from the first on-device run, not tuned against the product; subsequent runs with the exact LF-pinned final fixture bytes reproduced all 45 device values.",
     "No comparison or matrix wording was weakened; the gate passes on values, not on a relaxed check.",
     "The WebView (#2), request-semantics (#15) and four-stage (#38) corpora were not touched.",
     "No aggregate or 'frozen-baseline complete' claim is made; only the named rows promote.",

@@ -22,6 +22,8 @@ library;
 
 import 'dart:convert';
 
+import 'java_regex.dart';
+
 /// One `@js:`/`<js>` script segment, evaluated through the same JavaScript
 /// boundary the source's other scripts use. The value the previous segment
 /// produced is bound as `result`, exactly as the frozen `evalJS(rule, result)`
@@ -99,6 +101,48 @@ RuleReplaceFields splitRuleFields(String text) {
     replacement: parts.length > 2 ? parts[2] : '',
     replaceFirst: parts.length > 3,
   );
+}
+
+/// The frozen `AnalyzeRule.replaceRegex` for a rule field's `##`/`###` parts.
+/// JSON calls this for ordinary values; HTML uses it only to recover the URL
+/// mode's replacement when a selector found nothing.
+String applyRuleReplacement(
+  String value,
+  RuleReplaceFields fields, {
+  String label = 'JSON',
+}) {
+  final regex = fields.regex;
+  if (regex == null) return value;
+  final translated = translateJavaPattern(regex);
+  if (!translated.isRunnable) {
+    throw UnsupportedError('$label 规则字段的 ## 替换不可用：${translated.refusal}');
+  }
+  final pattern = translated.compile();
+  if (fields.replaceFirst) {
+    // `##match##replace###`: the frozen reader replaces the first match inside
+    // that match, so a zero-width pattern leaves the value unchanged.
+    final match = pattern.firstMatch(value);
+    if (match == null) return '';
+    final matched = match.group(0)!;
+    final inner = pattern.firstMatch(matched);
+    if (inner == null) return matched;
+    final expanded = expandJavaReplacement(fields.replacement, inner);
+    if (expanded == null) return fields.replacement;
+    return matched.replaceRange(inner.start, inner.end, expanded);
+  }
+  final output = StringBuffer();
+  var cursor = 0;
+  for (final match in pattern.allMatches(value)) {
+    final expanded = expandJavaReplacement(fields.replacement, match);
+    if (expanded == null) {
+      return value.replaceAll(regex, fields.replacement);
+    }
+    output.write(value.substring(cursor, match.start));
+    output.write(expanded);
+    cursor = match.end;
+  }
+  output.write(value.substring(cursor));
+  return output.toString();
 }
 
 /// One rule field split into its extraction text and its script segments,

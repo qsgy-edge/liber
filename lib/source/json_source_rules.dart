@@ -273,52 +273,6 @@ String _withoutJsonMode(String rule) =>
   return (operator: operator, rules: rules);
 }
 
-/// The frozen `AnalyzeRule.replaceRegex` (`AnalyzeRule.kt:650-665`) for a JSON
-/// rule field's `##`/`###` fields. The HTML adapter's Rust layer implements the
-/// same semantics for its own engine (and the oracle corpus exercises them
-/// there); this copy reuses the Java-pattern port the content replace rules
-/// already run on, and refuses a pattern it cannot express faithfully instead of
-/// mis-applying it.
-String applyRuleReplacement(String value, RuleReplaceFields fields) {
-  final regex = fields.regex;
-  if (regex == null) return value;
-  final translated = translateJavaPattern(regex);
-  if (!translated.isRunnable) {
-    throw UnsupportedError('JSON 规则字段的 ## 替换不可用：${translated.refusal}');
-  }
-  final pattern = translated.compile();
-  if (fields.replaceFirst) {
-    // `##match##replace###`: the frozen `AnalyzeRule.replaceRegex` takes the
-    // first match's own text and replaces the first match *inside it*, so a
-    // zero-width pattern leaves the value as it is instead of inserting at the
-    // match position.
-    final match = pattern.firstMatch(value);
-    if (match == null) return '';
-    final matched = match.group(0)!;
-    final inner = pattern.firstMatch(matched);
-    if (inner == null) return matched;
-    final expanded = expandJavaReplacement(fields.replacement, inner);
-    // A replacement that names a group the pattern lacks makes Java throw; the
-    // frozen `runCatching` then answers with the raw replacement.
-    if (expanded == null) return fields.replacement;
-    return matched.replaceRange(inner.start, inner.end, expanded);
-  }
-  final output = StringBuffer();
-  var cursor = 0;
-  for (final match in pattern.allMatches(value)) {
-    final expanded = expandJavaReplacement(fields.replacement, match);
-    if (expanded == null) {
-      // The frozen fallback is a literal `String.replace` of the pattern text.
-      return value.replaceAll(regex, fields.replacement);
-    }
-    output.write(value.substring(cursor, match.start));
-    output.write(expanded);
-    cursor = match.end;
-  }
-  output.write(value.substring(cursor));
-  return output.toString();
-}
-
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }

@@ -1,12 +1,12 @@
 {
   "platform": "windows",
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
-  "entryPoint": "AnalyzeRule.getString",
+  "entryPoint": "AnalyzeRule.getString/getStringList (default and URL modes)",
   "status": "pass",
   "frozenGolden": "tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json",
-  "librarySha256": "602b12213f8438af826be562fac62cb55e4b217a79e67ef8176a14cc5df24aa2",
-  "fixturesSha256": "911e85df1b5bd8d01ad05fbf0a3af8be3500543ddc4d75b0a19cda375f1c005c",
-  "cases": 39,
+  "librarySha256": "72b0a7162910e00a21e98f1567d09341b1cfadfab0a865cb3eb57393d63bbd88",
+  "fixturesSha256": "e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342",
+  "cases": 45,
   "observations": [
     {
       "id": "ordered-indices",
@@ -202,6 +202,36 @@
       "id": "rule-interpolation-title-null",
       "rule": "#meta@data-id@js: '[' + '{{title}}' + ']' + result",
       "value": "[]42"
+    },
+    {
+      "id": "no-match-html-value-append",
+      "rule": "a.absent@href##$##/missing",
+      "value": ""
+    },
+    {
+      "id": "no-match-html-url-append",
+      "rule": "a.absent@href##$##/missing",
+      "value": "/missing"
+    },
+    {
+      "id": "no-match-html-list-append",
+      "rule": "a.absent@href##$##/missing",
+      "value": []
+    },
+    {
+      "id": "no-match-json-value-append",
+      "rule": "@Json:$.missing##$##Fallback",
+      "value": "Fallback"
+    },
+    {
+      "id": "no-match-json-url-append",
+      "rule": "@Json:$.missing##$##Fallback",
+      "value": "Fallback"
+    },
+    {
+      "id": "no-match-json-list-append",
+      "rule": "@Json:$.missing##$##Fallback",
+      "value": []
     }
   ],
   "expectationMismatches": [],
