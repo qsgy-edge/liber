@@ -15,6 +15,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 const _sourceUrl = 'https://example.test';
 const _bookUrl = '$_sourceUrl/book';
 
@@ -143,7 +145,9 @@ void main() {
     int resume = 0,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
+      // The application's own delegates and locale: the page reads its copy
+      // through `AppLocalizations` (#28).
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: _ScriptedPipeline(
             site: site,

@@ -241,7 +241,7 @@ void main() {
     }
 
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,

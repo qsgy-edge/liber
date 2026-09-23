@@ -472,7 +472,7 @@ void main() {
     final pipeline = ScriptedPipeline();
     final chapters = [SourceChapter('第一章', Uri.parse('$sourceUrl/1'))];
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: OnlineReaderPage(
           pipeline: pipeline,
           book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
@@ -501,7 +501,7 @@ void main() {
       find.byKey(const ValueKey('reader-script-book-traditional_generic')),
     );
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await tapBack(tester);
     await tester.pumpAndSettle();
 
     // The reader is told on the error line it already has, nothing escapes the

@@ -424,7 +424,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
             : _columnMaxWidth) -
         _contentPadding.horizontal;
     final cell = _bodyTextStyle.fontSize!;
-    if (image.src.trim().isEmpty) return _imageNotice(l10n.imageEmptyAddress);
+    if (image.src.trim().isEmpty) {
+      return _imageNotice(AppLocalizations.of(context).imageEmptyAddress);
+    }
     return switch (imageStyle) {
       SourceImageStyle.full => SizedBox(
         width: column,
@@ -479,16 +481,21 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       FutureBuilder<Uint8List>(
         future: _loadImage(image),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return _imageNotice(l10n.imageLoadFailed);
+          if (snapshot.hasError) {
+            return _imageNotice(AppLocalizations.of(context).imageLoadFailed);
+          }
           final bytes = snapshot.data;
-          if (bytes == null) return _imageNotice(l10n.imageLoading);
+          if (bytes == null) {
+            return _imageNotice(AppLocalizations.of(context).imageLoading);
+          }
           return Image.memory(
             bytes,
             fit: fit,
             alignment: Alignment.center,
             // A response that is not an image at all (a login page, an empty
             // body) is a failed image, not a failed chapter.
-            errorBuilder: (_, _, _) => _imageNotice(l10n.imageLoadFailed),
+            errorBuilder: (_, _, _) =>
+                _imageNotice(AppLocalizations.of(context).imageLoadFailed),
           );
         },
       );
