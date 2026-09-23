@@ -1215,14 +1215,20 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             ))) {
       throw const SourceScriptError('host-input', 'invalid headers');
     }
+    // Frozen `AnalyzeUrl` chooses the explicit map or evaluates source headers
+    // in its constructor, before `initUrl()` expands URL scripts.
+    final declared = rawHeaders == null
+        ? await _headers(input, requestId, token, hasLoginHeader: true)
+        : Map<String, String>.from(rawHeaders as Map);
     final request = await _shapeAnalyzeUrlRequest(
       payload['url'] as String,
       requestId,
       input,
       token,
-      explicitHeaders: rawHeaders == null
-          ? null
-          : Map<String, String>.from(rawHeaders as Map),
+      explicitHeaders: {
+        for (final entry in declared.entries)
+          if (entry.value != null) entry.key: entry.value!,
+      },
       member: 'java.connect',
     );
     final response = await host.request(

@@ -141,6 +141,38 @@ void main() {
     },
   );
 
+  test('connect source header runs before URL expansion', () async {
+    final input = <String, Object?>{
+      'sourceKey': 'http://ordering.test',
+      'source': {'header': '@js:source.put("segment", "a"); "{}"'},
+    };
+    for (final url in [
+      'http://a.test/{{source.get("segment")}}',
+      'http://a.test/{{source.get("segment")}},'
+          '{method:"POST",body:"v=1",headers:{"X-Option":"yes"}}',
+    ]) {
+      expect(
+        await run(
+          'source.put("segment", ""); java.connect(${jsonEncode(url)}).body()',
+          input: input,
+        ),
+        '/a',
+      );
+      expect(transport.requests.last.url.path, '/a');
+    }
+    expect(transport.requests.last.method, 'POST');
+    expect(transport.requests.last.body, 'v=1');
+    expect(transport.requests.last.headers['X-Option'], 'yes');
+
+    await run(
+      'source.put("segment", ""); '
+      'java.connect("http://a.test/{{source.get(\'segment\')}}", "{}").body()',
+      input: input,
+    );
+    expect(transport.requests.last.url.path, '/');
+    expect(await run('source.get("segment")', input: input), '');
+  });
+
   test(
     'connect URL options shape both overloads and preserve response accessors',
     () async {
