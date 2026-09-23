@@ -153,7 +153,15 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// A pipeline for one analysis of [source], built the way the source's rules
   /// need — a JSON source gets the JSON adapter — and tracked so this page can
   /// cancel what it owns.
+  ///
+  /// A page that is gone does not start one: the analysis could no longer be
+  /// cancelled, its notices would have nowhere to go, and its confirmation
+  /// could not be shown. [search]'s `isCancelled` stops a run at its next
+  /// source, and this refuses the call even if some path reaches it.
   BookSourcePipeline _openPipeline(Map<String, dynamic> source) {
+    if (!mounted) {
+      throw StateError('页面已销毁，不能再开始书源分析');
+    }
     final pipeline =
         widget.openPipeline?.call(source) ??
         openBookSourcePipeline(
@@ -175,7 +183,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   }
 
   Future<void> search() async {
-    if (running) return;
+    // A page a run has outlived must not start another one; [running] keeps
+    // one run at a time.
+    if (!mounted || running) return;
     final name = _name.text.trim();
     final author = _author.text.trim();
     if (name.isEmpty) {
@@ -214,6 +224,10 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     try {
       final result = await search.searchAll(
         chosen,
+        // The page's lifetime is the run's lifetime: a disposed page stops the
+        // run at the next source instead of walking the rest of the list under
+        // a State that no longer exists.
+        isCancelled: () => !mounted,
         onProgress: (progress) {
           if (mounted) {
             setState(
@@ -237,9 +251,13 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         });
       }
     } finally {
-      // The run's own pipelines have each finished and cancelled themselves
-      // (`PreciseSearch._readSource`); nothing else can be in flight while
-      // [running] is true.
+      // The run's own pipelines cancel themselves when their source finishes
+      // (`PreciseSearch._readSource`), so this usually cancels nothing; a
+      // cancelled pipeline is inert, so cancelling again is safe and keeps the
+      // list from dropping anything that could still be in flight.
+      for (final pipeline in _pipelines) {
+        pipeline.cancel();
+      }
       _pipelines.clear();
     }
   }
@@ -270,6 +288,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
             keyword: '',
             directBook: hit.book,
             service: widget.service,
+            transport: widget.transport,
           ),
         ),
       );

@@ -145,5 +145,39 @@ void main() {
         );
       },
     );
+
+    test('a similarity of exactly 0.96 is neither "< 0.96" nor "> 0.96"', () {
+      // The frozen reads the threshold strictly on both sides, so a chapter
+      // that is similar *by exactly* the threshold takes neither branch: the
+      // number search is skipped, `newNum` stays 0, and the clamped old ordinal
+      // answers instead of the near match.
+      //
+      // Jaccard is over the two names' character *sets*, so the shared part is
+      // 48 distinct characters and each name adds one of its own: 48/50 = 0.96
+      // exactly (`48 / 50 == 0.96` in IEEE doubles).
+      final shared = String.fromCharCodes(
+        List.generate(48, (index) => 0x4E00 + index),
+      );
+      final near = '第一章$shared甲';
+      final other = '第二章$shared乙';
+
+      expect(pureChapterName(near).length, 49);
+      expect(
+        chapterNameSimilarity(pureChapterName(near), pureChapterName(other)),
+        0.96,
+      );
+
+      // The near match sits at index 0; the clamped old ordinal (2, and the
+      // list is three long) is what the frozen answers.
+      expect(
+        mapChapterIndex(
+          oldIndex: 2,
+          oldTitle: near,
+          newTitles: [other, '第三章 别的一章', '第四章 再一章'],
+          oldChapterCount: 3,
+        ),
+        2,
+      );
+    });
   });
 }

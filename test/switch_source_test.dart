@@ -75,6 +75,21 @@ void main() {
     );
     final progressBefore = (await store.progressOf(before.id))!;
 
+    // The line-derived fields describe a position inside the *old* source's
+    // chapter text (the local reader is their only reader today).
+    await store.putProgress(
+      ProgressCompanion(
+        bookId: Value(before.id),
+        textOffset: const Value(42),
+        lineIndex: const Value(7),
+        offsetInLine: const Value(9),
+        textLength: const Value(5000),
+        anchor: const Value('初入宗门'),
+        chapterKey: const Value('https://a.test/chapter/2'),
+        chapterIndex: const Value(2),
+      ),
+    );
+
     final switched = await shelf.switchSource(
       before.id,
       sourceB,
@@ -115,6 +130,12 @@ void main() {
       progressBefore.updatedAt,
       reason: '冻结带走 durChapterTime，换源自己不写时间',
     );
+    // The record must not describe two texts at once: the position columns move
+    // to the new chapter, the line-derived ones are cleared.
+    expect(progressAfter.lineIndex, 0);
+    expect(progressAfter.offsetInLine, 0);
+    expect(progressAfter.textLength, 0);
+    expect(progressAfter.anchor, isNull);
 
     expect(
       await shelf.find('https://a.test', bookUrl('https://a.test')),

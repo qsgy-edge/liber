@@ -204,9 +204,11 @@ String pureChapterName(String? chapterName) {
 /// Apache Commons Text's `JaccardSimilarity`: the size of the two strings'
 /// character-set intersection over the size of their union.
 ///
-/// The frozen `BookHelp.getDurChapter` reads it with a `0.96` threshold
-/// (`:517-524`). Two empty strings have an empty union and answer 0, which the
-/// frozen's caller never reaches because it guards on a non-empty name.
+/// The frozen `BookHelp.getDurChapter` reads it as a threshold that is tested
+/// strictly on both sides — `< 0.96` to fall through to the chapter number and
+/// `> 0.96` to decide the answer (`BookHelp.kt:517`, `:537`; see
+/// [mapChapterIndex]). Two empty strings have an empty union and answer 0, which
+/// the frozen's caller never reaches because it guards on a non-empty name.
 double chapterNameSimilarity(String left, String right) {
   if (left.isEmpty && right.isEmpty) return 0;
   final leftSet = left.split('').toSet();
@@ -231,8 +233,16 @@ double chapterNameSimilarity(String left, String right) {
 ///
 /// The order of the frozen's decisions is kept: index 0 answers 0 without
 /// looking at the new list, an empty list answers the old ordinal, a chapter
-/// whose name matches at 0.96 or more wins outright, and otherwise the chapter
-/// number decides — falling back to the old ordinal when neither does.
+/// whose name matches **more than** 0.96 wins outright, and otherwise the
+/// chapter number decides — falling back to the old ordinal when neither does.
+///
+/// The 0.96 threshold is read twice and strictly, as the frozen does at
+/// `BookHelp.kt:517` and `:537`: `nameSim < 0.96` guards the number search and
+/// `nameSim > 0.96` decides the answer, so a similarity of *exactly* 0.96 takes
+/// neither side of the name rule — the number search is skipped, `newNum` stays
+/// 0, and the answer is the clamped old ordinal unless the old title's own
+/// chapter number is 0, when the `abs(newNum - oldChapterNum) < 1` arm answers
+/// the matched index instead.
 int mapChapterIndex({
   required int oldIndex,
   required String? oldTitle,
