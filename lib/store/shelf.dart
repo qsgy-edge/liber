@@ -329,6 +329,17 @@ class ShelfService {
             chapterKey: Value(chapters[newIndex].storeKey),
             chapterIndex: Value(newIndex),
             textOffset: Value(progress.textOffset),
+            // The line fields describe a position inside the *old* source's
+            // chapter text, which the switch has just replaced: a companion
+            // that left them out would leave the record describing two texts
+            // at once. Their zero values are "not derived yet" — the reader
+            // re-derives the line index and the anchor when it opens the
+            // chapter (D4's five-field record, `LocalLibrary` being the only
+            // writer that reads them today).
+            lineIndex: const Value(0),
+            offsetInLine: const Value(0),
+            textLength: const Value(0),
+            anchor: const Value(null),
           ),
         );
       }

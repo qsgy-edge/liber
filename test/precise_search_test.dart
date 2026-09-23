@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +31,10 @@ class FakeSource {
   int searchCalls = 0;
   int detailsCalls = 0;
   final keywords = <String>[];
+
+  /// Holds this source's search response so a page can be disposed while its
+  /// analysis is in flight.
+  Completer<void>? gate;
 }
 
 class _UnusedTransport implements BookSourceTransport {
@@ -48,6 +54,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
     fake.searchCalls++;
     fake.keywords.add(keyword);
+    if (fake.gate != null) await fake.gate!.future;
     if (fake.failure != null) throw fake.failure!;
     return fake.hits;
   }
@@ -214,6 +221,51 @@ void main() {
 
     expect(sourceB.searchCalls, 0, reason: '未选中的书源不被搜索');
     expect(find.textContaining('· 精确匹配'), findsNothing);
+  });
+
+  testWidgets('页面销毁后不再搜索后面的书源，也不新建分析', (tester) async {
+    // 甲源's answer is held open, so the page can be disposed while its
+    // analysis is in flight — the window in which the run would otherwise walk
+    // on to 乙源 and 丙源 under a State that no longer exists. The run's own
+    // cancellation hook is what stops that walk: the sources after the disposed
+    // one are not asked at all, so no pipeline is opened for them and no
+    // request is issued on their behalf.
+    sourceA.gate = Completer<void>();
+    final created = <ScriptedPipeline>[];
+    BookSourcePipeline openRecording(Map<String, dynamic> source) {
+      final pipeline = ScriptedPipeline(byRef['${source['bookSourceUrl']}']!);
+      created.add(pipeline);
+      return pipeline;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PreciseSearchPage(
+          service: shelf,
+          initialName: name,
+          initialAuthor: author,
+          openPipeline: openRecording,
+        ),
+      ),
+    );
+    for (var i = 0; i < 20 && sourceA.searchCalls == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(sourceA.searchCalls, 1);
+    expect(created, hasLength(1));
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    expect(created.single.cancelled, isTrue, reason: '在飞的分析随页面销毁取消');
+
+    sourceA.gate!.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(sourceB.searchCalls, 0, reason: '销毁后不得再为后面的书源发起搜索');
+    expect(sourceC.searchCalls, 0);
+    expect(created, hasLength(1), reason: '销毁后不得再新建 pipeline');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('换源：选中的候选把书换到新书源并带着进度', (tester) async {
