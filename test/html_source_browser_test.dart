@@ -29,7 +29,7 @@ const source = <String, dynamic>{
 /// (`_page`/`_ruleState`/`_bookOptions` in the real pipeline), so a second
 /// analysis overwriting them under a running one is observable.
 class ScriptedPipeline extends HtmlSourcePipeline {
-  ScriptedPipeline({this.detailsGate, this.chapterGate})
+  ScriptedPipeline({this.detailsGate, this.chapterGate, this.detailsError})
     : super(source, const _UnusedTransport());
 
   /// Holds a `details()` response so the overlap can be driven.
@@ -37,6 +37,8 @@ class ScriptedPipeline extends HtmlSourcePipeline {
 
   /// Holds a `chapter()` response so a `details()` can run under it.
   final Completer<void>? chapterGate;
+  final Object? detailsError;
+  int searchCalls = 0;
 
   final detailsCalls = <String>[];
   final chapterCalls = <String>[];
@@ -44,16 +46,20 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   bool chapterSawMarkerChange = false;
 
   @override
-  Future<List<HtmlBook>> search(String keyword, {int page = 1}) async => [
-    HtmlBook(url: Uri.parse('$sourceUrl/a'), title: 'A'),
-    HtmlBook(url: Uri.parse('$sourceUrl/b'), title: 'B'),
-  ];
+  Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
+    searchCalls++;
+    return [
+      HtmlBook(url: Uri.parse('$sourceUrl/a'), title: 'A'),
+      HtmlBook(url: Uri.parse('$sourceUrl/b'), title: 'B'),
+    ];
+  }
 
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
     detailsCalls.add(hit.title);
     analysisMarker++;
     if (detailsGate != null) await detailsGate!.future;
+    if (detailsError != null) throw detailsError!;
     return (hit, [SourceChapter('${hit.title}章', Uri.parse('${hit.url}/1'))]);
   }
 
@@ -90,6 +96,60 @@ void main() {
   });
 
   tearDown(() => store.close());
+
+  testWidgets(
+    'direct book starts details without search; failure leaves no selection or shelf row',
+    (tester) async {
+      final pipeline = ScriptedPipeline(
+        detailsError: StateError('detail failed'),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            directBook: HtmlBook(url: Uri.parse(bookUrl), title: ''),
+            pipeline: pipeline,
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(pipeline.searchCalls, 0);
+      expect(pipeline.detailsCalls, ['']);
+      expect(find.textContaining('detail failed'), findsOneWidget);
+      expect(await shelf.find(sourceUrl, bookUrl), isNull);
+      expect(find.text('加入书架'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('disposing a direct-book analysis cancels its pipeline', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    final pipeline = ScriptedPipeline(detailsGate: gate);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          directBook: HtmlBook(url: Uri.parse(bookUrl), title: ''),
+          pipeline: pipeline,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(pipeline.searchCalls, 0);
+    expect(pipeline.detailsCalls, ['']);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    expect(pipeline.cancelled, isTrue);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(await shelf.find(sourceUrl, bookUrl), isNull);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('two overlapping details() run one analysis, never two', (
     tester,
