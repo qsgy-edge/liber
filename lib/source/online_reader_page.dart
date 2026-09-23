@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/contracts.dart' show SourceCancellation;
 import '../local/text_engine.dart' show TextEngine;
+import '../l10n/app_localizations.dart';
 import '../settings/reader_script.dart';
 import '../settings/reader_script_page.dart';
 import '../store/shelf.dart';
@@ -125,7 +126,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         ),
       );
     } catch (e) {
-      if (mounted) setState(() => error = '替换规则读取失败：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(context).replaceRulesFailed('$e'),
+        );
+      }
     }
     if (!mounted) return;
     processing = built;
@@ -160,7 +165,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         textOffset: offset,
       );
     } catch (e) {
-      if (mounted) setState(() => error = '进度保存失败：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(context).saveProgressFailed('$e'),
+        );
+      }
     }
   }
 
@@ -221,7 +230,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (mounted) {
         setState(() {
           busy = false;
-          error = '章节读取失败：$e';
+          error = AppLocalizations.of(context).chapterLoadFailed('$e');
         });
       }
     }
@@ -302,6 +311,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   }
 
   Future<void> chooseChapter() async {
+    final l10n = AppLocalizations.of(context);
     final choice = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -310,9 +320,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         child: Column(
           children: [
             ListTile(
-              title: Text('目录 · ${widget.chapters.length} 章'),
+              title: Text(l10n.tableOfContentsCount(widget.chapters.length)),
               trailing: IconButton(
-                tooltip: '关闭目录',
+                tooltip: l10n.closeTableOfContents,
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.pop(context),
               ),
@@ -352,97 +362,100 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.book.title),
-      actions: [
-        IconButton(
-          onPressed: busy ? null : openScriptSettings,
-          tooltip: '中文转换',
-          icon: const Icon(Icons.translate),
-        ),
-        TextButton.icon(
-          onPressed: busy ? null : chooseChapter,
-          icon: const Icon(Icons.list),
-          label: const Text('目录'),
-        ),
-      ],
-    ),
-    body: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(
-            // The chapter name is blank while a chapter loads: the previous
-            // name would contradict the incoming chapter, and the target name
-            // would read as if it were already displayed. The line keeps its
-            // height so the content area does not jump.
-            busy ? '' : chapterTitle,
-            style: Theme.of(context).textTheme.titleLarge,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.book.title),
+        actions: [
+          IconButton(
+            onPressed: busy ? null : openScriptSettings,
+            tooltip: l10n.readerScriptTitle,
+            icon: const Icon(Icons.translate),
           ),
-        ),
-        if (error != null)
-          Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
-        Expanded(
-          child: busy
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  key: viewport,
-                  controller: scroll,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (var i = 0; i < paragraphs.length; i++)
-                              Padding(
-                                key: keys[i],
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Text(
-                                  paragraphs[i],
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    height: 1.8,
+          TextButton.icon(
+            onPressed: busy ? null : chooseChapter,
+            icon: const Icon(Icons.list),
+            label: Text(l10n.tableOfContentsAction),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              // The chapter name is blank while a chapter loads: the previous
+              // name would contradict the incoming chapter, and the target name
+              // would read as if it were already displayed. The line keeps its
+              // height so the content area does not jump.
+              busy ? '' : chapterTitle,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          if (error != null)
+            Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
+          Expanded(
+            child: busy
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    key: viewport,
+                    controller: scroll,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = 0; i < paragraphs.length; i++)
+                                Padding(
+                                  key: keys[i],
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    paragraphs[i],
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      height: 1.8,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 16,
-              children: [
-                OutlinedButton(
-                  onPressed: busy || index == 0
-                      ? null
-                      : () => load(index - 1, 0),
-                  child: const Text('上一章'),
-                ),
-                TextButton(
-                  onPressed: busy ? null : () => load(index, offset),
-                  child: const Text('重新加载'),
-                ),
-                FilledButton(
-                  onPressed: busy || index + 1 == widget.chapters.length
-                      ? null
-                      : () => load(index + 1, 0),
-                  child: const Text('下一章'),
-                ),
-              ],
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 16,
+                children: [
+                  OutlinedButton(
+                    onPressed: busy || index == 0
+                        ? null
+                        : () => load(index - 1, 0),
+                    child: Text(l10n.previousChapter),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () => load(index, offset),
+                    child: Text(l10n.reloadChapter),
+                  ),
+                  FilledButton(
+                    onPressed: busy || index + 1 == widget.chapters.length
+                        ? null
+                        : () => load(index + 1, 0),
+                    child: Text(l10n.nextChapter),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

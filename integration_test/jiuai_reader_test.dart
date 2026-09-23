@@ -9,6 +9,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import '../test/l10n_support.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('jiuai native source search selection and chapter navigation', (
@@ -32,7 +34,7 @@ void main() {
     );
     try {
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: HtmlSourceBrowser(
             source: source,
             keyword: '回放',

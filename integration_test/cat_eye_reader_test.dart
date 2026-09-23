@@ -9,6 +9,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import '../test/l10n_support.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -86,7 +88,7 @@ void main() {
     };
 
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: SourceTrialPage(
           service: service,
           sources: [ImportedBookSource(id: 'cat-eye', data: source)],

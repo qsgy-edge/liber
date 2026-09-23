@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
@@ -89,7 +90,10 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   bool loadingSources = true;
   bool running = false;
   bool checkAuthor = false;
-  String status = '正在读取书源';
+
+  /// What the page last did, or null before it has read the sources: the
+  /// initial line is the build's, because it is copy (`lib/l10n/`).
+  String? status;
   String? error;
   List<PreciseSearchOutcome> outcomes = const <PreciseSearchOutcome>[];
 
@@ -127,6 +131,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     try {
       final loaded = await widget.service.sources();
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
       setState(() {
         sources = loaded;
         selected
@@ -136,7 +141,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
               if (source.data['enabled'] != false) source.id,
           ]);
         loadingSources = false;
-        status = loaded.isEmpty ? '空间里还没有书源' : '选择书源，输入书名后搜索';
+        status = loaded.isEmpty
+            ? l10n.noSourcesInSpace
+            : l10n.chooseSourcesToSearch;
       });
       // The frozen dialog searches as soon as it opens when it has a name.
       if (_name.text.trim().isNotEmpty) await search();
@@ -144,7 +151,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       if (mounted) {
         setState(() {
           loadingSources = false;
-          error = '读取书源失败：$failure';
+          error = AppLocalizations.of(context).loadSourcesFailed('$failure');
         });
       }
     }
@@ -176,10 +183,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
 
   Future<void> search() async {
     if (running) return;
+    final l10n = AppLocalizations.of(context);
     final name = _name.text.trim();
     final author = _author.text.trim();
     if (name.isEmpty) {
-      setState(() => status = '请输入书名');
+      setState(() => status = l10n.enterBookName);
       return;
     }
     final chosen = [
@@ -187,14 +195,14 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         if (selected.contains(source.id)) source,
     ];
     if (chosen.isEmpty) {
-      setState(() => status = '请选择要搜索的书源');
+      setState(() => status = l10n.chooseSourcesToSearchStatus);
       return;
     }
     setState(() {
       running = true;
       error = null;
       outcomes = const <PreciseSearchOutcome>[];
-      status = '正在搜索 ${chosen.length} 个书源';
+      status = l10n.searchingSources(chosen.length);
     });
     final search = PreciseSearch(
       name: name,
@@ -217,8 +225,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         onProgress: (progress) {
           if (mounted) {
             setState(
-              () => status =
-                  '正在搜索 ${progress.sourceName}（${progress.index}/${progress.total}）',
+              () => status = l10n.searchingSource(
+                progress.sourceName,
+                progress.index,
+                progress.total,
+              ),
             );
           }
         },
@@ -227,13 +238,13 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       setState(() {
         outcomes = result;
         running = false;
-        status = _summary(name, author);
+        status = _summary(l10n, name, author);
       });
     } on Object catch (failure) {
       if (mounted) {
         setState(() {
           running = false;
-          error = '搜索失败：$failure';
+          error = AppLocalizations.of(context).searchFailed('$failure');
         });
       }
     } finally {
@@ -247,20 +258,21 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// What the search found, in the frozen flow's words: the exact match is the
   /// hit `preciseSearchAwait` filters for, and a search that admitted nothing
   /// anywhere is the frozen `没有搜索到<$name>$author`.
-  String _summary(String name, String author) {
+  String _summary(AppLocalizations l10n, String name, String author) {
     final admitted = hits;
     if (admitted.isEmpty) {
       return failures.isEmpty
-          ? '没有搜索到<$name>$author'
-          : '没有搜索到<$name>$author（${failures.length} 个书源出错）';
+          ? l10n.noResults(name, author)
+          : l10n.noResultsWithFailures(name, author, failures.length);
     }
     final exact = admitted.where((hit) => hit.exact).length;
-    return '候选 ${admitted.length} 本，其中精确匹配 $exact 本';
+    return l10n.candidatesFound(admitted.length, exact);
   }
 
   /// Picks a candidate: switches the book onto it in the switch flow, and opens
   /// it in the plain search flow.
   Future<void> pick(PreciseSearchHit hit) async {
+    final l10n = AppLocalizations.of(context);
     final book = widget.switchBook;
     if (book == null) {
       await Navigator.of(context).push<void>(
@@ -281,7 +293,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     setState(() {
       running = true;
       error = null;
-      status = '正在读取 ${hit.sourceName} 的目录';
+      status = l10n.readingSourceToc(hit.sourceName);
     });
     final pipeline = _openPipeline(hit.source);
     try {
@@ -303,8 +315,12 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '已换源到 ${hit.sourceName}：${switched.title} · '
-            '${switched.chapterName ?? '尚未阅读'}（offset ${switched.textOffset}）',
+            l10n.switchedSource(
+              hit.sourceName,
+              switched.title,
+              switched.chapterName ?? l10n.notReadYet,
+              switched.textOffset,
+            ),
           ),
         ),
       );
@@ -312,7 +328,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       if (mounted) {
         setState(() {
           running = false;
-          error = '换源失败：$failure';
+          error = AppLocalizations.of(context).switchSourceFailed('$failure');
         });
       }
     } finally {
@@ -324,16 +340,26 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final status = this.status ?? l10n.readingSources;
     final book = widget.switchBook;
     return Scaffold(
-      appBar: AppBar(title: Text(book == null ? '精确搜索' : '换源：${book.title}')),
+      appBar: AppBar(
+        title: Text(
+          book == null
+              ? l10n.preciseSearchTitle
+              : l10n.switchSourceTitle(book.title),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           if (book != null)
             Text(
-              '当前书源：${book.source == null ? book.sourceRef : book.source!.name}'
-              ' · 进度 offset ${book.textOffset}',
+              l10n.currentSourceLine(
+                book.source?.name ?? book.sourceRef,
+                book.textOffset,
+              ),
               key: const ValueKey('switch-source-current'),
             ),
           if (loadingSources)
@@ -342,7 +368,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
               child: LinearProgressIndicator(),
             )
           else ...[
-            Text('搜索的书源', style: theme.textTheme.titleMedium),
+            Text(l10n.searchedSources, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -372,13 +398,13 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           TextField(
             controller: _name,
             key: const ValueKey('precise-name'),
-            decoration: const InputDecoration(labelText: '书名'),
+            decoration: InputDecoration(labelText: l10n.bookName),
             onSubmitted: (_) => search(),
           ),
           TextField(
             controller: _author,
             key: const ValueKey('precise-author'),
-            decoration: const InputDecoration(labelText: '作者'),
+            decoration: InputDecoration(labelText: l10n.authorName),
             onSubmitted: (_) => search(),
           ),
           const SizedBox(height: 8),
@@ -391,9 +417,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                     ? null
                     : (value) => setState(() => checkAuthor = value ?? false),
               ),
-              const Expanded(
-                child: Text('结果必须包含作者（冻结的 changeSourceCheckAuthor）'),
-              ),
+              Expanded(child: Text(l10n.mustMatchAuthor)),
             ],
           ),
           const SizedBox(height: 8),
@@ -403,7 +427,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                 key: const ValueKey('precise-search'),
                 onPressed: running ? null : search,
                 icon: const Icon(Icons.search),
-                label: const Text('搜索'),
+                label: Text(l10n.search),
               ),
               const SizedBox(width: 12),
               if (running)
@@ -419,7 +443,10 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           if (error != null) Text(error!, key: const ValueKey('precise-error')),
           for (final outcome in failures)
             Text(
-              '${outcome.sourceName} 出错：${outcome.failure}',
+              l10n.sourceErrorLine(
+                outcome.sourceName,
+                '${outcome.failure}',
+              ),
               style: theme.textTheme.bodySmall,
             ),
           const SizedBox(height: 8),
@@ -432,9 +459,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                 ),
                 title: Text(hit.book.title),
                 subtitle: Text(
-                  '${hit.book.author.isEmpty ? '（无作者）' : hit.book.author}'
-                  ' · ${hit.sourceName}'
-                  '${hit.exact ? ' · 精确匹配' : ''}',
+                  [
+                    hit.book.author.isEmpty ? l10n.noAuthor : hit.book.author,
+                    hit.sourceName,
+                    if (hit.exact) l10n.exactMatch,
+                  ].join(' · '),
                 ),
                 trailing: const Icon(Icons.arrow_forward),
                 onTap: running ? null : () => pick(hit),

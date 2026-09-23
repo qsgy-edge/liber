@@ -7,7 +7,6 @@
   "actionSourceTrial": "书源试读",
   "readerScriptTitle": "中文转换",
   "actionInterfaceLanguage": "界面语言",
-
   "shelfSubtitle": "Windows-first MVP · 共享书源契约验证台",
   "controlledSourceTitle": "Wayfinder 受控书源",
   "controlledSourceDescription": "用于验证搜索、书籍信息、目录和正文的最小链路。",
@@ -62,7 +61,6 @@
   },
   "requestTraceTitle": "请求 trace",
   "contractNotice": "当前阶段只运行受控 fixture。fjs 的 host callback 生命周期和不可信书源隔离仍是明确门禁；Windows MVP 不代表五平台兼容性已完成。",
-
   "noRootFolder": "尚未授权目录",
   "currentFolder": "当前位置：{path}",
   "@currentFolder": {
@@ -131,7 +129,6 @@
       }
     }
   },
-
   "spaceStoreTitle": "空间存储",
   "notCreatedYet": "尚未创建",
   "opening": "正在打开…",
@@ -274,7 +271,6 @@
       }
     }
   },
-
   "sourceTrialIntro": "搜索后选书，再查看目录和正文。当前支持速读谷及就爱文学所用的部分规则；登录（loginUrl / loginUi / loginCheckJs）已支持，远程共享脚本库尚未支持。",
   "chooseSourceAndKeyword": "选择书源并输入关键词。",
   "loadSourceFailed": "载入失败：{error}",
@@ -319,7 +315,6 @@
   "chooseSourceJson": "选择书源 JSON",
   "searchKeyword": "搜索关键词",
   "search": "搜索",
-
   "followSystemLanguage": "跟随系统语言",
   "scriptFollowInstallation": "跟随全局设置",
   "scriptSimplified": "简体",
@@ -371,11 +366,388 @@
       }
     }
   },
-
   "interfaceLanguageIntro": "界面语言只换界面自己的文字。书籍内容的字形由“中文转换”决定，两者互不影响。",
   "languageSimplified": "简体中文",
   "languageTraditionalTaiwan": "繁體中文（台灣）",
   "languageTraditionalHongKong": "繁體中文（香港）",
   "languageEnglish": "English",
-  "interfaceLanguageFollowHint": "跟随系统：zh-CN → 简体中文，zh-TW/zh-HK → 繁體中文，其他语言 → English。"
+  "interfaceLanguageFollowHint": "跟随系统：zh-CN → 简体中文，zh-TW/zh-HK → 繁體中文，其他语言 → English。",
+  "onlineShelfTitle": "在线书架",
+  "readOnlineShelfFailed": "读取在线书架失败：{error}",
+  "@readOnlineShelfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "invalidBookUrl": "请输入有效的 http(s) 书籍链接",
+  "noSourceMatchesUrl": "没有匹配此链接的书源",
+  "chooseSource": "选择书源",
+  "openBookUrlFailed": "打开链接失败：{error}",
+  "@openBookUrlFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "operationFailedShelfKept": "操作失败，书架和进度仍保留：{error}",
+  "@operationFailedShelfKept": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "bookUrl": "书籍链接",
+  "openBookUrl": "打开书籍链接",
+  "retry": "重试",
+  "shelfFromSourceHint": "从书源搜索结果或详情页加入书架。",
+  "sourceDeletedKept": "书源已删除 · 保留书目与进度",
+  "notReadYet": "尚未阅读",
+  "continueLastChapter": "继续上次章节",
+  "bookActions": "书籍操作",
+  "updateTableOfContents": "更新目录",
+  "switchSource": "换源",
+  "removeFromShelf": "移出书架（保留进度）",
+  "replaceRulesFailed": "替换规则读取失败：{error}",
+  "@replaceRulesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "saveProgressFailed": "进度保存失败：{error}",
+  "@saveProgressFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "chapterLoadFailed": "章节读取失败：{error}",
+  "@chapterLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "closeTableOfContents": "关闭目录",
+  "tableOfContentsAction": "目录",
+  "tableOfContentsCount": "目录 · {count} 章",
+  "@tableOfContentsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "previousChapter": "上一章",
+  "reloadChapter": "重新加载",
+  "nextChapter": "下一章",
+  "preciseSearchTitle": "精确搜索",
+  "switchSourceTitle": "换源：{title}",
+  "@switchSourceTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "currentSourceLine": "当前书源：{name} · 进度 offset {offset}",
+  "@currentSourceLine": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "offset": {
+        "type": "int"
+      }
+    }
+  },
+  "searchedSources": "搜索的书源",
+  "bookName": "书名",
+  "authorName": "作者",
+  "mustMatchAuthor": "结果必须包含作者（冻结的 changeSourceCheckAuthor）",
+  "sourceErrorLine": "{name} 出错：{failure}",
+  "@sourceErrorLine": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "noAuthor": "（无作者）",
+  "exactMatch": "精确匹配",
+  "readingSources": "正在读取书源",
+  "noSourcesInSpace": "空间里还没有书源",
+  "chooseSourcesToSearch": "选择书源，输入书名后搜索",
+  "loadSourcesFailed": "读取书源失败：{error}",
+  "@loadSourcesFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "enterBookName": "请输入书名",
+  "chooseSourcesToSearchStatus": "请选择要搜索的书源",
+  "searchingSources": "正在搜索 {count} 个书源",
+  "@searchingSources": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchingSource": "正在搜索 {name}（{index}/{total}）",
+  "searchFailed": "搜索失败：{error}",
+  "@searchFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "noResults": "没有搜索到<{name}>{author}",
+  "@noResults": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "author": {
+        "type": "String"
+      }
+    }
+  },
+  "noResultsWithFailures": "没有搜索到<{name}>{author}（{count} 个书源出错）",
+  "@noResultsWithFailures": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "author": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "candidatesFound": "候选 {count} 本，其中精确匹配 {exact} 本",
+  "@candidatesFound": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "exact": {
+        "type": "int"
+      }
+    }
+  },
+  "readingSourceToc": "正在读取 {name} 的目录",
+  "@readingSourceToc": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "switchedSource": "已换源到 {name}：{title} · {chapter}（offset {offset}）",
+  "@switchedSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      },
+      "chapter": {
+        "type": "String"
+      },
+      "offset": {
+        "type": "int"
+      }
+    }
+  },
+  "switchSourceFailed": "换源失败：{error}",
+  "@switchSourceFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "reading": "正在读取",
+  "chapterNotInToc": "原章节已不在目录中，进度仍保留，请选择章节",
+  "searching": "正在搜索",
+  "booksFound": "找到 {count} 本书",
+  "@booksFound": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readingDetailsAndToc": "正在读取详情和完整目录",
+  "addedToShelf": "已加入书架：{title}",
+  "@addedToShelf": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "addToShelfFailed": "加入书架失败：{error}",
+  "@addToShelfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "searchResults": "搜索结果",
+  "inShelf": "已在书架",
+  "backToSearchResults": "返回搜索结果",
+  "loginSourceTitle": "登录书源：{name}",
+  "@loginSourceTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "loginUiEmpty": "该书源的 loginUi 没有可显示的登录界面。",
+  "readLoginInfoFailed": "读取登录信息失败：{message}",
+  "@readLoginInfoFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "loginInfoUnavailable": "无法保存登录信息：安装标识不足以生成 AES 密钥（BaseSource.kt:180-192）",
+  "loginError": "登录出错：{message}",
+  "@loginError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonExecuted": "已执行“{name}”",
+  "@buttonExecuted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "buttonFailed": "“{name}”执行失败：{message}",
+  "@buttonFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "loginHeaderTitle": "登录头部信息",
+  "noLoginHeader": "（没有保存登录头部信息）",
+  "copy": "复制",
+  "close": "关闭",
+  "loginHeaderCleared": "已清除登录头部信息",
+  "loginHeaderAction": "登录头部",
+  "removeLoginHeader": "清除登录头部",
+  "confirm": "确定",
+  "certificateFailedTitle": "证书校验失败",
+  "certificateFailedBody": "书源“{name}”访问 {host} 时，TLS 证书校验失败：{reason}。\n\n继续访问可能让你的连接被窃听或篡改。是否仅为此书源记住此次例外？",
+  "@certificateFailedBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "unsafeContinue": "继续（不安全）",
+  "positionSaved": "阅读位置已保存",
+  "savePosition": "保存位置",
+  "cannotRead": "无法读取：{error}",
+  "@cannotRead": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "previousPage": "上一页",
+  "nextPage": "下一页",
+  "hatchImageTitle": "书源请求显示验证码图片",
+  "hatchPageTitle": "书源请求在应用内显示页面",
+  "hatchPageBodyImage": "书源“{name}”请求显示下面的验证码图片：\n\n{url}\n\n{wait}\n页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。",
+  "@hatchPageBodyImage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      },
+      "wait": {
+        "type": "String"
+      }
+    }
+  },
+  "hatchPageBodyPage": "书源“{name}”请求在应用内打开下面的地址：\n\n{url}\n\n{wait}\n页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。",
+  "@hatchPageBodyPage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      },
+      "wait": {
+        "type": "String"
+      }
+    }
+  },
+  "hatchWaits": "书源会一直等待你的操作，最长 5 分钟。",
+  "hatchDoesNotWait": "页面显示后，书源不会等待。",
+  "hatchShowImage": "显示图片",
+  "hatchOpenPage": "打开页面",
+  "hatchCodeTitle": "验证码",
+  "hatchSource": "书源：{name}",
+  "@hatchSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hatchImageFailed": "图片加载失败：{failure}",
+  "@hatchImageFailed": {
+    "placeholders": {
+      "failure": {
+        "type": "String"
+      }
+    }
+  },
+  "hatchAnswer": "验证结果",
+  "hatchPageRoute": "书源页面",
+  "done": "完成"
 }

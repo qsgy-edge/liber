@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../l10n/app_localizations.dart';
 import 'inappwebview_book_source_adapter.dart';
 import 'source_hatch.dart';
 
@@ -134,23 +135,24 @@ Future<bool> showSourceHatchConfirmation(
           }),
         );
       }
+      final l10n = AppLocalizations.of(context);
+      final wait = request.waits ? l10n.hatchWaits : l10n.hatchDoesNotWait;
       return AlertDialog(
-        title: Text(image ? '书源请求显示验证码图片' : '书源请求在应用内显示页面'),
+        title: Text(image ? l10n.hatchImageTitle : l10n.hatchPageTitle),
         content: SelectableText(
-          '书源“$name”请求${image ? '显示下面的验证码图片' : '在应用内打开下面的地址'}：\n\n'
-          '${request.url}\n\n'
-          '${request.waits ? '书源会一直等待你的操作，最长 5 分钟。' : '页面显示后，书源不会等待。'}\n'
-          '页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。',
+          image
+              ? l10n.hatchPageBodyImage(name, request.url, wait)
+              : l10n.hatchPageBodyPage(name, request.url, wait),
         ),
         actions: [
           TextButton(
             autofocus: true,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(image ? '显示图片' : '打开页面'),
+            child: Text(image ? l10n.hatchShowImage : l10n.hatchOpenPage),
           ),
         ],
       );
@@ -182,54 +184,57 @@ Future<SourceHatchAnswer> showSourceHatchImageDialog(
   try {
     final answer = await showDialog<SourceHatchAnswer>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('验证码'),
-        content: SizedBox(
-          width: 360,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('书源：$name'),
-                const SizedBox(height: 8),
-                if (image.bytes != null)
-                  Image.memory(
-                    Uint8List.fromList(image.bytes!),
-                    key: const ValueKey('hatch-image'),
-                  )
-                else
-                  Text(
-                    '图片加载失败：${image.failure}',
-                    key: const ValueKey('hatch-image-failure'),
+      builder: (context) {
+        final l10n = AppLocalizations.of(context);
+        return AlertDialog(
+          title: Text(l10n.hatchCodeTitle),
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.hatchSource(name)),
+                  const SizedBox(height: 8),
+                  if (image.bytes != null)
+                    Image.memory(
+                      Uint8List.fromList(image.bytes!),
+                      key: const ValueKey('hatch-image'),
+                    )
+                  else
+                    Text(
+                      l10n.hatchImageFailed(image.failure),
+                      key: const ValueKey('hatch-image-failure'),
+                    ),
+                  const SizedBox(height: 8),
+                  SelectableText(request.url),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const ValueKey('hatch-code'),
+                    controller: controller,
+                    autofocus: true,
+                    decoration: InputDecoration(labelText: l10n.hatchAnswer),
                   ),
-                const SizedBox(height: 8),
-                SelectableText(request.url),
-                const SizedBox(height: 12),
-                TextField(
-                  key: const ValueKey('hatch-code'),
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: '验证结果'),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(SourceHatchAnswer.closed),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(SourceHatchAnswer(SourceHatchOutcome.answered, controller.text)),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(SourceHatchAnswer.closed),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(
+                SourceHatchAnswer(SourceHatchOutcome.answered, controller.text),
+              ),
+              child: Text(l10n.confirm),
+            ),
+          ],
+        );
+      },
     );
     return answer ?? SourceHatchAnswer.closed;
   } finally {
@@ -294,13 +299,15 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
     final request = widget.request;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_title.isEmpty ? '书源页面' : _title),
+        title: Text(
+          _title.isEmpty ? AppLocalizations.of(context).hatchPageRoute : _title,
+        ),
         actions: [
           if (request.waits)
             TextButton(
               key: const ValueKey('hatch-page-done'),
               onPressed: _submit,
-              child: const Text('完成'),
+              child: Text(AppLocalizations.of(context).done),
             ),
           IconButton(
             key: const ValueKey('hatch-page-close'),

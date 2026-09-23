@@ -16,6 +16,8 @@ import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 const sourceUrl = 'https://example.test';
 const bookUrl = '$sourceUrl/book';
 
@@ -136,7 +138,7 @@ void main() {
         detailsError: StateError('detail failed'),
       );
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: HtmlSourceBrowser(
             source: source,
             keyword: '',
@@ -160,7 +162,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: HtmlSourceBrowser(
           source: source,
           keyword: '',
@@ -208,7 +210,7 @@ void main() {
     final gate = Completer<void>();
     final pipeline = ScriptedPipeline(detailsGate: gate);
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: HtmlSourceBrowser(
           source: source,
           keyword: '',
@@ -221,7 +223,7 @@ void main() {
     await tester.pump();
     expect(pipeline.searchCalls, 0);
     expect(pipeline.detailsCalls, ['']);
-    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(localizedApp(home: SizedBox()));
     expect(pipeline.cancelled, isTrue);
     gate.complete();
     await tester.pumpAndSettle();
@@ -234,7 +236,7 @@ void main() {
   ) async {
     final pipeline = ScriptedPipeline(detailsGate: Completer<void>());
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: HtmlSourceBrowser(
           source: source,
           keyword: '书',
@@ -288,7 +290,7 @@ void main() {
     final entry = (await shelf.find(sourceUrl, bookUrl))!;
 
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: HtmlSourceBrowser(
           source: source,
           keyword: '',
@@ -344,7 +346,7 @@ void main() {
         });
         final entry = (await shelf.find(sourceUrl, '$bookUrl/1'))!;
         await tester.pumpWidget(
-          MaterialApp(
+          localizedApp(
             home: HtmlSourceBrowser(
               source: source,
               keyword: '',
@@ -420,7 +422,7 @@ void main() {
         expect(refreshed.chapters.map((chapter) => chapter.name), ['B', 'A']);
         expect(refreshed.textOffset, 78);
         await tester.pumpWidget(
-          MaterialApp(
+          localizedApp(
             home: HtmlSourceBrowser(
               source: source,
               keyword: '',
@@ -471,7 +473,7 @@ void main() {
       var showBrowser = true;
       late StateSetter hostSetState;
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: StatefulBuilder(
             builder: (context, setState) {
               hostSetState = setState;
@@ -510,7 +512,7 @@ void main() {
     (tester) async {
       final pipeline = ScriptedPipeline(chapterGate: Completer<void>());
       await tester.pumpWidget(
-        MaterialApp(
+        localizedApp(
           home: HtmlSourceBrowser(
             source: source,
             keyword: '书',

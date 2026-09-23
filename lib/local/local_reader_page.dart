@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../settings/reader_script.dart';
 import '../settings/reader_script_page.dart';
 import 'local_reader.dart';
@@ -75,13 +76,14 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
   Future<void> _save() async {
     await widget.reader.save();
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('阅读位置已保存')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context).positionSaved)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final reader = widget.reader;
     final position = reader.position;
     return Scaffold(
@@ -90,13 +92,13 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
         actions: [
           IconButton(
             onPressed: reader.busy ? null : _openScriptSettings,
-            tooltip: '中文转换',
+            tooltip: l10n.readerScriptTitle,
             icon: const Icon(Icons.translate),
           ),
           FilledButton.icon(
             onPressed: reader.busy || reader.error != null ? null : _save,
             icon: const Icon(Icons.bookmark_add),
-            label: const Text('保存位置'),
+            label: Text(l10n.savePosition),
           ),
           const SizedBox(width: 12),
         ],
@@ -104,7 +106,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
       body: reader.busy
           ? const Center(child: CircularProgressIndicator())
           : reader.error != null
-          ? Center(child: Text('无法读取：${reader.error}'))
+          ? Center(child: Text(l10n.cannotRead('${reader.error}')))
           : Column(
               children: [
                 if (reader.notice != null)
@@ -143,7 +145,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
                           onPressed: reader.busy || !reader.hasPrevious
                               ? null
                               : () => _run(reader.previous),
-                          child: const Text('上一页'),
+                          child: Text(l10n.previousPage),
                         ),
                         Text(
                           position == null
@@ -156,7 +158,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
                           onPressed: reader.busy || !reader.hasNext
                               ? null
                               : () => _run(reader.next),
-                          child: const Text('下一页'),
+                          child: Text(l10n.nextPage),
                         ),
                       ],
                     ),

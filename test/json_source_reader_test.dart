@@ -11,6 +11,8 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
+
 /// The acceptance of ticket #29: a JSON Book Source is searched, added to the
 /// shelf, opened in the reader, paged, and its position written and restored.
 ///
@@ -118,7 +120,7 @@ void main() {
 
   tearDown(() => store.close());
 
-  Widget browser({String keyword = '', ShelfEntry? resume}) => MaterialApp(
+  Widget browser({String keyword = '', ShelfEntry? resume}) => localizedApp(
     home: HtmlSourceBrowser(
       source: source,
       keyword: keyword,

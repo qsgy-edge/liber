@@ -797,6 +797,600 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'跟随系统：zh-CN → 简体中文，zh-TW/zh-HK → 繁體中文，其他语言 → English。'**
   String get interfaceLanguageFollowHint;
+
+  /// No description provided for @onlineShelfTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'在线书架'**
+  String get onlineShelfTitle;
+
+  /// No description provided for @readOnlineShelfFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取在线书架失败：{error}'**
+  String readOnlineShelfFailed(String error);
+
+  /// No description provided for @invalidBookUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入有效的 http(s) 书籍链接'**
+  String get invalidBookUrl;
+
+  /// No description provided for @noSourceMatchesUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有匹配此链接的书源'**
+  String get noSourceMatchesUrl;
+
+  /// No description provided for @chooseSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择书源'**
+  String get chooseSource;
+
+  /// No description provided for @openBookUrlFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开链接失败：{error}'**
+  String openBookUrlFailed(String error);
+
+  /// No description provided for @operationFailedShelfKept.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作失败，书架和进度仍保留：{error}'**
+  String operationFailedShelfKept(String error);
+
+  /// No description provided for @bookUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'书籍链接'**
+  String get bookUrl;
+
+  /// No description provided for @openBookUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开书籍链接'**
+  String get openBookUrl;
+
+  /// No description provided for @retry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get retry;
+
+  /// No description provided for @shelfFromSourceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'从书源搜索结果或详情页加入书架。'**
+  String get shelfFromSourceHint;
+
+  /// No description provided for @sourceDeletedKept.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源已删除 · 保留书目与进度'**
+  String get sourceDeletedKept;
+
+  /// No description provided for @notReadYet.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未阅读'**
+  String get notReadYet;
+
+  /// No description provided for @continueLastChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续上次章节'**
+  String get continueLastChapter;
+
+  /// No description provided for @bookActions.
+  ///
+  /// In zh, this message translates to:
+  /// **'书籍操作'**
+  String get bookActions;
+
+  /// No description provided for @updateTableOfContents.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新目录'**
+  String get updateTableOfContents;
+
+  /// No description provided for @switchSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'换源'**
+  String get switchSource;
+
+  /// No description provided for @removeFromShelf.
+  ///
+  /// In zh, this message translates to:
+  /// **'移出书架（保留进度）'**
+  String get removeFromShelf;
+
+  /// No description provided for @replaceRulesFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换规则读取失败：{error}'**
+  String replaceRulesFailed(String error);
+
+  /// No description provided for @saveProgressFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'进度保存失败：{error}'**
+  String saveProgressFailed(String error);
+
+  /// No description provided for @chapterLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'章节读取失败：{error}'**
+  String chapterLoadFailed(String error);
+
+  /// No description provided for @closeTableOfContents.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭目录'**
+  String get closeTableOfContents;
+
+  /// No description provided for @tableOfContentsAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录'**
+  String get tableOfContentsAction;
+
+  /// No description provided for @tableOfContentsCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录 · {count} 章'**
+  String tableOfContentsCount(int count);
+
+  /// No description provided for @previousChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一章'**
+  String get previousChapter;
+
+  /// No description provided for @reloadChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新加载'**
+  String get reloadChapter;
+
+  /// No description provided for @nextChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一章'**
+  String get nextChapter;
+
+  /// No description provided for @preciseSearchTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'精确搜索'**
+  String get preciseSearchTitle;
+
+  /// No description provided for @switchSourceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'换源：{title}'**
+  String switchSourceTitle(String title);
+
+  /// No description provided for @currentSourceLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前书源：{name} · 进度 offset {offset}'**
+  String currentSourceLine(String name, int offset);
+
+  /// No description provided for @searchedSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索的书源'**
+  String get searchedSources;
+
+  /// No description provided for @bookName.
+  ///
+  /// In zh, this message translates to:
+  /// **'书名'**
+  String get bookName;
+
+  /// No description provided for @authorName.
+  ///
+  /// In zh, this message translates to:
+  /// **'作者'**
+  String get authorName;
+
+  /// No description provided for @mustMatchAuthor.
+  ///
+  /// In zh, this message translates to:
+  /// **'结果必须包含作者（冻结的 changeSourceCheckAuthor）'**
+  String get mustMatchAuthor;
+
+  /// No description provided for @sourceErrorLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 出错：{failure}'**
+  String sourceErrorLine(String name, String failure);
+
+  /// No description provided for @noAuthor.
+  ///
+  /// In zh, this message translates to:
+  /// **'（无作者）'**
+  String get noAuthor;
+
+  /// No description provided for @exactMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'精确匹配'**
+  String get exactMatch;
+
+  /// No description provided for @readingSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取书源'**
+  String get readingSources;
+
+  /// No description provided for @noSourcesInSpace.
+  ///
+  /// In zh, this message translates to:
+  /// **'空间里还没有书源'**
+  String get noSourcesInSpace;
+
+  /// No description provided for @chooseSourcesToSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择书源，输入书名后搜索'**
+  String get chooseSourcesToSearch;
+
+  /// No description provided for @loadSourcesFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取书源失败：{error}'**
+  String loadSourcesFailed(String error);
+
+  /// No description provided for @enterBookName.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入书名'**
+  String get enterBookName;
+
+  /// No description provided for @chooseSourcesToSearchStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择要搜索的书源'**
+  String get chooseSourcesToSearchStatus;
+
+  /// No description provided for @searchingSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在搜索 {count} 个书源'**
+  String searchingSources(int count);
+
+  /// No description provided for @searchingSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在搜索 {name}（{index}/{total}）'**
+  String searchingSource(Object index, Object name, Object total);
+
+  /// No description provided for @searchFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索失败：{error}'**
+  String searchFailed(String error);
+
+  /// No description provided for @noResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有搜索到<{name}>{author}'**
+  String noResults(String name, String author);
+
+  /// No description provided for @noResultsWithFailures.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有搜索到<{name}>{author}（{count} 个书源出错）'**
+  String noResultsWithFailures(String name, String author, int count);
+
+  /// No description provided for @candidatesFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'候选 {count} 本，其中精确匹配 {exact} 本'**
+  String candidatesFound(int count, int exact);
+
+  /// No description provided for @readingSourceToc.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取 {name} 的目录'**
+  String readingSourceToc(String name);
+
+  /// No description provided for @switchedSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'已换源到 {name}：{title} · {chapter}（offset {offset}）'**
+  String switchedSource(String name, String title, String chapter, int offset);
+
+  /// No description provided for @switchSourceFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'换源失败：{error}'**
+  String switchSourceFailed(String error);
+
+  /// No description provided for @reading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取'**
+  String get reading;
+
+  /// No description provided for @chapterNotInToc.
+  ///
+  /// In zh, this message translates to:
+  /// **'原章节已不在目录中，进度仍保留，请选择章节'**
+  String get chapterNotInToc;
+
+  /// No description provided for @searching.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在搜索'**
+  String get searching;
+
+  /// No description provided for @booksFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到 {count} 本书'**
+  String booksFound(int count);
+
+  /// No description provided for @readingDetailsAndToc.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取详情和完整目录'**
+  String get readingDetailsAndToc;
+
+  /// No description provided for @addedToShelf.
+  ///
+  /// In zh, this message translates to:
+  /// **'已加入书架：{title}'**
+  String addedToShelf(String title);
+
+  /// No description provided for @addToShelfFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加入书架失败：{error}'**
+  String addToShelfFailed(String error);
+
+  /// No description provided for @searchResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索结果'**
+  String get searchResults;
+
+  /// No description provided for @inShelf.
+  ///
+  /// In zh, this message translates to:
+  /// **'已在书架'**
+  String get inShelf;
+
+  /// No description provided for @backToSearchResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回搜索结果'**
+  String get backToSearchResults;
+
+  /// No description provided for @loginSourceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录书源：{name}'**
+  String loginSourceTitle(String name);
+
+  /// No description provided for @loginUiEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'该书源的 loginUi 没有可显示的登录界面。'**
+  String get loginUiEmpty;
+
+  /// No description provided for @readLoginInfoFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取登录信息失败：{message}'**
+  String readLoginInfoFailed(String message);
+
+  /// No description provided for @loginInfoUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法保存登录信息：安装标识不足以生成 AES 密钥（BaseSource.kt:180-192）'**
+  String get loginInfoUnavailable;
+
+  /// No description provided for @loginError.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录出错：{message}'**
+  String loginError(String message);
+
+  /// No description provided for @buttonExecuted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已执行“{name}”'**
+  String buttonExecuted(String name);
+
+  /// No description provided for @buttonFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'“{name}”执行失败：{message}'**
+  String buttonFailed(String name, String message);
+
+  /// No description provided for @loginHeaderTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录头部信息'**
+  String get loginHeaderTitle;
+
+  /// No description provided for @noLoginHeader.
+  ///
+  /// In zh, this message translates to:
+  /// **'（没有保存登录头部信息）'**
+  String get noLoginHeader;
+
+  /// No description provided for @copy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get copy;
+
+  /// No description provided for @close.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get close;
+
+  /// No description provided for @loginHeaderCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清除登录头部信息'**
+  String get loginHeaderCleared;
+
+  /// No description provided for @loginHeaderAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录头部'**
+  String get loginHeaderAction;
+
+  /// No description provided for @removeLoginHeader.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除登录头部'**
+  String get removeLoginHeader;
+
+  /// No description provided for @confirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get confirm;
+
+  /// No description provided for @certificateFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'证书校验失败'**
+  String get certificateFailedTitle;
+
+  /// No description provided for @certificateFailedBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源“{name}”访问 {host} 时，TLS 证书校验失败：{reason}。\n\n继续访问可能让你的连接被窃听或篡改。是否仅为此书源记住此次例外？'**
+  String certificateFailedBody(String name, String host, String reason);
+
+  /// No description provided for @unsafeContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续（不安全）'**
+  String get unsafeContinue;
+
+  /// No description provided for @positionSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'阅读位置已保存'**
+  String get positionSaved;
+
+  /// No description provided for @savePosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存位置'**
+  String get savePosition;
+
+  /// No description provided for @cannotRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取：{error}'**
+  String cannotRead(String error);
+
+  /// No description provided for @previousPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get previousPage;
+
+  /// No description provided for @nextPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get nextPage;
+
+  /// No description provided for @hatchImageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源请求显示验证码图片'**
+  String get hatchImageTitle;
+
+  /// No description provided for @hatchPageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源请求在应用内显示页面'**
+  String get hatchPageTitle;
+
+  /// No description provided for @hatchPageBodyImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源“{name}”请求显示下面的验证码图片：\n\n{url}\n\n{wait}\n页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。'**
+  String hatchPageBodyImage(String name, String url, String wait);
+
+  /// No description provided for @hatchPageBodyPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源“{name}”请求在应用内打开下面的地址：\n\n{url}\n\n{wait}\n页面或图片由该书源指定，可能看起来像该网站的登录页。只有你信任该书源时才继续。'**
+  String hatchPageBodyPage(String name, String url, String wait);
+
+  /// No description provided for @hatchWaits.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源会一直等待你的操作，最长 5 分钟。'**
+  String get hatchWaits;
+
+  /// No description provided for @hatchDoesNotWait.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面显示后，书源不会等待。'**
+  String get hatchDoesNotWait;
+
+  /// No description provided for @hatchShowImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示图片'**
+  String get hatchShowImage;
+
+  /// No description provided for @hatchOpenPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开页面'**
+  String get hatchOpenPage;
+
+  /// No description provided for @hatchCodeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'验证码'**
+  String get hatchCodeTitle;
+
+  /// No description provided for @hatchSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源：{name}'**
+  String hatchSource(String name);
+
+  /// No description provided for @hatchImageFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'图片加载失败：{failure}'**
+  String hatchImageFailed(String failure);
+
+  /// No description provided for @hatchAnswer.
+  ///
+  /// In zh, this message translates to:
+  /// **'验证结果'**
+  String get hatchAnswer;
+
+  /// No description provided for @hatchPageRoute.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源页面'**
+  String get hatchPageRoute;
+
+  /// No description provided for @done.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成'**
+  String get done;
 }
 
 class _AppLocalizationsDelegate

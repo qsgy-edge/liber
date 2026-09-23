@@ -1,12 +1,18 @@
 import 'dart:io';
 
+import 'package:drift/native.dart';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/main.dart';
 import 'package:liber/settings/interface_language.dart';
 import 'package:liber/settings/reader_script.dart';
+import 'package:liber/source/source_trial_page.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
 import 'space_test_support.dart';
 
 /// The interface language (#28) and its independence from the content's script
@@ -128,6 +134,38 @@ void main() {
 
     expect(InterfaceLanguageSetting.systemLocale(), zhTW);
     expect(ReaderScriptSetting.systemLocale(), zhTW);
+  });
+
+  testWidgets('同一页在四个界面里读四种文字', (tester) async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final page = SourceTrialPage(
+      sources: const [],
+      service: ShelfService(store),
+    );
+
+    Future<void> pump(Locale locale) async {
+      await tester.pumpWidget(localizedApp(home: page, locale: locale));
+      await tester.pumpAndSettle();
+    }
+
+    await pump(const Locale('zh'));
+    expect(find.text('搜索关键词'), findsOneWidget);
+    expect(find.text('选择书源并输入关键词。'), findsOneWidget);
+
+    await pump(const Locale('en'));
+    expect(find.text('Search keyword'), findsOneWidget);
+    expect(
+      find.text('Choose a book source and enter a keyword.'),
+      findsOneWidget,
+    );
+
+    await pump(InterfaceLanguageSetting.traditionalTaiwan);
+    expect(find.text('搜尋關鍵詞'), findsOneWidget);
+    expect(find.text('選擇書源並輸入關鍵詞。'), findsOneWidget);
+
+    await pump(InterfaceLanguageSetting.traditionalHongKong);
+    expect(find.text('搜尋關鍵詞'), findsOneWidget);
   });
 
   group('在设置里换语言', () {

@@ -4,6 +4,8 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_tls_confirmation.dart';
 
+import 'l10n_support.dart';
+
 /// ADR 0011 §5's confirmation, driven in process: it names the source and the
 /// host, defaults to refusing, and only a confirmed "continue (unsafe)"
 /// remembers the exception and retries.
@@ -22,7 +24,7 @@ void main() {
     required void Function(Object? result, Object? error) onDone,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
+      localizedApp(
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
@@ -77,7 +78,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       if (mounted) {
         setState(() {
           loading = false;
-          error = '读取在线书架失败：$e';
+          error = AppLocalizations.of(context).readOnlineShelfFailed('$e');
         });
       }
     }
@@ -122,7 +123,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         url.host.isEmpty ||
         url.userInfo.isNotEmpty ||
         (url.scheme != 'http' && url.scheme != 'https')) {
-      setState(() => urlResult = '请输入有效的 http(s) 书籍链接');
+      setState(() => urlResult = AppLocalizations.of(context).invalidBookUrl);
       return;
     }
     setState(() {
@@ -146,7 +147,10 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       if (!mounted) return;
       setState(() {
         matchingUrl = false;
-        urlResult = [if (matches.isEmpty) '没有匹配此链接的书源', ...failures].join('\n');
+        urlResult = [
+          if (matches.isEmpty) AppLocalizations.of(context).noSourceMatchesUrl,
+          ...failures,
+        ].join('\n');
       });
       if (matches.isEmpty) return;
       final ImportedBookSource? chosen;
@@ -156,7 +160,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         chosen = await showDialog<ImportedBookSource>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('选择书源'),
+            title: Text(AppLocalizations.of(dialogContext).chooseSource),
             content: SizedBox(
               width: (MediaQuery.sizeOf(dialogContext).width - 80).clamp(
                 0.0,
@@ -181,7 +185,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('取消'),
+                child: Text(AppLocalizations.of(dialogContext).cancel),
               ),
             ],
           ),
@@ -201,7 +205,12 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       );
       if (mounted) await reload();
     } catch (e) {
-      if (mounted) setState(() => urlResult = '打开链接失败：$e');
+      if (mounted) {
+        setState(
+          () =>
+              urlResult = AppLocalizations.of(context).openBookUrlFailed('$e'),
+        );
+      }
     } finally {
       if (mounted) setState(() => matchingUrl = false);
     }
@@ -258,106 +267,121 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       }
       if (mounted) await reload();
     } catch (e) {
-      if (mounted) setState(() => error = '操作失败，书架和进度仍保留：$e');
+      if (mounted) {
+        setState(
+          () => error = AppLocalizations.of(
+            context,
+          ).operationFailedShelfKept('$e'),
+        );
+      }
     } finally {
       if (mounted) setState(() => busyId = null);
     }
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('在线书架', style: Theme.of(context).textTheme.titleLarge),
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _bookUrl,
-                decoration: const InputDecoration(
-                  labelText: '书籍链接',
-                  prefixIcon: Icon(Icons.link),
-                  border: OutlineInputBorder(),
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          l10n.onlineShelfTitle,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _bookUrl,
+                  decoration: InputDecoration(
+                    labelText: l10n.bookUrl,
+                    prefixIcon: Icon(Icons.link),
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.url,
+                  onSubmitted: (_) => openUrl(),
                 ),
-                keyboardType: TextInputType.url,
-                onSubmitted: (_) => openUrl(),
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              tooltip: '打开书籍链接',
-              onPressed: matchingUrl ? null : openUrl,
-              icon: matchingUrl
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.arrow_forward),
-            ),
-          ],
-        ),
-      ),
-      if (urlResult != null && urlResult!.isNotEmpty)
-        Text(urlResult!, style: Theme.of(context).textTheme.bodySmall),
-      if (loading) const LinearProgressIndicator(),
-      if (error != null)
-        Row(
-          children: [
-            Expanded(child: Text(error!)),
-            TextButton(onPressed: reload, child: const Text('重试')),
-          ],
-        ),
-      if (!loading && books.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('从书源搜索结果或详情页加入书架。'),
-        ),
-      for (final entry in books)
-        ListTile(
-          title: Text(entry.title),
-          subtitle: Text(
-            entry.sourceMissing
-                ? '书源已删除 · 保留书目与进度'
-                : entry.chapterKey.isEmpty
-                ? '尚未阅读'
-                : entry.chapterName ?? '继续上次章节',
+              const SizedBox(width: 8),
+              IconButton.filled(
+                tooltip: l10n.openBookUrl,
+                onPressed: matchingUrl ? null : openUrl,
+                icon: matchingUrl
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.arrow_forward),
+              ),
+            ],
           ),
-          leading: Icon(
-            entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
+        ),
+        if (urlResult != null && urlResult!.isNotEmpty)
+          Text(urlResult!, style: Theme.of(context).textTheme.bodySmall),
+        if (loading) const LinearProgressIndicator(),
+        if (error != null)
+          Row(
+            children: [
+              Expanded(child: Text(error!)),
+              TextButton(onPressed: reload, child: Text(l10n.retry)),
+            ],
           ),
-          enabled: busyId == null,
-          // Nothing can open a book whose source is gone: the only action that
-          // makes sense for it is taking it off the shelf.
-          onTap: entry.sourceMissing ? null : () => open(entry),
-          trailing: busyId == entry.id
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(),
-                )
-              : PopupMenuButton<String>(
-                  enabled: busyId == null,
-                  tooltip: '书籍操作',
-                  onSelected: (value) => action(value, entry),
-                  itemBuilder: (_) => [
-                    if (!entry.sourceMissing)
-                      const PopupMenuItem(
-                        value: 'refresh',
-                        child: Text('更新目录'),
+        if (!loading && books.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(l10n.shelfFromSourceHint),
+          ),
+        for (final entry in books)
+          ListTile(
+            title: Text(entry.title),
+            subtitle: Text(
+              entry.sourceMissing
+                  ? l10n.sourceDeletedKept
+                  : entry.chapterKey.isEmpty
+                  ? l10n.notReadYet
+                  : entry.chapterName ?? l10n.continueLastChapter,
+            ),
+            leading: Icon(
+              entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
+            ),
+            enabled: busyId == null,
+            // Nothing can open a book whose source is gone: the only action that
+            // makes sense for it is taking it off the shelf.
+            onTap: entry.sourceMissing ? null : () => open(entry),
+            trailing: busyId == entry.id
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(),
+                  )
+                : PopupMenuButton<String>(
+                    enabled: busyId == null,
+                    tooltip: l10n.bookActions,
+                    onSelected: (value) => action(value, entry),
+                    itemBuilder: (_) => [
+                      if (!entry.sourceMissing)
+                        PopupMenuItem(
+                          value: 'refresh',
+                          child: Text(l10n.updateTableOfContents),
+                        ),
+                      if (!entry.sourceMissing)
+                        PopupMenuItem(
+                          value: 'switch',
+                          child: Text(l10n.switchSource),
+                        ),
+                      PopupMenuItem(
+                        value: 'remove',
+                        child: Text(l10n.removeFromShelf),
                       ),
-                    if (!entry.sourceMissing)
-                      const PopupMenuItem(value: 'switch', child: Text('换源')),
-                    const PopupMenuItem(
-                      value: 'remove',
-                      child: Text('移出书架（保留进度）'),
-                    ),
-                  ],
-                ),
-        ),
-      const SizedBox(height: 16),
-    ],
-  );
+                    ],
+                  ),
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 }

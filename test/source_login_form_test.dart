@@ -11,6 +11,8 @@ import 'package:liber/source/source_login_dialog.dart';
 
 import 'native_library.dart';
 
+import 'l10n_support.dart';
+
 /// The installation id the form is handed: 16 lowercase hex characters, the
 /// shape ADR 0011 §6 gives a real one.
 const _installationId = '0123456789abcdef';
@@ -43,7 +45,7 @@ SourceLoginSession _session(
 /// [WidgetTester.runAsync], where the login script's real work can finish.
 Future<void> _open(WidgetTester tester, SourceLoginSession session) async {
   await tester.pumpWidget(
-    MaterialApp(
+    localizedApp(
       home: Scaffold(
         body: Builder(
           builder: (context) => TextButton(
