@@ -426,9 +426,13 @@ void main() {
       );
     });
 
-    test('an unreadable extraction is still refused', () async {
+    test('JSON mode marker resolves, while an unreadable path is refused', () async {
+      expect(
+        (await search(_jsonSource(name: r'@jSoN:$.name'))).title,
+        '回音',
+      );
       await expectLater(
-        search(_jsonSource(name: r'@Json:$.name')),
+        search(_jsonSource(name: r'$.items[?(@.name=1)].name')),
         throwsA(isA<UnsupportedError>()),
       );
     });
