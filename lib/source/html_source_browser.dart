@@ -138,6 +138,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                 SourceChapter.fromAddress(
                   chapter.name,
                   chapter.url ?? chapter.chapterKey,
+                  bookUrl: hit.url,
+                  chapterKey: chapter.chapterKey,
                 ),
             ];
             busy = false;
@@ -149,7 +151,22 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         final savedUrl = entry.chapterKey;
         var index = savedUrl.isEmpty
             ? entry.chapterIndex
-            : chapters.indexWhere((c) => '${c.url}' == savedUrl);
+            : chapters.indexWhere((c) => c.progressKey == savedUrl);
+        if (index < 0 && savedUrl.isNotEmpty) {
+          // A legacy key may be relative while a refreshed TOC now uses
+          // absolute keys. Match its resolved target before trusting the old
+          // ordinal, which may point to another chapter after a reorder.
+          try {
+            final target = SourceChapter.fromAddress(
+              '',
+              savedUrl,
+              bookUrl: hit.url,
+            ).url;
+            index = chapters.indexWhere((c) => '${c.url}' == '$target');
+          } on FormatException {
+            // An unreadable legacy key retains the existing index fallback.
+          }
+        }
         if (index < 0 || index >= chapters.length) {
           final fallback = entry.chapterIndex;
           if (fallback < 0 || fallback >= chapters.length) {

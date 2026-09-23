@@ -96,6 +96,38 @@ void main() {
     },
   );
 
+  test('a reopened relative JSON chapter fetches against the owning book', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final paths = <String>[];
+    server.listen((request) async {
+      paths.add(request.uri.path);
+      request.response.write(jsonEncode({'body': '目标正文'}));
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline(
+      {'bookSourceUrl': base, 'ruleContent': {'content': r'$.body'}},
+      HttpSourceTransport(),
+    );
+    for (final address in [
+      '../chapter/1',
+      '../chapter/1,{"webView":false}',
+      '$base/chapter/1',
+    ]) {
+      final chapter = SourceChapter.fromAddress(
+        '第一章',
+        address,
+        bookUrl: Uri.parse('$base/book/1'),
+        chapterKey: address,
+      );
+      expect(chapter.progressKey, address);
+      expect(chapter.address, address);
+      expect((await pipeline.chapter(chapter)).text, '目标正文');
+    }
+    expect(paths, ['/chapter/1', '/chapter/1', '/chapter/1']);
+  });
+
   test('the factory gives each source the adapter its rules need', () {
     const transport = _UnusedTransport();
     expect(

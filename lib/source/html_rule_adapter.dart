@@ -104,5 +104,8 @@ class HtmlString {
     return values.isEmpty ? '' : values.first;
   }
 
+  /// Whether the rule extracted a value before its `##` replacement ran.
+  bool get hasMatch => _batch._result(id).count > 0;
+
   bool get isEmpty => value.isEmpty;
 }

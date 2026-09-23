@@ -846,11 +846,13 @@ pub fn string_list(dom: &Dom, context: NodeId, rule: &str) -> Result<Vec<String>
     Ok(merge_values(&results, merge.as_deref()))
 }
 
-/// Frozen `AnalyzeByJSoup.getString`, i.e. the value one rule yields for one
-/// context, with the `##` replacement applied to the joined result.
-pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleError> {
+/// Frozen `AnalyzeByJSoup.getString`, with the `##` replacement applied to
+/// the joined extraction. The count distinguishes a missing pagination list
+/// from a value-rule fallback without changing the bridge job shape.
+pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(String, usize), RuleError> {
     let source = SourceRule::parse(rule)?;
     let values = string_list(dom, context, rule)?;
+    let count = values.len();
     let joined = match values.len() {
         0 => String::new(),
         1 => values[0].clone(),
@@ -861,7 +863,11 @@ pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleErro
         None => joined,
     };
     // Frozen `AnalyzeRule.getString` unescapes the result last.
-    Ok(unescape_html(&replaced))
+    Ok((unescape_html(&replaced), count))
+}
+
+pub fn string(dom: &Dom, context: NodeId, rule: &str) -> Result<String, RuleError> {
+    string_with_count(dom, context, rule).map(|(value, _)| value)
 }
 
 #[cfg(test)]
@@ -931,6 +937,17 @@ mod tests {
         assert_eq!(list("#meta@data-id"), vec!["42"]);
         assert_eq!(list(".chapters a@href"), vec!["/ad", "/1"]);
         assert_eq!(text("#meta@text##^作者：##"), "忘语");
+    }
+
+    #[test]
+    fn unmatched_replacement_keeps_the_value_fallback_and_empty_list() {
+        let dom = Dom::parse("<div class='body'>first</div>");
+        let rule = "a.next@href##$##,{\"webView\":true}";
+        assert!(string_list(&dom, 0, rule).unwrap().is_empty());
+        assert_eq!(
+            string_with_count(&dom, 0, rule).unwrap(),
+            (",{\"webView\":true}".to_string(), 0)
+        );
     }
 
     #[test]

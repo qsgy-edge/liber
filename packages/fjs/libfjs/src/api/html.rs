@@ -51,7 +51,8 @@ pub struct HtmlJobFailure {
 pub struct HtmlJobOutcome {
     /// The job id this outcome answers.
     pub id: String,
-    /// Number of elements an `Elements` job matched.
+    /// Matched element count, or extracted string count for `Text` jobs before
+    /// replacement (zero when a document rule did not match).
     pub count: u32,
     /// One value per context element for `Text` jobs.
     pub values: Vec<String>,

@@ -127,7 +127,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (index < 0 || index >= widget.chapters.length) return;
       await widget.service.saveProgress(
         widget.bookId,
-        chapterKey: '${widget.chapters[index].url}',
+        chapterKey: widget.chapters[index].progressKey,
         chapterIndex: index,
         textOffset: offset,
       );

@@ -408,6 +408,25 @@ void main() {
       JsonSourceRules.extract(document, r'$.data[?(@.missing)].content'),
       '',
     );
+    expect(
+      JsonSourceRules.extract(
+        document,
+        r'$.data[?(@.missing)].content##$##,{"webView":true}',
+      ),
+      ',{"webView":true}',
+    );
+    expect(
+      JsonSourceRules.text(document, r'$.missing##$##Fallback'),
+      'Fallback',
+    );
+    expect(JsonSourceRules.list(document, r'$.missing'), isEmpty);
+    expect(
+      JsonSourceRules.extract(
+        document,
+        r'$.data[0].content##$##,{"webView":true}',
+      ),
+      'A,{"webView":true}',
+    );
     // `list()` is the frozen `getStringList`, which hands the list back itself.
     expect(
       JsonSourceRules.list(document, r'$.data[?(@.hasContent==1)].content'),
@@ -541,7 +560,10 @@ void main() {
       );
       expect(() => JsonSourceRules.validate(rule), returnsNormally);
       expect(
-        JsonSourceRules.extract(root, r"$.rows[?(@.tag=='x&&y')].value||$.tail"),
+        JsonSourceRules.extract(
+          root,
+          r"$.rows[?(@.tag=='x&&y')].value||$.tail",
+        ),
         'A',
       );
     },

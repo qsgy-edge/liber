@@ -1016,12 +1016,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // (the frozen `BookContent` fetches `chapter.url` through `AnalyzeUrl`, so a
     // chapter address that asked for the WebView is rendered).
     var options = chapter.options;
-    // The chapter's own address text and the base it resolves against, kept for
-    // `java.initUrl`. A chapter reached from the shelf carries an absolute
-    // address, and the address the TOC rule produced resolves against the
-    // chapter's own URL for everything but a bare relative path.
     var address = chapter.address;
-    var base = chapter.url;
+    // Reanalysis of a stored relative address uses the book URL that first
+    // resolved it; TOC-generated addresses keep their existing fetch base.
+    var base = chapter.addressBase ?? chapter.url;
     final visited = <Uri>{};
     final parts = <String>[];
     String? contentTitle;
@@ -1061,6 +1059,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               extracted,
               chapter.url,
               rawAddress: chapter.rawAddress,
+              storedKey: chapter.storedKey,
+              addressBase: chapter.addressBase,
             );
           }
         }
@@ -1071,6 +1071,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             _chapterTitle!,
             chapter.url,
             rawAddress: chapter.rawAddress,
+            storedKey: chapter.storedKey,
+            addressBase: chapter.addressBase,
           ),
         ),
         content: html,
@@ -1088,7 +1090,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         throw const FormatException('ruleContent.content 未匹配到内容');
       }
       parts.add(text);
-      final nextText = await _documentValue(nextValue, next, html);
+      final nextText =
+          nextValue != null && !nextValue.hasMatch && next.scripts.isEmpty
+          ? ''
+          : await _documentValue(nextValue, next, html);
       if (nextText.isEmpty) break;
       final (nextUrl, nextOptions) = await _extracted(pageUrl, nextText);
       if (nextOptions.isPost ||

@@ -816,7 +816,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
         options: chapter.options,
         address: chapter.address,
-        base: chapter.url,
+        base: chapter.addressBase ?? chapter.url,
       ),
     );
     final document = jsonDecode(contentPage.body);
@@ -831,6 +831,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
         contentTitle,
         chapter.url,
         rawAddress: chapter.rawAddress,
+        storedKey: chapter.storedKey,
+        addressBase: chapter.addressBase,
       );
     }
     final text = await _text(document, content['content']!);
@@ -908,22 +910,44 @@ class JsonSourcePipeline implements BookSourcePipeline {
 /// the chapter can parse its options the way the frozen `AnalyzeUrl` does
 /// (`AnalyzeUrl.kt:214-222`).
 class SourceChapter {
-  const SourceChapter(this.name, this.url, {this.rawAddress});
+  const SourceChapter(
+    this.name,
+    this.url, {
+    this.rawAddress,
+    this.storedKey,
+    this.addressBase,
+  });
 
-  /// The chapter a stored row describes: [address] is the row's address text,
-  /// option tail included, and the request target is the part before it.
-  factory SourceChapter.fromAddress(String name, String address) =>
-      SourceChapter(
-        name,
-        SourceHttpUri.parse(sourceUrlTargetOf(address)),
-        rawAddress: address,
-      );
+  /// Rebuilds a stored address. Imported relative addresses resolve against
+  /// their owning book at fetch time; the raw address remains the store's key.
+  factory SourceChapter.fromAddress(
+    String name,
+    String address, {
+    Uri? bookUrl,
+    String? chapterKey,
+  }) {
+    final target = sourceUrlTargetOf(address);
+    return SourceChapter(
+      name,
+      SourceHttpUri.parse('${bookUrl?.resolve(target) ?? target}'),
+      rawAddress: address,
+      storedKey: chapterKey,
+      addressBase: bookUrl,
+    );
+  }
 
   final String name;
   final Uri url;
 
   /// The rule's own address text, or null when the caller only has a URL.
   final String? rawAddress;
+
+  /// Existing store identity; new TOC chapters still key by their resolved URL.
+  final String? storedKey;
+  String get progressKey => storedKey ?? '$url';
+
+  /// Base used to reanalyse a stored address via `java.initUrl()`.
+  final Uri? addressBase;
 
   /// The text a fetch parses: the rule's address when it was kept. A bare URL
   /// carries no options, so it parses to itself.
