@@ -286,6 +286,12 @@ rows are observed by the real frozen reader, with storage isolation and cleanup
 verified. The strict comparator reports 13 `pass`, 0 `fail`, 2 `notCompared`
 (`timeout`, `refusal`); the executed result and per-row differences are in
 `tool/replace_rule_oracle/evidence/comparison.json` and `manifest.json`. The
+committed report is that run's recorded result, not a re-runnable golden: the
+device capture it was produced from was never committed, and no command in this
+repository re-derives it today. `tool/replace_rule_oracle/README.md`
+("Current evidence" and "Committed evidence versus this corpus") states what a
+re-verification needs; the rows below stay the executed run's result until a
+fresh capture produces a new report (#70). The
 product content path was changed to reproduce the frozen final paragraph shaping
 (cutset, dropped blank paragraphs, `ReadBookConfig.paragraphIndent`,
 `includeTitle` first-paragraph exception); the Android-8-only `\u00A0` rewrite is

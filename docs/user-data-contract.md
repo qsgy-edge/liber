@@ -243,6 +243,11 @@ three-line pubspec user-define (`sqlite3mc` or `sqlcipher`).
   hopeful.
 - Unknown imported fields live in `raw` JSON columns (D5) and round-trip untouched. A
   database written by a newer build is refused, not partially read.
+- One persisted value deliberately carries two shapes: the space's
+  `legacy_import.v1` setting records a completed import, and its `losses` entries are
+  message codes with arguments from #72 on, while a marker written before #72 keeps
+  bare strings; the reader accepts both, so an already-migrated space stays readable
+  and no write happens on the read path.
 - The three existing files are imported once into the default space inside a transaction; the
   originals are renamed aside rather than deleted, and the import reports like a migration.
 - Working rule: after any schema change run
