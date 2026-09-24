@@ -1012,10 +1012,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               pageUrl,
               rawAddress,
             );
+            // The address text's options are the chapter's own: the frozen
+            // `AnalyzeUrl` parses them when the chapter is fetched, and this
+            // adapter keeps them in the raw address (`SourceChapter.options`,
+            // `persistedAddress`) so a restart keeps them (#58). Per-chapter
+            // headers and the retry count are applied by the content request
+            // itself; a POST body and a post-resolution `js` are the two
+            // families the content stage does not express yet, so they keep
+            // their named refusal (#58's test pins the body case). Headers used
+            // to be refused here with them, which refused a whole TOC for a tail
+            // the transport sends happily — the operator's real source run hit
+            // it (零点看书's `ruleToc.chapterUrl`, batch 17).
             if (chapterOptions.isPost ||
                 chapterOptions.body != null ||
-                chapterOptions.headers.isNotEmpty ||
-                chapterOptions.retry != 0 ||
                 chapterOptions.js != null) {
               throw UnsupportedError('暂不支持章节地址的 URL 选项');
             }

@@ -500,6 +500,64 @@ void main() {
     });
   });
 
+  group('fields the product declares but does not execute (#81)', () {
+    // A real source declares `ruleBookInfo.downloadUrls` as a bare URL
+    // (万生痴魔's source, found by the operator's run). The frozen reads it into
+    // `book.downloadUrls`; this product defers downloads (ADR 0011 §4), so the
+    // field must be accepted and ignored instead of failing the details stage.
+    test('a JSON source with a non-rule downloadUrls still reads details',
+        () async {
+      final document = jsonEncode({
+        'author': '作者甲',
+        'chapters': [
+          {'name': '第一章', 'url': '/c/1'},
+        ],
+      });
+      final (book, chapters) = await JsonSourcePipeline({
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {
+          'author': r'$.author',
+          'downloadUrls': 'http://api.example.test/',
+        },
+        'ruleToc': {
+          'chapterList': r'$.chapters[*]',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+      }, _Pages({'/book/7': document})).details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(book.author, '作者甲');
+      expect(chapters.map((chapter) => chapter.name), ['第一章']);
+    });
+
+    // A chapter whose URL rule carries an option tail keeps it: the raw address
+    // is what the store holds and what the chapter's own fetch parses
+    // (`SourceChapter.options`). The TOC builder used to refuse such a tail by
+    // name (零点看书's `ruleToc.chapterUrl` ends in `##$##,{"headers": …}`).
+    test('a chapter address with a header tail reaches the chapter list',
+        () async {
+      final transport = _Pages({
+        '/book/7': '<ul class="chapters">'
+            '<li><a href="/c/1##\$##,{&quot;headers&quot;:{&quot;X-Test&quot;:&quot;1&quot;}}">第一章</a></li>'
+            '</ul>',
+      });
+      final (_, chapters) = await HtmlSourcePipeline({
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {'intro': 'p.intro@text'},
+        'ruleToc': {
+          'chapterList': 'ul.chapters li',
+          'chapterName': 'a@text',
+          'chapterUrl': 'a@href',
+        },
+      }, transport).details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(chapters.single.options.headers, {'X-Test': '1'});
+      expect('${chapters.single.url}', 'http://example.test/c/1');
+    });
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an

@@ -503,6 +503,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
       if (entry.value is! String) {
         throw FormatException('Invalid $key.${entry.key}');
       }
+      // `downloadUrls` is declared by real sources and read by the frozen into
+      // `book.downloadUrls`; this product defers downloads (ADR 0011 §4), so the
+      // field is accepted and ignored. Validating it as an extraction refused a
+      // whole details stage for a field nothing executes — the operator's real
+      // run hit it on a source whose `ruleBookInfo.downloadUrls` is a bare URL
+      // (万生痴魔's source, batch 17).
+      if (entry.key == 'downloadUrls') continue;
       // The page-chaining pair is the one per-*stage* allowance: `nextTocUrl`
       // belongs to `ruleToc` and `nextContentUrl` to `ruleContent`, and each
       // group still refuses the other's field by name. Both are read as lists
