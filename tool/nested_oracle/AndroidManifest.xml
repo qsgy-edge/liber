@@ -6,4 +6,5 @@
   <instrumentation android:name="io.liber.oracle.nested.SliceOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado SLICE-01 four-stage oracle" />
   <instrumentation android:name="io.liber.oracle.nested.HtmlOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado HTML extraction oracle" />
   <instrumentation android:name="io.liber.oracle.nested.RequestOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado request-semantics oracle" />
+  <instrumentation android:name="io.liber.oracle.nested.LimitOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado accumulate-to-the-limit probe (#79)" />
 </manifest>
