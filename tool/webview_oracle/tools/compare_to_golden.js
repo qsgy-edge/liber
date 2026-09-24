@@ -52,6 +52,15 @@
 // `evidence/android/manifest.json` rather than inside every evidence file, so
 // the fixture hash is resolved from the manifest when the golden itself does not
 // carry one. Both sides must still name the same fixture bytes.
+//
+//   * A destination row's own manifest pins the sources the sweep was built
+//     from, hashed (`adapterSourceSha256`, `harnessSha256`). A row the manifest
+//     describes whose recorded sources no longer hash to what this tree holds was
+//     produced by a different tree, or by a harness revision that has since
+//     changed, so it is refused rather than compared: a verdict about code this
+//     checkout does not contain is not a verdict about this checkout. A row newer
+//     than the manifest is the sweep in progress, which the manifest does not
+//     describe, and is compared as before.
 'use strict';
 
 const crypto = require('crypto');
@@ -321,6 +330,81 @@ function goldenFixtureSha256(goldenPath, golden) {
   return manifest.fixtureSha256?.[`${golden.fixtureId}.json`];
 }
 
+// Where the manifest writer recorded one hashed source, resolved back to a file.
+//
+// The writer records each file under the path it hashed it at: this tool's own
+// tree by an oracle-relative path (`tools/…`, `adapter/…`, `evidence/…`), the
+// adapter's harness by its adapter-relative path (`integration_test/…`,
+// `test_driver/…`), the adapter's library by its bare file name, and the
+// product files the harness drives under a `liber:` prefix. The same rules
+// resolve a recorded name here, so a key the writer invented cannot silently
+// become "no such file".
+function recordedSourceFile(oracleRoot, mapName, name) {
+  if (name.startsWith('liber:')) {
+    return path.join(oracleRoot, '..', '..', name.slice('liber:'.length));
+  }
+  if (mapName === 'adapterSourceSha256') {
+    return path.join(oracleRoot, 'adapter', 'lib', name);
+  }
+  if (name.startsWith('integration_test/') || name.startsWith('test_driver/')) {
+    return path.join(oracleRoot, 'adapter', name);
+  }
+  return path.join(oracleRoot, name);
+}
+
+// What a destination row's manifest records about the sources it was produced
+// from, and whether this tree still holds them.
+//
+// Returns null when nothing claims to describe the row (no manifest, or one
+// written before the row completed — the sweep in progress), and otherwise the
+// entries that no longer match, as `name: recorded …, this tree has …`. An empty
+// array means the recorded sources are the ones on disk.
+//
+// The comparison is between the manifest's recorded hashes and the files, not
+// between timestamps or hashes of hashes: the manifest writer hashes the same
+// files, and a mismatch can only mean the row and the tree disagree. The
+// recorded instant decides only whether the manifest describes this row at all,
+// so a fresh clone (whose filesystem times are all checkout time) answers the
+// same as the sweep host did.
+function destinationSourceStaleness(destinationPath, destination) {
+  const manifestPath = path.join(path.dirname(destinationPath), 'manifest.json');
+  if (!fs.existsSync(manifestPath)) return null;
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const rowEnd = Date.parse(
+    destination.restartCompletedAtUtc ?? destination.completedAtUtc ?? '',
+  );
+  const sweepEnd = Date.parse(manifest.run?.completedAtUtc ?? '');
+  if (!Number.isNaN(rowEnd) && !Number.isNaN(sweepEnd) && rowEnd > sweepEnd) {
+    return null;
+  }
+  const oracleRoot = path.resolve(__dirname, '..');
+  const recorded = [];
+  for (const mapName of ['adapterSourceSha256', 'harnessSha256']) {
+    for (const [name, sha] of Object.entries(manifest[mapName] || {})) {
+      recorded.push({
+        name,
+        sha,
+        file: recordedSourceFile(oracleRoot, mapName, name),
+      });
+    }
+  }
+  if (recorded.length === 0) {
+    return ['the manifest records no adapter sources to check'];
+  }
+  const changed = [];
+  for (const { name, sha, file } of recorded) {
+    const current = fs.existsSync(file)
+      ? crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+      : null;
+    if (current !== sha) {
+      changed.push(
+        `${name}: recorded ${sha}, this tree has ${current ?? 'no such file'}`,
+      );
+    }
+  }
+  return changed;
+}
+
 // Same-provenance recordings of the other side of a documented race.
 //
 // A diagnostic widens the permitted trace only when the golden manifest itself
@@ -459,6 +543,15 @@ function main() {
   }
   if (golden.baselineCommit !== destination.baselineCommit) {
     console.error('baseline commit differs');
+    process.exit(2);
+  }
+  const staleness = destinationSourceStaleness(destinationPath, destination);
+  if (staleness !== null && staleness.length > 0) {
+    console.error(
+      `stale destination evidence: ${destinationPath} was recorded against ` +
+        `sources this tree no longer holds.\n  ${staleness.join('\n  ')}\n` +
+        'Re-run the sweep; this row does not describe the current tree.',
+    );
     process.exit(2);
   }
 
