@@ -417,25 +417,32 @@ Future<void> main(List<String> args) async {
       checks['nestedAllocationPressureCompletes'] = pressure == 42;
       await releaseNested(cycleRequest, 'ok');
       checks['nestedScopeValuesSurvive'] = await cycle == true;
-      // The heap limit has been observed to surface as something other than a
-      // memory-limit error on Linux CI, roughly every other run, while Windows is
-      // 15/15 across a counter-run of this gate (batch 15). The row therefore
-      // retries once, and the failing run has to say what each attempt produced:
-      // a regression fails both attempts, and the diagnostics entry keeps the
-      // flake visible in this JSON instead of quietly turning into a pass. Root
-      // cause: ticket #77.
+      // The row's script must leave the whole 16 MiB budget free when the
+      // over-limit request fails, so the engine can build the `InternalError:
+      // out of memory` it reports the limit with. The previous shape grew the
+      // heap one 80 KB array at a time, which fails with a residue anywhere in
+      // [0, 80 KB); when that residue was smaller than the error object's own
+      // allocations, QuickJS threw a bare null instead of the InternalError and
+      // the row saw `JsError_Runtime: Runtime error: null`. One request larger
+      // than the whole budget cannot land in that residue: ticket #77 has the
+      // reproduction (30 of 1000 runs divergent for the old shape in WSL2, 0 of
+      // 400 for this one) and #79 tracks the surviving product gap, where an app
+      // script that accumulates to the limit can still get the lost report.
+      // The script is wrapped so the execution declares nothing in the context's
+      // global lexical scope.
       const heapLimitSource =
-          'const blocks=[]; while(true) { blocks.push(new Array(10000).fill(123)); }';
-      Object? heapLimit = await runNested(heapLimitSource);
+          '(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()';
+      final heapLimit = await runNested(heapLimitSource);
+      // No retry: batch 15 added one while the cause was unknown, and it could
+      // not have worked — the first attempt's failed script left its `const
+      // blocks` declaration in the context, so the retry died on
+      // `SyntaxError: redeclaration of 'blocks'` (11 of 12 divergent runs). The
+      // shape above removes the flake at its source, and a future divergence
+      // from another platform names its type and message in this entry instead
+      // of being retried away.
       if (heapLimit is! JsError_MemoryLimit) {
-        final firstOutcome =
-            '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}';
-        heapLimit = await runNested(heapLimitSource);
         diagnostics['heapLimitEnforced'] = {
-          'firstOutcome': firstOutcome,
-          'secondOutcome': heapLimit is JsError_MemoryLimit
-              ? 'JsError_MemoryLimit'
-              : '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}',
+          'outcome': '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}',
         };
       }
       checks['heapLimitEnforced'] = heapLimit is JsError_MemoryLimit;
