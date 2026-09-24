@@ -102,8 +102,9 @@ class SourceHatchRequest {
   /// TLS exception (ADR 0011 §5) for the page this hatch shows: a page whose
   /// certificate the engine rejects proceeds when the exception for its own
   /// source and host is stored, and the confirmation stores one when the user
-  /// agrees. Null in a process that speaks for no space, and then every
-  /// certificate is validated.
+  /// agrees. Null in a process that speaks for no space — every application path
+  /// carries one — and then no exception can exist or be remembered, so the
+  /// page's certificate decision refuses without asking.
   final SourceHostState? hostState;
 
   /// Whether the source's execution parks until the user answers.

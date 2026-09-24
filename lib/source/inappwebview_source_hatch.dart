@@ -164,6 +164,31 @@ Future<bool> showSourceHatchConfirmation(
   return confirmed ?? false;
 }
 
+/// Whether the confirmed page may load [host] despite the certificate the engine
+/// rejected (ADR 0011 §5): the page's own server-trust decision.
+///
+/// [request] is the hatch's own request, so the confirmation reads and writes the
+/// very source, name and host state the page belongs to. A stored exception
+/// answers without asking, so a page whose source and host were already confirmed
+/// does not ask again; without one the shared confirmation asks — the same dialog
+/// the headless path reaches — and its "continue (unsafe)" answer stores the
+/// exception. A refusal, and a process that carries no host state to store an
+/// exception in, answer false, so the page's callback cancels the challenge.
+Future<bool> confirmHatchPageCertificate(
+  BuildContext context, {
+  required SourceHatchRequest request,
+  required String host,
+}) => confirmTlsExceptionForPage(
+  context: context,
+  hostState: request.hostState,
+  sourceRef: request.sourceRef,
+  sourceName: request.sourceName,
+  failure: sourceWebViewUntrustedCertificateFailure(
+    sourceRef: request.sourceRef,
+    host: host,
+  ),
+);
+
 /// The verification-code dialog: the fetched image, the source it belongs to and
 /// a field for the user's answer.
 ///
@@ -342,8 +367,10 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
         // path reaches: a stored exception proceeds silently, and without one the
         // dialog asks and its answer is what the load follows.
         onReceivedServerTrustAuthRequest: (controller, challenge) async =>
-            await _mayProceedThroughCertificate(
-              challenge.protectionSpace.host,
+            await confirmHatchPageCertificate(
+              context,
+              request: widget.request,
+              host: challenge.protectionSpace.host,
             )
             ? ServerTrustAuthResponse(
                 action: ServerTrustAuthResponseAction.PROCEED,
@@ -366,24 +393,6 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
       ),
     );
   }
-
-  /// Whether this page may load [host] despite the certificate the engine
-  /// rejected (ADR 0011 §5).
-  ///
-  /// The stored exception is read first, so a page whose source and host were
-  /// already confirmed does not ask again; without one the shared confirmation
-  /// asks and its "continue (unsafe)" answer stores the exception.
-  Future<bool> _mayProceedThroughCertificate(String host) =>
-      confirmTlsExceptionForPage(
-        context: context,
-        hostState: widget.request.hostState,
-        sourceRef: widget.request.sourceRef,
-        sourceName: widget.request.sourceName,
-        failure: sourceWebViewUntrustedCertificateFailure(
-          sourceRef: widget.request.sourceRef,
-          host: host,
-        ),
-      );
 
   /// Hands the platform store's cookies for the finished page to the source's
   /// jar. A store this process cannot read leaves the jar as it was, exactly as

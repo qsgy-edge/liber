@@ -4,6 +4,8 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/book_source_webview_adapter.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/inappwebview_source_hatch.dart';
+import 'package:liber/source/source_hatch.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_tls_confirmation.dart';
@@ -278,28 +280,112 @@ void main() {
     expect(factory.attempts, 1);
   });
 
+  group('the headless callback decision', () {
+    // The challenged host is not the source's own host: the decision must report
+    // and store the host the engine named, not the one the source was written for.
+    const challengedHost = 'cdn.a.test';
+
+    /// Runs the production decision with recording effects.
+    ({SourceWebViewTrustDecision decision, List<Object> failures, int destroys})
+    decide(BookSourceWebViewAdapterFactory factory, {String host = challengedHost}) {
+      final failures = <Object>[];
+      var destroys = 0;
+      final decision = sourceWebViewTrustDecision(
+        scope: factory,
+        host: host,
+        fail: failures.add,
+        destroy: () => destroys++,
+      );
+      return (decision: decision, failures: failures, destroys: destroys);
+    }
+
+    test('no stored exception refuses the challenge and fails the operation', () {
+      final factory = BookSourceWebViewAdapterFactory(
+        sourceRef: _sourceRef,
+        hostState: SourceHostState(),
+      );
+
+      final outcome = decide(factory);
+
+      expect(outcome.decision, SourceWebViewTrustDecision.refuse);
+      expect(outcome.destroys, 1);
+      final failure = outcome.failures.single;
+      expect(
+        failure,
+        isA<SourceTlsCertificateFailure>()
+            .having((error) => error.sourceRef, 'sourceRef', _sourceRef)
+            .having((error) => error.host, 'host', challengedHost)
+            .having(
+              (error) => error.reason,
+              'reason',
+              SourceTlsCertificateFailure.unspecifiedReason,
+            ),
+      );
+    });
+
+    test('a stored exception proceeds and reports nothing', () async {
+      final state = SourceHostState();
+      await state.allowInvalidCertificate(_sourceRef, challengedHost);
+      final factory = BookSourceWebViewAdapterFactory(
+        sourceRef: _sourceRef,
+        hostState: state,
+      );
+
+      final outcome = decide(factory);
+
+      expect(outcome.decision, SourceWebViewTrustDecision.proceed);
+      expect(outcome.failures, isEmpty);
+      expect(outcome.destroys, 0);
+    });
+
+    test('the exception is per source and host, not per source', () async {
+      final state = SourceHostState();
+      await state.allowInvalidCertificate(_sourceRef, 'other.test');
+      final factory = BookSourceWebViewAdapterFactory(
+        sourceRef: _sourceRef,
+        hostState: state,
+      );
+
+      final outcome = decide(factory);
+
+      expect(outcome.decision, SourceWebViewTrustDecision.refuse);
+      expect(outcome.destroys, 1);
+      expect(
+        (outcome.failures.single as SourceTlsCertificateFailure).host,
+        challengedHost,
+      );
+    });
+  });
+
   group('the visible confirmed page', () {
-    /// Runs the page's certificate decision, the way its server-trust callback
-    /// does.
+    /// The hatch's own request: the page the user confirmed, for this source and
+    /// the space's host state.
+    SourceHatchRequest hatchRequest(SourceHostState? state) => SourceHatchRequest(
+      member: 'java.startBrowser',
+      kind: SourceHatchKind.page,
+      sourceRef: _sourceRef,
+      sourceName: 'A 书源',
+      url: 'https://$_host/verify',
+      hostState: state,
+    );
+
+    /// Runs the page's certificate decision through the hatch's own function, the
+    /// way its server-trust callback does.
     Future<void> pumpPageDecision(
       WidgetTester tester, {
-      required SourceHostState state,
+      required SourceHostState? state,
       required void Function(bool allowed) onDone,
     }) async {
+      final request = hatchRequest(state);
       await tester.pumpWidget(
         localizedApp(
           home: Builder(
             builder: (context) => TextButton(
               onPressed: () async => onDone(
-                await confirmTlsExceptionForPage(
-                  context: context,
-                  hostState: state,
-                  sourceRef: _sourceRef,
-                  sourceName: 'A 书源',
-                  failure: sourceWebViewUntrustedCertificateFailure(
-                    sourceRef: _sourceRef,
-                    host: _host,
-                  ),
+                await confirmHatchPageCertificate(
+                  context,
+                  request: request,
+                  host: _host,
                 ),
               ),
               child: const Text('load'),
@@ -322,6 +408,7 @@ void main() {
 
       await tester.tap(find.text('load'));
       await tester.pumpAndSettle();
+      // The dialog names the hatch's own source and the challenged host.
       expect(find.text('证书校验失败'), findsOneWidget);
       expect(find.textContaining('A 书源'), findsOneWidget);
       expect(find.textContaining(_host), findsOneWidget);
@@ -364,6 +451,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(allowed, isFalse);
       expect(state.allowsInvalidCertificate(_sourceRef, _host), isFalse);
+    });
+
+    testWidgets('a process with no host state refuses without asking', (
+      tester,
+    ) async {
+      bool? allowed;
+      await pumpPageDecision(
+        tester,
+        state: null,
+        onDone: (value) => allowed = value,
+      );
+
+      await tester.tap(find.text('load'));
+      await tester.pumpAndSettle();
+      // There is no store to remember an answer in, so the page is not let
+      // through on an answer that outlives nothing.
+      expect(allowed, isFalse);
+      expect(find.text('证书校验失败'), findsNothing);
     });
   });
 }

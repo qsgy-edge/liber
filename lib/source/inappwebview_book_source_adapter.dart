@@ -244,21 +244,16 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
       // about it. The per-source, per-host exception the user confirmed is the
       // one way past it: the retry finds it stored and proceeds.
       onReceivedServerTrustAuthRequest: (controller, challenge) async {
-        final host = challenge.protectionSpace.host;
-        if (_scope.allowsInvalidCertificate(host)) {
-          return ServerTrustAuthResponse(
-            action: ServerTrustAuthResponseAction.PROCEED,
-          );
-        }
-        _fail(
-          sourceWebViewUntrustedCertificateFailure(
-            sourceRef: _scope.sourceRef,
-            host: host,
-          ),
+        final decision = sourceWebViewTrustDecision(
+          scope: _scope,
+          host: challenge.protectionSpace.host,
+          fail: _fail,
+          destroy: destroy,
         );
-        destroy();
         return ServerTrustAuthResponse(
-          action: ServerTrustAuthResponseAction.CANCEL,
+          action: decision == SourceWebViewTrustDecision.proceed
+              ? ServerTrustAuthResponseAction.PROCEED
+              : ServerTrustAuthResponseAction.CANCEL,
         );
       },
       // No `onReceivedError` or `onReceivedHttpError` handling beyond this: the

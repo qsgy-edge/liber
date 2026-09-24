@@ -141,6 +141,51 @@ SourceTlsCertificateFailure sourceWebViewUntrustedCertificateFailure({
   reason: SourceTlsCertificateFailure.unspecifiedReason,
 );
 
+/// What the headless adapter does with the engine's server-trust challenge for
+/// one host (ADR 0011 §5).
+///
+/// It is the callback's own decision, named here rather than inline in the
+/// platform callback so it can be driven without an engine: the callback is only
+/// the mapping onto the engine's response actions.
+enum SourceWebViewTrustDecision {
+  /// A stored per-source, per-host exception lets the page load through the
+  /// certificate.
+  proceed,
+
+  /// Nothing is stored: the operation fails with the WebView path's certificate
+  /// failure and the WebView is destroyed instead of loading the page.
+  refuse,
+}
+
+/// The headless adapter's decision for the engine's server-trust challenge
+/// (ADR 0011 §5).
+///
+/// [scope] answers with the stored exception for this source and [host]; [fail]
+/// and [destroy] are the adapter's own effects (`_fail` and `destroy()`), so the
+/// decision reads the real store, reports the real failure and performs the real
+/// teardown. The failure [fail] receives is
+/// [sourceWebViewUntrustedCertificateFailure] for the host the challenge named —
+/// not for the source's own host — because that is the pair the confirmation
+/// asks about and the pair the retried operation then finds stored.
+SourceWebViewTrustDecision sourceWebViewTrustDecision({
+  required BookSourceWebViewAdapterFactory scope,
+  required String host,
+  required void Function(Object failure) fail,
+  required void Function() destroy,
+}) {
+  if (scope.allowsInvalidCertificate(host)) {
+    return SourceWebViewTrustDecision.proceed;
+  }
+  fail(
+    sourceWebViewUntrustedCertificateFailure(
+      sourceRef: scope.sourceRef,
+      host: host,
+    ),
+  );
+  destroy();
+  return SourceWebViewTrustDecision.refuse;
+}
+
 /// Raised when the WebView path is reached in a process with no platform engine
 /// binding, which is every process that is not the application or the WebView
 /// evidence harness: the gates, the tools and the unit tests run without a

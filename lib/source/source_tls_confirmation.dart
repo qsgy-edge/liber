@@ -54,6 +54,12 @@ Future<T> withTlsExceptionConfirmation<T>({
 /// A refusal — the dialog's default — answers false, stores nothing and lets the
 /// caller cancel the challenge, so the page fails the way it does without the
 /// exception. The answer is whether the challenge may proceed.
+///
+/// A null [hostState] answers false without asking, because a decision with no
+/// store is not ADR 0011 §5's: there is no exception to read, and the answer the
+/// user gave could not be remembered for the next request to the same source and
+/// host. Every application path carries a state, so that only reaches a process
+/// that speaks for no space at all ([SourceHatchRequest.hostState]).
 Future<bool> confirmTlsExceptionForPage({
   required BuildContext context,
   required SourceHostState? hostState,
@@ -61,11 +67,11 @@ Future<bool> confirmTlsExceptionForPage({
   required String sourceName,
   required SourceTlsCertificateFailure failure,
 }) async {
+  final state = hostState;
+  if (state == null) return false;
   final ref = failure.sourceRef.isEmpty ? sourceRef : failure.sourceRef;
-  if (hostState != null) {
-    await hostState.ready();
-    if (hostState.allowsInvalidCertificate(ref, failure.host)) return true;
-  }
+  await state.ready();
+  if (state.allowsInvalidCertificate(ref, failure.host)) return true;
   // A page whose surface is gone has no confirmation to ask, and asking is the
   // whole decision: the challenge is refused, exactly as an unanswerable one is.
   if (!context.mounted) return false;
@@ -75,7 +81,7 @@ Future<bool> confirmTlsExceptionForPage({
     failure: failure,
   );
   if (!confirmed) return false;
-  await hostState?.allowInvalidCertificate(ref, failure.host);
+  await state.allowInvalidCertificate(ref, failure.host);
   return true;
 }
 
