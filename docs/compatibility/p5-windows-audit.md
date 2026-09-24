@@ -38,8 +38,14 @@ its reason in the report JSON, and none of them is inside a claimed row.
 Outside this table but re-executed in the same batch: the **WebView destination corpus on Windows**
 (14 fixtures through one binary, sampled equal around every fixture — 13 `match`, `WV-14`
 `policy-rejected` because WebView2 cannot surface a certificate error), with the manifest rewritten to
-the current revision so the committed rows describe it; the Android destination rows cannot be
-re-collected without the handset and are refused by name by the comparator until they are.
+the current revision so the committed rows describe it; and on 2026-09-24, with the handset attached, the
+**Android half of the same corpus**: the frozen oracle re-captured for the device's current fingerprint
+(`evidence/android-os4.0.0.31/`, 14/14 rows, System WebView 155.0.8059.4 — the operator-confirmed pin that
+supersedes the 154-pinned golden) and the 14 destination rows through the product adapter
+(`evidence/android-destination/`, 13 `match` + `WV-14` `policy-rejected` with its certificate checks true,
+one APK hash across the sweep). The archived prototype rows are refused by name by the comparator and are
+superseded. The iOS, macOS and Linux destination rows stay `not-run`, so the five-platform aggregate does
+not follow.
 
 ## 2. A row whose evidence is a recorded result, not a re-runnable comparison
 

@@ -1,5 +1,12 @@
 # Android session runbook (controller, with the handset)
 
+**Session status: executed 2026-09-24** on the handset `5615f742` (Android 17, fingerprint
+`…OS4.0.0.31.XPMCNXM…`, System WebView `155.0.8059.4`). It produced the frozen golden
+`evidence/android-os4.0.0.31/` (14/14 rows) and the 14 destination rows through the product adapter
+(`evidence/android-destination/`, 13 `match` + `WV-14` `policy-rejected`), each with its manifest. Keep
+this file as the procedure for the next session; the WebView pin below is the value that session used.
+The paragraphs below describe the session as it was run.
+
 The Windows rows in `evidence/windows-destination/` are executed. The Android
 rows are **`not-run`** and stay so until this session completes: the handset was
 not attached when the lane ran (`adb devices` was empty), and no device install
