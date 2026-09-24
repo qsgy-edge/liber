@@ -477,51 +477,53 @@ void main() {
     },
   );
 
-  test(
-    'unavailable variables, fields and mutations refuse by full member name',
-    () async {
-      for (final member in [
-        'book.variable',
-        'book.getVariable',
-        'book.putVariable',
-        'chapter.variable',
-        'chapter.getVariable',
-        'chapter.putVariable',
-        'book.missing',
-        'chapter.missing',
-      ]) {
-        await expectLater(
-          run(
-            member,
-            input: {
-              'book': {'name': 'Book'},
-              'chapter': {'title': 'Chapter'},
-            },
-          ),
-          throwsA(
-            isA<SourceScriptError>()
-                .having((e) => e.category, 'category', 'policy')
-                .having((e) => e.message, 'member', contains(member)),
-          ),
-        );
-      }
+  test('unknown snapshot fields and mutations refuse by full member name', () async {
+    for (final member in ['book.missing', 'chapter.missing']) {
       await expectLater(
         run(
-          'book.name = "changed"',
+          member,
           input: {
             'book': {'name': 'Book'},
+            'chapter': {'title': 'Chapter'},
           },
         ),
         throwsA(
-          isA<SourceScriptError>().having(
-            (e) => e.message,
-            'member',
-            contains('book.name'),
-          ),
+          isA<SourceScriptError>()
+              .having((e) => e.category, 'category', 'policy')
+              .having((e) => e.message, 'member', contains(member)),
         ),
       );
-    },
-  );
+    }
+    // The frozen `variable` property has a setter, but its `variableMap` is
+    // parsed lazily, so the frozen itself does not see a directly assigned
+    // text; writes go through `putVariable`, and an assignment refuses by name.
+    for (final member in ['book.variable', 'chapter.variable']) {
+      await expectLater(
+        run(
+          '$member = \'{"k":"v"}\'',
+          input: {
+            'book': {'name': 'Book'},
+            'chapter': {'title': 'Chapter'},
+          },
+        ),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((e) => e.category, 'category', 'policy')
+              .having((e) => e.message, 'member', contains(member)),
+        ),
+      );
+    }
+    await expectLater(
+      run('book.name = "changed"', input: {'book': {'name': 'Book'}}),
+      throwsA(
+        isA<SourceScriptError>().having(
+          (e) => e.message,
+          'member',
+          contains('book.name'),
+        ),
+      ),
+    );
+  });
 
   for (final json in [true, false]) {
     test(

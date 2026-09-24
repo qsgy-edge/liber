@@ -167,6 +167,74 @@ class SpaceStore {
           ))
           .getSingleOrNull();
 
+  /// The book row's own variable text (frozen `Book.variable`, `Book.kt:115`),
+  /// or null when the space holds no such row or the row carries none.
+  ///
+  /// This is the script-visible store of `book.variable`/`book.getVariable`:
+  /// the row's own keyed map, encoded as JSON text, which a rule reads and
+  /// writes (#76). The natural key is the space's book identity (D2), where the
+  /// frozen keys the same store by its one `bookUrl` primary key.
+  Future<String?> bookVariable(String sourceRef, String sourceBookUrl) async =>
+      (await bookByNaturalKey(sourceRef, sourceBookUrl))?.variable;
+
+  /// Writes the book row's variable column, and answers whether the space holds
+  /// the row. A row the space does not hold keeps none: the frozen writes the
+  /// entity's field and its owning flow saves the row, and no script write
+  /// invents a book row here.
+  Future<bool> putBookVariable(
+    String sourceRef,
+    String sourceBookUrl,
+    String? variable,
+  ) async =>
+      await (db.update(db.books)..where(
+            (b) =>
+                b.sourceRef.equals(sourceRef) &
+                b.sourceBookUrl.equals(sourceBookUrl),
+          ))
+              .write(BooksCompanion(variable: Value(variable))) >
+          0;
+
+  /// The chapter row's own variable text (frozen `BookChapter.variable`,
+  /// `BookChapter.kt:58`), or null when the space holds no such row or the row
+  /// carries none.
+  ///
+  /// [chapterKey] is the identity a script's `chapter.url` names: a row this
+  /// product wrote keeps the bare request target there (#58).
+  Future<String?> chapterVariable(
+    String sourceRef,
+    String sourceBookUrl,
+    String chapterKey,
+  ) async {
+    final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
+    if (book == null) return null;
+    final row =
+        await (db.select(db.chapters)..where(
+              (c) =>
+                  c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
+            ))
+            .getSingleOrNull();
+    return row?.variable;
+  }
+
+  /// Writes the chapter row's variable column and answers whether the space
+  /// holds the row; a row the space does not hold keeps none, as
+  /// [putBookVariable] explains for the book half.
+  Future<bool> putChapterVariable(
+    String sourceRef,
+    String sourceBookUrl,
+    String chapterKey,
+    String? variable,
+  ) async {
+    final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
+    if (book == null) return false;
+    return await (db.update(db.chapters)..where(
+              (c) =>
+                  c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
+            ))
+            .write(ChaptersCompanion(variable: Value(variable))) >
+        0;
+  }
+
   /// A local book's natural key: the root it was admitted under plus its path
   /// inside that root.
   Future<ShelfBook?> localBook(String rootId, String relativePath) =>

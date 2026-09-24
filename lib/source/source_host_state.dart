@@ -60,6 +60,12 @@ class SourceTlsException {
 /// `lib/store/host_state.dart` implements this over the space's `data.db`; the
 /// gates and the tools run without one, and then [SourceHostState] holds the
 /// state for the process.
+///
+/// The book and chapter members are not the host surface's own state: they are
+/// the `books.variable`/`chapters.variable` columns a rule script reads and
+/// writes through the same state object, because a script reaches space state
+/// through it (the nearest existing mechanism, ADR 0011 §3); they are read and
+/// written per row rather than loaded whole at startup.
 abstract interface class SourceHostStatePersistence {
   Future<List<SourceCookiePair>> loadCookies();
   Future<void> saveCookie(SourceCookiePair cookie);
@@ -73,6 +79,37 @@ abstract interface class SourceHostStatePersistence {
   Future<List<String>> saveCacheEntry(SourceCacheEntry entry);
 
   Future<void> deleteCacheEntry(String sourceRef, String key);
+
+  /// The book row's own variable text (the frozen `Book.variable` column,
+  /// `Book.kt:115`), or null when the space holds no such row or the row
+  /// carries none.
+  Future<String?> loadBookVariable(String sourceRef, String bookUrl);
+
+  /// Writes that column and answers whether the space holds the row: a write
+  /// for a book the space has no row for is kept by [SourceHostState] alone.
+  Future<bool> saveBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  );
+
+  /// The chapter row's own variable text (the frozen `BookChapter.variable`
+  /// column, `BookChapter.kt:58`). [chapterKey] is the row identity a script's
+  /// `chapter.url` names.
+  Future<String?> loadChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  );
+
+  /// Writes that column and answers whether the space holds the row, as
+  /// [saveBookVariable] does for the book half.
+  Future<bool> saveChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  );
 
   /// Removes every host-surface row one source owns (#36): its `source_entries`
   /// rows, the `source_cookies` rows it wrote, and the `source_tls_exceptions`
@@ -93,7 +130,10 @@ abstract interface class SourceHostStatePersistence {
 /// The host surface's state one space's sources share (ADR 0011 §3): the cookie
 /// jar the frozen `CookieStore` keeps, the cache entries and per-source
 /// variables whose owner is the source that wrote them, and the per-source,
-/// per-host TLS exceptions the user confirmed (ADR 0011 §5).
+/// per-host TLS exceptions the user confirmed (ADR 0011 §5) — plus the book and
+/// chapter rows' own variables, which a script reaches through this object
+/// because it is the space state a run already carries (`book.getVariable`,
+/// #76).
 ///
 /// The live copy is in memory — a script reads a cookie inside one synchronous
 /// JavaScript call — and every mutation is also written through
@@ -126,6 +166,18 @@ class SourceHostState {
 
   /// Entries per source, then per key.
   final Map<String, Map<String, _Entry>> _cache = {};
+
+  /// The book and chapter rows' own variable text (the frozen
+  /// `Book.variable`/`BookChapter.variable` columns, #76): a write the space's
+  /// store had no row for, kept so the analysis that made it — and every later
+  /// one in this process — still reads what it wrote. A write the store took
+  /// leaves no entry here, and a read prefers the store, so a row the shelf
+  /// rewrote (a TOC refresh replaces the chapter rows) is read as it now is.
+  /// Without a persistence (a gate, a tool, a test that speaks for no space)
+  /// this map is the whole store.
+  final Map<(String, String), String?> _unwrittenBookVariables = {};
+  final Map<(String, String, String), String?> _unwrittenChapterVariables =
+      {};
 
   /// Accepted TLS exceptions, as `(sourceRef, host)` pairs (ADR 0011 §5).
   final Set<(String, String)> _tlsExceptions = {};
@@ -256,6 +308,81 @@ class SourceHostState {
     await ready();
     if (_cache[sourceRef]?.remove(key) == null) return;
     await _persistence?.deleteCacheEntry(sourceRef, key);
+  }
+
+  /// The book row's own variable text (the frozen `Book.variable` column,
+  /// `Book.kt:115`), or null when the space holds no such row or it carries
+  /// none.
+  ///
+  /// The store is the read: a row the shelf rewrote is read as it now is, and a
+  /// value no row took is served from [_unwrittenBookVariables].
+  Future<String?> bookVariable(String sourceRef, String bookUrl) async {
+    final key = (sourceRef, bookUrl);
+    final stored = await _persistence?.loadBookVariable(sourceRef, bookUrl);
+    if (stored != null) return stored;
+    return _unwrittenBookVariables[key];
+  }
+
+  /// Writes the book row's own variable text.
+  ///
+  /// A write the store took is the row's now and drops any unwritten value for
+  /// it; a write for a book the space has no row for stays readable in this
+  /// process — the frozen entity a script holds exists before its row does
+  /// (`BookInfoViewModel` runs the rules and then saves the entity), while
+  /// carrying such a value into the row the shelf later writes is not
+  /// implemented (#76, recorded divergence).
+  Future<void> putBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  ) async {
+    final key = (sourceRef, bookUrl);
+    if (await _persistence?.saveBookVariable(sourceRef, bookUrl, variable) ==
+        true) {
+      _unwrittenBookVariables.remove(key);
+      return;
+    }
+    _unwrittenBookVariables[key] = variable;
+  }
+
+  /// The chapter row's own variable text (the frozen `BookChapter.variable`
+  /// column, `BookChapter.kt:58`); [chapterKey] is the identity a script's
+  /// `chapter.url` names. Read like [bookVariable].
+  Future<String?> chapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  ) async {
+    final key = (sourceRef, bookUrl, chapterKey);
+    final stored = await _persistence?.loadChapterVariable(
+      sourceRef,
+      bookUrl,
+      chapterKey,
+    );
+    if (stored != null) return stored;
+    return _unwrittenChapterVariables[key];
+  }
+
+  /// Writes the chapter row's own variable text, under the same rule as
+  /// [putBookVariable].
+  Future<void> putChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  ) async {
+    final key = (sourceRef, bookUrl, chapterKey);
+    if (await _persistence?.saveChapterVariable(
+          sourceRef,
+          bookUrl,
+          chapterKey,
+          variable,
+        ) ==
+        true) {
+      _unwrittenChapterVariables.remove(key);
+      return;
+    }
+    _unwrittenChapterVariables[key] = variable;
   }
 
   /// Drops everything one source holds (#36): its cache entries and variables,
