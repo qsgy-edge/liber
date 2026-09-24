@@ -244,7 +244,7 @@ void main() {
     expect(result.switched!.sourceRef, 'https://c.test');
   });
 
-  test('同一页上的第一个精确命中就是候选，之后的同页命中不再读', () async {
+  test('同一页上第一处精确命中的那本就是候选', () async {
     final lost = await lostBook();
     b.hits.addAll([
       hitFor('https://b.test', by: '别人的笔名'),
@@ -259,11 +259,60 @@ void main() {
       openPipeline: open,
     );
 
-    expect(
-      result.switched!.book.sourceBookUrl,
-      'https://b.test/book/1',
-      reason: '冻结的 shouldBreak = { it > 0 }：第一处精确命中之后的不再读',
+    // 甲源's first item is a near hit and its second is the book the frozen
+    // `preciseSearchAwait` filters for: the switched book is that one, not the
+    // same-name book after it on the same page.
+    expect(result.switched!.book.sourceBookUrl, 'https://b.test/book/1');
+  });
+
+  test('书源顺序是 customOrder 再按 URL，两个都合格时先问 customOrder 小的', () async {
+    final lost = await lostBook();
+    // 乙源's URL sorts before 丙源's while its `customOrder` is larger: the store's
+    // order (`SpaceStore.allSources`) decides, so 丙源 is asked first and wins.
+    await store.putSourceJson({...sourceB, 'customOrder': 5});
+    await store.putSourceJson({...sourceC, 'customOrder': 1});
+    b.hits.add(hitFor('https://b.test'));
+    b.chapters.addAll(const ['第一章', '第二章']);
+    c.hits.add(hitFor('https://c.test'));
+    c.chapters.addAll(const ['第一章', '第二章']);
+
+    final result = await autoChangeSource(
+      service: shelf,
+      book: lost,
+      openPipeline: open,
     );
+
+    expect(c.searchCalls, 1);
+    expect(b.searchCalls, 0, reason: 'customOrder 小的先问，问到了就不再问后面的');
+    expect(result.switched!.sourceRef, 'https://c.test');
+  });
+
+  test('调用方取消后不再问后面的书源，也不写换源', () async {
+    final lost = await lostBook();
+    b.hits.add(hitFor('https://b.test'));
+    b.chapters.addAll(const ['第一章', '第二章']);
+    c.hits.add(hitFor('https://c.test'));
+    c.chapters.addAll(const ['第一章', '第二章']);
+    // The owner goes away while the first source's analysis is in flight — the
+    // window `isCancelled` exists for.
+    var cancelled = false;
+
+    final result = await autoChangeSource(
+      service: shelf,
+      book: lost,
+      openPipeline: (source) {
+        if ('${source['bookSourceUrl']}' == 'https://b.test') cancelled = true;
+        return open(source);
+      },
+      isCancelled: () => cancelled,
+    );
+
+    expect(b.searchCalls, 1);
+    expect(c.searchCalls, 0, reason: '取消停在下一处检查，不搜后面的书源');
+    expect(result.switched, isNull);
+    expect(result.ran, isFalse, reason: '被取消的运行没有结果要报');
+    expect((await store.bookById(lost.id))!.sourceRef, 'https://a.test');
+    expect((await store.chaptersOf(lost.id)).length, 5);
   });
 
   test('正文取的是候选目录的第一章，冻结传的下一章 URL 就是这一章', () async {
@@ -428,6 +477,26 @@ void main() {
       expect(await AutoChangeSourceSetting.resolve(store), isFalse);
       await AutoChangeSourceSetting.putGlobal(store, enabled: true);
       expect(await AutoChangeSourceSetting.resolve(store), isTrue);
+    });
+
+    testWidgets('已存的行读回来就是开关的位置', (tester) async {
+      await AutoChangeSourceSetting.putGlobal(store, enabled: false);
+      await tester.pumpWidget(
+        localizedApp(home: AutoChangeSourcePage(store: store)),
+      );
+      await tester.pumpAndSettle();
+
+      // The page reads the row it owns before its first frame with a switch:
+      // `false` is on screen as off, not as the default it would start from.
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const ValueKey('auto-change-source-switch')),
+            )
+            .value,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('设置页的一个开关：默认开着，关掉写下 false，再打开写回 true', (

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../settings/auto_change_source.dart';
 import '../store/shelf.dart';
 import 'auto_change_source.dart';
 import 'book_source_pipeline.dart';
@@ -106,7 +107,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   );
 
   Future<void> open(ShelfEntry entry) async {
-    // The frozen reader's trigger (`ReadBookViewModel.kt:132-141`): a book whose
+    // The frozen reader's trigger (`ReadBookViewModel.kt:139-142`): a book whose
     // source is gone is switched rather than refused. Nothing can open this row
     // as it stands — it has no source object to run — so the automatic switch is
     // what its opening means.
@@ -138,10 +139,16 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   /// A run that found nothing leaves the row exactly as it was and shows the
   /// frozen `自动换源失败\n…`; 移出书架 stays the row's other action. A switch
   /// that is turned off (`source.auto_change`) is not a failure and reports
-  /// nothing.
+  /// nothing — and does not even paint the running line, because the setting is
+  /// read before the row says anything (the frozen's guard is its first
+  /// statement).
   Future<void> autoSwitch(ShelfEntry entry) async {
     if (switchingId != null || busyId != null) return;
     final l10n = AppLocalizations.of(context);
+    // The frozen `if (!AppConfig.autoChangeSource) return`, read before the row
+    // shows `source_auto_changing`; the flow reads it again as its own guard.
+    if (!await AutoChangeSourceSetting.resolve(widget.service.store)) return;
+    if (!mounted) return;
     setState(() {
       switchingId = entry.id;
       error = null;
@@ -162,6 +169,10 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           sourceName: '${source['bookSourceName'] ?? ''}',
           run: run,
         ),
+        // A disposed shelf stops the run at its next check (the manual search
+        // page's own hook): the sources after it are not asked, and nothing is
+        // written under a State that no longer exists.
+        isCancelled: () => !mounted,
       );
       if (!mounted) return;
       final switched = result.switched;
@@ -206,6 +217,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       urlResult = null;
     });
     try {
+      final l10n = AppLocalizations.of(context);
       final matches = <ImportedBookSource>[];
       final failures = <String>[];
       for (final source in await widget.service.sources()) {
@@ -216,14 +228,23 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
             matches.add(source);
           }
         } on UnsupportedError catch (e) {
-          failures.add('${source.data['bookSourceName'] ?? source.id}：$e');
+          // The page's own words, with the thrown refusal as the diagnostic: the
+          // pattern that cannot run here is the source's, and its own text (a
+          // Chinese engine refusal, #72's classification) is what the reader
+          // needs to take back to the source.
+          failures.add(
+            l10n.sourceErrorLine(
+              '${source.data['bookSourceName'] ?? source.id}',
+              '$e',
+            ),
+          );
         }
       }
       if (!mounted) return;
       setState(() {
         matchingUrl = false;
         urlResult = [
-          if (matches.isEmpty) AppLocalizations.of(context).noSourceMatchesUrl,
+          if (matches.isEmpty) l10n.noSourceMatchesUrl,
           ...failures,
         ].join('\n');
       });
@@ -253,7 +274,11 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                       subtitle: Text(source.id),
                       onTap: () => Navigator.pop(dialogContext, source),
                     ),
-                  if (failures.isNotEmpty) Text(failures.join('\n')),
+                  if (failures.isNotEmpty)
+                    Text(
+                      failures.join('\n'),
+                      key: const ValueKey('choose-source-failures'),
+                    ),
                 ],
               ),
             ),
@@ -396,7 +421,11 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           ),
         ),
         if (urlResult != null && urlResult!.isNotEmpty)
-          Text(urlResult!, style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            urlResult!,
+            key: const ValueKey('shelf-url-result'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         if (loading) const LinearProgressIndicator(),
         if (error != null)
           Row(

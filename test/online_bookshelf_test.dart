@@ -111,6 +111,13 @@ class AutoSwitchPages implements BookSourceTransport {
   /// Holds every answer open, so a test can observe the switch while it runs.
   Completer<void>? gate;
 
+  /// Holds the *reader's* own chapter fetch open — the second request for the
+  /// same chapter, after the switch's acceptance check — so a test can read the
+  /// position the switch wrote before the reader re-derives its row from the new
+  /// chapter's text.
+  Completer<void>? readerGate;
+  final _chaptersSeen = <String, int>{};
+
   @override
   Future<String> request({
     required BookSourceStage stage,
@@ -120,7 +127,12 @@ class AutoSwitchPages implements BookSourceTransport {
     paths.add(path);
     final gate = this.gate;
     if (gate != null) await gate.future;
-    return jsonEncode(switch (Uri.parse(path).path) {
+    final target = Uri.parse(path).path;
+    if (readerGate != null && target.startsWith('/chapter/')) {
+      final seen = _chaptersSeen[target] = (_chaptersSeen[target] ?? 0) + 1;
+      if (seen > 1) await readerGate!.future;
+    }
+    return jsonEncode(switch (target) {
       '/search' => {
         'items': [
           {'title': '保留的书', 'author': '', 'url': '/book/9'},
@@ -139,6 +151,25 @@ class AutoSwitchPages implements BookSourceTransport {
   }
 }
 
+/// The file's store, with the automatic switch's own setting readable under a
+/// gate (#69): the frame a tap leaves behind is only observable while that read
+/// is held open, which is what lets a row pin that a switch that is off never
+/// paints the running line.
+class GatedSettingStore extends SpaceStore {
+  GatedSettingStore(super.db, {super.spaceId});
+
+  /// Holds [AutoChangeSourceSetting.key]'s read open, or null to read it at
+  /// once.
+  Completer<void>? settingGate;
+
+  @override
+  Future<String?> setting(String key, {String bookId = ''}) async {
+    final gate = settingGate;
+    if (gate != null && key == AutoChangeSourceSetting.key) await gate.future;
+    return super.setting(key, bookId: bookId);
+  }
+}
+
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
@@ -153,7 +184,7 @@ void main() {
   };
 
   setUp(() async {
-    store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    store = GatedSettingStore(SpaceDatabase(NativeDatabase.memory()));
     shelf = ShelfService(store);
     bookId = await shelf.ensureBook(
       source,
@@ -187,10 +218,12 @@ void main() {
 
   Future<void> showShelf(
     WidgetTester tester,
-    BookSourceTransport transport,
-  ) async {
+    BookSourceTransport transport, {
+    Locale locale = testLocale,
+  }) async {
     await tester.pumpWidget(
       localizedApp(
+        locale: locale,
         home: Scaffold(
           body: ListView(
             children: [OnlineBookshelf(service: shelf, transport: transport)],
@@ -201,9 +234,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> paste(WidgetTester tester, String url) async {
+  Future<void> paste(
+    WidgetTester tester,
+    String url, {
+    String tooltip = '打开书籍链接',
+  }) async {
     await tester.enterText(find.byType(TextField), url);
-    await tester.tap(find.byTooltip('打开书籍链接'));
+    await tester.tap(find.byTooltip(tooltip));
     await tester.pumpAndSettle();
   }
 
@@ -321,8 +358,58 @@ void main() {
       await paste(tester, '$sourceUrl/book/73');
       expect(find.textContaining('没有匹配此链接的书源'), findsOneWidget);
       expect(
-        find.textContaining('坏规则：Unsupported operation: bookUrlPattern'),
+        find.textContaining('坏规则 出错：Unsupported operation: bookUrlPattern'),
         findsOneWidget,
+      );
+      expect(transport.stages, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'a refused pattern is the page\'s own words, in the interface language (#69/#72)',
+    (tester) async {
+      final transport = RecordedPages();
+      // Three distinct source URLs: the refused pattern's own source never
+      // matches anything (it fails before the match), and two sources match the
+      // pasted link, so the choice dialog opens with the failure line under it.
+      await store.putSourceJson(
+        matchingSource('Bad pattern', 'https://broken.test', r'\Qbook\E/\d+'),
+      );
+      await store.putSourceJson(
+        matchingSource('Source A', sourceUrl, r'.*/book/\d+'),
+      );
+      await store.putSourceJson(
+        matchingSource(
+          'Source B',
+          'https://other.test',
+          r'https://example.test/book/\d+',
+        ),
+      );
+      await showShelf(tester, transport, locale: const Locale('en'));
+      await paste(tester, '$sourceUrl/book/73', tooltip: 'Open the book link');
+
+      // Two sources match, so the choice dialog is up with the same failure
+      // line under its list; both renders are the page's words with the thrown
+      // refusal as the diagnostic, never the thrown text alone.
+      expect(find.text('Choose a book source'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('choose-source-failures')))
+            .data,
+        startsWith(
+          'Bad pattern failed: Unsupported operation: bookUrlPattern',
+        ),
+      );
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('shelf-url-result')))
+            .data,
+        startsWith(
+          'Bad pattern failed: Unsupported operation: bookUrlPattern',
+        ),
       );
       expect(transport.stages, isEmpty);
     },
@@ -401,38 +488,56 @@ void main() {
     expect((await store.chaptersOf(bookId)).map((c) => c.name), ['第二章']);
   });
 
-  testWidgets('打开失源的书：自动换源读到新书源的目录，书的身份与进度都留下', (tester) async {
+  testWidgets('打开失源的书：自动换源读到新书源的目录，书的身份、目录和进度都留下', (
+    tester,
+  ) async {
     await store.putSourceJson(autoSwitchSource());
     final transport = AutoSwitchPages();
     await shelf.deleteSource(sourceUrl);
     await showShelf(tester, transport);
     expect(find.textContaining('书源已删除'), findsOneWidget);
 
+    // The reader's own chapter fetch is held open, so the position the switch
+    // wrote is readable before the reader re-derives its row from the new
+    // chapter's text.
+    final readerGate = Completer<void>();
+    transport.readerGate = readerGate;
     await tester.tap(find.text('保留的书'));
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 20 && transport.stages.length < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(
+      transport.stages,
+      [
+        BookSourceStage.search,
+        BookSourceStage.bookInfo,
+        BookSourceStage.tableOfContents,
+        BookSourceStage.content,
+        BookSourceStage.content,
+      ],
+      reason: '换源的验收取一次正文，阅读器自己再取一次',
+    );
 
-    // The candidate proved itself on its own first chapter before the switch
-    // was written, and the switch wrote the same row (D2) with the position on
-    // the new table of contents.
-    expect(transport.stages.first, BookSourceStage.search);
-    expect(transport.paths, contains('$autoSwitchSourceUrl/chapter/0'));
     final switched = (await store.bookById(bookId))!;
     expect(switched.sourceRef, autoSwitchSourceUrl);
     expect(switched.sourceBookUrl, '$autoSwitchSourceUrl/book/9');
     expect(switched.title, '保留的书');
     expect((await shelf.onlineShelf()).length, 1, reason: '还是一条书架行');
-    expect(
-      (await store.chaptersOf(bookId)).map((chapter) => chapter.name),
-      ['楔子', '第二章'],
-    );
+    expect((await store.chaptersOf(bookId)).map((chapter) => chapter.name), [
+      '楔子',
+      '第二章',
+    ]);
     final progress = (await store.progressOf(bookId))!;
     expect(progress.chapterKey, '$autoSwitchSourceUrl/chapter/0');
     expect(progress.chapterIndex, 0);
-    // The offset the switch carried over (77) is what the reader then resumes
-    // from: it re-derives the row its body holds at that anchor, and this
-    // chapter's body is short enough that the row is the first one. The
-    // switch's own write of the carried offset is pinned in
-    // `auto_change_source_test.dart` and `switch_source_test.dart`.
+    expect(
+      progress.textOffset,
+      77,
+      reason: '偏移原样带过去（冻结的 durChapterPos）',
+    );
+
+    readerGate.complete();
+    await tester.pumpAndSettle();
 
     // The switched book is then opened the way any other row is: its page,
     // then its reader (which covers the page, so the page is read offstage).
@@ -464,6 +569,36 @@ void main() {
     expect(find.byType(OnlineReaderPage), findsOneWidget);
   });
 
+  testWidgets('书架被销毁后，在飞的自动换源不再请求也不写', (tester) async {
+    await store.putSourceJson(autoSwitchSource());
+    final transport = AutoSwitchPages();
+    await shelf.deleteSource(sourceUrl);
+    await showShelf(tester, transport);
+    final gate = Completer<void>();
+    transport.gate = gate;
+
+    await tester.tap(find.text('保留的书'));
+    for (var i = 0; i < 20 && transport.stages.isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(transport.stages, [BookSourceStage.search]);
+
+    // The shelf goes away while the source's search is in flight: the run stops
+    // at its next check, so the detail/TOC/content stages never start and the
+    // switch is never written under a State that no longer exists.
+    await tester.pumpWidget(const SizedBox.shrink());
+    gate.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(transport.stages, [BookSourceStage.search]);
+    expect((await store.bookById(bookId))!.sourceRef, sourceUrl);
+    expect((await store.progressOf(bookId))!.textOffset, 77);
+    expect((await store.chaptersOf(bookId)).map((c) => c.name), ['第二章']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自动换源关闭时，打开失源的书不发起任何请求', (tester) async {
     await store.putSourceJson(autoSwitchSource());
     final transport = AutoSwitchPages();
@@ -471,7 +606,16 @@ void main() {
     await shelf.deleteSource(sourceUrl);
     await showShelf(tester, transport);
 
+    // The setting's read is held open: with the guard read before the row says
+    // anything (the frozen's own order), the frame after the tap is still the
+    // row's own 书源已删除 line, never 正在自动换源.
+    final gate = Completer<void>();
+    (store as GatedSettingStore).settingGate = gate;
     await tester.tap(find.text('保留的书'));
+    await tester.pump();
+    expect(find.text('正在自动换源'), findsNothing);
+    expect(find.textContaining('书源已删除'), findsOneWidget);
+    gate.complete();
     await tester.pumpAndSettle();
 
     expect(transport.stages, isEmpty, reason: '冻结的 if (!AppConfig.autoChangeSource) return');

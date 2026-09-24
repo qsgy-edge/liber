@@ -120,6 +120,46 @@ void spaceStoreTest(Directory Function() root) {
   });
 }
 
+/// The settings screens' app-bar entries as the user reaches them (#27, #28,
+/// #69): the space has to be open for them, so this drives the real app the way
+/// `spaceStoreTest` does.
+void settingsEntryTest(Directory Function() root) {
+  testWidgets('自动换源的入口打开设置页，开关读的是已存的行', (tester) async {
+    final workspaceRoot = root();
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
+      await tester.pump();
+      // The shelf section appears with the space; the app bar's entries are
+      // disabled until then.
+      await _waitFor(tester, find.text('在线书架'));
+
+      await tester.tap(find.byIcon(Icons.swap_horiz));
+      await _waitFor(
+        tester,
+        find.byKey(const ValueKey('auto-change-source-switch')),
+      );
+
+      expect(find.text('自动换源'), findsOneWidget, reason: '设置页的标题');
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const ValueKey('auto-change-source-switch')),
+            )
+            .value,
+        isTrue,
+        reason: '没有行时是冻结的默认值 true',
+      );
+
+      // Unmounting the app is what releases the space, and the directory can
+      // only be deleted once that happened.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+}
+
 /// The source-management surface (#53) as the user reaches it: the migration
 /// page's source list deletes a source and edits its URL, and the book that
 /// resolved the old URL stays on the shelf, marked.
@@ -327,6 +367,7 @@ void main() {
 
   defaultAppTest(() => root);
   spaceStoreTest(() => root);
+  settingsEntryTest(() => root);
   sourceManagementTest(() => root);
 }
 

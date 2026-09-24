@@ -8,7 +8,7 @@ import 'precise_search.dart';
 /// is gone is moved onto the first enabled source that proves it carries the
 /// same book, keeping the reading position.
 ///
-/// The trigger this mirrors is the frozen reader's own (`:132-141`): after a
+/// The trigger this mirrors is the frozen reader's own (`:139-142`): after a
 /// book's chapter list is loaded,
 /// `if (!book.isLocal && ReadBook.bookSource == null) autoChangeSource(...)` —
 /// the reader opens the book and switches it instead of showing a dead record.
@@ -41,18 +41,49 @@ import 'precise_search.dart';
 ///    chapter — and a candidate is accepted only when **that content request
 ///    answers**. This is the check a search hit alone cannot make: a source that
 ///    lists the book but serves no chapter is not a candidate.
-/// 4. `take(1)` then `changeTo(book, toc)` (`:307-308`, `:259-277`): the first
+/// 4. `take(1)` then `changeTo(book, toc)` (`:313-314`, `:259-277`): the first
 ///    candidate that got this far wins, and the switch is written with
 ///    [ShelfService.switchSource] — the position mapping (`Book.migrateTo`) the
 ///    manual flow writes, the book's row and id kept.
 ///
-/// Divergences, all recorded for #69's evidence: the frozen walks its sources
-/// through a thread pool and takes whichever candidate finishes first, where
-/// this walks them in `customOrder` and takes the first *accepting* source; its
-/// per-source failures are swallowed and its toast names only
-/// `没有合适书源`, which is what this reports too; and its `changeTo` reloads the
-/// reader's content in place, where the caller here opens the switched book
-/// (the shelf pushes its reader for it).
+/// Divergences, all recorded for #69's evidence:
+///
+/// * The frozen walks its sources through a thread pool (`mapParallelSafe`) and
+///   takes whichever candidate finishes first; this walks them one at a time and
+///   takes the first *accepting* source. The walk is the store's own order,
+///   `customOrder` then `bookSourceUrl` (`SpaceStore.allSources`,
+///   `lib/store/space_store.dart:119-124`), and a source that carries no
+///   `customOrder` — what the importers here write, and the common case — sits
+///   at 0, so equal orders are broken by URL where the frozen keeps its own scan
+///   order.
+/// * Per-source failures are swallowed (`mapParallelSafe`) and the toast names
+///   only `没有合适书源`, which is what this reports too.
+/// * A source with an empty or missing `ruleContent.content` is accepted there
+///   and refused here. The frozen returns the chapter's own URL **without a
+///   request** (`WebBook.kt:303-306`); both product adapters refuse the stage by
+///   name (`html_source_pipeline.dart:1208` → `:580`,
+///   `json_source_pipeline.dart:923` → `:554`) and this flow swallows that, so
+///   the source is skipped. Kept as it stands — the product's reader refuses
+///   such a source too (the recorded #40 choice), so switching onto it would
+///   produce a book nothing can read. Measured on the operator's library: **0 of
+///   the 150 used sources** have an empty or missing `ruleContent.content`,
+///   while **120 of the full 8787-source collection** do (the used set is
+///   `bookshelf.json`'s origins resolved against `bookSource.json`), so the
+///   divergence is unobservable in the used set.
+/// * A write that fails is reported here as `自动换源失败\n…`; the frozen
+///   `changeTo`'s own `onError` only logs `换源失败` (`:271-276`) and shows no
+///   toast.
+/// * The frozen `changeTo` reloads the reader's content in place, where the
+///   caller here opens the switched book (the shelf pushes its reader for it).
+/// * The trigger covers a shelf row whose source row was deleted
+///   ([ShelfEntry.sourceMissing], `sourceRef` present). A book with no origin at
+///   all — the non-openable migrated records (`lib/main.dart:807-826`) — has no
+///   reader and no switch entry, where the frozen's `ReadBook.bookSource == null`
+///   check would fire for it were it open.
+///
+/// The identity the switch keeps is D2's and lives in
+/// [ShelfService.switchSource] (`lib/store/shelf.dart:240-274`); this flow does
+/// not restate it.
 ///
 /// The one value the frozen passes that is easy to misread: its "next chapter"
 /// for the content check is `toc.getOrElse(chapter.index) { toc.first() }` — the
@@ -61,10 +92,12 @@ import 'precise_search.dart';
 /// as it stands.
 ///
 /// The result is `(switched, ran)`: the switched entry when a candidate was
-/// accepted, and whether the switch ran at all. `ran` is false only when
+/// accepted, and whether the switch ran to its own end. `ran` is false when
 /// `source.auto_change` is off — the frozen `if (!AppConfig.autoChangeSource)
-/// return`, read before any source is asked. A run that accepted nothing has no
-/// `switched` and `ran` true: the caller reports the frozen `没有合适书源`.
+/// return`, read before any source is asked — and when [isCancelled] stopped the
+/// run (its owner is gone, so the caller has nothing to report). A run that
+/// finished without accepting a source has no `switched` and `ran` true: the
+/// caller reports the frozen `没有合适书源`.
 Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
   required ShelfService service,
 
@@ -82,6 +115,12 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
     Future<T> Function() run,
   )?
   confirm,
+
+  /// Whether the caller has gone away, the way
+  /// [PreciseSearch.searchSource]'s own hook works: a cancelled run stops at its
+  /// next check instead of walking the rest of the sources — and never writes.
+  /// Null never cancels, which is what the tools do.
+  bool Function()? isCancelled,
 }) async {
   if (!await AutoChangeSourceSetting.resolve(service.store)) {
     return (switched: null, ran: false);
@@ -93,8 +132,13 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
     confirm: confirm,
   );
   for (final candidate in await service.sources()) {
+    if (isCancelled?.call() == true) return (switched: null, ran: false);
     if (!_isAutomaticCandidate(candidate.data)) continue;
-    final outcome = await search.searchSource(candidate.data);
+    final outcome = await search.searchSource(
+      candidate.data,
+      isCancelled: isCancelled,
+    );
+    if (isCancelled?.call() == true) return (switched: null, ran: false);
     // `preciseSearchAwait`'s filter: the formatted name **and** author equal the
     // book's. A near hit the manual dialog would admit is not a candidate here.
     final exact = outcome.hits.where((admitted) => admitted.exact);
@@ -106,6 +150,7 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
       confirm: confirm,
     );
     if (verified == null) continue;
+    if (isCancelled?.call() == true) return (switched: null, ran: false);
     // The write is outside the per-source swallow: the frozen's `changeTo` runs
     // after `take(1)`, so a switch that cannot be written (the candidate's book
     // is already on the shelf as another row) fails the flow instead of

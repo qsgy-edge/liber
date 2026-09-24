@@ -690,8 +690,13 @@ Future<void> _check(String? libraryPath) async {
       report['requests'] = List<String>.of(site.requests);
       // The automatic entry (#69), against its own installation; it runs while
       // the fixture site is still up, and its own requests are recorded apart
-      // from the manual flow's list above.
-      report['autoSwitch'] = await _checkAutoSwitch(site);
+      // from the manual flow's list above. A throw here is reported under this
+      // key instead of escaping, so the manual numbers above still reach stdout.
+      try {
+        report['autoSwitch'] = await _checkAutoSwitch(site);
+      } on Object catch (failure) {
+        report['autoSwitch'] = {'origin': seedOrigin, 'error': '$failure'};
+      }
     } finally {
       await shelf.close();
     }
@@ -707,7 +712,8 @@ Future<void> _check(String? libraryPath) async {
 /// source row deleted, its row, chapters and position kept. The flow that runs
 /// is the product's own (`autoChangeSource`), over the real pipelines and real
 /// requests to the fixture [site]; what it prints is the row before and after,
-/// and the requests the switch made.
+/// the requests the switch made, and — the manual section's own shape — an
+/// `error` when nothing was switched.
 Future<Map<String, Object?>> _checkAutoSwitch(FixtureSite site) async {
   final directory = await Directory.systemTemp.createTemp('liber-69-check-');
   final report = <String, Object?>{'origin': seedOrigin};
@@ -753,6 +759,12 @@ Future<Map<String, Object?>> _checkAutoSwitch(FixtureSite site) async {
       report['sameRow'] = switched?.id == seeded.id;
       report['seededBookId'] = seeded.id;
       report['requests'] = site.requests.sublist(requestsBefore);
+      if (switched == null) {
+        // The manual section's own shape (`没有精确命中，fixture 或搜索语义有误`):
+        // a run that switched nothing is a fixture or semantics error, said out
+        // loud instead of left as a silent `null`.
+        report['error'] = '自动换源没有换到任何书源，fixture 或搜索语义有误';
+      }
     } finally {
       await shelf.close();
     }
