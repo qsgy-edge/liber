@@ -1,0 +1,148 @@
+{
+  "surface": "the JSON reader's field text: AnalyzeByJSonPath.getString over json-path 2.9.0, filters and slices",
+  "provenance": "source-executed on a host JVM; NOT the four-stage device oracle",
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "sha1": "ca2a0c3a32b94724c5eed077149f6e4d7535c85d",
+      "role": "the JSON reader the rule path reaches: getString is the field-text boundary this corpus compares"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/RuleAnalyzer.kt",
+      "sha1": "1b3f38e51b5905007069f49a9df81cf49d038e55",
+      "role": "the rule splitter and {$.rule} inner-rule pass AnalyzeByJSonPath.getString runs before the read"
+    }
+  ],
+  "library": {
+    "artifact": "com.jayway.jsonpath:json-path:2.9.0",
+    "sha256": "11a9ee6f88bb31f1450108d1cf6441377dec84aca075eb6bb2343be157575bea",
+    "pinnedBy": "tool/jsonpath_probe/jars.sha256",
+    "wraps": "gradle/libs.versions.toml:22, the version the frozen AnalyzeByJSonPath.kt calls"
+  },
+  "harness": "tool/jsonpath_oracle/JsonPathOracle.kt",
+  "fixtures": "tool/jsonpath_oracle/fixtures.json",
+  "golden": "tool/jsonpath_oracle/evidence/jvm-host/golden.json",
+  "goldenSha1": "74156e8eb7d67c171ccaf7da869bcef4a061e1f1",
+  "command": "bash tool/jsonpath_oracle/run_golden.sh",
+  "toolchain": {
+    "jvm": "1.8.0_503-b01 (Oracle, amd64, windows)",
+    "kotlinCompiler": "kotlin-compiler-embeddable-2.3.20",
+    "kotlinStdlib": "kotlin-stdlib-2.3.20",
+    "kotlinReflect": "kotlin-reflect-2.2.0",
+    "gson": "gson-2.11.0",
+    "jvmTarget": "1.8",
+    "jsonPath": "json-path-2.9.0 (with json-smart-2.5.0, accessors-smart-2.5.0, slf4j-api-2.0.11, asm-9.6, verified against tool/jsonpath_probe/jars.sha256)",
+    "androidxAnnotation": "annotation-jvm-1.10.0 (compile classpath only, for the frozen @Keep)"
+  },
+  "recordedAt": "2026-09-24T11:07:38Z",
+  "determinism": "The harness runs every case twice and refuses the output when the two runs differ. json-path 2.9.0 reads no clock, no random source and no ambient state here, so this is a guard against a future corpus row rather than a known non-deterministic branch.",
+  "compared": 73,
+  "notCompared": [
+    {
+      "name": "declared-scan-index-guard",
+      "rule": "$..[0].content",
+      "kind": "scan-element-index",
+      "frozenText": "A",
+      "frozenRead": "ok",
+      "reason": "The matrix row names `$..[N]...` as refused by name: the frozen ScanPathToken.walkArray element-index guard is what decides what it answers, and this reader refuses the form instead of guessing it. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-scan-wildcard",
+      "rule": "$..*.content",
+      "kind": "scan-element-index",
+      "frozenText": "",
+      "frozenRead": "ok",
+      "reason": "The same guard reached through the `$..*.` spelling. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-operator-triple-equals",
+      "rule": "$.data[?(@.hasContent===1)].content",
+      "kind": "operator-not-run",
+      "frozenText": "A",
+      "frozenRead": "ok",
+      "reason": "The library knows `===` and this reader does not run it, which the matrix row names. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-operator-contains",
+      "rule": "$.data[?(@.title contains 'T')].content",
+      "kind": "operator-not-run",
+      "frozenText": "A",
+      "frozenRead": "ok",
+      "reason": "`contains` is one of the operators the matrix row lists as not run. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-operator-subsetof",
+      "rule": "$.data[?(@.tags subsetof ['x'])].content",
+      "kind": "operator-not-run",
+      "frozenText": "B",
+      "frozenRead": "ok",
+      "reason": "`subsetof` from the same list. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-function-in-filter-path",
+      "rule": "$.data[?(@.title.length() > 1)].content",
+      "kind": "unsupported-path-form",
+      "frozenText": "",
+      "frozenRead": "ok",
+      "reason": "A function call in a filter path, which the matrix row lists among the refused path forms. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-quoted-property",
+      "rule": "$.data['title']",
+      "kind": "unsupported-path-form",
+      "frozenText": "",
+      "frozenRead": "error:com.jayway.jsonpath.PathNotFoundException",
+      "reason": "A quoted property name, refused by name in the matrix row. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-slice-step",
+      "rule": "$.data[::2]",
+      "kind": "refused-by-both",
+      "frozenText": "",
+      "frozenRead": "error:com.jayway.jsonpath.InvalidPathException",
+      "reason": "`[::n]` is refused by the library and by this reader, so the compared text the frozen side would carry is the empty one getString leaves — the two shapes differ and the matrix row names both. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-slice-all",
+      "rule": "$.data[:]",
+      "kind": "refused-by-both",
+      "frozenText": "",
+      "frozenRead": "error:com.jayway.jsonpath.InvalidPathException",
+      "reason": "`[:]` from the same sentence. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-slice-over-map",
+      "rule": "$.meta[1:2]",
+      "kind": "failed-read-shape",
+      "frozenText": "",
+      "frozenRead": "error:com.jayway.jsonpath.PathNotFoundException",
+      "reason": "The recorded divergence in the matrix row: a definite slice over a non-array is a named FormatException where the frozen reader swallows the library PathNotFoundException into an empty text. [docs/compatibility/book-source-capability-matrix.md:121]"
+    },
+    {
+      "name": "declared-slice-over-null",
+      "rule": "$.nul[1:2]",
+      "kind": "failed-read-shape",
+      "frozenText": "",
+      "frozenRead": "error:com.jayway.jsonpath.PathNotFoundException",
+      "reason": "The same divergence over a null value. [docs/compatibility/book-source-capability-matrix.md:121]"
+    }
+  ],
+  "productFix": {
+    "rows": "render-slice-of-objects ($.data[1:3]), render-filter-of-object (.[?(@.className)])",
+    "found": "The first run of this corpus (60 rules, before the rendering rows below were added) compared 58 and failed these two: a rule whose matches are objects or arrays carried Dart's rendering of them ({k: v}, [z, y]) where the frozen field text carries json-smart's ({k=v}, [\"z\",\"y\"]).",
+    "fixed": "lib/source/json_source_rules.dart: _fieldText now renders a match through _matchedText/_mapText/_arrayText/_jsonValueText/_jsonMapText/_scalarText, the frozen toString forms. test/jsonpath_differential_test.dart is the comparison.",
+    "ticket": "#78",
+    "effect": "After the fix the two rows compare, the eleven declared rows are reported in notCompared by name above, and the JSONPath row carries a fixture instead of a gap."
+  },
+  "deviceRow": {
+    "status": "not-run",
+    "owner": "#38",
+    "reason": "The four-stage device oracle entry that would run a JSON rule inside the frozen APK process does not exist. This host harness executes the frozen AnalyzeByJSonPath.kt and RuleAnalyzer.kt bytes against the same library release and is not a device golden."
+  },
+  "outOfCorpus": [
+    "a number at or above 1e7 or below 1e-3: the JVM writes scientific notation where Dart writes a decimal, and no row here reaches that band",
+    "the failure shapes of the declared rows themselves: only the refused text is frozen, and the contract does not compare exception classes",
+    "the rule-level &&/||/%% merges over more than one branch and the {{...}} template form: those are the adapter's source-derived rows, not this corpus's boundary"
+  ]
+}

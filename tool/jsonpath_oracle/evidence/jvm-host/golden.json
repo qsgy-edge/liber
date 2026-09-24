@@ -1,0 +1,338 @@
+{
+  "filter-eq-number-matches-string-one": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-eq-spaced": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-eq-single-quotes": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-eq-double-quotes": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-gt-number": {
+    "text": "B\nC\nD",
+    "read": "ok"
+  },
+  "filter-lt-number": {
+    "text": "A",
+    "read": "ok"
+  },
+  "filter-gt-string-field": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-ge-string-operand": {
+    "text": "A\nB",
+    "read": "ok"
+  },
+  "filter-le-number": {
+    "text": "A\nB",
+    "read": "ok"
+  },
+  "filter-ne-number": {
+    "text": "A\nC\nD\nE",
+    "read": "ok"
+  },
+  "filter-regex-anchored": {
+    "text": "A\nB\nC",
+    "read": "ok"
+  },
+  "filter-regex-ignore-case": {
+    "text": "A\nB",
+    "read": "ok"
+  },
+  "filter-regex-ungrouped-alternation": {
+    "text": "A\nB",
+    "read": "ok"
+  },
+  "filter-regex-end-anchor": {
+    "text": "D",
+    "read": "ok"
+  },
+  "filter-regex-empty-value": {
+    "text": "E\nF",
+    "read": "ok"
+  },
+  "filter-regex-on-array-element": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-in-numbers": {
+    "text": "A\nC\nE",
+    "read": "ok"
+  },
+  "filter-nin-numbers": {
+    "text": "B\nD",
+    "read": "ok"
+  },
+  "filter-in-strings": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-size-title": {
+    "text": "A",
+    "read": "ok"
+  },
+  "filter-size-tags": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-empty-empty-string-true": {
+    "text": "B",
+    "read": "ok"
+  },
+  "filter-empty-empty-string-false": {
+    "text": "A",
+    "read": "ok"
+  },
+  "filter-empty-tags-true": {
+    "text": "B",
+    "read": "ok"
+  },
+  "filter-exists-true": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-exists-null-value": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-truthiness-null-value": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-eq-null": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "filter-ne-null": {
+    "text": "B\nD",
+    "read": "ok"
+  },
+  "filter-empty-null-true": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-bare-boolean-field": {
+    "text": "A\nB\nD",
+    "read": "ok"
+  },
+  "filter-bare-boolean-eq-true": {
+    "text": "A\nD",
+    "read": "ok"
+  },
+  "filter-tags-eq-list": {
+    "text": "A",
+    "read": "ok"
+  },
+  "filter-and": {
+    "text": "B\nC",
+    "read": "ok"
+  },
+  "filter-or": {
+    "text": "A\nC\nE",
+    "read": "ok"
+  },
+  "filter-not": {
+    "text": "B\nD\nE",
+    "read": "ok"
+  },
+  "filter-missing-field": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-missing-field-eq": {
+    "text": "",
+    "read": "ok"
+  },
+  "filter-scalar-array": {
+    "text": "3\n4",
+    "read": "ok"
+  },
+  "filter-scalar-array-eq": {
+    "text": "p2",
+    "read": "ok"
+  },
+  "slice-between": {
+    "text": "B\nC",
+    "read": "ok"
+  },
+  "slice-from-start": {
+    "text": "A\nB",
+    "read": "ok"
+  },
+  "slice-to-end": {
+    "text": "C\nD\nE",
+    "read": "ok"
+  },
+  "slice-negative-from-end": {
+    "text": "D\nE",
+    "read": "ok"
+  },
+  "slice-negative-to-end": {
+    "text": "A\nB\nC",
+    "read": "ok"
+  },
+  "slice-negative-both": {
+    "text": "",
+    "read": "ok"
+  },
+  "slice-third-field-ignored": {
+    "text": "{hasContent=0, content=B, title=, n=10, s=9, tags=[]}\n{hasContent=1, content=C, n=15.5, tags=[\"z\",\"y\"]}",
+    "read": "ok"
+  },
+  "slice-past-end": {
+    "text": "",
+    "read": "ok"
+  },
+  "slice-reversed": {
+    "text": "",
+    "read": "ok"
+  },
+  "slice-then-index": {
+    "text": "",
+    "read": "ok"
+  },
+  "slice-then-key-index": {
+    "text": "z",
+    "read": "ok"
+  },
+  "slice-of-strings": {
+    "text": "p2\np3",
+    "read": "ok"
+  },
+  "index-negative": {
+    "text": "E",
+    "read": "ok"
+  },
+  "index-multi": {
+    "text": "A\nC",
+    "read": "ok"
+  },
+  "index-wildcard": {
+    "text": "A\nB\nC\nD\nE",
+    "read": "ok"
+  },
+  "index-ascii": {
+    "text": "D",
+    "read": "ok"
+  },
+  "plain-slice": {
+    "text": "p3",
+    "read": "ok"
+  },
+  "scan-recursive-title": {
+    "text": "T1\n\nM1\nC1",
+    "read": "ok"
+  },
+  "dot-leading-filter-is-recursive": {
+    "text": "{className=玄幻, step=1}",
+    "read": "ok"
+  },
+  "index-out-of-range-negative": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.PathNotFoundException"
+  },
+  "render-empty-object": {
+    "text": "{}",
+    "read": "ok"
+  },
+  "render-empty-array": {
+    "text": "",
+    "read": "ok"
+  },
+  "render-array-of-mixed-scalars": {
+    "text": "1\n2.0\ntrue\nnull\na,b\n{}\n[]",
+    "read": "ok"
+  },
+  "render-nested-containers": {
+    "text": "[\"y\"]\n{k=[1,2]}",
+    "read": "ok"
+  },
+  "render-quoted-strings": {
+    "text": "a\"b\nc\\d\ne\tf\n中文字\nü",
+    "read": "ok"
+  },
+  "render-numbers-map": {
+    "text": "{i=2147483647, d=2.0, neg=-0.5, big=9007199254740993}",
+    "read": "ok"
+  },
+  "render-map-with-container-values": {
+    "text": "{a=x, y, b=[1,2], c={d=null}, e=true, f=中}",
+    "read": "ok"
+  },
+  "render-objects-in-array": {
+    "text": "{k=v}\n{k2=[1]}",
+    "read": "ok"
+  },
+  "render-slice-of-objects": {
+    "text": "{hasContent=0, content=B, title=, n=10, s=9, tags=[]}\n{hasContent=1, content=C, n=15.5, tags=[\"z\",\"y\"]}",
+    "read": "ok"
+  },
+  "render-filter-of-object": {
+    "text": "{className=玄幻, step=1}",
+    "read": "ok"
+  },
+  "render-index-of-object": {
+    "text": "{hasContent=1, content=A, title=T1, n=5, s=10, tags=[\"x\",\"y\"]}",
+    "read": "ok"
+  },
+  "render-array-of-arrays": {
+    "text": "[\"x\",\"y\"]\n[]\n[\"z\",\"y\"]",
+    "read": "ok"
+  },
+  "render-nested-quoted-strings": {
+    "text": "{q=[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\",\"g\\nh\"], n=[1,2.0,true,null], e={}, a=[], m=[{\"k\":\"v\"},{\"k2\":[1]}], mm=[[1,2],[\"a\"]], m2=[{\"a\":1,\"b\":\"x\"}], raw=a\"b,c\\d, deep=[{\"k\":[{\"n\":2}]}]}",
+    "read": "ok"
+  },
+  "declared-scan-index-guard": {
+    "text": "A",
+    "read": "ok"
+  },
+  "declared-scan-wildcard": {
+    "text": "",
+    "read": "ok"
+  },
+  "declared-operator-triple-equals": {
+    "text": "A",
+    "read": "ok"
+  },
+  "declared-operator-contains": {
+    "text": "A",
+    "read": "ok"
+  },
+  "declared-operator-subsetof": {
+    "text": "B",
+    "read": "ok"
+  },
+  "declared-function-in-filter-path": {
+    "text": "",
+    "read": "ok"
+  },
+  "declared-quoted-property": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.PathNotFoundException"
+  },
+  "declared-slice-step": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.InvalidPathException"
+  },
+  "declared-slice-all": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.InvalidPathException"
+  },
+  "declared-slice-over-map": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.PathNotFoundException"
+  },
+  "declared-slice-over-null": {
+    "text": "",
+    "read": "error:com.jayway.jsonpath.PathNotFoundException"
+  }
+}

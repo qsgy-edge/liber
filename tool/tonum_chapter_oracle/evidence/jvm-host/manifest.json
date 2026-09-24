@@ -1,0 +1,44 @@
+{
+  "surface": "java.toNumChapter (Chinese numerals) over AppPattern.titleNumPattern and StringUtils.stringToInt",
+  "provenance": "source-executed on a host JVM; NOT the four-stage device oracle",
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/help/JsExtensions.kt",
+      "sha1": "1544fa90d832d57147b4f67cec3f2418daca8dc4",
+      "role": "lines 905-913, transcribed into the harness and verified against this file at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "compiled from the frozen bytes"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "8dbf018c04ffcf117794593beaeebe7b717b0d81",
+      "role": "compiled from the frozen bytes"
+    }
+  ],
+  "harness": "tool/tonum_chapter_oracle/ToNumChapterOracle.kt",
+  "fixtures": "tool/tonum_chapter_oracle/fixtures.json",
+  "golden": "tool/tonum_chapter_oracle/evidence/jvm-host/golden.json",
+  "goldenSha1": "250bccb5446b08f1e571abcecd17639627daa71a",
+  "command": "bash tool/tonum_chapter_oracle/run_golden.sh",
+  "toolchain": {
+    "jvm": "1.8.0_503-b01 (Oracle, amd64, windows)",
+    "kotlinCompiler": "kotlin-compiler-embeddable-2.3.20",
+    "kotlinStdlib": "kotlin-stdlib-2.3.20",
+    "kotlinReflect": "kotlin-reflect-2.2.0",
+    "gson": "gson-2.11.0",
+    "jvmTarget": "1.8",
+    "androidStubJar": "C:/Users/17945/AppData/Local/Android/sdk/platforms/android-35/android.jar (compile classpath only; compile_sdk_version = 35 at the frozen revision)"
+  },
+  "recordedAt": "2026-09-24T10:46:42Z",
+  "determinism": "The harness runs every case twice and refuses the output when the two runs differ. java.toNumChapter reads no clock, no random source and no state, so this is a guard against a future corpus row rather than a known non-deterministic branch.",
+  "transcription": "JsExtensions.kt:905-913 names Rhino, AppConfig and Android types, so the file cannot be compiled on a desktop JVM. The member's eight-line body is transcribed into the harness and the run fails unless the frozen file still contains that body after whitespace normalisation. The two functions the body calls — AppPattern.titleNumPattern and StringUtils.stringToInt — are compiled from the frozen bytes.",
+  "deviceRow": {
+    "status": "not-run",
+    "owner": "#38",
+    "reason": "The four-stage device oracle entry that would call java.toNumChapter inside the frozen APK process does not exist. This host harness executes the frozen AppPattern and StringUtils bytes and a verified transcription of the member, and it is not a device golden."
+  }
+}
