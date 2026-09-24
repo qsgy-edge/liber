@@ -92,10 +92,22 @@ void main() {
 
   test('恢复结果只有 exact 才是没有改动，其余都要报给读者', () {
     expect(restoreNotice(RestoreTier.exact), isNull);
-    expect(restoreNotice(RestoreTier.relocated), contains('已改动'));
-    expect(restoreNotice(RestoreTier.searched), contains('已改动'));
-    expect(restoreNotice(RestoreTier.lineIndex), contains('已替换'));
-    expect(restoreNotice(RestoreTier.percentage), contains('已替换'));
+    expect(
+      restoreNotice(RestoreTier.relocated),
+      LocalReaderNotice.readerRestoreRelocated,
+    );
+    expect(
+      restoreNotice(RestoreTier.searched),
+      LocalReaderNotice.readerRestoreSearched,
+    );
+    expect(
+      restoreNotice(RestoreTier.lineIndex),
+      LocalReaderNotice.readerRestoreLineIndex,
+    );
+    expect(
+      restoreNotice(RestoreTier.percentage),
+      LocalReaderNotice.readerRestorePercentage,
+    );
   });
 
   test('锚点查找给出不晚于位置的最近锚点，行号查找同理', () {
@@ -179,7 +191,10 @@ void main() {
 
     expect(restored.tier, RestoreTier.lineIndex);
     expect(restored.line.lineIndex, stored.lineIndex);
-    expect(restoreNotice(restored.tier), contains('已替换'));
+    expect(
+      restoreNotice(restored.tier),
+      LocalReaderNotice.readerRestoreLineIndex,
+    );
   });
 
   test('第四档：连行号都没有了，就按百分比恢复', () async {

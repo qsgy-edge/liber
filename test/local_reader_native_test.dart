@@ -44,7 +44,7 @@ void main() {
     await reader.open();
 
     expect(reader.error, isNull);
-    expect(reader.notice, isNull);
+    expect(reader.notices, isEmpty);
     expect(reader.text, text.substring(0, reader.pageCodeUnits));
     expect(
       engine.largestRead,
@@ -80,7 +80,7 @@ void main() {
     );
     await reopened.open();
 
-    expect(reopened.notice, isNull);
+    expect(reopened.notices, isEmpty);
     expect(reopened.position!.textOffset, record.textOffset);
     expect(reopened.text, reader.text);
     expect(engine.indexPasses, 1, reason: '存下来的锚点就够第二次打开');
@@ -96,7 +96,10 @@ void main() {
     );
     await afterEdit.open();
 
-    expect(afterEdit.notice, contains('已改动'));
+    expect(
+      afterEdit.notices,
+      contains(LocalReaderNotice.readerRestoreRelocated),
+    );
     expect(afterEdit.position!.textLength, edited.length);
     expect(afterEdit.hasPrevious, isTrue);
     expect((await space.store.bookById(space.book.id))!.needsRelink, isTrue);

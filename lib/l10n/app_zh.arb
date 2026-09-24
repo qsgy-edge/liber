@@ -710,6 +710,11 @@
       }
     }
   },
+  "readerRestoreRelocated": "文件已改动：阅读位置按锚点重新定位",
+  "readerRestoreSearched": "文件已改动：阅读位置在文件中重新找到",
+  "readerRestoreLineIndex": "文件已替换：阅读位置按行号恢复，请检查",
+  "readerRestorePercentage": "文件已替换：阅读位置按百分比恢复，请检查",
+  "readerDeletedPosition": "替换规则改写了这一行：阅读位置移到改动处的正文",
   "previousPage": "上一页",
   "nextPage": "下一页",
   "hatchImageTitle": "书源请求显示验证码图片",

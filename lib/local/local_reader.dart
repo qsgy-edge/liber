@@ -36,26 +36,59 @@ String? anchorOf(String lineText) {
   return line.substring(0, math.min(32, line.length));
 }
 
+/// One thing the local reader has to say about the position it opened at, as a
+/// code the page renders (#73).
+///
+/// The engine has no `AppLocalizations` and does not reach the widget layer, so
+/// it reports *what* it noticed rather than the interface's words: each value's
+/// name is also the ARB key its copy lives under
+/// (`LocalReaderNotice.readerRestoreRelocated` ↔
+/// `AppLocalizations.readerRestoreRelocated`), so one concept has one spelling
+/// across the boundary — the split #72 established for the store layer.
+///
+/// The reader keeps its own code set rather than reusing #72's `StoreMessage`: a
+/// notice here takes no arguments, is reported fresh at every open instead of
+/// being read back from a stored report, and `StoreMessageCode` is the store's
+/// and the source layer's vocabulary — sharing it would put the reader's words in
+/// the store's enum and carry argument, JSON and literal-fallback machinery that
+/// nothing on this path uses.
+enum LocalReaderNotice {
+  /// The stored anchor was near the record but not on it, and the position was
+  /// relocated by the anchor it did find (`RestoreTier.relocated`).
+  readerRestoreRelocated,
+
+  /// The stored anchor was gone from the file and the position was searched for
+  /// (`RestoreTier.searched`).
+  readerRestoreSearched,
+
+  /// The file was replaced and only the line number still identified the
+  /// position (`RestoreTier.lineIndex`).
+  readerRestoreLineIndex,
+
+  /// The file was replaced and only the percentage still identified the position
+  /// (`RestoreTier.percentage`).
+  readerRestorePercentage,
+
+  /// The replace rules rewrote or deleted the line the position was on: the
+  /// deleted-offset policy (`reader_offset_map.dart`) put the reader on the
+  /// run's own text instead. The position itself is not lost — it is still the
+  /// raw file's offset — but what it shows has moved, and D4 reports that
+  /// instead of moving silently.
+  readerDeletedPosition,
+}
+
 /// What the reader has to say about the position it restored, or null when the
 /// stored position still held.
 ///
 /// D4: the fallback tiers report the change instead of jumping silently, and so
 /// do the tolerant ones — a relocated position is worth saying out loud.
-String? restoreNotice(RestoreTier tier) => switch (tier) {
+LocalReaderNotice? restoreNotice(RestoreTier tier) => switch (tier) {
   RestoreTier.exact => null,
-  RestoreTier.relocated => '文件已改动：阅读位置按锚点重新定位',
-  RestoreTier.searched => '文件已改动：阅读位置在文件中重新找到',
-  RestoreTier.lineIndex => '文件已替换：阅读位置按行号恢复，请检查',
-  RestoreTier.percentage => '文件已替换：阅读位置按百分比恢复，请检查',
+  RestoreTier.relocated => LocalReaderNotice.readerRestoreRelocated,
+  RestoreTier.searched => LocalReaderNotice.readerRestoreSearched,
+  RestoreTier.lineIndex => LocalReaderNotice.readerRestoreLineIndex,
+  RestoreTier.percentage => LocalReaderNotice.readerRestorePercentage,
 };
-
-/// What the reader reports when the position's own text is gone: the rules
-/// rewrote or deleted the line the position was on, and the deleted-offset
-/// policy (`reader_offset_map.dart`) put the reader on the run's own text
-/// instead. The position itself is not lost — it is still the raw file's offset
-/// — but what it shows has moved, and D4 reports that instead of moving
-/// silently.
-const String deletedPositionNotice = '替换规则改写了这一行：阅读位置移到改动处的正文';
 
 /// The local reader's one open book: the file's index, the position the reader
 /// is at, and the one bounded window on screen (D4/D10).
@@ -77,7 +110,7 @@ const String deletedPositionNotice = '替换规则改写了这一行：阅读位
 /// exactly what it changed. A position inside a line the rules rewrote or
 /// deleted has no image of its own; the map's deleted-offset policy puts the
 /// reader on the rewritten run's own boundary and the reader reports it with
-/// [deletedPositionNotice].
+/// [LocalReaderNotice.readerDeletedPosition].
 /// With [processing] null the reader is the plain window reader it was, the way
 /// the online page falls back to the source's own text while its rules load.
 class LocalReader {
@@ -131,7 +164,7 @@ class LocalReader {
   ReaderLines? _lines;
   ReaderWindow? _window;
   ProgressRecord? _position;
-  String? _notice;
+  List<LocalReaderNotice> _notices = const <LocalReaderNotice>[];
   String? _error;
   bool _busy = true;
 
@@ -162,8 +195,11 @@ class LocalReader {
   /// Where the reader is, as the five-field record. Always the raw file's space.
   ProgressRecord? get position => _position;
 
-  /// What the reader had to change about the stored position, or null.
-  String? get notice => _notice;
+  /// What the reader had to change about the stored position: the restore
+  /// tier's code and, when the replace rules rewrote the line the position was
+  /// on, [LocalReaderNotice.readerDeletedPosition] after it. Empty when the
+  /// stored position still held.
+  List<LocalReaderNotice> get notices => _notices;
 
   /// Why the book could not be opened, or null.
   String? get error => _error;
@@ -250,7 +286,12 @@ class LocalReader {
         index: index,
         windowCodeUnits: pageCodeUnits,
       );
-      _notice = restored == null ? null : restoreNotice(restored.tier);
+      final restoredNotice = restored == null
+          ? null
+          : restoreNotice(restored.tier);
+      _notices = restoredNotice == null
+          ? const <LocalReaderNotice>[]
+          : <LocalReaderNotice>[restoredNotice];
       _position = restored == null
           ? _startPosition(index)
           : _recordAt(
@@ -269,8 +310,10 @@ class LocalReader {
         );
         _unit = unit;
         if (unit.map.imageOf(_position!.lineStart) == null) {
-          final reported = deletedPositionNotice;
-          _notice = _notice == null ? reported : '$_notice $reported';
+          _notices = <LocalReaderNotice>[
+            ..._notices,
+            LocalReaderNotice.readerDeletedPosition,
+          ];
         }
         _pageStart = _processedLineStartAt(
           unit.processedText,

@@ -237,7 +237,7 @@ Future<void> main(List<String> arguments) async {
         'window_text_offset': second.window?.textOffset,
         'stored_text_offset': stored.textOffset,
         'position_text_offset': second.position?.textOffset,
-        'restore_notice': second.notice,
+        'restore_notice': second.notices.map((notice) => notice.name).toList(),
         'error': second.error,
       });
     default:
