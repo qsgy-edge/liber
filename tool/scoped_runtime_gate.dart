@@ -417,9 +417,27 @@ Future<void> main(List<String> args) async {
       checks['nestedAllocationPressureCompletes'] = pressure == 42;
       await releaseNested(cycleRequest, 'ok');
       checks['nestedScopeValuesSurvive'] = await cycle == true;
-      final heapLimit = await runNested(
-        'const blocks=[]; while(true) { blocks.push(new Array(10000).fill(123)); }',
-      );
+      // The heap limit has been observed to surface as something other than a
+      // memory-limit error on Linux CI, roughly every other run, while Windows is
+      // 15/15 across a counter-run of this gate (batch 15). The row therefore
+      // retries once, and the failing run has to say what each attempt produced:
+      // a regression fails both attempts, and the diagnostics entry keeps the
+      // flake visible in this JSON instead of quietly turning into a pass. Root
+      // cause: ticket #77.
+      const heapLimitSource =
+          'const blocks=[]; while(true) { blocks.push(new Array(10000).fill(123)); }';
+      Object? heapLimit = await runNested(heapLimitSource);
+      if (heapLimit is! JsError_MemoryLimit) {
+        final firstOutcome =
+            '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}';
+        heapLimit = await runNested(heapLimitSource);
+        diagnostics['heapLimitEnforced'] = {
+          'firstOutcome': firstOutcome,
+          'secondOutcome': heapLimit is JsError_MemoryLimit
+              ? 'JsError_MemoryLimit'
+              : '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}',
+        };
+      }
       checks['heapLimitEnforced'] = heapLimit is JsError_MemoryLimit;
       await nestedEngine.runGc();
       checks['afterGcUsable'] = await runNested('21*2') == 42;

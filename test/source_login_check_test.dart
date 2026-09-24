@@ -417,12 +417,17 @@ result;
       final hits = await pipeline.search('书');
       expect(hits.single.title, '书');
       // One `AnalyzeUrl` per URL (`JsExtensions.kt:111-125`): each entry keeps
-      // its own method and body, in input order.
-      final posts = site.seen
-          .where((request) => request.method == 'POST')
-          .toList();
-      expect(posts.map((request) => request.path), ['/verify', '/verify2']);
-      expect(posts.map((request) => utf8.decode(request.body)), ['a=1', 'b=2']);
+      // its own method and body. `ajaxAll` issues the URLs together, so the
+      // order the server *sees* them in is not a guarantee and is not asserted
+      // here (it has been observed reversed on CI): what the frozen fixes is the
+      // returned array's order, pinned by the host-surface gate's
+      // `ajaxAllReturnsOrderedResponses` row, and the per-URL option tail, which
+      // is asserted by path below.
+      final posts = site.seen.where((request) => request.method == 'POST');
+      expect(posts, hasLength(2));
+      expect({
+        for (final request in posts) request.path: utf8.decode(request.body),
+      }, {'/verify': 'a=1', '/verify2': 'b=2'});
     });
 
     test('the hook sees a rendered document and may re-render it', () async {
