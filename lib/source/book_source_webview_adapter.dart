@@ -123,20 +123,67 @@ class SourceWebViewCancelled implements Exception {
   String toString() => 'BackstageWebView cancelled';
 }
 
-/// Raised when the adapter refuses the server's certificate.
+/// The WebView path's certificate failure (ADR 0011 §5).
 ///
-/// Only the platform's server-trust callback can produce it, so it is evidence
-/// that the server presented a certificate the adapter rejected. ADR 0011 §5's
+/// The engine's server-trust callback is the only thing that produces it, so it
+/// is evidence that the server presented a certificate the adapter rejected; the
 /// per-source, per-host exception is the one case where the adapter proceeds
-/// through the certificate instead.
-class SourceWebViewUntrustedCertificate implements Exception {
-  const SourceWebViewUntrustedCertificate({this.sourceRef = '', this.host = ''});
+/// through the certificate instead. It is the same failure the `dart:io` path
+/// raises — [SourceTlsCertificateFailure] — carrying the host the challenge
+/// named and the plain-words reason the engine cannot supply, so one
+/// confirmation serves whichever transport failed.
+SourceTlsCertificateFailure sourceWebViewUntrustedCertificateFailure({
+  required String sourceRef,
+  required String host,
+}) => SourceTlsCertificateFailure(
+  sourceRef: sourceRef,
+  host: host,
+  reason: SourceTlsCertificateFailure.unspecifiedReason,
+);
 
-  final String sourceRef;
-  final String host;
+/// What the headless adapter does with the engine's server-trust challenge for
+/// one host (ADR 0011 §5).
+///
+/// It is the callback's own decision, named here rather than inline in the
+/// platform callback so it can be driven without an engine: the callback is only
+/// the mapping onto the engine's response actions.
+enum SourceWebViewTrustDecision {
+  /// A stored per-source, per-host exception lets the page load through the
+  /// certificate.
+  proceed,
 
-  @override
-  String toString() => 'untrusted server certificate';
+  /// Nothing is stored: the operation fails with the WebView path's certificate
+  /// failure and the WebView is destroyed instead of loading the page.
+  refuse,
+}
+
+/// The headless adapter's decision for the engine's server-trust challenge
+/// (ADR 0011 §5).
+///
+/// [scope] answers with the stored exception for this source and [host]; [fail]
+/// and [destroy] are the adapter's own effects (`_fail` and `destroy()`), so the
+/// decision reads the real store, reports the real failure and performs the real
+/// teardown. The failure [fail] receives is
+/// [sourceWebViewUntrustedCertificateFailure] for the host the challenge named —
+/// not for the source's own host — because that is the pair the confirmation
+/// asks about and the pair the retried operation then finds stored.
+SourceWebViewTrustDecision sourceWebViewTrustDecision({
+  required BookSourceWebViewAdapterFactory scope,
+  required String host,
+  required void Function(Object failure) fail,
+  required void Function() destroy,
+}) {
+  if (scope.allowsInvalidCertificate(host)) {
+    return SourceWebViewTrustDecision.proceed;
+  }
+  fail(
+    sourceWebViewUntrustedCertificateFailure(
+      sourceRef: scope.sourceRef,
+      host: host,
+    ),
+  );
+  destroy();
+  return SourceWebViewTrustDecision.refuse;
 }
 
 /// Raised when the WebView path is reached in a process with no platform engine

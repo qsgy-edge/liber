@@ -880,6 +880,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // session the user established reach the refetch and every later request.
       onPageCookies: (pageUrl, cookies) =>
           hostState.cookiesFor(sourceRef).set(pageUrl, cookies),
+      hostState: hostState,
     );
     // The `openUrl` mime type only drives the frozen system-browser Intent
     // (`OpenUrlConfirmActivity`); this product has no external-opening path, so

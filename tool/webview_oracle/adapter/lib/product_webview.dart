@@ -1,3 +1,4 @@
+import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_webview_adapter.dart';
 import 'package:liber/source/inappwebview_book_source_adapter.dart';
 
@@ -86,4 +87,4 @@ typedef StrResponse = SourceWebViewResponse;
 typedef JsTimeoutException = SourceWebViewJsTimeout;
 typedef OuterTimeoutException = SourceWebViewTimeout;
 typedef CancelledException = SourceWebViewCancelled;
-typedef UntrustedCertificateException = SourceWebViewUntrustedCertificate;
+typedef UntrustedCertificateException = SourceTlsCertificateFailure;

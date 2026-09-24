@@ -83,6 +83,12 @@ class SourceTlsCertificateFailure implements Exception {
   /// The transport's message for the same failure, for the log.
   final String detail;
 
+  /// The plain-words reason for a failure whose transport named no verification
+  /// problem: `HttpClient` reports a message none of the named categories match,
+  /// and the WebView engine's trust callback reports the host and nothing else.
+  /// One spelling, so both transports' confirmations read the same way.
+  static const String unspecifiedReason = '证书或主机名校验未通过';
+
   @override
   String toString() =>
       'TLS certificate rejected for $host: $reason'

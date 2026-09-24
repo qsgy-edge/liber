@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../l10n/app_localizations.dart';
+import 'book_source_webview_adapter.dart'
+    show sourceWebViewUntrustedCertificateFailure;
 import 'inappwebview_book_source_adapter.dart';
 import 'source_hatch.dart';
+import 'source_tls_confirmation.dart';
 
 /// The navigator the confirmed pages are pushed on. The composition root hands
 /// it to `MaterialApp` (`lib/main.dart`), because a hatch happens inside a source
@@ -160,6 +163,31 @@ Future<bool> showSourceHatchConfirmation(
   );
   return confirmed ?? false;
 }
+
+/// Whether the confirmed page may load [host] despite the certificate the engine
+/// rejected (ADR 0011 §5): the page's own server-trust decision.
+///
+/// [request] is the hatch's own request, so the confirmation reads and writes the
+/// very source, name and host state the page belongs to. A stored exception
+/// answers without asking, so a page whose source and host were already confirmed
+/// does not ask again; without one the shared confirmation asks — the same dialog
+/// the headless path reaches — and its "continue (unsafe)" answer stores the
+/// exception. A refusal, and a process that carries no host state to store an
+/// exception in, answer false, so the page's callback cancels the challenge.
+Future<bool> confirmHatchPageCertificate(
+  BuildContext context, {
+  required SourceHatchRequest request,
+  required String host,
+}) => confirmTlsExceptionForPage(
+  context: context,
+  hostState: request.hostState,
+  sourceRef: request.sourceRef,
+  sourceName: request.sourceName,
+  failure: sourceWebViewUntrustedCertificateFailure(
+    sourceRef: request.sourceRef,
+    host: host,
+  ),
+);
 
 /// The verification-code dialog: the fetched image, the source it belongs to and
 /// a field for the user's answer.
@@ -331,6 +359,25 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
         ),
         onWebViewCreated: (controller) => _controller = controller,
+        // ADR 0011 §5 reaches this visible page too: without the exception the
+        // engine refuses the rejected certificate by default, and the stored
+        // per-source, per-host exception is what lets the page load instead. The
+        // user confirmed showing this page, not continuing past a rejected
+        // certificate, so the decision is the same confirmation the headless
+        // path reaches: a stored exception proceeds silently, and without one the
+        // dialog asks and its answer is what the load follows.
+        onReceivedServerTrustAuthRequest: (controller, challenge) async =>
+            await confirmHatchPageCertificate(
+              context,
+              request: widget.request,
+              host: challenge.protectionSpace.host,
+            )
+            ? ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.PROCEED,
+              )
+            : ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.CANCEL,
+              ),
         onLoadStop: (controller, url) async {
           // The frozen `WebViewActivity.onPageFinished` writes what the page
           // received back into the source's own cookie store, which is what the
