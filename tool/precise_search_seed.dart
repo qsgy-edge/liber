@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:liber/source/auto_change_source.dart';
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/precise_search.dart';
 import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 import 'package:liber/store/workspace.dart';
 
 /// The driven run's seed for #40: one scratch installation whose shelf holds a
@@ -22,6 +24,12 @@ import 'package:liber/store/workspace.dart';
 /// ```
 /// # 1. seed a scratch installation (no server needed)
 /// dart run tool/precise_search_seed.dart --seed C:/scratch/liber-40
+///
+/// # 1b. the same installation for the automatic switch-source (#69): the
+/// #     seeded book's source row is left out, so its shelf row is the #53
+/// #     state the automatic entry is entered from.
+/// dart run tool/precise_search_seed.dart --seed C:/scratch/liber-69 \
+///   --drop-book-source
 ///
 /// # 2. check the fixture against the real rule adapter, headless
 /// dart run tool/precise_search_seed.dart --check
@@ -41,8 +49,10 @@ import 'package:liber/store/workspace.dart';
 /// `--check` is this lane's own reproduction of the flow the controller drives:
 /// it runs the three sources through the product's real pipelines, takes the
 /// exact hit, reads its table of contents, switches a scratch book onto it and
-/// prints the rows it read back. It needs the native library (the same one the
-/// app loads; `--library <path>` overrides the search for it).
+/// prints the rows it read back — and then runs the automatic entry (#69)
+/// against a second scratch installation whose book has no source row. It needs
+/// the native library (the same one the app loads; `--library <path>` overrides
+/// the search for it).
 ///
 /// The port is fixed, because the seeded source rows carry URLs that name it and
 /// the invocations have to agree; a busy port is refused by name instead of
@@ -64,12 +74,16 @@ Future<void> main(List<String> args) async {
   }
   final seedIndex = args.indexOf('--seed');
   if (seedIndex >= 0 && seedIndex + 1 < args.length) {
-    await _seed(Directory(args[seedIndex + 1]));
+    await _seed(
+      Directory(args[seedIndex + 1]),
+      dropBookSource: args.contains('--drop-book-source'),
+    );
     return;
   }
   throw ArgumentError(
-    'Usage: --seed <workspace directory> | --serve [--out <directory>] | '
-    '--emit <directory> | --check [--library <fjs library>]',
+    'Usage: --seed <workspace directory> [--drop-book-source] | '
+    '--serve [--out <directory>] | --emit <directory> | '
+    '--check [--library <fjs library>]',
   );
 }
 
@@ -673,7 +687,11 @@ Future<void> _check(String? libraryPath) async {
         };
       }
       imagePipeline.cancel();
-      report['requests'] = site.requests;
+      report['requests'] = List<String>.of(site.requests);
+      // The automatic entry (#69), against its own installation; it runs while
+      // the fixture site is still up, and its own requests are recorded apart
+      // from the manual flow's list above.
+      report['autoSwitch'] = await _checkAutoSwitch(site);
     } finally {
       await shelf.close();
     }
@@ -682,6 +700,66 @@ Future<void> _check(String? libraryPath) async {
     await directory.delete(recursive: true);
   }
   stdout.writeln(const JsonEncoder.withIndent('  ').convert(report));
+}
+
+/// The automatic switch-source (#69) reproduced headless, on an installation of
+/// its own: the same fixture, seeded and then left as #53 leaves it — the book's
+/// source row deleted, its row, chapters and position kept. The flow that runs
+/// is the product's own (`autoChangeSource`), over the real pipelines and real
+/// requests to the fixture [site]; what it prints is the row before and after,
+/// and the requests the switch made.
+Future<Map<String, Object?>> _checkAutoSwitch(FixtureSite site) async {
+  final directory = await Directory.systemTemp.createTemp('liber-69-check-');
+  final report = <String, Object?>{'origin': seedOrigin};
+  final requestsBefore = site.requests.length;
+  try {
+    final workspace = await Workspace.open(root: directory);
+    final store = await workspace.openSpace(Workspace.defaultSpaceId);
+    final shelf = ShelfService(store, androidId: await workspace.androidId());
+    try {
+      final seeded = await _seedShelf(store, shelf);
+      await shelf.deleteSource(currentSourceRef);
+      final book = (await shelf.onlineShelf()).single;
+      report['before'] = {
+        'bookId': book.id,
+        'sourceRef': book.sourceRef,
+        'sourceMissing': book.sourceMissing,
+        'chapterKey': book.chapterKey,
+        'chapterName': book.chapterName,
+        'textOffset': book.textOffset,
+      };
+      final result = await autoChangeSource(
+        service: shelf,
+        book: book,
+        openPipeline: (source) => openBookSourcePipeline(
+          source,
+          HttpSourceTransport(),
+          hostState: shelf.hostState,
+        ),
+      );
+      final switched = result.switched;
+      report['ran'] = result.ran;
+      report['switched'] = switched == null
+          ? null
+          : {
+              'bookId': switched.id,
+              'sourceRef': switched.sourceRef,
+              'sourceBookUrl': switched.book.sourceBookUrl,
+              'chapterKey': switched.chapterKey,
+              'chapterName': switched.chapterName,
+              'textOffset': switched.textOffset,
+              'shelfRows': (await shelf.onlineShelf()).length,
+            };
+      report['sameRow'] = switched?.id == seeded.id;
+      report['seededBookId'] = seeded.id;
+      report['requests'] = site.requests.sublist(requestsBefore);
+    } finally {
+      await shelf.close();
+    }
+  } finally {
+    await directory.delete(recursive: true);
+  }
+  return report;
 }
 
 /// The native library the app would load, when `--library` is not given.
@@ -706,50 +784,23 @@ String _nativeLibrary() {
   throw StateError('未找到原生库，请传 --library <path>；查找过：$candidates');
 }
 
-/// Writes a scratch installation: the three sources, the book they describe and
-/// the reading position the switch has to carry.
-Future<void> _seed(Directory root) async {
+/// Writes a scratch installation: the sources, the book they describe and the
+/// reading position the switch has to carry.
+///
+/// `--drop-book-source` deletes the seeded book's source row afterwards, which
+/// is the state #53 leaves and the state the automatic switch (#69) starts from:
+/// the book keeps its row, its chapters and its position, and the shelf marks it
+/// with 书源已删除. The `sources` list the report prints is the seeded list
+/// either way, so the same field answers what the fixture site declared.
+Future<void> _seed(Directory root, {required bool dropBookSource}) async {
   final workspace = await Workspace.open(root: root);
   final store = await workspace.openSpace(Workspace.defaultSpaceId);
   final shelf = ShelfService(store, androidId: await workspace.androidId());
   try {
-    for (final source in seedSources()) {
-      await store.putSourceJson(source);
+    final seeded = await _seedShelf(store, shelf);
+    if (dropBookSource) {
+      await shelf.deleteSource(currentSourceRef);
     }
-    final book = HtmlBook(
-      url: Uri.parse('$currentSourceRef/book/1'),
-      title: seedBookTitle,
-      author: seedBookAuthor,
-      intro: '本地回放站点，用于 #40 的自动换源驱动运行。',
-      lastChapter: currentChapterNames.last,
-    );
-    await shelf.add(
-      seedSources().firstWhere(
-        (source) => source['bookSourceUrl'] == currentSourceRef,
-      ),
-      book,
-      [
-        for (var i = 0; i < currentChapterNames.length; i++)
-          SourceChapter(
-            currentChapterNames[i],
-            Uri.parse('$currentSourceRef/book/1/chapter/$i'),
-          ),
-      ],
-    );
-    final entry = (await shelf.find(
-      currentSourceRef,
-      '$currentSourceRef/book/1',
-    ))!;
-    await shelf.saveProgress(
-      entry.id,
-      chapterKey: '$currentSourceRef/book/1/chapter/$seedChapterIndex',
-      chapterIndex: seedChapterIndex,
-      textOffset: seedTextOffset,
-    );
-    final seeded = (await shelf.find(
-      currentSourceRef,
-      '$currentSourceRef/book/1',
-    ))!;
     stdout.writeln(
       jsonEncode({
         'seeded': true,
@@ -760,6 +811,7 @@ Future<void> _seed(Directory root) async {
         'chapterKey': seeded.chapterKey,
         'chapterName': seeded.chapterName,
         'textOffset': seeded.textOffset,
+        'bookSourceDropped': dropBookSource,
         'sources': [
           for (final source in seedSources()) source['bookSourceUrl'],
         ],
@@ -768,4 +820,43 @@ Future<void> _seed(Directory root) async {
   } finally {
     await shelf.close();
   }
+}
+
+/// The fixture's own rows inside an open space: the five sources, the shelf book
+/// they describe, and its reading position.
+Future<ShelfEntry> _seedShelf(SpaceStore store, ShelfService shelf) async {
+  for (final source in seedSources()) {
+    await store.putSourceJson(source);
+  }
+  final book = HtmlBook(
+    url: Uri.parse('$currentSourceRef/book/1'),
+    title: seedBookTitle,
+    author: seedBookAuthor,
+    intro: '本地回放站点，用于 #40 的自动换源驱动运行。',
+    lastChapter: currentChapterNames.last,
+  );
+  await shelf.add(
+    seedSources().firstWhere(
+      (source) => source['bookSourceUrl'] == currentSourceRef,
+    ),
+    book,
+    [
+      for (var i = 0; i < currentChapterNames.length; i++)
+        SourceChapter(
+          currentChapterNames[i],
+          Uri.parse('$currentSourceRef/book/1/chapter/$i'),
+        ),
+    ],
+  );
+  final entry = (await shelf.find(
+    currentSourceRef,
+    '$currentSourceRef/book/1',
+  ))!;
+  await shelf.saveProgress(
+    entry.id,
+    chapterKey: '$currentSourceRef/book/1/chapter/$seedChapterIndex',
+    chapterIndex: seedChapterIndex,
+    textOffset: seedTextOffset,
+  );
+  return (await shelf.find(currentSourceRef, '$currentSourceRef/book/1'))!;
 }

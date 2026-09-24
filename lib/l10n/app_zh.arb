@@ -5,6 +5,7 @@
   "navMigration": "迁移",
   "actionPreciseSearch": "精确搜索",
   "actionSourceTrial": "书源试读",
+  "actionAutoChangeSource": "自动换源",
   "readerScriptTitle": "中文转换",
   "imageLoadFailed": "图片加载失败",
   "imageLoading": "图片加载中…",
@@ -587,6 +588,18 @@
       }
     }
   },
+  "autoChangeSourceLabel": "书源已删除时自动换源",
+  "autoChangeSourceHint": "打开书源已被删除的书时，自动在启用的文本书源里按书名和作者找同一本书，确认能取到正文后换过去；找不到合适书源时，书仍留在书架上。默认开启。",
+  "autoChangingSource": "正在自动换源",
+  "autoChangeSourceFailed": "自动换源失败\n{error}",
+  "@autoChangeSourceFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "noSuitableSource": "没有合适书源",
   "reading": "正在读取",
   "chapterNotInToc": "原章节已不在目录中，进度仍保留，请选择章节",
   "searching": "正在搜索",

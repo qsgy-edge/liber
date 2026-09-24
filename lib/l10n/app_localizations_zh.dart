@@ -24,6 +24,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actionSourceTrial => '书源试读';
 
   @override
+  String get actionAutoChangeSource => '自动换源';
+
+  @override
   String get readerScriptTitle => '中文转换';
 
   @override
@@ -634,6 +637,24 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get autoChangeSourceLabel => '书源已删除时自动换源';
+
+  @override
+  String get autoChangeSourceHint =>
+      '打开书源已被删除的书时，自动在启用的文本书源里按书名和作者找同一本书，确认能取到正文后换过去；找不到合适书源时，书仍留在书架上。默认开启。';
+
+  @override
+  String get autoChangingSource => '正在自动换源';
+
+  @override
+  String autoChangeSourceFailed(String error) {
+    return '自动换源失败\n$error';
+  }
+
+  @override
+  String get noSuitableSource => '没有合适书源';
+
+  @override
   String get reading => '正在读取';
 
   @override
@@ -822,6 +843,9 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
 
   @override
   String get actionSourceTrial => '書源試讀';
+
+  @override
+  String get actionAutoChangeSource => '自動換源';
 
   @override
   String get readerScriptTitle => '中文轉換';
@@ -1434,6 +1458,24 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
+  String get autoChangeSourceLabel => '書源已刪除時自動換源';
+
+  @override
+  String get autoChangeSourceHint =>
+      '打開書源已被刪除的書時，自動在啓用的文本書源裏按書名和作者找同一本書，確認能取到正文後換過去；找不到合適書源時，書仍留在書架上。默認開啓。';
+
+  @override
+  String get autoChangingSource => '正在自動換源';
+
+  @override
+  String autoChangeSourceFailed(String error) {
+    return '自動換源失敗\n$error';
+  }
+
+  @override
+  String get noSuitableSource => '沒有合適書源';
+
+  @override
   String get reading => '正在讀取';
 
   @override
@@ -1622,6 +1664,9 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get actionSourceTrial => '書源試讀';
+
+  @override
+  String get actionAutoChangeSource => '自動換源';
 
   @override
   String get readerScriptTitle => '中文轉換';
@@ -2232,6 +2277,24 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String switchSourceFailed(String error) {
     return '換源失敗：$error';
   }
+
+  @override
+  String get autoChangeSourceLabel => '書源已刪除時自動換源';
+
+  @override
+  String get autoChangeSourceHint =>
+      '開啟書源已被刪除的書時，自動在啟用的文本書源裡按書名和作者找同一本書，確認能取到正文後換過去；找不到合適書源時，書仍留在書架上。預設開啟。';
+
+  @override
+  String get autoChangingSource => '正在自動換源';
+
+  @override
+  String autoChangeSourceFailed(String error) {
+    return '自動換源失敗\n$error';
+  }
+
+  @override
+  String get noSuitableSource => '沒有合適書源';
 
   @override
   String get reading => '正在讀取';

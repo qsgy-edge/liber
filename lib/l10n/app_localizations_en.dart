@@ -24,6 +24,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionSourceTrial => 'Source trial';
 
   @override
+  String get actionAutoChangeSource => 'Automatic source switch';
+
+  @override
   String get readerScriptTitle => 'Chinese conversion';
 
   @override
@@ -641,6 +644,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String switchSourceFailed(String error) {
     return 'Switching the source failed: $error';
   }
+
+  @override
+  String get autoChangeSourceLabel =>
+      'Switch source automatically when a book\'s source is deleted';
+
+  @override
+  String get autoChangeSourceHint =>
+      'Opening a book whose book source has been deleted searches the enabled text sources for the same book name and author and moves the book onto the first one that answers with its content; a book with no suitable source stays on the shelf. On by default.';
+
+  @override
+  String get autoChangingSource => 'Switching source';
+
+  @override
+  String autoChangeSourceFailed(String error) {
+    return 'Switching the source automatically failed\n$error';
+  }
+
+  @override
+  String get noSuitableSource => 'No suitable book source';
 
   @override
   String get reading => 'Reading';

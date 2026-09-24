@@ -138,6 +138,12 @@ abstract class AppLocalizations {
   /// **'书源试读'**
   String get actionSourceTrial;
 
+  /// No description provided for @actionAutoChangeSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动换源'**
+  String get actionAutoChangeSource;
+
   /// No description provided for @readerScriptTitle.
   ///
   /// In zh, this message translates to:
@@ -1127,6 +1133,36 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'换源失败：{error}'**
   String switchSourceFailed(String error);
+
+  /// No description provided for @autoChangeSourceLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源已删除时自动换源'**
+  String get autoChangeSourceLabel;
+
+  /// No description provided for @autoChangeSourceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开书源已被删除的书时，自动在启用的文本书源里按书名和作者找同一本书，确认能取到正文后换过去；找不到合适书源时，书仍留在书架上。默认开启。'**
+  String get autoChangeSourceHint;
+
+  /// No description provided for @autoChangingSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在自动换源'**
+  String get autoChangingSource;
+
+  /// No description provided for @autoChangeSourceFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动换源失败\n{error}'**
+  String autoChangeSourceFailed(String error);
+
+  /// No description provided for @noSuitableSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有合适书源'**
+  String get noSuitableSource;
 
   /// No description provided for @reading.
   ///

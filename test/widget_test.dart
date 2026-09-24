@@ -19,8 +19,8 @@ void defaultAppTest(Directory Function() root) {
     expect(find.text('书架'), findsNWidgets(2));
     expect(find.text('Wayfinder 受控书源'), findsOneWidget);
     expect(find.text('尚未运行'), findsOneWidget);
-    // The two settings screens have an entry point in the app bar (#27, #28);
-    // the space is not open yet, so both are disabled until it is.
+    // The settings screens have an entry point in the app bar (#27, #28, #69);
+    // the space is not open yet, so each is disabled until it is.
     final script = tester.widget<IconButton>(
       find.ancestor(
         of: find.byIcon(Icons.translate),
@@ -37,6 +37,14 @@ void defaultAppTest(Directory Function() root) {
     );
     expect(language.tooltip, '界面语言');
     expect(language.onPressed, isNull);
+    final autoSwitch = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.swap_horiz),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(autoSwitch.tooltip, '自动换源');
+    expect(autoSwitch.onPressed, isNull);
   });
 }
 

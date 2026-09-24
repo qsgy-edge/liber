@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
@@ -5,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/settings/auto_change_source.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/html_source_pipeline.dart';
@@ -73,6 +75,69 @@ Map<String, dynamic> matchingSource(
   },
   'ruleContent': {'content': r'$.text'},
 };
+
+/// The candidate source of the automatic switch (#69): the whole four-stage
+/// chain over one JSON fixture, whose search answers the shelf's own book.
+const autoSwitchSourceUrl = 'https://candidate.test';
+
+Map<String, dynamic> autoSwitchSource() => {
+  'bookSourceUrl': autoSwitchSourceUrl,
+  'bookSourceName': '候选源',
+  'enabled': true,
+  'searchUrl': '/search?key={{key}}',
+  'ruleSearch': {
+    'bookList': r'$.items',
+    'name': r'$.title',
+    'author': r'$.author',
+    'bookUrl': r'$.url',
+  },
+  'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+  'ruleToc': {
+    'chapterList': r'$.list',
+    'chapterName': r'$.name',
+    'chapterUrl': r'$.url',
+  },
+  'ruleContent': {'content': r'$.text'},
+};
+
+/// The candidate source's pages: its search answers the shelf's book by name
+/// and author, its own table of contents is not the old one, and its first
+/// chapter has a body — which is what the frozen flow's candidate check asks
+/// for before it accepts a source.
+class AutoSwitchPages implements BookSourceTransport {
+  final stages = <BookSourceStage>[];
+  final paths = <String>[];
+
+  /// Holds every answer open, so a test can observe the switch while it runs.
+  Completer<void>? gate;
+
+  @override
+  Future<String> request({
+    required BookSourceStage stage,
+    required String path,
+  }) async {
+    stages.add(stage);
+    paths.add(path);
+    final gate = this.gate;
+    if (gate != null) await gate.future;
+    return jsonEncode(switch (Uri.parse(path).path) {
+      '/search' => {
+        'items': [
+          {'title': '保留的书', 'author': '', 'url': '/book/9'},
+        ],
+      },
+      '/book/9' => {'title': '保留的书', 'toc': '/toc/9'},
+      '/toc/9' => {
+        'list': [
+          {'name': '楔子', 'url': '/chapter/0'},
+          {'name': '第二章', 'url': '/chapter/1'},
+        ],
+      },
+      '/chapter/0' => {'text': '这一章的正文'},
+      _ => throw StateError('不应请求：$path'),
+    });
+  }
+}
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
@@ -298,7 +363,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('书源被删除后，书留在书架上并标记为打不开', (tester) async {
+  testWidgets('书源被删除后，书留在书架上；打开它跑自动换源，找不到书源时只报错', (tester) async {
     await shelf.deleteSource(sourceUrl);
     await tester.pumpWidget(
       localizedApp(
@@ -312,13 +377,18 @@ void main() {
     expect(find.textContaining('书源已删除'), findsOneWidget);
     expect(find.text('第二章'), findsNothing, reason: '打不开的书不报它读到哪，先报它为什么打不开');
 
-    // Nothing opens it: there is no source object to run.
+    // Opening it is the frozen reader's automatic switch (#69). This space has
+    // no other source, so nothing was switched and the flow reports the frozen
+    // 没有合适书源; the book keeps its row.
     await tester.tap(find.text('保留的书'));
     await tester.pumpAndSettle();
     expect(find.byType(HtmlSourceBrowser), findsNothing);
+    expect(find.textContaining('自动换源失败'), findsOneWidget);
+    expect(find.textContaining('没有合适书源'), findsOneWidget);
+    expect((await store.bookById(bookId))!.sourceRef, sourceUrl);
     expect(tester.takeException(), isNull);
 
-    // The one action left is taking it off the shelf, and the position the book
+    // The other action is taking it off the shelf, and the position the book
     // already had is not the source's to take.
     await tester.tap(find.byTooltip('书籍操作'));
     await tester.pumpAndSettle();
@@ -329,5 +399,87 @@ void main() {
     expect((await store.bookById(bookId))!.shelved, isFalse);
     expect((await store.progressOf(bookId))!.textOffset, 77);
     expect((await store.chaptersOf(bookId)).map((c) => c.name), ['第二章']);
+  });
+
+  testWidgets('打开失源的书：自动换源读到新书源的目录，书的身份与进度都留下', (tester) async {
+    await store.putSourceJson(autoSwitchSource());
+    final transport = AutoSwitchPages();
+    await shelf.deleteSource(sourceUrl);
+    await showShelf(tester, transport);
+    expect(find.textContaining('书源已删除'), findsOneWidget);
+
+    await tester.tap(find.text('保留的书'));
+    await tester.pumpAndSettle();
+
+    // The candidate proved itself on its own first chapter before the switch
+    // was written, and the switch wrote the same row (D2) with the position on
+    // the new table of contents.
+    expect(transport.stages.first, BookSourceStage.search);
+    expect(transport.paths, contains('$autoSwitchSourceUrl/chapter/0'));
+    final switched = (await store.bookById(bookId))!;
+    expect(switched.sourceRef, autoSwitchSourceUrl);
+    expect(switched.sourceBookUrl, '$autoSwitchSourceUrl/book/9');
+    expect(switched.title, '保留的书');
+    expect((await shelf.onlineShelf()).length, 1, reason: '还是一条书架行');
+    expect(
+      (await store.chaptersOf(bookId)).map((chapter) => chapter.name),
+      ['楔子', '第二章'],
+    );
+    final progress = (await store.progressOf(bookId))!;
+    expect(progress.chapterKey, '$autoSwitchSourceUrl/chapter/0');
+    expect(progress.chapterIndex, 0);
+    // The offset the switch carried over (77) is what the reader then resumes
+    // from: it re-derives the row its body holds at that anchor, and this
+    // chapter's body is short enough that the row is the first one. The
+    // switch's own write of the carried offset is pinned in
+    // `auto_change_source_test.dart` and `switch_source_test.dart`.
+
+    // The switched book is then opened the way any other row is: its page,
+    // then its reader (which covers the page, so the page is read offstage).
+    expect(
+      find.byType(HtmlSourceBrowser, skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.byType(OnlineReaderPage), findsOneWidget);
+    expect(find.textContaining('这一章的正文'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自动换源进行中，那一行说的是冻结的正在自动换源', (tester) async {
+    await store.putSourceJson(autoSwitchSource());
+    final transport = AutoSwitchPages();
+    await shelf.deleteSource(sourceUrl);
+    await showShelf(tester, transport);
+    final gate = Completer<void>();
+    transport.gate = gate;
+
+    await tester.tap(find.text('保留的书'));
+    await tester.pump();
+    expect(find.text('正在自动换源'), findsOneWidget, reason: '冻结的 source_auto_changing');
+    expect(find.textContaining('书源已删除'), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('正在自动换源'), findsNothing);
+    expect(find.byType(OnlineReaderPage), findsOneWidget);
+  });
+
+  testWidgets('自动换源关闭时，打开失源的书不发起任何请求', (tester) async {
+    await store.putSourceJson(autoSwitchSource());
+    final transport = AutoSwitchPages();
+    await AutoChangeSourceSetting.putGlobal(store, enabled: false);
+    await shelf.deleteSource(sourceUrl);
+    await showShelf(tester, transport);
+
+    await tester.tap(find.text('保留的书'));
+    await tester.pumpAndSettle();
+
+    expect(transport.stages, isEmpty, reason: '冻结的 if (!AppConfig.autoChangeSource) return');
+    expect(find.byType(HtmlSourceBrowser), findsNothing);
+    expect(find.textContaining('书源已删除'), findsOneWidget);
+    expect(find.textContaining('自动换源失败'), findsNothing);
+    expect((await store.bookById(bookId))!.sourceRef, sourceUrl);
+    expect((await store.progressOf(bookId))!.textOffset, 77);
+    expect(tester.takeException(), isNull);
   });
 }
