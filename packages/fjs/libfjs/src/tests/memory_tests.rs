@@ -2,10 +2,14 @@
 //!
 //! Tests for memory management, garbage collection, and memory limits.
 
-use crate::api::engine::JsEngine;
+use crate::api::engine::{complete_bridge_request_global, JsEngine, JsEngineRuntimeOptions};
+use crate::api::error::{JsError, JsResult};
 use crate::api::runtime::{JsAsyncContext, JsAsyncRuntime, JsContext, JsRuntime};
-use crate::api::source::JsCode;
+use crate::api::source::{JsBuiltinOptions, JsCode};
 use crate::api::value::JsValue;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::oneshot;
 
 // ============================================================================
 // Memory Usage Tests
@@ -589,3 +593,225 @@ fn test_runtime_dump_flags() {
     // Should not panic
     let _context = JsContext::from(&runtime).unwrap();
 }
+
+// ============================================================================
+// Scoped heap-limit row (ticket #77)
+// ============================================================================
+
+/// The scoped-runtime gate's `heapLimitEnforced` script: one request larger
+/// than the whole 16 MiB budget, inside a scope of its own.
+///
+/// The previous shape grew the heap one 80 KB array at a time, which fails with
+/// a residue anywhere in `[0, 80 KB)`. When that residue was smaller than what
+/// QuickJS needs to build the OOM error object, `JS_ThrowError2` threw a bare
+/// null instead of the `InternalError` and the row saw
+/// `JsError_Runtime: Runtime error: null` (30 of 1000 engine-level runs in
+/// WSL2; ticket #77). A request larger than the budget leaves the whole budget
+/// free when the limit refuses it, so the report always has room.
+const HEAP_LIMIT_ROW_SOURCE: &str =
+    "(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()";
+
+/// The row's JS heap limit in bytes, as the gate sets it.
+const HEAP_LIMIT_ROW_BYTES: usize = 16 * 1024 * 1024;
+
+/// The gate's parked-cycle script, verbatim.
+const HEAP_LIMIT_PARKED_CYCLE_SOURCE: &str =
+    r#"(()=>{let x={tag:73};x.self=x;fjs.bridge_call("cycle");return x.self===x&&x.tag===73})()"#;
+
+/// The gate's nested-allocation-pressure script, verbatim. It runs in a queued
+/// scope while the cycle scope above is parked in its host call, so the row's
+/// engine reaches the heap-limit script with that history behind it.
+const HEAP_LIMIT_NESTED_PRESSURE_SOURCE: &str =
+    "(()=>{for(let i=0;i<20000;i++){let x={data:new Array(256).fill(i)};x.self=x;}return 42})()";
+
+/// One pass of the gate row, with what the engine reported.
+struct HeapLimitRowOutcome {
+    /// The Dart-facing error type the row compares against
+    /// `JsError_MemoryLimit`, or `JsValue` when the script returned instead of
+    /// failing.
+    label: String,
+    /// The Rust payload behind the label, so a divergent run is self-describing.
+    detail: String,
+    /// QuickJS's accounting right after the row. A passing run leaves this near
+    /// the engine's baseline, which is the whole point of the row's script.
+    malloc_size: i64,
+    malloc_limit: i64,
+    /// Whether a scoped execution still runs after the row (the gate's
+    /// `afterGcUsable`).
+    after_gc_usable: bool,
+}
+
+/// The Dart class name the row compares against, derived from the Rust variant.
+fn heap_limit_outcome_label(error: &JsError) -> &'static str {
+    match error {
+        JsError::Promise(_) => "JsError_Promise",
+        JsError::Module { .. } => "JsError_Module",
+        JsError::Context(_) => "JsError_Context",
+        JsError::Storage(_) => "JsError_Storage",
+        JsError::Io { .. } => "JsError_Io",
+        JsError::Runtime(_) => "JsError_Runtime",
+        JsError::Generic(_) => "JsError_Generic",
+        JsError::Engine(_) => "JsError_Engine",
+        JsError::Bridge(_) => "JsError_Bridge",
+        JsError::Conversion { .. } => "JsError_Conversion",
+        JsError::Timeout { .. } => "JsError_Timeout",
+        JsError::MemoryLimit(_) => "JsError_MemoryLimit",
+        JsError::StackOverflow(_) => "JsError_StackOverflow",
+        JsError::Syntax { .. } => "JsError_Syntax",
+        JsError::Reference(_) => "JsError_Reference",
+        JsError::Type(_) => "JsError_Type",
+        JsError::Cancelled(_) => "JsError_Cancelled",
+    }
+}
+
+/// Runs the gate's `heapLimitEnforced` row engine-level: the same 16 MiB limit,
+/// the same `gcThreshold: 1`, the same script, inside a scoped execution in an
+/// engine that already ran the gate's parked-cycle and nested-pressure rows.
+async fn run_heap_limit_row() -> HeapLimitRowOutcome {
+    let engine = Arc::new(
+        JsEngine::create(
+            Some(JsBuiltinOptions::none()),
+            None,
+            Some(JsEngineRuntimeOptions {
+                memory_limit: Some(HEAP_LIMIT_ROW_BYTES),
+                gc_threshold: Some(1),
+                ..JsEngineRuntimeOptions::default()
+            }),
+        )
+        .await
+        .expect("the row's engine is created"),
+    );
+    let (entered_tx, entered_rx) = oneshot::channel::<u64>();
+    let entered_tx = Arc::new(std::sync::Mutex::new(Some(entered_tx)));
+    engine
+        .init_broker(
+            {
+                let entered_tx = entered_tx.clone();
+                move |request| {
+                    let entered_tx = entered_tx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take();
+                    Box::pin(async move {
+                        if let Some(entered_tx) = entered_tx {
+                            let _ = entered_tx.send(request.id);
+                        }
+                    })
+                }
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .expect("the row's broker attaches");
+
+    let cycle_id = engine
+        .create_scoped_execution(None)
+        .expect("reserve the parked scope");
+    let parked = tokio::spawn({
+        let engine = engine.clone();
+        async move {
+            engine
+                .eval_scoped(cycle_id, HEAP_LIMIT_PARKED_CYCLE_SOURCE.to_string())
+                .await
+        }
+    });
+    let request_id = tokio::time::timeout(Duration::from_secs(5), entered_rx)
+        .await
+        .expect("the parked host call is entered")
+        .expect("the host call reports its request");
+    let pressure_id = engine
+        .create_scoped_execution(None)
+        .expect("reserve the pressure scope");
+    let pressure = engine
+        .eval_scoped(pressure_id, HEAP_LIMIT_NESTED_PRESSURE_SOURCE.to_string())
+        .await;
+    assert!(
+        matches!(pressure, Ok(JsValue::Integer(42))),
+        "the nested pressure row must complete: {pressure:?}"
+    );
+    complete_bridge_request_global(request_id, JsResult::Ok(JsValue::string("ok")))
+        .expect("release the parked scope");
+    let cycle = tokio::time::timeout(Duration::from_secs(5), parked)
+        .await
+        .expect("the parked scope finishes")
+        .expect("the parked scope does not panic");
+    assert!(
+        matches!(cycle, Ok(JsValue::Boolean(true))),
+        "the parked scope returns its value: {cycle:?}"
+    );
+
+    let row_id = engine
+        .create_scoped_execution(None)
+        .expect("reserve the row's scope");
+    let first = tokio::time::timeout(
+        Duration::from_secs(60),
+        engine.eval_scoped(row_id, HEAP_LIMIT_ROW_SOURCE.to_string()),
+    )
+    .await
+    .expect("the over-limit script stops");
+    let (label, detail) = match &first {
+        Ok(value) => ("JsValue".to_string(), format!("{value:?}")),
+        Err(error) => (
+            heap_limit_outcome_label(error).to_string(),
+            format!("{error:?} / {error}"),
+        ),
+    };
+
+    let usage = engine.memory_usage().await.expect("usage is readable");
+    engine.run_gc().await.expect("gc runs after the row");
+    let after_gc_id = engine
+        .create_scoped_execution(None)
+        .expect("reserve the after-gc scope");
+    let after_gc = engine.eval_scoped(after_gc_id, "21*2".to_string()).await;
+    engine.close().await.expect("the row's engine closes");
+
+    HeapLimitRowOutcome {
+        label,
+        detail,
+        malloc_size: usage.malloc_size(),
+        malloc_limit: usage.malloc_limit(),
+        after_gc_usable: matches!(after_gc, Ok(JsValue::Integer(42))),
+    }
+}
+
+/// The gate's `heapLimitEnforced` row must report the JS heap limit as
+/// `JsError::MemoryLimit` on every attempt, and the engine must stay usable
+/// afterwards.
+///
+/// Ticket #77: the row was red roughly every other Linux CI run while Windows
+/// was 15/15, and the red runs did not name what the engine returned instead.
+/// The row's script now makes one over-budget request, so the failing
+/// allocation leaves the whole budget free for the OOM report. The evidence in
+/// #77 (30 of 1000 runs divergent for the old accumulating shape, 0 of 400 for
+/// this one) was taken by raising the iteration count:
+/// `FJS_HEAP_LIMIT_ROW_ITERATIONS=200 cargo test scoped_heap_limit_row`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scoped_heap_limit_row_reports_the_memory_limit() {
+    let iterations: usize = std::env::var("FJS_HEAP_LIMIT_ROW_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(10);
+    let mut divergences = Vec::new();
+    for iteration in 0..iterations {
+        let outcome = run_heap_limit_row().await;
+        eprintln!(
+            "FJS heap-limit row #{iteration}: label={} malloc_size={} malloc_limit={} \
+             after_gc_usable={} detail={}",
+            outcome.label, outcome.malloc_size, outcome.malloc_limit, outcome.after_gc_usable,
+            outcome.detail,
+        );
+        if outcome.label != "JsError_MemoryLimit" || !outcome.after_gc_usable {
+            divergences.push(format!(
+                "#{iteration}: {} (malloc_size={} of {}), engine usable after the row: {}",
+                outcome.detail, outcome.malloc_size, outcome.malloc_limit, outcome.after_gc_usable
+            ));
+        }
+    }
+    assert!(
+        divergences.is_empty(),
+        "the row must report the JS heap limit every time, but {} of {iterations} runs did not: \
+         {divergences:#?}",
+        divergences.len()
+    );
+}
+
