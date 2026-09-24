@@ -35,6 +35,12 @@ The `notCompared` entries are the contract's own recorded categories (platform-g
 provenance fields, the execution-model divergence, the three REQUEST-01 divergences); each carries
 its reason in the report JSON, and none of them is inside a claimed row.
 
+Outside this table but re-executed in the same batch: the **WebView destination corpus on Windows**
+(14 fixtures through one binary, sampled equal around every fixture — 13 `match`, `WV-14`
+`policy-rejected` because WebView2 cannot surface a certificate error), with the manifest rewritten to
+the current revision so the committed rows describe it; the Android destination rows cannot be
+re-collected without the handset and are refused by name by the comparator until they are.
+
 ## 2. A row whose evidence is a recorded result, not a re-runnable comparison
 
 | Row | Owner | State |
@@ -53,6 +59,7 @@ build it.
 | TOC markers (`updateTime`, `isVolume`, `isVip`, `isPay`) | #13 | extracted, persisted (schema v6) and shown; product tests |
 | `bookUrlPattern` | #61 | product tests + a driven run |
 | Source variables (`getVariable`/`setVariable`) | #59 | host-surface gate + product tests |
+| Book and chapter variables (`book`/`chapter` `.getVariable`/`.putVariable`/`.variable`) | #76 | implemented in batch 15 over `books.variable`/`chapters.variable`, gate-checked — the gap that remains is the differential fixture, not the capability |
 | Local `jsLib` shared scope | #13 | product tests |
 | Per-source concurrency and `concurrentRate` | #42 | the limiter around every source request; the frozen multi-URL `nextTocUrl` branch is recorded unexercised |
 | `enabledCookieJar` parity | #42 | product tests; the session/persistent split divergence is recorded |
@@ -62,7 +69,7 @@ build it.
 | JSONPath filters and slices | #44 | `tool/jsonpath_probe/` (a host probe of the frozen library, transcript only) + product tests |
 | Multi-URL page results and `imageStyle` | #14/#67 | product tests and widget rows; the frozen-device layout rows stay `not-run` (no handset in batch 14) |
 | User-confirmed browser and captcha hatches | #32 | product tests + host gate |
-| TLS per-source exception | #30 | policy row; product tests; the hostname-mismatch path cannot be tested (recorded constraint). The WebView paths' half of it is a defect with its own ticket (batch 14) |
+| TLS per-source exception | #30, #75 | policy row; product tests; the hostname-mismatch path cannot be tested (recorded constraint). Batch 15's #75 made both WebView paths reach the same confirmation and store row; the engine-level row stays `not-run` (WebView2 cannot surface a certificate error — `flutter_inappwebview_windows` 0.6.0 leaves `add_ServerCertificateErrorDetected` commented out) and the Android destination row waits on the handset |
 | Named refusals, emulated `androidId`/`getWebViewUA`, bounded logs and toasts | #31 | host gate |
 | Host-surface cleanup on delete/re-point; a bound on persisted growth | #36/#37 | product tests (schema v5) |
 
