@@ -154,13 +154,18 @@ class JsonSourceRules {
   /// instead of the first one; it changes every multi-match rule the same way,
   /// which is the frozen behaviour. A rule that matches nothing is the null the
   /// frozen reader's swallowed exception leaves.
+  ///
+  /// A value that is not a string is rendered by the frozen `toString`
+  /// ([_matchedText]) rather than by Dart's, so a rule whose matches are
+  /// objects or arrays — a slice or a filter with no scalar leaf — carries the
+  /// frozen container text.
   static String? _fieldText(Object? value, String rule) {
     final matches = _matches(value, rule);
     if (matches.results.isEmpty) return null;
     final joined = matches.definite ? matches.results.single : matches.results;
     if (joined == null) return null;
-    if (joined is List) return joined.map((item) => '$item').join('\n');
-    return '$joined';
+    if (joined is List) return joined.map(_matchedText).join('\n');
+    return _matchedText(joined);
   }
 
   static String text(Object? value, String rule) {
@@ -1617,6 +1622,121 @@ bool _regexMatches(Object? left, Object? right) {
 String _patternInput(Object? value) {
   if (value is num || value is String || value is bool) return '$value';
   return '';
+}
+
+/// The frozen `toString` of one value a rule matched.
+///
+/// Two library types meet here, and `AnalyzeByJSonPath.getString` reaches both:
+/// the reader calls `toString()` on a single value and `joinToString("\n")` on a
+/// definite array's elements, so a nested container is rendered by its own rule
+/// instead of being flattened. json-path's default reader hands back a
+/// `net.minidev.json.JSONArray` for an array and a `java.util.LinkedHashMap` for
+/// an object (`JsonPath.parse` on the frozen classpath — the class names are in
+/// `tool/jsonpath_oracle/README.md`). The corpus in
+/// `tool/jsonpath_oracle/fixtures.json` pins every branch below:
+///
+/// - the **object form** is `java.util.LinkedHashMap`'s `AbstractMap.toString`:
+///   `{k=v, k2=v2}`, keys unquoted, `=`, entries separated by `, ` in the
+///   document's own key order, `{}` when empty. A string value is written as it
+///   is — also by `AbstractMap.toString`, which calls the value's own
+///   `toString` — so `{a=x, y}` carries a comma the form never quotes.
+/// - the **array form** (`JSONArray.toString`) is `[a,b]`: elements separated by
+///   `,` — no space — and `[]` when empty. A *string* element is quoted and
+///   escaped, which is why `["a\"b"]` looks unlike the object form's values.
+/// - a map directly inside an array is the **JSON object form** `{"k":v}`:
+///   quoted keys and `:`, while the same map as an object-form *value* stays
+///   `{k=v}`. `{c={d=null}}` and `m=[{"k":"v"}]` are the two pinned shapes.
+///
+/// The numbers are the ones Dart and the JVM agree on: an integer has no
+/// fraction and a double keeps its `.0`. Java writes `1.0E7` and up in
+/// scientific notation where Dart writes a decimal, so a magnitude at or above
+/// 1e7 (or below 1e-3) is outside this corpus.
+String _matchedText(Object? value) {
+  if (value is Map) return _mapText(value);
+  if (value is List) return _arrayText(value);
+  return _scalarText(value);
+}
+
+/// The object form, `java.util.LinkedHashMap`'s `AbstractMap.toString`:
+/// `{k=v, k2=v2}`, and its values through [_matchedText] because the JVM form
+/// calls each value's own `toString`.
+String _mapText(Map<Object?, Object?> map) {
+  if (map.isEmpty) return '{}';
+  final entries = map.entries.map(
+    (entry) => '${entry.key}=${_matchedText(entry.value)}',
+  );
+  return '{${entries.join(', ')}}';
+}
+
+/// The array form: `[a,b]`, and its elements through [_jsonValueText].
+String _arrayText(List<Object?> list) {
+  if (list.isEmpty) return '[]';
+  return '[${list.map(_jsonValueText).join(',')}]';
+}
+
+/// One array element: a string is quoted and escaped, a map takes the JSON
+/// object form, a list the array form, and every other value its own text.
+String _jsonValueText(Object? value) {
+  if (value is String) return '"${_jsonEscape(value)}"';
+  if (value is Map) return _jsonMapText(value);
+  return _matchedText(value);
+}
+
+/// The JSON object form, reached only as an array element: `{"k":v}`.
+String _jsonMapText(Map<Object?, Object?> map) {
+  if (map.isEmpty) return '{}';
+  final entries = map.entries.map(
+    (entry) => '"${_jsonEscape('${entry.key}')}":${_jsonValueText(entry.value)}',
+  );
+  return '{${entries.join(',')}}';
+}
+
+/// A scalar through the frozen `toString`: a string as it is, a boolean as
+/// `true`/`false`, a null as `null`, and a number as its own text.
+String _scalarText(Object? value) {
+  if (value == null) return 'null';
+  if (value is bool) return value ? 'true' : 'false';
+  return '$value';
+}
+
+/// The frozen escaper, `net.minidev.json.JStylerObj$Escape4Web.escape`: json-smart
+/// selects `Escape4Web` for the style the reader's writer uses (`NO_COMPRESS` sets
+/// `_protect4Web`), and only the array form and the JSON object form run it.
+///
+/// Its switch writes eight shorthands — `\b \t \n \f \r \" \/ \\` — and its
+/// default branch escapes exactly three numeric ranges, as `\u` plus four
+/// **uppercase** hex digits: the C0 controls (`<= 0x1F`), the DEL and C1 range
+/// (`0x7F-0x9F`) and the U+2000-U+20FF band that carries the curly quotes,
+/// dashes and ellipses Chinese titles use. Everything else — a letter, a CJK
+/// character, an emoji's surrogate pair — is written raw.
+///
+/// The corpus's `render-escaper-classes` row pins one character per class,
+/// because a model that missed a range would still pass every ASCII row.
+String _jsonEscape(String value) {
+  final out = StringBuffer();
+  for (final unit in value.codeUnits) {
+    final escaped = switch (unit) {
+      0x08 => r'\b',
+      0x09 => r'\t',
+      0x0A => r'\n',
+      0x0C => r'\f',
+      0x0D => r'\r',
+      0x22 => r'\"',
+      0x2F => r'\/',
+      0x5C => r'\\',
+      _ => null,
+    };
+    if (escaped != null) {
+      out.write(escaped);
+    } else if (unit <= 0x1F ||
+        (unit >= 0x7F && unit <= 0x9F) ||
+        (unit >= 0x2000 && unit <= 0x20FF)) {
+      out.write('\\u${unit.toRadixString(16).toUpperCase().padLeft(4, '0')}');
+    } else {
+      out.writeCharCode(unit);
+    }
+  }
+  return out.toString();
 }
 
 /// The frozen `InEvaluator`: the right operand is the list a rule wrote and the

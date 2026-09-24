@@ -1,0 +1,584 @@
+{
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "sha1": "ca2a0c3a32b94724c5eed077149f6e4d7535c85d",
+      "role": "the JSON reader the rule path reaches: getString is the field-text boundary this corpus compares"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/RuleAnalyzer.kt",
+      "sha1": "1b3f38e51b5905007069f49a9df81cf49d038e55",
+      "role": "the rule splitter and {$.rule} inner-rule pass AnalyzeByJSonPath.getString runs before the read"
+    }
+  ],
+  "library": {
+    "artifact": "com.jayway.jsonpath:json-path:2.9.0",
+    "sha256": "11a9ee6f88bb31f1450108d1cf6441377dec84aca075eb6bb2343be157575bea",
+    "pinnedBy": "tool/jsonpath_probe/jars.sha256",
+    "wraps": "gradle/libs.versions.toml:22, the version the frozen AnalyzeByJSonPath.kt calls"
+  },
+  "note": "Frozen inputs for the JSONPath reader. Every document here is the exact text JsonPath.parse receives, and every rule is passed to AnalyzeByJSonPath.getString, so the golden is the frozen field text. A case with a `declared` block is one the capability matrix already names; the comparator reports it in its notCompared list with the frozen text it could not match and refuses a declared row that turns out to compare. Notes name the frozen form a row reaches, not the answer: the golden holds the answer.",
+  "documents": {
+    "main": "{\"code\":0,\"nul\":null,\"nums\":[1,2,3,4],\"data\":[{\"hasContent\":1,\"content\":\"A\",\"title\":\"T1\",\"n\":5,\"s\":\"10\",\"tags\":[\"x\",\"y\"]},{\"hasContent\":0,\"content\":\"B\",\"title\":\"\",\"n\":10,\"s\":\"9\",\"tags\":[]},{\"hasContent\":\"1\",\"content\":\"C\",\"n\":15.5,\"tags\":[\"z\",\"y\"]},{\"content\":\"D\",\"n\":20,\"m\":{\"deep\":true}},{\"hasContent\":2,\"content\":\"E\",\"n\":null}],\"meta\":{\"className\":\"玄幻\",\"step\":1},\"menus\":[{\"title\":\"M1\",\"url\":\"/m1\",\"children\":[{\"title\":\"C1\"},{\"url\":\"/c2\"}]},{\"url\":\"/m2\"}],\"plain\":[\"p1\",\"p2\",\"p3\"]}",
+    "corner": "{\"items\":[{\"flag\":true,\"nulKey\":null,\"tags\":[\"x\",\"y\"],\"content\":\"A\"},{\"flag\":false,\"tags\":[\"y\"],\"content\":\"B\"},{\"nulKey\":null,\"content\":\"C\"},{\"flag\":true,\"tags\":[],\"content\":\"D\"}],\"nums\":[1,2,3],\"plain\":[\"p1\",\"p2\"],\"meta\":{\"className\":\"玄幻\"}}",
+    "regex": "{\"x\":[{\"v\":\"ab\",\"k\":\"A\"},{\"v\":\"a\",\"k\":\"B\"},{\"v\":\"p4\",\"k\":\"D\"},{\"v\":\"\",\"k\":\"E\"},{\"k\":\"F\"}],\"n\":[10,15.5,\"10\"],\"tags\":[[\"y\"],[\"z\"],[]]}",
+    "render": "{\"emptyObj\":{},\"emptyArr\":[],\"mixed\":[1,2.0,true,null,\"a,b\",{},[]],\"nested\":[[\"y\"],{\"k\":[1,2]}],\"quoted\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\"],\"numbers\":{\"i\":2147483647,\"d\":2.0,\"neg\":-0.5,\"big\":9007199254740993},\"map\":{\"a\":\"x, y\",\"b\":[1,2],\"c\":{\"d\":null},\"e\":true,\"f\":\"中\"},\"objs\":[{\"k\":\"v\"},{\"k2\":[1]}],\"holding\":{\"q\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\",\"g\\nh\"],\"n\":[1,2.0,true,null],\"e\":{},\"a\":[],\"m\":[{\"k\":\"v\"},{\"k2\":[1]}],\"mm\":[[1,2],[\"a\"]],\"m2\":[{\"a\":1,\"b\":\"x\"}],\"raw\":\"a\\\"b,c\\\\d\",\"deep\":[{\"k\":[{\"n\":2}]}]},\"escapes\":{\"slash\":[\"a/b\"],\"control\":[\"p\\u000bq\",\"xy\",\"de\",\"e\\u001ff\"],\"wide\":[\"“中”—…\"],\"quoted\":[\"a\\\"b\",\"c\\\\d\"],\"inArray\":[{\"a/b\":\"c/d\"}]}}"
+  },
+  "cases": [
+    {
+      "name": "filter-eq-number-matches-string-one",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent==1)].content",
+      "note": "The filter form the used sources reach. ValueNodes keeps the row whose value is the *string* \"1\" as well as the numeric one, so two rows match and getString joins them with a newline."
+    },
+    {
+      "name": "filter-eq-spaced",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent == 1)].content",
+      "note": "The same comparison with the spaces FilterCompiler allows around the operator."
+    },
+    {
+      "name": "filter-eq-single-quotes",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent=='1')].content",
+      "note": "A single-quoted string operand."
+    },
+    {
+      "name": "filter-eq-double-quotes",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent==\"1\")].content",
+      "note": "A double-quoted string operand; the compiler's QUOTE token accepts both."
+    },
+    {
+      "name": "filter-gt-number",
+      "document": "main",
+      "rule": "$.data[?(@.n > 9)].content",
+      "note": "A numeric comparison over a field one row lacks and one row holds as null."
+    },
+    {
+      "name": "filter-lt-number",
+      "document": "main",
+      "rule": "$.data[?(@.n < 9)].content",
+      "note": "The other side of the same comparison."
+    },
+    {
+      "name": "filter-gt-string-field",
+      "document": "main",
+      "rule": "$.data[?(@.s > 9)].content",
+      "note": "A numeric literal against a field that holds a string. The pinned answer is empty, where the `@.s >= '10'` row below keeps two, so the operand's own type decides whether the comparison can be made at all."
+    },
+    {
+      "name": "filter-ge-string-operand",
+      "document": "main",
+      "rule": "$.data[?(@.s >= '10')].content",
+      "note": "A quoted operand against the same string field."
+    },
+    {
+      "name": "filter-le-number",
+      "document": "main",
+      "rule": "$.data[?(@.n <= 10)].content",
+      "note": "The inclusive comparison, with a row whose field is null."
+    },
+    {
+      "name": "filter-ne-number",
+      "document": "main",
+      "rule": "$.data[?(@.n != 10)].content",
+      "note": "The inequality. The row whose `n` is null is kept and the `n = 10` row is not, so a null is compared rather than skipped."
+    },
+    {
+      "name": "filter-regex-anchored",
+      "document": "main",
+      "rule": "$.data[?(@.content =~ /^[ABC]$/)].content",
+      "note": "=~ is Matcher.matches, so the pattern is anchored over the whole value."
+    },
+    {
+      "name": "filter-regex-ignore-case",
+      "document": "main",
+      "rule": "$.data[?(@.content =~ /^[ab]$/i)].content",
+      "note": "The i flag is one of the two the adapter runs."
+    },
+    {
+      "name": "filter-regex-ungrouped-alternation",
+      "document": "regex",
+      "rule": "$.x[?(@.v =~ /a|ab/)].k",
+      "note": "Matcher.matches anchors the alternation to the whole value, so \"ab\" and \"a\" are both kept while \"p4\", the empty string and the row with no `v` at all are not."
+    },
+    {
+      "name": "filter-regex-end-anchor",
+      "document": "regex",
+      "rule": "$.x[?(@.v =~ /p4$/)].k",
+      "note": "A $ anchor, and a row whose value is missing entirely."
+    },
+    {
+      "name": "filter-regex-empty-value",
+      "document": "regex",
+      "rule": "$.x[?(@.v =~ /^$/)].k",
+      "note": "An empty pattern against the same field: the row whose value is the empty string matches and so does the row that has no `v` at all, because a missing value is read as the empty string too. The pinned text is two keys, not one."
+    },
+    {
+      "name": "filter-regex-on-array-element",
+      "document": "regex",
+      "rule": "$.tags[?(@ =~ /y/)]",
+      "note": "A filter over an array of arrays, where the operand is the container element itself and no leaf key follows: the one matched element is a list, so the field text renders it in the array form. The transcript line is `$.tags[?(@ =~ /y/)] ok List[List[String(y)]]`."
+    },
+    {
+      "name": "filter-in-numbers",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent in [1,2])].content",
+      "note": "The in operator, which the adapter's operator set names."
+    },
+    {
+      "name": "filter-nin-numbers",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent nin [1,2])].content",
+      "note": "Its negation."
+    },
+    {
+      "name": "filter-in-strings",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent in ['1'])].content",
+      "note": "An in operand of strings against the same mixed field."
+    },
+    {
+      "name": "filter-size-title",
+      "document": "main",
+      "rule": "$.data[?(@.title size 2)].content",
+      "note": "The size operator over a string field."
+    },
+    {
+      "name": "filter-size-tags",
+      "document": "main",
+      "rule": "$.data[?(@.tags size 2)].content",
+      "note": "The same operator over an array field."
+    },
+    {
+      "name": "filter-empty-empty-string-true",
+      "document": "main",
+      "rule": "$.data[?(@.title empty true)].content",
+      "note": "empty true keeps the row whose `title` is present and empty, and not the three rows that have no `title` at all."
+    },
+    {
+      "name": "filter-empty-empty-string-false",
+      "document": "main",
+      "rule": "$.data[?(@.title empty false)].content",
+      "note": "The other polarity keeps the one row whose `title` is present and not empty."
+    },
+    {
+      "name": "filter-empty-tags-true",
+      "document": "main",
+      "rule": "$.data[?(@.tags empty true)].content",
+      "note": "empty over an array field, where one row's array is empty."
+    },
+    {
+      "name": "filter-exists-true",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent exists true)].content",
+      "note": "The explicit exists true operator over a field four rows hold. It pins an empty result — the same shape as the null-key corner row below — where the bare form keeps the rows that have the field."
+    },
+    {
+      "name": "filter-exists-null-value",
+      "document": "corner",
+      "rule": "$.items[?(@.nulKey exists true)].content",
+      "note": "exists true over a key whose value is null pins an empty result: a present null is not what this operator means by existing."
+    },
+    {
+      "name": "filter-truthiness-null-value",
+      "document": "corner",
+      "rule": "$.items[?(@.nulKey)].content",
+      "note": "The bare field form over the same key, which is a *presence* check rather than that operator: the two rows that have `nulKey` are kept, the null value included."
+    },
+    {
+      "name": "filter-eq-null",
+      "document": "corner",
+      "rule": "$.items[?(@.nulKey==null)].content",
+      "note": "== null against the literal, over the two rows that have the key and the two that do not."
+    },
+    {
+      "name": "filter-ne-null",
+      "document": "corner",
+      "rule": "$.items[?(@.nulKey != null)].content",
+      "note": "Its negation, which the missing-key rows satisfy."
+    },
+    {
+      "name": "filter-empty-null-true",
+      "document": "corner",
+      "rule": "$.items[?(@.nulKey empty true)].content",
+      "note": "empty true over a null value pins an empty result as well."
+    },
+    {
+      "name": "filter-bare-boolean-field",
+      "document": "corner",
+      "rule": "$.items[?(@.flag)].content",
+      "note": "A bare boolean field is a presence check, not a truthiness one: all three rows that have `flag` are kept, the false-valued one included."
+    },
+    {
+      "name": "filter-bare-boolean-eq-true",
+      "document": "corner",
+      "rule": "$.items[?(@.flag==true)].content",
+      "note": "The explicit comparison keeps only the rows whose `flag` is true, a different set from the row above."
+    },
+    {
+      "name": "filter-tags-eq-list",
+      "document": "corner",
+      "rule": "$.items[?(@.tags == ['x','y'])].content",
+      "note": "A list literal as an == operand, which RelationalOperator compares with ValueNodes by list value."
+    },
+    {
+      "name": "filter-and",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent && @.n > 9)].content",
+      "note": "A filter whose rule-level && also appears inside the filter: the splitter must not cut this rule, and the filter's own && is the library's."
+    },
+    {
+      "name": "filter-or",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent==1 || @.hasContent==2)].content",
+      "note": "The same for ||."
+    },
+    {
+      "name": "filter-not",
+      "document": "main",
+      "rule": "$.data[?(!(@.hasContent==1))].content",
+      "note": "A negated group."
+    },
+    {
+      "name": "filter-missing-field",
+      "document": "main",
+      "rule": "$.data[?(@.missing)].content",
+      "note": "A field no row has: the filter matches nothing and the reader leaves the empty text."
+    },
+    {
+      "name": "filter-missing-field-eq",
+      "document": "main",
+      "rule": "$.data[?(@.missing==1)].content",
+      "note": "A comparison against a field no row has."
+    },
+    {
+      "name": "filter-scalar-array",
+      "document": "main",
+      "rule": "$.nums[?(@>2)]",
+      "note": "A filter over an array of scalars, where the operand is the element itself."
+    },
+    {
+      "name": "filter-scalar-array-eq",
+      "document": "main",
+      "rule": "$.plain[?(@=='p2')]",
+      "note": "A string comparison over scalar elements."
+    },
+    {
+      "name": "slice-between",
+      "document": "main",
+      "rule": "$.data[1:3].content",
+      "note": "ArraySliceOperation's between form over the matched rows' content."
+    },
+    {
+      "name": "slice-from-start",
+      "document": "main",
+      "rule": "$.data[:2].content",
+      "note": "Its from-start form."
+    },
+    {
+      "name": "slice-to-end",
+      "document": "main",
+      "rule": "$.data[2:].content",
+      "note": "Its to-end form."
+    },
+    {
+      "name": "slice-negative-from-end",
+      "document": "main",
+      "rule": "$.data[-2:].content",
+      "note": "A negative start, which resolves from the array's end."
+    },
+    {
+      "name": "slice-negative-to-end",
+      "document": "main",
+      "rule": "$.data[:-2].content",
+      "note": "A negative end, which resolves from the array's end."
+    },
+    {
+      "name": "slice-negative-both",
+      "document": "main",
+      "rule": "$.data[1:-1].content",
+      "note": "A negative end in the between form: SLICE_BETWEEN does not resolve it, which the matrix row records."
+    },
+    {
+      "name": "slice-third-field-ignored",
+      "document": "main",
+      "rule": "$.data[1:3:2]",
+      "note": "ArraySliceOperation.parse reads three fields and the third is not a step: the matrix row records that [a:b:c] behaves as [a:b]."
+    },
+    {
+      "name": "slice-past-end",
+      "document": "main",
+      "rule": "$.data[10:20].content",
+      "note": "A window past the end of the array."
+    },
+    {
+      "name": "slice-reversed",
+      "document": "main",
+      "rule": "$.data[3:1].content",
+      "note": "A start beyond the end: the slice keeps the array's order and this one is empty."
+    },
+    {
+      "name": "slice-then-index",
+      "document": "main",
+      "rule": "$.data[1:3][0].content",
+      "note": "An index applied to a slice's result."
+    },
+    {
+      "name": "slice-then-key-index",
+      "document": "main",
+      "rule": "$.data[1:3].tags[0]",
+      "note": "A nested key and index under a slice, where one of the two rows has no tags."
+    },
+    {
+      "name": "slice-of-strings",
+      "document": "main",
+      "rule": "$.plain[1:3]",
+      "note": "A slice over an array of strings: the two matches are joined with a newline."
+    },
+    {
+      "name": "index-negative",
+      "document": "main",
+      "rule": "$.data[-1].content",
+      "note": "A negative index, which resolves from the array's end."
+    },
+    {
+      "name": "index-multi",
+      "document": "main",
+      "rule": "$.data[0,2].content",
+      "note": "The index-list form, which the matrix row names."
+    },
+    {
+      "name": "index-wildcard",
+      "document": "main",
+      "rule": "$.data[*].content",
+      "note": "The wildcard index over the rows."
+    },
+    {
+      "name": "index-ascii",
+      "document": "main",
+      "rule": "$.data[3].content",
+      "note": "A plain positive index."
+    },
+    {
+      "name": "plain-negative-index",
+      "document": "main",
+      "rule": "$.plain[-1]",
+      "note": "A negative index over the string array."
+    },
+    {
+      "name": "scan-recursive-title",
+      "document": "main",
+      "rule": "$..title",
+      "note": "A recursive scan collecting every title, including the empty string one row holds."
+    },
+    {
+      "name": "dot-leading-filter-is-recursive",
+      "document": "main",
+      "rule": ".[?(@.className)]",
+      "note": "PathCompiler prefixes a dot-leading path with $., so this is the recursive scan, and the matched value is an object: the field text renders it through toString."
+    },
+    {
+      "name": "index-out-of-range-negative",
+      "document": "main",
+      "rule": "$.data[-99].content",
+      "note": "An index past the array's start. The library refuses the read and getString's swallowed exception leaves the empty text; the product answers the empty text too, which is why this row compares while the same failure shape over a non-array is a declared row."
+    },
+    {
+      "name": "render-empty-object",
+      "document": "render",
+      "rule": "$.emptyObj",
+      "note": "A whole empty object, which is the one shape an empty container needs its own form for."
+    },
+    {
+      "name": "render-empty-array",
+      "document": "render",
+      "rule": "$.emptyArr",
+      "note": "A whole empty array."
+    },
+    {
+      "name": "render-array-of-mixed-scalars",
+      "document": "render",
+      "rule": "$.mixed",
+      "note": "One array with an int, a double, a boolean, null, a string with a comma, an empty object and an empty array, so one row pins the item separator, the quoting rule and the empty-container forms inside a list."
+    },
+    {
+      "name": "render-nested-containers",
+      "document": "render",
+      "rule": "$.nested",
+      "note": "An array of an array and of an object, so the nested forms are rendered by the container rules rather than by the flat ones."
+    },
+    {
+      "name": "render-quoted-strings",
+      "document": "render",
+      "rule": "$.quoted",
+      "note": "Strings carrying a double quote, a backslash, a tab and non-ASCII characters, joined as the elements of a definite array: the frozen reader does not quote or escape here, it takes the element texts apart the same way it takes a scalar. The nested case is render-nested-quoted-strings."
+    },
+    {
+      "name": "render-numbers-map",
+      "document": "render",
+      "rule": "$.numbers",
+      "note": "A map of an int at Integer.MAX_VALUE, an integral double, a negative double and an integer past 2^53: the number forms the two runtimes must agree on."
+    },
+    {
+      "name": "render-map-with-container-values",
+      "document": "render",
+      "rule": "$.map",
+      "note": "A map whose values are a string with a comma, an array, a nested map with a null, a boolean and a non-ASCII string."
+    },
+    {
+      "name": "render-objects-in-array",
+      "document": "render",
+      "rule": "$.objs",
+      "note": "Objects as array elements, where the object form is chosen by the array renderer rather than by the join."
+    },
+    {
+      "name": "render-slice-of-objects",
+      "document": "main",
+      "rule": "$.data[1:3]",
+      "note": "The slice form with no scalar leaf, so the joined values are the matched rows themselves."
+    },
+    {
+      "name": "render-filter-of-object",
+      "document": "main",
+      "rule": ".[?(@.className)]",
+      "note": "A recursive filter whose match is an object, so the join carries one rendered map."
+    },
+    {
+      "name": "render-index-of-object",
+      "document": "main",
+      "rule": "$.data[0]",
+      "note": "A definite index naming one object: the frozen reader takes the toString of the single value rather than joining a list."
+    },
+    {
+      "name": "render-array-of-arrays",
+      "document": "main",
+      "rule": "$.data[*].tags",
+      "note": "An indefinite path whose matches are arrays, so each match is rendered by the array rule and then joined."
+    },
+    {
+      "name": "render-nested-quoted-strings",
+      "document": "render",
+      "rule": "$.holding",
+      "note": "A map holding the quoted strings, a number list with a double, a boolean and a null, and the two empty containers, so one row pins what the array form does to each of them while nested. The strings carry a quote, a backslash, a tab, a newline and non-ASCII characters."
+    },
+    {
+      "name": "render-escaper-classes",
+      "document": "render",
+      "rule": "$.escapes",
+      "note": "One map value per class the frozen escaper decides: a slash (the switch, which also catches the key of the object inside the array), a vertical tab, a C1 byte, DEL and a C0 control (the three numeric ranges), the curly quotes, an em dash and an ellipsis (the U+2000-U+20FF band Chinese titles carry), and a quote with a backslash. The map itself is the object form, which writes its own string values raw, so the row pins the escaping and where it stops at once."
+    },
+    {
+      "name": "declared-scan-index-guard",
+      "document": "main",
+      "rule": "$..[0].content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "scan-element-index",
+        "reason": "The matrix row names `$..[N]...` as refused by name: the frozen ScanPathToken.walkArray element-index guard is what decides what it answers, and this reader refuses the form instead of guessing it. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-scan-wildcard",
+      "document": "main",
+      "rule": "$..*.content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "scan-element-index",
+        "reason": "The same guard reached through the `$..*.` spelling. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-operator-triple-equals",
+      "document": "main",
+      "rule": "$.data[?(@.hasContent===1)].content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "operator-not-run",
+        "reason": "The library knows `===` and this reader does not run it, which the matrix row names. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-operator-contains",
+      "document": "main",
+      "rule": "$.data[?(@.title contains 'T')].content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "operator-not-run",
+        "reason": "`contains` is one of the operators the matrix row lists as not run. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-operator-subsetof",
+      "document": "main",
+      "rule": "$.data[?(@.tags subsetof ['x'])].content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "operator-not-run",
+        "reason": "`subsetof` from the same list. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-function-in-filter-path",
+      "document": "main",
+      "rule": "$.data[?(@.title.length() > 1)].content",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "unsupported-path-form",
+        "reason": "A function call in a filter path, which the matrix row lists among the refused path forms. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-quoted-property",
+      "document": "main",
+      "rule": "$.data['title']",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "unsupported-path-form",
+        "reason": "A quoted property name, refused by name in the matrix row. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-slice-step",
+      "document": "main",
+      "rule": "$.data[::2]",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "refused-by-both",
+        "reason": "`[::n]` is refused by the library and by this reader, so the compared text the frozen side would carry is the empty one getString leaves — the two shapes differ and the matrix row names both. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-slice-all",
+      "document": "main",
+      "rule": "$.data[:]",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "refused-by-both",
+        "reason": "`[:]` from the same sentence. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-slice-over-map",
+      "document": "main",
+      "rule": "$.meta[1:2]",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "failed-read-shape",
+        "reason": "The recorded divergence in the matrix row: a definite slice over a non-array is a named FormatException where the frozen reader swallows the library PathNotFoundException into an empty text. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    },
+    {
+      "name": "declared-slice-over-null",
+      "document": "main",
+      "rule": "$.nul[1:2]",
+      "note": "A row the capability matrix already names, kept in the corpus so the comparator reports it rather than skipping it.",
+      "declared": {
+        "kind": "failed-read-shape",
+        "reason": "The same divergence over a null value. [docs/compatibility/book-source-capability-matrix.md:121]"
+      }
+    }
+  ]
+}

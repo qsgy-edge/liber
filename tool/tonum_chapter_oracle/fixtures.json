@@ -1,0 +1,153 @@
+{
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/help/JsExtensions.kt",
+      "sha1": "1544fa90d832d57147b4f67cec3f2418daca8dc4",
+      "role": "the toNumChapter member (lines 905-913) exposed to rule scripts as java.toNumChapter; transcribed into the harness because this file names Rhino, AppConfig and Android types and cannot be compiled on a desktop JVM"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "titleNumPattern = (第)(.+?)(章), compiled from the frozen bytes by the harness"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "8dbf018c04ffcf117794593beaeebe7b717b0d81",
+      "role": "stringToInt / fullToHalf / chineseNumToInt / chnMap, compiled from the frozen bytes by the harness"
+    }
+  ],
+  "note": "Frozen inputs for java.toNumChapter. The harness calls the frozen AppPattern.titleNumPattern and the frozen StringUtils.stringToInt for every row, and refuses a row whose two runs differ. Notes name the frozen branch a row reaches, not the answer: the golden holds the answer.",
+  "cases": [
+    {
+      "name": "digits-plain",
+      "input": "第一百二十三章 后文",
+      "note": "chineseNumToInt's ordinary branch: 一 二 三 accumulate as tmp*10 + digit, so the counter is 123."
+    },
+    {
+      "name": "shorthand-thousand-two",
+      "input": "第一千二章",
+      "note": "The trailing-shorthand branch (StringUtils.kt:194-197): a single digit after a >10 unit is tmpNum * previousUnit / 10."
+    },
+    {
+      "name": "formal-numerals",
+      "input": "第壹仟零贰拾伍章",
+      "note": "The 〇壹贰叁肆伍陆柒捌玖拾 row of chnMap, with a zero placeholder between units."
+    },
+    {
+      "name": "two-variant",
+      "input": "第两万零三章",
+      "note": "chnMap['两'] = 2 (StringUtils.kt:43), the one numeral outside the two chnMap strings."
+    },
+    {
+      "name": "hundred-million",
+      "input": "第十二亿三千万章",
+      "note": "The 亿 branch folds result+billion and then the 万 branch multiplies again."
+    },
+    {
+      "name": "digit-sequence",
+      "input": "第〇一二三章",
+      "note": "Every mapped numeral is below ten, so the accumulate branch reads the string as a digit sequence: 123."
+    },
+    {
+      "name": "fullwidth-digits",
+      "input": "第１２3章 起点",
+      "note": "fullToHalf folds ６５２８１..６５３７４ to ASCII before Integer.parseInt sees the group."
+    },
+    {
+      "name": "fullwidth-space-and-sign",
+      "input": "第　＋００１２　章",
+      "note": "U+3000 becomes a space and the whitespace strip removes it, leaving the PHP-style '+' sign Integer.parseInt accepts."
+    },
+    {
+      "name": "zero",
+      "input": "第零章",
+      "note": "The zero numeral, not the empty string: chineseNumToInt returns 0."
+    },
+    {
+      "name": "blank-group",
+      "input": "第 章",
+      "note": "(.+?) matches the space, so the title row matches; the strip leaves an empty string, parseInt throws and chineseNumToInt('') adds nothing, returning 0."
+    },
+    {
+      "name": "digits-plain-ascii",
+      "input": "第123章",
+      "note": "Integer.parseInt succeeds on the first try, so chineseNumToInt is never entered."
+    },
+    {
+      "name": "negative-number",
+      "input": "第-12章",
+      "note": "A sign Integer.parseInt accepts inside the matched group."
+    },
+    {
+      "name": "decimal-unparsable",
+      "input": "第3.5章",
+      "note": "ASCII digits with a dot: parseInt throws, then chnMap['.'] is absent and the NoSuchElementException is runCatching's default -1."
+    },
+    {
+      "name": "unparsable-latin",
+      "input": "第 abc 章",
+      "note": "Same fallback with Latin letters and a stripped space."
+    },
+    {
+      "name": "int-max-plus-one",
+      "input": "第2147483648章",
+      "note": "Integer.parseInt rejects the value, and chnMap has no ASCII digit: -1."
+    },
+    {
+      "name": "int-overflow-wraps",
+      "input": "第三十亿章",
+      "note": "The 亿 branch multiplies into a 32-bit Int and the frozen arithmetic wraps: this row is why the port must not use a wider integer."
+    },
+    {
+      "name": "lone-ten-thousand",
+      "input": "第万章",
+      "note": "A unit with no digit before it: the 万 branch multiplies tmp, which is still 0."
+    },
+    {
+      "name": "lone-ten",
+      "input": "第十章",
+      "note": "The tmpNum >= 10 branch seeds tmp with 1 when no digit precedes the unit."
+    },
+    {
+      "name": "lone-hundred",
+      "input": "第百章",
+      "note": "The same seeding for 百, whose value is 100 rather than 10."
+    },
+    {
+      "name": "lazy-first-match-wins",
+      "input": "第一章节 第二章",
+      "note": "find() takes the first match and (.+?) is lazy, so the match is 第一章; the row is rebuilt from the three groups alone, so everything after that 章 is dropped from the title."
+    },
+    {
+      "name": "first-token-wins-across-titles",
+      "input": "第一卷 第十二章 起点",
+      "note": "The first 第 pairs with the first 章, so the group is a title fragment rather than a numeral: the fallback runs and the tail after 章 is dropped."
+    },
+    {
+      "name": "no-match-unchanged",
+      "input": "序章",
+      "note": "No 第: the input is returned untouched."
+    },
+    {
+      "name": "no-match-empty-title",
+      "input": "第章",
+      "note": "(.+?) needs at least one character, so 第章 has no match and is returned untouched."
+    },
+    {
+      "name": "no-match-ascii",
+      "input": "Chapter 12",
+      "note": "The pattern never matches, so a title that is not Chinese chapter-marked is a pass-through row."
+    },
+    {
+      "name": "empty-input",
+      "input": "",
+      "note": "The empty string, which is not the null row: the pattern does not match and the empty string is returned."
+    },
+    {
+      "name": "null-input",
+      "input": null,
+      "note": "The `s ?: return null` guard; a null argument stays null instead of becoming an error or a string."
+    }
+  ]
+}
