@@ -5,9 +5,9 @@
   "destinationVerdict": "policy-rejected",
   "goldenDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
   "destinationDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
-  "goldenWebView": "154.0.8037.22",
-  "destinationWebView": "154.0.8037.22",
-  "goldenPolicyReason": "frozen-baseline-accepts-invalid-tls",
+  "goldenWebView": "155.0.8059.4",
+  "destinationWebView": "155.0.8059.4",
+  "goldenPolicyReason": "destination-refuses-invalid-tls",
   "destinationPolicyReason": "destination-refuses-invalid-tls",
   "destinationPolicyRefusal": {
     "check": "invalidTlsRefusedAfterCertificatePresented",

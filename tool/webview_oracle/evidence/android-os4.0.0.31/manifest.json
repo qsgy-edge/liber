@@ -14,8 +14,8 @@
   },
   "runtime": {
     "webViewPackage": "com.google.android.webview",
-    "webViewVersion": "154.0.8037.22",
-    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
+    "webViewVersion": "155.0.8059.4",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/155.0.8059.4 Mobile Safari/537.36",
     "legadoUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "applicationApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
@@ -42,25 +42,25 @@
     "WV-14.json": "92b072e7d36616a6104e51387f745966c47cb31c23a5a4d6345aa5202c0f69db"
   },
   "evidenceSha256": {
-    "WV-01.json": "9b7d77f56bd37b5accb38e49c4aa965115b481b31388a6bd81d87f2293b1b096",
-    "WV-02.json": "4245fb695267d3233116e53de33d5d374500f9dc80063de025561a9a91e8a364",
-    "WV-03.json": "3c347a915305f74cfdf64303071b19291dd33abfe250d08cefbe8c6737606041",
-    "WV-04.json": "377a8a215d8645705d50e4b0d1238c4c956c9228ec0d98a5c2bd218622d171ec",
-    "WV-05.json": "595fb6726e1dd0f756fdb47a19d53b36c5bc6cc4d952e095aaf53c27acf7d5f7",
-    "WV-06.json": "debbd7de32a082901a6104aec8a87a6085b052fdd7f621c80f567fafbe815bd9",
-    "WV-07.json": "44373527797a63e43558d973e85e9d7b82cf4b29a669c685491e9e7ecda64e3e",
-    "WV-08.json": "0aad779814f45680eaf2ae017faa905ee20fc6e480f46f74623bffa630628754",
-    "WV-09.json": "7d676f1e56d2fa12832e9314559ccc214e2e0aeb729a9f0a8ff824629a4f79fc",
-    "WV-10.json": "48ce82fe37b923c2e1bbed13b1e271a95475736d3a2f30837fdc35d83073c503",
-    "WV-11.json": "8c62a8fca84ae9e6c3cb1d9eedbecc6835abe69a2c76f064db9acc17a2ca9740",
-    "WV-12.json": "c02dad55930a7f82251b324cc149274830df918458e9a7abdcef40e8827fca41",
-    "WV-13.json": "b84a5aad9c7f095196cc2ca9bb38b8dfb1925bcdda2156e523678bc6923381c3",
-    "WV-14.json": "6684031e4d28b91903b9f7e1d2c19e714c6afd8ebcee34f9d2ea0b1f2d9823d4"
+    "WV-01.json": "cf3eaa4c7f32e1105c250df973dd68123e013a2ee1f804a9be56951249a494f7",
+    "WV-02.json": "8434129747fbb29a03bc90c9904e0acbff3c2cd0e7cadeffd920b19eabc74d03",
+    "WV-03.json": "2e17e49884e87d2c7de9556dd7a5cacebdaa10143c9986746df531a23a93771a",
+    "WV-04.json": "58e9ef817704e012e4ba3fe18a8dc5c682e90260e148942124484e90260f47c8",
+    "WV-05.json": "4ba7cb8c6e7cf2f9565aaaf98b189b4b9977fe9ce60f6f2133e2072ae84ea40f",
+    "WV-06.json": "7dc2f05c9ed07c3839e21f124a59da84a177cd385175ec32d627cb87bf3f4736",
+    "WV-07.json": "8ce8b6a1917d2d99f63009bfc0cb1d67d067409c94f11eb8c727de39643be684",
+    "WV-08.json": "e744e282ddedb8a8ae817f03c767863a504b55653ec84d35e9220c3cfbd69f07",
+    "WV-09.json": "f559f6a7adef087934ab03ecb908d9f7375e4fbef8e288c5a4da15e1557bb2d7",
+    "WV-10.json": "db8b8cb2e0a1bd6c429e5eb83d55c4f311b9d40f3dbc3199b3970100b20098b7",
+    "WV-11.json": "c008dc00aec3596bc751b7c19b7f63750da428e167bb883a30dfca3a0506de4d",
+    "WV-12.json": "183746dee055235fcab4379cc528cf77011cfae3af3b4d8107c0013a605ad198",
+    "WV-13.json": "957bbc81f457aac6bfe9953ad52c77d3cdcca9f23007d2d5e718ae8f66481af5",
+    "WV-14.json": "5cddfa52a741bf94f518c84edbe516ab4ef8b724e05faf32bd972fff3956ccb1"
   },
   "run": {
-    "startedAtUtc": "2026-09-22T04:46:50.653Z",
-    "completedAtUtc": "2026-09-22T04:49:35.333Z",
-    "logSha256": "21a7ebf59f0976dc0e3c7fd65f6d839490303f7e63dedeb4cfc892bd3eee8c95"
+    "startedAtUtc": "2026-09-24T10:44:37.021Z",
+    "completedAtUtc": "2026-09-24T10:47:31.109Z",
+    "logSha256": "7136a9bb8332157d91f59bb9dd052f4061a500170cb8fbb93e4fada4bda84c0c"
   },
   "verdicts": {
     "WV-01": "pass",

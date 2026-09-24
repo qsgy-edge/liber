@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T05:52:56.618810Z",
-  "completedAtUtc": "2026-09-22T05:52:58.151166Z",
+  "startedAtUtc": "2026-09-24T10:56:28.401375Z",
+  "completedAtUtc": "2026-09-24T10:56:29.960566Z",
   "device": {
     "manufacturer": "Xiaomi",
     "model": "25102RKBEC",
@@ -21,30 +21,30 @@
   },
   "runtime": {
     "webViewPackage": "com.google.android.webview",
-    "webViewVersion": "154.0.8037.22",
-    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36",
+    "webViewVersion": "155.0.8059.4",
+    "defaultUserAgent": "Mozilla/5.0 (Linux; Android 17; 25102RKBEC Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/155.0.8059.4 Mobile Safari/537.36",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "responseUrl": "http://127.0.0.1:37783/late",
+    "responseUrl": "http://127.0.0.1:46413/late",
     "responseCode": 200,
     "responseBody": "<html><head></head><body><main id=\"oracle\">redirect-late</main></body></html>",
     "priorResponseCode": 302,
-    "durationMs": 1484
+    "durationMs": 1508
   },
   "requests": [
     {
       "method": "GET",
       "target": "/redirect",
       "headers": {
-        "host": "127.0.0.1:37783",
+        "host": "127.0.0.1:46413",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
+        "sec-ch-ua": "\"Android WebView\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
         "sec-ch-ua-mobile": "?1",
         "sec-ch-ua-platform": "\"Android\"",
         "upgrade-insecure-requests": "1",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "x-requested-with": "io.legado.ticket13.ticket13_adapter",
         "sec-fetch-site": "none",
         "sec-fetch-mode": "navigate",
@@ -54,20 +54,20 @@
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
       },
       "body": "",
-      "startedAtElapsedMs": 340
+      "startedAtElapsedMs": 369
     },
     {
       "method": "GET",
       "target": "/final",
       "headers": {
-        "host": "127.0.0.1:37783",
+        "host": "127.0.0.1:46413",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
+        "sec-ch-ua": "\"Android WebView\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
         "sec-ch-ua-mobile": "?1",
         "sec-ch-ua-platform": "\"Android\"",
         "upgrade-insecure-requests": "1",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "x-requested-with": "io.legado.ticket13.ticket13_adapter",
         "sec-fetch-site": "none",
         "sec-fetch-mode": "navigate",
@@ -77,42 +77,20 @@
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
       },
       "body": "",
-      "startedAtElapsedMs": 417
-    },
-    {
-      "method": "GET",
-      "target": "/favicon.ico",
-      "headers": {
-        "host": "127.0.0.1:37783",
-        "connection": "keep-alive",
-        "sec-ch-ua-platform": "\"Android\"",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
-        "sec-ch-ua-mobile": "?1",
-        "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        "x-requested-with": "io.legado.ticket13.ticket13_adapter",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-mode": "no-cors",
-        "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:37783/final",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
-      },
-      "body": "",
-      "startedAtElapsedMs": 459
+      "startedAtElapsedMs": 421
     },
     {
       "method": "GET",
       "target": "/late",
       "headers": {
-        "host": "127.0.0.1:37783",
+        "host": "127.0.0.1:46413",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Chromium\";v=\"154\", \"Android WebView\";v=\"154\", \"Not A(Brand\";v=\"99\"",
+        "sec-ch-ua": "\"Android WebView\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
         "sec-ch-ua-mobile": "?1",
         "sec-ch-ua-platform": "\"Android\"",
         "upgrade-insecure-requests": "1",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "x-requested-with": "io.legado.ticket13.ticket13_adapter",
         "sec-fetch-site": "none",
         "sec-fetch-mode": "navigate",
@@ -122,7 +100,29 @@
         "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
       },
       "body": "",
-      "startedAtElapsedMs": 461
+      "startedAtElapsedMs": 483
+    },
+    {
+      "method": "GET",
+      "target": "/favicon.ico",
+      "headers": {
+        "host": "127.0.0.1:46413",
+        "connection": "keep-alive",
+        "sec-ch-ua-platform": "\"Android\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "sec-ch-ua": "\"Android WebView\";v=\"155\", \"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+        "sec-ch-ua-mobile": "?1",
+        "accept": "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "x-requested-with": "io.legado.ticket13.ticket13_adapter",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "no-cors",
+        "sec-fetch-dest": "image",
+        "referer": "http://127.0.0.1:46413/final",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+      },
+      "body": "",
+      "startedAtElapsedMs": 484
     }
   ],
   "checks": {

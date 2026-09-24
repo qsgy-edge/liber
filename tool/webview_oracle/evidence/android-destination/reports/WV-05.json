@@ -5,15 +5,14 @@
   "destinationVerdict": "pass",
   "goldenDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
   "destinationDevice": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
-  "goldenWebView": "154.0.8037.22",
-  "destinationWebView": "154.0.8037.22",
+  "goldenWebView": "155.0.8059.4",
+  "destinationWebView": "155.0.8059.4",
   "goldenChecksCompared": 4,
   "destinationExtraChecks": [],
-  "matchedGoldenTrace": "diagnostic:WV-05-subresource-delivered.json",
-  "matchedRaceAlternativeReason": "preserves the request-delivered side of the sourceRegex destruction race on this fingerprint; the accepted golden landed on the not-delivered side, and both sides were observed across repeated runs of the same binary (10 runs on 2026-09-22 landed on the delivered side once)",
-  "raceAlternativesConsidered": 1,
+  "matchedGoldenTrace": "accepted",
+  "raceAlternativesConsidered": 0,
   "browserInitiatedGolden": [],
   "browserInitiatedDestination": [],
   "differences": [],
-  "comparisonVerdict": "match-race-alternative"
+  "comparisonVerdict": "match"
 }
