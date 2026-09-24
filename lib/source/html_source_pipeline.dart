@@ -857,7 +857,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       hit,
       withTocUrl: true,
     );
-    final (tocTarget, tocOptions) = await _extracted(infoUrl, tocText);
+    // The frozen falls back to the book's own address when the detail page
+    // declares no TOC address — `BookInfo.kt:150-152` reads `infoRule.tocUrl`,
+    // then `if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl`, where `baseUrl`
+    // is the book's URL (`WebBook.kt` passes `book.bookUrl`). The detail page
+    // is usually the TOC page, so an empty rule means "this page".
+    final (tocTarget, tocOptions) = tocText.isEmpty
+        ? (_resolve(hit.url, '', keepFragment: true), const SourceUrlOptions())
+        : await _extracted(infoUrl, tocText);
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
     tocPages = 0;
@@ -1084,7 +1091,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     required bool withTocUrl,
   }) async {
     final batch = HtmlRuleBatch(html);
-    final name = await _field(_rule('ruleBookInfo', 'name'), content: html);
+    // An absent or empty `ruleBookInfo.name` is not an error in the frozen app:
+    // `analyzeRule.getString(infoRule.name)` answers "" and the book keeps the
+    // name it already had (`BookInfo.kt:64-70`: `if (it.isNotEmpty() && …)`),
+    // which is the search hit's title. Reading it as required refused a source
+    // whose detail page carries no name at all (found by the operator's real
+    // source run, batch 17).
+    final name = await _field(
+      _rule('ruleBookInfo', 'name', optional: true),
+      content: html,
+    );
     final nameValue = _declare(batch, 'name', name);
     final author = await _field(
       _rule('ruleBookInfo', 'author', optional: true),
@@ -1122,7 +1138,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       optional: true,
     ).trim().isNotEmpty;
     final tocUrl = withTocUrl
-        ? await _field(_rule('ruleBookInfo', 'tocUrl'), content: html)
+        ? await _field(
+            _rule('ruleBookInfo', 'tocUrl', optional: true),
+            content: html,
+          )
         : null;
     final tocValue = tocUrl == null ? null : _declare(batch, 'tocUrl', tocUrl);
     await batch.run();

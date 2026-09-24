@@ -546,6 +546,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'init',
             'checkKeyWord',
             'title',
+            // `ruleBookInfo.name` and `ruleBookInfo.tocUrl` are optional in the
+            // frozen app: an empty `name` keeps the book's existing title
+            // (`BookInfo.kt:64-70`) and an empty `tocUrl` means the book's own
+            // address (`BookInfo.kt:150-152`). A source that declares neither is
+            // read, not refused — the operator's real run found the refusal
+            // (batch 17).
+            'name',
+            'tocUrl',
           }.contains(entry.key)) {
         throw UnsupportedError('Unsupported field: $key.${entry.key}');
       }
@@ -662,7 +670,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
-    final info = _rules('ruleBookInfo', ['name', 'tocUrl']);
+    final info = _rules('ruleBookInfo', const []);
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
     final bookRequest = _bookRequests.remove(hit.url);
     final bookInfo = await _loginCheck(
@@ -676,7 +684,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = jsonDecode(bookInfo.body);
     final (book, page) = await _readBookInfo(document, hit, info);
-    final tocAddress = JsonSourceRules.template(page, info['tocUrl']!);
+    final tocAddress = JsonSourceRules.template(page, info['tocUrl'] ?? '');
+    // An empty `tocUrl` resolves to the book's own address, which is the frozen
+    // fallback (`BookInfo.kt:150-152`).
     final (tocUrl, tocOptions) = await _request(hit.url, tocAddress, _keyword);
     final chapters = <SourceChapter>[];
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
@@ -842,7 +852,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final (book, _) = await _readBookInfo(
       document,
       HtmlBook(url: finalUrl, title: ''),
-      _rules('ruleBookInfo', ['name', 'tocUrl']),
+      _rules('ruleBookInfo', const []),
     );
     return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
   }
@@ -874,7 +884,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         : document;
     final cover = await _optional(page, info['coverUrl'] ?? '');
     final canReName = info['canReName']?.trim().isNotEmpty == true;
-    final infoTitle = await _optional(page, info['name']!);
+    final infoTitle = await _optional(page, info['name'] ?? '');
     final infoAuthor = await _optional(page, info['author'] ?? '');
     final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
     final infoWordCount = formatSourceWordCount(
@@ -1085,7 +1095,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // Every rule group is read before the first request, so a source with an
       // unsupported rule fails without touching the network.
       _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
-      _rules('ruleBookInfo', ['name', 'tocUrl']);
+      _rules('ruleBookInfo', const []);
       _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
       _rules('ruleContent', ['content']);
       onStage(

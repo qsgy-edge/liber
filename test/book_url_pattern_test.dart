@@ -499,4 +499,69 @@ void main() {
       );
     });
   });
+
+  group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
+    // The frozen keeps the book's existing name for an empty `name` rule
+    // (`BookInfo.kt:64-70`) and falls back to the book's own address for an
+    // empty `tocUrl` (`BookInfo.kt:150-152`). Both were read as required, so a
+    // real source was refused before any fetch (the operator's run, batch 17).
+    const page =
+        '<h1>真实标题</h1>'
+        '<p class="author">作者甲</p>'
+        '<ul class="chapters">'
+        '<li><a href="/c/1">第一章</a></li>'
+        '<li><a href="/c/2">第二章</a></li>'
+        '</ul>';
+
+    test('the HTML pipeline reads details and takes the TOC from the book URL',
+        () async {
+      final pages = _Pages({'/book/7': page});
+      final (book, chapters) = await HtmlSourcePipeline({
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {'author': 'p.author@text'},
+        'ruleToc': {
+          'chapterList': 'ul.chapters li',
+          'chapterName': 'a@text',
+          'chapterUrl': 'a@href',
+        },
+      }, pages).details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(book.title, '书架标题', reason: 'an empty name rule keeps the title');
+      expect(book.author, '作者甲');
+      expect(
+        chapters.map((chapter) => chapter.name),
+        ['第一章', '第二章'],
+      );
+      expect(
+        pages.requests,
+        contains('http://example.test/book/7'),
+        reason: 'the TOC is read from the book URL when tocUrl is empty',
+      );
+    });
+
+    test('the JSON pipeline reads details with neither field declared',
+        () async {
+      final document = jsonEncode({
+        'author': '作者甲',
+        'chapters': [
+          {'name': '第一章', 'url': '/c/1'},
+        ],
+      });
+      final (book, chapters) = await JsonSourcePipeline({
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {'author': r'$.author'},
+        'ruleToc': {
+          'chapterList': r'$.chapters[*]',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+      }, _Pages({'/book/7': document})).details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(book.title, '书架标题');
+      expect(book.author, '作者甲');
+      expect(chapters.map((chapter) => chapter.name), ['第一章']);
+    });
+  });
 }
