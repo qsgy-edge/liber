@@ -54,7 +54,7 @@ contract wants a frozen comparison, and there is none. The owner column is the t
 build it.
 
 **Batch 15 measured all seventeen families against the operator's used set** (`dart run
-tool/source_usage.dart --usage <backup.zip>`, `#74`): **no family is unused** — the used set calls every
+tool/source_triage.dart --usage <backup.zip>`, `#74`): **no family is unused** — the used set calls every
 one of them, from `ajaxAll` and `java.connect(` at 1 of 150 up to `loginCheckJs` at 9 of 150 — so
 `decision 18`'s "zero usage retires a row" route retires nothing here. The operator signed this
 disposition list (2026-09-24):
