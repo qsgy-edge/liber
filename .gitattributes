@@ -51,3 +51,12 @@ tool/webview_oracle/**/*.ico -text
 # the jars it downloads; without this a Windows checkout with core.autocrlf=true
 # rewrites the LF bytes of both (#44).
 tool/jsonpath_probe/** text eol=lf
+
+# The host-JVM differential oracles (#74) are the same shape as the ones above:
+# `run_golden.sh` verifies `frozen.sha1` with `sha1sum -c`, which resolves the
+# paths *inside* that file, so a CRLF checkout turns every path into `…kt\r` and
+# the check fails before it compiles anything (observed on a Windows checkout,
+# batch 16); the corpora and goldens beside them are the bytes their manifests
+# record.
+tool/tonum_chapter_oracle/** text eol=lf
+tool/jsonpath_oracle/** text eol=lf

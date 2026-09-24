@@ -29,6 +29,8 @@ capability rows' own tickets recorded; each row's verdict is the comparator's ow
 | Execution-model state | `dart run tool/state_oracle_compare.dart <dll> tool/nested_oracle/evidence/android-17-os4.0.0.25/state-expanded-golden.json …` | `pass`, 0 differences, 1 named `notCompared` |
 | Replacement JavaScript | `dart run tool/replace_js_oracle/compare.dart <dll> tool/replace_js_oracle/evidence/android-17-os4.0.0.31/golden.json …` | **11 pass / 0 fail / 2 notCompared** |
 | reSegment stage | `flutter test test` (`test/content_re_segment_differential_test.dart`, JVM-host golden) | pass (part of the 724-test suite) |
+| `toNumChapter` (Chinese numerals, shorthand, invalid, signed-Int overflow) | `bash tool/tonum_chapter_oracle/run_golden.sh` then `flutter test test/to_num_chapter_differential_test.dart` (JVM-host golden, the frozen `AppPattern`/`StringUtils` bytes executed) | pass, **26 cases compared**; the golden re-runs byte-identically (batch 16) |
+| JSONPath adapter (85-rule corpus) | `bash tool/jsonpath_oracle/run_golden.sh` then `flutter test test/jsonpath_differential_test.dart` (the frozen `AnalyzeByJSonPath`/`RuleAnalyzer` against json-path 2.9.0, JVM-host golden) | pass, **74 rules compared / 11 declared `notCompared`**, each declared row printed with expected and observed (batch 16) |
 | Runtime gates (per-platform row set) | `python tool/ci_runtime.py windows x86_64-pc-windows-msvc` | **16 rows, exit 0** (manifest in `.ci-results/`) |
 
 The `notCompared` entries are the contract's own recorded categories (platform-generated headers,
@@ -90,8 +92,8 @@ disposition list (2026-09-24):
 | Per-source concurrency and `concurrentRate` | #42 | the limiter around every source request; the frozen multi-URL `nextTocUrl` branch is recorded unexercised |
 | `enabledCookieJar` parity | #42 | product tests; the session/persistent split divergence is recorded |
 | `java` multi-URL `ajax`/`ajaxAll`, header-string `connect`, `getHeaderMap` | #43 | source-derived Windows tests + host gate; `docs/compatibility/host-surface-43.md` states no frozen golden was executed |
-| `toNumChapter` Chinese numerals | #43 | product tests (source-derived) |
-| JSONPath filters and slices | #44 | `tool/jsonpath_probe/` (a host probe of the frozen library, transcript only) + product tests |
+| `toNumChapter` Chinese numerals | #43 | **host-JVM fixture since batch 16** (`tool/tonum_chapter_oracle/`, 26 cases: fullwidth and Chinese numerals, the frozen shorthand, invalid `-1`, signed-Int overflow) — the claim moved from source-derived to frozen-executed; the device rows stay `not-run` |
+| JSONPath filters and slices | #44 | **host-JVM fixture since batch 16** (`tool/jsonpath_oracle/`, 85 rules, 74 compared / 11 declared `notCompared`); the field text now renders json-smart's own container and escape forms (`_fieldText`, `#78`), and the sibling `getStringList`/`list` boundary is named as out-of-corpus |
 | Multi-URL page results and `imageStyle` | #14/#67 | product tests and widget rows; the frozen-device layout rows stay `not-run` (no handset in batch 14) |
 | User-confirmed browser and captcha hatches | #32 | product tests + host gate; the visible-page rows are `policy-rejected` for the same reason as `loginUi` |
 | Named refusals, emulated `androidId`/`getWebViewUA`, bounded logs and toasts | #31 | host gate; the emulated members are named divergences by design |
