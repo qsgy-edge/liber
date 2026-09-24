@@ -278,4 +278,92 @@ void main() {
     expect(factory.attempts, 1);
   });
 
+  group('the visible confirmed page', () {
+    /// Runs the page's certificate decision, the way its server-trust callback
+    /// does.
+    Future<void> pumpPageDecision(
+      WidgetTester tester, {
+      required SourceHostState state,
+      required void Function(bool allowed) onDone,
+    }) async {
+      await tester.pumpWidget(
+        localizedApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async => onDone(
+                await confirmTlsExceptionForPage(
+                  context: context,
+                  hostState: state,
+                  sourceRef: _sourceRef,
+                  sourceName: 'A 书源',
+                  failure: sourceWebViewUntrustedCertificateFailure(
+                    sourceRef: _sourceRef,
+                    host: _host,
+                  ),
+                ),
+              ),
+              child: const Text('load'),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('asks with the same dialog and remembers on continue', (
+      tester,
+    ) async {
+      final state = SourceHostState();
+      bool? allowed;
+      await pumpPageDecision(
+        tester,
+        state: state,
+        onDone: (value) => allowed = value,
+      );
+
+      await tester.tap(find.text('load'));
+      await tester.pumpAndSettle();
+      expect(find.text('证书校验失败'), findsOneWidget);
+      expect(find.textContaining('A 书源'), findsOneWidget);
+      expect(find.textContaining(_host), findsOneWidget);
+
+      await tester.tap(find.text('继续（不安全）'));
+      await tester.pumpAndSettle();
+      expect(allowed, isTrue);
+      expect(state.allowsInvalidCertificate(_sourceRef, _host), isTrue);
+    });
+
+    testWidgets('a stored exception proceeds without asking', (tester) async {
+      final state = SourceHostState();
+      await state.allowInvalidCertificate(_sourceRef, _host);
+      bool? allowed;
+      await pumpPageDecision(
+        tester,
+        state: state,
+        onDone: (value) => allowed = value,
+      );
+
+      await tester.tap(find.text('load'));
+      await tester.pumpAndSettle();
+      expect(allowed, isTrue);
+      expect(find.text('证书校验失败'), findsNothing);
+    });
+
+    testWidgets('a refusal cancels the load and stores nothing', (tester) async {
+      final state = SourceHostState();
+      bool? allowed;
+      await pumpPageDecision(
+        tester,
+        state: state,
+        onDone: (value) => allowed = value,
+      );
+
+      await tester.tap(find.text('load'));
+      await tester.pumpAndSettle();
+      // Dismissing the barrier is the dialog's default, a refusal.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(allowed, isFalse);
+      expect(state.allowsInvalidCertificate(_sourceRef, _host), isFalse);
+    });
+  });
 }

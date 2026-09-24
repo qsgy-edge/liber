@@ -12,6 +12,7 @@ import 'package:liber/source/inappwebview_source_hatch.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_hatch.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
+import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_rate_limiter.dart';
 
 import 'native_library.dart';
@@ -239,6 +240,26 @@ void main() {
       // inside the source's own rate is this product's stricter path (ADR 0011
       // §4), and the record is what proves it was entered.
       expect(SourceRateLimiter.shared.recordOf('http://rate.test'), isNotNull);
+    });
+
+    test('a hatch request carries the host state its page consults', () async {
+      // ADR 0011 §5: the visible page's server-trust decision reads and writes
+      // the space's host state, so a request that carried none would never see a
+      // stored per-source, per-host exception (#75).
+      final state = SourceHostState();
+      final surface = _TestSurface();
+      SourceHatchSurface.installed = surface;
+      final pipeline = HtmlSourcePipeline(
+        _source('tag.h3@tag.a@text@js:java.getVerificationCode("$_codeUrl")'),
+        _Transport(),
+        hostState: state,
+      );
+
+      await expectLater(
+        pipeline.search('书'),
+        throwsA(isA<SourceScriptError>()),
+      );
+      expect(surface.requests.single.hostState, same(state));
     });
 
     test('startBrowserAwait refetches with the sources own headers', () async {

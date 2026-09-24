@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../l10n/app_localizations.dart';
+import 'book_source_webview_adapter.dart'
+    show sourceWebViewUntrustedCertificateFailure;
 import 'inappwebview_book_source_adapter.dart';
 import 'source_hatch.dart';
+import 'source_tls_confirmation.dart';
 
 /// The navigator the confirmed pages are pushed on. The composition root hands
 /// it to `MaterialApp` (`lib/main.dart`), because a hatch happens inside a source
@@ -331,6 +334,23 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
           mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
         ),
         onWebViewCreated: (controller) => _controller = controller,
+        // ADR 0011 §5 reaches this visible page too: without the exception the
+        // engine refuses the rejected certificate by default, and the stored
+        // per-source, per-host exception is what lets the page load instead. The
+        // user confirmed showing this page, not continuing past a rejected
+        // certificate, so the decision is the same confirmation the headless
+        // path reaches: a stored exception proceeds silently, and without one the
+        // dialog asks and its answer is what the load follows.
+        onReceivedServerTrustAuthRequest: (controller, challenge) async =>
+            await _mayProceedThroughCertificate(
+              challenge.protectionSpace.host,
+            )
+            ? ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.PROCEED,
+              )
+            : ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.CANCEL,
+              ),
         onLoadStop: (controller, url) async {
           // The frozen `WebViewActivity.onPageFinished` writes what the page
           // received back into the source's own cookie store, which is what the
@@ -346,6 +366,24 @@ class _SourceHatchPageState extends State<SourceHatchPage> {
       ),
     );
   }
+
+  /// Whether this page may load [host] despite the certificate the engine
+  /// rejected (ADR 0011 §5).
+  ///
+  /// The stored exception is read first, so a page whose source and host were
+  /// already confirmed does not ask again; without one the shared confirmation
+  /// asks and its "continue (unsafe)" answer stores the exception.
+  Future<bool> _mayProceedThroughCertificate(String host) =>
+      confirmTlsExceptionForPage(
+        context: context,
+        hostState: widget.request.hostState,
+        sourceRef: widget.request.sourceRef,
+        sourceName: widget.request.sourceName,
+        failure: sourceWebViewUntrustedCertificateFailure(
+          sourceRef: widget.request.sourceRef,
+          host: host,
+        ),
+      );
 
   /// Hands the platform store's cookies for the finished page to the source's
   /// jar. A store this process cannot read leaves the jar as it was, exactly as

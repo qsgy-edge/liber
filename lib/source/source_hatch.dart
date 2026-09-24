@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../domain/contracts.dart';
+import 'source_host_state.dart';
 
 /// Which surface one user-confirmed hatch shows (ADR 0011 §4).
 ///
@@ -49,6 +50,7 @@ class SourceHatchRequest {
     this.refetchAfterSuccess = true,
     this.fetchImage,
     this.onPageCookies,
+    this.hostState,
   });
 
   /// The frozen member's name (`java.startBrowser`), which the source log, the
@@ -95,6 +97,14 @@ class SourceHatchRequest {
   /// `startBrowserAwait`'s refetch and the source's later requests; the
   /// surface hands over the platform store's string form of them.
   final Future<void> Function(String pageUrl, String cookies)? onPageCookies;
+
+  /// The space's host state, which answers and stores the per-source, per-host
+  /// TLS exception (ADR 0011 §5) for the page this hatch shows: a page whose
+  /// certificate the engine rejects proceeds when the exception for its own
+  /// source and host is stored, and the confirmation stores one when the user
+  /// agrees. Null in a process that speaks for no space, and then every
+  /// certificate is validated.
+  final SourceHostState? hostState;
 
   /// Whether the source's execution parks until the user answers.
   bool get waits =>
