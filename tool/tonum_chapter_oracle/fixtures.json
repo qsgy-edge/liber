@@ -27,7 +27,7 @@
     {
       "name": "shorthand-thousand-two",
       "input": "第一千二章",
-      "note": "The trailing-shorthand branch (StringUtils.kt:189-193): a single digit after a >10 unit is tmpNum * previousUnit / 10."
+      "note": "The trailing-shorthand branch (StringUtils.kt:194-197): a single digit after a >10 unit is tmpNum * previousUnit / 10."
     },
     {
       "name": "formal-numerals",
@@ -37,7 +37,7 @@
     {
       "name": "two-variant",
       "input": "第两万零三章",
-      "note": "chnMap['两'] = 2 (StringUtils.kt:44), the one numeral outside the two chnMap strings."
+      "note": "chnMap['两'] = 2 (StringUtils.kt:43), the one numeral outside the two chnMap strings."
     },
     {
       "name": "hundred-million",

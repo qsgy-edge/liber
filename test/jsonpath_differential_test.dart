@@ -31,6 +31,8 @@ import 'package:liber/source/json_source_rules.dart';
 void main() {
   const fixturesPath = 'tool/jsonpath_oracle/fixtures.json';
   const goldenPath = 'tool/jsonpath_oracle/evidence/jvm-host/golden.json';
+  const manifestPath =
+      'tool/jsonpath_oracle/evidence/jvm-host/manifest.json';
 
   final fixtures = (jsonDecode(File(fixturesPath).readAsStringSync()) as Map)
       .cast<String, dynamic>();
@@ -38,6 +40,9 @@ void main() {
   final cases = (fixtures['cases'] as List).cast<Map>();
   final golden = (jsonDecode(File(goldenPath).readAsStringSync()) as Map)
       .cast<String, dynamic>();
+  final manifest =
+      (jsonDecode(File(manifestPath).readAsStringSync()) as Map)
+          .cast<String, dynamic>();
 
   test('every case in the corpus has a golden row with a text and a read', () {
     expect(golden.keys.toSet(), {
@@ -50,6 +55,31 @@ void main() {
         reason: name,
       );
     }
+  });
+
+  test('the manifest copies the golden, and the corpus, without drifting', () {
+    // The committed comparator report is a copy of two other files, so it is
+    // checked rather than trusted: a later corpus edit that forgets the manifest
+    // fails here instead of leaving stale evidence on the ticket.
+    final declared = cases.where((c) => c['declared'] != null).toList();
+    final reported = (manifest['notCompared'] as List).cast<Map>();
+    expect(
+      reported.map((r) => r['name']).toList(),
+      declared.map((c) => c['name']).toList(),
+      reason: 'manifest.notCompared must list the corpus\'s declared rows',
+    );
+    for (final c in declared) {
+      final entry = reported.singleWhere((r) => r['name'] == c['name']);
+      final row = (golden[c['name']] as Map).cast<String, dynamic>();
+      final declaration = (c['declared'] as Map).cast<String, dynamic>();
+      expect(entry['rule'], c['rule'], reason: c['name'] as String);
+      expect(entry['kind'], declaration['kind'], reason: c['name'] as String);
+      expect(entry['reason'], declaration['reason'], reason: c['name'] as String);
+      expect(entry['frozenText'], row['text'], reason: c['name'] as String);
+      expect(entry['frozenRead'], row['read'], reason: c['name'] as String);
+    }
+    expect(manifest['compared'], cases.length - declared.length);
+    expect(manifest['baseline'], fixtures['baseline']);
   });
 
   test('the frozen corpus names its own provenance', () {
@@ -100,10 +130,21 @@ void main() {
         }
         continue;
       }
+      final expectedRefusal = _refusalFor[declared['kind']];
       if (refusal == null) {
         failures.add(
           '$name ($rule): declared ${declared['kind']} but the product now '
           'compares it (${jsonEncode(observed)})',
+        );
+      } else if (expectedRefusal == null) {
+        failures.add(
+          '$name ($rule): declared kind ${declared['kind']} has no refusal '
+          'type in _refusalFor',
+        );
+      } else if (!expectedRefusal.matches(refusal, {})) {
+        failures.add(
+          '$name ($rule): declared ${declared['kind']} refused with '
+          '${refusal.runtimeType}, expected $expectedRefusal',
         );
       }
       notCompared.add(
@@ -113,7 +154,14 @@ void main() {
     }
 
     // The report is the comparator's own verdict list: the rows it compared, the
-    // rows it could not, and, by name and value, anything that differs.
+    // rows it could not, and, by name and value, anything that differs. It goes
+    // to stdout because a `notCompared` row is the harness's observation, not a
+    // hidden skip (the contract's wording), and to failures so a red run names
+    // the values.
+    stdout.writeln('jsonpath compared: ${compared.length}');
+    for (final line in notCompared) {
+      stdout.writeln('jsonpath notCompared: $line');
+    }
     expect(failures, isEmpty, reason: failures.join('\n'));
     expect(
       notCompared,
@@ -126,3 +174,18 @@ void main() {
     printOnFailure('notCompared:\n${notCompared.join('\n')}');
   });
 }
+
+/// The refusal each declared kind must produce, so a row that starts failing a
+/// different way is not quietly accepted into `notCompared`.
+///
+/// `failed-read-shape` is the matrix's recorded divergence — a definite slice
+/// over a non-array or a null is a named `FormatException` where the frozen
+/// reader's swallowed exception leaves an empty text. Every other kind is one of
+/// the forms this reader refuses by name, which is an `UnsupportedError`.
+const _refusalFor = <String, Matcher>{
+  'failed-read-shape': TypeMatcher<FormatException>(),
+  'scan-element-index': TypeMatcher<UnsupportedError>(),
+  'operator-not-run': TypeMatcher<UnsupportedError>(),
+  'unsupported-path-form': TypeMatcher<UnsupportedError>(),
+  'refused-by-both': TypeMatcher<UnsupportedError>(),
+};

@@ -23,14 +23,14 @@
     "main": "{\"code\":0,\"nul\":null,\"nums\":[1,2,3,4],\"data\":[{\"hasContent\":1,\"content\":\"A\",\"title\":\"T1\",\"n\":5,\"s\":\"10\",\"tags\":[\"x\",\"y\"]},{\"hasContent\":0,\"content\":\"B\",\"title\":\"\",\"n\":10,\"s\":\"9\",\"tags\":[]},{\"hasContent\":\"1\",\"content\":\"C\",\"n\":15.5,\"tags\":[\"z\",\"y\"]},{\"content\":\"D\",\"n\":20,\"m\":{\"deep\":true}},{\"hasContent\":2,\"content\":\"E\",\"n\":null}],\"meta\":{\"className\":\"玄幻\",\"step\":1},\"menus\":[{\"title\":\"M1\",\"url\":\"/m1\",\"children\":[{\"title\":\"C1\"},{\"url\":\"/c2\"}]},{\"url\":\"/m2\"}],\"plain\":[\"p1\",\"p2\",\"p3\"]}",
     "corner": "{\"items\":[{\"flag\":true,\"nulKey\":null,\"tags\":[\"x\",\"y\"],\"content\":\"A\"},{\"flag\":false,\"tags\":[\"y\"],\"content\":\"B\"},{\"nulKey\":null,\"content\":\"C\"},{\"flag\":true,\"tags\":[],\"content\":\"D\"}],\"nums\":[1,2,3],\"plain\":[\"p1\",\"p2\"],\"meta\":{\"className\":\"玄幻\"}}",
     "regex": "{\"x\":[{\"v\":\"ab\",\"k\":\"A\"},{\"v\":\"a\",\"k\":\"B\"},{\"v\":\"p4\",\"k\":\"D\"},{\"v\":\"\",\"k\":\"E\"},{\"k\":\"F\"}],\"n\":[10,15.5,\"10\"],\"tags\":[[\"y\"],[\"z\"],[]]}",
-    "render": "{\"emptyObj\":{},\"emptyArr\":[],\"mixed\":[1,2.0,true,null,\"a,b\",{},[]],\"nested\":[[\"y\"],{\"k\":[1,2]}],\"quoted\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\"],\"numbers\":{\"i\":2147483647,\"d\":2.0,\"neg\":-0.5,\"big\":9007199254740993},\"map\":{\"a\":\"x, y\",\"b\":[1,2],\"c\":{\"d\":null},\"e\":true,\"f\":\"中\"},\"objs\":[{\"k\":\"v\"},{\"k2\":[1]}],\"holding\":{\"q\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\",\"g\\nh\"],\"n\":[1,2.0,true,null],\"e\":{},\"a\":[],\"m\":[{\"k\":\"v\"},{\"k2\":[1]}],\"mm\":[[1,2],[\"a\"]],\"m2\":[{\"a\":1,\"b\":\"x\"}],\"raw\":\"a\\\"b,c\\\\d\",\"deep\":[{\"k\":[{\"n\":2}]}]}}"
+    "render": "{\"emptyObj\":{},\"emptyArr\":[],\"mixed\":[1,2.0,true,null,\"a,b\",{},[]],\"nested\":[[\"y\"],{\"k\":[1,2]}],\"quoted\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\"],\"numbers\":{\"i\":2147483647,\"d\":2.0,\"neg\":-0.5,\"big\":9007199254740993},\"map\":{\"a\":\"x, y\",\"b\":[1,2],\"c\":{\"d\":null},\"e\":true,\"f\":\"中\"},\"objs\":[{\"k\":\"v\"},{\"k2\":[1]}],\"holding\":{\"q\":[\"a\\\"b\",\"c\\\\d\",\"e\\tf\",\"中文字\",\"ü\",\"g\\nh\"],\"n\":[1,2.0,true,null],\"e\":{},\"a\":[],\"m\":[{\"k\":\"v\"},{\"k2\":[1]}],\"mm\":[[1,2],[\"a\"]],\"m2\":[{\"a\":1,\"b\":\"x\"}],\"raw\":\"a\\\"b,c\\\\d\",\"deep\":[{\"k\":[{\"n\":2}]}]},\"escapes\":{\"slash\":[\"a/b\"],\"control\":[\"p\\u000bq\",\"xy\",\"de\",\"e\\u001ff\"],\"wide\":[\"“中”—…\"],\"quoted\":[\"a\\\"b\",\"c\\\\d\"],\"inArray\":[{\"a/b\":\"c/d\"}]}}"
   },
   "cases": [
     {
       "name": "filter-eq-number-matches-string-one",
       "document": "main",
       "rule": "$.data[?(@.hasContent==1)].content",
-      "note": "The filter form the used sources reach. The ValueNodes comparison keeps the row whose value is the *string* \"1\" as well, so three rows match and getString joins them with a newline."
+      "note": "The filter form the used sources reach. ValueNodes keeps the row whose value is the *string* \"1\" as well as the numeric one, so two rows match and getString joins them with a newline."
     },
     {
       "name": "filter-eq-spaced",
@@ -66,7 +66,7 @@
       "name": "filter-gt-string-field",
       "document": "main",
       "rule": "$.data[?(@.s > 9)].content",
-      "note": "A numeric literal against a field that is a string: ValueNodes parses the *operand* and compares strings by their parsed value."
+      "note": "A numeric literal against a field that holds a string. The pinned answer is empty, where the `@.s >= '10'` row below keeps two, so the operand's own type decides whether the comparison can be made at all."
     },
     {
       "name": "filter-ge-string-operand",
@@ -84,7 +84,7 @@
       "name": "filter-ne-number",
       "document": "main",
       "rule": "$.data[?(@.n != 10)].content",
-      "note": "The inequality, which the missing-field row also satisfies."
+      "note": "The inequality. The row whose `n` is null is kept and the `n = 10` row is not, so a null is compared rather than skipped."
     },
     {
       "name": "filter-regex-anchored",
@@ -102,7 +102,7 @@
       "name": "filter-regex-ungrouped-alternation",
       "document": "regex",
       "rule": "$.x[?(@.v =~ /a|ab/)].k",
-      "note": "Matcher.matches over an alternation: /a|ab/ matches 'a' and 'ab' but not 'ab' by the first branch, so the anchoring decides this row."
+      "note": "Matcher.matches anchors the alternation to the whole value, so \"ab\" and \"a\" are both kept while \"p4\", the empty string and the row with no `v` at all are not."
     },
     {
       "name": "filter-regex-end-anchor",
@@ -114,13 +114,13 @@
       "name": "filter-regex-empty-value",
       "document": "regex",
       "rule": "$.x[?(@.v =~ /^$/)].k",
-      "note": "An empty pattern matches the empty string, not the missing value."
+      "note": "An empty pattern against the same field: the row whose value is the empty string matches and so does the row that has no `v` at all, because a missing value is read as the empty string too. The pinned text is two keys, not one."
     },
     {
       "name": "filter-regex-on-array-element",
       "document": "regex",
-      "rule": "$.tags[?(@ =~ /y/)].k",
-      "note": "A filter applied to the elements of a nested array, where the operand is the element itself."
+      "rule": "$.tags[?(@ =~ /y/)]",
+      "note": "A filter over an array of arrays, where the operand is the container element itself and no leaf key follows: the one matched element is a list, so the field text renders it in the array form. The transcript line is `$.tags[?(@ =~ /y/)] ok List[List[String(y)]]`."
     },
     {
       "name": "filter-in-numbers",
@@ -156,13 +156,13 @@
       "name": "filter-empty-empty-string-true",
       "document": "main",
       "rule": "$.data[?(@.title empty true)].content",
-      "note": "empty true over a field that is an empty string in one row and absent in another."
+      "note": "empty true keeps the row whose `title` is present and empty, and not the three rows that have no `title` at all."
     },
     {
       "name": "filter-empty-empty-string-false",
       "document": "main",
       "rule": "$.data[?(@.title empty false)].content",
-      "note": "The other polarity."
+      "note": "The other polarity keeps the one row whose `title` is present and not empty."
     },
     {
       "name": "filter-empty-tags-true",
@@ -174,25 +174,25 @@
       "name": "filter-exists-true",
       "document": "main",
       "rule": "$.data[?(@.hasContent exists true)].content",
-      "note": "exists true, measured against a field one row lacks and one row holds as a value."
+      "note": "The explicit exists true operator over a field four rows hold. It pins an empty result — the same shape as the null-key corner row below — where the bare form keeps the rows that have the field."
     },
     {
       "name": "filter-exists-null-value",
       "document": "corner",
       "rule": "$.items[?(@.nulKey exists true)].content",
-      "note": "exists over a key whose value is null: the corner that decides whether a present null counts as present."
+      "note": "exists true over a key whose value is null pins an empty result: a present null is not what this operator means by existing."
     },
     {
       "name": "filter-truthiness-null-value",
       "document": "corner",
       "rule": "$.items[?(@.nulKey)].content",
-      "note": "The bare existence form the compiler rewrites to exists true."
+      "note": "The bare field form over the same key, which is a *presence* check rather than that operator: the two rows that have `nulKey` are kept, the null value included."
     },
     {
       "name": "filter-eq-null",
       "document": "corner",
       "rule": "$.items[?(@.nulKey==null)].content",
-      "note": "== null against the literal, over rows that have the key and rows that do not."
+      "note": "== null against the literal, over the two rows that have the key and the two that do not."
     },
     {
       "name": "filter-ne-null",
@@ -204,19 +204,19 @@
       "name": "filter-empty-null-true",
       "document": "corner",
       "rule": "$.items[?(@.nulKey empty true)].content",
-      "note": "empty true over a null value."
+      "note": "empty true over a null value pins an empty result as well."
     },
     {
       "name": "filter-bare-boolean-field",
       "document": "corner",
       "rule": "$.items[?(@.flag)].content",
-      "note": "A bare boolean field, which the compiler rewrites to == true rather than to an existence check."
+      "note": "A bare boolean field is a presence check, not a truthiness one: all three rows that have `flag` are kept, the false-valued one included."
     },
     {
       "name": "filter-bare-boolean-eq-true",
       "document": "corner",
       "rule": "$.items[?(@.flag==true)].content",
-      "note": "The explicit spelling of the same comparison."
+      "note": "The explicit comparison keeps only the rows whose `flag` is true, a different set from the row above."
     },
     {
       "name": "filter-tags-eq-list",
@@ -336,7 +336,7 @@
       "name": "slice-of-strings",
       "document": "main",
       "rule": "$.plain[1:3]",
-      "note": "A slice over an array of strings; getString joins the definite array's elements."
+      "note": "A slice over an array of strings: the two matches are joined with a newline."
     },
     {
       "name": "index-negative",
@@ -363,7 +363,7 @@
       "note": "A plain positive index."
     },
     {
-      "name": "plain-slice",
+      "name": "plain-negative-index",
       "document": "main",
       "rule": "$.plain[-1]",
       "note": "A negative index over the string array."
@@ -384,7 +384,7 @@
       "name": "index-out-of-range-negative",
       "document": "main",
       "rule": "$.data[-99].content",
-      "note": "An index past the array's start."
+      "note": "An index past the array's start. The library refuses the read and getString's swallowed exception leaves the empty text; the product answers the empty text too, which is why this row compares while the same failure shape over a non-array is a declared row."
     },
     {
       "name": "render-empty-object",
@@ -463,6 +463,12 @@
       "document": "render",
       "rule": "$.holding",
       "note": "A map holding the quoted strings, a number list with a double, a boolean and a null, and the two empty containers, so one row pins what the array form does to each of them while nested. The strings carry a quote, a backslash, a tab, a newline and non-ASCII characters."
+    },
+    {
+      "name": "render-escaper-classes",
+      "document": "render",
+      "rule": "$.escapes",
+      "note": "One map value per class the frozen escaper decides: a slash (the switch, which also catches the key of the object inside the array), a vertical tab, a C1 byte, DEL and a C0 control (the three numeric ranges), the curly quotes, an em dash and an ellipsis (the U+2000-U+20FF band Chinese titles carry), and a quote with a backslash. The map itself is the object form, which writes its own string values raw, so the row pins the escaping and where it stops at once."
     },
     {
       "name": "declared-scan-index-guard",

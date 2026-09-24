@@ -59,11 +59,18 @@ rule)`. The corpus compares that pair, so it holds:
   past the end, a reversed window) and the index forms (`[N]`, `[N, M]`, `[-N]`,
   `[*]`) as leaves of a rule and in the middle of one;
 - the `\n` join over the matches, and the rendering of a match that is not a
-  scalar: the object form `{k=v, k2=v2}` (`JSONObject.toString`), the array form
-  `[a,b]` with quoted string elements (`JSONArray.toString`), the JSON object form
-  `{"k":v}` a map takes *as an array element*, and the escaping `JSONValue.escape`
-  writes. `render-*` rows pin all of it, including the empty containers, the
-  nested forms, a quote, a backslash, a tab, a newline and non-ASCII text.
+  scalar. json-path's default reader hands back a `net.minidev.json.JSONArray` for
+  an array and a **`java.util.LinkedHashMap`** for an object (verified on the
+  frozen classpath, which is why the object form's keys keep the document's order),
+  so: the object form is `AbstractMap.toString`, `{k=v, k2=v2}` with string values
+  written raw; the array form is `JSONArray.toString`, `[a,b]` with quoted string
+  elements; and a map *as an array element* takes the JSON object form `{"k":v}`.
+  The array form and the JSON object form escape through json-smart's
+  `JStylerObj$Escape4Web.escape` — eight shorthands including `\/`, and the C0,
+  DEL-to-C1 and U+2000-to-U+20FF ranges as `\u` plus four uppercase hex digits.
+  `render-*` rows pin all of it, including the empty containers, the nested forms,
+  the quote, the backslash, the tab, the newline, the non-ASCII text and one
+  character of every escaper class.
 
 The failure *shape* of a refused rule is not compared (the contract compares
 categories, not exception classes): the frozen reader swallows the library's
@@ -76,5 +83,14 @@ exception and leaves an empty text, and the product refuses by name.
   where Dart writes a decimal. No row reaches that band.
 - The rule-level `&&`/`||`/`%%` merges over more than one branch and the
   `{{...}}` template form; those stay the adapter's source-derived rows.
+- The sibling list boundary. The frozen `AnalyzeByJSonPath.getStringList` renders
+  each matched element through `toString()` as well, and the product's list entry
+  (`JsonSourceRules.list`, the multi-page `nextContentUrl`/`nextTocUrl` rule)
+  still stringifies with Dart's `'$item'`, so a list-mode rule whose items are
+  containers carries Dart's rendering. This fixture compares the *field-text*
+  boundary (`getString`), which is the row's claim; routing the list entry through
+  `_matchedText` needs its own rows on the `getStringList` boundary and an
+  observable way to assert them, so it is named here rather than changed under an
+  unproven model.
 - `validate` and the pipeline above `extract`: this fixture compares the reader's
   field text, not the rule-shape gate or the stage that consumes the text.

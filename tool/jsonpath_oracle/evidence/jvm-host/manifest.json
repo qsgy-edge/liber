@@ -23,8 +23,9 @@
   "harness": "tool/jsonpath_oracle/JsonPathOracle.kt",
   "fixtures": "tool/jsonpath_oracle/fixtures.json",
   "golden": "tool/jsonpath_oracle/evidence/jvm-host/golden.json",
-  "goldenSha1": "74156e8eb7d67c171ccaf7da869bcef4a061e1f1",
+  "goldenSha1": "d5240126bd18ed5beafeebd6ed022de967ae8e1b",
   "command": "bash tool/jsonpath_oracle/run_golden.sh",
+  "frozenHashCheck": "The script runs `sha1sum -c tool/jsonpath_oracle/frozen.sha1` in the frozen checkout before compiling, so a different or dirty checkout cannot emit a golden labelled with the baseline revision.",
   "toolchain": {
     "jvm": "1.8.0_503-b01 (Oracle, amd64, windows)",
     "kotlinCompiler": "kotlin-compiler-embeddable-2.3.20",
@@ -35,9 +36,9 @@
     "jsonPath": "json-path-2.9.0 (with json-smart-2.5.0, accessors-smart-2.5.0, slf4j-api-2.0.11, asm-9.6, verified against tool/jsonpath_probe/jars.sha256)",
     "androidxAnnotation": "annotation-jvm-1.10.0 (compile classpath only, for the frozen @Keep)"
   },
-  "recordedAt": "2026-09-24T11:07:38Z",
+  "recordedAt": "2026-09-24T21:20:00Z",
   "determinism": "The harness runs every case twice and refuses the output when the two runs differ. json-path 2.9.0 reads no clock, no random source and no ambient state here, so this is a guard against a future corpus row rather than a known non-deterministic branch.",
-  "compared": 73,
+  "compared": 74,
   "notCompared": [
     {
       "name": "declared-scan-index-guard",
@@ -128,12 +129,20 @@
       "reason": "The same divergence over a null value. [docs/compatibility/book-source-capability-matrix.md:121]"
     }
   ],
+  "containerTypes": "The class names behind the container rendering, read on the frozen classpath: json-path's default reader answers a matched object as java.util.LinkedHashMap (superclass HashMap) and a matched array as net.minidev.json.JSONArray. The object form is therefore AbstractMap.toString, {k=v, k2=v2} in the document's key order, and only the JSONArray writer escapes.",
   "productFix": {
     "rows": "render-slice-of-objects ($.data[1:3]), render-filter-of-object (.[?(@.className)])",
     "found": "The first run of this corpus (60 rules, before the rendering rows below were added) compared 58 and failed these two: a rule whose matches are objects or arrays carried Dart's rendering of them ({k: v}, [z, y]) where the frozen field text carries json-smart's ({k=v}, [\"z\",\"y\"]).",
     "fixed": "lib/source/json_source_rules.dart: _fieldText now renders a match through _matchedText/_mapText/_arrayText/_jsonValueText/_jsonMapText/_scalarText, the frozen toString forms. test/jsonpath_differential_test.dart is the comparison.",
     "ticket": "#78",
     "effect": "After the fix the two rows compare, the eleven declared rows are reported in notCompared by name above, and the JSONPath row carries a fixture instead of a gap."
+  },
+  "reviewRound": {
+    "found": "A fresh-context read of the diff found that _jsonEscape modelled the wrong escaper: it wrote eight shorthands minus the slash, treated only < U+0020 as a control range, and lowercased the hex. The frozen escaper is net.minidev.json.JStylerObj$Escape4Web.escape (json-smart selects Escape4Web for the writer's style, which sets _protect4Web).",
+    "before": "For the new row's document the old model wrote slash=[a/b] raw, left U+0085, U+007F and the U+201C/U+2014/U+2026 band raw, and wrote the escaped controls as \\u000b and \\u001f (lowercase, a two-nibble tail).",
+    "after": "The golden's own text for render-escaper-classes is {slash=[\"a\\/b\"], control=[\"p\\u000Bq\",\"x\\u0085y\",\"d\\u007Fe\",\"e\\u001Ff\"], wide=[\"\\u201C中\\u201D\\u2014\\u2026\"], quoted=[\"a\\\"b\",\"c\\\\d\"], inArray=[{\"a\\/b\":\"c\\/d\"}]} — the slash escaped, the three ranges as four uppercase hex digits, and the object form's own string values still raw.",
+    "corpus": "One render row was added (render-escaper-classes, 85 rules now), the array-element filter row was corrected to the probe's own rule (it had a leaf key appended that made it an empty row, and the transcript line for it is `$.tags[?(@ =~ /y/)] ok List[List[String(y)]]`), three corpus notes were rewritten to the answers their own row pins (filter-regex-empty-value, filter-exists-null-value / filter-truthiness-null-value and filter-bare-boolean-field), four more that asserted a wrong mechanism or count were corrected (filter-eq-number-matches-string-one, filter-gt-string-field, filter-ne-number, filter-regex-ungrouped-alternation), and plain-slice was renamed plain-negative-index.",
+    "guards": "test/jsonpath_differential_test.dart now checks this manifest against the corpus and the golden (names, rules, kinds, reasons, frozenText/frozenRead, the compared count), matches a declared row's refusal type against its kind, and writes the notCompared list to stdout so a green run still reports it."
   },
   "deviceRow": {
     "status": "not-run",
@@ -143,6 +152,7 @@
   "outOfCorpus": [
     "a number at or above 1e7 or below 1e-3: the JVM writes scientific notation where Dart writes a decimal, and no row here reaches that band",
     "the failure shapes of the declared rows themselves: only the refused text is frozen, and the contract does not compare exception classes",
-    "the rule-level &&/||/%% merges over more than one branch and the {{...}} template form: those are the adapter's source-derived rows, not this corpus's boundary"
+    "the rule-level &&/||/%% merges over more than one branch and the {{...}} template form: those are the adapter's source-derived rows, not this corpus's boundary",
+    "the sibling list boundary: the frozen AnalyzeByJSonPath.getStringList renders each matched element through toString() as well, and the product's list entry (JsonSourceRules.list, the multi-page nextContentUrl/nextTocUrl rule) still stringifies with Dart's '$item', so a list-mode rule whose items are containers carries Dart's rendering. Routing it through _matchedText needs its own getStringList-boundary rows and an observable assertion, so it is named here rather than changed under an unproven model"
   ]
 }

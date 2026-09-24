@@ -1626,15 +1626,20 @@ String _patternInput(Object? value) {
 
 /// The frozen `toString` of one value a rule matched.
 ///
-/// json-smart gives a container two forms, and `AnalyzeByJSonPath.getString`
-/// reaches both: the reader calls `toString()` on a single value and
-/// `joinToString("\n")` on a definite array's elements, so a nested container is
-/// rendered by its own rule instead of being flattened. The corpus in
+/// Two library types meet here, and `AnalyzeByJSonPath.getString` reaches both:
+/// the reader calls `toString()` on a single value and `joinToString("\n")` on a
+/// definite array's elements, so a nested container is rendered by its own rule
+/// instead of being flattened. json-path's default reader hands back a
+/// `net.minidev.json.JSONArray` for an array and a `java.util.LinkedHashMap` for
+/// an object (`JsonPath.parse` on the frozen classpath — the class names are in
+/// `tool/jsonpath_oracle/README.md`). The corpus in
 /// `tool/jsonpath_oracle/fixtures.json` pins every branch below:
 ///
-/// - the **object form** (`JSONObject.toString`) is `{k=v, k2=v2}`: keys
-///   unquoted, `=`, entries separated by `, `, `{}` when empty. A string value is
-///   written as it is, so `{a=x, y}` carries a comma the form never quotes.
+/// - the **object form** is `java.util.LinkedHashMap`'s `AbstractMap.toString`:
+///   `{k=v, k2=v2}`, keys unquoted, `=`, entries separated by `, ` in the
+///   document's own key order, `{}` when empty. A string value is written as it
+///   is — also by `AbstractMap.toString`, which calls the value's own
+///   `toString` — so `{a=x, y}` carries a comma the form never quotes.
 /// - the **array form** (`JSONArray.toString`) is `[a,b]`: elements separated by
 ///   `,` — no space — and `[]` when empty. A *string* element is quoted and
 ///   escaped, which is why `["a\"b"]` looks unlike the object form's values.
@@ -1652,7 +1657,9 @@ String _matchedText(Object? value) {
   return _scalarText(value);
 }
 
-/// The object form: `{k=v, k2=v2}`, and its values through [_matchedText].
+/// The object form, `java.util.LinkedHashMap`'s `AbstractMap.toString`:
+/// `{k=v, k2=v2}`, and its values through [_matchedText] because the JVM form
+/// calls each value's own `toString`.
 String _mapText(Map<Object?, Object?> map) {
   if (map.isEmpty) return '{}';
   final entries = map.entries.map(
@@ -1692,27 +1699,39 @@ String _scalarText(Object? value) {
   return '$value';
 }
 
-/// The frozen `JSONValue.escape`, which only the array form and the JSON object
-/// form run: the quote, the backslash, the five control shorthands and any other
-/// character below U+0020 as `\u00xx`. Everything else — non-ASCII included —
-/// is written raw.
+/// The frozen escaper, `net.minidev.json.JStylerObj$Escape4Web.escape`: json-smart
+/// selects `Escape4Web` for the style the reader's writer uses (`NO_COMPRESS` sets
+/// `_protect4Web`), and only the array form and the JSON object form run it.
+///
+/// Its switch writes eight shorthands — `\b \t \n \f \r \" \/ \\` — and its
+/// default branch escapes exactly three numeric ranges, as `\u` plus four
+/// **uppercase** hex digits: the C0 controls (`<= 0x1F`), the DEL and C1 range
+/// (`0x7F-0x9F`) and the U+2000-U+20FF band that carries the curly quotes,
+/// dashes and ellipses Chinese titles use. Everything else — a letter, a CJK
+/// character, an emoji's surrogate pair — is written raw.
+///
+/// The corpus's `render-escaper-classes` row pins one character per class,
+/// because a model that missed a range would still pass every ASCII row.
 String _jsonEscape(String value) {
   final out = StringBuffer();
   for (final unit in value.codeUnits) {
     final escaped = switch (unit) {
-      0x22 => r'\"',
-      0x5C => r'\\',
       0x08 => r'\b',
       0x09 => r'\t',
       0x0A => r'\n',
       0x0C => r'\f',
       0x0D => r'\r',
+      0x22 => r'\"',
+      0x2F => r'\/',
+      0x5C => r'\\',
       _ => null,
     };
     if (escaped != null) {
       out.write(escaped);
-    } else if (unit < 0x20) {
-      out.write('\\u00${unit.toRadixString(16).padLeft(2, '0')}');
+    } else if (unit <= 0x1F ||
+        (unit >= 0x7F && unit <= 0x9F) ||
+        (unit >= 0x2000 && unit <= 0x20FF)) {
+      out.write('\\u${unit.toRadixString(16).toUpperCase().padLeft(4, '0')}');
     } else {
       out.writeCharCode(unit);
     }

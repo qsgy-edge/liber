@@ -22,6 +22,14 @@ here="$(cd "$(dirname "$0")" && pwd)"
 frozen="${LIBER_LEGADO:-D:/GithubRepositories/Android/legado}"
 gradle_cache="${GRADLE_CACHE:-$HOME/.gradle/caches/modules-2/files-2.1}"
 
+# The frozen hashes this golden is labelled with: a dirty or different checkout
+# cannot emit a golden that claims the baseline revision.
+pins="$here/frozen.sha1"
+if ! (cd "$frozen" && sha1sum -c "$pins" >/dev/null); then
+  echo "run_golden.sh: $frozen does not match $pins" >&2
+  exit 1
+fi
+
 find_jar() { find "$gradle_cache/$1" -name "$2" | sort -V | tail -1; }
 require_jar() {
   local path

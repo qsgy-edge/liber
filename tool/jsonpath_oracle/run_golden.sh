@@ -23,6 +23,14 @@ jars="${JSONPATH_JARS:-$here/../jsonpath_probe/jars}"
 pins="$here/../jsonpath_probe/jars.sha256"
 base=https://repo1.maven.org/maven2
 
+# The frozen hashes this golden is labelled with: a dirty or different checkout
+# cannot emit a golden that claims the baseline revision.
+frozen_pins="$here/frozen.sha1"
+if ! (cd "$frozen" && sha1sum -c "$frozen_pins" >/dev/null); then
+  echo "run_golden.sh: $frozen does not match $frozen_pins" >&2
+  exit 1
+fi
+
 jsonpath_jars=(
   "com/jayway/jsonpath/json-path/2.9.0/json-path-2.9.0.jar"
   "net/minidev/json-smart/2.5.0/json-smart-2.5.0.jar"
