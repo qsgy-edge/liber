@@ -171,6 +171,7 @@ const ERROR_CATEGORY_BY_TYPE = new Map([
   ['OuterTimeoutException', 'outerTimeout'],
   ['CancelledException', 'cancelled'],
   ['UntrustedCertificateException', 'untrustedCertificate'],
+  ['SourceTlsCertificateFailure', 'untrustedCertificate'],
   // The product adapter's own exception names (`liber`, ticket #55). The
   // archived harness's adapter was the prototype; this restore drives the
   // product's `BookSourceWebViewAdapter`, whose names are its own. Each maps onto

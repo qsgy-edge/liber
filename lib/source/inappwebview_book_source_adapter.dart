@@ -238,9 +238,11 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
           : null,
       // The frozen baseline proceeds through an untrusted certificate, which the
       // security policy forbids. The adapter cancels instead and fails the
-      // operation explicitly, so a source sees a refusal rather than the blank
-      // page the cancelled navigation would otherwise deliver. ADR 0011 §5's
-      // confirmed per-source, per-host exception is the one way past it.
+      // operation with the transport's own certificate failure, so a source sees
+      // a named refusal rather than the blank page the cancelled navigation
+      // would otherwise deliver, and the caller's ADR 0011 §5 confirmation asks
+      // about it. The per-source, per-host exception the user confirmed is the
+      // one way past it: the retry finds it stored and proceeds.
       onReceivedServerTrustAuthRequest: (controller, challenge) async {
         final host = challenge.protectionSpace.host;
         if (_scope.allowsInvalidCertificate(host)) {
@@ -249,7 +251,7 @@ class InAppWebViewBookSourceAdapter implements BookSourceWebViewAdapter {
           );
         }
         _fail(
-          SourceWebViewUntrustedCertificate(
+          sourceWebViewUntrustedCertificateFailure(
             sourceRef: _scope.sourceRef,
             host: host,
           ),

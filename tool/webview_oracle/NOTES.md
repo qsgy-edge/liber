@@ -36,9 +36,11 @@ restore removes it (not a fork, not a copy) and drives the product's
 ## Comparison rules this restore extends
 
 `tools/compare_to_golden.js` maps an exception type name to a stable category.
-The product adapter's names are its own, so five mappings were added
+The product adapter's names are its own, so six mappings were added
 (`SourceWebViewJsTimeout`, `SourceWebViewTimeout`, `SourceWebViewCancelled`,
-`SourceWebViewUntrustedCertificate`, `SourceWebViewUnavailable`) onto the same
+`SourceWebViewUnavailable`, and the two names of the certificate failure,
+`SourceWebViewUntrustedCertificate` for the rows collected before #75 and
+`SourceTlsCertificateFailure` for the rows after it) onto the same
 categories their prototype counterparts map to. No category, no comparison rule,
 and no tolerance was widened: an unmapped type is still reported as
 `unknown:<type>` and still fails the row.

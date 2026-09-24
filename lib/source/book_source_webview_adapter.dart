@@ -123,21 +123,23 @@ class SourceWebViewCancelled implements Exception {
   String toString() => 'BackstageWebView cancelled';
 }
 
-/// Raised when the adapter refuses the server's certificate.
+/// The WebView path's certificate failure (ADR 0011 §5).
 ///
-/// Only the platform's server-trust callback can produce it, so it is evidence
-/// that the server presented a certificate the adapter rejected. ADR 0011 §5's
+/// The engine's server-trust callback is the only thing that produces it, so it
+/// is evidence that the server presented a certificate the adapter rejected; the
 /// per-source, per-host exception is the one case where the adapter proceeds
-/// through the certificate instead.
-class SourceWebViewUntrustedCertificate implements Exception {
-  const SourceWebViewUntrustedCertificate({this.sourceRef = '', this.host = ''});
-
-  final String sourceRef;
-  final String host;
-
-  @override
-  String toString() => 'untrusted server certificate';
-}
+/// through the certificate instead. It is the same failure the `dart:io` path
+/// raises — [SourceTlsCertificateFailure] — carrying the host the challenge
+/// named and the plain-words reason the engine cannot supply, so one
+/// confirmation serves whichever transport failed.
+SourceTlsCertificateFailure sourceWebViewUntrustedCertificateFailure({
+  required String sourceRef,
+  required String host,
+}) => SourceTlsCertificateFailure(
+  sourceRef: sourceRef,
+  host: host,
+  reason: SourceTlsCertificateFailure.unspecifiedReason,
+);
 
 /// Raised when the WebView path is reached in a process with no platform engine
 /// binding, which is every process that is not the application or the WebView

@@ -223,6 +223,24 @@ void main() {
     }, createHttpClient: (_) => client);
   });
 
+  test('a message that names no category keeps the plain-words reason', () async {
+    // `_tlsReason` reads the platform's message; a message none of the named
+    // categories covers falls back to the reason both transports share, which
+    // is also what the WebView engine's trust challenge reports (#75).
+    final failure = sourceTlsFailure(
+      HandshakeException('a transport message no category reads'),
+      sourceRef: sourceA,
+      host: 'a.test',
+    );
+    expect(failure, isNotNull);
+    expect(
+      failure!.reason,
+      SourceTlsCertificateFailure.unspecifiedReason,
+    );
+    expect(failure.host, 'a.test');
+    expect(failure.sourceRef, sourceA);
+  });
+
   test('the flag is resolved per source and host, not globally', () async {
     final transport = _RecordingTransport();
     await state.allowInvalidCertificate(sourceA, 'one.test');

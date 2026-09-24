@@ -371,7 +371,7 @@ String _tlsReason(String message) {
       upper.contains('EXPIRED')) {
     return '证书无效、过期或不受信任';
   }
-  return '证书或主机名校验未通过';
+  return SourceTlsCertificateFailure.unspecifiedReason;
 }
 
 /// The response body decoded the way the frozen client decodes it.
