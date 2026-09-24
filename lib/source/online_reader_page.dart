@@ -6,9 +6,11 @@ import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
 import '../domain/contracts.dart' show SourceCancellation;
+import '../domain/store_message.dart';
 import '../local/reader_offset_map.dart' show ReaderOffsetMap;
 import '../local/text_engine.dart' show TextEngine;
 import '../l10n/app_localizations.dart';
+import '../l10n/store_message_text.dart';
 import '../settings/reader_script.dart';
 import '../settings/reader_script_page.dart';
 import '../store/shelf.dart';
@@ -231,10 +233,14 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   }
 
   /// Shows a skipped replace rule (a timeout, an unusable pattern, or a
-  /// JavaScript failure) on the page's own notice surface.
-  void _showRuleNotice(String message) {
+  /// JavaScript failure) on the page's own notice surface. The rule's message
+  /// is the store's (#72), so the page renders it in the interface's language.
+  void _showRuleNotice(StoreMessage message) {
     if (!mounted) return;
-    showSourceNotice(context, SourceHostMessage('replace', message));
+    showSourceNotice(
+      context,
+      SourceHostMessage('replace', message.text(AppLocalizations.of(context))),
+    );
   }
 
   /// Shows a source's rate-limited `toast`/`longToast` notice on this page; a
@@ -584,7 +590,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (mounted) {
         setState(() {
           busy = false;
-          error = '中文转换失败：$e';
+          error = AppLocalizations.of(context).scriptConvertFailed('$e');
         });
       }
     }

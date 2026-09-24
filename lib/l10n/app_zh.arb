@@ -765,5 +765,261 @@
   },
   "hatchAnswer": "验证结果",
   "hatchPageRoute": "书源页面",
-  "done": "完成"
+  "done": "完成",
+  "importFileFailed": "导入文件失败：{error}",
+  "@importFileFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scriptConvertFailed": "中文转换失败：{error}",
+  "@scriptConvertFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "legacyOnlineReadingNotImported": "online_reading.json 未导入：{reason}（原文件保留）",
+  "@legacyOnlineReadingNotImported": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "legacyOnlineReadingRecordWithoutSourceUrl": "一条在线阅读记录没有 bookSourceUrl，已跳过",
+  "legacyOnlineReadingLastReadPointer": "在线阅读记录的“上次阅读”指针没有等价字段，改由最近保存的进度回答",
+  "legacyLocalBooksNotParsed": "local_books.json 无法解析，已跳过（原文件保留）",
+  "legacyLocalBooksWithoutRoot": "local_books.json 没有根目录，未导入",
+  "legacyLocalBookBytesExcluded": "本地文件字节不导入；文件缺失的书已标记 needsRelink",
+  "legacyLocalFilesMissing": "{count} 个本地文件已不在原路径",
+  "@legacyLocalFilesMissing": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "legacyMigrationStateNotParsed": "migration_state.json 无法解析，已跳过（原文件保留）",
+  "legacyMigrationNetworkBookWithoutUrl": "迁移记录里的网络书籍没有 bookSourceUrl，只保留标题与进度",
+  "legacyImportSummary": "书源 {sources} · 书籍 {books} · 目录 {chapters} · 进度 {progress} · 本地文件 {localFiles}",
+  "@legacyImportSummary": {
+    "placeholders": {
+      "sources": {
+        "type": "int"
+      },
+      "books": {
+        "type": "int"
+      },
+      "chapters": {
+        "type": "int"
+      },
+      "progress": {
+        "type": "int"
+      },
+      "localFiles": {
+        "type": "int"
+      }
+    }
+  },
+  "backupEnvelopeExcludedFamilies": "本地文件字节、Cookie、缓存和下载内容不会从备份中导入",
+  "backupEnvelopeNoSources": "未发现 Book Source 数据",
+  "backupEnvelopeNoBooks": "未发现书架数据",
+  "backupEnvelopeNoProgress": "未发现阅读进度数据",
+  "backupEnvelopeSourceWithoutUrlOrName": "一条书源既没有 URL 也没有名字，已跳过",
+  "backupEnvelopeBookWithoutKey": "一条书架记录没有 bookUrl/bookId/name，已跳过",
+  "backupExcludedCookies": "Cookie：备份里没有 Cookie 表，登录状态不导入",
+  "backupExcludedCache": "缓存：备份里没有 Cache 表，书源缓存不导入",
+  "backupExcludedChapters": "章节：备份里没有 BookChapter 表，目录与章节变量不导入",
+  "backupExcludedDownloads": "下载内容：备份里没有已下载正文，需要重新抓取",
+  "backupExcludedLocalBytes": "本地书籍字节：备份里没有书文件，已标记需要重新链接",
+  "backupAndroidPreferences": "Android 设置：config.xml 的 {count} 项偏好属于 Android 端，不导入",
+  "@backupAndroidPreferences": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupAbsentMember": "备份没有 {member}：对应的数据为空",
+  "@backupAbsentMember": {
+    "placeholders": {
+      "member": {
+        "type": "String"
+      }
+    }
+  },
+  "backupUnreadMembers": "备份里还有 {count} 个成员没有导入：{members}",
+  "@backupUnreadMembers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "members": {
+        "type": "String"
+      }
+    }
+  },
+  "backupInvalidSources": "{count} 条书源缺少 URL 或名字，已跳过",
+  "@backupInvalidSources": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupInvalidGroups": "{count} 个分组没有名字，已跳过",
+  "@backupInvalidGroups": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupInvalidBooks": "{count} 条书架记录没有 bookUrl，已跳过",
+  "@backupInvalidBooks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupConflictingSources": "{count} 个书源在空间中已存在且内容不同，未替换（替换需要确认）",
+  "@backupConflictingSources": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupDuplicateBooks": "{count} 条书架记录的 bookUrl 重复，合并为一条",
+  "@backupDuplicateBooks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupSystemGroups": "{count} 个系统分组（全部/本地/音频等视图）不导入：它们由书籍类型推导",
+  "@backupSystemGroups": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupUnmatchedMasks": "{count} 本书的分组位在 bookGroup.json 里没有对应分组",
+  "@backupUnmatchedMasks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupUnreadBooks": "{count} 本书在备份里没有阅读进度（从未打开），未写进度行",
+  "@backupUnreadBooks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupNonTextSources": "{count} 个非文本书源已导入，v1 不执行（ADR 0012）",
+  "@backupNonTextSources": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupDroppedCovers": "{count} 个封面指向本地路径，未导入（本地字节不迁移）",
+  "@backupDroppedCovers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupDroppedEntries": "{count} 条记录不是 JSON 对象，已跳过",
+  "@backupDroppedEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "backupProgressChapterNameDropped": "阅读进度的章节名没有等价字段，进度只保留章节序号与字符位置",
+  "backupNoSourceMember": "备份没有 bookSource.json：没有书源导入",
+  "backupNoGroupMember": "备份没有 bookGroup.json：分组不导入",
+  "replaceRuleUnusable": "替换规则「{name}」不可用：{reason}",
+  "@replaceRuleUnusable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "replaceRuleTimedOut": "替换规则「{name}」超时（{milliseconds} 毫秒），已停用",
+  "@replaceRuleTimedOut": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "milliseconds": {
+        "type": "int"
+      }
+    }
+  },
+  "replaceRuleFailed": "替换规则「{name}」出错：{error}",
+  "@replaceRuleFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "runSearching": "正在搜索",
+  "runReading": "读取 {name}",
+  "@runReading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "runReadingToc": "读取目录",
+  "runJsonFirstChapterDone": "首章读取完成（JSON 规则子集）",
+  "runFailed": "{stage}：{error}",
+  "@runFailed": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "runControlledSearch": "搜索返回 1 本书",
+  "runControlledBookInfo": "书籍信息已返回",
+  "runControlledToc": "目录已返回 12 章",
+  "runControlledContent": "正文已返回",
+  "runControlledCompleted": "Windows 受控书源链路完成，4 个阶段均有 trace",
+  "literalCopy": "{text}",
+  "@literalCopy": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  }
 }

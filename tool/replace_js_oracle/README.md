@@ -153,7 +153,7 @@ Synthetic test values verify comparator mechanics only and never form a golden.
 | `js-ordering-with-literal` | observed | pass | `甲。` → `乙丁。` on both sides, so both branches ran in `sortOrder` |
 | `js-literal-branch-prefix` | observed | pass | `这里有@js:"X"。` on both sides |
 | `js-disabled` | observed | pass | selection empty on both sides, content unchanged |
-| `js-error` | observed | pass | content unchanged and the rule stays enabled on both sides; product notice `替换规则「js-error」出错：js`, frozen logs and toasts |
+| `js-error` | observed | pass | content unchanged and the rule stays enabled on both sides; product notice `replaceRuleFailed(js-error, js)` (the code and its arguments, the form `compare.dart` records since #72), frozen logs and toasts |
 | `backup-rule-1` | observed | pass | `#01 数字标题#JS`, title-scoped, disabled, `disabled; replacement not executed` |
 | `backup-rule-2` | observed | pass | `#02 全角字符#JS`, content-scoped, disabled |
 | `backup-rule-3` | observed | pass | `#03 其他字符#JS`, content-scoped, disabled |

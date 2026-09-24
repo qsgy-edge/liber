@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart' show SourceCancellation;
+import 'package:liber/domain/store_message.dart';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/native_library.dart';
@@ -53,7 +54,7 @@ void main() {
     ConvertTarget? script,
     String bookName = name,
     String bookOrigin = origin,
-    void Function(String)? onNotice,
+    void Function(StoreMessage)? onNotice,
     Future<void> Function(ReplaceRule)? onRuleDisabled,
     SourceCancellation? cancellation,
     bool useReplaceRule = true,
@@ -415,7 +416,7 @@ void main() {
     });
 
     test('a disabled @js: replacement remains inactive', () async {
-      final notices = <String>[];
+      final notices = <StoreMessage>[];
       final content = (await processing([
         rule(
           pattern: '广告',
@@ -431,7 +432,7 @@ void main() {
     test(
       'a JavaScript replacement error keeps the text and is reported',
       () async {
-        final notices = <String>[];
+        final notices = <StoreMessage>[];
         final content = (await processing([
           rule(
             pattern: '广告',
@@ -441,13 +442,14 @@ void main() {
         ], onNotice: notices.add).content('广告', chapterTitle: '第一章')).text;
         expect(content, '　　广告');
         expect(notices, hasLength(1));
-        expect(notices.single, contains('出错 JS 规则'));
+        expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+        expect(notices.single.arguments.first, '出错 JS 规则');
       },
     );
 
     test('cancellation keeps the text without reporting an error', () async {
       final cancellation = SourceCancellation()..cancel();
-      final notices = <String>[];
+      final notices = <StoreMessage>[];
       final content = (await processing(
         [
           rule(
@@ -467,7 +469,7 @@ void main() {
       'cancellation during match-worker startup leaves the title unchanged',
       () async {
         final cancellation = SourceCancellation();
-        final notices = <String>[];
+        final notices = <StoreMessage>[];
         final disabled = <String>[];
         final processor = processing(
           [
@@ -491,7 +493,7 @@ void main() {
 
     test('a JavaScript replacement timeout disables the rule', () async {
       final disabled = <String>[];
-      final notices = <String>[];
+      final notices = <StoreMessage>[];
       final content = (await processing(
         [
           rule(
@@ -510,8 +512,8 @@ void main() {
       expect(content, '　　广告');
       expect(disabled, ['js-slow']);
       expect(notices, hasLength(1));
-      expect(notices.single, contains('超时 JS 规则'));
-      expect(notices.single, contains('超时'));
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['超时 JS 规则', 100]);
     });
 
     test('an ordinary regex replacement remains unchanged', () async {
@@ -522,20 +524,20 @@ void main() {
     });
 
     test('a pattern the engine cannot express is refused by name', () async {
-      final notices = <String>[];
+      final notices = <StoreMessage>[];
       final content = (await processing([
         rule(pattern: r'a*+', replacement: 'x', ruleName: '占有量词'),
       ], onNotice: notices.add).content('aaab', chapterTitle: '第一章')).text;
       expect(content, '　　aaab');
-      expect(notices.single, contains('占有量词'));
-      expect(notices.single, contains('不可用'));
+      expect(notices.single.code, StoreMessageCode.replaceRuleUnusable);
+      expect(notices.single.arguments.first, '占有量词');
     });
   });
 
   group('the timeout', () {
     test('a rule past its own deadline is disabled and its text kept', () async {
       final disabled = <String>[];
-      final notices = <String>[];
+      final notices = <StoreMessage>[];
       final content = (await processing(
         [
           rule(id: 'fast', pattern: 'b', replacement: 'c', ruleOrder: 1),
@@ -562,8 +564,8 @@ void main() {
       // the text as it was, and the rule after it still ran.
       expect(content, '　　${'a' * 32}d');
       expect(disabled, ['slow']);
-      expect(notices.single, contains('灾难回溯'));
-      expect(notices.single, contains('超时'));
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['灾难回溯', 200]);
     });
 
     test('a fast rule under its deadline is never reported', () async {

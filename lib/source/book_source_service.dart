@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../domain/contracts.dart';
+import '../domain/store_message.dart';
 
 class BookSourceTraceEntry {
   const BookSourceTraceEntry({required this.stage, required this.path});
@@ -138,11 +139,27 @@ class BookSourceService {
     void Function(BookSourceRunState state) onStage,
   ) async {
     final trace = <BookSourceTraceEntry>[];
-    const stages = <(BookSourceStage, String, String)>[
-      (BookSourceStage.search, '/search?q=Wayfinder', '搜索返回 1 本书'),
-      (BookSourceStage.bookInfo, '/book/wayfinder', '书籍信息已返回'),
-      (BookSourceStage.tableOfContents, '/book/wayfinder/toc', '目录已返回 12 章'),
-      (BookSourceStage.content, '/book/wayfinder/chapter/1', '正文已返回'),
+    const stages = <(BookSourceStage, String, StoreMessage)>[
+      (
+        BookSourceStage.search,
+        '/search?q=Wayfinder',
+        StoreMessage(StoreMessageCode.runControlledSearch),
+      ),
+      (
+        BookSourceStage.bookInfo,
+        '/book/wayfinder',
+        StoreMessage(StoreMessageCode.runControlledBookInfo),
+      ),
+      (
+        BookSourceStage.tableOfContents,
+        '/book/wayfinder/toc',
+        StoreMessage(StoreMessageCode.runControlledToc),
+      ),
+      (
+        BookSourceStage.content,
+        '/book/wayfinder/chapter/1',
+        StoreMessage(StoreMessageCode.runControlledContent),
+      ),
     ];
     for (final (stage, path, message) in stages) {
       await _transport.request(stage: stage, path: path);
@@ -151,7 +168,7 @@ class BookSourceService {
     }
     const completed = BookSourceRunState(
       stage: BookSourceStage.completed,
-      message: 'Windows 受控书源链路完成，4 个阶段均有 trace',
+      message: StoreMessage(StoreMessageCode.runControlledCompleted),
     );
     onStage(completed);
     return ControlledBookSourceResult(state: completed, trace: trace);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/domain/store_message.dart';
 import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/workspace.dart';
 
@@ -255,14 +256,29 @@ void main() {
       containsAll(<String>['kept.txt', 'gone.txt']),
     );
 
-    // Losses are reported, not implied away.
+    // Losses are reported, not implied away — as codes with their arguments
+    // (#72), so the page renders them in the interface's own language.
     expect(
-      report.losses.any((loss) => loss.contains('上次阅读')),
-      isTrue,
+      report.losses,
+      contains(
+        const StoreMessage(StoreMessageCode.legacyOnlineReadingLastReadPointer),
+      ),
       reason: '"last" 指针没有等价字段',
     );
-    expect(report.losses.any((loss) => loss.contains('needsRelink')), isTrue);
-    expect(report.losses.any((loss) => loss.contains('1 个本地文件')), isTrue);
+    expect(
+      report.losses,
+      contains(
+        const StoreMessage(StoreMessageCode.legacyLocalBookBytesExcluded),
+      ),
+    );
+    expect(
+      report.losses,
+      contains(
+        const StoreMessage(StoreMessageCode.legacyLocalFilesMissing, <Object?>[
+          1,
+        ]),
+      ),
+    );
 
     final second = await legacy.run(store);
     expect(second.imported, isFalse, reason: '导入记录在空间里，第二次不再导入');
@@ -307,8 +323,8 @@ void main() {
     final report = await legacy.run(store);
     expect(report.imported, isTrue);
     expect(
-      report.losses.any((loss) => loss.contains('local_books.json 无法解析')),
-      isTrue,
+      report.losses,
+      contains(const StoreMessage(StoreMessageCode.legacyLocalBooksNotParsed)),
     );
     expect(await store.allLocalRoots(), isEmpty, reason: '坏文件不产生半份数据');
     expect(

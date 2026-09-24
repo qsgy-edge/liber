@@ -823,6 +823,229 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get done => '完成';
+
+  @override
+  String importFileFailed(String error) {
+    return '导入文件失败：$error';
+  }
+
+  @override
+  String scriptConvertFailed(String error) {
+    return '中文转换失败：$error';
+  }
+
+  @override
+  String legacyOnlineReadingNotImported(String reason) {
+    return 'online_reading.json 未导入：$reason（原文件保留）';
+  }
+
+  @override
+  String get legacyOnlineReadingRecordWithoutSourceUrl =>
+      '一条在线阅读记录没有 bookSourceUrl，已跳过';
+
+  @override
+  String get legacyOnlineReadingLastReadPointer =>
+      '在线阅读记录的“上次阅读”指针没有等价字段，改由最近保存的进度回答';
+
+  @override
+  String get legacyLocalBooksNotParsed => 'local_books.json 无法解析，已跳过（原文件保留）';
+
+  @override
+  String get legacyLocalBooksWithoutRoot => 'local_books.json 没有根目录，未导入';
+
+  @override
+  String get legacyLocalBookBytesExcluded => '本地文件字节不导入；文件缺失的书已标记 needsRelink';
+
+  @override
+  String legacyLocalFilesMissing(int count) {
+    return '$count 个本地文件已不在原路径';
+  }
+
+  @override
+  String get legacyMigrationStateNotParsed =>
+      'migration_state.json 无法解析，已跳过（原文件保留）';
+
+  @override
+  String get legacyMigrationNetworkBookWithoutUrl =>
+      '迁移记录里的网络书籍没有 bookSourceUrl，只保留标题与进度';
+
+  @override
+  String legacyImportSummary(
+    int sources,
+    int books,
+    int chapters,
+    int progress,
+    int localFiles,
+  ) {
+    return '书源 $sources · 书籍 $books · 目录 $chapters · 进度 $progress · 本地文件 $localFiles';
+  }
+
+  @override
+  String get backupEnvelopeExcludedFamilies => '本地文件字节、Cookie、缓存和下载内容不会从备份中导入';
+
+  @override
+  String get backupEnvelopeNoSources => '未发现 Book Source 数据';
+
+  @override
+  String get backupEnvelopeNoBooks => '未发现书架数据';
+
+  @override
+  String get backupEnvelopeNoProgress => '未发现阅读进度数据';
+
+  @override
+  String get backupEnvelopeSourceWithoutUrlOrName => '一条书源既没有 URL 也没有名字，已跳过';
+
+  @override
+  String get backupEnvelopeBookWithoutKey => '一条书架记录没有 bookUrl/bookId/name，已跳过';
+
+  @override
+  String get backupExcludedCookies => 'Cookie：备份里没有 Cookie 表，登录状态不导入';
+
+  @override
+  String get backupExcludedCache => '缓存：备份里没有 Cache 表，书源缓存不导入';
+
+  @override
+  String get backupExcludedChapters => '章节：备份里没有 BookChapter 表，目录与章节变量不导入';
+
+  @override
+  String get backupExcludedDownloads => '下载内容：备份里没有已下载正文，需要重新抓取';
+
+  @override
+  String get backupExcludedLocalBytes => '本地书籍字节：备份里没有书文件，已标记需要重新链接';
+
+  @override
+  String backupAndroidPreferences(int count) {
+    return 'Android 设置：config.xml 的 $count 项偏好属于 Android 端，不导入';
+  }
+
+  @override
+  String backupAbsentMember(String member) {
+    return '备份没有 $member：对应的数据为空';
+  }
+
+  @override
+  String backupUnreadMembers(int count, String members) {
+    return '备份里还有 $count 个成员没有导入：$members';
+  }
+
+  @override
+  String backupInvalidSources(int count) {
+    return '$count 条书源缺少 URL 或名字，已跳过';
+  }
+
+  @override
+  String backupInvalidGroups(int count) {
+    return '$count 个分组没有名字，已跳过';
+  }
+
+  @override
+  String backupInvalidBooks(int count) {
+    return '$count 条书架记录没有 bookUrl，已跳过';
+  }
+
+  @override
+  String backupConflictingSources(int count) {
+    return '$count 个书源在空间中已存在且内容不同，未替换（替换需要确认）';
+  }
+
+  @override
+  String backupDuplicateBooks(int count) {
+    return '$count 条书架记录的 bookUrl 重复，合并为一条';
+  }
+
+  @override
+  String backupSystemGroups(int count) {
+    return '$count 个系统分组（全部/本地/音频等视图）不导入：它们由书籍类型推导';
+  }
+
+  @override
+  String backupUnmatchedMasks(int count) {
+    return '$count 本书的分组位在 bookGroup.json 里没有对应分组';
+  }
+
+  @override
+  String backupUnreadBooks(int count) {
+    return '$count 本书在备份里没有阅读进度（从未打开），未写进度行';
+  }
+
+  @override
+  String backupNonTextSources(int count) {
+    return '$count 个非文本书源已导入，v1 不执行（ADR 0012）';
+  }
+
+  @override
+  String backupDroppedCovers(int count) {
+    return '$count 个封面指向本地路径，未导入（本地字节不迁移）';
+  }
+
+  @override
+  String backupDroppedEntries(int count) {
+    return '$count 条记录不是 JSON 对象，已跳过';
+  }
+
+  @override
+  String get backupProgressChapterNameDropped =>
+      '阅读进度的章节名没有等价字段，进度只保留章节序号与字符位置';
+
+  @override
+  String get backupNoSourceMember => '备份没有 bookSource.json：没有书源导入';
+
+  @override
+  String get backupNoGroupMember => '备份没有 bookGroup.json：分组不导入';
+
+  @override
+  String replaceRuleUnusable(String name, String reason) {
+    return '替换规则「$name」不可用：$reason';
+  }
+
+  @override
+  String replaceRuleTimedOut(String name, int milliseconds) {
+    return '替换规则「$name」超时（$milliseconds 毫秒），已停用';
+  }
+
+  @override
+  String replaceRuleFailed(String name, String error) {
+    return '替换规则「$name」出错：$error';
+  }
+
+  @override
+  String get runSearching => '正在搜索';
+
+  @override
+  String runReading(String name) {
+    return '读取 $name';
+  }
+
+  @override
+  String get runReadingToc => '读取目录';
+
+  @override
+  String get runJsonFirstChapterDone => '首章读取完成（JSON 规则子集）';
+
+  @override
+  String runFailed(String stage, String error) {
+    return '$stage：$error';
+  }
+
+  @override
+  String get runControlledSearch => '搜索返回 1 本书';
+
+  @override
+  String get runControlledBookInfo => '书籍信息已返回';
+
+  @override
+  String get runControlledToc => '目录已返回 12 章';
+
+  @override
+  String get runControlledContent => '正文已返回';
+
+  @override
+  String get runControlledCompleted => 'Windows 受控书源链路完成，4 个阶段均有 trace';
+
+  @override
+  String literalCopy(String text) {
+    return '$text';
+  }
 }
 
 /// The translations for Chinese, as used in Hong Kong, using the Han script (`zh_Hant_HK`).
@@ -1644,6 +1867,229 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
 
   @override
   String get done => '完成';
+
+  @override
+  String importFileFailed(String error) {
+    return '導入文件失敗：$error';
+  }
+
+  @override
+  String scriptConvertFailed(String error) {
+    return '中文轉換失敗：$error';
+  }
+
+  @override
+  String legacyOnlineReadingNotImported(String reason) {
+    return 'online_reading.json 未導入：$reason（原文件保留）';
+  }
+
+  @override
+  String get legacyOnlineReadingRecordWithoutSourceUrl =>
+      '一條在線閲讀記錄沒有 bookSourceUrl，已跳過';
+
+  @override
+  String get legacyOnlineReadingLastReadPointer =>
+      '在線閲讀記錄的「上次閲讀」指針沒有等價字段，改由最近保存的進度回答';
+
+  @override
+  String get legacyLocalBooksNotParsed => 'local_books.json 無法解析，已跳過（原文件保留）';
+
+  @override
+  String get legacyLocalBooksWithoutRoot => 'local_books.json 沒有根目錄，未導入';
+
+  @override
+  String get legacyLocalBookBytesExcluded => '本地文件字節不導入；文件缺失的書已標記 needsRelink';
+
+  @override
+  String legacyLocalFilesMissing(int count) {
+    return '$count 個本地文件已不在原路徑';
+  }
+
+  @override
+  String get legacyMigrationStateNotParsed =>
+      'migration_state.json 無法解析，已跳過（原文件保留）';
+
+  @override
+  String get legacyMigrationNetworkBookWithoutUrl =>
+      '遷移記錄裏的網絡書籍沒有 bookSourceUrl，只保留標題與進度';
+
+  @override
+  String legacyImportSummary(
+    int sources,
+    int books,
+    int chapters,
+    int progress,
+    int localFiles,
+  ) {
+    return '書源 $sources · 書籍 $books · 目錄 $chapters · 進度 $progress · 本地文件 $localFiles';
+  }
+
+  @override
+  String get backupEnvelopeExcludedFamilies => '本地文件字節、Cookie、緩存和下載內容不會從備份中導入';
+
+  @override
+  String get backupEnvelopeNoSources => '未發現 Book Source 數據';
+
+  @override
+  String get backupEnvelopeNoBooks => '未發現書架數據';
+
+  @override
+  String get backupEnvelopeNoProgress => '未發現閲讀進度數據';
+
+  @override
+  String get backupEnvelopeSourceWithoutUrlOrName => '一條書源既沒有 URL 也沒有名字，已跳過';
+
+  @override
+  String get backupEnvelopeBookWithoutKey => '一條書架記錄沒有 bookUrl/bookId/name，已跳過';
+
+  @override
+  String get backupExcludedCookies => 'Cookie：備份裏沒有 Cookie 表，登錄狀態不導入';
+
+  @override
+  String get backupExcludedCache => '緩存：備份裏沒有 Cache 表，書源緩存不導入';
+
+  @override
+  String get backupExcludedChapters => '章節：備份裏沒有 BookChapter 表，目錄與章節變量不導入';
+
+  @override
+  String get backupExcludedDownloads => '下載內容：備份裏沒有已下載正文，需要重新抓取';
+
+  @override
+  String get backupExcludedLocalBytes => '本地書籍字節：備份裏沒有書文件，已標記需要重新鏈接';
+
+  @override
+  String backupAndroidPreferences(int count) {
+    return 'Android 設置：config.xml 的 $count 項偏好屬於 Android 端，不導入';
+  }
+
+  @override
+  String backupAbsentMember(String member) {
+    return '備份沒有 $member：對應的數據為空';
+  }
+
+  @override
+  String backupUnreadMembers(int count, String members) {
+    return '備份裏還有 $count 個成員沒有導入：$members';
+  }
+
+  @override
+  String backupInvalidSources(int count) {
+    return '$count 條書源缺少 URL 或名字，已跳過';
+  }
+
+  @override
+  String backupInvalidGroups(int count) {
+    return '$count 個分組沒有名字，已跳過';
+  }
+
+  @override
+  String backupInvalidBooks(int count) {
+    return '$count 條書架記錄沒有 bookUrl，已跳過';
+  }
+
+  @override
+  String backupConflictingSources(int count) {
+    return '$count 個書源在空間中已存在且內容不同，未替換（替換需要確認）';
+  }
+
+  @override
+  String backupDuplicateBooks(int count) {
+    return '$count 條書架記錄的 bookUrl 重複，合併為一條';
+  }
+
+  @override
+  String backupSystemGroups(int count) {
+    return '$count 個系統分組（全部/本地/音頻等視圖）不導入：它們由書籍類型推導';
+  }
+
+  @override
+  String backupUnmatchedMasks(int count) {
+    return '$count 本書的分組位在 bookGroup.json 裏沒有對應分組';
+  }
+
+  @override
+  String backupUnreadBooks(int count) {
+    return '$count 本書在備份裏沒有閲讀進度（從未打開），未寫進度行';
+  }
+
+  @override
+  String backupNonTextSources(int count) {
+    return '$count 個非文本書源已導入，v1 不執行（ADR 0012）';
+  }
+
+  @override
+  String backupDroppedCovers(int count) {
+    return '$count 個封面指向本地路徑，未導入（本地字節不遷移）';
+  }
+
+  @override
+  String backupDroppedEntries(int count) {
+    return '$count 條記錄不是 JSON 對象，已跳過';
+  }
+
+  @override
+  String get backupProgressChapterNameDropped =>
+      '閲讀進度的章節名沒有等價字段，進度只保留章節序號與字符位置';
+
+  @override
+  String get backupNoSourceMember => '備份沒有 bookSource.json：沒有書源導入';
+
+  @override
+  String get backupNoGroupMember => '備份沒有 bookGroup.json：分組不導入';
+
+  @override
+  String replaceRuleUnusable(String name, String reason) {
+    return '替換規則「$name」不可用：$reason';
+  }
+
+  @override
+  String replaceRuleTimedOut(String name, int milliseconds) {
+    return '替換規則「$name」超時（$milliseconds 毫秒），已停用';
+  }
+
+  @override
+  String replaceRuleFailed(String name, String error) {
+    return '替換規則「$name」出錯：$error';
+  }
+
+  @override
+  String get runSearching => '正在搜尋';
+
+  @override
+  String runReading(String name) {
+    return '讀取 $name';
+  }
+
+  @override
+  String get runReadingToc => '讀取目錄';
+
+  @override
+  String get runJsonFirstChapterDone => '首章讀取完成（JSON 規則子集）';
+
+  @override
+  String runFailed(String stage, String error) {
+    return '$stage：$error';
+  }
+
+  @override
+  String get runControlledSearch => '搜尋返回 1 本書';
+
+  @override
+  String get runControlledBookInfo => '書籍信息已返回';
+
+  @override
+  String get runControlledToc => '目錄已返回 12 章';
+
+  @override
+  String get runControlledContent => '正文已返回';
+
+  @override
+  String get runControlledCompleted => 'Windows 受控書源鏈路完成，4 個階段均有 trace';
+
+  @override
+  String literalCopy(String text) {
+    return '$text';
+  }
 }
 
 /// The translations for Chinese, as used in Taiwan, using the Han script (`zh_Hant_TW`).
@@ -2465,4 +2911,227 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get done => '完成';
+
+  @override
+  String importFileFailed(String error) {
+    return '匯入檔案失敗：$error';
+  }
+
+  @override
+  String scriptConvertFailed(String error) {
+    return '中文轉換失敗：$error';
+  }
+
+  @override
+  String legacyOnlineReadingNotImported(String reason) {
+    return 'online_reading.json 未匯入：$reason（原檔案保留）';
+  }
+
+  @override
+  String get legacyOnlineReadingRecordWithoutSourceUrl =>
+      '一條線上閱讀記錄沒有 bookSourceUrl，已跳過';
+
+  @override
+  String get legacyOnlineReadingLastReadPointer =>
+      '線上閱讀記錄的「上次閱讀」指標沒有等價欄位，改由最近儲存的進度回答';
+
+  @override
+  String get legacyLocalBooksNotParsed => 'local_books.json 無法解析，已跳過（原檔案保留）';
+
+  @override
+  String get legacyLocalBooksWithoutRoot => 'local_books.json 沒有根目錄，未匯入';
+
+  @override
+  String get legacyLocalBookBytesExcluded => '本地檔案位元組不匯入；檔案缺失的書已標記 needsRelink';
+
+  @override
+  String legacyLocalFilesMissing(int count) {
+    return '$count 個本地檔案已不在原路徑';
+  }
+
+  @override
+  String get legacyMigrationStateNotParsed =>
+      'migration_state.json 無法解析，已跳過（原檔案保留）';
+
+  @override
+  String get legacyMigrationNetworkBookWithoutUrl =>
+      '遷移記錄裡的網路書籍沒有 bookSourceUrl，只保留標題與進度';
+
+  @override
+  String legacyImportSummary(
+    int sources,
+    int books,
+    int chapters,
+    int progress,
+    int localFiles,
+  ) {
+    return '書源 $sources · 書籍 $books · 目錄 $chapters · 進度 $progress · 本地檔案 $localFiles';
+  }
+
+  @override
+  String get backupEnvelopeExcludedFamilies => '本地檔案位元組、Cookie、快取和下載內容不會從備份中匯入';
+
+  @override
+  String get backupEnvelopeNoSources => '未發現 Book Source 資料';
+
+  @override
+  String get backupEnvelopeNoBooks => '未發現書架資料';
+
+  @override
+  String get backupEnvelopeNoProgress => '未發現閱讀進度資料';
+
+  @override
+  String get backupEnvelopeSourceWithoutUrlOrName => '一條書源既沒有 URL 也沒有名字，已跳過';
+
+  @override
+  String get backupEnvelopeBookWithoutKey => '一條書架記錄沒有 bookUrl/bookId/name，已跳過';
+
+  @override
+  String get backupExcludedCookies => 'Cookie：備份裡沒有 Cookie 表，登入狀態不匯入';
+
+  @override
+  String get backupExcludedCache => '快取：備份裡沒有 Cache 表，書源快取不匯入';
+
+  @override
+  String get backupExcludedChapters => '章節：備份裡沒有 BookChapter 表，目錄與章節變數不匯入';
+
+  @override
+  String get backupExcludedDownloads => '下載內容：備份裡沒有已下載正文，需要重新抓取';
+
+  @override
+  String get backupExcludedLocalBytes => '本地書籍位元組：備份裡沒有書檔案，已標記需要重新連結';
+
+  @override
+  String backupAndroidPreferences(int count) {
+    return 'Android 設定：config.xml 的 $count 項偏好屬於 Android 端，不匯入';
+  }
+
+  @override
+  String backupAbsentMember(String member) {
+    return '備份沒有 $member：對應的資料為空';
+  }
+
+  @override
+  String backupUnreadMembers(int count, String members) {
+    return '備份裡還有 $count 個成員沒有匯入：$members';
+  }
+
+  @override
+  String backupInvalidSources(int count) {
+    return '$count 條書源缺少 URL 或名字，已跳過';
+  }
+
+  @override
+  String backupInvalidGroups(int count) {
+    return '$count 個分組沒有名字，已跳過';
+  }
+
+  @override
+  String backupInvalidBooks(int count) {
+    return '$count 條書架記錄沒有 bookUrl，已跳過';
+  }
+
+  @override
+  String backupConflictingSources(int count) {
+    return '$count 個書源在空間中已存在且內容不同，未替換（替換需要確認）';
+  }
+
+  @override
+  String backupDuplicateBooks(int count) {
+    return '$count 條書架記錄的 bookUrl 重複，合併為一條';
+  }
+
+  @override
+  String backupSystemGroups(int count) {
+    return '$count 個系統分組（全部/本地/音訊等檢視）不匯入：它們由書籍型別推導';
+  }
+
+  @override
+  String backupUnmatchedMasks(int count) {
+    return '$count 本書的分組位在 bookGroup.json 裡沒有對應分組';
+  }
+
+  @override
+  String backupUnreadBooks(int count) {
+    return '$count 本書在備份裡沒有閱讀進度（從未開啟），未寫進度行';
+  }
+
+  @override
+  String backupNonTextSources(int count) {
+    return '$count 個非文本書源已匯入，v1 不執行（ADR 0012）';
+  }
+
+  @override
+  String backupDroppedCovers(int count) {
+    return '$count 個封面指向本地路徑，未匯入（本地位元組不遷移）';
+  }
+
+  @override
+  String backupDroppedEntries(int count) {
+    return '$count 條記錄不是 JSON 物件，已跳過';
+  }
+
+  @override
+  String get backupProgressChapterNameDropped =>
+      '閱讀進度的章節名沒有等價欄位，進度只保留章節序號與字元位置';
+
+  @override
+  String get backupNoSourceMember => '備份沒有 bookSource.json：沒有書源匯入';
+
+  @override
+  String get backupNoGroupMember => '備份沒有 bookGroup.json：分組不匯入';
+
+  @override
+  String replaceRuleUnusable(String name, String reason) {
+    return '替換規則「$name」不可用：$reason';
+  }
+
+  @override
+  String replaceRuleTimedOut(String name, int milliseconds) {
+    return '替換規則「$name」超時（$milliseconds 毫秒），已停用';
+  }
+
+  @override
+  String replaceRuleFailed(String name, String error) {
+    return '替換規則「$name」出錯：$error';
+  }
+
+  @override
+  String get runSearching => '正在搜尋';
+
+  @override
+  String runReading(String name) {
+    return '讀取 $name';
+  }
+
+  @override
+  String get runReadingToc => '讀取目錄';
+
+  @override
+  String get runJsonFirstChapterDone => '首章讀取完成（JSON 規則子集）';
+
+  @override
+  String runFailed(String stage, String error) {
+    return '$stage：$error';
+  }
+
+  @override
+  String get runControlledSearch => '搜尋返回 1 本書';
+
+  @override
+  String get runControlledBookInfo => '書籍資訊已返回';
+
+  @override
+  String get runControlledToc => '目錄已返回 12 章';
+
+  @override
+  String get runControlledContent => '正文已返回';
+
+  @override
+  String get runControlledCompleted => 'Windows 受控書源鏈路完成，4 個階段均有 trace';
+
+  @override
+  String literalCopy(String text) {
+    return '$text';
+  }
 }

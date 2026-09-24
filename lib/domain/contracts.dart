@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'store_message.dart';
+
 enum BookSourceStage {
   idle,
   search,
@@ -153,9 +155,13 @@ abstract interface class SourceHttpTransport {
 }
 
 class BookSourceRunState {
-  const BookSourceRunState({required this.stage, this.message = ''});
+  const BookSourceRunState({required this.stage, this.message});
   final BookSourceStage stage;
-  final String message;
+
+  /// The line the page shows for this state, as a message the page renders in
+  /// its own language (#72); null when the run has nothing to say yet.
+  final StoreMessage? message;
+
   bool get isComplete => stage == BookSourceStage.completed;
 }
 
@@ -202,5 +208,8 @@ class MigrationImportRecord {
   final int sourceCount;
   final int bookCount;
   final int progressCount;
-  final List<String> losses;
+
+  /// What the file carried that the space has no place for, one message per
+  /// line; the page renders each in its own language (#72).
+  final List<StoreMessage> losses;
 }

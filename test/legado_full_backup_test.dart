@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/domain/store_message.dart';
 import 'package:liber/store/legado_full_backup.dart';
 import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/space_store.dart';
@@ -251,17 +252,31 @@ void main() {
       expect(record.bookCount, 0);
       expect(await space.store.shelf(), isEmpty);
       expect(
-        record.losses.any((loss) => loss.contains('备份没有 bookshelf.json')),
-        isTrue,
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupAbsentMember, <Object?>[
+            'bookshelf.json',
+          ]),
+        ),
         reason: '缺席的成员按空列表报告',
       );
       expect(
-        record.losses.any((loss) => loss.contains('备份没有 bookGroup.json')),
-        isTrue,
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupAbsentMember, <Object?>[
+            'bookGroup.json',
+          ]),
+        ),
       );
       expect(
-        record.losses.any((loss) => loss.contains('备份没有 bookSource.json')),
-        isFalse,
+        record.losses,
+        isNot(
+          contains(
+            const StoreMessage(StoreMessageCode.backupAbsentMember, <Object?>[
+              'bookSource.json',
+            ]),
+          ),
+        ),
         reason: '在场的成员不报缺失',
       );
     });
@@ -536,7 +551,14 @@ void main() {
 
       expect(record.bookCount, 2, reason: '两次写入都算作处理过的记录');
       expect(await space.store.shelf(), hasLength(1));
-      expect(record.losses.any((loss) => loss.contains('重复')), isTrue);
+      expect(
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupDuplicateBooks, <Object?>[
+            1,
+          ]),
+        ),
+      );
     });
 
     test('本地书不带 Android 路径：相关键与文件名入库、标记重新链接', () async {
@@ -755,7 +777,12 @@ void main() {
       );
       final book = (await space.store.shelf()).single;
       expect((await space.store.groupsOf(book.id)).map((g) => g.name), ['藏经阁']);
-      expect(record.losses.any((loss) => loss.contains('系统分组')), isTrue);
+      expect(
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupSystemGroups, <Object?>[7]),
+        ),
+      );
     });
 
     test('分组带顺序与显示开关一起入库', () async {
@@ -855,8 +882,18 @@ void main() {
       final progress = (await space.store.progressOf(read.id))!;
       expect(progress.updatedAt, 9223372036854775807, reason: '64 位毫秒原样落库');
       expect(record.progressCount, 1);
-      expect(record.losses.any((loss) => loss.contains('没有阅读进度')), isTrue);
-      expect(record.losses.any((loss) => loss.contains('章节名没有等价字段')), isTrue);
+      expect(
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupUnreadBooks, <Object?>[2]),
+        ),
+      );
+      expect(
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupProgressChapterNameDropped),
+        ),
+      );
     });
 
     test('分组按名字合并，成员关系取并集（契约家族 8）', () async {
@@ -928,7 +965,15 @@ void main() {
       expect(second.sourceCount, 0);
       final source = (await space.store.sourceByUrl('https://source.example'))!;
       expect(source.raw, contains('旧规则'), reason: '替换需要显式确认，导入不会自己替换');
-      expect(second.losses.any((loss) => loss.contains('未替换')), isTrue);
+      expect(
+        second.losses,
+        contains(
+          const StoreMessage(
+            StoreMessageCode.backupConflictingSources,
+            <Object?>[1],
+          ),
+        ),
+      );
     });
   });
 
@@ -1065,27 +1110,37 @@ void main() {
       );
 
       for (final family in const [
-        'Cookie',
-        '缓存',
-        '章节',
-        '下载内容',
-        '本地书籍字节',
-        'Android 设置',
+        StoreMessageCode.backupExcludedCookies,
+        StoreMessageCode.backupExcludedCache,
+        StoreMessageCode.backupExcludedChapters,
+        StoreMessageCode.backupExcludedDownloads,
+        StoreMessageCode.backupExcludedLocalBytes,
+        StoreMessageCode.backupAndroidPreferences,
       ]) {
         expect(
-          record.losses.any((loss) => loss.contains(family)),
-          isTrue,
+          record.losses.map((loss) => loss.code),
+          contains(family),
           reason: '$family 必须在损失报告里点名',
         );
       }
       expect(
-        record.losses.any((loss) => loss.contains('config.xml 的 2 项偏好')),
-        isTrue,
+        record.losses,
+        contains(
+          const StoreMessage(
+            StoreMessageCode.backupAndroidPreferences,
+            <Object?>[2],
+          ),
+        ),
         reason: 'config.xml 被读过：报告给出它的偏好条数',
       );
       expect(
-        record.losses.any((loss) => loss.contains('没有导入')),
-        isTrue,
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupUnreadMembers, <Object?>[
+            2,
+            'replaceRule.json, bookmark.json',
+          ]),
+        ),
         reason: '没读的成员在报告里点名',
       );
     });
@@ -1104,8 +1159,12 @@ void main() {
       expect(record.sourceCount, 1);
       expect(await space.store.allSources(), hasLength(1));
       expect(
-        record.losses.any((loss) => loss.contains('2 条书源缺少 URL 或名字')),
-        isTrue,
+        record.losses,
+        contains(
+          const StoreMessage(StoreMessageCode.backupInvalidSources, <Object?>[
+            2,
+          ]),
+        ),
       );
       expect(await space.store.shelf(), isEmpty);
     });

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 
 import '../domain/contracts.dart';
+import '../domain/store_message.dart';
 import '../source/html_source_pipeline.dart';
 import 'database.dart';
 import 'ids.dart';
@@ -22,7 +23,7 @@ class LegacyImportReport {
     this.chapters = 0,
     this.progress = 0,
     this.localFiles = 0,
-    this.losses = const <String>[],
+    this.losses = const <StoreMessage>[],
     this.retired = const <String>[],
   });
 
@@ -32,7 +33,7 @@ class LegacyImportReport {
 
   LegacyImportReport copyWith({
     bool? imported,
-    List<String>? losses,
+    List<StoreMessage>? losses,
     List<String>? retired,
   }) => LegacyImportReport(
     imported: imported ?? this.imported,
@@ -59,7 +60,7 @@ class LegacyImportReport {
 
   /// Data the three files held that this store has no place for. Reported
   /// rather than silently dropped (`docs/user-data-contract.md` D6).
-  final List<String> losses;
+  final List<StoreMessage> losses;
 
   /// The name each original now has under `legacy/`; a delta imported after a
   /// retirement gets a name of its own rather than overwriting the copy that
@@ -74,7 +75,7 @@ class LegacyImportReport {
     'chapters': chapters,
     'progress': progress,
     'localFiles': localFiles,
-    'losses': losses,
+    'losses': [for (final loss in losses) loss.toJson()],
   };
 
   factory LegacyImportReport.fromJson(Map<String, Object?> json) =>
@@ -87,17 +88,16 @@ class LegacyImportReport {
         progress: (json['progress'] as num?)?.toInt() ?? 0,
         localFiles: (json['localFiles'] as num?)?.toInt() ?? 0,
         losses: (json['losses'] as List? ?? const <Object?>[])
-            .map((loss) => '$loss')
+            .map(StoreMessage.fromJson)
             .toList(),
       );
 
-  String summary() => [
-    '书源 $sources',
-    '书籍 $books',
-    '目录 $chapters',
-    '进度 $progress',
-    '本地文件 $localFiles',
-  ].join(' · ');
+  /// The counts this run carried, as one message the page renders in its own
+  /// language (#72).
+  StoreMessage summary() => StoreMessage(
+    StoreMessageCode.legacyImportSummary,
+    <Object?>[sources, books, chapters, progress, localFiles],
+  );
 }
 
 /// Imports the three JSON stores this product wrote before the space store:
@@ -163,7 +163,7 @@ class LegacyImport {
     }
 
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final losses = <String>[];
+    final losses = <StoreMessage>[];
     late LegacyImportReport report;
     await store.db.transaction(() async {
       final online = await _importOnlineReading(store, now, losses);
@@ -216,14 +216,18 @@ class LegacyImport {
   Future<_Counts> _importOnlineReading(
     SpaceStore store,
     int now,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     if (!await onlineReadingFile.exists()) return const _Counts();
     final List<Map<String, dynamic>> records;
     try {
       records = await _readOnline();
     } on FormatException catch (error) {
-      losses.add('online_reading.json 未导入：${error.message}（原文件保留）');
+      losses.add(
+        StoreMessage(StoreMessageCode.legacyOnlineReadingNotImported, <Object?>[
+          error.message,
+        ]),
+      );
       return const _Counts();
     }
 
@@ -232,7 +236,11 @@ class LegacyImport {
       final source = Map<String, dynamic>.from(record['source'] as Map);
       final sourceRef = '${source['bookSourceUrl'] ?? ''}';
       if (sourceRef.isEmpty) {
-        losses.add('一条在线阅读记录没有 bookSourceUrl，已跳过');
+        losses.add(
+          const StoreMessage(
+            StoreMessageCode.legacyOnlineReadingRecordWithoutSourceUrl,
+          ),
+        );
         continue;
       }
       if (await store.sourceByUrl(sourceRef) == null) sources++;
@@ -311,7 +319,9 @@ class LegacyImport {
       );
       if (advanced) progress++;
     }
-    losses.add('在线阅读记录的“上次阅读”指针没有等价字段，改由最近保存的进度回答');
+    losses.add(
+      const StoreMessage(StoreMessageCode.legacyOnlineReadingLastReadPointer),
+    );
     return _Counts(
       sources: sources,
       books: books,
@@ -372,23 +382,29 @@ class LegacyImport {
   Future<_Counts> _importLocalLibrary(
     SpaceStore store,
     int now,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     if (!await localBooksFile.exists()) return const _Counts();
     final Object? decoded;
     try {
       decoded = jsonDecode(await localBooksFile.readAsString());
     } on FormatException {
-      losses.add('local_books.json 无法解析，已跳过（原文件保留）');
+      losses.add(
+        const StoreMessage(StoreMessageCode.legacyLocalBooksNotParsed),
+      );
       return const _Counts();
     }
     if (decoded is! Map<String, dynamic>) {
-      losses.add('local_books.json 没有根目录，未导入');
+      losses.add(
+        const StoreMessage(StoreMessageCode.legacyLocalBooksWithoutRoot),
+      );
       return const _Counts();
     }
     final rootEntry = decoded['root'];
     if (rootEntry is! Map) {
-      losses.add('local_books.json 没有根目录，未导入');
+      losses.add(
+        const StoreMessage(StoreMessageCode.legacyLocalBooksWithoutRoot),
+      );
       return const _Counts();
     }
     final displayName = _string(rootEntry['displayName']);
@@ -397,7 +413,9 @@ class LegacyImport {
       fallback: displayName.toLowerCase(),
     );
     if (displayName.isEmpty || rootId.isEmpty) {
-      losses.add('local_books.json 没有根目录，未导入');
+      losses.add(
+        const StoreMessage(StoreMessageCode.legacyLocalBooksWithoutRoot),
+      );
       return const _Counts();
     }
     await store.putLocalRoot(
@@ -464,8 +482,16 @@ class LegacyImport {
       );
       if (advanced) progress++;
     }
-    losses.add('本地文件字节不导入；文件缺失的书已标记 needsRelink');
-    if (missing > 0) losses.add('$missing 个本地文件已不在原路径');
+    losses.add(
+      const StoreMessage(StoreMessageCode.legacyLocalBookBytesExcluded),
+    );
+    if (missing > 0) {
+      losses.add(
+        StoreMessage(StoreMessageCode.legacyLocalFilesMissing, <Object?>[
+          missing,
+        ]),
+      );
+    }
     return _Counts(books: books, localFiles: localFiles, progress: progress);
   }
 
@@ -475,14 +501,16 @@ class LegacyImport {
   Future<_Counts> _importMigrationState(
     SpaceStore store,
     int now,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     if (!await migrationStateFile.exists()) return const _Counts();
     final Object? decoded;
     try {
       decoded = jsonDecode(await migrationStateFile.readAsString());
     } on FormatException {
-      losses.add('migration_state.json 无法解析，已跳过（原文件保留）');
+      losses.add(
+        const StoreMessage(StoreMessageCode.legacyMigrationStateNotParsed),
+      );
       return const _Counts();
     }
     if (decoded is! Map<String, dynamic>) return const _Counts();
@@ -528,7 +556,11 @@ class LegacyImport {
       if (advanced) progress++;
     }
     if (network > 0) {
-      losses.add('迁移记录里的网络书籍没有 bookSourceUrl，只保留标题与进度');
+      losses.add(
+        const StoreMessage(
+          StoreMessageCode.legacyMigrationNetworkBookWithoutUrl,
+        ),
+      );
     }
     return _Counts(sources: sources, books: books, progress: progress);
   }
@@ -636,10 +668,18 @@ class LegadoBackupImport {
     final sources = _list(decoded, const ['bookSources', 'bookSource']);
     final books = _list(decoded, const ['books', 'bookshelf']);
     final progress = _list(decoded, const ['progress', 'bookProgress']);
-    final losses = <String>['本地文件字节、Cookie、缓存和下载内容不会从备份中导入'];
-    if (sources.isEmpty) losses.add('未发现 Book Source 数据');
-    if (books.isEmpty) losses.add('未发现书架数据');
-    if (progress.isEmpty) losses.add('未发现阅读进度数据');
+    final losses = <StoreMessage>[
+      const StoreMessage(StoreMessageCode.backupEnvelopeExcludedFamilies),
+    ];
+    if (sources.isEmpty) {
+      losses.add(const StoreMessage(StoreMessageCode.backupEnvelopeNoSources));
+    }
+    if (books.isEmpty) {
+      losses.add(const StoreMessage(StoreMessageCode.backupEnvelopeNoBooks));
+    }
+    if (progress.isEmpty) {
+      losses.add(const StoreMessage(StoreMessageCode.backupEnvelopeNoProgress));
+    }
 
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     await store.db.transaction(() async {
@@ -648,7 +688,11 @@ class LegadoBackupImport {
         final url = _string(data['bookSourceUrl']);
         final name = _string(data['bookSourceName']);
         if (url.isEmpty && name.isEmpty) {
-          losses.add('一条书源既没有 URL 也没有名字，已跳过');
+          losses.add(
+            const StoreMessage(
+              StoreMessageCode.backupEnvelopeSourceWithoutUrlOrName,
+            ),
+          );
           continue;
         }
         await store.putSourceJson(data, fallbackId: url.isEmpty ? name : null);
@@ -659,7 +703,9 @@ class LegadoBackupImport {
           data['bookUrl'] ?? data['bookId'] ?? data['name'],
         );
         if (legacyId.isEmpty) {
-          losses.add('一条书架记录没有 bookUrl/bookId/name，已跳过');
+          losses.add(
+            const StoreMessage(StoreMessageCode.backupEnvelopeBookWithoutKey),
+          );
           continue;
         }
         final id = 'legacy-$legacyId';

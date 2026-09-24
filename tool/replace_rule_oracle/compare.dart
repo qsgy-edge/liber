@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fjs/fjs.dart' show ConvertTarget;
+import 'package:liber/domain/store_message.dart';
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
@@ -180,7 +181,7 @@ Future<List<Map<String, Object?>>> observeProduct(
       bookName: input['bookName'] as String,
       bookOrigin: input['bookOrigin'] as String,
     );
-    final notices = <String>[];
+    final notices = <StoreMessage>[];
     final disabled = <String>[];
     final processor = ContentProcessing(
       rules: selected,
@@ -200,7 +201,9 @@ Future<List<Map<String, Object?>>> observeProduct(
         'title': selected.titleRules.map((rule) => rule.name).toList(),
         'content': selected.contentRules.map((rule) => rule.name).toList(),
       },
-      'notices': notices,
+      // The code and its arguments (#72), not the words of one interface:
+      // this artifact is evidence, and it must not depend on a locale.
+      'notices': [for (final notice in notices) notice.toString()],
       'disabledRules': disabled,
     };
     rows.add(row);

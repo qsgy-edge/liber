@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../domain/contracts.dart';
+import '../domain/store_message.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'book_source_webview_adapter.dart';
@@ -1090,32 +1091,42 @@ class JsonSourcePipeline implements BookSourcePipeline {
       onStage(
         const BookSourceRunState(
           stage: BookSourceStage.search,
-          message: '正在搜索',
+          message: StoreMessage(StoreMessageCode.runSearching),
         ),
       );
       final books = await search(keyword, page: page);
       if (books.isEmpty) throw StateError('No search results');
       stage = BookSourceStage.bookInfo;
       onStage(
-        BookSourceRunState(stage: stage, message: '读取 ${books.first.title}'),
+        BookSourceRunState(
+          stage: stage,
+          message: StoreMessage(StoreMessageCode.runReading, <Object?>[
+            books.first.title,
+          ]),
+        ),
       );
       final (book, chapters) = await details(books.first);
       stage = BookSourceStage.tableOfContents;
       onStage(
         const BookSourceRunState(
           stage: BookSourceStage.tableOfContents,
-          message: '读取目录',
+          message: StoreMessage(StoreMessageCode.runReadingToc),
         ),
       );
       stage = BookSourceStage.content;
       onStage(
-        BookSourceRunState(stage: stage, message: '读取 ${chapters.first.name}'),
+        BookSourceRunState(
+          stage: stage,
+          message: StoreMessage(StoreMessageCode.runReading, <Object?>[
+            chapters.first.name,
+          ]),
+        ),
       );
       final body = await chapter(chapters.first);
       onStage(
         const BookSourceRunState(
           stage: BookSourceStage.completed,
-          message: '首章读取完成（JSON 规则子集）',
+          message: StoreMessage(StoreMessageCode.runJsonFirstChapterDone),
         ),
       );
       return SourceReadingResult(book.title, chapters, body.text, trace);
@@ -1123,7 +1134,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
       onStage(
         BookSourceRunState(
           stage: BookSourceStage.failed,
-          message: '${stage.name}: $error',
+          // The failure's own text is a diagnostic and stays as the code that
+          // raised it wrote it; only the line's shape is the interface's (#72).
+          message: StoreMessage(StoreMessageCode.runFailed, <Object?>[
+            stage.name,
+            '$error',
+          ]),
         ),
       );
       rethrow;

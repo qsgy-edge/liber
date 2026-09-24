@@ -838,4 +838,242 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get done => 'Done';
+
+  @override
+  String importFileFailed(String error) {
+    return 'Importing the file failed: $error';
+  }
+
+  @override
+  String scriptConvertFailed(String error) {
+    return 'Chinese conversion failed: $error';
+  }
+
+  @override
+  String legacyOnlineReadingNotImported(String reason) {
+    return 'online_reading.json was not imported: $reason (the original file is kept)';
+  }
+
+  @override
+  String get legacyOnlineReadingRecordWithoutSourceUrl =>
+      'An online-reading record has no bookSourceUrl and was skipped';
+
+  @override
+  String get legacyOnlineReadingLastReadPointer =>
+      'The online-reading “last read” pointer has no equivalent field; the most recently saved progress answers instead';
+
+  @override
+  String get legacyLocalBooksNotParsed =>
+      'local_books.json could not be parsed and was skipped (the original file is kept)';
+
+  @override
+  String get legacyLocalBooksWithoutRoot =>
+      'local_books.json has no root folder and was not imported';
+
+  @override
+  String get legacyLocalBookBytesExcluded =>
+      'Local file bytes are not imported; books whose file is missing are marked needsRelink';
+
+  @override
+  String legacyLocalFilesMissing(int count) {
+    return '$count local files are no longer at their original path';
+  }
+
+  @override
+  String get legacyMigrationStateNotParsed =>
+      'migration_state.json could not be parsed and was skipped (the original file is kept)';
+
+  @override
+  String get legacyMigrationNetworkBookWithoutUrl =>
+      'Network books in the migration record have no bookSourceUrl; only the title and the progress are kept';
+
+  @override
+  String legacyImportSummary(
+    int sources,
+    int books,
+    int chapters,
+    int progress,
+    int localFiles,
+  ) {
+    return 'Book Sources $sources · Books $books · Chapters $chapters · Progress $progress · Local files $localFiles';
+  }
+
+  @override
+  String get backupEnvelopeExcludedFamilies =>
+      'Local file bytes, cookies, caches and downloaded content are never imported from a backup';
+
+  @override
+  String get backupEnvelopeNoSources => 'No Book Source data was found';
+
+  @override
+  String get backupEnvelopeNoBooks => 'No bookshelf data was found';
+
+  @override
+  String get backupEnvelopeNoProgress => 'No reading progress was found';
+
+  @override
+  String get backupEnvelopeSourceWithoutUrlOrName =>
+      'A Book Source has neither a URL nor a name and was skipped';
+
+  @override
+  String get backupEnvelopeBookWithoutKey =>
+      'A bookshelf record has no bookUrl/bookId/name and was skipped';
+
+  @override
+  String get backupExcludedCookies =>
+      'Cookies: the backup carries no Cookie table, so the login state is not imported';
+
+  @override
+  String get backupExcludedCache =>
+      'Caches: the backup carries no Cache table, so source caches are not imported';
+
+  @override
+  String get backupExcludedChapters =>
+      'Chapters: the backup carries no BookChapter table, so the table of contents and the chapter variables are not imported';
+
+  @override
+  String get backupExcludedDownloads =>
+      'Downloaded content: the backup carries no downloaded text; it has to be fetched again';
+
+  @override
+  String get backupExcludedLocalBytes =>
+      'Local book bytes: the backup carries no book files; the books are marked for relinking';
+
+  @override
+  String backupAndroidPreferences(int count) {
+    return 'Android settings: the $count preferences in config.xml belong to the Android app and are not imported';
+  }
+
+  @override
+  String backupAbsentMember(String member) {
+    return 'The backup has no $member: that data was empty';
+  }
+
+  @override
+  String backupUnreadMembers(int count, String members) {
+    return '$count more members of the backup were not imported: $members';
+  }
+
+  @override
+  String backupInvalidSources(int count) {
+    return '$count Book Sources lack a URL or a name and were skipped';
+  }
+
+  @override
+  String backupInvalidGroups(int count) {
+    return '$count groups have no name and were skipped';
+  }
+
+  @override
+  String backupInvalidBooks(int count) {
+    return '$count bookshelf records have no bookUrl and were skipped';
+  }
+
+  @override
+  String backupConflictingSources(int count) {
+    return '$count Book Sources already exist in the space with different content and were not replaced (replacing needs confirmation)';
+  }
+
+  @override
+  String backupDuplicateBooks(int count) {
+    return '$count bookshelf records repeat a bookUrl and were merged into one';
+  }
+
+  @override
+  String backupSystemGroups(int count) {
+    return '$count system groups (views such as all, local and audio) are not imported: they follow from the book type';
+  }
+
+  @override
+  String backupUnmatchedMasks(int count) {
+    return '$count books carry a group bit with no matching group in bookGroup.json';
+  }
+
+  @override
+  String backupUnreadBooks(int count) {
+    return '$count books have no reading progress in the backup (never opened), so no progress row was written';
+  }
+
+  @override
+  String backupNonTextSources(int count) {
+    return '$count non-text Book Sources were imported; v1 does not execute them (ADR 0012)';
+  }
+
+  @override
+  String backupDroppedCovers(int count) {
+    return '$count covers point at a local path and were not imported (local bytes are not migrated)';
+  }
+
+  @override
+  String backupDroppedEntries(int count) {
+    return '$count records are not JSON objects and were skipped';
+  }
+
+  @override
+  String get backupProgressChapterNameDropped =>
+      'A reading position\'s chapter name has no equivalent field; the position keeps only the chapter index and the character offset';
+
+  @override
+  String get backupNoSourceMember =>
+      'The backup has no bookSource.json: no Book Sources were imported';
+
+  @override
+  String get backupNoGroupMember =>
+      'The backup has no bookGroup.json: groups are not imported';
+
+  @override
+  String replaceRuleUnusable(String name, String reason) {
+    return 'Replace rule “$name” is unusable: $reason';
+  }
+
+  @override
+  String replaceRuleTimedOut(String name, int milliseconds) {
+    return 'Replace rule “$name” timed out ($milliseconds ms) and was disabled';
+  }
+
+  @override
+  String replaceRuleFailed(String name, String error) {
+    return 'Replace rule “$name” failed: $error';
+  }
+
+  @override
+  String get runSearching => 'Searching';
+
+  @override
+  String runReading(String name) {
+    return 'Reading $name';
+  }
+
+  @override
+  String get runReadingToc => 'Reading the table of contents';
+
+  @override
+  String get runJsonFirstChapterDone =>
+      'The first chapter was read (JSON rule subset)';
+
+  @override
+  String runFailed(String stage, String error) {
+    return '$stage: $error';
+  }
+
+  @override
+  String get runControlledSearch => 'The search returned 1 book';
+
+  @override
+  String get runControlledBookInfo => 'Book information returned';
+
+  @override
+  String get runControlledToc => 'The table of contents returned 12 chapters';
+
+  @override
+  String get runControlledContent => 'Chapter text returned';
+
+  @override
+  String get runControlledCompleted =>
+      'The Windows controlled Book Source chain completed; all 4 stages have a trace';
+
+  @override
+  String literalCopy(String text) {
+    return '$text';
+  }
 }

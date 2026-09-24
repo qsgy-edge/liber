@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:liber/main.dart';
+import 'package:liber/settings/interface_language.dart';
 
 import 'l10n_support.dart';
 
@@ -154,6 +155,53 @@ void settingsEntryTest(Directory Function() root) {
 
       // Unmounting the app is what releases the space, and the directory can
       // only be deleted once that happened.
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+}
+
+
+/// The loss report under a non-Chinese interface (#72): the store's own report
+/// is codes with arguments, so the page renders it in the interface's language
+/// instead of the Chinese the store used to write.
+void lossReportLanguageTest(Directory Function() root) {
+  testWidgets('英文界面下导入摘要与损失报告都是英文', (tester) async {
+    // The interface language is part of this row, and English copy is taller
+    // than Simplified copy: without this override the row fails with
+    // `A RenderFlex overflowed by 184 pixels on the bottom` on the *shelf*
+    // page's own vertical Column (`Padding(EdgeInsets.all(32))`, 556.5×480
+    // available at the default 800×600 test surface) — the same fixture and the
+    // same surface pass in 简体 (`spaceStoreTest`). The Windows desktop window
+    // the product ships is 1280×720 (`windows/runner`), and the surface size is
+    // not the copy.
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(
+          workspaceRoot: root(),
+          interfaceLanguage: InterfaceLanguageSetting.english,
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('Migration'));
+      await tester.pump();
+      await _waitFor(tester, find.textContaining('imported this run'));
+
+      // The summary's counts, and the one loss the fixture produces
+      // (`online_reading.json`'s last-read pointer has no equivalent field).
+      expect(find.textContaining('Book Sources 2'), findsOneWidget);
+      expect(find.textContaining('no equivalent field'), findsOneWidget);
+      expect(
+        find.textContaining('上次阅读'),
+        findsNothing,
+        reason: '英文界面里不该留下这条中文损失行',
+      );
+
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });
@@ -368,6 +416,7 @@ void main() {
   defaultAppTest(() => root);
   spaceStoreTest(() => root);
   settingsEntryTest(() => root);
+  lossReportLanguageTest(() => root);
   sourceManagementTest(() => root);
 }
 

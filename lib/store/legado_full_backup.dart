@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:pointycastle/export.dart';
 
 import '../domain/contracts.dart';
+import '../domain/store_message.dart';
 import 'database.dart';
 import 'ids.dart';
 import 'space_store.dart';
@@ -305,7 +306,7 @@ class LegadoFullBackupImport {
   Future<MigrationImportRecord> importArchive(
     LegadoBackupArchive archive,
   ) async {
-    final losses = <String>[];
+    final losses = <StoreMessage>[];
     final totals = _Totals();
     // The shelf is small and its shape decides whether this is a backup at all,
     // so it is decoded before the transaction opens. The sources — 41 MB in the
@@ -344,12 +345,12 @@ class LegadoFullBackupImport {
   Future<Map<String, String>> _importSources(
     LegadoBackupArchive archive,
     _Totals totals,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     final names = <String, String>{};
     final bytes = archive.member('bookSource.json');
     if (bytes == null) {
-      losses.add('备份没有 bookSource.json：没有书源导入');
+      losses.add(const StoreMessage(StoreMessageCode.backupNoSourceMember));
       return names;
     }
     final existing = <String, BookSource>{
@@ -391,12 +392,12 @@ class LegadoFullBackupImport {
   Future<Map<int, String>> _importGroups(
     LegadoBackupArchive archive,
     _Totals totals,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     final groupIds = <int, String>{};
     final bytes = archive.member('bookGroup.json');
     if (bytes == null) {
-      losses.add('备份没有 bookGroup.json：分组不导入');
+      losses.add(const StoreMessage(StoreMessageCode.backupNoGroupMember));
       return groupIds;
     }
     for (final group in _entityArray(bytes, 'bookGroup.json', totals)) {
@@ -434,7 +435,7 @@ class LegadoFullBackupImport {
     Map<String, String> sourceNames,
     Map<int, String> groupIds,
     _Totals totals,
-    List<String> losses,
+    List<StoreMessage> losses,
   ) async {
     final seen = <String>{};
     for (final book in books) {
@@ -622,56 +623,98 @@ class LegadoFullBackupImport {
   /// The families the backup cannot carry, named one by one (rule 9 and this
   /// ticket's acceptance): a report that says "some data was not imported"
   /// leaves the user unable to tell what.
-  List<String> _excludedFamilies(LegadoBackupArchive archive, _Totals totals) {
-    final lines = <String>[
-      'Cookie：备份里没有 Cookie 表，登录状态不导入',
-      '缓存：备份里没有 Cache 表，书源缓存不导入',
-      '章节：备份里没有 BookChapter 表，目录与章节变量不导入',
-      '下载内容：备份里没有已下载正文，需要重新抓取',
-      '本地书籍字节：备份里没有书文件，已标记需要重新链接',
-      'Android 设置：config.xml 的 ${archive.preferenceCount} 项偏好属于 Android 端，不导入',
+  List<StoreMessage> _excludedFamilies(
+    LegadoBackupArchive archive,
+    _Totals totals,
+  ) {
+    final lines = <StoreMessage>[
+      const StoreMessage(StoreMessageCode.backupExcludedCookies),
+      const StoreMessage(StoreMessageCode.backupExcludedCache),
+      const StoreMessage(StoreMessageCode.backupExcludedChapters),
+      const StoreMessage(StoreMessageCode.backupExcludedDownloads),
+      const StoreMessage(StoreMessageCode.backupExcludedLocalBytes),
+      StoreMessage(StoreMessageCode.backupAndroidPreferences, <Object?>[
+        archive.preferenceCount,
+      ]),
     ];
     for (final member in archive.absentMembers) {
-      lines.add('备份没有 $member：对应的数据为空');
+      lines.add(
+        StoreMessage(StoreMessageCode.backupAbsentMember, <Object?>[member]),
+      );
     }
     final unread = archive.unreadMembers;
     if (unread.isNotEmpty) {
-      lines.add('备份里还有 ${unread.length} 个成员没有导入：${unread.join('、')}');
+      lines.add(
+        StoreMessage(StoreMessageCode.backupUnreadMembers, <Object?>[
+          unread.length,
+          // A list of member names, joined the way the rest of this file joins
+          // one: a separator the interface does not choose is ASCII, so the
+          // English line carries no Chinese punctuation (#72).
+          unread.join(', '),
+        ]),
+      );
     }
     if (totals.invalidSources > 0) {
-      lines.add('${totals.invalidSources} 条书源缺少 URL 或名字，已跳过');
+      lines.add(
+        _counted(StoreMessageCode.backupInvalidSources, totals.invalidSources),
+      );
     }
     if (totals.invalidGroups > 0) {
-      lines.add('${totals.invalidGroups} 个分组没有名字，已跳过');
+      lines.add(
+        _counted(StoreMessageCode.backupInvalidGroups, totals.invalidGroups),
+      );
     }
     if (totals.invalidBooks > 0) {
-      lines.add('${totals.invalidBooks} 条书架记录没有 bookUrl，已跳过');
+      lines.add(
+        _counted(StoreMessageCode.backupInvalidBooks, totals.invalidBooks),
+      );
     }
     if (totals.conflictingSources > 0) {
-      lines.add('${totals.conflictingSources} 个书源在空间中已存在且内容不同，未替换（替换需要确认）');
+      lines.add(
+        _counted(
+          StoreMessageCode.backupConflictingSources,
+          totals.conflictingSources,
+        ),
+      );
     }
     if (totals.duplicateBooks > 0) {
-      lines.add('${totals.duplicateBooks} 条书架记录的 bookUrl 重复，合并为一条');
+      lines.add(
+        _counted(StoreMessageCode.backupDuplicateBooks, totals.duplicateBooks),
+      );
     }
     if (totals.systemGroups > 0) {
-      lines.add('${totals.systemGroups} 个系统分组（全部/本地/音频等视图）不导入：它们由书籍类型推导');
+      lines.add(
+        _counted(StoreMessageCode.backupSystemGroups, totals.systemGroups),
+      );
     }
     if (totals.unmatchedMasks > 0) {
-      lines.add('${totals.unmatchedMasks} 本书的分组位在 bookGroup.json 里没有对应分组');
+      lines.add(
+        _counted(StoreMessageCode.backupUnmatchedMasks, totals.unmatchedMasks),
+      );
     }
     if (totals.unreadBooks > 0) {
-      lines.add('${totals.unreadBooks} 本书在备份里没有阅读进度（从未打开），未写进度行');
+      lines.add(
+        _counted(StoreMessageCode.backupUnreadBooks, totals.unreadBooks),
+      );
     }
     if (totals.nonTextSources > 0) {
-      lines.add('${totals.nonTextSources} 个非文本书源已导入，v1 不执行（ADR 0012）');
+      lines.add(
+        _counted(StoreMessageCode.backupNonTextSources, totals.nonTextSources),
+      );
     }
     if (totals.droppedCovers > 0) {
-      lines.add('${totals.droppedCovers} 个封面指向本地路径，未导入（本地字节不迁移）');
+      lines.add(
+        _counted(StoreMessageCode.backupDroppedCovers, totals.droppedCovers),
+      );
     }
     if (totals.droppedEntries > 0) {
-      lines.add('${totals.droppedEntries} 条记录不是 JSON 对象，已跳过');
+      lines.add(
+        _counted(StoreMessageCode.backupDroppedEntries, totals.droppedEntries),
+      );
     }
-    lines.add('阅读进度的章节名没有等价字段，进度只保留章节序号与字符位置');
+    lines.add(
+      const StoreMessage(StoreMessageCode.backupProgressChapterNameDropped),
+    );
     return lines;
   }
 }
@@ -917,6 +960,10 @@ List<Map<String, dynamic>> _entityArray(
   }
   return rows;
 }
+
+/// One report line whose only argument is a count of what it happened to.
+StoreMessage _counted(StoreMessageCode code, int count) =>
+    StoreMessage(code, <Object?>[count]);
 
 class _Totals {
   int sources = 0;
