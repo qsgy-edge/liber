@@ -118,9 +118,14 @@ void spaceStoreTest(Directory Function() root) {
 /// instead of the Chinese the store used to write.
 void lossReportLanguageTest(Directory Function() root) {
   testWidgets('英文界面下导入摘要与损失报告都是英文', (tester) async {
-    // The desktop window the product ships is 1280×720 (`windows/runner`); the
-    // default 800×600 test surface makes a page overflow once the copy is
-    // English, which is a surface size and not the copy (#28).
+    // The interface language is part of this row, and English copy is taller
+    // than Simplified copy: without this override the row fails with
+    // `A RenderFlex overflowed by 184 pixels on the bottom` on the *shelf*
+    // page's own vertical Column (`Padding(EdgeInsets.all(32))`, 556.5×480
+    // available at the default 800×600 test surface) — the same fixture and the
+    // same surface pass in 简体 (`spaceStoreTest`). The Windows desktop window
+    // the product ships is 1280×720 (`windows/runner`), and the surface size is
+    // not the copy.
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

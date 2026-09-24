@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +70,34 @@ void main() {
       'code': 'literalCopy',
       'arguments': <Object?>[(stored['losses']! as List).first],
     });
+  });
+
+  test('旧标记的损失行在界面上照原样显示，不会变成空的一行', () async {
+    final zh = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.simplified,
+    );
+    final en = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.english,
+    );
+    const oldLine = '本地文件字节不导入；文件缺失的书已标记 needsRelink';
+    final report = LegacyImportReport.fromJson(<String, Object?>{
+      'imported': true,
+      'importedAt': '2026-09-01T00:00:00.000Z',
+      'sources': 0,
+      'books': 0,
+      'chapters': 0,
+      'progress': 0,
+      'localFiles': 0,
+      'losses': <Object?>[oldLine],
+    });
+
+    expect(report.losses.single.code, StoreMessageCode.literalCopy);
+    expect(report.losses.single.text(zh), oldLine);
+    expect(
+      report.losses.single.text(en),
+      oldLine,
+      reason: '旧行是它自己的文案：英文界面下也不翻译，但绝不能变空',
+    );
   });
 
   test('存储层报告代码与实参：只读得了那半个文件的导入', () async {
@@ -148,6 +177,99 @@ void main() {
     expect(summary.text(hk), contains('本地文件'));
   });
 
+  test('失败行的阶段是界面自己的词，不是枚举标识符', () async {
+    final zh = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.simplified,
+    );
+    final en = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.english,
+    );
+    final failed = StoreMessage(StoreMessageCode.runFailed, <Object?>[
+      BookSourceStage.tableOfContents.name,
+      'boom',
+    ]);
+
+    expect(failed.text(en), 'Table of contents: boom');
+    expect(failed.text(zh), '目录：boom');
+    expect(
+      failed.text(en),
+      isNot(contains(BookSourceStage.tableOfContents.name)),
+      reason: '界面已经有阶段自己的词，不该把标识符给读者看',
+    );
+    // A stage this build does not know keeps its identifier rather than going
+    // blank: it can only come from a build with a stage this one lacks.
+    expect(
+      StoreMessage(StoreMessageCode.runFailed, <Object?>[
+        'searchAudio',
+        'boom',
+      ]).text(en),
+      'searchAudio: boom',
+    );
+  });
+
+  test('实参短了或类型不对的标记照常渲染，不抛异常（评审第 1 条）', () async {
+    final en = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.english,
+    );
+
+    // A known code whose stored arguments are short: the counts it lacks read
+    // 0, the text it lacks reads empty, and the page still builds.
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'code': 'legacyImportSummary',
+        'arguments': <Object?>[],
+      }).text(en),
+      'Book Sources 0 · Books 0 · Chapters 0 · Progress 0 · Local files 0',
+    );
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'code': 'runFailed',
+        'arguments': <Object?>['content'],
+      }).text(en),
+      'Content: ',
+    );
+    // A count stored as text is read as the number it spells.
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'code': 'legacyLocalFilesMissing',
+        'arguments': <Object?>['3'],
+      }).text(en),
+      '3 local files are no longer at their original path',
+    );
+    // A number where the copy declares a string is stringified.
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'code': 'backupAbsentMember',
+        'arguments': <Object?>[7],
+      }).text(en),
+      'The backup has no 7: that data was empty',
+    );
+  });
+
+  test('命名不了的条目显示自己的文字，不是空行（评审第 2 条）', () async {
+    final en = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.english,
+    );
+
+    // A slug this build does not know: a report a newer build wrote. Its
+    // diagnostic form keeps both the code and what it carried.
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'code': 'aNewerCodesName',
+        'arguments': <Object?>[1, 'x'],
+      }).text(en),
+      'aNewerCodesName(1, x)',
+    );
+    // A damaged entry with no code at all: the JSON it holds is the whole of
+    // what it says, and an empty bullet is not.
+    expect(
+      StoreMessage.fromJson(<String, Object?>{
+        'arguments': <Object?>['x'],
+      }).text(en),
+      '{"arguments":["x"]}',
+    );
+  });
+
   test('受控书源的状态行是代码加实参，界面文字在渲染时才出现', () async {
     final states = <BookSourceRunState>[];
     final result = await BookSourceService().run(states.add);
@@ -170,4 +292,78 @@ void main() {
       'The Windows controlled Book Source chain completed; all 4 stages have a trace',
     );
   });
+
+  test('每个带占位符的代码在测试里都有正好那份实参（模板是准绳）', () {
+    final template =
+        jsonDecode(File('lib/l10n/app_zh.arb').readAsStringSync())
+            as Map<String, Object?>;
+    for (final code in StoreMessageCode.values) {
+      final metadata = template['@${code.slug}'];
+      final placeholders = metadata is Map
+          ? (metadata['placeholders'] as Map?)?.length ?? 0
+          : 0;
+      expect(
+        (_representativeArguments[code] ?? const <Object?>[]).length,
+        placeholders,
+        reason:
+            '${code.slug} 的文案有 $placeholders 个占位符，测试却给了另一份实参：'
+            '漏掉的那份会让上面的循环渲染出一句没有内容的英文',
+      );
+    }
+  });
+
+  test('每个代码在英文界面里都渲染出非空、没有中文的文案', () async {
+    final en = await AppLocalizations.delegate.load(
+      InterfaceLanguageSetting.english,
+    );
+
+    for (final code in StoreMessageCode.values) {
+      final text = StoreMessage(
+        code,
+        _representativeArguments[code] ?? const <Object?>[],
+      ).text(en);
+      expect(text.trim(), isNotEmpty, reason: '${code.slug} 渲染成了空行');
+      expect(
+        text,
+        isNot(matches(_cjk)),
+        reason: '${code.slug} 的英文文案里还有中文：$text',
+      );
+    }
+  });
 }
+
+/// Every CJK the interface must not carry in an English render: the ideographs,
+/// the CJK punctuation the store used to join a list with (`、`), and the
+/// fullwidth forms.
+final RegExp _cjk = RegExp(r'[　-〿一-鿿＀-￯]');
+
+/// The arguments one code needs to render, for the codes that carry any: the
+/// loop above renders every code in [StoreMessageCode], so a code this map omits
+/// is one whose copy has no placeholder. The values are ASCII on purpose — the
+/// row is about the copy the interface writes, not about the data a message
+/// carries.
+const Map<StoreMessageCode, List<Object?>> _representativeArguments = {
+  StoreMessageCode.literalCopy: <Object?>['a stored line'],
+  StoreMessageCode.legacyOnlineReadingNotImported: <Object?>['a reason'],
+  StoreMessageCode.legacyLocalFilesMissing: <Object?>[1],
+  StoreMessageCode.legacyImportSummary: <Object?>[1, 2, 3, 4, 5],
+  StoreMessageCode.backupAndroidPreferences: <Object?>[1],
+  StoreMessageCode.backupAbsentMember: <Object?>['bookmark.json'],
+  StoreMessageCode.backupUnreadMembers: <Object?>[1, 'a.json, b.json'],
+  StoreMessageCode.backupInvalidSources: <Object?>[1],
+  StoreMessageCode.backupInvalidGroups: <Object?>[1],
+  StoreMessageCode.backupInvalidBooks: <Object?>[1],
+  StoreMessageCode.backupConflictingSources: <Object?>[1],
+  StoreMessageCode.backupDuplicateBooks: <Object?>[1],
+  StoreMessageCode.backupSystemGroups: <Object?>[1],
+  StoreMessageCode.backupUnmatchedMasks: <Object?>[1],
+  StoreMessageCode.backupUnreadBooks: <Object?>[1],
+  StoreMessageCode.backupNonTextSources: <Object?>[1],
+  StoreMessageCode.backupDroppedCovers: <Object?>[1],
+  StoreMessageCode.backupDroppedEntries: <Object?>[1],
+  StoreMessageCode.replaceRuleUnusable: <Object?>['rule', 'a reason'],
+  StoreMessageCode.replaceRuleTimedOut: <Object?>['rule', 3000],
+  StoreMessageCode.replaceRuleFailed: <Object?>['rule', 'boom'],
+  StoreMessageCode.runReading: <Object?>['a chapter'],
+  StoreMessageCode.runFailed: <Object?>['tableOfContents', 'boom'],
+};

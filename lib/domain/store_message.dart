@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// One user-visible message the store or the source layer produced (#72).
 ///
 /// The store layer has no `BuildContext` and may not depend on the widget layer,
@@ -33,24 +35,40 @@ class StoreMessage {
   /// what an ARB placeholder and a JSON round trip both hold.
   final List<Object?> arguments;
 
-  /// Reads one entry of a stored report: the object this build writes, or the
-  /// bare string a build before #72 wrote.
+  /// Reads one entry of a stored report. Two shapes are this product's own, and
+  /// neither throws: the object form this build writes, whose slug names a code,
+  /// and a bare string, which is a marker a build before #72 wrote and is
+  /// rendered verbatim ([StoreMessageCode.literalCopy]).
   ///
-  /// A code name this build does not know — a report a newer build wrote — is
-  /// rendered verbatim rather than dropped, so a space stays readable after a
-  /// downgrade.
+  /// An entry this build cannot **name** — an unknown slug, which is what a
+  /// report a newer build wrote holds, or a map with no `code` at all, which is
+  /// a damaged one — is rendered as its own text rather than dropped: the
+  /// diagnostic form `slug(argument, …)` when there is a slug, the stored JSON
+  /// when there is not. A space stays readable after a downgrade, and a line the
+  /// page cannot read says so instead of disappearing.
   factory StoreMessage.fromJson(Object? json) {
     if (json is Map) {
       final name = '${json['code'] ?? ''}';
-      final code = StoreMessageCode.bySlug(name);
-      if (code == null) return StoreMessage.literal(name);
       final stored = json['arguments'];
-      return StoreMessage(
-        code,
-        stored is List ? List<Object?>.of(stored) : const <Object?>[],
+      final arguments = stored is List
+          ? List<Object?>.of(stored)
+          : const <Object?>[];
+      final code = StoreMessageCode.bySlug(name);
+      if (code != null) return StoreMessage(code, arguments);
+      return StoreMessage.literal(
+        name.isEmpty ? _jsonText(json) : _diagnostic(name, arguments),
       );
     }
     return StoreMessage.literal('$json');
+  }
+
+  /// The entry's own JSON, the whole of what a map with no `code` carries.
+  static String _jsonText(Map<Object?, Object?> json) {
+    try {
+      return jsonEncode(json);
+    } on JsonUnsupportedObjectError {
+      return '$json';
+    }
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -79,10 +97,14 @@ class StoreMessage {
   @override
   int get hashCode => Object.hash(code, Object.hashAll(arguments));
 
-  /// The code and its arguments, for a log or a failed test. Not copy: the
-  /// interface's words live in `lib/l10n/`.
+  /// The code and its arguments, for a log, a failed test and an entry this
+  /// build cannot name ([fromJson]). Not copy: the interface's words live in
+  /// `lib/l10n/`.
   @override
-  String toString() => '${code.slug}(${arguments.join(', ')})';
+  String toString() => _diagnostic(code.slug, arguments);
+
+  static String _diagnostic(String slug, List<Object?> arguments) =>
+      '$slug(${arguments.join(', ')})';
 }
 
 /// The codes the store layer and the source layer hand to a page (#72).
