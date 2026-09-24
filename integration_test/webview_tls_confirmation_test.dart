@@ -59,6 +59,99 @@ void main() {
             'and Linux adapters do not exist yet (#56)';
 
   group('the rendered WebView path under a real engine', skip: skipReason, () {
+    // The refusal row runs first on purpose. Android's WebView persists a
+    // user's *proceed* decision for a host, so once the agree row has answered
+    // 继续（不安全） the engine raises no challenge for a later row on the same host
+    // (only the port differs) and that row would assert against a platform
+    // memory instead of the product. A cancel leaves no persisted preference,
+    // so the refusing row's challenge is the one the engine always raises.
+    // The platform fact itself is worth recording (#75): the product's
+    // confirmation is per source *and* host, but the engine can skip it for a
+    // host the user has already accepted elsewhere.
+
+    testWidgets(
+      'answering 取消 stores nothing and leaves the failure named',
+      (tester) async {
+        final directory = await Directory.systemTemp.createTemp(
+          'liber-tls-refuse-',
+        );
+        final store = SpaceStore(
+          SpaceDatabase.file(File('${directory.path}/data.db')),
+        );
+        addTearDown(() async {
+          await store.close();
+          await directory.delete(recursive: true);
+        });
+        final state = SourceHostState(
+          persistence: SpaceHostStatePersistence(store),
+        );
+        final server = await TlsLocalhostFixtureServer.bind(
+          pageText: _pageText,
+        );
+        addTearDown(server.close);
+        final sourceRef = 'https://${server.authority}/book';
+
+        final factory = _CountingFactory(
+          sourceRef: sourceRef,
+          hostState: state,
+        );
+        final read = await _driveRead(
+          tester,
+          state: state,
+          factory: factory,
+          url: server.url,
+          answer: _cancel,
+        );
+
+        expect(read.asks, 1);
+        expect(
+          read.namedSourceAndHost,
+          isTrue,
+          reason: 'the confirmation names the source and the challenged host',
+        );
+        expect(read.body, isNull, reason: 'a refusal renders nothing');
+        expect(
+          read.error,
+          isA<SourceTlsCertificateFailure>()
+              .having((failure) => failure.sourceRef, 'sourceRef', sourceRef)
+              .having((failure) => failure.host, 'host', _challengedHost)
+              .having(
+                (failure) => failure.reason,
+                'reason',
+                SourceTlsCertificateFailure.unspecifiedReason,
+              ),
+        );
+        expect(factory.attempts, 1, reason: 'a refusal re-runs nothing');
+        expect(
+          state.allowsInvalidCertificate(sourceRef, _challengedHost),
+          isFalse,
+        );
+        expect(
+          await store.db.select(store.db.sourceTlsExceptions).get(),
+          isEmpty,
+        );
+        expect(
+          server.connectionsAccepted,
+          greaterThanOrEqualTo(1),
+          reason:
+              'the certificate was presented; the client reached the fixture',
+        );
+        expect(
+          server.pageRequests,
+          0,
+          reason: 'nothing was rendered through the certificate',
+        );
+        expect(tester.takeException(), isNull);
+
+        debugPrint(
+          'TLS_CONFIRMATION_REFUSE asks=${read.asks} attempts=${factory.attempts} '
+          'storedExceptions=0 connections=${server.connectionsAccepted} '
+          'pageRequests=${server.pageRequests} error=${read.error}',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+
     testWidgets(
       'a rendered certificate failure asks once, stores the exception and proceeds',
       (tester) async {
@@ -153,89 +246,6 @@ void main() {
           'storedExceptions=${stored.length} '
           'connections=${server.connectionsAccepted} '
           'pageRequests=${server.pageRequests} body=${read.body}',
-        );
-      },
-      timeout: const Timeout(Duration(minutes: 5)),
-    );
-
-    testWidgets(
-      'answering 取消 stores nothing and leaves the failure named',
-      (tester) async {
-        final directory = await Directory.systemTemp.createTemp(
-          'liber-tls-refuse-',
-        );
-        final store = SpaceStore(
-          SpaceDatabase.file(File('${directory.path}/data.db')),
-        );
-        addTearDown(() async {
-          await store.close();
-          await directory.delete(recursive: true);
-        });
-        final state = SourceHostState(
-          persistence: SpaceHostStatePersistence(store),
-        );
-        final server = await TlsLocalhostFixtureServer.bind(
-          pageText: _pageText,
-        );
-        addTearDown(server.close);
-        final sourceRef = 'https://${server.authority}/book';
-
-        final factory = _CountingFactory(
-          sourceRef: sourceRef,
-          hostState: state,
-        );
-        final read = await _driveRead(
-          tester,
-          state: state,
-          factory: factory,
-          url: server.url,
-          answer: _cancel,
-        );
-
-        expect(read.asks, 1);
-        expect(
-          read.namedSourceAndHost,
-          isTrue,
-          reason: 'the confirmation names the source and the challenged host',
-        );
-        expect(read.body, isNull, reason: 'a refusal renders nothing');
-        expect(
-          read.error,
-          isA<SourceTlsCertificateFailure>()
-              .having((failure) => failure.sourceRef, 'sourceRef', sourceRef)
-              .having((failure) => failure.host, 'host', _challengedHost)
-              .having(
-                (failure) => failure.reason,
-                'reason',
-                SourceTlsCertificateFailure.unspecifiedReason,
-              ),
-        );
-        expect(factory.attempts, 1, reason: 'a refusal re-runs nothing');
-        expect(
-          state.allowsInvalidCertificate(sourceRef, _challengedHost),
-          isFalse,
-        );
-        expect(
-          await store.db.select(store.db.sourceTlsExceptions).get(),
-          isEmpty,
-        );
-        expect(
-          server.connectionsAccepted,
-          greaterThanOrEqualTo(1),
-          reason:
-              'the certificate was presented; the client reached the fixture',
-        );
-        expect(
-          server.pageRequests,
-          0,
-          reason: 'nothing was rendered through the certificate',
-        );
-        expect(tester.takeException(), isNull);
-
-        debugPrint(
-          'TLS_CONFIRMATION_REFUSE asks=${read.asks} attempts=${factory.attempts} '
-          'storedExceptions=0 connections=${server.connectionsAccepted} '
-          'pageRequests=${server.pageRequests} error=${read.error}',
         );
       },
       timeout: const Timeout(Duration(minutes: 5)),

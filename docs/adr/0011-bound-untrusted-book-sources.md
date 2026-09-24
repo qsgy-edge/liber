@@ -211,6 +211,16 @@ and its cookies can be observed or changed in transit. Linux's WebKitGTK adapter
 policy when it exists. Apple's and Linux's WebView **execution** stays `not-run` (#2, #56): a declaration is a
 policy, not a row.
 
+**Note added 2026-09-24, from #75's device run.** On Android the engine itself remembers a *proceed* decision
+per host: once the user has answered **继续（不安全）** for a host, `android.webkit.WebView` raises no server-trust
+challenge again for that host (a new port does not make it a new host), so the per-source exception above is the
+product's policy for *when a challenge is raised*, not a guarantee that the engine always raises one. The
+product's own store stays per source and host and never reads a platform-wide decision; what can be skipped is
+the prompt. Measured on the handset (`5615f742`, Android 17, System WebView 155.0.8059.4) by
+`integration_test/webview_tls_confirmation_test.dart`: with the agree row first, a later row against the same
+host saw `asks=0`; with the refusing row first (a cancel persists nothing) each row gets its challenge. The
+rows are ordered accordingly and say why.
+
 ## 6. Escape hatches, member by member
 
 | Member | Decision | Reason and consequence |
