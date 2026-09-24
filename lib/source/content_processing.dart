@@ -85,6 +85,7 @@ import 'package:fjs/fjs.dart' show ConvertTarget;
 
 import '../domain/contracts.dart'
     show SourceCancellation, SourceRequestCancelled;
+import '../domain/store_message.dart';
 import '../local/text_engine.dart' show TextEngine;
 import '../store/database.dart' show ReplaceRule;
 import 'content_re_segment.dart';
@@ -320,9 +321,12 @@ class ContentProcessing {
   /// or 3000 ms when it is non-positive.
   final Duration timeoutFallback;
 
-  /// Where a skipped rule is reported. Each rule is reported at most once per
-  /// instance, so a chapter-by-chapter report cannot flood the reader.
-  final void Function(String message)? onNotice;
+  /// Where a skipped rule is reported, as a message the page renders in its own
+  /// language (#72); the rule's name is an argument, and the engine's own
+  /// refusal or error text is another (a diagnostic, passed through as it is).
+  /// Each rule is reported at most once per instance, so a chapter-by-chapter
+  /// report cannot flood the reader.
+  final void Function(StoreMessage message)? onNotice;
 
   /// Called when a rule exceeded its deadline. The frozen reader disables such a
   /// rule in the database (`ContentProcessor.kt:169-171`), which is why the
@@ -502,7 +506,13 @@ class ContentProcessing {
   ) async {
     final translated = rule.isRegex ? translateJavaPattern(rule.pattern) : null;
     if (translated != null && !translated.isRunnable) {
-      _reportOnce(rule, '替换规则「${rule.name}」不可用：${translated.refusal}');
+      _reportOnce(
+        rule,
+        StoreMessage(StoreMessageCode.replaceRuleUnusable, <Object?>[
+          rule.name,
+          translated.refusal,
+        ]),
+      );
       return null;
     }
     if (!rule.isRegex) {
@@ -515,36 +525,40 @@ class ContentProcessing {
       final outcome = await _applyJsUnderDeadline(text, rule, translated!);
       if (outcome.cancelled) return null;
       if (outcome.timedOut) {
-        _reportOnce(
-          rule,
-          '替换规则「${rule.name}」超时（${_deadlineFor(rule).inMilliseconds} 毫秒），已停用',
-        );
+        _reportOnce(rule, _ruleTimeout(rule));
         await onRuleDisabled?.call(rule);
         return null;
       }
       if (outcome.error != null) {
-        _reportOnce(rule, '替换规则「${rule.name}」出错：${outcome.error}');
+        _reportOnce(rule, _ruleFailed(rule, outcome.error!));
         return null;
       }
       return (text: outcome.text!, edits: outcome.edits!);
     }
     final outcome = await _applyUnderDeadline(text, rule, translated!);
     if (outcome.timedOut) {
-      _reportOnce(
-        rule,
-        '替换规则「${rule.name}」超时（${_deadlineFor(rule).inMilliseconds} 毫秒），已停用',
-      );
+      _reportOnce(rule, _ruleTimeout(rule));
       await onRuleDisabled?.call(rule);
       return null;
     }
     if (outcome.error != null) {
-      _reportOnce(rule, '替换规则「${rule.name}」出错：${outcome.error}');
+      _reportOnce(rule, _ruleFailed(rule, outcome.error!));
       return null;
     }
     return (text: outcome.text!, edits: outcome.edits!);
   }
 
-  void _reportOnce(ReplaceRule rule, String message) {
+  StoreMessage _ruleTimeout(ReplaceRule rule) => StoreMessage(
+    StoreMessageCode.replaceRuleTimedOut,
+    <Object?>[rule.name, _deadlineFor(rule).inMilliseconds],
+  );
+
+  StoreMessage _ruleFailed(ReplaceRule rule, String error) => StoreMessage(
+    StoreMessageCode.replaceRuleFailed,
+    <Object?>[rule.name, error],
+  );
+
+  void _reportOnce(ReplaceRule rule, StoreMessage message) {
     if (!_reported.add(rule.id)) return;
     onNotice?.call(message);
   }

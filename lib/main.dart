@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'domain/contracts.dart';
 import 'l10n/app_localizations.dart';
+import 'l10n/store_message_text.dart';
 import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
@@ -252,7 +253,12 @@ class _LiberHomePageState extends State<LiberHomePage> {
     final library = _library;
     if (library == null) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final processing = await _contentProcessing(book, library, messenger);
+    final processing = await _contentProcessing(
+      book,
+      library,
+      messenger,
+      AppLocalizations.of(context),
+    );
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -275,6 +281,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
     LocalBook book,
     LocalLibrary library,
     ScaffoldMessengerState? messenger,
+    AppLocalizations l10n,
   ) async {
     try {
       final rules = await library.store.replaceRules();
@@ -293,8 +300,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // The frozen `Book.getReSegment()`, which defaults off (21 of the
         // operator's 1419 books carry it on).
         useReSegment: false,
-        onNotice: (message) =>
-            messenger?.showSnackBar(SnackBar(content: Text(message))),
+        onNotice: (message) => messenger?.showSnackBar(
+          SnackBar(content: Text(message.text(l10n))),
+        ),
         // The frozen reader disables a rule that exceeded its deadline.
         onRuleDisabled: (rule) => library.store.putReplaceRule(
           rule.copyWith(isEnabled: false).toCompanion(true),
@@ -593,7 +601,13 @@ class _LiberHomePageState extends State<LiberHomePage> {
             });
             await _refreshShelfViews();
           } on FormatException catch (error) {
-            if (mounted) setState(() => _migrationMessage = error.message);
+            if (mounted) {
+              setState(
+                () => _migrationMessage = AppLocalizations.of(
+                  context,
+                ).importFileFailed(error.message),
+              );
+            }
           }
         },
       ),
@@ -760,7 +774,7 @@ class _BookshelfPage extends StatelessWidget {
                         Text(l10n.controlledSourceDescription),
                         const SizedBox(height: 18),
                         Text(
-                          run.message.isEmpty ? l10n.notRunYet : run.message,
+                          run.message?.text(l10n) ?? l10n.notRunYet,
                           key: const ValueKey('run-status'),
                         ),
                         const SizedBox(height: 12),
@@ -1113,7 +1127,10 @@ class _MigrationPage extends StatelessWidget {
               Text(l10n.opening)
             else if (report.imported)
               Text(
-                l10n.importedNow(report.importedAt, report.summary()),
+                l10n.importedNow(
+                  report.importedAt,
+                  report.summary().text(l10n),
+                ),
                 key: const ValueKey('space-store-status'),
               )
             else if (report.importedAt.isEmpty)
@@ -1123,12 +1140,15 @@ class _MigrationPage extends StatelessWidget {
               )
             else
               Text(
-                l10n.alreadyImported(report.importedAt, report.summary()),
+                l10n.alreadyImported(
+                  report.importedAt,
+                  report.summary().text(l10n),
+                ),
                 key: const ValueKey('space-store-status'),
               ),
             if (report != null && report.losses.isNotEmpty) ...[
               const SizedBox(height: 12),
-              for (final loss in report.losses) Text('• $loss'),
+              for (final loss in report.losses) Text('• ${loss.text(l10n)}'),
             ],
           ],
         ),
@@ -1231,7 +1251,8 @@ class _MigrationPage extends StatelessWidget {
                   Text(l10n.previewBooks(result!.bookCount)),
                   Text(l10n.previewProgress(result!.progressCount)),
                   const SizedBox(height: 12),
-                  for (final loss in result!.losses) Text('• $loss'),
+                  for (final loss in result!.losses)
+                    Text('• ${loss.text(l10n)}'),
                 ],
               ),
             ),

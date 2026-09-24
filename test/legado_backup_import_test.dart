@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/domain/store_message.dart';
 import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/space_store.dart';
 
@@ -37,7 +38,12 @@ void main() {
     expect(result.sourceCount, 1);
     expect(result.bookCount, 1);
     expect(result.progressCount, 1);
-    expect(result.losses, contains(contains('Cookie')));
+    expect(
+      result.losses,
+      contains(
+        const StoreMessage(StoreMessageCode.backupEnvelopeExcludedFamilies),
+      ),
+    );
 
     final source = (await store.sourceByUrl('fixture'))!;
     expect(source.name, 'Fixture');
@@ -85,8 +91,10 @@ void main() {
     ''';
     final first = await LegadoBackupImport(store).importJson(partial);
     expect(
-      first.losses.any((loss) => loss.contains('已跳过')),
-      isTrue,
+      first.losses,
+      contains(
+        const StoreMessage(StoreMessageCode.backupEnvelopeBookWithoutKey),
+      ),
       reason: '一条没有 bookUrl/bookId/name 的记录被报告',
     );
     expect(

@@ -1409,6 +1409,336 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'完成'**
   String get done;
+
+  /// No description provided for @importFileFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入文件失败：{error}'**
+  String importFileFailed(String error);
+
+  /// No description provided for @scriptConvertFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'中文转换失败：{error}'**
+  String scriptConvertFailed(String error);
+
+  /// No description provided for @legacyOnlineReadingNotImported.
+  ///
+  /// In zh, this message translates to:
+  /// **'online_reading.json 未导入：{reason}（原文件保留）'**
+  String legacyOnlineReadingNotImported(String reason);
+
+  /// No description provided for @legacyOnlineReadingRecordWithoutSourceUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'一条在线阅读记录没有 bookSourceUrl，已跳过'**
+  String get legacyOnlineReadingRecordWithoutSourceUrl;
+
+  /// No description provided for @legacyOnlineReadingLastReadPointer.
+  ///
+  /// In zh, this message translates to:
+  /// **'在线阅读记录的“上次阅读”指针没有等价字段，改由最近保存的进度回答'**
+  String get legacyOnlineReadingLastReadPointer;
+
+  /// No description provided for @legacyLocalBooksNotParsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'local_books.json 无法解析，已跳过（原文件保留）'**
+  String get legacyLocalBooksNotParsed;
+
+  /// No description provided for @legacyLocalBooksWithoutRoot.
+  ///
+  /// In zh, this message translates to:
+  /// **'local_books.json 没有根目录，未导入'**
+  String get legacyLocalBooksWithoutRoot;
+
+  /// No description provided for @legacyLocalBookBytesExcluded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地文件字节不导入；文件缺失的书已标记 needsRelink'**
+  String get legacyLocalBookBytesExcluded;
+
+  /// No description provided for @legacyLocalFilesMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个本地文件已不在原路径'**
+  String legacyLocalFilesMissing(int count);
+
+  /// No description provided for @legacyMigrationStateNotParsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'migration_state.json 无法解析，已跳过（原文件保留）'**
+  String get legacyMigrationStateNotParsed;
+
+  /// No description provided for @legacyMigrationNetworkBookWithoutUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'迁移记录里的网络书籍没有 bookSourceUrl，只保留标题与进度'**
+  String get legacyMigrationNetworkBookWithoutUrl;
+
+  /// No description provided for @legacyImportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源 {sources} · 书籍 {books} · 目录 {chapters} · 进度 {progress} · 本地文件 {localFiles}'**
+  String legacyImportSummary(
+    int sources,
+    int books,
+    int chapters,
+    int progress,
+    int localFiles,
+  );
+
+  /// No description provided for @backupEnvelopeExcludedFamilies.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地文件字节、Cookie、缓存和下载内容不会从备份中导入'**
+  String get backupEnvelopeExcludedFamilies;
+
+  /// No description provided for @backupEnvelopeNoSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'未发现 Book Source 数据'**
+  String get backupEnvelopeNoSources;
+
+  /// No description provided for @backupEnvelopeNoBooks.
+  ///
+  /// In zh, this message translates to:
+  /// **'未发现书架数据'**
+  String get backupEnvelopeNoBooks;
+
+  /// No description provided for @backupEnvelopeNoProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'未发现阅读进度数据'**
+  String get backupEnvelopeNoProgress;
+
+  /// No description provided for @backupEnvelopeSourceWithoutUrlOrName.
+  ///
+  /// In zh, this message translates to:
+  /// **'一条书源既没有 URL 也没有名字，已跳过'**
+  String get backupEnvelopeSourceWithoutUrlOrName;
+
+  /// No description provided for @backupEnvelopeBookWithoutKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'一条书架记录没有 bookUrl/bookId/name，已跳过'**
+  String get backupEnvelopeBookWithoutKey;
+
+  /// No description provided for @backupExcludedCookies.
+  ///
+  /// In zh, this message translates to:
+  /// **'Cookie：备份里没有 Cookie 表，登录状态不导入'**
+  String get backupExcludedCookies;
+
+  /// No description provided for @backupExcludedCache.
+  ///
+  /// In zh, this message translates to:
+  /// **'缓存：备份里没有 Cache 表，书源缓存不导入'**
+  String get backupExcludedCache;
+
+  /// No description provided for @backupExcludedChapters.
+  ///
+  /// In zh, this message translates to:
+  /// **'章节：备份里没有 BookChapter 表，目录与章节变量不导入'**
+  String get backupExcludedChapters;
+
+  /// No description provided for @backupExcludedDownloads.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载内容：备份里没有已下载正文，需要重新抓取'**
+  String get backupExcludedDownloads;
+
+  /// No description provided for @backupExcludedLocalBytes.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地书籍字节：备份里没有书文件，已标记需要重新链接'**
+  String get backupExcludedLocalBytes;
+
+  /// No description provided for @backupAndroidPreferences.
+  ///
+  /// In zh, this message translates to:
+  /// **'Android 设置：config.xml 的 {count} 项偏好属于 Android 端，不导入'**
+  String backupAndroidPreferences(int count);
+
+  /// No description provided for @backupAbsentMember.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份没有 {member}：对应的数据为空'**
+  String backupAbsentMember(String member);
+
+  /// No description provided for @backupUnreadMembers.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份里还有 {count} 个成员没有导入：{members}'**
+  String backupUnreadMembers(int count, String members);
+
+  /// No description provided for @backupInvalidSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条书源缺少 URL 或名字，已跳过'**
+  String backupInvalidSources(int count);
+
+  /// No description provided for @backupInvalidGroups.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个分组没有名字，已跳过'**
+  String backupInvalidGroups(int count);
+
+  /// No description provided for @backupInvalidBooks.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条书架记录没有 bookUrl，已跳过'**
+  String backupInvalidBooks(int count);
+
+  /// No description provided for @backupConflictingSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个书源在空间中已存在且内容不同，未替换（替换需要确认）'**
+  String backupConflictingSources(int count);
+
+  /// No description provided for @backupDuplicateBooks.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条书架记录的 bookUrl 重复，合并为一条'**
+  String backupDuplicateBooks(int count);
+
+  /// No description provided for @backupSystemGroups.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个系统分组（全部/本地/音频等视图）不导入：它们由书籍类型推导'**
+  String backupSystemGroups(int count);
+
+  /// No description provided for @backupUnmatchedMasks.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 本书的分组位在 bookGroup.json 里没有对应分组'**
+  String backupUnmatchedMasks(int count);
+
+  /// No description provided for @backupUnreadBooks.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 本书在备份里没有阅读进度（从未打开），未写进度行'**
+  String backupUnreadBooks(int count);
+
+  /// No description provided for @backupNonTextSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个非文本书源已导入，v1 不执行（ADR 0012）'**
+  String backupNonTextSources(int count);
+
+  /// No description provided for @backupDroppedCovers.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个封面指向本地路径，未导入（本地字节不迁移）'**
+  String backupDroppedCovers(int count);
+
+  /// No description provided for @backupDroppedEntries.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条记录不是 JSON 对象，已跳过'**
+  String backupDroppedEntries(int count);
+
+  /// No description provided for @backupProgressChapterNameDropped.
+  ///
+  /// In zh, this message translates to:
+  /// **'阅读进度的章节名没有等价字段，进度只保留章节序号与字符位置'**
+  String get backupProgressChapterNameDropped;
+
+  /// No description provided for @backupNoSourceMember.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份没有 bookSource.json：没有书源导入'**
+  String get backupNoSourceMember;
+
+  /// No description provided for @backupNoGroupMember.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份没有 bookGroup.json：分组不导入'**
+  String get backupNoGroupMember;
+
+  /// No description provided for @replaceRuleUnusable.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换规则「{name}」不可用：{reason}'**
+  String replaceRuleUnusable(String name, String reason);
+
+  /// No description provided for @replaceRuleTimedOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换规则「{name}」超时（{milliseconds} 毫秒），已停用'**
+  String replaceRuleTimedOut(String name, int milliseconds);
+
+  /// No description provided for @replaceRuleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换规则「{name}」出错：{error}'**
+  String replaceRuleFailed(String name, String error);
+
+  /// No description provided for @runSearching.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在搜索'**
+  String get runSearching;
+
+  /// No description provided for @runReading.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取 {name}'**
+  String runReading(String name);
+
+  /// No description provided for @runReadingToc.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取目录'**
+  String get runReadingToc;
+
+  /// No description provided for @runJsonFirstChapterDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'首章读取完成（JSON 规则子集）'**
+  String get runJsonFirstChapterDone;
+
+  /// No description provided for @runFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'{stage}：{error}'**
+  String runFailed(String stage, String error);
+
+  /// No description provided for @runControlledSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索返回 1 本书'**
+  String get runControlledSearch;
+
+  /// No description provided for @runControlledBookInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'书籍信息已返回'**
+  String get runControlledBookInfo;
+
+  /// No description provided for @runControlledToc.
+  ///
+  /// In zh, this message translates to:
+  /// **'目录已返回 12 章'**
+  String get runControlledToc;
+
+  /// No description provided for @runControlledContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'正文已返回'**
+  String get runControlledContent;
+
+  /// No description provided for @runControlledCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'Windows 受控书源链路完成，4 个阶段均有 trace'**
+  String get runControlledCompleted;
+
+  /// No description provided for @literalCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{text}'**
+  String literalCopy(String text);
 }
 
 class _AppLocalizationsDelegate
