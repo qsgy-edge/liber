@@ -191,6 +191,26 @@ browser's "continue (unsafe)" contract; it is the only place this boundary lower
 user's explicit say-so, and it must be implemented for whichever transport the request uses, HTTP or WebView.
 Implementation is #30.
 
+**Addendum 2026-09-24 — cleartext `http`, per platform and per path (#71).** The paragraphs above settle TLS;
+this settles plain `http`. The baseline permits cleartext on Android
+(`app/src/main/res/xml/network_security_config.xml`: `base-config cleartextTrafficPermitted="true"`, and the
+frozen tree carries no Apple posture at all). The product keeps that reachability on every platform rather than
+refusing `http://` by name: **44 of the operator's 150 resolved used sources carry an `http://` identity URL**
+(95 shelf entries; 42 of those records declare no same-host HTTPS reference and two declare only a partial one,
+so 44 is a scope count, not a demonstrated failure count — the extraction and its caveats are in #71's decision
+record). Both paths are covered: `dart:io` in `HttpSourceTransport` never consults ATS, and each platform's
+WebView gets the declaration its engine needs — Android keeps the baseline's config, Windows WebView2 needs
+nothing, and **both** Apple plists (`ios/Runner/Info.plist`, `macos/Runner/Info.plist`) carry
+`NSAppTransportSecurity` → `NSAllowsArbitraryLoadsInWebContent = true`, pinned by
+`test/apple_cleartext_webview_test.dart`. That key is deliberately the web-view-only one: it drops every
+ATS-specific restriction for WebKit content — including ATS's TLS minimums on WebView HTTPS — while ATS stays in
+force for the rest of the app, and it never blanket-trusts an invalid certificate (the per-source exception
+above remains the only trust exception). There is no cleartext prompt, no per-source switch and no refusal
+message, so no product flow changes; what the user accepts is that an http request, its body, its credentials
+and its cookies can be observed or changed in transit. Linux's WebKitGTK adapter must implement this same
+policy when it exists. Apple's and Linux's WebView **execution** stays `not-run` (#2, #56): a declaration is a
+policy, not a row.
+
 ## 6. Escape hatches, member by member
 
 | Member | Decision | Reason and consequence |
@@ -264,6 +284,9 @@ space's `data.db`**, so encryption stays a property of one file.
   platform's limits rows stay each platform's own as ADR 0009 requires.
 - The TLS exception is a property of the transport, so it must be implemented for the Dart HTTP client and for
   each WebView adapter as #2 lands, with the same stored per-source flag.
+- The cleartext policy (§5's 2026-09-24 addendum) is the same on every platform but its declaration is not:
+  `dart:io` needs none, Android keeps the baseline config, Windows WebView2 needs nothing, both Apple plists
+  carry `NSAllowsArbitraryLoadsInWebContent`, and the Linux adapter owes the same reachability when it lands.
 - The registrable-domain cookie key needs a public-suffix list on all five platforms; the implementation
   ticket picks it and verifies its license, as this repository's rule requires before a dependency is added.
 - The deferred families (§2, §4, §6) are cross-platform work with no platform-specific policy: when they land,
