@@ -472,6 +472,49 @@ Map<String, Object?>? _decodeUrlOptionTail(String optionText) {
   return lenient is Map<String, Object?> ? lenient : null;
 }
 
+/// The headers a source `header` rule's text declares, read the way the frozen
+/// `BaseSource.getHeaderMap` reads it, or null when it does not declare a map.
+///
+/// The frozen call is `GSON.fromJsonObject` of a `Map<String,String>` over the
+/// `header` text, `.getOrNull()` inside a `try { … } catch (e: Exception)`:
+/// a header rule whose text is not a map of scoped strings is **not** an error,
+/// and the source runs with no source headers at all. This reader is the same
+/// lenient Gson-style reader the `,{…}` URL option tail uses ([_LenientJson]):
+/// unquoted names and single-quoted strings parse, and a failed read is null.
+///
+/// The value types are the frozen `Map<String,String>` deserialisation's: a
+/// number or a boolean becomes its text, and a nested object or array makes the
+/// whole read the frozen `getOrNull()`'s null. One recorded divergence: a
+/// `null`-valued entry is dropped here where Gson keeps a null in the map (an
+/// HTTP request header cannot carry one, and no record in the operator's
+/// library declares one), and [_LenientJson] accepts a trailing comma before a
+/// closer where Gson refuses it.
+Map<String, String>? parseSourceHeaderMap(String text) {
+  final Object? parsed;
+  try {
+    parsed = _LenientJson(text).readDocument();
+  } on _LenientJsonError {
+    return null;
+  }
+  if (parsed is! Map) return null;
+  final headers = <String, String>{};
+  for (final entry in parsed.entries) {
+    final key = entry.key;
+    if (key is! String) return null;
+    final value = entry.value;
+    if (value is String) {
+      headers[key] = value;
+    } else if (value is num || value is bool) {
+      headers[key] = '$value';
+    } else if (value != null) {
+      // Gson's String adapter throws for a container, which the frozen caller's
+      // `catch` turns into no headers.
+      return null;
+    }
+  }
+  return headers;
+}
+
 /// Thrown inside [_LenientJson]; every caller turns it into "no options".
 class _LenientJsonError implements Exception {
   const _LenientJsonError();

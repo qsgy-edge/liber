@@ -12,9 +12,9 @@
 // shapes, the shared rule-field split, the JSON adapter's per-group validation
 // and its declared-field vocabulary. Every read it can is the product's own call
 // (`isJsonRuleSource`, `RuleField.extractionText`/`parseRuleField`,
-// `JsonSourceRules.validate`, `splitSourceUrlOptions`, `SourceHttpUri.parse`);
-// a rule the product keeps private is restated under its call site in the
-// reason's own entry, which is the one place the two can drift apart.
+// `JsonSourceRules.validate`, `splitSourceUrlOptions`); a rule the product keeps
+// private is restated under its call site in the reason's own entry, which is
+// the one place the two can drift apart.
 //
 // What it does not do: no request, no transport, no script runtime and no
 // native library — this mode initialises no `fjs` and reads no page. It sends
@@ -29,8 +29,6 @@
 // The one example per reason is the record's *position* in `bookSource.json`,
 // not an identity: the origin name the brief allows (`bookSourceUrl`) is itself a
 // URL, which the leak rule forbids, and a position leaks nothing.
-import 'dart:convert';
-
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/json_source_rules.dart';
 import 'package:liber/source/rule_field.dart';
@@ -78,12 +76,16 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
   ReadinessCheck(
     id: 'source-url',
     reads:
-        'the record declares no string `bookSourceUrl`, or it is not an '
-        'http(s) address with a host and no user info',
+        'the record declares no `bookSourceUrl` string (its identity), or its '
+        'identity text cannot be parsed at all; the identity is a plain string '
+        'in the frozen, not required to be an HTTP URL, and a fetchable target '
+        'is required only where a request is built, which is not a static '
+        'answer',
     productCode:
-        'SourceHttpUri.parse and HtmlSourcePipeline._resolve '
-        '(lib/source/html_source_pipeline.dart:601-609), JsonSourcePipeline'
-        '._base/_url (lib/source/json_source_pipeline.dart:70,575-586)',
+        "the stage's own read of `source['bookSourceUrl'] as String` and "
+        'SourceHttpUri.parse: HtmlSourcePipeline.search '
+        '(lib/source/html_source_pipeline.dart:707) and JsonSourcePipeline._base '
+        '(lib/source/json_source_pipeline.dart:70)',
     refuses: _sourceUrlRefused,
   ),
   ReadinessCheck(
@@ -91,22 +93,24 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     reads: 'the record declares no `searchUrl` string to search with',
     productCode:
         "the stage's own read of `source['searchUrl'] as String`: "
-        'HtmlSourcePipeline.search (lib/source/html_source_pipeline.dart:713) '
+        'HtmlSourcePipeline.search (lib/source/html_source_pipeline.dart:710) '
         'and JsonSourcePipeline.search '
-        '(lib/source/json_source_pipeline.dart:601)',
+        '(lib/source/json_source_pipeline.dart:614)',
     refuses: _searchUrlRefused,
   ),
   ReadinessCheck(
     id: 'header-rule',
     reads:
         'the `header` rule is not a string, is a `<js>` rule with no closing '
-        'marker, or is a plain string that is not a JSON map of strings (a '
-        '`proxy` key included)',
+        'marker, or declares the `proxy` key this product refuses (a plain '
+        'string that is not a JSON map is read as no headers, as the frozen '
+        '`BaseSource.getHeaderMap` does)',
     productCode:
         'HtmlSourcePipeline._headers '
-        '(lib/source/html_source_pipeline.dart:266-301), '
+        '(lib/source/html_source_pipeline.dart:267-295), '
         'JsonSourcePipeline._readHeaders/_validate '
-        '(lib/source/json_source_pipeline.dart:165-171,358-384)',
+        '(lib/source/json_source_pipeline.dart:165-171,358-385) over '
+        'parseSourceHeaderMap (lib/source/source_url_rules.dart)',
     refuses: _headerRuleRefused,
   ),
   ReadinessCheck(
@@ -115,8 +119,8 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'a `ruleSearch`/`ruleToc`/`ruleContent` field a stage reads without an '
         'optional fallback is absent or blank',
     productCode:
-        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:575-590) '
-        'at its call sites: search (744-751), the TOC builder (910-925) and the '
+        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:571-584) '
+        'at its call sites: search (740-751), the TOC builder (906-925) and the '
         'content stage (1236)',
     pipeline: SourcePipeline.html,
     refuses: _htmlMissingRequiredField,
@@ -127,7 +131,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'a rule field a stage reads is declared as something other than a '
         'string rule',
     productCode:
-        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:582-584)',
+        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:578-580)',
     pipeline: SourcePipeline.html,
     refuses: _htmlFieldNotString,
   ),
@@ -140,7 +144,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     productCode:
         'RuleField.parseRuleField/extractionText '
         '(lib/source/rule_field.dart:181-241), reached through '
-        'HtmlSourcePipeline._field (lib/source/html_source_pipeline.dart:423-438)',
+        'HtmlSourcePipeline._field (lib/source/html_source_pipeline.dart:419-434)',
     pipeline: SourcePipeline.html,
     refuses: _htmlRuleFieldSyntax,
   ),
@@ -151,7 +155,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'carries an `@js:`/`<js>` script',
     productCode:
         'HtmlSourcePipeline._field(allowScripts: false) '
-        '(lib/source/html_source_pipeline.dart:423-438) at both stages',
+        '(lib/source/html_source_pipeline.dart:419-434) at both stages',
     pipeline: SourcePipeline.html,
     refuses: _htmlListRuleScript,
   ),
@@ -160,7 +164,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     reads: 'a per-element value rule is only a script, with no extraction text',
     productCode:
         'HtmlSourcePipeline._elementField '
-        '(lib/source/html_source_pipeline.dart:439-447)',
+        '(lib/source/html_source_pipeline.dart:435-443)',
     pipeline: SourcePipeline.html,
     refuses: _htmlScriptOnlyElementField,
   ),
@@ -184,7 +188,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'applied instead)',
     productCode:
         'the chapter-address guard in HtmlSourcePipeline.details '
-        '(lib/source/html_source_pipeline.dart:1026-1031) over '
+        '(lib/source/html_source_pipeline.dart:1026-1030) over '
         'splitSourceUrlOptions (lib/source/source_url_rules.dart:291-330)',
     pipeline: SourcePipeline.html,
     refuses: _htmlTocChapterOptionsRefused,
@@ -195,7 +199,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'a group a JSON stage reads (`ruleSearch`/`ruleBookInfo`/`ruleToc`/'
         '`ruleContent`) is absent or is not an object',
     productCode:
-        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:497-500)',
+        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:499-501)',
     pipeline: SourcePipeline.json,
     refuses: _jsonMissingGroup,
   ),
@@ -205,7 +209,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'a declared field of one of those groups is neither a string nor '
         'empty',
     productCode:
-        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:501-504)',
+        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:505-507)',
     pipeline: SourcePipeline.json,
     refuses: _jsonInvalidField,
   ),
@@ -215,7 +219,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         "the field's extraction text is refused: the shared rule-field split "
         'rejects it, or the bounded JSONPath reader cannot run it',
     productCode:
-        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:519-531) '
+        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:528-546) '
         'over RuleField.extractionText (lib/source/rule_field.dart:234-241) and '
         'JsonSourceRules.validate (lib/source/json_source_rules.dart:79-100)',
     pipeline: SourcePipeline.json,
@@ -227,7 +231,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'the field is not one the stages read: the declared-field vocabulary '
         'refuses it',
     productCode:
-        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:533-557)',
+        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:549-578)',
     pipeline: SourcePipeline.json,
     refuses: _jsonUnsupportedField,
   ),
@@ -235,7 +239,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     id: 'json-missing-required-field',
     reads: 'a required field of a group is not declared as a non-empty string',
     productCode:
-        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:558-560)',
+        'JsonSourcePipeline._rules (lib/source/json_source_pipeline.dart:581-583)',
     pipeline: SourcePipeline.json,
     refuses: _jsonMissingRequiredField,
   ),
@@ -539,16 +543,18 @@ RuleFieldText? _ruleFieldText(String value) {
 }
 
 bool _sourceUrlRefused(Map<String, dynamic> source) {
+  // The frozen reads `bookSourceUrl` as a plain identity string — `BookSource`
+  // uses it as an index key and as a `baseUrl` — and nothing requires it to
+  // parse as an HTTP URL. The product parses it leniently; only a missing or
+  // non-string identity, or one text that cannot be parsed at all, is a static
+  // answer. A relative rule value against an unfetchable base fails with a named
+  // error where the request target is built (the frozen's own
+  // `NetworkUtils.getAbsoluteURL` behaviour), which this network-free audit does
+  // not read: a label identity with absolute rules is ready here (ticket #83,
+  // item 5).
   final identity = source['bookSourceUrl'];
   if (identity is! String || identity.isEmpty) return true;
-  return _refused(() {
-    final uri = SourceHttpUri.parse(identity);
-    if (!const ['http', 'https'].contains(uri.scheme) ||
-        uri.host.isEmpty ||
-        uri.userInfo.isNotEmpty) {
-      throw const FormatException('not a source address');
-    }
-  });
+  return _refused(() => SourceHttpUri.parse(identity));
 }
 
 bool _searchUrlRefused(Map<String, dynamic> source) =>
@@ -565,19 +571,12 @@ bool _headerRuleRefused(Map<String, dynamic> source) {
   // its closing marker is refused before the script would run.
   if (lower.startsWith('@js:')) return false;
   if (lower.startsWith('<js>')) return text.lastIndexOf('<') <= 4;
-  final Object? parsed;
-  try {
-    parsed = jsonDecode(text);
-  } on FormatException {
-    return true;
-  }
-  if (parsed is! Map) return true;
-  if (parsed.entries.any(
-    (entry) => entry.key is! String || entry.value is! String,
-  )) {
-    return true;
-  }
-  return parsed.keys.any((key) => '$key'.toLowerCase() == 'proxy');
+  // The product reads the text with `parseSourceHeaderMap` and treats a null as
+  // "no source headers" (the frozen `getOrNull()`), so a text that is not a JSON
+  // map is no longer a refusal; only the `proxy` key stays one.
+  final headers = parseSourceHeaderMap(text);
+  if (headers == null) return false;
+  return headers.keys.any((key) => key.toLowerCase() == 'proxy');
 }
 
 /// How one of the HTML pipeline's stages reads one declared field.
@@ -654,7 +653,6 @@ const htmlRuleSlots = <HtmlRuleSlot>[
     'ruleToc',
     'chapterUrl',
     HtmlRuleRead.elementValue,
-    required: true,
   ),
   HtmlRuleSlot('ruleToc', 'updateTime', HtmlRuleRead.elementValue),
   HtmlRuleSlot('ruleToc', 'isVolume', HtmlRuleRead.elementValue),
@@ -682,7 +680,7 @@ const jsonRequiredFields = <String, List<String>>{
 };
 
 /// The declared fields the JSON adapter accepts besides its required ones
-/// (lib/source/json_source_pipeline.dart:537-556).
+/// (lib/source/json_source_pipeline.dart:549-578).
 const jsonAcceptedFields = <String>{
   'author',
   'coverUrl',
@@ -696,6 +694,8 @@ const jsonAcceptedFields = <String>{
   'isPay',
   'canReName',
   'downloadUrls',
+  'imageStyle',
+  'replaceRegex',
   'init',
   'checkKeyWord',
   'title',
@@ -710,8 +710,16 @@ const jsonChainedFields = <String, String>{
 };
 
 /// The fields `_rules` does not validate as an extraction: a check keyword and
-/// the rename flag are values, not rules.
-const jsonUnvalidatedFields = <String>{'checkKeyWord', 'canReName'};
+/// the rename flag are values, and `imageStyle` is a content *value* this tree
+/// reads off the source (`sourceImageStyle`) while `replaceRegex` is a frozen
+/// field the JSON path does not execute. A declared value must not fail a stage
+/// (ticket #83, the `downloadUrls` principle #81 landed).
+const jsonUnvalidatedFields = <String>{
+  'checkKeyWord',
+  'canReName',
+  'imageStyle',
+  'replaceRegex',
+};
 
 /// The field `_rules` accepts and ignores: nothing executes it, so it must not
 /// fail a stage (ticket #81).

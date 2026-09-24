@@ -24,17 +24,17 @@ void main() {
     'href,{"headers":{"User-Agent":"x"},"retry":2,"webView":true}',
   );
   final byReason = <String, Map<String, dynamic>>{
-    'source-url': _withTop(
-      _html('unused.example'),
-      'bookSourceUrl',
-      'plain.host/unused',
-    ),
+    'source-url': _withoutTop(_html('unused.example'), 'bookSourceUrl'),
     'search-url': _withoutTop(_html('no-search.example'), 'searchUrl'),
-    'header-rule': _withTop(_html('bad-header.example'), 'header', 'not json'),
+    'header-rule': _withTop(
+      _html('bad-header.example'),
+      'header',
+      '{"proxy":"http://127.0.0.1:1"}',
+    ),
     'html-missing-required-field': _withoutField(
-      _html('no-chapter-url.example'),
+      _html('missing-toc-field.example'),
       'ruleToc',
-      'chapterUrl',
+      'chapterName',
     ),
     'html-field-not-string': _withField(
       _html('boolean-field.example'),
@@ -124,7 +124,7 @@ void main() {
       'name': 'used',
     },
     <String, dynamic>{
-      'origin': 'https://no-chapter-url.example',
+      'origin': 'https://missing-toc-field.example',
       'name': 'used',
     },
     // An origin no record declares: a shelf row that resolves to nothing is not
@@ -220,6 +220,61 @@ void main() {
     );
     expect(auditSource(mixed).pipeline, SourcePipeline.html);
     expect(auditSource(mixed).reasons, isEmpty);
+  });
+
+  test('the four product-bug fixes move the audit with the product (#83)', () {
+    final html = _html('fix.example');
+    final json = _json('fix.example');
+    // 1. A `header` text that is not a JSON map is read as no headers (the
+    // frozen `getOrNull()`), not a refusal; only `proxy` and a non-string stay.
+    expect(
+      auditSource(_withTop(html, 'header', 'not json')).reasons,
+      isEmpty,
+    );
+    expect(
+      auditSource(_withTop(html, 'header', "{'X-Token':'1'}")).reasons,
+      isEmpty,
+    );
+    expect(
+      auditSource(_withTop(html, 'header', 7)).reasons,
+      <String>['header-rule'],
+    );
+    // 2. `imageStyle`/`replaceRegex` are declared fields this product does not
+    // validate as an extraction.
+    for (final entry in <(String, String)>[
+      ('ruleContent', 'imageStyle'),
+      ('ruleContent', 'replaceRegex'),
+    ]) {
+      expect(
+        auditSource(_withField(json, entry.$1, entry.$2, 'x')).reasons,
+        isEmpty,
+        reason: '${entry.$1}.${entry.$2}',
+      );
+    }
+    // 3. A field whose text has nothing left to parse validates.
+    for (final text in <String>[r'##x##y', '@get:x']) {
+      expect(
+        auditSource(_withField(json, 'ruleContent', 'content', text)).reasons,
+        isEmpty,
+        reason: text,
+      );
+    }
+    // 4. A blank `ruleToc.chapterUrl` is the frozen empty-URL fallback.
+    expect(
+      auditSource(_withoutField(html, 'ruleToc', 'chapterUrl')).reasons,
+      isEmpty,
+    );
+    // 5. The identity address is a plain string in the frozen, so a label
+    // identity with absolute rules is not a refusal; only a missing or
+    // non-string identity is.
+    expect(
+      auditSource(_withTop(html, 'bookSourceUrl', 'a label, not a URL')).reasons,
+      isEmpty,
+    );
+    expect(
+      auditSource(_withoutTop(html, 'bookSourceUrl')).reasons,
+      <String>['source-url'],
+    );
   });
 
   test('every branch of the content-replacement refusal is pinned', () {
