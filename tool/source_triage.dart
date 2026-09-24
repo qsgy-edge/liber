@@ -1,6 +1,11 @@
 // Live triage: runs each exported source through the product
 // pipelines and reports only stage outcomes. Never logs headers, tokens, URLs
 // or response bodies. Not a golden and not a compatibility verdict.
+//
+// `--usage <backup.zip|bookSource.json>` is the static half (source_usage.dart):
+// it counts the p5-windows-audit.md §3 capability families over the used set
+// and the whole collection, is network-free, never initialises `fjs`, and
+// prints counts only — no source record, URL, host, name or rule text.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,6 +14,8 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+
+import 'source_usage.dart';
 
 String describe(Object error) {
   if (error is SourceScriptError) {
@@ -61,6 +68,20 @@ Future<Map<String, Object?>> triage(
 }
 
 Future<void> main(List<String> args) async {
+  if (args.isNotEmpty && args.first == '--usage') {
+    if (args.length != 2) {
+      stderr.writeln(_usage);
+      exitCode = 2;
+      return;
+    }
+    stdout.write(renderUsageReport(readUsageReport(args[1])));
+    return;
+  }
+  if (args.length < 2) {
+    stderr.writeln(_usage);
+    exitCode = 2;
+    return;
+  }
   final library = args[0];
   final export = jsonDecode(await File(args[1]).readAsString(encoding: utf8));
   final definitions = (export is List ? export : [export]).whereType<Map>();
@@ -91,3 +112,8 @@ Future<void> main(List<String> args) async {
     await InProcessSourceScriptRuntime.dispose();
   }
 }
+
+const String _usage =
+    'usage: dart run tool/source_triage.dart <fjs.dll> <exported sources>\n'
+    '       dart run tool/source_triage.dart --usage '
+    '<backup.zip|bookSource.json>';
