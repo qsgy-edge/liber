@@ -7,12 +7,20 @@ import '../tool/replace_rule_oracle/compare.dart';
 
 void main() {
   late Map<String, dynamic> fixture;
+  late Map<String, dynamic> committedReport;
   late List<Map<String, Object?>> product;
   late Map<String, dynamic> synthetic;
   setUp(() {
     fixture =
         jsonDecode(
               File('tool/replace_rule_oracle/fixtures.json').readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    committedReport =
+        jsonDecode(
+              File(
+                'tool/replace_rule_oracle/evidence/comparison.json',
+              ).readAsStringSync(),
             )
             as Map<String, dynamic>;
     // Synthetic values test verdict mechanics only; never frozen evidence.
@@ -120,4 +128,87 @@ void main() {
       'fail',
     );
   });
+  test('the committed report still describes the committed corpus', () {
+    // The committed evidence is a result record, not a golden (#70): it is
+    // evidence *for the corpus it names*. A corpus edit, a stale pin or a
+    // renamed report row has to fail here instead of leaving the recorded run
+    // describing a corpus that no longer exists.
+    final corpusSha256 = sha256CrlfFile(
+      File('tool/replace_rule_oracle/fixtures.json'),
+    );
+    checkReportMatchesFixture(
+      fixture,
+      committedReport,
+      fixtureSha256: corpusSha256,
+    );
+    expect(committedReport['fixtureSha256'], corpusSha256);
+    final perturbed = jsonDecode(jsonEncode(fixture)) as Map<String, dynamic>;
+    (perturbed['cases'] as List).removeLast();
+    expect(
+      () => checkReportMatchesFixture(
+        perturbed,
+        committedReport,
+        fixtureSha256: corpusSha256,
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => checkReportMatchesFixture(
+        fixture,
+        committedReport,
+        fixtureSha256: 'stale',
+      ),
+      throwsFormatException,
+    );
+    final renamed =
+        jsonDecode(jsonEncode(committedReport)) as Map<String, dynamic>;
+    ((renamed['rows'] as List).first as Map)['id'] = 'other';
+    expect(
+      () => checkReportMatchesFixture(
+        fixture,
+        renamed,
+        fixtureSha256: corpusSha256,
+      ),
+      throwsFormatException,
+    );
+  });
+  test(
+    'the committed report is refused as an input, not blamed on the corpus',
+    () {
+      // The ticket's repro fed evidence/comparison.json in as a golden. The
+      // refusal has to name what the input is missing, not misattribute it to the
+      // fixture.
+      expect(
+        () => compare(committedReport),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('Not a frozen golden'), contains('corpusVersion')),
+          ),
+        ),
+      );
+      // With the envelope repaired the rows still hold verdicts, and that gap is
+      // named too instead of turning every frozen row into a silent not-run.
+      final repaired =
+          jsonDecode(jsonEncode(committedReport)) as Map<String, dynamic>;
+      repaired.addAll({
+        for (final key in ['corpusVersion', 'baselineCommit'])
+          key: fixture[key],
+        'fixtureSha256': 'synthetic-test-hash',
+        'boundary': fixture['comparisonBoundary'],
+        'cleanup': {'databaseClosed': true, 'scratchRemoved': true},
+      });
+      expect(
+        () => compare(repaired),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('status is `pass`'),
+          ),
+        ),
+      );
+    },
+  );
 }

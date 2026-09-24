@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
@@ -8,10 +9,56 @@ import 'package:liber/source/native_library.dart';
 import 'package:liber/store/database.dart' show ReplaceRule;
 import 'package:pointycastle/digests/sha256.dart';
 
-String sha256File(File file) => SHA256Digest()
-    .process(file.readAsBytesSync())
+String sha256Bytes(Uint8List bytes) => SHA256Digest()
+    .process(bytes)
     .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
     .join();
+
+String sha256File(File file) => sha256Bytes(file.readAsBytesSync());
+
+/// This tool directory is not in `.gitattributes`'s `text eol=lf` list, so the
+/// committed evidence pins hash a CRLF working tree. Hash the corpus with those
+/// line endings, so one pin means the same corpus content on an LF checkout and
+/// on the Windows checkout that produced the evidence.
+String sha256CrlfFile(File file) => sha256Bytes(
+  utf8.encode(
+    file.readAsStringSync().replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'),
+  ),
+);
+
+/// The committed report is evidence *for the corpus it names*; it is not a
+/// golden (only `capture.py` on the frozen handset produces one). Refuse a
+/// report that no longer describes this fixture, so a corpus edit cannot
+/// silently leave the recorded run describing a corpus that no longer exists.
+void checkReportMatchesFixture(
+  Map<String, dynamic> fixture,
+  Map<String, dynamic> report, {
+  required String fixtureSha256,
+}) {
+  for (final key in ['fixtureId', 'comparisonBoundary']) {
+    if (report[key] != fixture[key]) {
+      throw FormatException(
+        'Committed report `$key` does not match the fixture',
+      );
+    }
+  }
+  if (report['fixtureSha256'] != fixtureSha256) {
+    throw const FormatException(
+      'Committed report `fixtureSha256` does not match the fixture bytes',
+    );
+  }
+  final cases = jsonEncode([
+    for (final row in fixture['cases'] as List) (row as Map)['id'],
+  ]);
+  final rows = jsonEncode([
+    for (final row in report['rows'] as List) (row as Map)['id'],
+  ]);
+  if (rows != cases) {
+    throw const FormatException(
+      'Committed report row identity/order differs from the fixture cases',
+    );
+  }
+}
 
 /// Only absent evidence becomes not-run. Invalid evidence fails closed.
 /// Policy rows still carry exact differences; they never turn into pass.
@@ -33,9 +80,23 @@ Map<String, Object?> compareRows(
   checkIds(product, 'product');
   List<Map>? frozen;
   if (golden != null) {
+    // The committed `evidence/comparison.json` is this tool's own report: no
+    // capture envelope, and verdicts where a golden holds observations. Name
+    // what the input actually is instead of blaming the fixture for the keys
+    // the input never had.
     for (final key in ['fixtureId', 'corpusVersion', 'baselineCommit']) {
+      if (!golden.containsKey(key)) {
+        throw FormatException(
+          'Not a frozen golden: no `$key` envelope. A golden is written by a '
+          'capture.py device run; the committed evidence/comparison.json is a '
+          'comparison report, which is a result, not an input.',
+        );
+      }
       if (golden[key] != fixture[key]) {
-        throw FormatException('Frozen $key does not match fixture');
+        throw FormatException(
+          'Frozen golden was captured against another corpus: `$key` is '
+          '${golden[key]}, the fixture says ${fixture[key]}',
+        );
       }
     }
     if (golden['fixtureSha256'] != fixtureSha256 ||
@@ -52,6 +113,15 @@ Map<String, Object?> compareRows(
     }
     frozen = (golden['rows'] as List).cast<Map>();
     checkIds(frozen, 'frozen');
+    for (final row in frozen) {
+      if (row['status'] != 'observed') {
+        throw FormatException(
+          'Not a frozen golden: row ${row['id']} status is `${row['status']}`. '
+          'A golden holds the frozen reader\'s raw observations; a report\'s '
+          'verdicts cannot be re-derived into a comparison.',
+        );
+      }
+    }
   }
   final rows = <Map<String, Object?>>[];
   for (var i = 0; i < cases.length; i++) {
