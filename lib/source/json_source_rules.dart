@@ -80,7 +80,13 @@ class JsonSourceRules {
     final text = _withoutJsonMode(
       splitRuleFields(rule).rule.replaceAll(_ruleFieldToken, '').trim(),
     );
-    if (text.contains('{{')) return;
+    // A field whose text has nothing left to parse is read by this tree's own
+    // runtime, not an unreadable rule: a `##…`-only field carries only a
+    // replacement and a `@get:`-only field is supplied by its substitution
+    // (`RuleField.resolve`), so the parse gate belongs to what is left to
+    // parse, not to such a field. The frozen reads the same shape as the blank
+    // rule branch (`AnalyzeRule.kt:259-300`).
+    if (text.isEmpty || text.contains('{{')) return;
     _validateParts(text, forList: forList);
   }
 

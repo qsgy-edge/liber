@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
@@ -555,6 +556,125 @@ void main() {
       );
       expect(chapters.single.options.headers, {'X-Test': '1'});
       expect('${chapters.single.url}', 'http://example.test/c/1');
+    });
+  });
+
+  group('the frozen shapes the product refused (#83)', () {
+    // 5. The identity address is a plain string in the frozen (`BookSource.kt:34`
+    // is an index key and a `baseUrl`), so a label identity with absolute rules
+    // must read its stages; a fetchable target is required only where a request
+    // is built.
+    test('a label identity with absolute rules reads its details and chapters',
+        () async {
+      final pages = _Pages({
+        '/search': '<div class="item"><h3><a href="http://example.test/book/7">'
+            '书</a></h3></div>',
+        '/book/7': '<ul class="chapters"><li>'
+            '<a href="http://example.test/c/1">第一章</a></li></ul>',
+      });
+      final source = <String, dynamic>{
+        // A display label, not a URL: no scheme, no host.
+        'bookSourceUrl': '书架·标签',
+        'searchUrl': 'http://example.test/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': 'div.item',
+          'name': 'h3 a@text',
+          'bookUrl': 'h3 a@href',
+        },
+        'ruleToc': {
+          'chapterList': 'ul.chapters li',
+          'chapterName': 'a@text',
+          'chapterUrl': 'a@href',
+        },
+      };
+      final pipeline = HtmlSourcePipeline(source, pages);
+      final hits = await pipeline.search('书');
+      expect(hits.single.title, '书');
+      final (_, chapters) = await pipeline.details(hits.single);
+      expect(chapters.single.name, '第一章');
+      expect('${chapters.single.url}', 'http://example.test/c/1');
+    });
+
+    // 4. A blank `ruleToc.chapterUrl` is not a refusal: the frozen reads the
+    // empty rule list as `""` and takes the empty-URL fallback
+    // (`BookChapterList.kt:229-243`), which this TOC builder already applies.
+    test('a blank chapterUrl takes the TOC page address', () async {
+      final pages = _Pages({
+        '/book/7': '<ul class="chapters">'
+            '<li><a>第一章</a></li>'
+            '</ul>',
+      });
+      final (_, chapters) = await HtmlSourcePipeline({
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {'intro': 'p.intro@text'},
+        'ruleToc': {
+          'chapterList': 'ul.chapters li',
+          'chapterName': 'a@text',
+          // no chapterUrl rule at all
+        },
+      }, pages).details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(chapters.single.name, '第一章');
+      expect('${chapters.single.url}', 'http://example.test/book/7');
+    });
+
+    // 2. `ruleContent.imageStyle` and `ruleContent.replaceRegex` are declared
+    // fields the JSON adapter refused as "unsupported" and validated as
+    // extractions; `imageStyle` is a value this tree reads, and `replaceRegex`
+    // is a frozen field the JSON path does not execute.
+    test('a JSON source declaring imageStyle and replaceRegex reads its stages',
+        () async {
+      final transport = _Pages({
+        '/book/7': jsonEncode({
+          'author': '作者甲',
+          'chapters': [
+            {'name': '第一章', 'url': '/c/1'},
+          ],
+        }),
+        '/c/1': jsonEncode({'body': '正文'}),
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://example.test',
+        'ruleBookInfo': {'author': r'$.author'},
+        'ruleToc': {
+          'chapterList': r'$.chapters[*]',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+        'ruleContent': {
+          'content': r'$.body',
+          'imageStyle': 'FULL',
+          'replaceRegex': r'##a##b',
+        },
+      };
+      final pipeline = JsonSourcePipeline(source, transport);
+      final (book, chapters) = await pipeline.details(
+        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+      );
+      expect(book.author, '作者甲');
+      expect(chapters.single.name, '第一章');
+      // `imageStyle` is a value this product already reads off the source.
+      expect(sourceImageStyle(source), SourceImageStyle.full);
+      // `replaceRegex` is accepted and left unexecuted on the JSON path (a
+      // recorded deferral), so the content stage reads its own rule.
+      final body = await pipeline.chapter(chapters.single);
+      expect(body.text, contains('正文'));
+    });
+
+    // 3. A field whose text has nothing left to parse is read by this tree's
+    // own runtime; only the product's `validate` refused it.
+    test('a JSON content rule that is an @get: token reads its content',
+        () async {
+      final transport = _Pages({'/c/1': jsonEncode({})});
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://example.test',
+        'ruleContent': {'content': '@get:title'},
+      };
+      final body = await JsonSourcePipeline(source, transport).chapter(
+        SourceChapter('第一章', Uri.parse('http://example.test/c/1')),
+      );
+      expect(body.text, '第一章');
     });
   });
 

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import '../domain/contracts.dart';
@@ -283,20 +282,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     } else {
       json = text;
     }
-    final Object? parsed;
-    try {
-      parsed = jsonDecode(json);
-    } on FormatException catch (error) {
-      throw FormatException('书源 header 规则必须返回 JSON：${error.message}');
-    }
-    if (parsed is! Map ||
-        parsed.entries.any((e) => e.key is! String || e.value is! String)) {
-      throw const FormatException('书源 header 规则必须返回 JSON 字符串映射');
-    }
-    if (parsed.keys.any((key) => '$key'.toLowerCase() == 'proxy')) {
+    // The frozen `BaseSource.getHeaderMap` answers no headers for a `header`
+    // rule it cannot read (lenient Gson, and every failure caught), so a source
+    // whose header text is not a JSON map runs on no source headers instead of
+    // being refused. The request then carries the source's declared headers
+    // only where the rule parsed — nothing else, exactly as in the frozen app.
+    final headers = parseSourceHeaderMap(json);
+    if (headers == null) return const {};
+    if (headers.keys.any((key) => key.toLowerCase() == 'proxy')) {
       throw UnsupportedError('暂不支持代理配置');
     }
-    return Map<String, String>.from(parsed);
+    return headers;
   }
 
   Map<String, Object?> _scriptInput(String keyword, Object? result) => {
@@ -921,8 +917,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           nameField.extractionRule!,
           items,
         );
+        // A blank `chapterUrl` is not a refusal: the frozen reads an empty rule
+        // list as `""` and then takes the empty-URL fallback
+        // (`BookChapterList.kt:229-243`), which this builder already applies
+        // below, so the field is optional here.
         final urlField = await _elementField(
-          _rule('ruleToc', 'chapterUrl'),
+          _rule('ruleToc', 'chapterUrl', optional: true),
           content: page,
         );
         final urls = batch.elementsText('url', urlField.extractionRule!, items);

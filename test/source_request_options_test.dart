@@ -368,6 +368,80 @@ void main() {
     expect(request.body, '{"key":"书"}');
   });
 
+  test('a lenient header rule reaches the request (#83)', () async {
+    // The frozen `BaseSource.getHeaderMap` reads the rule with lenient Gson, so
+    // a single-quoted or unquoted map parses on both pipelines; a scalar value
+    // becomes its text.
+    final html = RecordingHttpTransport({
+      '/search': '<div class="item"><h3><a href="/book/">书</a></h3></div>',
+    });
+    await HtmlSourcePipeline(<String, dynamic>{
+      'bookSourceUrl': 'http://source.test',
+      'header': "{'User-Agent':'x','X-Token':'1'}",
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        'name': '@CSS:h3 a@text',
+        'bookUrl': '@CSS:h3 a@href',
+      },
+    }, html).search('书');
+    expect(html.requests.single.headers['X-Token'], '1');
+
+    final json = RecordingHttpTransport({
+      '/search': '{"items":[{"name":"标题","url":"/d"}]}',
+    });
+    await JsonSourcePipeline(<String, dynamic>{
+      'bookSourceUrl': 'http://source.test',
+      'header': '{User-Agent:x, X-Token: 2, flag: true}',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+    }, json).search('书');
+    expect(json.requests.single.headers['X-Token'], '2');
+    expect(json.requests.single.headers['flag'], 'true');
+  });
+
+  test('a header rule that is not a JSON map sends no source headers (#83)',
+      () async {
+    // The frozen answers no headers for a rule it cannot read (lenient Gson,
+    // every failure caught), so the source runs with the request carrying none
+    // of the rule's headers instead of being refused before the request.
+    final html = RecordingHttpTransport({
+      '/search': '<div class="item"><h3><a href="/book/">书</a></h3></div>',
+    });
+    final hits = await HtmlSourcePipeline(<String, dynamic>{
+      'bookSourceUrl': 'http://source.test',
+      'header': 'User-Agent: x',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        'name': '@CSS:h3 a@text',
+        'bookUrl': '@CSS:h3 a@href',
+      },
+    }, html).search('书');
+    expect(hits.single.title, '书');
+    expect(html.requests.single.headers, isEmpty);
+
+    final json = RecordingHttpTransport({
+      '/search': '{"items":[{"name":"标题","url":"/d"}]}',
+    });
+    final jsonHits = await JsonSourcePipeline(<String, dynamic>{
+      'bookSourceUrl': 'http://source.test',
+      'header': 'not json',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+    }, json).search('书');
+    expect(jsonHits.single.title, '标题');
+    expect(json.requests.single.headers, isEmpty);
+  });
+
   test('directory page options reach the following request', () async {
     final transport = RecordingHttpTransport({
       '/search': '<div class="item"><h3><a href="/book/">书</a></h3></div>',

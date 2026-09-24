@@ -372,15 +372,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
     } else {
       json = text;
     }
-    final parsed = jsonDecode(json);
-    if (parsed is! Map ||
-        parsed.entries.any((e) => e.key is! String || e.value is! String)) {
-      throw const FormatException('书源 header 规则必须返回 JSON 字符串映射');
-    }
-    if (parsed.keys.any((key) => '$key'.toLowerCase() == 'proxy')) {
+    // The frozen `BaseSource.getHeaderMap` answers no headers for a `header`
+    // rule it cannot read (lenient Gson, and every failure caught), so a rule
+    // whose text is not a JSON map runs on no *source* headers instead of
+    // refusing the source; the request then carries the source's declared
+    // headers only where the rule parsed.
+    final sourceHeaders = parseSourceHeaderMap(json);
+    if (sourceHeaders == null) return {...headers};
+    if (sourceHeaders.keys.any((key) => key.toLowerCase() == 'proxy')) {
       throw UnsupportedError('暂不支持代理配置');
     }
-    return {...Map<String, String>.from(parsed), ...headers};
+    return {...sourceHeaders, ...headers};
   }
 
   /// Expands one rule, splits its URL options, and applies the `js` option.
@@ -517,7 +519,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final chained =
           (key == 'ruleToc' && entry.key == 'nextTocUrl') ||
           (key == 'ruleContent' && entry.key == 'nextContentUrl');
-      if (entry.key != 'checkKeyWord' && entry.key != 'canReName') {
+      // `imageStyle` is a *value* this tree already reads off the source
+      // (`sourceImageStyle`), and `replaceRegex` is a frozen content-stage field
+      // this product does not execute on the JSON path; neither is an
+      // extraction, so neither is validated as one. Refusing either refused the
+      // whole group — the same defect #81 fixed for `downloadUrls` (the
+      // operator's audit, #82/#83).
+      if (entry.key != 'checkKeyWord' &&
+          entry.key != 'canReName' &&
+          entry.key != 'imageStyle' &&
+          entry.key != 'replaceRegex') {
         // Every declared extraction field is checked, including optional
         // result fields: malformed rules fail with their field context.
         final extraction = RuleField.extractionText(entry.value as String);
@@ -550,6 +561,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'isPay',
             'canReName',
             'downloadUrls',
+            'imageStyle',
+            'replaceRegex',
             'init',
             'checkKeyWord',
             'title',

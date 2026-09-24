@@ -585,4 +585,28 @@ void main() {
       );
     },
   );
+
+  test(
+    'a field whose text has nothing left to parse validates (#83)',
+    () {
+      // A `##…`-only field carries only a replacement and an `@get:`-only field
+      // is supplied by its substitution before the extraction runs, so the parse
+      // gate belongs to what is left to parse — nothing here. Validating the
+      // parse against the empty remainder refused fields this tree's runtime
+      // reads (the frozen blank-rule branch, `AnalyzeRule.kt:259-300`).
+      for (final rule in <String>[
+        r'##regex##replacement',
+        '##regex',
+        '@get:token',
+        '@get:{token}',
+        '',
+      ]) {
+        expect(
+          () => JsonSourceRules.validate(rule),
+          returnsNormally,
+          reason: rule,
+        );
+      }
+    },
+  );
 }
