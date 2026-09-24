@@ -9,6 +9,7 @@ import 'l10n/app_localizations.dart';
 import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
+import 'settings/auto_change_source_page.dart';
 import 'settings/interface_language.dart';
 import 'settings/interface_language_page.dart';
 import 'settings/reader_script_page.dart';
@@ -604,7 +605,8 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // #40 entry region: the app bar's actions. `精确搜索` is the
         // multi-source search entry (`PreciseSearchPage`); the page reads the
         // space's sources itself, so this hunk needs nothing but the shelf.
-        // #28's own entry is `界面语言`, beside #27's `中文转换`.
+        // #28's own entry is `界面语言`, beside #27's `中文转换` and #69's
+        // `自动换源`.
         actions: [
           IconButton(
             onPressed: shelf == null
@@ -630,6 +632,19 @@ class _LiberHomePageState extends State<LiberHomePage> {
                   ),
             tooltip: l10n.readerScriptTitle,
             icon: const Icon(Icons.translate),
+          ),
+          // #69's own entry: the frozen `AppConfig.autoChangeSource`, one row
+          // the shelf reads when it opens a book whose source is deleted.
+          IconButton(
+            onPressed: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AutoChangeSourcePage(store: shelf.store),
+                    ),
+                  ),
+            tooltip: l10n.actionAutoChangeSource,
+            icon: const Icon(Icons.swap_horiz),
           ),
           TextButton.icon(
             onPressed: shelf == null

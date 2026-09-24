@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../settings/auto_change_source.dart';
 import '../store/shelf.dart';
+import 'auto_change_source.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'html_source_browser.dart';
@@ -20,7 +22,8 @@ import 'source_tls_confirmation.dart';
 /// `books.shelved` says so, and removing one keeps its chapters and its
 /// position. A book whose source was deleted (#53) stays in the list marked as
 /// unopenable — its row, its chapters and its position are what the shelf has to
-/// keep — and only its removal is offered for it.
+/// keep — and opening it runs the frozen reader's automatic switch instead of
+/// refusing it (#69), with its removal still offered beside that.
 class OnlineBookshelf extends StatefulWidget {
   const OnlineBookshelf({
     super.key,
@@ -42,6 +45,12 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   List<ShelfEntry> books = const <ShelfEntry>[];
   bool loading = true;
   String? busyId, error;
+
+  /// The row whose automatic switch (#69) is running, until the switched book
+  /// is open. Its own field rather than [busyId], so the row can show the frozen
+  /// `source_auto_changing` line while the switch searches, and so the other
+  /// actions keep their own words.
+  String? switchingId;
   final _bookUrl = TextEditingController();
   bool matchingUrl = false;
   String? urlResult;
@@ -98,6 +107,14 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   );
 
   Future<void> open(ShelfEntry entry) async {
+    // The frozen reader's trigger (`ReadBookViewModel.kt:139-142`): a book whose
+    // source is gone is switched rather than refused. Nothing can open this row
+    // as it stands — it has no source object to run — so the automatic switch is
+    // what its opening means.
+    if (entry.sourceMissing) {
+      await autoSwitch(entry);
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => HtmlSourceBrowser(
@@ -113,6 +130,75 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
     );
     if (mounted) await reload();
   }
+
+  /// The frozen `autoChangeSource` entered from the shelf: find the same book in
+  /// the space's other sources, move this row onto the first source that proves
+  /// it carries it (`autoChangeSource`), and open the switched book the way
+  /// tapping an ordinary row does.
+  ///
+  /// A run that found nothing leaves the row exactly as it was and shows the
+  /// frozen `自动换源失败\n…`; 移出书架 stays the row's other action. A switch
+  /// that is turned off (`source.auto_change`) is not a failure and reports
+  /// nothing — and does not even paint the running line, because the setting is
+  /// read before the row says anything (the frozen's guard is its first
+  /// statement).
+  Future<void> autoSwitch(ShelfEntry entry) async {
+    if (switchingId != null || busyId != null) return;
+    final l10n = AppLocalizations.of(context);
+    // The frozen `if (!AppConfig.autoChangeSource) return`, read before the row
+    // shows `source_auto_changing`; the flow reads it again as its own guard.
+    if (!await AutoChangeSourceSetting.resolve(widget.service.store)) return;
+    if (!mounted) return;
+    setState(() {
+      switchingId = entry.id;
+      error = null;
+    });
+    try {
+      final result = await autoChangeSource(
+        service: widget.service,
+        book: entry,
+        openPipeline: (source) =>
+            _openPipeline(source, widget.transport ?? HttpSourceTransport()),
+        // ADR 0011 §5: one certificate confirmation per source, around that
+        // source's own stages — the manual search and switch wrap theirs the
+        // same way.
+        confirm: <T>(source, run) => withTlsExceptionConfirmation<T>(
+          context: context,
+          hostState: widget.service.hostState,
+          sourceRef: '${source['bookSourceUrl'] ?? ''}',
+          sourceName: '${source['bookSourceName'] ?? ''}',
+          run: run,
+        ),
+        // A disposed shelf stops the run at its next check (the manual search
+        // page's own hook): the sources after it are not asked, and nothing is
+        // written under a State that no longer exists.
+        isCancelled: () => !mounted,
+      );
+      if (!mounted) return;
+      final switched = result.switched;
+      if (switched != null) {
+        await reload();
+        if (mounted) await open(switched);
+      } else if (result.ran) {
+        _showAutoSwitchFailure(l10n.noSuitableSource);
+      }
+    } on Object catch (failure) {
+      if (mounted) _showAutoSwitchFailure('$failure');
+    } finally {
+      if (mounted) setState(() => switchingId = null);
+    }
+  }
+
+  /// The frozen failure toast (`自动换源失败\n<message>`): the switch's own
+  /// failure and `没有合适书源` say which, and the row stays where it is.
+  void _showAutoSwitchFailure(String reason) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context).autoChangeSourceFailed(reason),
+          ),
+        ),
+      );
 
   Future<void> openUrl() async {
     if (matchingUrl) return;
@@ -131,6 +217,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       urlResult = null;
     });
     try {
+      final l10n = AppLocalizations.of(context);
       final matches = <ImportedBookSource>[];
       final failures = <String>[];
       for (final source in await widget.service.sources()) {
@@ -141,14 +228,23 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
             matches.add(source);
           }
         } on UnsupportedError catch (e) {
-          failures.add('${source.data['bookSourceName'] ?? source.id}：$e');
+          // The page's own words, with the thrown refusal as the diagnostic: the
+          // pattern that cannot run here is the source's, and its own text (a
+          // Chinese engine refusal, #72's classification) is what the reader
+          // needs to take back to the source.
+          failures.add(
+            l10n.sourceErrorLine(
+              '${source.data['bookSourceName'] ?? source.id}',
+              '$e',
+            ),
+          );
         }
       }
       if (!mounted) return;
       setState(() {
         matchingUrl = false;
         urlResult = [
-          if (matches.isEmpty) AppLocalizations.of(context).noSourceMatchesUrl,
+          if (matches.isEmpty) l10n.noSourceMatchesUrl,
           ...failures,
         ].join('\n');
       });
@@ -178,7 +274,11 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
                       subtitle: Text(source.id),
                       onTap: () => Navigator.pop(dialogContext, source),
                     ),
-                  if (failures.isNotEmpty) Text(failures.join('\n')),
+                  if (failures.isNotEmpty)
+                    Text(
+                      failures.join('\n'),
+                      key: const ValueKey('choose-source-failures'),
+                    ),
                 ],
               ),
             ),
@@ -321,7 +421,11 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           ),
         ),
         if (urlResult != null && urlResult!.isNotEmpty)
-          Text(urlResult!, style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            urlResult!,
+            key: const ValueKey('shelf-url-result'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         if (loading) const LinearProgressIndicator(),
         if (error != null)
           Row(
@@ -339,7 +443,9 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           ListTile(
             title: Text(entry.title),
             subtitle: Text(
-              entry.sourceMissing
+              switchingId == entry.id
+                  ? l10n.autoChangingSource
+                  : entry.sourceMissing
                   ? l10n.sourceDeletedKept
                   : entry.chapterKey.isEmpty
                   ? l10n.notReadYet
@@ -348,18 +454,22 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
             leading: Icon(
               entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
             ),
-            enabled: busyId == null,
-            // Nothing can open a book whose source is gone: the only action that
-            // makes sense for it is taking it off the shelf.
-            onTap: entry.sourceMissing ? null : () => open(entry),
-            trailing: busyId == entry.id
+            enabled: busyId == null && switchingId == null,
+            // A book whose source is gone opens by switching (#69); taking it
+            // off the shelf stays its other action.
+            onTap: entry.sourceMissing
+                ? (busyId == null && switchingId == null
+                      ? () => autoSwitch(entry)
+                      : null)
+                : () => open(entry),
+            trailing: busyId == entry.id || switchingId == entry.id
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(),
                   )
                 : PopupMenuButton<String>(
-                    enabled: busyId == null,
+                    enabled: busyId == null && switchingId == null,
                     tooltip: l10n.bookActions,
                     onSelected: (value) => action(value, entry),
                     itemBuilder: (_) => [

@@ -19,8 +19,8 @@ void defaultAppTest(Directory Function() root) {
     expect(find.text('书架'), findsNWidgets(2));
     expect(find.text('Wayfinder 受控书源'), findsOneWidget);
     expect(find.text('尚未运行'), findsOneWidget);
-    // The two settings screens have an entry point in the app bar (#27, #28);
-    // the space is not open yet, so both are disabled until it is.
+    // The settings screens have an entry point in the app bar (#27, #28, #69);
+    // the space is not open yet, so each is disabled until it is.
     final script = tester.widget<IconButton>(
       find.ancestor(
         of: find.byIcon(Icons.translate),
@@ -37,6 +37,14 @@ void defaultAppTest(Directory Function() root) {
     );
     expect(language.tooltip, '界面语言');
     expect(language.onPressed, isNull);
+    final autoSwitch = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.swap_horiz),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(autoSwitch.tooltip, '自动换源');
+    expect(autoSwitch.onPressed, isNull);
   });
 }
 
@@ -103,6 +111,46 @@ void spaceStoreTest(Directory Function() root) {
       await tester.pump();
       await _waitFor(tester, find.text('斗破苍穹'));
       expect(find.text('斗破苍穹'), findsOneWidget);
+
+      // Unmounting the app is what releases the space, and the directory can
+      // only be deleted once that happened.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+}
+
+/// The settings screens' app-bar entries as the user reaches them (#27, #28,
+/// #69): the space has to be open for them, so this drives the real app the way
+/// `spaceStoreTest` does.
+void settingsEntryTest(Directory Function() root) {
+  testWidgets('自动换源的入口打开设置页，开关读的是已存的行', (tester) async {
+    final workspaceRoot = root();
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
+      await tester.pump();
+      // The shelf section appears with the space; the app bar's entries are
+      // disabled until then.
+      await _waitFor(tester, find.text('在线书架'));
+
+      await tester.tap(find.byIcon(Icons.swap_horiz));
+      await _waitFor(
+        tester,
+        find.byKey(const ValueKey('auto-change-source-switch')),
+      );
+
+      expect(find.text('自动换源'), findsOneWidget, reason: '设置页的标题');
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const ValueKey('auto-change-source-switch')),
+            )
+            .value,
+        isTrue,
+        reason: '没有行时是冻结的默认值 true',
+      );
 
       // Unmounting the app is what releases the space, and the directory can
       // only be deleted once that happened.
@@ -319,6 +367,7 @@ void main() {
 
   defaultAppTest(() => root);
   spaceStoreTest(() => root);
+  settingsEntryTest(() => root);
   sourceManagementTest(() => root);
 }
 
