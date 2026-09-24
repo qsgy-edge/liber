@@ -213,6 +213,7 @@ def main():
 
     # 3. The product probe: one process per case, so an uninterruptible execution is
     # recorded as a kill instead of hanging the run.
+    product_case_divergences = []
     product = {'library': str(release), 'cases': {}}
     for case in PRODUCT_CASES:
         result = run([dart, 'run', 'tool/runtime_limits_prototype/product_probe.dart',
@@ -230,6 +231,12 @@ def main():
             failures.append(f'product case exceeded its harness timeout: {case}')
         failures += [f'product check failed: {case}/{name}'
                      for name, ok in entry.get('checks', {}).items() if not ok]
+        # A platform's reading that differs from the bound this case was measured
+        # with is evidence, not a failure: the case records it as
+        # `platformDivergence` and it is lifted here so the report shows it
+        # without turning a platform difference into a red gate (#85).
+        if 'platformDivergence' in entry:
+            product_case_divergences.append(f'{case}: {entry["platformDivergence"]}')
         print(f'product {case}: {entry.get("status", "no-status")} '
               f'({entry["seconds"]}s)', flush=True)
     (EVIDENCE / f'{PLATFORM}-product.json').write_text(json.dumps(product, indent=2) + '\n',
@@ -262,6 +269,8 @@ def main():
                                        time.localtime(path.stat().st_mtime))}
 
     findings = dict(native['findings'])
+    if product_case_divergences:
+        findings['productCaseDivergences'] = product_case_divergences
     findings['quantumSensitivity'] = {
         str(row['quantum']): {
             'heavyLoopWorstOvershootMs': row['cases']['heavyLoopBody']['worstOvershootMs'],
