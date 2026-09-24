@@ -1041,6 +1041,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// A rule that is not a JSONPath is the literal template the field already
   /// interpolated, which names one page; a rule that matched nothing declares
   /// none. A script-only field runs its script on the document itself.
+  ///
+  /// One named limit: the frozen `getStringList` takes each matched item's own
+  /// `toString()` (`AnalyzeByJSonPath.kt:83-86`), while this path reads a
+  /// container item with Dart's `'$item'`, so a rule whose match is an object or
+  /// array would carry `{k: v}` where the frozen side carries json-smart's
+  /// `{k=v}`. No exported source reaches that shape — the rule would have to end
+  /// in an index/wildcard/slice/filter, the leaf that names a container, and no
+  /// used source declares either next-page field on a JSON source — so it stays
+  /// an out-of-corpus limit in `tool/jsonpath_oracle/README.md` rather than being
+  /// routed here under an unproven model (ticket #78).
   Future<List<String>> _pageTexts(Object? document, String rule) async {
     final field = await RuleField.resolve(
       rule,
