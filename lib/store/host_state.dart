@@ -188,6 +188,35 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
         .go();
   }
 
+  /// The book and chapter rows' own variables are not host-surface rows: they
+  /// are the shelf's columns (the frozen `Book.variable`/`BookChapter.variable`),
+  /// so the store's own accessors own them (#76).
+  @override
+  Future<String?> loadBookVariable(String sourceRef, String bookUrl) =>
+      store.bookVariable(sourceRef, bookUrl);
+
+  @override
+  Future<bool> saveBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  ) => store.putBookVariable(sourceRef, bookUrl, variable);
+
+  @override
+  Future<String?> loadChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  ) => store.chapterVariable(sourceRef, bookUrl, chapterKey);
+
+  @override
+  Future<bool> saveChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  ) => store.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+
   /// Removes every host-surface row [sourceRef] owns (#36, #53), in one
   /// transaction: its `source_entries` rows, the `source_cookies` pairs whose
   /// `writer_ref` is the source, and the `source_tls_exceptions` the user

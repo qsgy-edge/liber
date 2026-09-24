@@ -209,6 +209,57 @@ class SourceNoticeLimiter {
 String sourceRuleVariableKey(String sourceRef, String key) =>
     'v_${sourceRef}_$key';
 
+/// The map a `Book`/`BookChapter` `variable` column holds, read the way the
+/// frozen entity reads its own column (`Book.kt:137`): the `variable` text
+/// parsed into a `HashMap<String, String>`, with the `getOrNull() ?:
+/// hashMapOf()` fallback and the registered `StringJsonDeserializer`
+/// (`utils/GsonExtensions.kt:118-130`) — a primitive value becomes its text, a
+/// `null` stays null, and a structured value becomes its JSON text. Any text
+/// that is not a JSON object leaves the empty map, which is what the frozen
+/// `?: hashMapOf()` does with a failed parse.
+///
+/// Recorded divergences, not smoothed: the frozen reader is Gson's **lenient**
+/// one (it accepts an unquoted name or a single-quoted string, which this
+/// reader refuses — both writers of the column, the frozen and this product,
+/// emit strict JSON), and this reader gives a number its Dart text where Gson
+/// keeps the source token's text (1e3).
+Map<String, String?> variableMapOf(String? text) {
+  if (text == null || text.isEmpty) return <String, String?>{};
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(text);
+  } on FormatException {
+    return <String, String?>{};
+  }
+  if (decoded is! Map) return <String, String?>{};
+  final map = <String, String?>{};
+  for (final entry in decoded.entries) {
+    final key = entry.key;
+    if (key is! String) return <String, String?>{};
+    final value = entry.value;
+    map[key] = switch (value) {
+      null => null,
+      String() => value,
+      num() || bool() => '$value',
+      _ => jsonEncode(value),
+    };
+  }
+  return map;
+}
+
+/// The text a write stores, which the frozen's own write-back produces: the map
+/// written by `GSON.toJson(variableMap)` (`BaseBook.kt:19-31`), a Gson built
+/// with two-space pretty printing and without HTML escaping
+/// (`utils/GsonExtensions.kt:26-41`), so the text is indented and a null-valued
+/// entry is omitted (`serializeNulls` is off, which is why a null value behaves
+/// as a missing key). A flat string map's text is byte-identical to that
+/// writer's.
+String variableTextOf(Map<String, String?> map) =>
+    JsonEncoder.withIndent('  ').convert({
+      for (final entry in map.entries)
+        if (entry.value != null) entry.key: entry.value,
+    });
+
 class SourceScriptError implements Exception {
   const SourceScriptError(this.category, [this.message = '']);
   final String category;
@@ -512,6 +563,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             );
           } else if (method == 'cache') {
             answer = await _handleCache(payload, sourceRef);
+          } else if (method == 'variable') {
+            answer = await _handleVariable(payload, input, sourceRef);
           } else if (method == 'cookie') {
             answer = await _handleCookie(payload, cookies);
           } else if (method == 'loginHeader') {
@@ -1115,6 +1168,86 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           'host-method',
           'convert direction refused',
         );
+    }
+  }
+
+  /// Frozen `Book`/`BookChapter` own variables (#76): `book.getVariable`/
+  /// `putVariable`/`variable` and the chapter pair over the row's own keyed
+  /// store, which the space keeps in `books.variable`/`chapters.variable` as
+  /// JSON text (`ShelfService` writes the row; [SourceHostState] reads and
+  /// writes the column through the space's store).
+  ///
+  /// The row is the one the snapshot's own URL names, because that is what a
+  /// script sees: the book's `bookUrl` and the chapter's `url`. Those are the
+  /// values the space's identities are built from — a book row's
+  /// `sourceBookUrl` is the pipeline's own `'${book.url}'`, and a chapter row's
+  /// `chapterKey` is the target its `url` names (#58). A chapter's row is found
+  /// through its book, so a chapter binding with no book binding fails as a
+  /// boundary error; the content stage always binds both (the reader hands the
+  /// book with the chapter), and a snapshot that is absent has no row at all.
+  Future<Object?> _handleVariable(
+    Object? payload,
+    Map<String, Object?> input,
+    String sourceRef,
+  ) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid variable call');
+    }
+    final target = payload['target'];
+    if (target != 'book' && target != 'chapter') {
+      throw const SourceScriptError('host-input', 'invalid variable target');
+    }
+    final op = payload['op'];
+    final key = payload['key'];
+    if (op != 'raw' && key is! String) {
+      throw const SourceScriptError('host-input', 'invalid variable key');
+    }
+    final book = input['book'];
+    final chapter = input['chapter'];
+    final bookUrl = book is Map && book['bookUrl'] is String
+        ? book['bookUrl'] as String
+        : null;
+    final chapterUrl = chapter is Map && chapter['url'] is String
+        ? chapter['url'] as String
+        : null;
+    final rowKey = target == 'book' ? bookUrl : chapterUrl;
+    if (bookUrl == null ||
+        bookUrl.isEmpty ||
+        rowKey == null ||
+        rowKey.isEmpty) {
+      throw const SourceScriptError('host-input', 'variable row absent');
+    }
+    Future<String?> read() => target == 'book'
+        ? hostState.bookVariable(sourceRef, bookUrl)
+        : hostState.chapterVariable(sourceRef, bookUrl, rowKey);
+    Future<void> write(String text) => target == 'book'
+        ? hostState.putBookVariable(sourceRef, bookUrl, text)
+        : hostState.putChapterVariable(sourceRef, bookUrl, rowKey, text);
+    final raw = await read();
+    switch (op) {
+      case 'raw':
+        return raw;
+      case 'get':
+        return variableMapOf(raw)[key] ?? '';
+      case 'put':
+        final map = variableMapOf(raw);
+        final value = payload['value'];
+        // The frozen write-back shape (`BaseBook.kt:19-31`): a null value
+        // removes the key, any other value replaces it, and the column is
+        // rewritten only when the map changed — so a delete of a key that was
+        // not there leaves the stored text alone. `putVariable` answers true in
+        // every case, as the frozen override does.
+        final bool changed;
+        if (value == null) {
+          changed = map.remove(key) != null;
+        } else {
+          map[key] = '$value';
+          changed = true;
+        }
+        if (changed) await write(variableTextOf(map));
+        return true;
+      default:
+        throw const SourceScriptError('host-method', 'variable op refused');
     }
   }
 
@@ -1944,15 +2077,37 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
 
   const sourceFields = input.source || {};
   const unavailable = member => call('refuse', {
-    member, policy: 'book/chapter variables are unavailable in the current pipeline (#43)'
+    member,
+    policy: 'a book/chapter snapshot exposes only the fields its stage produced (#43)'
+  });
+  // Frozen `Book`/`BookChapter` own variables (`Book.kt:115,137`,
+  // `BookChapter.kt:58,72`): the row's own keyed store. `getVariable(key)` is
+  // the map's value or the empty string, `putVariable(key, value)` always
+  // answers the frozen `true` (`BaseBook.kt:19-31`), and a null value deletes
+  // the key. The raw `variable` column text is the `variable` property, read
+  // from the host on each access so it reflects what was just written. The
+  // frozen property also has a setter; assigning it refuses by name, because
+  // the frozen's map is parsed lazily and would not see the new text (#76).
+  const variableMembers = name => ({
+    getVariable: key => call('variable', {target:name, op:'get', key:String(key)}),
+    putVariable: (key, value) => call('variable', {
+      target:name, op:'put', key:String(key),
+      value: value === null || value === undefined ? null : String(value)
+    })
   });
   const snapshot = (name, value) => {
     if (value === null || value === undefined) return null;
-    return new Proxy(Object.freeze({...value}), {
-      get: (target, key) => {
+    const fields = {...value};
+    const target = {...fields, ...variableMembers(name)};
+    Object.defineProperty(target, 'variable', {
+      enumerable: true,
+      get: () => call('variable', {target:name, op:'raw'})
+    });
+    return new Proxy(Object.freeze(target), {
+      get: (frozen, key) => {
         if (typeof key === 'symbol') return undefined;
-        if (key === 'toJSON') return () => ({...target});
-        if (Object.prototype.hasOwnProperty.call(target, key)) return target[key];
+        if (key === 'toJSON') return () => ({...fields});
+        if (Object.prototype.hasOwnProperty.call(frozen, key)) return frozen[key];
         return unavailable(name + '.' + String(key));
       },
       set: (_, key) => unavailable(name + '.' + String(key)),
