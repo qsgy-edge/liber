@@ -188,7 +188,7 @@ void main() {
   });
 
   test('a bare export carries no shelf, so the used column is n/a', () {
-    expect(exportReport.shelfMember, isNull);
+    expect(exportReport.backup.shelfMember, isNull);
     expect(exportReport.usedCount, isNull);
     expect(exportReport.collectionCount, 4);
     expect(
@@ -199,7 +199,7 @@ void main() {
 
   test('the report names the input, its digest and its members', () {
     final text = renderUsageReport(backupReport);
-    expect(text, contains(backupReport.sha256));
+    expect(text, contains(backupReport.backup.sha256));
     expect(text, contains('collection: 4 records from bookSource.json'));
     expect(text, contains('4 entries, 2 distinct origins, 1 resolved'));
     expect(text, contains('bookshelf.json'));

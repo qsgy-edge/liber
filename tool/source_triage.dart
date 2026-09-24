@@ -6,6 +6,11 @@
 // it counts the p5-windows-audit.md §3 capability families over the used set
 // and the whole collection, is network-free, never initialises `fjs`, and
 // prints counts only — no source record, URL, host, name or rule text.
+//
+// `--readiness <backup.zip|bookSource.json>` is the static audit
+// (source_readiness.dart): it replays this product's own rule reads per record
+// and reports ready-versus-refused counts by reason, network-free and with no
+// `fjs` either. Counts and reason names only, as above.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -15,6 +20,7 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 
+import 'source_readiness.dart';
 import 'source_usage.dart';
 
 String describe(Object error) {
@@ -77,6 +83,15 @@ Future<void> main(List<String> args) async {
     stdout.write(renderUsageReport(readUsageReport(args[1])));
     return;
   }
+  if (args.isNotEmpty && args.first == '--readiness') {
+    if (args.length != 2) {
+      stderr.writeln(_usage);
+      exitCode = 2;
+      return;
+    }
+    stdout.write(renderReadinessReport(readReadinessReport(args[1])));
+    return;
+  }
   if (args.length < 2) {
     stderr.writeln(_usage);
     exitCode = 2;
@@ -116,4 +131,6 @@ Future<void> main(List<String> args) async {
 const String _usage =
     'usage: dart run tool/source_triage.dart <fjs.dll> <exported sources>\n'
     '       dart run tool/source_triage.dart --usage '
+    '<backup.zip|bookSource.json>\n'
+    '       dart run tool/source_triage.dart --readiness '
     '<backup.zip|bookSource.json>';
