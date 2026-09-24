@@ -121,6 +121,12 @@ const expectedMembers = <String>[
   'cache.getDouble',
   'cache.delete',
   'cache.deleteMemory',
+  'book.getVariable',
+  'book.putVariable',
+  'book.variable',
+  'chapter.getVariable',
+  'chapter.putVariable',
+  'chapter.variable',
   'java.androidId',
   'java.getWebViewUA',
   'java.webView',
@@ -221,13 +227,16 @@ Future<void> main(List<String> args) async {
       chapter: chapter,
     );
 
-    // 1. Every allowlisted member exists.
+    // 1. Every allowlisted member exists. The book/chapter snapshots are built
+    //    from the stage's own binding maps, so the probe carries one of each.
     final missing = await run(
       'JSON.stringify(${jsonEncode(expectedMembers)}.filter(path => {'
-      'let current = {source: source, java: java, cookie: cookie, cache: cache};'
+      'let current = {source: source, java: java, cookie: cookie, cache: cache, book: book, chapter: chapter};'
       'for (const part of path.split(".")) {'
       'if (current === null || current === undefined || !(part in current)) return true;'
       'current = current[part]; } return false;}))',
+      book: {'name': '契约书', 'bookUrl': '$origin/book'},
+      chapter: {'title': '第一章', 'url': '$origin/chapter'},
     );
     checks['membersExist'] = missing is String && missing == '[]';
     if (!checks['membersExist']!) {
@@ -317,23 +326,89 @@ Future<void> main(List<String> args) async {
     );
     checks['chapterSnapshot'] =
         chapterProbe == jsonEncode(['第一章', '$origin/chapter', 'stored-title']);
-    for (final member in [
-      'book.getVariable',
-      'book.putVariable',
-      'book.variable',
-      'chapter.getVariable',
-      'chapter.putVariable',
-      'chapter.variable',
-    ]) {
-      SourceScriptError? failure;
-      try {
-        await run(member, book: {'name': '契约书'}, chapter: {'title': '第一章'});
-      } on SourceScriptError catch (error) {
-        failure = error;
-      }
-      checks['${member}UnavailableByName'] =
-          failure?.category == 'policy' && failure!.message.contains(member);
+    // The frozen `Book`/`BookChapter` own variable members (#76): the row's own
+    // keyed store (`Book.kt:115,137`, `BookChapter.kt:58,72`). A missing key is
+    // the empty string, an empty value is stored as an empty string, a null
+    // value deletes the key, `putVariable` always answers true
+    // (`BaseBook.kt:19-31`), and `variable` is the raw column text — null before
+    // the first write, the map's JSON after it. This gate runs without a space
+    // store, so the row it addresses is the runtime's in-memory one; the store
+    // write is `test/source_book_variables_test.dart`'s.
+    final variableBook = {'name': '契约书', 'bookUrl': '$origin/book'};
+    final variableChapter = {'title': '第一章', 'url': '$origin/chapter'};
+    // The text a write stores: the frozen `GSON.toJson(variableMap)` shape,
+    // two-space pretty printing with null-valued entries omitted
+    // (`utils/GsonExtensions.kt:26-41`).
+    String variableText(Map<String, String?> map) =>
+        JsonEncoder.withIndent('  ').convert({
+          for (final entry in map.entries)
+            if (entry.value != null) entry.key: entry.value,
+        });
+    final bookVariables = await run(
+      'JSON.stringify([book.variable, book.getVariable("missing"), '
+      'book.putVariable("k", "v1"), book.getVariable("k"), book.variable, '
+      'book.putVariable("empty", ""), book.getVariable("empty"), book.variable, '
+      'book.putVariable("k", null), book.getVariable("k"), book.variable, '
+      'book.putVariable("k", null), book.variable])',
+      book: variableBook,
+    );
+    checks['bookVariableMembers'] =
+        bookVariables ==
+        jsonEncode([
+          null,
+          '',
+          true,
+          'v1',
+          variableText({'k': 'v1'}),
+          true,
+          '',
+          variableText({'k': 'v1', 'empty': ''}),
+          true,
+          '',
+          variableText({'empty': ''}),
+          true,
+          variableText({'empty': ''}),
+        ]);
+    final chapterVariables = await run(
+      'JSON.stringify([chapter.variable, chapter.getVariable("missing"), '
+      'chapter.putVariable("c", "v2"), chapter.getVariable("c"), '
+      'chapter.variable, chapter.putVariable("c", null), '
+      'chapter.variable])',
+      book: variableBook,
+      chapter: variableChapter,
+    );
+    checks['chapterVariableMembers'] =
+        chapterVariables ==
+        jsonEncode([
+          null,
+          '',
+          true,
+          'v2',
+          variableText({'c': 'v2'}),
+          true,
+          variableText(const <String, String?>{}),
+        ]);
+    // The store belongs to the runtime (and, in the product, to the space), so
+    // a second evaluation over the same book reads what the first one wrote —
+    // and a snapshot field that is not one of the frozen members still refuses
+    // by name.
+    final bookVariableReread = await run(
+      'JSON.stringify([book.getVariable("empty"), book.variable])',
+      book: variableBook,
+    );
+    checks['bookVariableReadableByTheNextEvaluation'] =
+        bookVariableReread ==
+        jsonEncode(['', variableText({'empty': ''})]);
+    checks['absentChapterStaysNull'] = await run('chapter === null') == true;
+    SourceScriptError? missingField;
+    try {
+      await run('book.missing', book: variableBook);
+    } on SourceScriptError catch (error) {
+      missingField = error;
     }
+    checks['anUnknownSnapshotFieldStillRefusesByName'] =
+        missingField?.category == 'policy' &&
+        missingField!.message.contains('book.missing');
     SourceScriptError? loginFailure;
     try {
       await run('source.getHeaderMap(true)');
