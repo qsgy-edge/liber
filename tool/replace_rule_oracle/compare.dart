@@ -314,7 +314,10 @@ Future<void> main(List<String> args) async {
       fixture,
       product,
       golden,
-      fixtureSha256: sha256File(file),
+      // The corpus pin must mean the same corpus on every host, and must agree
+      // with the committed report's own `fixtureSha256`; `sha256File` would
+      // record this checkout's line endings instead.
+      fixtureSha256: sha256CrlfFile(file),
     );
     report.addAll({
       'product': product,

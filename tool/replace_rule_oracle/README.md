@@ -125,17 +125,30 @@ form a golden.
 The committed report is evidence *for the corpus it names*, and
 `test/replace_rule_oracle_compare_test.dart` enforces that: the report's
 `fixtureId`, `comparisonBoundary`, `fixtureSha256` and row ids/order must equal
-the current `fixtures.json`, so a corpus edit — or a report that stops naming
-this corpus — fails the suite until a new capture produces a new report. That
-bound is why the stale `deviceOracle` prose above is not edited in place.
+the current `fixtures.json`, so a corpus edit that no report accompanies fails
+the suite. It is a **drift guard, not tamper evidence**: a corpus edit plus
+a lock-step re-pin of the report's `fixtureSha256` and rows passes it, so the
+recorded verdicts still have to be read. That bound is why the stale
+`deviceOracle` prose above is not edited in place.
 
-Every pin in the committed evidence (`fixtureSha256` `61983626…`, `goldenSha256`
-`554bfade…`, the product source hashes) was computed over a CRLF working tree:
-this tool directory is not in `.gitattributes`'s `text eol=lf` list the way the
-other oracle corpora are, so an LF checkout hashes the same corpus content to a
-different value and could not compare a golden captured here. The drift check
-hashes the corpus the way the recording run did, so it means the same thing on
-either host; the comparator itself still reads the working tree.
+The corpus, golden and product pins this tool compares — `fixtureSha256`
+`61983626…`, `goldenSha256` `554bfade…` and the four `lib/source` entries of the
+report's `sourceHashes` — are hashes of the CRLF form of their bytes: this tool
+directory is not in `.gitattributes`'s `text eol=lf` list the way the other
+oracle corpora are, so the same content has two hashes depending on the
+checkout. The drift check and `compare.dart`'s own corpus pin hash the corpus
+that way, so one pin means the same corpus on an LF checkout and on the Windows
+one that produced the evidence.
+
+The rest of the recorded hashes are a mix, each taken from the bytes its
+producing tool read: `evidence/comparison.json` (`558aeab8…`, its LF bytes),
+`host_surface_gate.log`, `analysis-final.log`, `device-cleanup.log`,
+`AndroidManifest.xml`, `capture.py`, `ReaderOracle.java` and the report's own
+`compare.dart` entry (`771afede…`) are LF hashes, while `runtime-manifest.json`,
+the install/build logs, `build.ps1`, `fixtures.json` and
+`test/replace_rule_fixture_test.dart` are hashes of their CRLF form. Those pins
+record the run rather than feed it; pinning this directory LF in `.gitattributes`
+is what would make the whole set host-stable.
 
 The same report pins the product bytes of its own run (`sourceHashes` and
 `librarySha256`). Today's `lib/source/content_processing.dart`,
