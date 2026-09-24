@@ -362,10 +362,7 @@ class FamilyUsage {
 /// Everything the report line and the table need.
 class UsageReport {
   const UsageReport({
-    required this.input,
-    required this.sha256,
-    required this.collectionMember,
-    required this.shelfMember,
+    required this.backup,
     required this.collectionCount,
     required this.shelfEntryCount,
     required this.originCount,
@@ -373,18 +370,11 @@ class UsageReport {
     required this.families,
   });
 
-  /// The file the counts were read from.
-  final String input;
+  /// The input the counts were read from, with its digest and its members.
+  final SourceBackup backup;
 
-  /// The digest of that file, so a recorded count names the bytes it came from.
-  final String sha256;
-
-  /// Where the collection was read from: the archive member, or the input file
-  /// itself when it is a bare export.
-  final String collectionMember;
-
-  /// Where the shelf was read from, or null when the input has none.
-  final String? shelfMember;
+  /// The report's provenance lines, as the input names them.
+  List<String> get backupLines => sourceBackupLines(backup);
 
   final int collectionCount;
   final int shelfEntryCount;
@@ -445,16 +435,47 @@ List<FamilyUsage> countFamilies(
     ),
 ];
 
-/// Reads [path] and counts every family.
+/// One static mode's input, as the reader below resolves it: the collection,
+/// the shelf when the input carries one, and the digest of the bytes they were
+/// read from.
+class SourceBackup {
+  const SourceBackup({
+    required this.input,
+    required this.sha256,
+    required this.collectionMember,
+    required this.shelfMember,
+    required this.sources,
+    required this.shelf,
+  });
+
+  /// The file the records were read from.
+  final String input;
+
+  /// The digest of that file, so a recorded count names the bytes it came from.
+  final String sha256;
+
+  /// Where the collection was read from: the archive member, or the input file
+  /// itself when it is a bare export.
+  final String collectionMember;
+
+  /// Where the shelf was read from, or null when the input has none.
+  final String? shelfMember;
+
+  final List<Map<String, dynamic>> sources;
+
+  /// The `bookshelf.json` rows, or null when the input carries no shelf.
+  final List<Map<String, dynamic>>? shelf;
+}
+
+/// Reads [path] into its collection, its shelf and its digest.
 ///
 /// A `.zip` is a Legado full backup, read through the product's own guarded
 /// reader ([LegadoBackupArchive]): `bookSource.json` is the collection and
 /// `bookshelf.json`, when the member exists, is the shelf. Any other file is a
 /// bare `bookSource.json` export — a list of records, or a single record — and
 /// carries no shelf, so the used counts are not available.
-UsageReport readUsageReport(String path) {
-  final file = File(path);
-  final bytes = file.readAsBytesSync();
+SourceBackup readSourceBackup(String path) {
+  final bytes = File(path).readAsBytesSync();
   final sha256 = _sha256(bytes);
   if (LegadoBackupArchive.looksLikeZip(bytes)) {
     final archive = LegadoBackupArchive.decode(bytes);
@@ -467,7 +488,7 @@ UsageReport readUsageReport(String path) {
     final shelf = shelfBytes == null
         ? null
         : _records(utf8.decode(shelfBytes, allowMalformed: true));
-    return _report(
+    return SourceBackup(
       input: path,
       sha256: sha256,
       collectionMember: 'bookSource.json',
@@ -476,16 +497,34 @@ UsageReport readUsageReport(String path) {
       shelf: shelf,
     );
   }
-  final sources = _records(utf8.decode(bytes, allowMalformed: true));
-  return _report(
+  return SourceBackup(
     input: path,
     sha256: sha256,
     collectionMember: path,
     shelfMember: null,
-    sources: sources,
+    sources: _records(utf8.decode(bytes, allowMalformed: true)),
     shelf: null,
   );
 }
+
+/// The provenance every static mode's report opens with: the input, the digest
+/// of its bytes, the member the collection came from and the shelf.
+List<String> sourceBackupLines(SourceBackup backup) => <String>[
+  'input: ${backup.input}',
+  'sha256: ${backup.sha256}',
+  'collection: ${backup.sources.length} records from '
+      '${backup.collectionMember}',
+  if (backup.shelf == null)
+    'shelf: none — the input carries no bookshelf.json'
+  else
+    'shelf: ${backup.shelf!.length} entries, '
+        '${shelfOrigins(backup.shelf!).length} distinct origins, '
+        '${resolveUsedSources(backup.sources, backup.shelf!).length} resolved '
+        'used records from ${backup.shelfMember}',
+];
+
+/// Reads [path] and counts every family.
+UsageReport readUsageReport(String path) => _report(readSourceBackup(path));
 
 /// The report as text: counts only, and the note of any family whose
 /// capability the static predicate cannot capture.
@@ -493,16 +532,7 @@ String renderUsageReport(UsageReport report) {
   final lines = <String>[
     'static Book Source usage — network-free, counts only; '
         'no source record, URL, host, name or rule text is read out',
-    'input: ${report.input}',
-    'sha256: ${report.sha256}',
-    'collection: ${report.collectionCount} records from '
-        '${report.collectionMember}',
-    if (report.shelfMember == null)
-      'shelf: none — the input carries no bookshelf.json'
-    else
-      'shelf: ${report.shelfEntryCount} entries, ${report.originCount} '
-          'distinct origins, ${report.usedCount} resolved used records from '
-          '${report.shelfMember}',
+    ...report.backupLines,
     '',
   ];
   for (var index = 0; index < report.families.length; index++) {
@@ -529,25 +559,19 @@ String renderUsageReport(UsageReport report) {
   return '${lines.join('\n')}\n';
 }
 
-UsageReport _report({
-  required String input,
-  required String sha256,
-  required String collectionMember,
-  required String? shelfMember,
-  required List<Map<String, dynamic>> sources,
-  required List<Map<String, dynamic>>? shelf,
-}) {
-  final used = shelf == null ? null : resolveUsedSources(sources, shelf);
+UsageReport _report(SourceBackup backup) {
+  final used = backup.shelf == null
+      ? null
+      : resolveUsedSources(backup.sources, backup.shelf!);
   return UsageReport(
-    input: input,
-    sha256: sha256,
-    collectionMember: collectionMember,
-    shelfMember: shelfMember,
-    collectionCount: sources.length,
-    shelfEntryCount: shelf?.length ?? 0,
-    originCount: shelf == null ? 0 : shelfOrigins(shelf).length,
+    backup: backup,
+    collectionCount: backup.sources.length,
+    shelfEntryCount: backup.shelf?.length ?? 0,
+    originCount: backup.shelf == null
+        ? 0
+        : shelfOrigins(backup.shelf!).length,
     usedCount: used?.length,
-    families: countFamilies(sources, used),
+    families: countFamilies(backup.sources, used),
   );
 }
 
