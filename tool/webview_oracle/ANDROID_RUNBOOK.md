@@ -14,7 +14,7 @@ Everything below runs from this directory
 | --- | --- |
 | Handset | `adb devices` shows `5615f742` |
 | Device fingerprint | `adb shell getprop ro.build.fingerprint` → `Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys` |
-| System WebView | `154.0.8037.22` |
+| System WebView | `155.0.8059.4` (updated 2026-09-24; the 2026-09-22 session pinned `154.0.8037.22`, and the golden re-captured afterwards supersedes that 154-pinned one, which stays in git history) |
 | Frozen oracle APKs | `C:/Users/17945/.cache/wayfinder/oracle-apks-verified/{app.apk,test.apk}`, hashes `cc99040c…` and `10d382a7…` |
 | JDK | `C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8` (the scripts export it) |
 | Toolchain | `fvm flutter --version` matches the fixed build the Windows sweep recorded |

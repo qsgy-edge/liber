@@ -12,6 +12,13 @@
 # are the recorded ones, hash-verified before install, so the new golden is
 # produced by the same binaries.
 #
+# 2026-09-24: the handset's System WebView moved from `154.0.8037.22` to
+# `155.0.8059.4` (the operator confirmed the pin update), so `WEBVIEW` below was
+# updated and the previous 154-pinned golden is superseded — it stays in git
+# history (`git log -- tool/webview_oracle/evidence/android-os4.0.0.31`). The
+# golden and the destination rows must come from one WebView version, which is
+# why this re-capture precedes `run_all_destination.sh` in the same session.
+#
 # The row it produces stays an oracle golden, not a destination result: the 14
 # destination rows still have to be executed through the product adapter
 # Android 17 no longer reports `mInputRestricted`, so the unlock gate reads the
@@ -35,7 +42,7 @@ CLASS='io.legado.app.ticket13.Ticket13OracleTest'
 RUNNER='io.legado.app.debug.test/androidx.test.runner.AndroidJUnitRunner'
 BASELINE='14dd24945b2914ce2708b8abaa4ee67ceef892af'
 FINGERPRINT='Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
-WEBVIEW='154.0.8037.22'
+WEBVIEW='155.0.8059.4'
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
