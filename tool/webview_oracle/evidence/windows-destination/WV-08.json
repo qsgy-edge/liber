@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:13:48.907041Z",
-  "completedAtUtc": "2026-09-22T06:13:52.276036Z",
+  "startedAtUtc": "2026-09-24T06:58:29.524606Z",
+  "completedAtUtc": "2026-09-24T06:58:32.558781Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,21 +21,21 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": [
     {
-      "responseUrl": "http://127.0.0.1:59747/storage",
+      "responseUrl": "http://127.0.0.1:59215/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:59747\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":\"instance\",\"origin\":\"http://127.0.0.1:59215\"}",
       "priorResponseCode": null
     },
     {
-      "responseUrl": "http://127.0.0.1:59747/storage",
+      "responseUrl": "http://127.0.0.1:59215/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59747\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59215\"}",
       "priorResponseCode": null
     }
   ],
@@ -44,43 +44,43 @@
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:59747",
+        "host": "127.0.0.1:59215",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:59747/storage",
+        "referer": "http://127.0.0.1:59215/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 699
+      "startedAtElapsedMs": 613
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:59747",
+        "host": "127.0.0.1:59215",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:59747/storage",
+        "referer": "http://127.0.0.1:59215/storage",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 1926
+      "startedAtElapsedMs": 1778
     }
   ],
   "checks": {
@@ -95,9 +95,9 @@
   "executionVerdict": "pass",
   "restart": {
     "response": {
-      "responseUrl": "http://127.0.0.1:59747/storage",
+      "responseUrl": "http://127.0.0.1:59215/storage",
       "responseCode": 200,
-      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59747\"}",
+      "responseBody": "{\"local\":\"persisted\",\"session\":null,\"origin\":\"http://127.0.0.1:59215\"}",
       "priorResponseCode": null
     },
     "checks": {
@@ -109,26 +109,26 @@
         "method": "GET",
         "target": "/favicon.ico",
         "headers": {
-          "host": "127.0.0.1:59747",
+          "host": "127.0.0.1:59215",
           "connection": "keep-alive",
           "sec-ch-ua-platform": "\"Windows\"",
           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
           "sec-ch-ua-mobile": "?0",
           "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           "sec-fetch-site": "same-origin",
           "sec-fetch-mode": "no-cors",
           "sec-fetch-dest": "image",
-          "referer": "http://127.0.0.1:59747/storage",
+          "referer": "http://127.0.0.1:59215/storage",
           "accept-encoding": "gzip, deflate, br, zstd",
           "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
         },
         "body": "",
-        "startedAtElapsedMs": 669
+        "startedAtElapsedMs": 506
       }
     ]
   },
-  "restartCompletedAtUtc": "2026-09-22T06:14:16.517102Z",
+  "restartCompletedAtUtc": "2026-09-24T06:59:04.316596Z",
   "restartProvenance": {
     "device": {
       "manufacturer": "Microsoft",
@@ -140,10 +140,10 @@
     },
     "runtime": {
       "webViewPackage": "Microsoft.Web.WebView2",
-      "webViewVersion": "154.0.0.0",
-      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "webViewVersion": "155.0.0.0",
+      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
       "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     },
-    "startedAtUtc": "2026-09-22T06:14:14.447341Z"
+    "startedAtUtc": "2026-09-24T06:59:02.565306Z"
   }
 }

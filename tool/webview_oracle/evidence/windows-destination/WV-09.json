@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:14:39.240933Z",
-  "completedAtUtc": "2026-09-22T06:15:12.721896Z",
+  "startedAtUtc": "2026-09-24T06:59:34.699132Z",
+  "completedAtUtc": "2026-09-24T07:00:07.635275Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,12 +21,12 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "durationMs": 33013,
+    "durationMs": 32640,
     "error": {
       "type": "SourceWebViewJsTimeout",
       "message": "js执行超时"

@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:15:34.749509Z",
-  "completedAtUtc": "2026-09-22T06:16:42.470050Z",
+  "startedAtUtc": "2026-09-24T07:00:37.648920Z",
+  "completedAtUtc": "2026-09-24T07:01:45.123550Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,12 +21,12 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "durationMs": 60012,
+    "durationMs": 60010,
     "error": {
       "type": "SourceWebViewTimeout",
       "message": "BackstageWebView outer timeout"
@@ -37,9 +37,9 @@
       "method": "GET",
       "target": "/outer-timeout",
       "headers": {
-        "host": "127.0.0.1:64469",
+        "host": "127.0.0.1:53075",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": "\"Windows\"",
         "upgrade-insecure-requests": "1",
@@ -53,7 +53,7 @@
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 750
+      "startedAtElapsedMs": 773
     }
   ],
   "checks": {

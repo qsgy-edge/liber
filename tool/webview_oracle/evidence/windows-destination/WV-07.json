@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:12:57.231430Z",
-  "completedAtUtc": "2026-09-22T06:13:01.852262Z",
+  "startedAtUtc": "2026-09-24T06:57:14.644172Z",
+  "completedAtUtc": "2026-09-24T06:57:19.643781Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,35 +21,35 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": [
     {
-      "responseUrl": "http://127.0.0.1:62934/cookie",
+      "responseUrl": "http://127.0.0.1:59910/cookie",
       "responseCode": 200,
       "responseBody": "<html><head></head><body><main id=\"oracle\">cookie</main><script>document.cookie='js=from-js; Path=/'</script></body></html>",
       "priorResponseCode": null
     },
     {
-      "responseUrl": "http://127.0.0.1:62934/echo",
+      "responseUrl": "http://127.0.0.1:59910/echo",
       "responseCode": 200,
       "responseBody": "<html><head></head><body>echo</body></html>",
       "priorResponseCode": null
     }
   ],
-  "cookieStore": "js=from-js; sid=from-page",
-  "durableCookieStore": "js=from-js; sid=from-page",
+  "cookieStore": "sid=from-page; js=from-js",
+  "durableCookieStore": "sid=from-page; js=from-js",
   "echoCookie": "sid=from-page; js=from-js",
   "requests": [
     {
       "method": "GET",
       "target": "/cookie",
       "headers": {
-        "host": "127.0.0.1:62934",
+        "host": "127.0.0.1:59910",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": "\"Windows\"",
         "x-wayfinder": "wv07",
@@ -64,37 +64,37 @@
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 792
+      "startedAtElapsedMs": 1131
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:62934",
+        "host": "127.0.0.1:59910",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:62934/cookie",
+        "referer": "http://127.0.0.1:59910/cookie",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
         "cookie": "sid=from-page; js=from-js"
       },
       "body": "",
-      "startedAtElapsedMs": 882
+      "startedAtElapsedMs": 1226
     },
     {
       "method": "GET",
       "target": "/echo",
       "headers": {
-        "host": "127.0.0.1:62934",
+        "host": "127.0.0.1:59910",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": "\"Windows\"",
         "upgrade-insecure-requests": "1",
@@ -109,7 +109,7 @@
         "cookie": "sid=from-page; js=from-js"
       },
       "body": "",
-      "startedAtElapsedMs": 2985
+      "startedAtElapsedMs": 3284
     }
   ],
   "checks": {
@@ -131,12 +131,12 @@
   "executionVerdict": "pass",
   "restart": {
     "response": {
-      "responseUrl": "http://127.0.0.1:62934/echo",
+      "responseUrl": "http://127.0.0.1:59910/echo",
       "responseCode": 200,
       "responseBody": "<html><head></head><body>echo</body></html>",
       "priorResponseCode": null
     },
-    "storeBeforeWebView": "js=from-js; sid=from-page",
+    "storeBeforeWebView": "sid=from-page; js=from-js",
     "storeAfterWebView": "",
     "echoCookie": "",
     "requests": [
@@ -144,9 +144,9 @@
         "method": "GET",
         "target": "/echo",
         "headers": {
-          "host": "127.0.0.1:62934",
+          "host": "127.0.0.1:59910",
           "connection": "keep-alive",
-          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": "\"Windows\"",
           "upgrade-insecure-requests": "1",
@@ -160,28 +160,28 @@
           "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
         },
         "body": "",
-        "startedAtElapsedMs": 816
+        "startedAtElapsedMs": 797
       },
       {
         "method": "GET",
         "target": "/favicon.ico",
         "headers": {
-          "host": "127.0.0.1:62934",
+          "host": "127.0.0.1:59910",
           "connection": "keep-alive",
           "sec-ch-ua-platform": "\"Windows\"",
           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-          "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+          "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
           "sec-ch-ua-mobile": "?0",
           "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           "sec-fetch-site": "same-origin",
           "sec-fetch-mode": "no-cors",
           "sec-fetch-dest": "image",
-          "referer": "http://127.0.0.1:62934/echo",
+          "referer": "http://127.0.0.1:59910/echo",
           "accept-encoding": "gzip, deflate, br, zstd",
           "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
         },
         "body": "",
-        "startedAtElapsedMs": 868
+        "startedAtElapsedMs": 898
       }
     ],
     "checks": {
@@ -191,7 +191,7 @@
       "webViewCompletionOverwritesStoreWithEmptyNativeCookie": true
     }
   },
-  "restartCompletedAtUtc": "2026-09-22T06:13:26.092419Z",
+  "restartCompletedAtUtc": "2026-09-24T06:57:58.068828Z",
   "restartProvenance": {
     "device": {
       "manufacturer": "Microsoft",
@@ -203,10 +203,10 @@
     },
     "runtime": {
       "webViewPackage": "Microsoft.Web.WebView2",
-      "webViewVersion": "154.0.0.0",
-      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "webViewVersion": "155.0.0.0",
+      "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
       "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     },
-    "startedAtUtc": "2026-09-22T06:13:22.980989Z"
+    "startedAtUtc": "2026-09-24T06:57:54.803894Z"
   }
 }

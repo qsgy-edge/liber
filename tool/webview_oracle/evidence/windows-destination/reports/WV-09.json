@@ -6,7 +6,7 @@
   "goldenDevice": "Redmi/myron/myron:16/BP2A.250605.031.A3/OS3.0.309.0.WPMCNXM:user/release-keys",
   "destinationDevice": "windows/Windows 11 Pro/10.0.28020/26H1",
   "goldenWebView": "152.0.7977.42",
-  "destinationWebView": "154.0.0.0",
+  "destinationWebView": "155.0.0.0",
   "goldenChecksCompared": 5,
   "destinationExtraChecks": [],
   "matchedGoldenTrace": "accepted",

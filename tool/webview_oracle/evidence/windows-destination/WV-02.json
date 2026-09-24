@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:10:57.048959Z",
-  "completedAtUtc": "2026-09-22T06:10:59.267300Z",
+  "startedAtUtc": "2026-09-24T06:54:16.520667Z",
+  "completedAtUtc": "2026-09-24T06:54:19.061061Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,16 +21,16 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "responseUrl": "http://127.0.0.1:62841/post",
+    "responseUrl": "http://127.0.0.1:62899/post",
     "responseCode": 200,
-    "responseBody": "<html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>|ASSET=true|BASE=http://127.0.0.1:62841/post",
+    "responseBody": "<html><head><title>WV-02</title></head><body><main id=\"oracle\">post-bootstrap</main><script src=\"/relative.js\"></script></body></html>|ASSET=true|BASE=http://127.0.0.1:62899/post",
     "priorResponseCode": null,
-    "durationMs": 1704
+    "durationMs": 1961
   },
   "requests": [
     {
@@ -44,53 +44,53 @@
         "accept-encoding": "gzip",
         "content-length": "15",
         "x-wayfinder": "wv02",
-        "host": "127.0.0.1:62841",
+        "host": "127.0.0.1:62899",
         "content-type": "application/json; charset=UTF-8"
       },
       "body": "{\"key\":\"value\"}",
-      "startedAtElapsedMs": 83
+      "startedAtElapsedMs": 107
     },
     {
       "method": "GET",
       "target": "/relative.js",
       "headers": {
-        "host": "127.0.0.1:62841",
+        "host": "127.0.0.1:62899",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "accept": "*/*",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "script",
-        "referer": "http://127.0.0.1:62841/post",
+        "referer": "http://127.0.0.1:62899/post",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 764
+      "startedAtElapsedMs": 1043
     },
     {
       "method": "GET",
       "target": "/favicon.ico",
       "headers": {
-        "host": "127.0.0.1:62841",
+        "host": "127.0.0.1:62899",
         "connection": "keep-alive",
         "sec-ch-ua-platform": "\"Windows\"",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "sec-fetch-site": "same-origin",
         "sec-fetch-mode": "no-cors",
         "sec-fetch-dest": "image",
-        "referer": "http://127.0.0.1:62841/post",
+        "referer": "http://127.0.0.1:62899/post",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 798
+      "startedAtElapsedMs": 1064
     }
   ],
   "checks": {

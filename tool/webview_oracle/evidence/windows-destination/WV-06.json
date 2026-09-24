@@ -9,8 +9,8 @@
     "headlessWebView": true
   },
   "phase": "main",
-  "startedAtUtc": "2026-09-22T06:12:32.676355Z",
-  "completedAtUtc": "2026-09-22T06:12:33.779462Z",
+  "startedAtUtc": "2026-09-24T06:56:38.607797Z",
+  "completedAtUtc": "2026-09-24T06:56:40.194618Z",
   "device": {
     "manufacturer": "Microsoft",
     "model": "Windows 11 Pro",
@@ -21,25 +21,25 @@
   },
   "runtime": {
     "webViewPackage": "Microsoft.Web.WebView2",
-    "webViewVersion": "154.0.0.0",
-    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+    "webViewVersion": "155.0.0.0",
+    "defaultUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
     "configuredUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   },
   "operation": {
-    "responseUrl": "http://127.0.0.1:62831/override",
+    "responseUrl": "http://127.0.0.1:62158/override",
     "responseCode": 200,
-    "responseBody": "http://127.0.0.1:62831/blocked",
+    "responseBody": "http://127.0.0.1:62158/blocked",
     "priorResponseCode": null,
-    "durationMs": 612
+    "durationMs": 889
   },
   "requests": [
     {
       "method": "GET",
       "target": "/override",
       "headers": {
-        "host": "127.0.0.1:62831",
+        "host": "127.0.0.1:62158",
         "connection": "keep-alive",
-        "sec-ch-ua": "\"Microsoft Edge\";v=\"154\", \"Not A(Brand\";v=\"99\", \"Microsoft Edge WebView2\";v=\"154\", \"Chromium\";v=\"154\"",
+        "sec-ch-ua": "\"Microsoft Edge WebView2\";v=\"155\", \"Not(A:Brand\";v=\"24\", \"Microsoft Edge\";v=\"155\", \"Chromium\";v=\"155\"",
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": "\"Windows\"",
         "upgrade-insecure-requests": "1",
@@ -53,7 +53,7 @@
         "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
       },
       "body": "",
-      "startedAtElapsedMs": 600
+      "startedAtElapsedMs": 841
     }
   ],
   "checks": {
