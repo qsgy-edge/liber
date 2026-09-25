@@ -225,8 +225,8 @@ void main() {
       localizedApp(
         locale: locale,
         home: Scaffold(
-          body: ListView(
-            children: [OnlineBookshelf(service: shelf, transport: transport)],
+          body: CustomScrollView(
+            slivers: [OnlineBookshelf(service: shelf, transport: transport)],
           ),
         ),
       ),
@@ -419,8 +419,8 @@ void main() {
     await tester.pumpWidget(
       localizedApp(
         home: Scaffold(
-          body: ListView(
-            children: [
+          body: CustomScrollView(
+            slivers: [
               OnlineBookshelf(service: shelf, transport: OfflineTransport()),
             ],
           ),
@@ -455,7 +455,9 @@ void main() {
     await tester.pumpWidget(
       localizedApp(
         home: Scaffold(
-          body: ListView(children: [OnlineBookshelf(service: shelf)]),
+          body: CustomScrollView(
+            slivers: [OnlineBookshelf(service: shelf)],
+          ),
         ),
       ),
     );
@@ -625,5 +627,69 @@ void main() {
     expect((await store.bookById(bookId))!.sourceRef, sourceUrl);
     expect((await store.progressOf(bookId))!.textOffset, 77);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('300 行的书架只构建可见的几行，建出来的行按书架顺序排', (tester) async {
+    // #86: the operator's shelf holds 1424 rows and the page used to build every
+    // one of them on every rebuild, which is what made its scrolling jump. 300
+    // rows make "the rows on screen" and "all of them" unmistakable.
+    for (var i = 0; i < 300; i++) {
+      await shelf.add(
+        source,
+        HtmlBook(
+          url: Uri.parse('$sourceUrl/book/$i'),
+          title: '书籍${i.toString().padLeft(3, '0')}',
+        ),
+      );
+    }
+    await tester.pumpWidget(
+      localizedApp(
+        home: Scaffold(
+          body: CustomScrollView(slivers: [OnlineBookshelf(service: shelf)]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Only the rows the viewport (and its cache) reaches are built...
+    expect(
+      find.byType(ListTile).evaluate().length,
+      lessThan(40),
+      reason: '301 行里只有可见的几十行被构建',
+    );
+    expect(find.text('书籍299'), findsNothing, reason: '视口之外的行根本没有建');
+    // ...and what is built is the shelf's own first rows, in its own order.
+    expect(find.text('保留的书'), findsOneWidget);
+    expect(find.text('书籍000'), findsOneWidget);
+    expect(find.text('书籍001'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('书籍000')).dy,
+      greaterThan(tester.getTopLeft(find.text('保留的书')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('书籍001')).dy,
+      greaterThan(tester.getTopLeft(find.text('书籍000')).dy),
+    );
+
+    // Scrolling to the end builds the end of the list — the rows that appear are
+    // the ones that should, still in order, and still only the visible few.
+    await tester.scrollUntilVisible(
+      find.text('书籍299'),
+      500,
+      maxScrolls: 60,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('书籍299'), findsOneWidget);
+    expect(find.text('书籍298'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('书籍299')).dy,
+      greaterThan(tester.getTopLeft(find.text('书籍298')).dy),
+    );
+    expect(
+      find.byType(ListTile).evaluate().length,
+      lessThan(40),
+      reason: '滚到末尾也一样',
+    );
   });
 }

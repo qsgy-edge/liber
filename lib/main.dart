@@ -726,6 +726,15 @@ class _LiberHomePageState extends State<LiberHomePage> {
   }
 }
 
+/// The shelf as one lazy scroll view.
+///
+/// Every section is a sliver and every kind of book row is a `SliverList`
+/// builder, because a real shelf holds more than a thousand rows. The rows used
+/// to hang under one `OnlineBookshelf` that was a single ~90k-pixel `Column`
+/// child among a handful of small ones, so the scroll view's `maxScrollExtent`
+/// was an extrapolation between wildly unequal children that the next layout
+/// corrected: the position and the scrollbar thumb snapped to the corrected
+/// extent while the reader scrolled (#86).
 class _BookshelfPage extends StatelessWidget {
   const _BookshelfPage({
     required this.run,
@@ -762,120 +771,142 @@ class _BookshelfPage extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(l10n.shelfTitle, style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          Text(l10n.shelfSubtitle, style: theme.textTheme.bodyLarge),
-          const SizedBox(height: 28),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.auto_stories, size: 48),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.shelfTitle, style: theme.textTheme.headlineMedium),
+                const SizedBox(height: 8),
+                Text(l10n.shelfSubtitle, style: theme.textTheme.bodyLarge),
+                const SizedBox(height: 28),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          l10n.controlledSourceTitle,
-                          style: theme.textTheme.titleLarge,
+                        const Icon(Icons.auto_stories, size: 48),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l10n.controlledSourceTitle,
+                                style: theme.textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(l10n.controlledSourceDescription),
+                              const SizedBox(height: 18),
+                              Text(
+                                run.message?.text(l10n) ?? l10n.notRunYet,
+                                key: const ValueKey('run-status'),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed:
+                                    run.stage == BookSourceStage.completed
+                                    ? null
+                                    : onRunSource,
+                                icon: const Icon(Icons.play_arrow),
+                                label: Text(l10n.runControlledSource),
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(l10n.controlledSourceDescription),
-                        const SizedBox(height: 18),
-                        Text(
-                          run.message?.text(l10n) ?? l10n.notRunYet,
-                          key: const ValueKey('run-status'),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: run.stage == BookSourceStage.completed
-                              ? null
-                              : onRunSource,
-                          icon: const Icon(Icons.play_arrow),
-                          label: Text(l10n.runControlledSource),
-                        ),
+                        _StageList(current: run.stage),
                       ],
                     ),
                   ),
-                  _StageList(current: run.stage),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              children: [
-                if (shelf case final service?)
-                  OnlineBookshelf(service: service, revision: onlineRevision)
-                else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(spaceMessage ?? l10n.openingSpaceStore),
-                  ),
-                if (importedBooks.isNotEmpty) ...[
-                  Text(
-                    l10n.migratedBooksTitle,
-                    style: theme.textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  for (final entry in importedBooks)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.cloud_download_outlined),
-                        title: Text(entry.title),
-                        subtitle: Text(
-                          entry.book.needsRelink
-                              ? l10n.needsRelinkOffset(entry.textOffset)
-                              : l10n.migratedProgressOffset(entry.textOffset),
-                        ),
-                        trailing: const Icon(Icons.info_outline),
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                ],
-                if (localBooks.isNotEmpty) ...[
-                  Text(l10n.localBooksTitle, style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  for (final book in localBooks)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.description),
-                        title: Text(book.title),
-                        subtitle: Text(l10n.progressOffset(book.textOffset)),
-                        onTap: () => onOpenBook(book),
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                ],
-                if (trace.isNotEmpty) ...[
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.requestTraceTitle,
-                            style: theme.textTheme.titleMedium,
-                          ),
-                          for (final entry in trace)
-                            Text('${entry.stage.name}: ${entry.path}'),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                const _ContractNotice(),
+                ),
               ],
             ),
           ),
+          if (shelf case final service?)
+            OnlineBookshelf(service: service, revision: onlineRevision)
+          else
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(spaceMessage ?? l10n.openingSpaceStore),
+              ),
+            ),
+          if (importedBooks.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Text(
+                l10n.migratedBooksTitle,
+                style: theme.textTheme.titleLarge,
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            SliverList.builder(
+              itemCount: importedBooks.length,
+              itemBuilder: (context, index) {
+                final entry = importedBooks[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.cloud_download_outlined),
+                    title: Text(entry.title),
+                    subtitle: Text(
+                      entry.book.needsRelink
+                          ? l10n.needsRelinkOffset(entry.textOffset)
+                          : l10n.migratedProgressOffset(entry.textOffset),
+                    ),
+                    trailing: const Icon(Icons.info_outline),
+                  ),
+                );
+              },
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+          if (localBooks.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Text(
+                l10n.localBooksTitle,
+                style: theme.textTheme.titleLarge,
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            SliverList.builder(
+              itemCount: localBooks.length,
+              itemBuilder: (context, index) {
+                final book = localBooks[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.description),
+                    title: Text(book.title),
+                    subtitle: Text(l10n.progressOffset(book.textOffset)),
+                    onTap: () => onOpenBook(book),
+                  ),
+                );
+              },
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+          if (trace.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.requestTraceTitle,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      for (final entry in trace)
+                        Text('${entry.stage.name}: ${entry.path}'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+          const SliverToBoxAdapter(child: _ContractNotice()),
         ],
       ),
     );

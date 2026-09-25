@@ -364,6 +364,101 @@ void sourceManagementTest(Directory Function() root) {
   });
 }
 
+/// The shelf page's own scrolling (#86).
+///
+/// The operator's shelf holds 1424 rows and, while scrolling, the page's position
+/// and scrollbar thumb jumped: the rows hung under one `OnlineBookshelf` that was
+/// a single child the size of the whole shelf, so the page's `maxScrollExtent` was
+/// an extrapolation over a few wildly unequal children that the next layout
+/// corrected. This fixture shelves 300 rows through the same legacy import the
+/// other rows use, so both halves of the fix are observable: only the rows on
+/// screen are built, and the extent does not move under a scroll.
+void shelfScrollTest(Directory Function() root) {
+  testWidgets('书架 300 行：只构建可见的行，滚动范围不在滚动中改变', (tester) async {
+    final workspaceRoot = root();
+    File(
+      '${workspaceRoot.path}${Platform.pathSeparator}online_reading.json',
+    ).writeAsStringSync(
+      jsonEncode({
+        'version': 2,
+        'last': '',
+        'records': [
+          for (var index = 0; index < 300; index++)
+            _legacyRecord(
+              url: 'https://example.test/book/$index',
+              title: '书籍${index.toString().padLeft(3, '0')}',
+            ),
+        ],
+      }),
+    );
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
+      await tester.pump();
+      // A 300-record import takes seconds on a shared runner; the default
+      // five-second budget is not enough for it.
+      await _waitFor(tester, find.text('书籍000'), attempts: 400);
+      expect(find.text('书籍000'), findsOneWidget, reason: '第一行是第一本书');
+
+      // Only the rows the viewport reaches are built; the rest of the 300 are
+      // not in the tree at all.
+      expect(
+        find.byType(ListTile).evaluate().length,
+        lessThan(40),
+        reason: '300 行里只有可见的几十行被构建',
+      );
+      expect(find.text('书籍299'), findsNothing, reason: '视口之外的行没有建');
+      expect(
+        tester.getTopLeft(find.text('书籍001')).dy,
+        greaterThan(tester.getTopLeft(find.text('书籍000')).dy),
+      );
+
+      // The page's own scrollable: a drag moves the position by what was
+      // dragged, and the scroll range never moves under the reader. The rows
+      // used to be one child the size of the whole shelf, which made this page
+      // report a range of 43256 for a page whose real range is 21628 and snap
+      // to the real one at step 56 of this scroll — the operator's jump,
+      // scrollbar thumb included. On the sliver tree the range is right from
+      // the start and stays put.
+      final scrollable = find.byType(Scrollable).first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      final extent = position.maxScrollExtent;
+      expect(extent, greaterThan(600), reason: '300 行是长清单');
+      var step = 0;
+      while (position.pixels < extent - 600) {
+        expect(step, lessThan(100), reason: '一直拖不到末尾：这个范围不是这一页的');
+        final before = position.pixels;
+        await tester.drag(scrollable, const Offset(0, -400));
+        await tester.pump();
+        expect(
+          position.maxScrollExtent,
+          extent,
+          reason: '滚动范围不在滚动中校正（第 $step 步）',
+        );
+        if (position.pixels < extent - 600) {
+          expect(
+            position.pixels,
+            // `tester.drag` spends its first 20 pixels on the drag's own touch
+            // slop, so the position moves by the drag distance less that.
+            closeTo(before + 400, 40),
+            reason: '拖多少就走多少（第 $step 步）',
+          );
+        }
+        step++;
+      }
+      // One more drag puts the page at its end, still on the same range.
+      await tester.drag(scrollable, const Offset(0, -400));
+      await tester.pump();
+      expect(position.maxScrollExtent, extent, reason: '滚到末尾，范围还是那一个');
+      expect(position.pixels, closeTo(extent, 0.5), reason: '末尾就是末尾');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+}
+
 /// Pumps the frames an animated route needs. `runAsync` has no `pumpAndSettle`:
 /// it would wait for frames that only the animation itself produces.
 Future<void> _pumpFrames(WidgetTester tester) async {
@@ -374,8 +469,12 @@ Future<void> _pumpFrames(WidgetTester tester) async {
 
 /// Real work finishes on real time, so wait for the text instead of guessing a
 /// duration.
-Future<void> _waitFor(WidgetTester tester, Finder finder) async {
-  for (var attempt = 0; attempt < 100; attempt++) {
+Future<void> _waitFor(
+  WidgetTester tester,
+  Finder finder, {
+  int attempts = 100,
+}) async {
+  for (var attempt = 0; attempt < attempts; attempt++) {
     if (finder.evaluate().isNotEmpty) return;
     await Future<void>.delayed(const Duration(milliseconds: 50));
     await tester.pump();
@@ -418,7 +517,34 @@ void main() {
   settingsEntryTest(() => root);
   lossReportLanguageTest(() => root);
   sourceManagementTest(() => root);
+  shelfScrollTest(() => root);
 }
+
+/// One `online_reading.json` v2 record, the shape the retired JSON store wrote:
+/// a book under the `Example` source, shelved, with one chapter and a position.
+Map<String, dynamic> _legacyRecord({
+  required String url,
+  required String title,
+}) => {
+  'source': {
+    'bookSourceUrl': 'https://example.test',
+    'bookSourceName': 'Example',
+  },
+  'book': {
+    'url': url,
+    'title': title,
+    'author': '天蚕土豆',
+    'intro': '',
+    'cover': '',
+  },
+  'chapterUrl': '',
+  'chapterName': '',
+  'textOffset': 12,
+  'chapters': [
+    {'name': '第一章', 'url': '$url/1'},
+  ],
+  'shelved': true,
+};
 
 /// The three JSON stores live in the installation directory itself, next to the
 /// manifest and the space database.
@@ -430,26 +556,7 @@ Future<void> _writeLegacyStores(Directory home) async {
       'version': 2,
       'last': '',
       'records': [
-        {
-          'source': {
-            'bookSourceUrl': 'https://example.test',
-            'bookSourceName': 'Example',
-          },
-          'book': {
-            'url': 'https://example.test/book/1',
-            'title': '斗破苍穹',
-            'author': '天蚕土豆',
-            'intro': '',
-            'cover': '',
-          },
-          'chapterUrl': '',
-          'chapterName': '',
-          'textOffset': 12,
-          'chapters': [
-            {'name': '第一章', 'url': 'https://example.test/book/1/1'},
-          ],
-          'shelved': true,
-        },
+        _legacyRecord(url: 'https://example.test/book/1', title: '斗破苍穹'),
       ],
     }),
   );
