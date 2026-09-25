@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../domain/contracts.dart';
+import '../settings/direct_connection.dart';
+import '../store/space_store.dart';
 import 'book_source_service.dart';
 import 'source_encoding.dart';
 import 'source_http_uri.dart';
@@ -97,10 +99,66 @@ const _sourceRedirectStatuses = {300, 301, 302, 303, 307, 308};
 /// OkHttp's `MAX_FOLLOW_UPS`: the 21st redirect throws.
 const _maxSourceFollowUps = 20;
 
+/// The proxy answer one request gets (#87): the `network.direct` switch as the
+/// one function the client's `findProxy` is.
+///
+/// On is `DIRECT` whatever [environment] says, so the request does not go
+/// through the system proxy. Off — and with no row at all — is Dart's own
+/// default, `HttpClient.findProxyFromEnvironment`: an installation that has a
+/// proxy configured keeps using it, and one that has none answers `DIRECT`
+/// there anyway, which is the behaviour every installation had before this
+/// switch existed.
+///
+/// One Dart code path, therefore one behaviour on all five platforms
+/// (`windows`, `macos`, `linux`, `android`, `ios`): there is deliberately no
+/// `Platform` check here. Two limits it cannot lift: a VPN-mode proxy on
+/// `android`/`ios` intercepts below the socket API, where no in-app `findProxy`
+/// reaches (the proxy app's own per-app rules are the only lever there); and
+/// the WebView path (`webView: true` request options and the hatch pages)
+/// renders through the platform engine, whose own proxy handling this switch
+/// does not touch.
+///
+/// [environment] stands in for the process environment, the way
+/// `InterfaceLanguageSetting.resolve`'s `systemLocale` stands in for the
+/// platform locale: a test that must not depend on the machine's own proxy
+/// variables hands in the ones it means to exercise. The product leaves it
+/// null.
+String sourceFindProxy(
+  Uri url, {
+  required bool directConnection,
+  Map<String, String>? environment,
+}) => directConnection
+    ? 'DIRECT'
+    : HttpClient.findProxyFromEnvironment(url, environment: environment);
+
+/// The client one Book Source request runs on: the connection timeout the
+/// frozen client's 20 s is, and [sourceFindProxy] as its proxy answer.
+HttpClient sourceHttpClient({bool directConnection = false}) {
+  final client = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 20)
+    ..findProxy = (url) =>
+        sourceFindProxy(url, directConnection: directConnection);
+  return client;
+}
+
 class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
-  HttpSourceTransport({this.timeout = const Duration(seconds: 30)});
+  HttpSourceTransport({
+    this.timeout = const Duration(seconds: 30),
+    this.store,
+    this.clientFactory = sourceHttpClient,
+  });
 
   final Duration timeout;
+
+  /// The space whose `network.direct` row (#87) decides whether this
+  /// transport's requests bypass the system proxy; null — a test, a tool —
+  /// leaves Dart's default standing.
+  final SpaceStore? store;
+
+  /// How each request's client is built. The default applies the connection
+  /// timeout and the proxy switch; a test hands its own to read the policy the
+  /// transport asked for without sending a request.
+  final HttpClient Function({bool directConnection}) clientFactory;
 
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest sourceRequest) async {
@@ -114,9 +172,13 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       throw ArgumentError.value(uri, 'url', 'HTTP(S) URL required');
     }
     sourceRequest.cancellation?.throwIfCancelled();
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 20)
-      ..findProxy = (_) => 'DIRECT';
+    // #87: the row is read per request rather than once per page, so a switch
+    // flipped while a source is open applies to that page's next request
+    // instead of waiting for it to be reopened.
+    final space = store;
+    final directConnection =
+        space != null && await DirectConnectionSetting.resolve(space);
+    final client = clientFactory(directConnection: directConnection);
     if (sourceRequest.allowInvalidCertificate) {
       // ADR 0011 §5: the user's per-source, per-host exception. This client
       // serves one `send`, so the callback cannot lower validation for another

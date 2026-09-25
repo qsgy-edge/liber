@@ -163,8 +163,10 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
       final result = await autoChangeSource(
         service: widget.service,
         book: entry,
-        openPipeline: (source) =>
-            _openPipeline(source, widget.transport ?? HttpSourceTransport()),
+        openPipeline: (source) => _openPipeline(
+          source,
+          widget.transport ?? HttpSourceTransport(store: widget.service.store),
+        ),
         // ADR 0011 §5: one certificate confirmation per source, around that
         // source's own stages — the manual search and switch wrap theirs the
         // same way.
@@ -356,7 +358,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         final source = entry.sourceJson;
         final pipeline = _openPipeline(
           source,
-          widget.transport ?? HttpSourceTransport(),
+          widget.transport ?? HttpSourceTransport(store: widget.service.store),
         );
         try {
           final (book, chapters) = await withTlsExceptionConfirmation(

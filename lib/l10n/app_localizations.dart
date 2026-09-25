@@ -144,6 +144,12 @@ abstract class AppLocalizations {
   /// **'自动换源'**
   String get actionAutoChangeSource;
 
+  /// No description provided for @actionDirectConnection.
+  ///
+  /// In zh, this message translates to:
+  /// **'直连'**
+  String get actionDirectConnection;
+
   /// No description provided for @readerScriptTitle.
   ///
   /// In zh, this message translates to:
@@ -785,6 +791,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'保存设置失败：{error}'**
   String saveSettingsFailed(String error);
+
+  /// No description provided for @directConnectionLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'直连（不经过系统代理）'**
+  String get directConnectionLabel;
+
+  /// No description provided for @directConnectionHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开后，本产品自己发出的书源请求不经过系统代理（findProxy 为 DIRECT）；关闭时是 Dart 的默认行为，也就是按系统的代理配置走。手机上 VPN 模式的代理在系统层拦截，应用内绕不开；内置 WebView 页面（webView 请求选项与阅读页）的代理由平台引擎自己处理，本开关不改变它们。默认关闭。'**
+  String get directConnectionHint;
 
   /// No description provided for @interfaceLanguageIntro.
   ///

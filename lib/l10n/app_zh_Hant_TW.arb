@@ -1,6 +1,7 @@
 {
   "@@locale": "zh_Hant_TW",
   "actionAutoChangeSource": "自動換源",
+  "actionDirectConnection": "直連",
   "actionInterfaceLanguage": "介面語言",
   "actionPreciseSearch": "精確搜尋",
   "actionSourceTrial": "書源試讀",
@@ -81,6 +82,8 @@
   "deleteSourceFailed": "刪除書源失敗：{error}",
   "deleteSourceQuestion": "刪除書源「{name}」？（{ref}）\n\n它的快取、變數、寫入的 Cookie 和已確認的證書例外會一起清理，不能撤銷。書架上由它加入的書會保留（標記為書源已刪除），重新匯入同一 URL 的書源即可繼續閱讀。",
   "describeSimplified": "簡體（大陸用詞）",
+  "directConnectionHint": "開啟後，本產品自己發出的書源請求不經過系統代理（findProxy 為 DIRECT）；關閉時是 Dart 的預設行為，也就是按系統的代理配置走。手機上 VPN 模式的代理在系統層攔截，應用內繞不開；內建 WebView 頁面（webView 請求選項與閱讀頁）的代理由平臺引擎自己處理，本開關不改變它們。預設關閉。",
+  "directConnectionLabel": "直連（不經過系統代理）",
   "done": "完成",
   "editSourceUrlAction": "修改書源 URL",
   "editSourceUrlFailed": "修改書源 URL 失敗：{error}",

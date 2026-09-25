@@ -11,6 +11,7 @@ import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
 import 'settings/auto_change_source_page.dart';
+import 'settings/direct_connection_page.dart';
 import 'settings/interface_language.dart';
 import 'settings/interface_language_page.dart';
 import 'settings/reader_script_page.dart';
@@ -484,7 +485,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
           source: data,
           hostState: shelf.hostState,
           androidId: shelf.androidId,
-          transport: HttpSourceTransport(),
+          transport: HttpSourceTransport(store: shelf.store),
         ),
       ),
     );
@@ -659,6 +660,19 @@ class _LiberHomePageState extends State<LiberHomePage> {
                   ),
             tooltip: l10n.actionAutoChangeSource,
             icon: const Icon(Icons.swap_horiz),
+          ),
+          // #87's own entry: whether the requests this product sends through
+          // `dart:io`'s `HttpClient` bypass the system proxy.
+          IconButton(
+            onPressed: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DirectConnectionPage(store: shelf.store),
+                    ),
+                  ),
+            tooltip: l10n.actionDirectConnection,
+            icon: const Icon(Icons.route),
           ),
           TextButton.icon(
             onPressed: shelf == null
