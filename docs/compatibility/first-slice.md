@@ -201,18 +201,24 @@ here so a later run of the same comparison reads correctly:
   sets them. SLICE-01 sets only `X-Slice-Corpus`, so the frozen client's
   `gzip, deflate` and the product transport's `gzip` do not make R3 fail.
 - **R8 — the content text (resolved).** The frozen content stage's final shaping
-  is `BookContent.kt:135-142` (`WebBook.getContentAwait` →
+  is `BookContent.kt:133-142` (`WebBook.getContentAwait` →
   `BookContent.analyzeContent`), *not* `ContentProcessor.kt:199`. Only when the
   source declares `ruleContent.replaceRegex` does that stage (1) trim every
-  line of the joined page text, (2) run the replacement over the whole text, and
-  (3) prefix **every** line — an empty line included — with the hard-coded
+  line of the **joined** page text, (2) run the replacement over the whole text,
+  and (3) prefix **every** line — an empty line included — with the hard-coded
   two-character string `"　　"`. The source declaration is the gate: a source
-  that declares no `replaceRegex` is left exactly as extracted. The product now
-  applies that shaping at the same layer — the content stage's final text,
-  `HtmlSourcePipeline.chapter()`: the replacement runs per page inside the
-  adapter's existing `##` rule and the trim and prefix wrap the joined result,
-  which reproduces the frozen single pass for a marker that does not span
-  pages. The two texts are identical and the row passes with no normalization.
+  that declares no `replaceRegex` is left exactly as extracted. The product
+  applies that shaping at the same layer since #106 — the rule's own `##` parts
+  are read with the field and the replacement runs over the joined, trimmed
+  text (`HtmlSourcePipeline.chapter()`), where an earlier revision ran it per
+  page inside the `##` rule, which collapsed a line a replacement had emptied
+  (#101's row asserted that; the frozen's golden below corrected it). The two
+  texts are identical and the row passes with no normalization.
+
+  R8's recorded text stayed byte-identical after #106 — its marker sits alone on
+  a page-final line, where the per-page and joined passes agree — so the row
+  needed no device re-run; the check is the recorded evidence against the
+  oracle's `replace-*` rows in `tool/html_content_oracle/`.
   The earlier explanation cited
   `ContentProcessor.kt:199` and `ReadBookConfig.paragraphIndent`
   (`ReadBookConfig.kt:532`): that is the *reader's* rendering step (a

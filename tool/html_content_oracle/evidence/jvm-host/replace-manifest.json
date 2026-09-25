@@ -107,7 +107,7 @@
     "runJvm": "openjdk version 21.0.4 2024-07-16"
   },
   "jvm": "JetBrains s.r.o. 21.0.4 (Windows 11)",
-  "recordedAt": "2026-09-25T14:04:17.349641Z",
+  "recordedAt": "2026-09-25T14:22:19.242464400Z",
   "determinism": "Every case is evaluated twice and the run is refused when the two runs differ. The frozen rule path, the formatter and the pinned Rhino read no clock, no random source and no state.",
   "transcription": "AnalyzeRule.kt, RuleDataInterface.kt, AnalyzeByRegex.kt, HtmlFormatter.kt, AppPattern.kt and the frozen modules/rhino script engine are compiled and executed as they are; the {{...}} substitutions this corpus carries are evaluated by that engine, not by a transcription. Transcribed and verified at run time against the frozen files: the content field read and per-page pass (BookContent.kt:176-181), the replace stage (BookContent.kt:133-142), the getOrPutLimit/isJson/splitNotBlank/isAbsUrl/isDataUrl helpers the rule path reaches (MapExtensions.kt:21-33, StringExtensions.kt:36-44,46-55,81-84), stackTraceStr (ThrowableExtensions.kt:5-13) and the shared-scope guard (SharedJsScope.kt:36-38). The stub members this corpus never reaches are declared in tool/html_content_oracle/stubs/ and refuse by name; android.text.TextUtils carries AOSP's own implementation because AnalyzeRule guards its rule text with it.",
   "selectorEngine": "The frozen content field's selector read is answered by the fixture's declared pageValues: jsoup is not compiled here, and the extraction itself is the product's Rust adapter's and tool/html_oracle/'s surface.",
