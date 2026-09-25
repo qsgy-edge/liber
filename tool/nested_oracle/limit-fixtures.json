@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "LIMIT-01",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/79",
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.analyzeRule.AnalyzeRule.getString(rule, content, isUrl) with a rule-level '@js:' field -> AnalyzeRule.splitSourceRule (JS_PATTERN) -> Mode.Js -> AnalyzeRule.evalJS (AnalyzeRule.kt:749) -> RhinoScriptEngine.compile + RhinoCompiledScript.eval (com.script.rhino, Rhino 1.8.0, setInterpretedMode(true), no heap cap)",
+  "shape": "issue 79's measured accumulating shape, verbatim: while (true) blocks.push(new Array(10000).fill(123))",
+  "controlRowId": "control-throw-null",
+  "source": {
+    "bookSourceUrl": "http://127.0.0.1:1/limit-probe/source",
+    "jsLib": "var limitProbeLibMarker = true;"
+  },
+  "content": "<html><body>limit probe</body></html>",
+  "rows": [
+    {"id": "preflight-array-fill", "rule": "@js:typeof Array.prototype.fill"},
+    {"id": "preflight-result-binding", "rule": "@js:String(result).length"},
+    {"id": "control-throw-null", "rule": "@js:throw null"},
+    {"id": "probe-accumulate-to-limit", "destructive": true, "rule": "@js:var blocks = []; while (true) { blocks.push(new Array(10000).fill(123)); }"},
+    {"id": "after-limit-engine-usable", "rule": "@js:1 + 1"}
+  ]
+}
