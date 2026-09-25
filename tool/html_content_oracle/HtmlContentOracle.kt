@@ -98,7 +98,7 @@ private val FROZEN_IS_DATA_URL = """
 """.trimIndent()
 
 /** `AnalyzeUrl.kt:658`, transcribed into `FrozenAnalyzeUrlStub.kt`. */
-private val FROZEN_PARAM_PATTERN =
+internal val FROZEN_PARAM_PATTERN =
     "val paramPattern: Pattern = Pattern.compile(\"\\\\s*,\\\\s*(?=\\\\{)\")"
 
 private val whitespace = Regex("\\s+")
@@ -109,7 +109,7 @@ private val whitespace = Regex("\\s+")
  * The comparison drops every whitespace character, so re-indentation is not a
  * drift but a changed expression is.
  */
-private fun requireTranscription(file: File, vararg snippets: String) {
+internal fun requireTranscription(file: File, vararg snippets: String) {
     val frozen = whitespace.replace(file.readText(Charsets.UTF_8), "")
     for (snippet in snippets) {
         val transcribed = whitespace.replace(snippet, "")

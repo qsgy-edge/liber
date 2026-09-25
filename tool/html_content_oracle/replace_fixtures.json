@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "CONTENT-REPLACE-01",
+  "corpusVersion": 1,
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "surface": "the content stage's replace pass, BookContent.kt:135-142, read through the frozen AnalyzeRule",
+  "note": "The corpus is synthetic: it reproduces the *shapes* the operator's used sources declare for `html-content-replace-rule` (measured by `dart run tool/refusal_shapes.dart` over the 2026-09-17 backup: 3 records carry a `{{...}}` beyond `{{chapter.title}}` inside the replacement, 2 carry a `##` field on the content rule beside a non-empty replacement), with repository-local page text and the frozen's own binding names. No rule text, source name, URL or header value from the backup appears here. `pageValues` is what the frozen selector read answers for a page; the frozen side declares it (the selector engine is not compiled here), and the product side produces it from `pageHtml` through its own adapter.",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "180277b101c3bfe50e5f3a79886fd0d3c313633a",
+      "role": "the rule path the replace stage reads: splitSourceRule, SourceRule.makeUpRule (the {{...}}/@get: substitution and the ## split), replaceRegex, getString, evalJS"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/RuleDataInterface.kt",
+      "sha1": "c141a24467d6ffcc58e633c04d1d0d98ec79d612",
+      "role": "the variable map the entities carry into the analysis"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByRegex.kt",
+      "sha1": "e94c56346e80dc3d9603f728a57e1c6fe84dec75",
+      "role": "the regex-mode analysis the same file names"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d3e3de8230a58b5f7a7419c2c981096f6b8815be",
+      "role": "paramPattern, read by HtmlFormatter for a templated image src"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "082685b5d75ad2ef14bb5fc8d5dd8273667fe5cf",
+      "role": "the per-page HTML pass ahead of the replace stage"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "c07a674525254d3539687f7b205aaa609375b941",
+      "role": "getAbsoluteURL, read by the per-page formatter"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "ad323d5a7f4f77f7a4c0aef1ffb0b2bdac7651c1",
+      "role": "isAbsUrl/isDataUrl/isJson/splitNotBlank, transcribed for the compile classpath"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/MapExtensions.kt",
+      "sha1": "705ee4c0c4b7a81d470f79895266dbbbdf338d30",
+      "role": "getOrPutLimit, the rule and regex caches"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/ThrowableExtensions.kt",
+      "sha1": "02c6076b4c92a8d205f0575efcba3c6766b971aa",
+      "role": "stackTraceStr, the ajax failure text"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/LogUtils.kt",
+      "sha1": "e0e8a2ccfa0aa2d3b7c4cc054d19ad13d31536ef",
+      "role": "printOnDebug, gated on the Android-generated BuildConfig"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/SharedJsScope.kt",
+      "sha1": "107560831e703374851ef4a52e9e74c579bd5464",
+      "role": "the getShareScope guard transcribed into the stub: a source with no jsLib has no shared scope"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/JsExtensions.kt",
+      "sha1": "1544fa90d832d57147b4f67cec3f2418daca8dc4",
+      "role": "the interface AnalyzeRule implements; the stub keeps getSource/ajax/log"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "JS_PATTERN (the rule splitter) and LFRegex (the stage's line split)"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "c262b0a01355b600e8c0cdae39955b4f3fd12d12",
+      "role": "the content read and the replace stage this corpus executes"
+    },
+    {
+      "path": "gradle/libs.versions.toml",
+      "sha1": "4571e2b1345724d6da770f8053b410df0f31981c",
+      "role": "rhino = 1.8.0 (:40), the JS engine the frozen revision runs"
+    }
+  ],
+  "scriptModule": {
+    "root": "modules/rhino/src/main/java",
+    "files": 27,
+    "treeSha1": "3ebdb03ce6fb7f943112f31321125ba626a0b363",
+    "role": "the frozen script engine, compiled from its own bytes and run on the pinned Rhino: the {{...}} substitutions in this corpus are evaluated by it, not by a transcription",
+    "treeSha1Recipe": "sha1 of the concatenated `<file sha1>  <path>\\n` lines, paths sorted, '/'-separated, relative to the frozen root"
+  },
+  "cases": [
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>第二段</div>",
+      "name": "gate-no-replaceRegex",
+      "shape": "no `replaceRegex`: the stage's own gate",
+      "note": "`if (!replaceRegex.isNullOrEmpty())` (BookContent.kt:136): a source that declares none is left exactly as the per-page pass produced it.",
+      "pageValues": [
+        "第一段\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": ""
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>（广告）<br>第二段</div>",
+      "name": "marker-alone-on-a-line",
+      "shape": "an empty-rule replacement over the joined text (`##<regex>`)",
+      "note": "The corrected #101 row: the replacement runs after the trim, so the emptied line survives into the indented result (the frozen never re-formats after it).",
+      "pageValues": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段（广告）第二段</div>",
+      "name": "marker-inside-a-line",
+      "shape": "an empty-rule replacement (`##<regex>`)",
+      "note": "The already-supported shape: the marker is removed wherever the regex matches and the lines keep the stage's own indent.",
+      "pageValues": [
+        "第一段（广告）第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>（广告）</div>",
+      "name": "marker-on-the-last-line",
+      "shape": "an empty-rule replacement (`##<regex>`)",
+      "note": "A marker on the final line leaves the trailing empty line the frozen's split-and-prefix produces.",
+      "pageValues": [
+        "第一段\n（广告）"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>（广告）<br>第二段</div>",
+      "name": "trim-precedes-the-replacement",
+      "shape": "the trim the stage runs before its replacement",
+      "note": "The pattern can only match because the trim has already removed the formatter's U+3000 indent: the replacement sees `\\n（广告）`, not `\\n　　（广告）`.",
+      "pageValues": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##\n（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段　（广告）第二段</div>",
+      "name": "intra-line-ideographic-space",
+      "shape": "the stage's replacement over the formatter's own U+3000",
+      "note": "The frozen regex is a Java pattern, and Java's `\\s` is ASCII-only: `\\s+` cannot match the ideographic space the formatter writes inside a line.",
+      "pageValues": [
+        "第一段　（广告）第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##\\s+（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">正文，<br>第二段</div>",
+      "name": "replacement-dollar-group-cannot-fire",
+      "shape": "a three-part replacement (`##<regex>##<replacement>`)",
+      "note": "After the trim no line starts with whitespace, so `\\n\\s{2}` cannot match: the `$1` form of the used sources is inert in this stage.",
+      "pageValues": [
+        "正文，\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##(，)\n\\s{2}##$1"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>（广告）<br>第二段</div>",
+      "name": "replacement-dollar-without-a-group",
+      "shape": "the frozen `replaceRegex` fallback",
+      "note": "A replacement that names a group the pattern does not have throws inside the Kotlin `Regex.replace`, and the frozen falls back to `String.replace` — the literal text is substituted.",
+      "pageValues": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）##$1"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段（广告）第二段</div>",
+      "name": "replacement-first-field",
+      "shape": "the frozen `replaceFirst` field (`##a##b###`)",
+      "note": "Four `##` fields answer with the replaced *match* only (`AnalyzeRule.kt:426-437`), not the whole text.",
+      "pageValues": [
+        "第一段（广告）第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）##【】###"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>（广告）<br>第二段</div>",
+      "name": "entity-after-the-replacement",
+      "shape": "the stage read's own unescape",
+      "note": "The replace stage reads through `getString(rule, content)` with the default `unescape = true`: an `&` the replacement introduced is entity-decoded before the indent.",
+      "pageValues": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##（广告）##&amp;"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段旧第二段（广告）第三段</div>",
+      "name": "content-rule-owns-a-replacement",
+      "shape": "a `##` field on the content rule beside a non-empty `replaceRegex`",
+      "note": "The content field's own `##` replacement runs on the page read, ahead of the formatter; the stage's replacement then runs on the joined text. Both belong to their own field.",
+      "pageValues": [
+        "<div class=\"content\">第一段旧第二段（广告）第三段</div>"
+      ],
+      "contentField": ".content@html##旧##新",
+      "replaceRegex": "##（广告）"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"read\"><p>正文，</p><p>后段（作者：某人）</p></div>",
+      "name": "content-rule-removal-and-stage-group",
+      "shape": "both fields' `##` parts at once",
+      "note": "The used shape with a trailing `##` on the content rule and a three-part replacement: the content rule removes its match from the page read, the stage's replacement runs on the joined text.",
+      "pageValues": [
+        "正文，\n\n\n后段（作者：某人）"
+      ],
+      "contentField": ".read@p@textNodes##(作者：.*|【未完，待续】)##",
+      "replaceRegex": "##(，)\n\\s{2}##$1"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一章。本章完。正文</div>",
+      "name": "template-title-in-an-alternation",
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `title`",
+      "note": "The template is substituted into the rule text before the `##` split, and `title` is the chapter title the frozen binds (`AnalyzeRule.kt:745`).",
+      "pageValues": [
+        "第一章。本章完。正文"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##.本章完.|{{try{title}catch(e){\"\"} }}"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">测试作者 更快 正文1。。</div>",
+      "name": "template-book-author",
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `book.author`",
+      "note": "The `book` binding is the book the analysis holds; a member read off it is inserted into the pattern as text.",
+      "pageValues": [
+        "测试作者 更快 正文1。。"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##{{book.author}}.*更|\\d+。。"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一章正文<br>(第2页)</div>",
+      "name": "template-chapter-title-try",
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `chapter.title` inside a `try`",
+      "note": "The statement-shaped template the used sources carry: a `try` as the whole program answers its completion value. The pattern's second alternative `\\(第\\d+.+页\\)` needs a character between the numeral and 页, so on this page text only the template branch fires.",
+      "pageValues": [
+        "第一章正文\n(第2页)"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##{{try{chapter.title}catch(e){\"\"} }}|\n\\(第\\d+.+页\\)"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段（广告）第二段</div>",
+      "name": "template-undefined-name-catch",
+      "shape": "the template's catch branch",
+      "note": "A name the frozen binds nowhere throws a ReferenceError, which the source's own `try`/`catch` turns into the fallback text; the fallback is the marker this page carries, so the branch is visible in the answer.",
+      "pageValues": [
+        "第一段（广告）第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##{{try{notABinding}catch(e){\"（广告）\"} }}"
+    },
+    {
+      "bookName": "测试书",
+      "bookAuthor": "测试作者",
+      "chapterTitle": "第一章",
+      "pageUrl": "http://example.test/chapter/1",
+      "pageBody": "<html><body>page</body></html>",
+      "pageHtml": "<div class=\"content\">第一段<br>第二段</div>",
+      "name": "template-result-is-the-joined-text",
+      "shape": "the template's `result` binding",
+      "note": "The frozen binds `result` to the value the rule runs on, which at this stage is the trimmed joined text.",
+      "pageValues": [
+        "第一段\n第二段"
+      ],
+      "contentField": ".content@textNodes",
+      "replaceRegex": "##{{result}}"
+    }
+  ]
+}

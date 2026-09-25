@@ -45,14 +45,15 @@ object NetworkUtils {
     }
 }
 
-/** `StringExtensions.kt:36-39`, transcribed. */
-private fun String?.isAbsUrl() =
+/** `StringExtensions.kt:36-39`, transcribed. Public because `AnalyzeRule.kt`
+ * imports it across packages (`AnalyzeRule.kt:24-25`). */
+fun String?.isAbsUrl() =
     this?.let {
         it.startsWith("http://", true) || it.startsWith("https://", true)
     } ?: false
 
-/** `StringExtensions.kt:41-44`, transcribed. */
-private fun String?.isDataUrl() =
+/** `StringExtensions.kt:41-44`, transcribed; see [isAbsUrl]. */
+fun String?.isDataUrl() =
     this?.let {
         AppPattern.dataUriRegex.matches(it)
     } ?: false
