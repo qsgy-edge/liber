@@ -62,6 +62,99 @@ fn patch_poll_quantum(out_dir: &Path) {
     }
 }
 
+/// The bytes of tracked heap kept out of a running script's reach so the
+/// out-of-memory error object can always be built. `JS_ThrowError2` throws
+/// `JS_NULL` when `JS_MakeError` cannot allocate, and the report is lost
+/// (tickets #77/#79); this headroom is what makes that allocation succeed.
+/// `JS_ThrowOutOfMemory` marks the throw path with `in_out_of_memory`, and
+/// that is the only path that sees the whole `malloc_limit`, so a script still
+/// cannot push the tracked heap past the configured limit. A limit at or below
+/// the headroom keeps the previous behaviour.
+const OOM_HEADROOM_HELPER: &str = r#"/* Bytes of the tracked heap kept out of a running script's reach so the
+   out-of-memory error object (and its message string) can always be
+   allocated. JS_ThrowError2 otherwise throws JS_NULL when JS_MakeError
+   cannot allocate, and the report is lost (#79); JS_ThrowOutOfMemory marks
+   the throw path with in_out_of_memory, which is the only path that sees the
+   whole malloc_limit. A limit at or below the headroom keeps the old
+   behaviour. */
+#define JS_OOM_HEADROOM (16 * 1024)
+
+static size_t js_malloc_limit(JSRuntime *rt)
+{
+    size_t limit = rt->malloc_state.malloc_limit;
+
+    if (limit != 0 && !rt->in_out_of_memory && limit > JS_OOM_HEADROOM)
+        limit -= JS_OOM_HEADROOM;
+    return limit;
+}"#;
+
+/// The three allocator limit checks the build copy reroutes through
+/// `js_malloc_limit()`. Each pinned string must occur exactly once.
+const OOM_HEADROOM_LIMIT_CHECKS: [(&str, &str); 3] = [
+    (
+        "s->malloc_size + (count * size) > s->malloc_limit - 1",
+        "s->malloc_size + (count * size) > js_malloc_limit(rt) - 1",
+    ),
+    (
+        "s->malloc_size + size > s->malloc_limit - 1",
+        "s->malloc_size + size > js_malloc_limit(rt) - 1",
+    ),
+    (
+        "s->malloc_size + size - old_size > s->malloc_limit - 1",
+        "s->malloc_size + size - old_size > js_malloc_limit(rt) - 1",
+    ),
+];
+
+/// Patches the build copy of `quickjs.c` so an out-of-memory error object can
+/// always be allocated, however little of the heap the failing request left:
+/// inserts the headroom helper before the first allocator helper and routes
+/// the three limit checks through it, asserting each edit lands exactly once.
+/// The anchor is a single line, so a CRLF or LF checkout patches identically.
+/// The frozen `quickjs/` sources stay unchanged, as `LIBER.md` records.
+fn patch_oom_headroom(out_dir: &Path) {
+    let path = out_dir.join("quickjs.c");
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cannot read the build copy of quickjs.c: {error}"));
+
+    let anchor = "static size_t js_malloc_usable_size_unknown(const void *ptr)";
+    assert_eq!(
+        source.matches(anchor).count(),
+        1,
+        "quickjs.c does not carry exactly one `{anchor}`; update patch_oom_headroom() for this \
+         QuickJS revision"
+    );
+    let mut patched_source =
+        source.replace(anchor, &format!("{OOM_HEADROOM_HELPER}\n{anchor}"));
+    assert_eq!(
+        patched_source.matches(OOM_HEADROOM_HELPER).count(),
+        1,
+        "quickjs.c does not carry exactly one OOM-headroom helper after the patch"
+    );
+
+    for (pinned, patched) in OOM_HEADROOM_LIMIT_CHECKS {
+        assert_eq!(
+            patched_source.matches(pinned).count(),
+            1,
+            "quickjs.c does not carry exactly one `{pinned}`; update OOM_HEADROOM_LIMIT_CHECKS \
+             for this QuickJS revision"
+        );
+        patched_source = patched_source.replace(pinned, patched);
+        assert_eq!(
+            patched_source.matches(pinned).count(),
+            0,
+            "quickjs.c still carries `{pinned}` after the OOM-headroom patch"
+        );
+        assert_eq!(
+            patched_source.matches(patched).count(),
+            1,
+            "quickjs.c does not carry exactly one `{patched}` after the OOM-headroom patch"
+        );
+    }
+
+    fs::write(&path, patched_source)
+        .unwrap_or_else(|error| panic!("cannot write the build copy of quickjs.c: {error}"));
+}
+
 fn download_wasi_sdk() -> PathBuf {
     let mut wasi_sdk_dir: PathBuf = env::var("OUT_DIR").unwrap().into();
     wasi_sdk_dir.push("wasi-sdk");
@@ -261,6 +354,7 @@ fn main() {
     }
     // Keep the frozen QuickJS sources untouched; only the build copy is patched.
     patch_poll_quantum(out_dir);
+    patch_oom_headroom(out_dir);
     println!("cargo:rerun-if-changed=quickjs.bind.h");
     fs::copy("quickjs.bind.h", out_dir.join("quickjs.bind.h")).expect("Unable to copy source");
 

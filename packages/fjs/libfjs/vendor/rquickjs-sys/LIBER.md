@@ -17,6 +17,19 @@ each of the two replacements happened exactly once and fails the build otherwise
 so a QuickJS bump that moves or renumbers either define cannot silently restore
 10 000.
 
+The same build script patches `quickjs.c`'s memory-limit checks so the
+out-of-memory error object can always be allocated (ticket #79). It inserts a
+`js_malloc_limit()` helper before the first allocator helper and routes the
+three limit checks -- `js_malloc_rt`, `js_calloc_rt`, `js_realloc_rt` --
+through it. While `in_out_of_memory` is false those checks stop a running
+script 16 KiB short of the configured limit; `JS_ThrowOutOfMemory` sets that
+flag around the throw, so the `InternalError: out of memory` report always has
+room and the tracked heap never exceeds the configured limit. Without it
+`JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot allocate and the
+script sees `Runtime error: null` instead. The script asserts the helper and
+each of the three replacements happened exactly once and fails the build
+otherwise; the frozen `quickjs/quickjs.c` is not touched.
+
 There is no stack accessor any more. The Windows fiber scheduler that needed one
 — to detach and restore QuickJS's stack-frame state before every resumption — is
 removed (ticket #25, ADR 0009), so the runtime never switches stacks and the

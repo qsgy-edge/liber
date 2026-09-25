@@ -54,7 +54,10 @@ down from QuickJS's 10 000/10 000 to 1 000/1 000):
   `JSON.parse` under a 200 ms deadline, through the product.
 
 The interrupt error stays uncatchable, so a source cannot swallow the deadline, and the heap limit stays
-enforced at the allocator. The residual accepted here is: **a hostile source can hold the engine's own thread
+enforced at the allocator. Of the configured cap, 16 KiB is reserved: a running script's allocations stop
+that much short of it, while the out-of-memory throw path sees the whole cap, so the `out of memory` report
+always has room to be built and the tracked total still never exceeds the configured cap (#79). The residual
+accepted here is: **a hostile source can hold the engine's own thread
 for seconds per execution — it cannot exceed the heap cap, cannot escape, and the user can still cancel or
 close the analysis.** Reopen condition, recorded rather than implied: if a source in the wild
 is observed exploiting the residual, or if sources ever run unattended or in batches instead of one analysis
