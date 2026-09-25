@@ -24,13 +24,16 @@
 ///   `utils/ContextExtensions.kt:162`), so a same-name hit by another author is
 ///   a candidate too.
 ///
-/// [PreciseSearch.searchAll] is the entry's shape and [PreciseSearch.firstExact]
-/// the frozen `preciseSearch`'s. Both read one source at a time, in the order
-/// they were given: the frozen runs sources concurrently under a thread pool
-/// (`mapParallel`/`mapParallelSafe` with `AppConfig.threadCount`), which this
-/// product does not, and the requests a source does make are serialized per
-/// source by the existing rate limiter (`SourceHostDispatcher` →
-/// `SourceRateLimiter`, #42) instead.
+/// [PreciseSearch.searchAll] is the dialog's shape and
+/// [PreciseSearch.firstExact] the frozen `preciseSearch`'s. `searchAll` walks
+/// several sources at once, the way the dialog does — its
+/// `mapParallel(threadCount)` on a pool of `min(threadCount, MAX_THREAD)`
+/// threads, which is nine by default — and hands each source's answer on as it
+/// arrives (#108). `firstExact` stays one source at a time and in the given
+/// order, because the frozen `preciseSearch`'s loop is. The requests one source
+/// does make are serialized per source by the existing rate limiter
+/// (`SourceHostDispatcher` → `SourceRateLimiter`, #42) — a per-source rule,
+/// not the walk's concurrency.
 ///
 /// Two divergences from the frozen code, both recorded for #40's evidence:
 ///
@@ -47,8 +50,27 @@
 ///   formatted here too rather than compared raw against formatted.
 library;
 
+import 'dart:async';
+
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
+
+/// Raised where the frozen `ChangeBookSourceViewModel.search`'s per-source
+/// `withTimeout(60000L)` runs out (`:237-243`), the shape
+/// `SourceWebViewTimeout` already has.
+///
+/// The frozen swallows it and the walk goes on to the next source; this product
+/// records the source as one that did not answer
+/// ([PreciseSearchOutcome.failure]) so a hanging site is visible on the page.
+class SourceSearchTimeout implements Exception {
+  const SourceSearchTimeout(this.timeout);
+
+  /// The budget that ran out.
+  final Duration timeout;
+
+  @override
+  String toString() => '书源搜索超时（${timeout.inSeconds} 秒）';
+}
 
 /// The frozen `AppPattern.nameRegex` (`constant/AppPattern.kt:18`).
 final RegExp _nameSuffix = RegExp(r'\s+作\s*者.*|\s+\S+\s+著');
@@ -128,7 +150,9 @@ class PreciseSearchOutcome {
   String get sourceName => '${source['bookSourceName'] ?? sourceRef}';
 }
 
-/// Which source of how many is being searched, for a page's progress line.
+/// Which source of how many is being searched, for [PreciseSearch.firstExact]'s
+/// progress hook. The parallel walk reports its own progress instead: each
+/// source's answer is the event the page's line is made of.
 class PreciseSearchProgress {
   const PreciseSearchProgress({
     required this.sourceName,
@@ -156,7 +180,40 @@ class PreciseSearch {
     required this.openPipeline,
     this.checkAuthor = false,
     this.confirm,
+    this.concurrency = defaultConcurrency,
+    this.sourceTimeout = defaultSourceTimeout,
   });
+
+  /// The frozen dialog's effective default bound on its walk: `threadCount`
+  /// (`AppConfig.threadCount`, `AppConfig.kt:232-235`) defaults to **16**, the
+  /// pool the dialog walks on is
+  /// `Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD))`
+  /// (`ChangeBookSourceViewModel.kt:165-168`) and `AppConst.MAX_THREAD` is
+  /// **9** (`AppConst.kt:25`), so nine sources are in flight by default. The
+  /// product has no thread-count preference, so the walk takes that effective
+  /// default.
+  static const int defaultConcurrency = 9;
+
+  /// The frozen `withTimeout(60000L)` around one source of the dialog's
+  /// candidate search (`ChangeBookSourceViewModel.kt:237-243`) — the walk
+  /// [searchAll] implements. The frozen's other walks have their own numbers and
+  /// are not this one: its search *page* bounds a source's search at 30 s
+  /// (`SearchModel.kt:86-87`) and the dialog's candidate *refresh*, which loads
+  /// each candidate's book information rather than searching, at 60 s
+  /// (`ChangeBookSourceViewModel.kt:382-384`); the auto walk this product's
+  /// [firstExact] feeds has no coroutine timeout at all (`ReadBookViewModel.kt:294`),
+  /// only the transport's own OkHttp bounds (`HttpHelper.kt:57-61`).
+  static const Duration defaultSourceTimeout = Duration(seconds: 60);
+
+  /// How many of the walk's sources [searchAll] searches at once. The frozen's
+  /// effective default is [defaultConcurrency]; a test sets 2 or 3 to prove the
+  /// bound without nine scripted sources.
+  final int concurrency;
+
+  /// How long one source's search may take before [searchAll] records that
+  /// source as failed and gives its slot to the next one —
+  /// [defaultSourceTimeout], the frozen's own number for this walk.
+  final Duration sourceTimeout;
 
   /// The searched name, as the shelf holds the book's title.
   final String name;
@@ -181,36 +238,117 @@ class PreciseSearch {
   )?
   confirm;
 
-  /// Searches every source in [sources], in order, and returns what each
-  /// produced.
+  /// The pipelines [searchAll]'s walk has open right now — one per source being
+  /// searched — so a walk that stops can cancel the requests already in flight:
+  /// [BookSourcePipeline.cancel] is what stops a stage, the same call a page's
+  /// dispose makes. A pipeline leaves the set when its source's read returns.
   ///
-  /// A source is searched through [openPipeline] and its hits are read in page
-  /// order: a hit is admitted when its formatted name equals the searched name
-  /// (and, with [checkAuthor], when its formatted author contains the searched
-  /// one), and the scan stops at the first *exact* hit — the frozen
-  /// `shouldBreak = { it > 0 }`, which the precise filter reaches only on an
-  /// exact one. A source that fails is reported as one and the search goes on;
-  /// a page that produces only inexact hits contributes those, with
-  /// [PreciseSearchHit.exact] false.
-  Future<List<PreciseSearchOutcome>> searchAll(
+  /// One instance runs one search, so this set is exactly the running walk's.
+  final Set<BookSourcePipeline> _openPipelines = <BookSourcePipeline>{};
+
+  /// Searches every source in [sources] and yields what each one produced, as
+  /// soon as that source answers.
+  ///
+  /// This is the frozen change-source dialog's walk
+  /// (`ChangeBookSourceViewModel.search`, `:226-256`): at most [concurrency]
+  /// sources are searched at a time — the frozen's `mapParallel(threadCount)`
+  /// (`:236`) on its pool of `min(threadCount, MAX_THREAD)` threads — and the
+  /// outcomes are emitted in completion order, exactly as the frozen's
+  /// `flatMapMerge` emits them. A source that does not answer within
+  /// [sourceTimeout] is reported as a failure and its slot goes to the next
+  /// source (the frozen's own `withTimeout(60000L)` around the same stage), so
+  /// one hanging site cannot hold the walk.
+  ///
+  /// One source's own read is [searchSource]: its hits are read in page order, a
+  /// hit is admitted when its formatted name equals the searched name (and, with
+  /// [checkAuthor], when its formatted author contains the searched one), and
+  /// the scan stops at the first *exact* hit — the frozen
+  /// `shouldBreak = { it > 0 }`. A source that fails is reported as one and the
+  /// walk goes on; a page that produces only inexact hits contributes those,
+  /// with [PreciseSearchHit.exact] false.
+  ///
+  /// A caller that wants the sources' own order re-orders by the list it
+  /// handed in; `precise_search_page.dart` does, so its candidate list keeps
+  /// the source order however the answers arrive. No "first" decision is made
+  /// here: the frozen's first-that-answers walk is [firstExact], which stays
+  /// sequential and in order.
+  ///
+  /// The walk ends when every source has answered. Cancelling the subscription
+  /// — or [isCancelled] turning true — stops it: no source after the ones
+  /// already in flight is searched, the pipelines those sources have open are
+  /// cancelled (the same [BookSourcePipeline.cancel] a page's dispose calls),
+  /// and the cancellation completes only once those searches have settled.
+  Stream<PreciseSearchOutcome> searchAll(
     List<ImportedBookSource> sources, {
-    void Function(PreciseSearchProgress progress)? onProgress,
     bool Function()? isCancelled,
-  }) async {
-    final outcomes = <PreciseSearchOutcome>[];
-    for (var index = 0; index < sources.length; index++) {
-      if (isCancelled?.call() == true) break;
-      final source = sources[index].data;
-      onProgress?.call(
-        PreciseSearchProgress(
-          sourceName: '${source['bookSourceName'] ?? sources[index].id}',
-          index: index + 1,
-          total: sources.length,
-        ),
-      );
-      outcomes.add(await searchSource(source, isCancelled: isCancelled));
+  }) {
+    final controller = StreamController<PreciseSearchOutcome>();
+
+    /// The searches that have not settled yet: as many as [concurrency] while
+    /// there are sources left, plus whatever a stop leaves in flight.
+    final inFlight = <Future<void>>{};
+    var next = 0;
+    var stopped = false;
+    var done = false;
+
+    bool shouldStop() => stopped || (isCancelled?.call() ?? false);
+
+    /// Closes the walk, and closes the pipelines of the sources still in flight
+    /// so a stopped run leaves nothing running behind its closed stream.
+    void end() {
+      if (done) return;
+      done = true;
+      for (final pipeline in _openPipelines.toList()) {
+        pipeline.cancel();
+      }
+      unawaited(controller.close());
     }
-    return outcomes;
+
+    /// Starts one source's search; its slot is freed when its future settles.
+    void launch() {
+      final source = sources[next++].data;
+      late final Future<void> running;
+      running = searchSource(source, isCancelled: shouldStop)
+          .timeout(
+            sourceTimeout,
+            // The frozen catches its own timeout and walks on; the shape this
+            // product reports is the outcome's failure, so a hanging site is
+            // visible instead of silent.
+            onTimeout: () => PreciseSearchOutcome(
+              source: source,
+              hits: const <PreciseSearchHit>[],
+              failure: '${SourceSearchTimeout(sourceTimeout)}',
+            ),
+          )
+          .then((outcome) {
+            inFlight.remove(running);
+            if (!done && !shouldStop()) controller.add(outcome);
+          });
+      inFlight.add(running);
+    }
+
+    controller
+      ..onListen = () async {
+        while (!done) {
+          while (!shouldStop() &&
+              next < sources.length &&
+              inFlight.length < concurrency) {
+            launch();
+          }
+          if (inFlight.isEmpty) break;
+          await Future.any(inFlight);
+        }
+        end();
+      }
+      ..onCancel = () async {
+        stopped = true;
+        end();
+        // The run is over once the sources already in flight are: a caller that
+        // cancels the subscription (the page's dispose) can rely on no search of
+        // this run still running when the cancellation completes.
+        await Future.wait(inFlight.toList());
+      };
+    return controller.stream;
   }
 
   /// The frozen `WebBook.preciseSearch` (`:358-370`): the first source, in
@@ -272,6 +410,7 @@ class PreciseSearch {
     bool Function()? isCancelled,
   }) async {
     final pipeline = openPipeline(source);
+    _openPipelines.add(pipeline);
     try {
       final books = await pipeline.search(name);
       final hits = <PreciseSearchHit>[];
@@ -292,6 +431,7 @@ class PreciseSearch {
       return PreciseSearchOutcome(source: source, hits: hits);
     } finally {
       pipeline.cancel();
+      _openPipelines.remove(pipeline);
     }
   }
 }

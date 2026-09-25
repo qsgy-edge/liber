@@ -527,8 +527,8 @@ Future<void> _check(String? libraryPath) async {
       for (final source in seedSources()) {
         await store.putSourceJson(source);
       }
-      // The search the entry runs: every source in turn, through the real
-      // pipeline over a real HTTP request to the fixture.
+      // The search the entry runs: every source, several at a time (#108),
+      // through the real pipeline over a real HTTP request to the fixture.
       final search = PreciseSearch(
         name: seedBookTitle,
         author: seedBookAuthor,
@@ -542,7 +542,7 @@ Future<void> _check(String? libraryPath) async {
         for (final source in seedSources())
           ImportedBookSource(id: '${source['bookSourceUrl']}', data: source),
       ];
-      final outcomes = await search.searchAll(imported);
+      final outcomes = await search.searchAll(imported).toList();
       report['outcomes'] = [
         for (final outcome in outcomes)
           {
@@ -680,7 +680,8 @@ Future<void> _check(String? libraryPath) async {
         );
         report['imageBytes'] = {
           'length': bytes.length,
-          'png': bytes.length > 24 &&
+          'png':
+              bytes.length > 24 &&
               bytes.sublist(0, 8).join(',') == '137,80,78,71,13,10,26,10',
           'width': ByteData.sublistView(bytes, 16, 20).getUint32(0),
           'height': ByteData.sublistView(bytes, 20, 24).getUint32(0),
