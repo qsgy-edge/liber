@@ -49,7 +49,7 @@
     "jvmTarget": "1.8"
   },
   "jvm": "Oracle Corporation 1.8.0_503 (Windows 11)",
-  "recordedAt": "2026-09-25T11:40:45.183Z",
+  "recordedAt": "2026-09-25T11:57:41.324Z",
   "determinism": "Every case is evaluated twice and the run is refused when the two runs differ. HtmlFormatter reads no clock, no random source and no state, so this guards a future corpus row rather than a known non-deterministic branch.",
   "transcription": "HtmlFormatter.kt is compiled from the frozen bytes. Four statements reached through it are transcribed and verified at run time against the frozen files, because the files that declare them import OkHttp/hutool/Room and cannot be compiled on a desktop JVM: the content pass's unescape (BookContent.kt:178-181), NetworkUtils.getAbsoluteURL (NetworkUtils.kt:174-189, reached only by an image src), StringExtensions.isAbsUrl/isDataUrl (StringExtensions.kt:36-44) and AnalyzeUrl.paramPattern (AnalyzeUrl.kt:658, reached only by a templated image src). The one statement dropped from the getAbsoluteURL transcription is its AppLog.put failure log, which writes through Android's Log.",
   "deviceRow": {
