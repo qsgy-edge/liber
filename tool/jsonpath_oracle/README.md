@@ -83,14 +83,27 @@ exception and leaves an empty text, and the product refuses by name.
   where Dart writes a decimal. No row reaches that band.
 - The rule-level `&&`/`||`/`%%` merges over more than one branch and the
   `{{...}}` template form; those stay the adapter's source-derived rows.
-- The sibling list boundary. The frozen `AnalyzeByJSonPath.getStringList` renders
-  each matched element through `toString()` as well, and the product's list entry
-  (`JsonSourceRules.list`, the multi-page `nextContentUrl`/`nextTocUrl` rule)
-  still stringifies with Dart's `'$item'`, so a list-mode rule whose items are
-  containers carries Dart's rendering. This fixture compares the *field-text*
-  boundary (`getString`), which is the row's claim; routing the list entry through
-  `_matchedText` needs its own rows on the `getStringList` boundary and an
-  observable way to assert them, so it is named here rather than changed under an
-  unproven model.
+- The sibling list boundary, named and reachability-stated (ticket #78's list
+  lane decided *not* to route it, from the counts below). The frozen
+  `AnalyzeByJSonPath.getStringList` renders each matched element through
+  `toString()` as well (`AnalyzeByJSonPath.kt:83-86`), which
+  `AnalyzeRule.getStringList` reaches for a JSON rule (`AnalyzeRule.kt:204`);
+  the product's `_pageTexts` (`lib/source/json_source_pipeline.dart`, the
+  `nextContentUrl`/`nextTocUrl` page walk) reads `JsonSourceRules.list` and
+  stringifies each item with Dart's `'$item'`, so a container item carries
+  `{k: v}` / `[a, b]` where the frozen side carries json-smart's `{k=v}` /
+  `["z","y"]`. The element-list entry (`JsonSourceRules.list` over
+  `ruleSearch.bookList`/`ruleToc.chapterList`) is *not* this boundary: it keeps
+  the raw matches, which is the frozen `getList`, not `getStringList`. Nothing
+  reaches the container case: the only product entries are
+  `ruleToc.nextTocUrl` and `ruleContent.nextContentUrl`, none of the 150 used
+  sources declares either on a JSON-pipeline source, and across the whole
+  2026-09-17 export (676 JSON-pipeline records, 93 declared next-page rules) no
+  rule ends in an index/wildcard/slice/filter token — the leaf shape that names
+  a container directly (58 are script-only, 31 a literal template, 4 a path
+  ending in a property name, whose value a static count cannot settle). Routing
+  it would need its own rows on the `getStringList` boundary and an observable
+  assertion for a shape no exported source reaches, so the `getString` boundary
+  stays this fixture's claim and the container rendering stays a named limit.
 - `validate` and the pipeline above `extract`: this fixture compares the reader's
   field text, not the rule-shape gate or the stage that consumes the text.

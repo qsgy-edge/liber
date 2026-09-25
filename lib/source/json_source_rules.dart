@@ -182,6 +182,10 @@ class JsonSourceRules {
     return result.toString();
   }
 
+  /// The raw matches of a list rule: the objects themselves, before the page
+  /// walk stringifies them (`JsonSourcePipeline._pageTexts`). That stringified
+  /// read is the frozen `getStringList` boundary, and its container rendering is
+  /// a named out-of-corpus limit (`tool/jsonpath_oracle/README.md`, ticket #78).
   static List<dynamic> list(Object? value, String rule) =>
       _mergedList(value, _withoutJsonMode(rule.trim()));
 
