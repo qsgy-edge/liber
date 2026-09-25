@@ -17,6 +17,7 @@ import 'source_url_rules.dart';
 class HtmlBook {
   const HtmlBook({
     required this.url,
+    this.rawAddress,
     required this.title,
     this.author = '',
     this.intro = '',
@@ -26,6 +27,24 @@ class HtmlBook {
     this.wordCount = '',
   });
   final Uri url;
+
+  /// The address text this book was built from, option tail included, or null
+  /// when the caller only has the URL.
+  ///
+  /// The frozen keeps a book's `bookUrl` as the rule's own string — for a
+  /// shelf row, the address it was imported with — and every fetch parses the
+  /// `,{…}` options out of that text (`AnalyzeUrl.kt:214-222`). A `Uri` cannot
+  /// carry it: `Uri.toString()` percent-encodes a raw tail, so the split finds
+  /// nothing and the encoded tail reaches the site inside the query, where its
+  /// `$.data` rules match nothing (#97). This is the counterpart of
+  /// [SourceChapter.rawAddress] for a book.
+  final String? rawAddress;
+
+  /// The address text a fetch parses: the one this book was built from when it
+  /// was kept, and the URL text otherwise. A bare URL carries no options, so it
+  /// parses to itself.
+  String get address => rawAddress ?? '$url';
+
   final String title, author, intro, cover, kind, lastChapter, wordCount;
   Map<String, dynamic> toJson() => {
     'url': '$url',
@@ -173,6 +192,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// per-source state is owned by.
   String get _sourceRef => '${source['bookSourceUrl'] ?? ''}';
 
+  /// The source's own URL, the base a book's address text resolves against
+  /// (`WebBook.kt:163`: the frozen details stage builds
+  /// `AnalyzeUrl(mUrl = book.bookUrl, baseUrl = bookSource.bookSourceUrl)`).
+  late final Uri _sourceBase = SourceHttpUri.parse(
+    source['bookSourceUrl'] as String,
+  );
+
   final _cancellation = SourceCancellation();
 
   /// The rule variables (`@get:`/`@put:`) and the script runtime read one store,
@@ -238,8 +264,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// The book URLs of this analysis with the address text they came from and
   /// the base that text resolved against, kept for the stage that fetches the
-  /// book: a book URL is handed around without them, and `java.initUrl` re-runs
-  /// the analysis of that text (`SourceStageRequest.reanalyze`).
+  /// book: the book carries its own address text ([HtmlBook.rawAddress]) but
+  /// not the response URL a relative one resolved against, and `java.initUrl`
+  /// re-runs the analysis of that text against that base
+  /// (`SourceStageRequest.reanalyze`).
   final _bookRequests =
       <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
 
@@ -920,18 +948,23 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
     final books = <HtmlBook>[];
     for (var index = 0; index < items.length; index++) {
+      // The address text the rule produced, option tail included: it is what
+      // this book keeps ([HtmlBook.rawAddress]) and what the details request
+      // parses, exactly as the frozen stores `book.bookUrl` (#97).
+      final bookAddress = _required(links, index, 'ruleSearch.bookUrl');
       final (bookUrlTarget, bookOptions) = await _extracted(
         finalUrl,
-        _required(links, index, 'ruleSearch.bookUrl'),
+        bookAddress,
       );
       _bookRequests[bookUrlTarget] = (
-        address: _required(links, index, 'ruleSearch.bookUrl'),
+        address: bookAddress,
         base: finalUrl,
         options: bookOptions,
       );
       books.add(
         HtmlBook(
           url: bookUrlTarget,
+          rawAddress: bookAddress,
           title: _required(titles, index, 'ruleSearch.name'),
           author: authorValues[index],
           intro: formatSourceIntro(introValues[index]),
@@ -951,13 +984,26 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapterTitle = null;
     _page = null;
     final bookRequest = _bookRequests.remove(hit.url);
+    // The book's own address text is what this request analyzes, the way the
+    // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
+    // request targets the text before its option tail and carries the options
+    // it found, so a stored address's `,{…}` tail never reaches the site as
+    // percent-encoded query text (#97). A search hit already resolved its
+    // address against the search response, so it keeps the request it made; a
+    // book rebuilt from the store or from a pasted address has only the text,
+    // which resolves against the source's own URL as it does there. The frozen
+    // stage binds no key and no page, so a stored address's `{{key}}`/`{{page}}`
+    // bind nothing here either.
+    final (bookUrl, bookOptions) = bookRequest == null
+        ? await _request(_sourceBase, hit.address, '')
+        : (hit.url, bookRequest.options);
     final bookInfo = await _loginCheck(
       await _fetch(
-        hit.url,
+        bookUrl,
         BookSourceStage.bookInfo,
-        options: bookRequest?.options ?? const SourceUrlOptions(),
-        address: bookRequest?.address,
-        base: bookRequest?.base,
+        options: bookOptions,
+        address: bookRequest?.address ?? hit.address,
+        base: bookRequest?.base ?? _sourceBase,
       ),
     );
     final html = bookInfo.body;
@@ -971,10 +1017,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // The frozen falls back to the book's own address when the detail page
     // declares no TOC address — `BookInfo.kt:150-152` reads `infoRule.tocUrl`,
     // then `if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl`, where `baseUrl`
-    // is the book's URL (`WebBook.kt` passes `book.bookUrl`). The detail page
-    // is usually the TOC page, so an empty rule means "this page".
+    // is the book's URL, option tail and all (`WebBook.kt` passes
+    // `book.bookUrl`). The detail page is usually the TOC page, so an empty
+    // rule means "this page": the request the details stage just made, whose
+    // options the TOC fetch parses again.
     final (tocTarget, tocOptions) = tocText.isEmpty
-        ? (_resolve(hit.url, '', keepFragment: true), const SourceUrlOptions())
+        ? (bookUrl, bookOptions)
         : await _extracted(infoUrl, tocText);
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
@@ -1302,6 +1350,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final book = HtmlBook(
       url: hit.url,
+      // The address text the book was opened with survives this stage, so a
+      // refresh of the book this returns fetches the same address (#97).
+      rawAddress: hit.rawAddress,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
       title: detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
