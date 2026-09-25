@@ -6,6 +6,7 @@
   "actionPreciseSearch": "精确搜索",
   "actionSourceTrial": "书源试读",
   "actionAutoChangeSource": "自动换源",
+  "actionSystemProxy": "使用系统代理",
   "readerScriptTitle": "中文转换",
   "imageLoadFailed": "图片加载失败",
   "imageLoading": "图片加载中…",
@@ -370,6 +371,8 @@
       }
     }
   },
+  "systemProxyLabel": "使用系统代理",
+  "systemProxyHint": "打开后，本产品自己发出的书源请求按系统的代理配置走（Dart 的默认行为）；关闭时是直连——不经过系统代理，也是这个应用一直以来的行为。手机上 VPN 模式的代理在系统层拦截，应用内绕不开；内置 WebView 页面（webView 请求选项与阅读页）由平台引擎自己处理代理，本开关不改变它们。默认关闭。",
   "interfaceLanguageIntro": "界面语言只换界面自己的文字。书籍内容的字形由“中文转换”决定，两者互不影响。",
   "languageSimplified": "简体中文",
   "languageTraditionalTaiwan": "繁體中文（台灣）",

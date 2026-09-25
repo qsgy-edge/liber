@@ -114,7 +114,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     super.initState();
     pipeline =
         widget.pipeline ??
-        _openPipeline(widget.transport ?? HttpSourceTransport());
+        _openPipeline(
+          widget.transport ?? HttpSourceTransport(store: widget.service.store),
+        );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(start());
     });

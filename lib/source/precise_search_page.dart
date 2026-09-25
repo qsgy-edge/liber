@@ -173,7 +173,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         widget.openPipeline?.call(source) ??
         openBookSourcePipeline(
           source,
-          widget.transport ?? HttpSourceTransport(),
+          widget.transport ?? HttpSourceTransport(store: widget.service.store),
           hostState: widget.service.hostState,
           androidId: widget.service.androidId,
           onHostMessage: _showHostNotice,

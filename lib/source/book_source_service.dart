@@ -89,6 +89,12 @@ class LocalReplayTransport implements BookSourceTransport {
   }) async {
     await _ensureServer();
     final server = _server!;
+    // #87's system-proxy switch is not read here: this client replays fixtures
+    // from the loopback server this process itself started, not from a Book
+    // Source, and this service is built before a space — and so before the
+    // `network.system_proxy` row — exists. It keeps `HttpClient`'s default
+    // (the machine's proxy variables), exactly as it did before the switch
+    // existed.
     final client = HttpClient();
     try {
       final request = await client.getUrl(

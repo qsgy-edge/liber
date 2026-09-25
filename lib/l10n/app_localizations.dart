@@ -144,6 +144,12 @@ abstract class AppLocalizations {
   /// **'自动换源'**
   String get actionAutoChangeSource;
 
+  /// No description provided for @actionSystemProxy.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用系统代理'**
+  String get actionSystemProxy;
+
   /// No description provided for @readerScriptTitle.
   ///
   /// In zh, this message translates to:
@@ -785,6 +791,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'保存设置失败：{error}'**
   String saveSettingsFailed(String error);
+
+  /// No description provided for @systemProxyLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用系统代理'**
+  String get systemProxyLabel;
+
+  /// No description provided for @systemProxyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开后，本产品自己发出的书源请求按系统的代理配置走（Dart 的默认行为）；关闭时是直连——不经过系统代理，也是这个应用一直以来的行为。手机上 VPN 模式的代理在系统层拦截，应用内绕不开；内置 WebView 页面（webView 请求选项与阅读页）由平台引擎自己处理代理，本开关不改变它们。默认关闭。'**
+  String get systemProxyHint;
 
   /// No description provided for @interfaceLanguageIntro.
   ///

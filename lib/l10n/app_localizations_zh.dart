@@ -27,6 +27,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get actionAutoChangeSource => '自动换源';
 
   @override
+  String get actionSystemProxy => '使用系统代理';
+
+  @override
   String get readerScriptTitle => '中文转换';
 
   @override
@@ -420,6 +423,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String saveSettingsFailed(String error) {
     return '保存设置失败：$error';
   }
+
+  @override
+  String get systemProxyLabel => '使用系统代理';
+
+  @override
+  String get systemProxyHint =>
+      '打开后，本产品自己发出的书源请求按系统的代理配置走（Dart 的默认行为）；关闭时是直连——不经过系统代理，也是这个应用一直以来的行为。手机上 VPN 模式的代理在系统层拦截，应用内绕不开；内置 WebView 页面（webView 请求选项与阅读页）由平台引擎自己处理代理，本开关不改变它们。默认关闭。';
 
   @override
   String get interfaceLanguageIntro => '界面语言只换界面自己的文字。书籍内容的字形由“中文转换”决定，两者互不影响。';
@@ -1086,6 +1096,9 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get actionAutoChangeSource => '自動換源';
 
   @override
+  String get actionSystemProxy => '使用系統代理';
+
+  @override
   String get readerScriptTitle => '中文轉換';
 
   @override
@@ -1479,6 +1492,13 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String saveSettingsFailed(String error) {
     return '保存設置失敗：$error';
   }
+
+  @override
+  String get systemProxyLabel => '使用系統代理';
+
+  @override
+  String get systemProxyHint =>
+      '打開後，本產品自己發出的書源請求按系統的代理配置走（Dart 的默認行為）；關閉時是直連——不經過系統代理，也是這個應用一直以來的行為。手機上 VPN 模式的代理在系統層攔截，應用內繞不開；內置 WebView 頁面（webView 請求選項與閲讀頁）由平台引擎自己處理代理，本開關不改變它們。默認關閉。';
 
   @override
   String get interfaceLanguageIntro => '界面語言只換界面自己的文字。書籍內容的字形由「中文轉換」決定，兩者互不影響。';
@@ -2145,6 +2165,9 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String get actionAutoChangeSource => '自動換源';
 
   @override
+  String get actionSystemProxy => '使用系統代理';
+
+  @override
   String get readerScriptTitle => '中文轉換';
 
   @override
@@ -2538,6 +2561,13 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String saveSettingsFailed(String error) {
     return '儲存設定失敗：$error';
   }
+
+  @override
+  String get systemProxyLabel => '使用系統代理';
+
+  @override
+  String get systemProxyHint =>
+      '開啟後，本產品自己發出的書源請求按系統的代理配置走（Dart 的預設行為）；關閉時是直連——不經過系統代理，也是這個應用一直以來的行為。手機上 VPN 模式的代理在系統層攔截，應用內繞不開；內建 WebView 頁面（webView 請求選項與閱讀頁）由平臺引擎自己處理代理，本開關不改變它們。預設關閉。';
 
   @override
   String get interfaceLanguageIntro => '介面語言只換介面自己的文字。書籍內容的字形由「中文轉換」決定，兩者互不影響。';
