@@ -7,6 +7,7 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart' show SourceChapter;
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 
 import 'native_library.dart';
@@ -445,5 +446,36 @@ void main() {
       final text = await read('<div class="content">第一段<br>第二段</div>');
       expect(text, '第一段\n第二段');
     });
+  });
+
+  test('a rule field\'s script failure names the field it ran in', () async {
+    final transport = SitePages({
+      '/search': '<div class="item"><h3><a href="/book/1">书</a></h3></div>',
+    });
+    final pipeline = HtmlSourcePipeline({
+      'bookSourceUrl': 'https://a.test',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': '@CSS:.item',
+        // An `@js:` segment, which this path runs on the value the extraction
+        // produced (`RuleField.apply`) — the field's own context carries the
+        // label there, not just at substitution time.
+        'name': '@CSS:h3 a@text@js:throw new Error("boom")',
+        'bookUrl': '@CSS:h3 a@href',
+      },
+    }, transport);
+    await expectLater(
+      pipeline.search('书'),
+      throwsA(
+        isA<SourceScriptError>()
+            .having((error) => error.category, 'category', 'js')
+            .having(
+              (error) => error.message,
+              'message',
+              contains('ruleSearch.name'),
+            )
+            .having((error) => error.message, 'message', contains('boom')),
+      ),
+    );
   });
 }

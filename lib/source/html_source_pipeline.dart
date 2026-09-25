@@ -322,13 +322,28 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     'headers': const <String, String>{},
   };
 
-  Future<Object?> _evalJs(String script, String keyword, Object? result) =>
-      _runtime.evaluate(
+  /// One script this adapter runs. [label] is the rule field whose value the
+  /// script belongs to (`ruleBookInfo.kind`); a failure carries it, so the field
+  /// is named where the failure reaches the interface. A URL template's
+  /// `{{...}}`, a URL option's `js` and the `header` rule are not rule fields
+  /// and pass no label.
+  Future<Object?> _evalJs(
+    String script,
+    String keyword,
+    Object? result, {
+    String label = '',
+  }) async {
+    try {
+      return await _runtime.evaluate(
         source: script,
         input: _scriptInput(keyword, result),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
+    } on SourceScriptError catch (error) {
+      throw error.inRuleField(label);
+    }
+  }
 
   /// The frozen `res = analyzeUrl.evalJS(checkJs, res) as StrResponse`
   /// (`WebBook.kt:71` and its four siblings): the source's `loginCheckJs` after
@@ -389,8 +404,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the runtime the adapter already owns, a value rule is extracted by a
   /// one-rule Rust call ([_eagerExtract]), and `@get:`/`@put:` read and write the
   /// source-scoped variables `java.get`/`java.put` use.
-  RuleFieldContext get _ruleContext => RuleFieldContext(
-    evaluateScript: (script, result) => _evalJs(script, _keyword, result),
+  ///
+  /// [label] is the rule field being read (`ruleBookInfo.kind`): a script this
+  /// field runs carries it into the failure it reports, so the interface and the
+  /// source log name the field instead of the bare `js`.
+  RuleFieldContext _ruleContext(String label) => RuleFieldContext(
+    evaluateScript: (script, result) =>
+        _evalJs(script, _keyword, result, label: label),
     extract: _eagerExtract,
     readVariable: _readRuleVariable,
     writeVariable: _writeRuleVariable,
@@ -413,6 +433,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// `{{...}}`/`@get:`/`@put:` substitution happen before the stage's batch is
   /// declared, the script segments run on the extracted value afterwards.
   ///
+  /// [label] is the rule field this value comes from (`ruleBookInfo.kind`); a
+  /// script failure inside it reports the field's name.
+  ///
   /// [allowScripts] is false for an element-*list* rule (`bookList`,
   /// `chapterList`): an element set is not a value this path can hand back, so a
   /// script there is refused by name rather than dropped.
@@ -420,8 +443,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String raw, {
     required String content,
     bool allowScripts = true,
+    String label = '',
   }) async {
-    final field = await RuleField.resolve(raw, _ruleContext, content: content);
+    final field = await RuleField.resolve(
+      raw,
+      _ruleContext(label),
+      content: content,
+    );
     if (!allowScripts && field.scripts.isNotEmpty) {
       throw UnsupportedError('暂不支持元素列表规则里的 JavaScript：$raw');
     }
@@ -432,8 +460,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// applies; a rule that is *only* a script is refused by name, because the
   /// frozen `result` of such a rule is the matched element, which the JavaScript
   /// boundary cannot carry.
-  Future<RuleField> _elementField(String raw, {required String content}) async {
-    final field = await _field(raw, content: content);
+  Future<RuleField> _elementField(
+    String raw, {
+    required String content,
+    String label = '',
+  }) async {
+    final field = await _field(raw, content: content, label: label);
     if (field.isScriptOnly) {
       throw UnsupportedError('暂不支持只有脚本的元素规则：$raw');
     }
@@ -740,31 +772,37 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _rule('ruleSearch', 'bookList'),
       content: html,
       allowScripts: false,
+      label: 'ruleSearch.bookList',
     );
     final items = batch.elements('items', listRule.extractionRule!);
     final name = await _elementField(
       _rule('ruleSearch', 'name'),
       content: html,
+      label: 'ruleSearch.name',
     );
     final names = batch.elementsText('name', name.extractionRule!, items);
     final bookUrl = await _elementField(
       _rule('ruleSearch', 'bookUrl'),
       content: html,
+      label: 'ruleSearch.bookUrl',
     );
     final urls = batch.elementsText('url', bookUrl.extractionRule!, items);
     final author = await _elementField(
       _rule('ruleSearch', 'author', optional: true),
       content: html,
+      label: 'ruleSearch.author',
     );
     final authors = batch.elementsText('author', author.extractionRule!, items);
     final intro = await _elementField(
       _rule('ruleSearch', 'intro', optional: true),
       content: html,
+      label: 'ruleSearch.intro',
     );
     final intros = batch.elementsText('intro', intro.extractionRule!, items);
     final lastChapter = await _elementField(
       _rule('ruleSearch', 'lastChapter', optional: true),
       content: html,
+      label: 'ruleSearch.lastChapter',
     );
     final lastChapters = batch.elementsText(
       'lastChapter',
@@ -774,6 +812,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final wordCount = await _elementField(
       _rule('ruleSearch', 'wordCount', optional: true),
       content: html,
+      label: 'ruleSearch.wordCount',
     );
     final wordCounts = batch.elementsText(
       'wordCount',
@@ -783,6 +822,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final kind = await _elementField(
       _rule('ruleSearch', 'kind', optional: true),
       content: html,
+      label: 'ruleSearch.kind',
     );
     final kinds = batch.elementsText('kind', kind.extractionRule!, items);
     await batch.run();
@@ -906,11 +946,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           _rule('ruleToc', 'chapterList'),
           content: page,
           allowScripts: false,
+          label: 'ruleToc.chapterList',
         );
         final items = batch.elements('items', listRule.extractionRule!);
         final nameField = await _elementField(
           _rule('ruleToc', 'chapterName'),
           content: page,
+          label: 'ruleToc.chapterName',
         );
         final names = batch.elementsText(
           'name',
@@ -924,16 +966,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         final urlField = await _elementField(
           _rule('ruleToc', 'chapterUrl', optional: true),
           content: page,
+          label: 'ruleToc.chapterUrl',
         );
         final urls = batch.elementsText('url', urlField.extractionRule!, items);
         final tagField = await _elementField(
           _rule('ruleToc', 'updateTime', optional: true),
           content: page,
+          label: 'ruleToc.updateTime',
         );
         final tags = batch.elementsText('tag', tagField.extractionRule!, items);
         final volumeField = await _elementField(
           _rule('ruleToc', 'isVolume', optional: true),
           content: page,
+          label: 'ruleToc.isVolume',
         );
         final volumes = batch.elementsText(
           'volume',
@@ -943,11 +988,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         final vipField = await _elementField(
           _rule('ruleToc', 'isVip', optional: true),
           content: page,
+          label: 'ruleToc.isVip',
         );
         final vips = batch.elementsText('vip', vipField.extractionRule!, items);
         final payField = await _elementField(
           _rule('ruleToc', 'isPay', optional: true),
           content: page,
+          label: 'ruleToc.isPay',
         );
         final pays = batch.elementsText('pay', payField.extractionRule!, items);
         // The frozen reads a page's next-URL rule only on the pages it walks
@@ -957,6 +1004,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? await _field(
                 _rule('ruleToc', 'nextTocUrl', optional: true),
                 content: page,
+                label: 'ruleToc.nextTocUrl',
               )
             : null;
         final nextValue = next == null
@@ -1109,36 +1157,43 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final name = await _field(
       _rule('ruleBookInfo', 'name', optional: true),
       content: html,
+      label: 'ruleBookInfo.name',
     );
     final nameValue = _declare(batch, 'name', name);
     final author = await _field(
       _rule('ruleBookInfo', 'author', optional: true),
       content: html,
+      label: 'ruleBookInfo.author',
     );
     final authorValue = _declare(batch, 'author', author);
     final intro = await _field(
       _rule('ruleBookInfo', 'intro', optional: true),
       content: html,
+      label: 'ruleBookInfo.intro',
     );
     final introValue = _declare(batch, 'intro', intro);
     final cover = await _field(
       _rule('ruleBookInfo', 'coverUrl', optional: true),
       content: html,
+      label: 'ruleBookInfo.coverUrl',
     );
     final coverValue = _declare(batch, 'cover', cover);
     final kind = await _field(
       _rule('ruleBookInfo', 'kind', optional: true),
       content: html,
+      label: 'ruleBookInfo.kind',
     );
     final kindValue = _declare(batch, 'kind', kind);
     final lastChapter = await _field(
       _rule('ruleBookInfo', 'lastChapter', optional: true),
       content: html,
+      label: 'ruleBookInfo.lastChapter',
     );
     final lastChapterValue = _declare(batch, 'lastChapter', lastChapter);
     final wordCount = await _field(
       _rule('ruleBookInfo', 'wordCount', optional: true),
       content: html,
+      label: 'ruleBookInfo.wordCount',
     );
     final wordCountValue = _declare(batch, 'wordCount', wordCount);
     final canReName = _rule(
@@ -1150,6 +1205,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ? await _field(
             _rule('ruleBookInfo', 'tocUrl', optional: true),
             content: html,
+            label: 'ruleBookInfo.tocUrl',
           )
         : null;
     final tocValue = tocUrl == null ? null : _declare(batch, 'tocUrl', tocUrl);
@@ -1292,7 +1348,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         if (parts.isEmpty) {
           final titleRule = _rule('ruleContent', 'title', optional: true);
           if (titleRule.trim().isNotEmpty) {
-            final title = await _field(titleRule, content: html);
+            final title = await _field(
+              titleRule,
+              content: html,
+              label: 'ruleContent.title',
+            );
             final titleBatch = HtmlRuleBatch(html);
             final titleValue = _declare(titleBatch, 'title', title);
             await titleBatch.run();
@@ -1320,11 +1380,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ),
           ),
           content: html,
+          label: 'ruleContent.content',
         );
         final next = readNext
             ? await _field(
                 _rule('ruleContent', 'nextContentUrl', optional: true),
                 content: html,
+                label: 'ruleContent.nextContentUrl',
               )
             : null;
         final batch = HtmlRuleBatch(html);

@@ -16,6 +16,77 @@ import 'source_http_uri.dart';
 import 'source_page_results.dart';
 import 'source_url_rules.dart';
 
+/// A stage whose response body is not the JSON that stage's rules read: the
+/// source got an HTML error page, a challenge page or an empty body where it
+/// expected its document.
+///
+/// The frozen reader fails inside Gson and its exception names a character
+/// offset, and this product's raw `FormatException` did the same, so the
+/// operator saw `读取失败：FormatException: Unexpected character (at character 1)`
+/// with the body pasted on and nothing about which stage, which request or
+/// which body produced it. This error carries what the caller can act on.
+class SourceStageFormatError implements Exception {
+  const SourceStageFormatError({
+    required this.stage,
+    required this.address,
+    required this.prefix,
+  });
+
+  /// The stage whose response could not be read.
+  final BookSourceStage stage;
+
+  /// The response's address, without the parts a source's credentials travel in
+  /// (see [sourceStageAddress]).
+  final String address;
+
+  /// A bounded, single-line prefix of the body (see [sourceStageBodyPrefix]).
+  final String prefix;
+
+  /// The stage's word as this product's copy uses it (`详情` for the book
+  /// information stage, the word `readingDetailsAndToc` already shows). No stage
+  /// outside the four that read a body decodes one, so the remaining stages keep
+  /// their identifier rather than inventing a word.
+  static String stageWord(BookSourceStage stage) => switch (stage) {
+    BookSourceStage.search => '搜索',
+    BookSourceStage.bookInfo => '详情',
+    BookSourceStage.tableOfContents => '目录',
+    BookSourceStage.content => '正文',
+    BookSourceStage.idle ||
+    BookSourceStage.completed ||
+    BookSourceStage.failed => stage.name,
+  };
+
+  @override
+  String toString() =>
+      '${stageWord(stage)}响应不是 JSON（可能是错误页）：$prefix（$address）';
+}
+
+/// How much of a body [SourceStageFormatError] keeps: enough to recognize an
+/// error page, not a body to read. A whole body belongs in the source's own log
+/// and in nothing the interface shows.
+const sourceStageBodyPrefixLimit = 40;
+
+/// A body's first [sourceStageBodyPrefixLimit] characters as one line, the last
+/// of them an ellipsis when the body continues. A newline in the body would put
+/// the rest of the page on its own line in a status message, so whitespace runs
+/// collapse first.
+String sourceStageBodyPrefix(String body) {
+  final text = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (text.length <= sourceStageBodyPrefixLimit) return text;
+  return '${text.substring(0, sourceStageBodyPrefixLimit - 1)}…';
+}
+
+/// The response's address as a diagnostic may show it: the scheme, host, port
+/// and path, without the query or any user info. A source's key, token or
+/// credential commonly travels in the query, and a message the operator can
+/// paste or screenshot must not carry it.
+String sourceStageAddress(Uri url) => Uri(
+  scheme: url.scheme,
+  host: url.host,
+  port: url.hasPort ? url.port : null,
+  path: url.path,
+).toString();
+
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
 ///
 /// A JSON Book Source runs the same four stages over the same HTTP semantics as
@@ -213,13 +284,28 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'headers': _activeHeaders,
   };
 
-  Future<Object?> _evalJs(String script, String keyword, Object? result) =>
-      _runtime.evaluate(
+  /// One script this adapter runs. [label] is the rule field whose value the
+  /// script belongs to (`ruleBookInfo.kind`); a failure carries it, so the field
+  /// is named where the failure reaches the interface. A URL template's
+  /// `{{...}}`, a URL option's `js` and the `header` rule are not rule fields
+  /// and pass no label.
+  Future<Object?> _evalJs(
+    String script,
+    String keyword,
+    Object? result, {
+    String label = '',
+  }) async {
+    try {
+      return await _runtime.evaluate(
         source: script,
         input: _scriptInput(keyword, result),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
+    } on SourceScriptError catch (error) {
+      throw error.inRuleField(label);
+    }
+  }
 
   /// The frozen `res = analyzeUrl.evalJS(checkJs, res) as StrResponse`
   /// (`WebBook.kt:71` and its four siblings): the source's `loginCheckJs` after
@@ -280,8 +366,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// the runtime the adapter already owns, a value rule is extracted by the
   /// bounded JSON reader, and `@get:`/`@put:` read and write the source-scoped
   /// variables `java.get`/`java.put` use.
-  RuleFieldContext get _ruleContext => RuleFieldContext(
-    evaluateScript: (script, result) => _evalJs(script, _keyword, result),
+  ///
+  /// [label] is the rule field being read (`ruleBookInfo.kind`): a script this
+  /// field runs carries it into the failure it reports, so the interface and the
+  /// source log name the field instead of the bare `js`.
+  RuleFieldContext _ruleContext(String label) => RuleFieldContext(
+    evaluateScript: (script, result) =>
+        _evalJs(script, _keyword, result, label: label),
     extract: (value, rule) async => JsonSourceRules.extract(value, rule),
     readVariable: _readRuleVariable,
     writeVariable: _writeRuleVariable,
@@ -302,9 +393,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// One rule field through the shared path: `@js:`/`<js>` split,
   /// `{{...}}`/`@get:`/`@put:` resolved, then the JSON reader's extraction, then
-  /// the script segments' value.
-  Future<Object?> _field(Object? value, String rule) async {
-    final field = await RuleField.resolve(rule, _ruleContext, content: value);
+  /// the script segments' value. [label] names the field, for a script failure.
+  Future<Object?> _field(Object? value, String rule, {String label = ''}) async {
+    final field = await RuleField.resolve(
+      rule,
+      _ruleContext(label),
+      content: value,
+    );
     final extracted = field.isScriptOnly
         ? value
         : JsonSourceRules.extract(value, field.extractionRule!);
@@ -315,8 +410,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `{{...}}`/`@get:` substitution applies, a script does not — an element set
   /// is not a value this path can hand back, so a script there is refused by
   /// name instead of being dropped.
-  Future<List<Object?>> _elementList(Object? value, String rule) async {
-    final field = await RuleField.resolve(rule, _ruleContext, content: value);
+  Future<List<Object?>> _elementList(
+    Object? value,
+    String rule, {
+    String label = '',
+  }) async {
+    final field = await RuleField.resolve(
+      rule,
+      _ruleContext(label),
+      content: value,
+    );
     if (field.scripts.isNotEmpty) {
       throw UnsupportedError('暂不支持列表规则里的 JavaScript：$rule');
     }
@@ -324,8 +427,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }
 
   /// One required value rule.
-  Future<String> _text(Object? value, String rule) async {
-    final result = await _field(value, rule);
+  Future<String> _text(Object? value, String rule, {String label = ''}) async {
+    final result = await _field(value, rule, label: label);
     if (result == null || result.toString().isEmpty) {
       throw FormatException('Missing JSON value for $rule');
     }
@@ -335,9 +438,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// One optional value rule: an empty rule or a missing value is an empty
   /// string. A rule that cannot be run at all still throws, so a broken rule is
   /// reported instead of disappearing.
-  Future<String> _optional(Object? value, String rule) async {
+  Future<String> _optional(
+    Object? value,
+    String rule, {
+    String label = '',
+  }) async {
     if (rule.trim().isEmpty) return '';
-    return '${await _field(value, rule) ?? ''}';
+    return '${await _field(value, rule, label: label) ?? ''}';
   }
 
   Future<String> _expand(String template, String keyword) => expandSourceUrl(
@@ -495,6 +602,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return SourceStageResponse(body: text, url: url);
   }
 
+  /// One stage response's document: the JSON its rules read.
+  ///
+  /// A body that is not JSON is a stage failure that says so — the stage, the
+  /// response's address and a bounded prefix of the body — instead of the
+  /// decoder's `FormatException`, which names one character and nothing about
+  /// the request that produced it (ticket #89).
+  Object? _document(BookSourceStage stage, SourceStageResponse response) {
+    try {
+      return jsonDecode(response.body);
+    } on FormatException {
+      throw SourceStageFormatError(
+        stage: stage,
+        address: sourceStageAddress(response.url),
+        prefix: sourceStageBodyPrefix(response.body),
+      );
+    }
+  }
+
   /// The rule map of one stage, refusing an unsupported rule by name.
   Map<String, String> _rules(String key, List<String> required) {
     final raw = source[key];
@@ -623,7 +748,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: _base,
       ),
     );
-    final document = jsonDecode(checked.body);
+    final document = _document(BookSourceStage.search, checked);
     final finalUrl = checked.url;
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
@@ -637,7 +762,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
         )) {
       return _detailPageBooks(document, finalUrl);
     }
-    final found = await _elementList(document, search['bookList']!);
+    final found = await _elementList(
+      document,
+      search['bookList']!,
+      label: 'ruleSearch.bookList',
+    );
     // The frozen companion to the branch above: an empty element list and no
     // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
     if (found.isEmpty && bookUrlPattern.isEmpty) {
@@ -661,11 +790,31 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
-      final name = await _text(entry, search['name']!);
-      final author = await _optional(entry, search['author'] ?? '');
-      final intro = await _optional(entry, search['intro'] ?? '');
-      final lastChapter = await _optional(entry, search['lastChapter'] ?? '');
-      final wordCount = await _optional(entry, search['wordCount'] ?? '');
+      final name = await _text(
+        entry,
+        search['name']!,
+        label: 'ruleSearch.name',
+      );
+      final author = await _optional(
+        entry,
+        search['author'] ?? '',
+        label: 'ruleSearch.author',
+      );
+      final intro = await _optional(
+        entry,
+        search['intro'] ?? '',
+        label: 'ruleSearch.intro',
+      );
+      final lastChapter = await _optional(
+        entry,
+        search['lastChapter'] ?? '',
+        label: 'ruleSearch.lastChapter',
+      );
+      final wordCount = await _optional(
+        entry,
+        search['wordCount'] ?? '',
+        label: 'ruleSearch.wordCount',
+      );
       books.add(
         HtmlBook(
           url: bookUrl,
@@ -674,7 +823,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
           intro: formatSourceIntro(intro),
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
-          kind: await _optional(entry, search['kind'] ?? ''),
+          kind: await _optional(
+            entry,
+            search['kind'] ?? '',
+            label: 'ruleSearch.kind',
+          ),
         ),
       );
     }
@@ -702,7 +855,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: bookRequest?.base,
       ),
     );
-    final document = jsonDecode(bookInfo.body);
+    final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, page) = await _readBookInfo(document, hit, info);
     final tocAddress = JsonSourceRules.template(page, info['tocUrl'] ?? '');
     // An empty `tocUrl` resolves to the book's own address, which is the frozen
@@ -749,24 +902,48 @@ class JsonSourcePipeline implements BookSourcePipeline {
           tocPage = await _loginCheck(tocPage);
           firstPage = false;
         }
-        final document = jsonDecode(tocPage.body);
-        final entries = await _elementList(document, toc['chapterList']!);
+        final document = _document(BookSourceStage.tableOfContents, tocPage);
+        final entries = await _elementList(
+          document,
+          toc['chapterList']!,
+          label: 'ruleToc.chapterList',
+        );
         for (var index = 0; index < entries.length; index++) {
           final entry = entries[index];
           // The frozen adds a chapter only when its title is non-empty
           // (`BookChapterList.kt:244`), so an element the name rule matched nothing
           // on is skipped instead of failing the whole TOC.
-          final name = await _optional(entry, toc['chapterName']!);
+          final name = await _optional(
+            entry,
+            toc['chapterName']!,
+            label: 'ruleToc.chapterName',
+          );
           if (name.isEmpty) continue;
-          final tag = await _optional(entry, toc['updateTime'] ?? '');
+          final tag = await _optional(
+            entry,
+            toc['updateTime'] ?? '',
+            label: 'ruleToc.updateTime',
+          );
           final isVolume = sourceIsTrue(
-            await _optional(entry, toc['isVolume'] ?? ''),
+            await _optional(
+              entry,
+              toc['isVolume'] ?? '',
+              label: 'ruleToc.isVolume',
+            ),
           );
           final isVip = sourceIsTrue(
-            await _optional(entry, toc['isVip'] ?? ''),
+            await _optional(
+              entry,
+              toc['isVip'] ?? '',
+              label: 'ruleToc.isVip',
+            ),
           );
           final isPay = sourceIsTrue(
-            await _optional(entry, toc['isPay'] ?? ''),
+            await _optional(
+              entry,
+              toc['isPay'] ?? '',
+              label: 'ruleToc.isPay',
+            ),
           );
           var chapterUrl = catEye
               ? (JsonSourceRules.extract(
@@ -774,7 +951,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       RuleField.extractionText(toc['chapterUrl']!) ?? '',
                     )?.toString() ??
                     '')
-              : await _optional(entry, toc['chapterUrl']!);
+              : await _optional(
+                  entry,
+                  toc['chapterUrl']!,
+                  label: 'ruleToc.chapterUrl',
+                );
           if (catEye) {
             chapterUrl = aesBase64DecodeToString(
               chapterUrl,
@@ -837,7 +1018,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
           pageUrl: tocPage.url,
           items: nextRule == null
               ? const <String>[]
-              : await _pageTexts(document, nextRule),
+              : await _pageTexts(
+                  document,
+                  nextRule,
+                  label: 'ruleToc.nextTocUrl',
+                ),
         );
       },
     );
@@ -900,18 +1085,38 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? (source['ruleBookInfo'] as Map)['init']
         : null;
     final page = initRule is String
-        ? await _field(document, initRule)
+        ? await _field(document, initRule, label: 'ruleBookInfo.init')
         : document;
-    final cover = await _optional(page, info['coverUrl'] ?? '');
+    final cover = await _optional(
+      page,
+      info['coverUrl'] ?? '',
+      label: 'ruleBookInfo.coverUrl',
+    );
     final canReName = info['canReName']?.trim().isNotEmpty == true;
-    final infoTitle = await _optional(page, info['name'] ?? '');
-    final infoAuthor = await _optional(page, info['author'] ?? '');
-    final infoLastChapter = await _optional(page, info['lastChapter'] ?? '');
+    final infoTitle = await _optional(
+      page,
+      info['name'] ?? '',
+      label: 'ruleBookInfo.name',
+    );
+    final infoAuthor = await _optional(
+      page,
+      info['author'] ?? '',
+      label: 'ruleBookInfo.author',
+    );
+    final infoLastChapter = await _optional(
+      page,
+      info['lastChapter'] ?? '',
+      label: 'ruleBookInfo.lastChapter',
+    );
     final infoWordCount = formatSourceWordCount(
-      await _optional(page, info['wordCount'] ?? ''),
+      await _optional(
+        page,
+        info['wordCount'] ?? '',
+        label: 'ruleBookInfo.wordCount',
+      ),
     );
     final infoIntro = formatSourceIntro(
-      await _optional(page, info['intro'] ?? ''),
+      await _optional(page, info['intro'] ?? '', label: 'ruleBookInfo.intro'),
     );
     final book = HtmlBook(
       url: hit.url,
@@ -925,7 +1130,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           : hit.author,
       intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: await _optional(page, info['kind'] ?? ''),
+      kind: await _optional(page, info['kind'] ?? '', label: 'ruleBookInfo.kind'),
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
@@ -995,13 +1200,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
           contentPage = await _loginCheck(contentPage);
           firstPage = false;
         }
-        final document = jsonDecode(contentPage.body);
+        final document = _document(BookSourceStage.content, contentPage);
         // The frozen applies the first page's title before the content rules.
         if (parts.isEmpty) {
           final titleRule = content['title'];
           final title = titleRule == null
               ? null
-              : await _optional(document, titleRule);
+              : await _optional(
+                  document,
+                  titleRule,
+                  label: 'ruleContent.title',
+                );
           if (title != null && title.trim().isNotEmpty) {
             contentTitle = _chapterTitle = title;
             _chapter = SourceChapter(
@@ -1013,7 +1222,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
             );
           }
         }
-        parts.add(await _text(document, content['content']!));
+        parts.add(
+          await _text(
+            document,
+            content['content']!,
+            label: 'ruleContent.content',
+          ),
+        );
         // The frozen reads a page's next-URL rule only on the pages it walks
         // through (`BookContent.kt:114-127`).
         final nextRule = readNext ? content['nextContentUrl'] : null;
@@ -1021,7 +1236,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
           pageUrl: contentPage.url,
           items: nextRule == null
               ? const <String>[]
-              : await _pageTexts(document, nextRule),
+              : await _pageTexts(
+                  document,
+                  nextRule,
+                  label: 'ruleContent.nextContentUrl',
+                ),
         );
       },
     );
@@ -1081,10 +1300,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// used source declares either next-page field on a JSON source — so it stays
   /// an out-of-corpus limit in `tool/jsonpath_oracle/README.md` rather than being
   /// routed here under an unproven model (ticket #78).
-  Future<List<String>> _pageTexts(Object? document, String rule) async {
+  Future<List<String>> _pageTexts(
+    Object? document,
+    String rule, {
+    String label = '',
+  }) async {
     final field = await RuleField.resolve(
       rule,
-      _ruleContext,
+      _ruleContext(label),
       content: document,
     );
     if (field.isScriptOnly) {
