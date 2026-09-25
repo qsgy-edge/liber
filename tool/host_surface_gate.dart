@@ -140,6 +140,9 @@ const expectedMembers = <String>[
   'java.webView',
   'java.webViewGetSource',
   'java.webViewGetOverrideUrl',
+  // The minimal node façade's one static member (#100); its node members are
+  // checked against [sourceDomMembers] below.
+  'Jsoup.parse',
   ...hatchMembers,
   ...deferredMembers,
 ];
@@ -252,7 +255,7 @@ Future<void> main(List<String> args) async {
     //    from the stage's own binding maps, so the probe carries one of each.
     final missing = await run(
       'JSON.stringify(${jsonEncode(expectedMembers)}.filter(path => {'
-      'let current = {source: source, java: java, cookie: cookie, cache: cache, book: book, chapter: chapter};'
+      'let current = {source: source, java: java, cookie: cookie, cache: cache, book: book, chapter: chapter, Jsoup: Jsoup};'
       'for (const part of path.split(".")) {'
       'if (current === null || current === undefined || !(part in current)) return true;'
       'current = current[part]; } return false;}))',
@@ -267,6 +270,37 @@ Future<void> main(List<String> args) async {
       exitCode = 1;
       return;
     }
+
+    // 1b. The node façade's members (#100): the same list the product's own
+    //     tests read, so a method cannot appear silently. The probe builds a
+    //     node without touching a pipeline (its reads would refuse there), and
+    //     an unlisted name refuses by name below.
+    final domProbe = await run(
+      'const __node = Jsoup.parse("<div></div>");'
+      'JSON.stringify(${jsonEncode(sourceDomMembers)}.filter(name => '
+      'name === "parse" ? typeof Jsoup.parse !== "function"'
+      ' : typeof __node[name] !== "function"))',
+    );
+    checks['domMembers'] = domProbe == '[]';
+    // A method added to the façade without joining [sourceDomMembers] fails
+    // here: the node's own prototype members are exactly the list plus
+    // `toString` (the JS value protocol, not a jsoup call).
+    final domMemberList = await run(
+      'Object.getOwnPropertyNames(Object.getPrototypeOf(Jsoup.parse("<div></div>")))'
+      '.sort().join(",")',
+    );
+    final expectedNodeMembers =
+        ([...sourceDomMembers.where((member) => member != 'parse'), 'toString']
+          ..sort()).join(',');
+    checks['domMemberList'] = domMemberList == expectedNodeMembers;
+    SourceScriptError? domRefusal;
+    try {
+      await run('Jsoup.parse("<div></div>").html()');
+    } on SourceScriptError catch (error) {
+      domRefusal = error;
+    }
+    checks['domUnlistedName'] =
+        domRefusal != null && domRefusal.message.contains('Jsoup.html');
 
     // 2. Source accessors.
     final sourceInfo = await run(

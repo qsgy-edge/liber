@@ -7,6 +7,7 @@ import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 
@@ -139,9 +140,9 @@ void main() {
           _htmlSource(
             'http://example.test',
             searchUrl: '/detail/73?key={{key}}',
-            // The list rule is the proof: a script-only element rule is refused
-            // by name, so a search that returns the book never read it.
-            bookList: '@js:[]',
+            // The list rule is the proof: a script that throws if it runs means
+            // a search that returns the book never read it.
+            bookList: "@js: (() => { throw new Error('列表规则被读取') })()",
             bookUrlPattern: r'.*/detail/\d+.*',
           ),
           transport,
@@ -165,22 +166,22 @@ void main() {
         ]);
 
         // The proof that the list rule above was never consulted: read at all,
-        // it is refused by name.
+        // its script throws.
         final listed = HtmlSourcePipeline(
           _htmlSource(
             'http://example.test',
             searchUrl: '/detail/73?key={{key}}',
-            bookList: '@js:[]',
+            bookList: "@js: (() => { throw new Error('列表规则被读取') })()",
           ),
           _Pages({'/detail/73': _detailPage}),
         );
         await expectLater(
           listed.search('书'),
           throwsA(
-            isA<UnsupportedError>().having(
+            isA<SourceScriptError>().having(
               (error) => error.message,
               'message',
-              contains(r'@js:[]'),
+              contains('列表规则被读取'),
             ),
           ),
         );

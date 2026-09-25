@@ -265,19 +265,16 @@ void main() {
       );
     });
 
-    test('a script on an element-list rule is refused by name', () async {
+    test('a script on an element-list rule runs with the body as result', () async {
+      // #100: the frozen hands the element-list script the response body string
+      // (`BookList.kt:50` `setContent(body)`); the extraction segment before it
+      // selects the items, and the script answers them unchanged.
       final source = _htmlSource(name: 'a.0@text');
-      (source['ruleSearch'] as Map)['bookList'] = r'.result a @js: result';
-      await expectLater(
-        HtmlSourcePipeline(source, _HtmlPages()).search('关键字'),
-        throwsA(
-          isA<UnsupportedError>().having(
-            (error) => '$error',
-            'message',
-            contains('列表规则'),
-          ),
-        ),
+      (source['ruleSearch'] as Map)['bookList'] = r'.result @js: result';
+      final hit = await HtmlSourcePipeline(source, _HtmlPages()).search(
+        '关键字',
       );
+      expect(hit.single.title, '回音');
     });
 
     test('{{...}} around a rule expression is refused by name', () async {
