@@ -60,3 +60,11 @@ tool/jsonpath_probe/** text eol=lf
 # record.
 tool/tonum_chapter_oracle/** text eol=lf
 tool/jsonpath_oracle/** text eol=lf
+
+# The frozen-source pins the host-JVM oracles check before they compile. Without
+# this a Windows checkout with core.autocrlf=true rewrites the LF bytes, `sha1sum
+# -c` then parses `…kt` and finds no such file, and the script refuses before
+# compiling (#74 hit the same gap for the tonum/JSONPath oracles).
+tool/tonum_chapter_oracle/** text eol=lf
+tool/jsonpath_oracle/** text eol=lf
+tool/html_content_oracle/** text eol=lf
