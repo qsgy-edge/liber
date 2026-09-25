@@ -33,6 +33,61 @@ import 'source_tls_confirmation.dart';
 /// concurrently (the frozen dialog runs them under a thread pool); each
 /// source's own requests are serialized per source by the rate limiter the
 /// transport already applies (#42).
+///
+/// Verified against that dialog for #103, frozen checkout `14dd24945`:
+///
+/// * **Which sources.** `ChangeBookSourceViewModel.startSearch` fills
+///   `bookSourceParts` from `appDb.bookSourceDao.allEnabledPart`
+///   (`select ... where enabled = 1 order by customOrder asc`), falling back to
+///   it when the selected `AppConfig.searchGroup` is blank (its default). This
+///   page reads `ShelfService.sources()` — every source in the space,
+///   `customOrder` then `bookSourceUrl` — and pre-selects the enabled ones, so
+///   the default set and its order are the frozen ones.
+/// * **What admits a hit.** The dialog's filter is `fName == name &&
+///   (!checkAuthor || fAuthor.contains(author))` with
+///   `AppConfig.changeSourceCheckAuthor` defaulting to false;
+///   [PreciseSearchHit.exact] is the same comparison and the `checkAuthor`
+///   checkbox the same default.
+/// * **The pick.** The dialog's `changeSource` reads the candidate's own
+///   information when its `tocUrl` is empty and then its table of contents
+///   before it calls `changeTo`; [pick] runs the same two stages as one
+///   `pipeline.details` call and writes through `ShelfService.switchSource`.
+/// * **The position.** `changeTo` (`ReadBookViewModel.kt:259-277`) copies the
+///   old position through `Book.migrateTo` → `BookHelp.getDurChapter`
+///   (`Book.kt:341-358`, `BookHelp.kt:495-542`); `ShelfService.switchSource`
+///   applies the ported `mapChapterIndex`, pinned in `chapter_position_test.dart`.
+///
+/// Named gaps against that dialog, recorded rather than fixed:
+///
+/// * **No source-group filter.** The frozen reads `AppConfig.searchGroup` and
+///   searches only that group's enabled sources, with a group menu; this page
+///   has no group picker, so a group selected there has no counterpart here.
+///   The default (no group) is the same set.
+/// * **A disabled source can be searched.** The frozen's `allEnabledPart` is
+///   `enabled = 1`; this page lists a chip for every source and only
+///   *pre*-selects the enabled ones, so a user may search a disabled source.
+/// * **Per-candidate fields.** The frozen card shows the hit's own latest
+///   chapter title (`SearchBook.getDisplayLastChapterTitle`), ticks the current
+///   source's row (`oldBookUrl == bookUrl`) and, with
+///   `AppConfig.changeSourceLoadWordCount`, a word-count line and respond time;
+///   this card shows title/author/source and the exact-match marker, and states
+///   the current source once above the list.
+/// * **Scoring and ordering.** `getBookScore`/`SourceConfig` scores and the
+///   comparator they drive (`defaultComparator`, the word-count comparator) are
+///   absent — a #69 non-goal.
+/// * **A failed pick.** The frozen logs `换源获取目录出错` and keeps the dialog;
+///   this page shows `switchSourceFailed`.
+/// * **Sequential search.** `mapParallel` across sources is the product's
+///   one-at-a-time walk (`lib/source/precise_search.dart`, #40's divergence).
+///
+/// The one divergence the operator met is the flow's *shape*, not a field: the
+/// frozen has no user-invoked first-that-answers walk — its only such walk is
+/// `ReadBookViewModel.autoChangeSource`, internal and keyed to
+/// `ReadBook.bookSource == null` (`:139-142`) — and this product's only such
+/// walk is the #69 automatic entry on a `sourceMissing` shelf row. The operator
+/// was asked whether to expose that walk as a manual 换源 action and declined
+/// (不做, 2026-09-25); this page's entry stays the candidate list, and no later
+/// session re-opens it without a new decision.
 class PreciseSearchPage extends StatefulWidget {
   const PreciseSearchPage({
     super.key,

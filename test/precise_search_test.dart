@@ -16,13 +16,15 @@ import 'package:liber/store/space_store.dart';
 import 'l10n_support.dart';
 
 /// One source's scripted answers: what its search returns, what its details
-/// stage answers with, and how often it was asked.
+/// stage answers with, whether its content stage answers, and how often each
+/// was asked.
 class FakeSource {
   FakeSource(
     this.source, {
     List<HtmlBook>? hits,
     this.failure,
     List<String>? titles,
+    this.contentFailure,
   }) : hits = hits ?? <HtmlBook>[],
        titles = titles ?? <String>[];
 
@@ -30,8 +32,10 @@ class FakeSource {
   final List<HtmlBook> hits;
   Object? failure;
   final List<String> titles;
+  Object? contentFailure;
   int searchCalls = 0;
   int detailsCalls = 0;
+  int contentCalls = 0;
   final keywords = <String>[];
 
   /// Holds this source's search response so a page can be disposed while its
@@ -72,6 +76,17 @@ class ScriptedPipeline extends HtmlSourcePipeline {
           SourceChapter(fake.titles[i], Uri.parse('$sourceUrl/chapter/$i')),
       ],
     );
+  }
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    fake.contentCalls++;
+    if (fake.contentFailure != null) throw fake.contentFailure!;
+    return HtmlChapterBody('${chapter.name}的正文', 1);
   }
 }
 
@@ -225,6 +240,30 @@ void main() {
     expect(find.textContaining('· 精确匹配'), findsNothing);
   });
 
+  testWidgets('换源列表：默认只搜启用的书源；停用的书源可被显式选中（与冻结的差异）', (tester) async {
+    // The frozen dialog searches only `enabled = 1` (`allEnabledPart`). This
+    // page lists a chip for every source and pre-selects the enabled ones, so a
+    // disabled source is skipped by default but can be searched once selected.
+    await store.putSourceJson({...sourceB.source, 'enabled': false});
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpEntry(tester);
+
+    expect(sourceB.searchCalls, 0, reason: '停用的书源默认不搜索');
+    expect(find.textContaining('· 精确匹配'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('precise-search')));
+    await tester.pumpAndSettle();
+
+    expect(sourceB.searchCalls, 1, reason: '显式选中后停用的书源也被搜索');
+    expect(find.textContaining('· 精确匹配'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('页面销毁后不再搜索后面的书源，也不新建分析', (tester) async {
     // 甲源's answer is held open, so the page can be disposed while its
     // analysis is in flight — the window in which the run would otherwise walk
@@ -349,6 +388,162 @@ void main() {
     expect(progress.chapterKey, 'https://b.test/chapter/2');
     expect(progress.textOffset, 42);
     expect((await shelf.onlineShelf()).single.chapterName, '第三章');
+    expect(tester.takeException(), isNull);
+  });
+
+  /// A book on 甲源, read at the third of five chapters (偏移 42) — the row a
+  /// switch re-points. The rows below drive the switch flow through it.
+  Future<ShelfEntry> shelvedBook() async {
+    await shelf.add(
+      sourceA.source,
+      HtmlBook(
+        url: Uri.parse('https://a.test/book/1'),
+        title: name,
+        author: author,
+      ),
+      [
+        for (var i = 0; i < 5; i++)
+          SourceChapter(
+            '第${['一', '二', '三', '四', '五'][i]}章',
+            Uri.parse('https://a.test/chapter/$i'),
+          ),
+      ],
+    );
+    final entry = (await shelf.find(
+      'https://a.test',
+      'https://a.test/book/1',
+    ))!;
+    await shelf.saveProgress(
+      entry.id,
+      chapterKey: 'https://a.test/chapter/2',
+      chapterIndex: 2,
+      textOffset: 42,
+    );
+    return (await shelf.find('https://a.test', 'https://a.test/book/1'))!;
+  }
+
+  /// Opens the switch-source page on [entry] through a pushed route, so a
+  /// pick's `pop(true)` has somewhere to go.
+  Future<void> pumpSwitchEntry(
+    WidgetTester tester,
+    ShelfEntry entry, {
+    void Function(bool)? onPopped,
+  }) async {
+    await tester.pumpWidget(
+      localizedApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () async {
+              final switched = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => PreciseSearchPage(
+                    service: shelf,
+                    switchBook: entry,
+                    openPipeline: open,
+                  ),
+                ),
+              );
+              onPopped?.call(switched == true);
+            },
+            child: const Text('打开换源'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开换源'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('换源列表：一个书源出错或没有精确命中，后面的候选照常按书源顺序入列', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.failure = StateError('页面读取失败');
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    // The failing source is reported on its own line and does not stop the
+    // others: 乙源's name-match and 丙源's exact hit are both candidates.
+    expect(find.textContaining('甲源 出错：'), findsOneWidget);
+    expect(find.textContaining('别人的作者'), findsOneWidget);
+    expect(find.textContaining('· 精确匹配'), findsOneWidget);
+    // The list keeps the source order: 乙源's card sits above 丙源's.
+    final b = find.byKey(
+      const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+    );
+    final c = find.byKey(
+      const ValueKey('precise-hit-https://c.test-https://c.test/book/1'),
+    );
+    expect(tester.getTopLeft(b).dy, lessThan(tester.getTopLeft(c).dy));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源列表：没有候选时给出冻结的“没有搜索到”，书一行不动', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '9', '另一本书', author));
+    sourceB.hits.add(candidate('https://b.test', '2', '另一本书', '别人的作者'));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
+      '没有搜索到<$name>$author',
+    );
+    // Nothing was written: the book still resolves 甲源, with its chapters and
+    // its position.
+    expect((await store.bookById(entry.id))!.sourceRef, 'https://a.test');
+    expect(await store.chaptersOf(entry.id), hasLength(5));
+    expect((await store.progressOf(entry.id))!.textOffset, 42);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：新目录顺序变了，进度按冻结的映射落到同一章', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    // 乙源 prepends a 楔子, so the old 第三章 is at index 3 — only the frozen
+    // name-and-number mapping finds it; carrying the old index would land on
+    // 第二章.
+    sourceB.titles.addAll(const ['楔子', '第一章', '第二章', '第三章', '第四章']);
+
+    var popped = false;
+    await pumpSwitchEntry(tester, entry, onPopped: (value) => popped = value);
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(popped, isTrue);
+    final progress = (await store.progressOf(entry.id))!;
+    expect(progress.chapterIndex, 3, reason: '第三章落在新目录的下标 3');
+    expect(progress.chapterKey, 'https://b.test/chapter/3');
+    expect(progress.textOffset, 42, reason: '冻结的 durChapterPos 原样带过去');
+    expect((await shelf.onlineShelf()).single.chapterName, '第三章');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源列表按搜索命中收录候选：正文取不到的候选也入列并被选中换源', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+    sourceB.contentFailure = StateError('正文分页读取失败');
+
+    var popped = false;
+    await pumpSwitchEntry(tester, entry, onPopped: (value) => popped = value);
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The list admits a search hit the way the frozen dialog does — it makes no
+    // content request at all — so a source whose content stage would fail is
+    // still a candidate, and the switch writes it.
+    expect(sourceB.contentCalls, 0, reason: '列表流程不取正文');
+    expect(popped, isTrue);
+    expect((await store.bookById(entry.id))!.sourceRef, 'https://b.test');
     expect(tester.takeException(), isNull);
   });
 
