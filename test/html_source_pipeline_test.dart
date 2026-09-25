@@ -426,12 +426,17 @@ void main() {
       expect(text, '　　第一段\n　　第二段\n　　第三段');
     });
 
-    test('keeps the blank line a replacement leaves behind, indented', () async {
+    test('collapses the blank line a replacement leaves, as the frozen does', () async {
+      // The replacement's blank line is gone before the final shaping sees it:
+      // the frozen content stage's own formatter runs per page, ahead of the
+      // `replaceRegex` branch (`BookContent.kt:178` then `:135-142`), and its
+      // `\s*\n+\s*` collapses a run of blank lines
+      // (`tool/html_content_oracle`, the `blank-lines` row).
       final text = await read(
         '<div class="content">第一段<br>（广告）<br>第二段</div>',
         replaceRegex: '##（广告）',
       );
-      expect(text, '　　第一段\n　　\n　　第二段');
+      expect(text, '　　第一段\n　　第二段');
     });
 
     test('shapes the trailing empty line a trailing newline produces', () async {
@@ -442,9 +447,13 @@ void main() {
       expect(text, '　　第一段\n　　');
     });
 
-    test('leaves the text untouched when the source declares no replaceRegex', () async {
+    test('indents the paragraphs of a source that declares no replaceRegex', () async {
+      // The frozen content stage formats every page whatever the source
+      // declares, so line two carries the formatter's indent even though the
+      // `replaceRegex` branch never runs (`BookContent.kt:178`;
+      // `tool/html_content_oracle`, the `blank-lines` and `crlf-lines` rows).
       final text = await read('<div class="content">第一段<br>第二段</div>');
-      expect(text, '第一段\n第二段');
+      expect(text, '第一段\n　　第二段');
     });
   });
 

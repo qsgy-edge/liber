@@ -1,0 +1,6 @@
+082685b5d75ad2ef14bb5fc8d5dd8273667fe5cf  app/src/main/java/io/legado/app/utils/HtmlFormatter.kt
+d3e3de8230a58b5f7a7419c2c981096f6b8815be  app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt
+c07a674525254d3539687f7b205aaa609375b941  app/src/main/java/io/legado/app/utils/NetworkUtils.kt
+ad323d5a7f4f77f7a4c0aef1ffb0b2bdac7651c1  app/src/main/java/io/legado/app/utils/StringExtensions.kt
+c262b0a01355b600e8c0cdae39955b4f3fd12d12  app/src/main/java/io/legado/app/model/webBook/BookContent.kt
+b70471e4da24bbd574b6a83007e99828ee44c82e  app/src/main/java/io/legado/app/constant/AppPattern.kt

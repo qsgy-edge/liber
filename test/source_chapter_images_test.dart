@@ -94,9 +94,15 @@ void main() {
             '<img src="${image.src}">',
           );
         }
-        // The extraction reads the text; it does not rewrite it.
+        // The extraction reads the text; it does not rewrite the image's own
+        // address (the frozen `formatKeepImg` does, `tool/html_content_oracle`'s
+        // `image-absolute-base` row — the divergence `formatChapterContent`
+        // records), and the frozen formatter has taken the wrapper's tags out.
         expect(body.text, contains('<img src="/i/1.png">'));
-        expect(body.text, endsWith('尾\n</div>'));
+        expect(
+          body.text,
+          '　　　　第一段<img src="/i/1.png">第二段<img src="/i/2.png">尾\n　　',
+        );
       },
     );
 
@@ -118,16 +124,18 @@ void main() {
       );
     });
 
-    test('a chapter with no images is exactly what it was', () async {
+    test('a chapter whose body carries no image still gets the frozen text', () async {
       final site = _Site({'/chapter/1': '<div class="con">第一段</div>'});
       final pipeline = HtmlSourcePipeline(_htmlSource('@CSS:.con@html'), site);
 
       final body = await pipeline.chapter(_chapter());
 
       expect(body.images, isEmpty);
-      // The adapter's own `@html` output, untouched: no images means nothing
-      // this stage may change about the text.
-      expect(body.text, '<div class="con">\n 第一段\n</div>');
+      // No image means no image element: the text is still the frozen content
+      // stage's own, which took the wrapper's tags out and indented the
+      // paragraph (`BookContent.kt:178`; `tool/html_content_oracle`'s
+      // `site-shape-contentdiv` and `p-tags` rows execute the same pass).
+      expect(body.text, '　　　　第一段\n　　');
     });
 
     test('the pattern is the frozen one, its own overshoots included', () {

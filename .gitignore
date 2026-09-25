@@ -16,3 +16,7 @@ target/
 # them; `jars.sha256` is the pin).
 tool/jsonpath_probe/jars/
 tool/jsonpath_probe/out/
+
+# The content-HTML oracle's downloaded Apache Commons jars (`run_golden.sh`
+# fetches them; `jars.sha256` is the pin).
+tool/html_content_oracle/jars/

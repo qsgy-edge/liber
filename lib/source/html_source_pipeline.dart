@@ -1525,7 +1525,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         if (text.isEmpty) {
           throw const FormatException('ruleContent.content 未匹配到内容');
         }
-        parts.add(text);
+        // The frozen content stage turns one page's HTML into text here, before
+        // the pages are joined (`BookContent.kt:178`).
+        parts.add(formatChapterContent(text));
         return (
           pageUrl: pageUrl,
           items: await _pageTexts(nextValue, next, html),
