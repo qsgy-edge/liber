@@ -1,0 +1,119 @@
+{
+  "surface": "the content stage's replace pass, BookContent.kt:135-142, read through the frozen AnalyzeRule",
+  "provenance": "source-executed on a host JVM; NOT the four-stage device oracle",
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "180277b101c3bfe50e5f3a79886fd0d3c313633a",
+      "role": "the rule path the replace stage reads: splitSourceRule, SourceRule.makeUpRule (the {{...}}/@get: substitution and the ## split), replaceRegex, getString, evalJS"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/RuleDataInterface.kt",
+      "sha1": "c141a24467d6ffcc58e633c04d1d0d98ec79d612",
+      "role": "the variable map the entities carry into the analysis"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByRegex.kt",
+      "sha1": "e94c56346e80dc3d9603f728a57e1c6fe84dec75",
+      "role": "the regex-mode analysis the same file names"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d3e3de8230a58b5f7a7419c2c981096f6b8815be",
+      "role": "paramPattern, read by HtmlFormatter for a templated image src"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "082685b5d75ad2ef14bb5fc8d5dd8273667fe5cf",
+      "role": "the per-page HTML pass ahead of the replace stage"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "c07a674525254d3539687f7b205aaa609375b941",
+      "role": "getAbsoluteURL, read by the per-page formatter"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "ad323d5a7f4f77f7a4c0aef1ffb0b2bdac7651c1",
+      "role": "isAbsUrl/isDataUrl/isJson/splitNotBlank, transcribed for the compile classpath"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/MapExtensions.kt",
+      "sha1": "705ee4c0c4b7a81d470f79895266dbbbdf338d30",
+      "role": "getOrPutLimit, the rule and regex caches"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/ThrowableExtensions.kt",
+      "sha1": "02c6076b4c92a8d205f0575efcba3c6766b971aa",
+      "role": "stackTraceStr, the ajax failure text"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/LogUtils.kt",
+      "sha1": "e0e8a2ccfa0aa2d3b7c4cc054d19ad13d31536ef",
+      "role": "printOnDebug, gated on the Android-generated BuildConfig"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/SharedJsScope.kt",
+      "sha1": "107560831e703374851ef4a52e9e74c579bd5464",
+      "role": "the getShareScope guard transcribed into the stub: a source with no jsLib has no shared scope"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/JsExtensions.kt",
+      "sha1": "1544fa90d832d57147b4f67cec3f2418daca8dc4",
+      "role": "the interface AnalyzeRule implements; the stub keeps getSource/ajax/log"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "JS_PATTERN (the rule splitter) and LFRegex (the stage's line split)"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "c262b0a01355b600e8c0cdae39955b4f3fd12d12",
+      "role": "the content read and the replace stage this corpus executes"
+    },
+    {
+      "path": "gradle/libs.versions.toml",
+      "sha1": "4571e2b1345724d6da770f8053b410df0f31981c",
+      "role": "rhino = 1.8.0 (:40), the JS engine the frozen revision runs"
+    }
+  ],
+  "scriptModule": {
+    "root": "modules/rhino/src/main/java",
+    "files": 27,
+    "treeSha1": "3ebdb03ce6fb7f943112f31321125ba626a0b363",
+    "role": "the frozen script engine, compiled from its own bytes and run on the pinned Rhino: the {{...}} substitutions in this corpus are evaluated by it, not by a transcription",
+    "treeSha1Recipe": "sha1 of the concatenated `<file sha1>  <path>\\n` lines, paths sorted, '/'-separated, relative to the frozen root"
+  },
+  "harness": "tool/html_content_oracle/ContentReplaceOracle.kt",
+  "fixtures": "tool/html_content_oracle/replace_fixtures.json",
+  "golden": "tool/html_content_oracle/evidence/jvm-host/replace-golden.json",
+  "goldenSha1": "bb84917b773ce9c00d7fee90cc65bf0b6c959170",
+  "command": "bash tool/html_content_oracle/run_golden.sh",
+  "toolchain": {
+    "kotlinCompiler": "kotlin-compiler-embeddable-2.3.20",
+    "kotlinStdlib": "kotlin-stdlib-2.3.20",
+    "kotlinReflect": "kotlin-reflect-2.2.0",
+    "gson": "gson-2.11.0",
+    "commonsText": "commons-text-1.13.0",
+    "commonsLang3": "commons-lang3-3.17.0",
+    "rhino": "rhino-1.8.0",
+    "okio": "okio-jvm-3.4.0",
+    "androidxAnnotation": "annotation-jvm-1.10.0",
+    "androidStubJar": "C:/Users/17945/AppData/Local/Android/sdk/platforms/android-35/android.jar",
+    "jvmTarget": "1.8",
+    "rhinoClassFileMajor": "55",
+    "runJvm": "openjdk version 21.0.4 2024-07-16"
+  },
+  "jvm": "JetBrains s.r.o. 21.0.4 (Windows 11)",
+  "recordedAt": "2026-09-25T14:04:17.349641Z",
+  "determinism": "Every case is evaluated twice and the run is refused when the two runs differ. The frozen rule path, the formatter and the pinned Rhino read no clock, no random source and no state.",
+  "transcription": "AnalyzeRule.kt, RuleDataInterface.kt, AnalyzeByRegex.kt, HtmlFormatter.kt, AppPattern.kt and the frozen modules/rhino script engine are compiled and executed as they are; the {{...}} substitutions this corpus carries are evaluated by that engine, not by a transcription. Transcribed and verified at run time against the frozen files: the content field read and per-page pass (BookContent.kt:176-181), the replace stage (BookContent.kt:133-142), the getOrPutLimit/isJson/splitNotBlank/isAbsUrl/isDataUrl helpers the rule path reaches (MapExtensions.kt:21-33, StringExtensions.kt:36-44,46-55,81-84), stackTraceStr (ThrowableExtensions.kt:5-13) and the shared-scope guard (SharedJsScope.kt:36-38). The stub members this corpus never reaches are declared in tool/html_content_oracle/stubs/ and refuse by name; android.text.TextUtils carries AOSP's own implementation because AnalyzeRule guards its rule text with it.",
+  "selectorEngine": "The frozen content field's selector read is answered by the fixture's declared pageValues: jsoup is not compiled here, and the extraction itself is the product's Rust adapter's and tool/html_oracle/'s surface.",
+  "deviceRow": {
+    "status": "not-run",
+    "owner": "#106",
+    "reason": "The frozen APK's own BookContent.analyzeContent is not driven here: this host harness executes the frozen AnalyzeRule, formatter and script engine bytes with a documented stub surface for the Android/Room-only members. No device golden exists for this row."
+  }
+}

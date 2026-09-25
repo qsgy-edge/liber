@@ -48,17 +48,6 @@ void main() {
       'content',
       r'div#content $1',
     ),
-    'html-content-replace-rule': _withField(
-      _withField(
-        _html('replace.example'),
-        'ruleContent',
-        'content',
-        'div#content##@text',
-      ),
-      'ruleContent',
-      'replaceRegex',
-      r'##$1',
-    ),
     'html-toc-chapter-options': _withField(
       _html('post-chapter.example'),
       'ruleToc',
@@ -279,7 +268,14 @@ void main() {
     );
   });
 
-  test('every branch of the content-replacement refusal is pinned', () {
+  test('every content-replacement form is read, not refused', () {
+    // #106 retired the `html-content-replace-rule` class: the content stage
+    // reads the whole `ruleContent.content` field and applies
+    // `ruleContent.replaceRegex` to the joined text through the shared rule
+    // path (`BookContent.kt:133-142`, `AnalyzeRule.getString`), so a `{{…}}`
+    // expression and a `##` field of the content rule are both read forms. The
+    // frozen corpus that decides them is
+    // `tool/html_content_oracle/replace_fixtures.json`.
     Map<String, dynamic> withReplacement(String replacement) => _withField(
       _withField(
         _html('branch.example'),
@@ -291,18 +287,19 @@ void main() {
       'replaceRegex',
       replacement,
     );
-    // The chapter-title expression is resolved by the product, so it is no
-    // refusal on its own; every other `{{…}}` expression is one.
-    expect(
-      auditSource(withReplacement('{{chapter.title}}')).reasons,
-      isEmpty,
-    );
-    expect(
-      auditSource(withReplacement('{{key}}')).reasons,
-      <String>['html-content-replace-rule'],
-    );
-    // A replacement beside a `##` field on the content rule is the other
-    // branch; a replacement beside a plain content rule is not.
+    for (final replacement in <String>[
+      '{{chapter.title}}',
+      '{{key}}',
+      r'##$1',
+      r'##(a)##b###',
+    ]) {
+      expect(
+        auditSource(withReplacement(replacement)).reasons,
+        isEmpty,
+        reason: replacement,
+      );
+    }
+    // A replacement beside a plain content rule is read the same way.
     final plain = _withField(
       _html('branch.example'),
       'ruleContent',
@@ -310,6 +307,12 @@ void main() {
       '##@text',
     );
     expect(auditSource(plain).reasons, isEmpty);
+    // The shared field reads still name their own refusals, in the content
+    // stage as everywhere else.
+    expect(
+      auditSource(withReplacement(r'$1##x')).reasons,
+      <String>['html-rule-field-syntax'],
+    );
   });
 
   test('every refusable chapter-address option is pinned', () {
@@ -333,15 +336,15 @@ void main() {
   });
 
   test('the counts are the used set and the whole collection', () {
-    expect(report.collection.total, 17, reason: 'the whole collection');
+    expect(report.collection.total, 16, reason: 'the whole collection');
     expect(report.collection.ready, 3, reason: 'the ready records');
-    expect(report.collection.refused, 14, reason: 'one per reason');
+    expect(report.collection.refused, 13, reason: 'one per reason');
     expect(report.used!.total, 3, reason: 'origins that resolve');
     expect(report.used!.ready, 1);
     expect(report.used!.refused, 2);
     expect(report.jsonCollection, 7);
     expect(report.jsonUsed, 1);
-    expect(report.htmlCollection, 10);
+    expect(report.htmlCollection, 9);
     expect(report.htmlUsed, 2);
     for (final id in <String>[
       'json-unsupported-field',
@@ -390,7 +393,7 @@ void main() {
     expect(exportReport.backup.shelfMember, isNull);
     expect(exportReport.used, isNull);
     expect(exportReport.jsonUsed, isNull);
-    expect(exportReport.collection.total, 17);
+    expect(exportReport.collection.total, 16);
     expect(
       renderReadinessReport(exportReport),
       contains('used n/a (no shelf in the input)'),
@@ -400,7 +403,7 @@ void main() {
   test('the report names the input, its digest, its members and its gaps', () {
     final text = renderReadinessReport(report);
     expect(text, contains(report.backup.sha256));
-    expect(text, contains('collection: 17 records from bookSource.json'));
+    expect(text, contains('collection: 16 records from bookSource.json'));
     expect(text, contains('4 entries, 4 distinct origins, 3 resolved'));
     expect(text, contains('bookshelf.json'));
     for (final gap in readinessGaps) {

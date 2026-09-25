@@ -121,7 +121,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     productCode:
         'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:922-933) '
         'at its call sites: search (1089-1120), the TOC builder (1323-1341) and '
-        'the content stage (_contentRule, 1649-1664)',
+        'the content stage (_contentRule, 1651)',
     pipeline: SourcePipeline.html,
     refuses: _htmlMissingRequiredField,
   ),
@@ -147,18 +147,6 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'HtmlSourcePipeline._field (lib/source/html_source_pipeline.dart:533-538)',
     pipeline: SourcePipeline.html,
     refuses: _htmlRuleFieldSyntax,
-  ),
-  ReadinessCheck(
-    id: 'html-content-replace-rule',
-    reads:
-        'the content stage cannot express the declared `replaceRegex`: a '
-        '`{{…}}` expression other than the chapter title one, or a replacement '
-        'beside a `##` field on the content rule',
-    productCode:
-        'HtmlSourcePipeline._contentRule '
-        '(lib/source/html_source_pipeline.dart:1649-1664)',
-    pipeline: SourcePipeline.html,
-    refuses: _htmlContentReplaceRefused,
   ),
   ReadinessCheck(
     id: 'html-toc-chapter-options',
@@ -758,15 +746,6 @@ bool _htmlRuleFieldSyntax(Map<String, dynamic> source) {
     if (text != null && _ruleFieldText(text) == null) return true;
   }
   return false;
-}
-
-bool _htmlContentReplaceRefused(Map<String, dynamic> source) {
-  final content = _ruleText(source, 'ruleContent', 'content');
-  if (content == null) return false;
-  final replacement = (_ruleText(source, 'ruleContent', 'replaceRegex') ?? '')
-      .replaceAll('{{chapter.title}}', '');
-  if (replacement.contains('{{')) return true;
-  return replacement.isNotEmpty && content.contains('##');
 }
 
 bool _htmlTocChapterOptionsRefused(Map<String, dynamic> source) {

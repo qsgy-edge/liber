@@ -1,0 +1,315 @@
+{
+  "fixtureId": "CONTENT-REPLACE-01",
+  "corpusVersion": 1,
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "surface": "the content stage's replace pass, BookContent.kt:135-142, read through the frozen AnalyzeRule",
+  "note": "The corpus is synthetic: it reproduces the *shapes* the operator's used sources declare for `html-content-replace-rule` (measured by `dart run tool/refusal_shapes.dart` over the 2026-09-17 backup: 3 records carry a `{{...}}` beyond `{{chapter.title}}` inside the replacement, 2 carry a `##` field on the content rule beside a non-empty replacement), with repository-local page text and the frozen's own binding names. No rule text, source name, URL or header value from the backup appears here. `pageValues` is what the frozen selector read answers for a page; the frozen side declares it (the selector engine is not compiled here), and the product side produces it from `pageHtml` through its own adapter.",
+  "cases": {
+    "gate-no-replaceRegex": {
+      "shape": "no `replaceRegex`: the stage's own gate",
+      "note": "`if (!replaceRegex.isNullOrEmpty())` (BookContent.kt:136): a source that declares none is left exactly as the per-page pass produced it.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　第二段"
+      ],
+      "joined": "第一段\n　　第二段",
+      "trimmed": null,
+      "replaced": null,
+      "content": "第一段\n　　第二段"
+    },
+    "marker-alone-on-a-line": {
+      "shape": "an empty-rule replacement over the joined text (`##<regex>`)",
+      "note": "The corrected #101 row: the replacement runs after the trim, so the emptied line survives into the indented result (the frozen never re-formats after it).",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　（广告）\n　　第二段"
+      ],
+      "joined": "第一段\n　　（广告）\n　　第二段",
+      "trimmed": "第一段\n（广告）\n第二段",
+      "replaced": "第一段\n\n第二段",
+      "content": "　　第一段\n　　\n　　第二段"
+    },
+    "marker-inside-a-line": {
+      "shape": "an empty-rule replacement (`##<regex>`)",
+      "note": "The already-supported shape: the marker is removed wherever the regex matches and the lines keep the stage's own indent.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段（广告）第二段"
+      ],
+      "pageReads": [
+        "第一段（广告）第二段"
+      ],
+      "joined": "第一段（广告）第二段",
+      "trimmed": "第一段（广告）第二段",
+      "replaced": "第一段第二段",
+      "content": "　　第一段第二段"
+    },
+    "marker-on-the-last-line": {
+      "shape": "an empty-rule replacement (`##<regex>`)",
+      "note": "A marker on the final line leaves the trailing empty line the frozen's split-and-prefix produces.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n（广告）"
+      ],
+      "pageReads": [
+        "第一段\n　　（广告）"
+      ],
+      "joined": "第一段\n　　（广告）",
+      "trimmed": "第一段\n（广告）",
+      "replaced": "第一段\n",
+      "content": "　　第一段\n　　"
+    },
+    "trim-precedes-the-replacement": {
+      "shape": "the trim the stage runs before its replacement",
+      "note": "The pattern can only match because the trim has already removed the formatter's U+3000 indent: the replacement sees `\\n（广告）`, not `\\n　　（广告）`.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　（广告）\n　　第二段"
+      ],
+      "joined": "第一段\n　　（广告）\n　　第二段",
+      "trimmed": "第一段\n（广告）\n第二段",
+      "replaced": "第一段\n第二段",
+      "content": "　　第一段\n　　第二段"
+    },
+    "intra-line-ideographic-space": {
+      "shape": "the stage's replacement over the formatter's own U+3000",
+      "note": "The frozen regex is a Java pattern, and Java's `\\s` is ASCII-only: `\\s+` cannot match the ideographic space the formatter writes inside a line.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段　（广告）第二段"
+      ],
+      "pageReads": [
+        "第一段　（广告）第二段"
+      ],
+      "joined": "第一段　（广告）第二段",
+      "trimmed": "第一段　（广告）第二段",
+      "replaced": "第一段　（广告）第二段",
+      "content": "　　第一段　（广告）第二段"
+    },
+    "replacement-dollar-group-cannot-fire": {
+      "shape": "a three-part replacement (`##<regex>##<replacement>`)",
+      "note": "After the trim no line starts with whitespace, so `\\n\\s{2}` cannot match: the `$1` form of the used sources is inert in this stage.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "正文，\n第二段"
+      ],
+      "pageReads": [
+        "正文，\n　　第二段"
+      ],
+      "joined": "正文，\n　　第二段",
+      "trimmed": "正文，\n第二段",
+      "replaced": "正文，\n第二段",
+      "content": "　　正文，\n　　第二段"
+    },
+    "replacement-dollar-without-a-group": {
+      "shape": "the frozen `replaceRegex` fallback",
+      "note": "A replacement that names a group the pattern does not have throws inside the Kotlin `Regex.replace`, and the frozen falls back to `String.replace` — the literal text is substituted.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　（广告）\n　　第二段"
+      ],
+      "joined": "第一段\n　　（广告）\n　　第二段",
+      "trimmed": "第一段\n（广告）\n第二段",
+      "replaced": "第一段\n$1\n第二段",
+      "content": "　　第一段\n　　$1\n　　第二段"
+    },
+    "replacement-first-field": {
+      "shape": "the frozen `replaceFirst` field (`##a##b###`)",
+      "note": "Four `##` fields answer with the replaced *match* only (`AnalyzeRule.kt:426-437`), not the whole text.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段（广告）第二段"
+      ],
+      "pageReads": [
+        "第一段（广告）第二段"
+      ],
+      "joined": "第一段（广告）第二段",
+      "trimmed": "第一段（广告）第二段",
+      "replaced": "【】",
+      "content": "　　【】"
+    },
+    "entity-after-the-replacement": {
+      "shape": "the stage read's own unescape",
+      "note": "The replace stage reads through `getString(rule, content)` with the default `unescape = true` (`AnalyzeRule.kt:289-296`): an `&` the replacement introduced is entity-decoded — through Apache Commons' HTML4 table — before the indent. The product's replacement runs in Dart, over the adapter's value, and leaves the entity text; that is #104's read-level entity pass, recorded here rather than fixed in this stage.",
+      "compare": "entity-unescaped-by-the-frozen-read",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n（广告）\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　（广告）\n　　第二段"
+      ],
+      "joined": "第一段\n　　（广告）\n　　第二段",
+      "trimmed": "第一段\n（广告）\n第二段",
+      "replaced": "第一段\n&\n第二段",
+      "content": "　　第一段\n　　&\n　　第二段"
+    },
+    "content-rule-owns-a-replacement": {
+      "shape": "a `##` field on the content rule beside a non-empty `replaceRegex`",
+      "note": "The content field's own `##` replacement runs on the page read, ahead of the formatter; the stage's replacement then runs on the joined text. Both belong to their own field.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@html"
+      ],
+      "fieldReads": [
+        "<div class=\"content\">第一段新第二段（广告）第三段</div>"
+      ],
+      "pageReads": [
+        "　　　　第一段新第二段（广告）第三段\n　　"
+      ],
+      "joined": "　　　　第一段新第二段（广告）第三段\n　　",
+      "trimmed": "第一段新第二段（广告）第三段\n",
+      "replaced": "第一段新第二段第三段\n",
+      "content": "　　第一段新第二段第三段\n　　"
+    },
+    "content-rule-removal-and-stage-group": {
+      "shape": "both fields' `##` parts at once",
+      "note": "The used shape with a trailing `##` on the content rule and a three-part replacement: the content rule removes its match from the page read, the stage's replacement runs on the joined text.",
+      "compare": "exact",
+      "pageRules": [
+        ".read@p@textNodes"
+      ],
+      "fieldReads": [
+        "正文，\n\n\n后段（"
+      ],
+      "pageReads": [
+        "正文，\n　　后段（"
+      ],
+      "joined": "正文，\n　　后段（",
+      "trimmed": "正文，\n后段（",
+      "replaced": "正文，\n后段（",
+      "content": "　　正文，\n　　后段（"
+    },
+    "template-title-in-an-alternation": {
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `title`",
+      "note": "The template is substituted into the rule text before the `##` split, and `title` is the chapter title the frozen binds (`AnalyzeRule.kt:745`).",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一章。本章完。正文"
+      ],
+      "pageReads": [
+        "第一章。本章完。正文"
+      ],
+      "joined": "第一章。本章完。正文",
+      "trimmed": "第一章。本章完。正文",
+      "replaced": "正文",
+      "content": "　　正文"
+    },
+    "template-book-author": {
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `book.author`",
+      "note": "The `book` binding is the book the analysis holds; a member read off it is inserted into the pattern as text.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "测试作者 更快 正文1。。"
+      ],
+      "pageReads": [
+        "测试作者 更快 正文1。。"
+      ],
+      "joined": "测试作者 更快 正文1。。",
+      "trimmed": "测试作者 更快 正文1。。",
+      "replaced": "快 正文",
+      "content": "　　快 正文"
+    },
+    "template-chapter-title-try": {
+      "shape": "a `{{...}}` beyond `{{chapter.title}}`: `chapter.title` inside a `try`",
+      "note": "The statement-shaped template the used sources carry: a `try` as the whole program answers its completion value. The pattern's second alternative `\\(第\\d+.+页\\)` needs a character between the numeral and 页, so on this page text only the template branch fires.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一章正文\n(第2页)"
+      ],
+      "pageReads": [
+        "第一章正文\n　　(第2页)"
+      ],
+      "joined": "第一章正文\n　　(第2页)",
+      "trimmed": "第一章正文\n(第2页)",
+      "replaced": "正文\n(第2页)",
+      "content": "　　正文\n　　(第2页)"
+    },
+    "template-undefined-name-catch": {
+      "shape": "the template's catch branch",
+      "note": "A name the frozen binds nowhere throws a ReferenceError, which the source's own `try`/`catch` turns into the fallback text; the fallback is the marker this page carries, so the branch is visible in the answer.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段（广告）第二段"
+      ],
+      "pageReads": [
+        "第一段（广告）第二段"
+      ],
+      "joined": "第一段（广告）第二段",
+      "trimmed": "第一段（广告）第二段",
+      "replaced": "第一段第二段",
+      "content": "　　第一段第二段"
+    },
+    "template-result-is-the-joined-text": {
+      "shape": "the template's `result` binding",
+      "note": "The frozen binds `result` to the value the rule runs on, which at this stage is the trimmed joined text.",
+      "compare": "exact",
+      "pageRules": [
+        ".content@textNodes"
+      ],
+      "fieldReads": [
+        "第一段\n第二段"
+      ],
+      "pageReads": [
+        "第一段\n　　第二段"
+      ],
+      "joined": "第一段\n　　第二段",
+      "trimmed": "第一段\n第二段",
+      "replaced": "",
+      "content": "　　"
+    }
+  }
+}

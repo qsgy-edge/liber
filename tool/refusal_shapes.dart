@@ -7,6 +7,17 @@
 // prints, per refused record of the used set, the shape label of every field
 // the reason's read rejected.
 //
+// `--content-replace <backup.zip|bookSource.json>` is the deeper probe of the
+// class #106 retired: `html-content-replace-rule`, the two forms the content
+// stage refused before that ticket — a `{{…}}` expression beyond
+// `{{chapter.title}}` on the replacement, and a replacement beside a `##` field
+// on the content rule. The product reads both now (the frozen corpus that
+// decides them is `tool/html_content_oracle/replace_fixtures.json`), so the
+// class left the `ReadinessCheck` list and this mode is where its measurement
+// stays reproducible. As in the audit it prints the used set's counts and the
+// shape label of every field the retired predicate named: never a rule text,
+// URL, host, header value or source name.
+//
 // Like the audit it is static and network-free (no request, no script, no
 // native library), it reuses the audit's own public constants and predicates so
 // the two cannot drift, and it prints no rule text, URL, host or source name:
@@ -39,6 +50,7 @@ import 'dart:io';
 
 import 'package:liber/source/json_source_rules.dart';
 import 'package:liber/source/rule_field.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 
 import 'source_readiness.dart';
 import 'source_usage.dart';
@@ -48,10 +60,16 @@ void main(List<String> args) {
     stdout.write(renderScriptSurfaceReport(readScriptSurfaceReport(args[1])));
     return;
   }
+  if (args.length == 2 && args.first == '--content-replace') {
+    stdout.write(renderContentReplaceReport(readContentReplaceReport(args[1])));
+    return;
+  }
   if (args.length != 1) {
     stderr.writeln('usage: dart run tool/refusal_shapes.dart <backup.zip|'
         'bookSource.json>\n'
         '       dart run tool/refusal_shapes.dart --script-surface '
+        '<backup.zip|bookSource.json>\n'
+        '       dart run tool/refusal_shapes.dart --content-replace '
         '<backup.zip|bookSource.json>');
     return;
   }
@@ -124,8 +142,6 @@ List<String> _shapes(String reason, Map<String, dynamic> source) {
           if (slot.required && _text(source, slot.group, slot.field) == null)
             '${slot.group}.${slot.field} absent/blank',
       ];
-    case 'html-content-replace-rule':
-      return _contentReplaceShapes(source);
     case 'json-rule-unreadable':
       return _jsonUnreadableShapes(source);
     case 'json-unsupported-field':
@@ -231,6 +247,72 @@ List<String> _contentReplaceShapes(Map<String, dynamic> source) {
         'is non-empty');
   }
   return labels;
+}
+
+/// The `html-content-replace-rule` class #106 retired, measured over one backup.
+///
+/// The predicate is the one `tool/source_readiness.dart` carried until that
+/// ticket (`_htmlContentReplaceRefused`): a `{{…}}` expression beyond the
+/// chapter-title one, or a replacement beside a `##` field on the content rule.
+/// The product reads both forms now, so the class is not a `ReadinessCheck` —
+/// as #100's two script classes are not — and this mode is where a later reader
+/// can still see what it named.
+class ContentReplaceReport {
+  const ContentReplaceReport({required this.backup, required this.records});
+
+  final SourceBackup backup;
+
+  /// One entry per used record the retired predicate named, in `bookSource.json`
+  /// order, with the shape labels of the fields it named.
+  final List<({int position, List<String> labels})> records;
+
+  List<String> get backupLines => sourceBackupLines(backup);
+}
+
+/// Reads [path] and measures the retired class over the used set.
+ContentReplaceReport readContentReplaceReport(String path) {
+  final backup = readSourceBackup(path);
+  final origins = backup.shelf == null ? null : shelfOrigins(backup.shelf!);
+  final records = <({int position, List<String> labels})>[];
+  for (var index = 0; index < backup.sources.length; index++) {
+    final source = backup.sources[index];
+    if (origins != null && !origins.contains(source['bookSourceUrl'])) continue;
+    // The retired check was declared `pipeline: SourcePipeline.html`, so a
+    // record the JSON adapter reads never named it.
+    if (isJsonRuleSource(source)) continue;
+    if (!_contentReplaceRefused(source)) continue;
+    records.add((position: index, labels: _contentReplaceShapes(source)));
+  }
+  return ContentReplaceReport(backup: backup, records: records);
+}
+
+/// The retired `_htmlContentReplaceRefused`, character for character.
+bool _contentReplaceRefused(Map<String, dynamic> source) {
+  final content = _text(source, 'ruleContent', 'content');
+  if (content == null) return false;
+  final replacement = (_text(source, 'ruleContent', 'replaceRegex') ?? '')
+      .replaceAll('{{chapter.title}}', '');
+  if (replacement.contains('{{')) return true;
+  return replacement.isNotEmpty && content.contains('##');
+}
+
+String renderContentReplaceReport(ContentReplaceReport report) {
+  final out = <String>[
+    'content-replace shapes — the `html-content-replace-rule` class #106 '
+        'retired; network-free, no rule text, URL, host or source name is read '
+        'out',
+    ...report.backupLines,
+    'used records that named it: ${report.records.length}',
+    '',
+  ];
+  for (final record in report.records) {
+    out.add(
+      '  [${record.position}] '
+      '${record.labels.isEmpty ? 'no shape read' : record.labels.join('; ')}',
+    );
+  }
+  out.add('');
+  return '${out.join('\n')}\n';
 }
 
 class _JsonField {
