@@ -8,6 +8,24 @@ import '../settings/reader_script.dart';
 import '../settings/reader_script_page.dart';
 import 'local_reader.dart';
 
+/// The interface's words for the local reader's own notices (#73).
+///
+/// `LocalReaderNotice` is the engine's code (`lib/local/local_reader.dart`),
+/// which has no `AppLocalizations` dependency and may not reach the widget layer;
+/// this page is where that code meets the copy. The switch is exhaustive, so a
+/// new code does not compile until its ARB key exists here — the same split #72
+/// gave the store layer, with the reader's one consuming page as the renderer
+/// instead of a shared `lib/l10n/` extension.
+extension LocalReaderNoticeText on LocalReaderNotice {
+  String text(AppLocalizations l10n) => switch (this) {
+    LocalReaderNotice.readerRestoreRelocated => l10n.readerRestoreRelocated,
+    LocalReaderNotice.readerRestoreSearched => l10n.readerRestoreSearched,
+    LocalReaderNotice.readerRestoreLineIndex => l10n.readerRestoreLineIndex,
+    LocalReaderNotice.readerRestorePercentage => l10n.readerRestorePercentage,
+    LocalReaderNotice.readerDeletedPosition => l10n.readerDeletedPosition,
+  };
+}
+
 /// The local reader: one bounded window of a local file at a time, opened at the
 /// position D4's tiers restored, and paged by code-unit offset.
 ///
@@ -86,6 +104,7 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
     final l10n = AppLocalizations.of(context);
     final reader = widget.reader;
     final position = reader.position;
+    final notices = reader.notices;
     return Scaffold(
       appBar: AppBar(
         title: Text(reader.book.title),
@@ -109,14 +128,17 @@ class _LocalReaderPageState extends State<LocalReaderPage> {
           ? Center(child: Text(l10n.cannotRead('${reader.error}')))
           : Column(
               children: [
-                if (reader.notice != null)
+                if (notices.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     child: Card(
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Text(
-                          reader.notice!,
+                          // A tier notice and the deleted-position one can both
+                          // apply to one open; they are joined here exactly as
+                          // the engine's single notice line always was.
+                          notices.map((notice) => notice.text(l10n)).join(' '),
                           key: const ValueKey('reader-notice'),
                         ),
                       ),

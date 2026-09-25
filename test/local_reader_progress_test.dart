@@ -66,7 +66,7 @@ void main() {
     final reader = opened.reader;
 
     expect(reader.error, isNull);
-    expect(reader.notice, isNull, reason: '位置没有动，就没有要报告的东西');
+    expect(reader.notices, isEmpty, reason: '位置没有动，就没有要报告的东西');
     expect(reader.window!.text.length, 256);
     expect(reader.text, opened.text.substring(0, 256));
     expect(reader.position!.textOffset, 0);
@@ -108,7 +108,7 @@ void main() {
     );
     await reopened.open();
 
-    expect(reopened.notice, isNull, reason: '文件没有变，恢复就是精确的那一档');
+    expect(reopened.notices, isEmpty, reason: '文件没有变，恢复就是精确的那一档');
     expect(reopened.position!.textOffset, record.textOffset);
     expect(reopened.position!.textLength, record.textLength);
     expect(opened.engine.indexPasses, 1, reason: '第二次打开不再重新索引');
@@ -139,7 +139,10 @@ void main() {
     await reopened.open();
 
     final position = reopened.position!;
-    expect(reopened.notice, contains('已改动'));
+    expect(
+      reopened.notices,
+      contains(LocalReaderNotice.readerRestoreRelocated),
+    );
     expect(position.textLength, edited.length);
     expect(
       edited.substring(position.lineStart).startsWith(stored.anchor!),
@@ -176,7 +179,10 @@ void main() {
     );
     await reopened.open();
 
-    expect(reopened.notice, contains('已替换'));
+    expect(
+      reopened.notices,
+      contains(LocalReaderNotice.readerRestoreLineIndex),
+    );
     expect(reopened.error, isNull);
     expect(reopened.position!.lineStart, lessThan(replaced.length));
     expect(reopened.text, isNotEmpty);

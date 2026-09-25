@@ -1350,6 +1350,36 @@ abstract class AppLocalizations {
   /// **'无法读取：{error}'**
   String cannotRead(String error);
 
+  /// No description provided for @readerRestoreRelocated.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已改动：阅读位置按锚点重新定位'**
+  String get readerRestoreRelocated;
+
+  /// No description provided for @readerRestoreSearched.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已改动：阅读位置在文件中重新找到'**
+  String get readerRestoreSearched;
+
+  /// No description provided for @readerRestoreLineIndex.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已替换：阅读位置按行号恢复，请检查'**
+  String get readerRestoreLineIndex;
+
+  /// No description provided for @readerRestorePercentage.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已替换：阅读位置按百分比恢复，请检查'**
+  String get readerRestorePercentage;
+
+  /// No description provided for @readerDeletedPosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换规则改写了这一行：阅读位置移到改动处的正文'**
+  String get readerDeletedPosition;
+
   /// No description provided for @previousPage.
   ///
   /// In zh, this message translates to:

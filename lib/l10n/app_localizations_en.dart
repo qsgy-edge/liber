@@ -782,6 +782,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get readerRestoreRelocated =>
+      'The file changed: the reading position was relocated by its anchor';
+
+  @override
+  String get readerRestoreSearched =>
+      'The file changed: the reading position was found again in the file';
+
+  @override
+  String get readerRestoreLineIndex =>
+      'The file was replaced: the reading position was restored by line number; please check';
+
+  @override
+  String get readerRestorePercentage =>
+      'The file was replaced: the reading position was restored by percentage; please check';
+
+  @override
+  String get readerDeletedPosition =>
+      'A replace rule rewrote this line: the reading position moved to the text at the change';
+
+  @override
   String get previousPage => 'Previous page';
 
   @override

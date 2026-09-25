@@ -769,6 +769,21 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get readerRestoreRelocated => '文件已改动：阅读位置按锚点重新定位';
+
+  @override
+  String get readerRestoreSearched => '文件已改动：阅读位置在文件中重新找到';
+
+  @override
+  String get readerRestoreLineIndex => '文件已替换：阅读位置按行号恢复，请检查';
+
+  @override
+  String get readerRestorePercentage => '文件已替换：阅读位置按百分比恢复，请检查';
+
+  @override
+  String get readerDeletedPosition => '替换规则改写了这一行：阅读位置移到改动处的正文';
+
+  @override
   String get previousPage => '上一页';
 
   @override
@@ -1813,6 +1828,21 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
+  String get readerRestoreRelocated => '文件已改動：閲讀位置按錨點重新定位';
+
+  @override
+  String get readerRestoreSearched => '文件已改動：閲讀位置在文件中重新找到';
+
+  @override
+  String get readerRestoreLineIndex => '文件已替換：閲讀位置按行號恢復，請檢查';
+
+  @override
+  String get readerRestorePercentage => '文件已替換：閲讀位置按百分比恢復，請檢查';
+
+  @override
+  String get readerDeletedPosition => '替換規則改寫了這一行：閲讀位置移到改動處的正文';
+
+  @override
   String get previousPage => '上一頁';
 
   @override
@@ -2855,6 +2885,21 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String cannotRead(String error) {
     return '無法讀取：$error';
   }
+
+  @override
+  String get readerRestoreRelocated => '檔案已改動：閱讀位置按錨點重新定位';
+
+  @override
+  String get readerRestoreSearched => '檔案已改動：閱讀位置在檔案中重新找到';
+
+  @override
+  String get readerRestoreLineIndex => '檔案已替換：閱讀位置按行號恢復，請檢查';
+
+  @override
+  String get readerRestorePercentage => '檔案已替換：閱讀位置按百分比恢復，請檢查';
+
+  @override
+  String get readerDeletedPosition => '替換規則改寫了這一行：閱讀位置移到改動處的正文';
 
   @override
   String get previousPage => '上一頁';

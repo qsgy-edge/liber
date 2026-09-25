@@ -117,7 +117,7 @@ void main() {
     );
     await reopened.open();
 
-    expect(reopened.notice, isNull, reason: '文件没变，恢复就是精确的那一档');
+    expect(reopened.notices, isEmpty, reason: '文件没变，恢复就是精确的那一档');
     expect(reopened.position!.textOffset, record.textOffset);
     expect(reopened.position!.textLength, text.length);
     expect(reopened.text, visible, reason: '规则改写了行，逐行的对应仍让页面落在同一可见行');
@@ -154,7 +154,7 @@ void main() {
     await reader.open();
 
     expect(reader.error, isNull);
-    expect(reader.notice, isNull, reason: '文件没变，精确恢复，规则不改变恢复结果');
+    expect(reader.notices, isEmpty, reason: '文件没变，精确恢复，规则不改变恢复结果');
     expect(reader.position!.textOffset, lineStart, reason: '位置仍在 raw 空间');
     expect(
       reader.text.split('\n').first,
@@ -193,7 +193,7 @@ void main() {
     );
     await second.open();
 
-    expect(second.notice, isNull, reason: '文件没变，规则变化不是文件变化');
+    expect(second.notices, isEmpty, reason: '文件没变，规则变化不是文件变化');
     expect(second.position!.textOffset, stored.textOffset);
     expect(second.error, isNull);
   });
@@ -331,7 +331,9 @@ void main() {
     await reader.open();
 
     expect(reader.error, isNull);
-    expect(reader.notice, deletedPositionNotice, reason: '删掉的位置不静默跳走，读者把它报告出来');
+    expect(reader.notices, const <LocalReaderNotice>[
+      LocalReaderNotice.readerDeletedPosition,
+    ], reason: '删掉的位置不静默跳走，读者把它报告出来');
     expect(reader.text.split('\n').first, '　　丙行', reason: '显示的是删除处之后的那一行');
     expect(
       reader.position!.textOffset,
@@ -370,7 +372,9 @@ void main() {
     await reader.open();
 
     expect(reader.error, isNull);
-    expect(reader.notice, deletedPositionNotice);
+    expect(reader.notices, const <LocalReaderNotice>[
+      LocalReaderNotice.readerDeletedPosition,
+    ]);
     expect(reader.text, '　　甲行', reason: '删到末尾时落在最后一行上');
     expect(reader.position!.textOffset, text.indexOf('甲行'));
   });
@@ -419,7 +423,7 @@ void main() {
     await reader.open();
 
     expect(reader.error, isNull);
-    expect(reader.notice, isNull, reason: '位置没有被改写，不需要报告');
+    expect(reader.notices, isEmpty, reason: '位置没有被改写，不需要报告');
     expect(
       reader.text.split('\n').first,
       expectedLines[lineIndex + 1],
