@@ -54,6 +54,7 @@ void defaultAppTest(Directory Function() root) {
 /// zone would wait for frames that never come.
 void spaceStoreTest(Directory Function() root) {
   testWidgets('迁移页报告旧数据导入结果，原文件退休后书架仍从空间读取', (tester) async {
+    _pinShelfSurface(tester);
     final workspaceRoot = root();
     await tester.runAsync(() async {
       await tester.pumpWidget(
@@ -213,6 +214,7 @@ void lossReportLanguageTest(Directory Function() root) {
 /// resolved the old URL stays on the shelf, marked.
 void sourceManagementTest(Directory Function() root) {
   testWidgets('迁移页删除书源：书源行消失，书架上的书保留并标记', (tester) async {
+    _pinShelfSurface(tester);
     final workspaceRoot = root();
     await tester.runAsync(() async {
       await tester.pumpWidget(
@@ -275,6 +277,7 @@ void sourceManagementTest(Directory Function() root) {
   });
 
   testWidgets('迁移页修改书源 URL：旧 URL 消失，书架上的书保留并标记', (tester) async {
+    _pinShelfSurface(tester);
     final workspaceRoot = root();
     await tester.runAsync(() async {
       await tester.pumpWidget(
@@ -375,6 +378,7 @@ void sourceManagementTest(Directory Function() root) {
 /// screen are built, and the extent does not move under a scroll.
 void shelfScrollTest(Directory Function() root) {
   testWidgets('书架 300 行：只构建可见的行，滚动范围不在滚动中改变', (tester) async {
+    _pinShelfSurface(tester);
     final workspaceRoot = root();
     File(
       '${workspaceRoot.path}${Platform.pathSeparator}online_reading.json',
@@ -459,6 +463,188 @@ void shelfScrollTest(Directory Function() root) {
   });
 }
 
+/// The shelf's own filter (#88).
+///
+/// The operator's shelf holds 1424 rows, and the precise search (`#23`) runs the
+/// sources over the network, which is not what "find a book I already have"
+/// means. This fixture is the #86 one grown by the two other sections — 301
+/// online rows, one migrated row, one local book — so all three narrow together
+/// and "the rows on screen" stays unmistakable from "all of them".
+void shelfFilterTest(Directory Function() root) {
+  testWidgets('筛选：输入就窄，清除就回来，没匹配就说出这一行', (tester) async {
+    _pinShelfSurface(tester);
+    final workspaceRoot = root();
+    final separator = Platform.pathSeparator;
+    // `Dune` carries an ASCII title and an author: the case-insensitive half and
+    // the author half of the filter are both about it.
+    File(
+      '${workspaceRoot.path}${separator}online_reading.json',
+    ).writeAsStringSync(
+      jsonEncode({
+        'version': 2,
+        'last': '',
+        'records': [
+          _legacyRecord(
+            url: 'https://example.test/book/dune',
+            title: 'Dune',
+            author: 'Frank Herbert',
+          ),
+          for (var index = 0; index < 300; index++)
+            _legacyRecord(
+              url: 'https://example.test/book/$index',
+              title: '书籍${index.toString().padLeft(3, '0')}',
+            ),
+        ],
+      }),
+    );
+    final localRoot = Directory('${workspaceRoot.path}${separator}local')
+      ..createSync();
+    final localFile = File('${localRoot.path}${separator}note.txt')
+      ..writeAsStringSync('本地文件的一行');
+    File(
+      '${workspaceRoot.path}${separator}local_books.json',
+    ).writeAsStringSync(
+      jsonEncode({
+        'root': {
+          'id': localRoot.absolute.path.toLowerCase(),
+          'displayName': localRoot.absolute.path,
+        },
+        'books': [
+          {
+            'path': localFile.path,
+            'relativePath': 'note.txt',
+            'title': '本地笔记',
+            'format': 'txt',
+            'textOffset': 0,
+          },
+        ],
+      }),
+    );
+    // A book with no source and no local file: the shelf lists it as the record
+    // it is, which is the migrated section.
+    File(
+      '${workspaceRoot.path}${separator}migration_state.json',
+    ).writeAsStringSync(
+      jsonEncode({
+        'sources': <Object>[],
+        'books': [
+          {
+            'id': 'legacy-1',
+            'title': '旧记录甲',
+            'progressOffset': 3,
+            'needsRelink': true,
+          },
+        ],
+      }),
+    );
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+      );
+      await tester.pump();
+      // A 301-record import takes seconds on a shared runner.
+      await _waitFor(tester, find.text('Dune'), attempts: 400);
+
+      final field = find.byKey(const ValueKey('shelf-filter'));
+      final countLine = find.byKey(const ValueKey('shelf-filter-count'));
+      String? count() => countLine.evaluate().isEmpty
+          ? null
+          : tester.widget<Text>(countLine).data;
+      Future<void> type(String query) async {
+        await tester.enterText(field, query);
+        await tester.pump();
+      }
+
+      // The whole shelf, and no count line: an empty field shows everything, the
+      // way the shelf has always been.
+      expect(find.text('按书名或作者筛选'), findsOneWidget, reason: '占位文字说出筛的是什么');
+      expect(count(), isNull, reason: '没有筛选就没有计数行');
+      expect(find.text('Dune'), findsOneWidget);
+      expect(find.text('书籍000'), findsOneWidget);
+
+      // Typing narrows: `书籍1` is carried by 100 of the 301 online rows, and
+      // the row that does not carry it is gone while the first match takes the
+      // first row. The built rows stay the viewport's few — a filter over 100
+      // matches is not 100 rows of widgets.
+      await type('书籍1');
+      expect(count(), '显示 100 / 303');
+      expect(find.text('书籍100'), findsOneWidget, reason: '第一条匹配排在筛出来的第一行');
+      expect(find.text('Dune'), findsNothing, reason: '不匹配的行不在了');
+      expect(find.text('书籍099'), findsNothing, reason: '不匹配的行不在了');
+      expect(
+        find.byType(ListTile, skipOffstage: false).evaluate().length,
+        lessThan(40),
+        reason: '100 条匹配里，只为视口建行的还是那几十条以内',
+      );
+      expect(
+        find.text('书籍199', skipOffstage: false),
+        findsNothing,
+        reason: '视口之外的行根本没有建',
+      );
+
+      // Clearing brings the whole shelf back, and the count line goes with the
+      // filter that asked for it.
+      await tester.tap(find.byKey(const ValueKey('shelf-filter-clear')));
+      await tester.pump();
+      expect(count(), isNull);
+      expect(find.text('Dune'), findsOneWidget, reason: '清除后整张书架回来');
+      expect(
+        find.byType(ListTile, skipOffstage: false).evaluate().length,
+        lessThan(40),
+        reason: '清除不等于把 301 行都建出来',
+      );
+
+      // Case-insensitively, by title and by author — what the placeholder says
+      // the field searches.
+      await type('dune');
+      expect(count(), '显示 1 / 303');
+      expect(find.text('Dune'), findsOneWidget);
+      await type('frank herbert');
+      expect(count(), '显示 1 / 303');
+      expect(find.text('Dune'), findsOneWidget);
+
+      // Every section narrows: a migrated row, then a local book, each counted
+      // against the whole shelf.
+      await type('旧记录');
+      expect(count(), '显示 1 / 303');
+      expect(find.text('旧记录甲'), findsOneWidget);
+      await type('本地笔记');
+      expect(count(), '显示 1 / 303');
+      // The field holds those very words, so the row is named by its tile.
+      expect(find.widgetWithText(ListTile, '本地笔记'), findsOneWidget);
+
+      // A filter that matches nothing says so in its own line, and the count
+      // says the shelf is still there.
+      await type('没有这样的书');
+      expect(count(), '显示 0 / 303');
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('shelf-filter-empty')))
+            .data,
+        '没有匹配的书',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+  });
+}
+
+/// Pins the surface the shelf page's rows need.
+///
+/// Since #88 the page's header carries the filter field, so the first shelf row
+/// sits ~76px lower than the default 800x600 test surface shows — and that
+/// surface leaves the shelf exactly one row of room to begin with. The surface
+/// is not the copy: the product's window is 1280x720 (`windows/runner`), which
+/// `lossReportLanguageTest` pins for its own header-height reason. Only the
+/// surface changes; what these tests assert about the rows does not.
+void _pinShelfSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1280, 800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 /// Pumps the frames an animated route needs. `runAsync` has no `pumpAndSettle`:
 /// it would wait for frames that only the animation itself produces.
 Future<void> _pumpFrames(WidgetTester tester) async {
@@ -518,6 +704,7 @@ void main() {
   lossReportLanguageTest(() => root);
   sourceManagementTest(() => root);
   shelfScrollTest(() => root);
+  shelfFilterTest(() => root);
 }
 
 /// One `online_reading.json` v2 record, the shape the retired JSON store wrote:
@@ -525,6 +712,7 @@ void main() {
 Map<String, dynamic> _legacyRecord({
   required String url,
   required String title,
+  String author = '天蚕土豆',
 }) => {
   'source': {
     'bookSourceUrl': 'https://example.test',
@@ -533,7 +721,7 @@ Map<String, dynamic> _legacyRecord({
   'book': {
     'url': url,
     'title': title,
-    'author': '天蚕土豆',
+    'author': author,
     'intro': '',
     'cover': '',
   },

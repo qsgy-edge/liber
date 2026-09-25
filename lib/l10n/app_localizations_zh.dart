@@ -45,6 +45,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shelfSubtitle => 'Windows-first MVP · 共享书源契约验证台';
 
   @override
+  String get shelfFilterHint => '按书名或作者筛选';
+
+  @override
+  String get shelfFilterClear => '清除筛选';
+
+  @override
+  String get shelfFilterNoMatch => '没有匹配的书';
+
+  @override
+  String shelfFilterShown(int shown, int total) {
+    return '显示 $shown / $total';
+  }
+
+  @override
   String get controlledSourceTitle => 'Wayfinder 受控书源';
 
   @override
@@ -1104,6 +1118,20 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get shelfSubtitle => 'Windows-first MVP · 共享書源契約驗證台';
 
   @override
+  String get shelfFilterHint => '按書名或作者篩選';
+
+  @override
+  String get shelfFilterClear => '清除篩選';
+
+  @override
+  String get shelfFilterNoMatch => '沒有匹配的書';
+
+  @override
+  String shelfFilterShown(int shown, int total) {
+    return '顯示 $shown / $total';
+  }
+
+  @override
   String get controlledSourceTitle => 'Wayfinder 受控書源';
 
   @override
@@ -2161,6 +2189,20 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get shelfSubtitle => 'Windows-first MVP · 共享書源契約驗證臺';
+
+  @override
+  String get shelfFilterHint => '按書名或作者篩選';
+
+  @override
+  String get shelfFilterClear => '清除篩選';
+
+  @override
+  String get shelfFilterNoMatch => '沒有匹配的書';
+
+  @override
+  String shelfFilterShown(int shown, int total) {
+    return '顯示 $shown / $total';
+  }
 
   @override
   String get controlledSourceTitle => 'Wayfinder 受控書源';

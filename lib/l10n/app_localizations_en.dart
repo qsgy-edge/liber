@@ -46,6 +46,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'Windows-first MVP · shared book-source contract workbench';
 
   @override
+  String get shelfFilterHint => 'Filter by title or author';
+
+  @override
+  String get shelfFilterClear => 'Clear the filter';
+
+  @override
+  String get shelfFilterNoMatch => 'No book matches';
+
+  @override
+  String shelfFilterShown(int shown, int total) {
+    return 'Showing $shown / $total';
+  }
+
+  @override
   String get controlledSourceTitle => 'Wayfinder controlled source';
 
   @override

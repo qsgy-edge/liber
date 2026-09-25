@@ -629,6 +629,63 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('筛选后的在线书架只建匹配的行，清空筛选后整书架回来', (tester) async {
+    // #88: the shelf page's field narrows this section through `filter`. The
+    // loaded shelf stays whole — what the section renders is the matches, and
+    // the rows are still the viewport's own few, which is the #86 row's point.
+    for (var i = 0; i < 300; i++) {
+      await shelf.add(
+        source,
+        HtmlBook(
+          url: Uri.parse('$sourceUrl/book/$i'),
+          title: '书籍${i.toString().padLeft(3, '0')}',
+        ),
+      );
+    }
+
+    Future<void> show(String filter) async {
+      await tester.pumpWidget(
+        localizedApp(
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [OnlineBookshelf(service: shelf, filter: filter)],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // 100 of the 301 rows carry `书籍1`: the first match takes the first row,
+    // the rows that do not match are gone, and 100 matches still build the
+    // viewport's few rows rather than 100.
+    await show('书籍1');
+    expect(find.text('书籍100'), findsOneWidget, reason: '第一条匹配排在筛出来的第一行');
+    expect(find.text('保留的书'), findsNothing, reason: '不匹配的行不在');
+    expect(find.text('书籍099'), findsNothing, reason: '不匹配的行不在');
+    expect(
+      find.byType(ListTile).evaluate().length,
+      lessThan(40),
+      reason: '100 条匹配里只为视口建行',
+    );
+    expect(find.text('书籍199', skipOffstage: false), findsNothing);
+
+    // A filter that matches nothing leaves the section without rows and does
+    // not say the shelf is empty: the shelf is not what is empty.
+    await show('没有这样的书');
+    expect(find.byType(ListTile).evaluate().length, 0);
+    expect(
+      find.text('从书源搜索结果或详情页加入书架。'),
+      findsNothing,
+      reason: '书架不是空的，只是没有匹配的行',
+    );
+
+    // Clearing the field shows the shelf as it was, in its own order.
+    await show('');
+    expect(find.text('保留的书'), findsOneWidget);
+    expect(find.text('书籍000'), findsOneWidget);
+  });
+
   testWidgets('300 行的书架只构建可见的几行，建出来的行按书架顺序排', (tester) async {
     // #86: the operator's shelf holds 1424 rows and the page used to build every
     // one of them on every rebuild, which is what made its scrolling jump. 300
