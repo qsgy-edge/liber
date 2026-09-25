@@ -406,7 +406,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// One rule field through the shared path: `@js:`/`<js>` split,
   /// `{{...}}`/`@get:`/`@put:` resolved, then the JSON reader's extraction, then
   /// the script segments' value. [label] names the field, for a script failure.
-  Future<Object?> _field(Object? value, String rule, {String label = ''}) async {
+  ///
+  /// [raw] reads the extracted value itself instead of its text. It exists for
+  /// the one rule whose answer is a *document* rather than a field: the frozen
+  /// `ruleBookInfo.init` moves the content the remaining rules read into a
+  /// subtree of the response, and text-rendering that subtree collapses it — a
+  /// `{{$.novelId}}` in `tocUrl` then reads a String and finds nothing (the
+  /// operator's 大道飘渺, whose `init` is `$.data`). The frozen keeps the object:
+  /// `AnalyzeRule.setContent` takes the rule's result as the content whatever it
+  /// is.
+  Future<Object?> _field(
+    Object? value,
+    String rule, {
+    String label = '',
+    bool raw = false,
+  }) async {
     final field = await RuleField.resolve(
       rule,
       _ruleContext(label, value),
@@ -414,6 +428,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final extracted = field.isScriptOnly
         ? value
+        : raw
+        ? JsonSourceRules.read(value, field.extractionRule!)
         : JsonSourceRules.extract(value, field.extractionRule!);
     return field.apply(extracted);
   }
@@ -923,11 +939,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final chapters = <SourceChapter>[];
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
-    // the script: the adapter reads the JSONPath and decrypts with the source's
-    // own key and iv here. The script is not dropped — it is answered by name.
-    final catEye = toc['chapterUrl']!.contains(
-      '@js:java.aesBase64DecodeToString',
-    );
+    // the script: the adapter reads the JSONPath and decrypts with the **rule's
+    // own** key and iv here. The script is not dropped — it is answered by name.
+    //
+    // The key and iv come from the rule text rather than a constant: the two
+    // 猫眼 sources in the operator's library use different keys
+    // (`f041c49714d39908` / `4395daa50ad6baf7`), and a hard-coded pair decrypted
+    // one of them into garbage ("Invalid AES-CBC padding", 大道飘渺, #94).
+    final catEye = catEyeAesArguments(toc['chapterUrl']!);
     var firstPage = true;
     // The frozen page walk (`BookChapterList.kt:48-121`), the same one the HTML
     // adapter runs: this page, then the pages its `nextTocUrl` list declares.
@@ -1004,7 +1023,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               label: 'ruleToc.isPay',
             ),
           );
-          var chapterUrl = catEye
+          var chapterUrl = catEye != null
               ? (JsonSourceRules.extract(
                       entry,
                       RuleField.extractionText(toc['chapterUrl']!) ?? '',
@@ -1015,11 +1034,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   toc['chapterUrl']!,
                   label: 'ruleToc.chapterUrl',
                 );
-          if (catEye) {
+          if (catEye != null) {
             chapterUrl = aesBase64DecodeToString(
               chapterUrl,
-              'f041c49714d39908',
-              '0123456789abcdef',
+              catEye.key,
+              catEye.iv,
             );
           }
           final SourceChapter chapter;
@@ -1143,8 +1162,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final initRule = source['ruleBookInfo'] is Map
         ? (source['ruleBookInfo'] as Map)['init']
         : null;
+    // The init rule answers the *document* the other fields read, so its own
+    // extraction is read raw: a subtree stays a subtree (see `_field`'s [raw]).
     final page = initRule is String
-        ? await _field(document, initRule, label: 'ruleBookInfo.init')
+        ? await _field(
+            document,
+            initRule,
+            label: 'ruleBookInfo.init',
+            raw: true,
+          )
         : document;
     final cover = await _optional(
       page,

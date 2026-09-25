@@ -13,6 +13,34 @@ final _ruleFieldToken = RegExp(
   caseSensitive: false,
 );
 
+/// The key, transformation and iv a 猫眼 `java.aesBase64DecodeToString` chapter
+/// rule names, read from the rule text itself.
+///
+/// The rule's shape is
+/// `$.path@js:java.aesBase64DecodeToString(result,"<key>","AES/CBC/PKCS5Padding","<iv>")`
+/// (`JsEncodeUtils.aesBase64DecodeToString(str, key, transformation, iv)`, the
+/// frozen's `analyzeRule` binding). The pipeline answers that call in Dart
+/// because the member is outside this product's approved host surface (#10, ADR
+/// 0011), so the arguments have to be read from the rule; a constant cannot work,
+/// because the two 猫眼 sources in the operator's library carry different keys
+/// (#94).
+///
+/// Null when the rule is not that call, or names a transformation this decoder
+/// does not implement — the caller then answers the field the ordinary way and
+/// the refusal names the field.
+({String key, String iv})? catEyeAesArguments(String rule) {
+  final match = RegExp(
+    r'aesBase64DecodeToString\(\s*[^,]+,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"',
+  ).firstMatch(rule);
+  if (match == null) return null;
+  final transformation = match.group(2)!.toUpperCase();
+  if (transformation != 'AES/CBC/PKCS5PADDING') return null;
+  final key = match.group(1)!;
+  final iv = match.group(3)!;
+  if (key.isEmpty || iv.isEmpty) return null;
+  return (key: key, iv: iv);
+}
+
 /// Decode the AES/CBC/PKCS5Padding chapter URLs used by the 猫眼 source.
 String aesBase64DecodeToString(String encoded, String key, String iv) {
   final cipher = CBCBlockCipher(AESEngine())

@@ -747,6 +747,75 @@ void main() {
       ),
     );
   });
+
+  test(
+    'a ruleBookInfo.init that selects a subtree keeps it a subtree (#94)',
+    () async {
+      // The operator's 猫眼 source: `init: $.data`, and a `tocUrl` that
+      // interpolates a field from inside that subtree. Text-rendering the init
+      // result turned the subtree into a String, so `{{$.novelId}}` read
+      // nothing and the TOC address lost its id (a 403).
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        final body = switch (request.uri.path) {
+          '/book/1' => {
+            'code': 0,
+            'data': {
+              'novelId': 'X1',
+              'novelName': '真名',
+              'authorName': '作者甲',
+              'list': [
+                {'chapterName': '一', 'path': '/c/1'},
+                {'chapterName': '二', 'path': '/c/2'},
+              ],
+            },
+          },
+          '/novel/X1/chapters' => {
+            'data': {
+              'list': [
+                {'chapterName': '一', 'path': '/c/1'},
+                {'chapterName': '二', 'path': '/c/2'},
+              ],
+            },
+          },
+          _ => {'data': <Object>[]},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleBookInfo': {
+          'init': r'$.data',
+          'name': r'$.novelName',
+          'author': r'$.authorName',
+          'tocUrl': r'/novel/{{$.novelId}}/chapters',
+        },
+        'ruleToc': {
+          'chapterList': r'$.data.list[*]',
+          'chapterName': r'$.chapterName',
+          'chapterUrl': r'$.path',
+        },
+        'ruleContent': {'content': r'$.body'},
+      }, HttpSourceTransport());
+
+      final (book, chapters) = await pipeline.details(
+        HtmlBook(url: Uri.parse('$base/book/1'), title: ''),
+      );
+      expect(book.title, '真名');
+      expect(book.author, '作者甲');
+      expect(
+        paths,
+        contains('/novel/X1/chapters'),
+        reason: 'the id comes from the subtree init selected',
+      );
+      expect(chapters.map((chapter) => chapter.name), ['一', '二']);
+    },
+  );
 }
 
 class _UnusedTransport implements BookSourceTransport {
