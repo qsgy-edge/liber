@@ -8,6 +8,7 @@ import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/js_source_runtime.dart';
 
 import 'package:liber/source/native_library.dart';
 
@@ -559,6 +560,190 @@ void main() {
           'message',
           'Unsupported field: ruleToc.nextContentUrl',
         ),
+      ),
+    );
+  });
+
+  test('a rule field\'s script failure names the field and the engine\'s message', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.write(
+        jsonEncode({
+          'items': [
+            {'name': '书', 'url': '/details/1'},
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+      'ruleBookInfo': {
+        'name': r'$.title',
+        // The operator's own failure shape (ticket #89): a script in
+        // `ruleBookInfo.kind` used to reach the interface as the bare `js`.
+        'kind': "{{throw new Error('java.getString 未实现')}}",
+      },
+      'ruleToc': {
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+      },
+      'ruleContent': {'content': r'$.body'},
+    }, HttpSourceTransport());
+    final hits = await pipeline.search('书');
+    await expectLater(
+      pipeline.details(hits.single),
+      throwsA(
+        // The classification the callers branch on is unchanged; the message
+        // now carries the field and what the engine said.
+        isA<SourceScriptError>()
+            .having((error) => error.category, 'category', 'js')
+            .having(
+              (error) => error.message,
+              'message',
+              contains('ruleBookInfo.kind'),
+            )
+            .having(
+              (error) => error.message,
+              'message',
+              contains('java.getString 未实现'),
+            ),
+      ),
+    );
+  });
+
+  test('a stage whose body is not JSON names the stage, the address and a bounded prefix', () async {
+    const body =
+        '<html><head><title>502 Bad Gateway</title></head><body>'
+        '<p>CF-Challenge: enable JavaScript and cookies to continue</p>'
+        '<p>sessionid=SECRET-BODY-TOKEN</p></body></html>';
+    expect(
+      body.length,
+      greaterThan(sourceStageBodyPrefixLimit * 4),
+      reason: 'the bound is only meaningful against a body longer than it',
+    );
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.write(
+        request.uri.path == '/search'
+            ? jsonEncode({
+                'items': [
+                  {'name': '书', 'url': '/details/1?key=SECRET-KEY'},
+                ],
+              })
+            : body,
+      );
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      // A credential the request carries and the diagnostic must not: the
+      // source's own header rule, and the key in the details URL's query.
+      'header': '{"Authorization":"Bearer SECRET-TOKEN"}',
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+      'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+      'ruleToc': {
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+      },
+      'ruleContent': {'content': r'$.body'},
+    }, HttpSourceTransport());
+    final hits = await pipeline.search('书');
+    await expectLater(
+      pipeline.details(hits.single),
+      throwsA(
+        isA<SourceStageFormatError>()
+            .having((error) => error.stage, 'stage', BookSourceStage.bookInfo)
+            .having((error) => error.address, 'address', '$base/details/1')
+            .having((error) => error.prefix, 'prefix', startsWith('<html>'))
+            .having(
+              (error) => error.prefix.length,
+              'prefix length',
+              lessThanOrEqualTo(sourceStageBodyPrefixLimit),
+            )
+            .having(
+              (error) => '$error',
+              'message',
+              contains('详情响应不是 JSON（可能是错误页）'),
+            )
+            .having(
+              (error) => '$error',
+              'message',
+              contains('$base/details/1'),
+            )
+            .having(
+              (error) => '$error',
+              'message',
+              isNot(contains('SECRET-KEY')),
+            )
+            .having(
+              (error) => '$error',
+              'message',
+              isNot(contains('SECRET-TOKEN')),
+            )
+            .having(
+              (error) => '$error',
+              'message',
+              isNot(contains('SECRET-BODY-TOKEN')),
+            )
+            .having((error) => '$error', 'message', isNot(contains('\n'))),
+      ),
+    );
+  });
+
+  test('each stage names itself, not one hard-coded word', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      // Every stage answers the same HTML page.
+      request.response.write('<html><body>challenge</body></html>');
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      'searchUrl': '/search?key={{key}}',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+      'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+      'ruleToc': {
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+      },
+      'ruleContent': {'content': r'$.body'},
+    }, HttpSourceTransport());
+    await expectLater(
+      pipeline.search('书'),
+      throwsA(
+        isA<SourceStageFormatError>()
+            .having((error) => error.stage, 'stage', BookSourceStage.search)
+            .having((error) => error.address, 'address', '$base/search')
+            .having(
+              (error) => '$error',
+              'message',
+              contains('搜索响应不是 JSON（可能是错误页）'),
+            ),
       ),
     );
   });

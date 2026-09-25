@@ -264,6 +264,17 @@ class SourceScriptError implements Exception {
   const SourceScriptError(this.category, [this.message = '']);
   final String category;
   final String message;
+
+  /// The same failure as the rule field that hit it reports it: [field] is the
+  /// rule field's name (`ruleBookInfo.kind`), and the runtime's own message is
+  /// kept behind it, so a rule-path script failure says where the script
+  /// failed and what the engine said. The category is untouched — callers
+  /// branch on it — and a failure with no field or no message is unchanged.
+  SourceScriptError inRuleField(String field) =>
+      field.isEmpty || message.isEmpty
+      ? this
+      : SourceScriptError(category, '$field: $message');
+
   @override
   String toString() => message.isEmpty ? category : '$category: $message';
 }
@@ -441,7 +452,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         input: input,
         timeout: timeout,
         cancellation: cancellation,
-        keepScriptMessage: true,
       );
     } catch (error) {
       // The frozen dialog logs 登录出错 with the script's own message and keeps
@@ -461,7 +471,6 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     required Duration timeout,
     SourceCancellation? cancellation,
     bool checkResponse = false,
-    bool keepScriptMessage = false,
     SourceStageRequest? stage,
   }) async {
     final sourceRef = input['sourceKey'] is String
@@ -695,10 +704,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // the category the pipeline saw when a Dart `Timer` held the clock.
       if (error is JsError_Timeout) throw const SourceScriptError('timeout');
       if (token.isCancelled) throw const SourceScriptError('cancelled');
-      throw hostFailure ??
-          (checkResponse || keepScriptMessage
-              ? _classifyScript(error)
-              : _classify(error));
+      // Every script evaluation this runtime runs reports the engine's own
+      // message, the rule path included: logging in used to be the only path
+      // that kept it, so a rule script that failed reached the interface as the
+      // bare `js` and the decoder's `FormatException` named nothing.
+      throw hostFailure ?? _classifyScript(error);
     } finally {
       unsubscribe?.call();
       unlisten();
@@ -1492,11 +1502,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   }
 
   /// The classification a failure of a script whose own message the caller has
-  /// to show gets: the `loginCheckJs` hook and the login script both keep it.
-  /// The category is the one the ordinary rule path reports, with the script's
-  /// own message kept so the stage or the login action can name what the script
-  /// threw. The frozen check's exception is what fails the stage (`WebBook.kt:71`)
-  /// and the frozen dialog's is what it toasts, so nothing here is swallowed.
+  /// to show gets: every evaluation this runtime runs keeps it — the
+  /// `loginCheckJs` hook, the login script and the ordinary rule path, which
+  /// [SourceScriptError.inRuleField] then says which rule field it happened in.
+  /// The category is what [_classify] reports, with the script's own message
+  /// kept so the stage, the login action or the rule field can name what the
+  /// script threw. The frozen check's exception is what fails the stage
+  /// (`WebBook.kt:71`) and the frozen dialog's is what it toasts, so nothing
+  /// here is swallowed.
   static SourceScriptError _classifyScript(Object error) {
     final failure = _classify(error);
     if (failure.category != 'js') return failure;

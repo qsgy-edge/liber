@@ -10,6 +10,7 @@ import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_browser.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/legacy_import.dart';
@@ -157,6 +158,66 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a rule-field script failure reaches the page named', (
+    tester,
+  ) async {
+    final pipeline = ScriptedPipeline(
+      detailsError: const SourceScriptError(
+        'js',
+        'ruleBookInfo.kind: Error: java.getString 未实现',
+      ),
+    );
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          directBook: HtmlBook(url: Uri.parse(bookUrl), title: ''),
+          pipeline: pipeline,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // The pipeline's diagnostic stays Chinese (#72's classification); the
+    // page's own words around it come from the ARB bundle.
+    expect(
+      find.text('读取失败：js: ruleBookInfo.kind: Error: java.getString 未实现'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a stage whose body is not JSON reaches the page named', (
+    tester,
+  ) async {
+    final pipeline = ScriptedPipeline(
+      detailsError: const SourceStageFormatError(
+        stage: BookSourceStage.bookInfo,
+        address: 'https://a.test/book',
+        prefix: '<html><head><title>502 Bad</titl…',
+      ),
+    );
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          directBook: HtmlBook(url: Uri.parse(bookUrl), title: ''),
+          pipeline: pipeline,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        '读取失败：详情响应不是 JSON（可能是错误页）：'
+        '<html><head><title>502 Bad</titl…（https://a.test/book）',
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('the TOC list shows the tag, the volume heading and the lock', (
     tester,

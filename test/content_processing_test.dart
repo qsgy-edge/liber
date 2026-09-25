@@ -444,6 +444,11 @@ void main() {
         expect(notices, hasLength(1));
         expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
         expect(notices.single.arguments.first, '出错 JS 规则');
+        // The error argument carries the script's own message, where the rule
+        // path kept only the bare category before #89; the engine's stack frames
+        // stay part of the engine's message, as they already are on the login
+        // paths.
+        expect(notices.single.arguments[1], startsWith('js: Error: boom'));
       },
     );
 
