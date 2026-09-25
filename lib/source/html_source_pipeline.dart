@@ -1641,27 +1641,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return (book, tocText);
   }
 
-  /// `ruleContent.content` with the source's `replaceRegex` field appended.
+  /// `ruleContent.content`, as the frozen content stage reads it.
   ///
-  /// The frozen content rule carries the replacement as its own field and the
-  /// `##` machinery applies it to the extracted text; appending it keeps that
-  /// behaviour inside the adapter instead of re-implementing it here.
-  String _contentRule(SourceChapter chapter) {
-    final content = _rule('ruleContent', 'content');
-    final replacement = _rule(
-      'ruleContent',
-      'replaceRegex',
-      optional: true,
-    ).replaceAll('{{chapter.title}}', chapter.name);
-    if (replacement.contains('{{')) {
-      throw UnsupportedError('暂不支持该正文替换表达式');
-    }
-    if (replacement.isEmpty) return content;
-    if (content.contains('##')) {
-      throw UnsupportedError('暂不支持同时使用正文替换和规则内替换');
-    }
-    return '$content$replacement';
-  }
+  /// The field reaches the adapter whole, `##` parts and all: the frozen reads
+  /// `contentRule.content` on its own (`BookContent.kt:177`) and a replacement
+  /// the field itself declares belongs to that read. The stage's own
+  /// `ruleContent.replaceRegex` is applied afterwards, to the joined text —
+  /// see [_shapeJoinedContent].
+  String _contentRule() => _rule('ruleContent', 'content');
 
   @override
   Future<HtmlChapterBody> chapter(
@@ -1761,15 +1748,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           }
         }
         final content = await _field(
-          _contentRule(
-            SourceChapter(
-              _chapterTitle!,
-              chapter.url,
-              rawAddress: chapter.rawAddress,
-              storedKey: chapter.storedKey,
-              addressBase: chapter.addressBase,
-            ),
-          ),
+          _contentRule(),
           content: html,
           label: 'ruleContent.content',
         );
@@ -1799,7 +1778,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         );
       },
     );
-    final text = _shapeJoinedContent(parts.join('\n'));
+    final text = await _shapeJoinedContent(parts.join('\n'));
     return HtmlChapterBody(
       text,
       pages,
@@ -1879,22 +1858,46 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return texts;
   }
 
-  /// The frozen content stage's final shaping (`BookContent.kt:135-142`).
+  /// The frozen content stage's final shaping (`BookContent.kt:133-142`).
   ///
   /// Only when the source declares `ruleContent.replaceRegex` does the frozen
-  /// stage shape the joined page text: it trims every line, runs the
-  /// replacement over the whole text, and prefixes every line — an empty line
-  /// included — with the hard-coded two full-width spaces `"　　"`. The
-  /// replacement itself already ran for each page inside [_contentRule]'s
-  /// appended `##` rule, so this step trims and prefixes the joined result; the
-  /// frozen code trims before it replaces, so a pattern that matches whitespace
-  /// the trim would remove is the one case the two orders can diverge, and the
-  /// marker this corpus declares is unaffected. A source that declares no
-  /// `replaceRegex` is left exactly as extracted.
-  String _shapeJoinedContent(String text) {
-    if (_rule('ruleContent', 'replaceRegex', optional: true).isEmpty) {
-      return text;
+  /// stage shape the joined page text: it trims every line, reads the trimmed
+  /// text through the declared replacement
+  /// (`analyzeRule.getString(replaceRegex, contentStr)`), and prefixes every
+  /// line — an empty line included — with the hard-coded two full-width spaces
+  /// `"　　"`. A source that declares no `replaceRegex` is left exactly as
+  /// extracted.
+  Future<String> _shapeJoinedContent(String text) async {
+    final replaceRegex = _rule('ruleContent', 'replaceRegex', optional: true);
+    if (replaceRegex.isEmpty) return text;
+    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final replaced = await _applyReplaceRegex(trimmed, replaceRegex);
+    return replaced.split('\n').map((line) => '　　$line').join('\n');
+  }
+
+  /// One replacement field over the joined text: the frozen
+  /// `AnalyzeRule.getString(replaceRegex, text)`.
+  ///
+  /// The field is resolved first, so the `{{...}}`/`@get:`/`@put:` substitution
+  /// runs over the whole field before it splits on `##`, which is the frozen
+  /// `SourceRule.makeUpRule` order (`AnalyzeRule.kt:600-695`); [text] is the
+  /// value a `{{...}}` expression sees as `result`. The `##` parts then decide
+  /// the read: the frozen skips the extraction when the rule part is blank and a
+  /// regex is declared (`AnalyzeRule.kt:277-279`) — the shape every used
+  /// source's replacement has — and otherwise reads the text through the
+  /// adapter's engine, which applies the same replacement itself.
+  Future<String> _applyReplaceRegex(String text, String field) async {
+    final resolved = await _field(
+      field,
+      content: text,
+      label: 'ruleContent.replaceRegex',
+    );
+    final extraction = resolved.extractionRule;
+    if (extraction == null) return '${await resolved.apply(text) ?? ''}';
+    final fields = splitRuleFields(extraction);
+    if (fields.rule.isNotEmpty) {
+      return '${await _eagerExtract(text, extraction) ?? ''}';
     }
-    return text.split('\n').map((line) => '　　${line.trim()}').join('\n');
+    return applyRuleReplacement(text, fields, label: 'HTML');
   }
 }
