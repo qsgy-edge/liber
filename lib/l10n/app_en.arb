@@ -13,6 +13,20 @@
   "imageEmptyAddress": "The image address is empty",
   "actionInterfaceLanguage": "Interface language",
   "shelfSubtitle": "Windows-first MVP · shared book-source contract workbench",
+  "shelfFilterHint": "Filter by title or author",
+  "shelfFilterClear": "Clear the filter",
+  "shelfFilterNoMatch": "No book matches",
+  "shelfFilterShown": "Showing {shown} / {total}",
+  "@shelfFilterShown": {
+    "placeholders": {
+      "shown": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "controlledSourceTitle": "Wayfinder controlled source",
   "controlledSourceDescription": "The smallest path that exercises search, book information, table of contents and content.",
   "notRunYet": "Not run yet",

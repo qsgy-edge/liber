@@ -13,6 +13,7 @@ import 'http_source_transport.dart';
 import 'java_regex.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'precise_search_page.dart';
+import 'shelf_filter.dart';
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
 
@@ -36,12 +37,26 @@ class OnlineBookshelf extends StatefulWidget {
     required this.service,
     this.revision = 0,
     this.transport,
+    this.filter = '',
+    this.onLoaded,
   });
   final ShelfService service;
   final BookSourceTransport? transport;
 
   /// Bumped by the parent when something outside this widget changed the shelf.
   final int revision;
+
+  /// The shelf page's filter query (#88), narrowing which rows this section
+  /// shows; empty shows every row. The loaded list stays whole — reloads, the
+  /// empty-shelf hint and the row actions keep reading it — and only the row
+  /// builder is handed the matching entries, so narrowing builds the rows the
+  /// viewport reaches instead of the whole shelf.
+  final String filter;
+
+  /// Reports the rows a load read, so the page that placed this section can
+  /// count what it shows across all of its sections (#88). Called once per
+  /// completed read, never during a build.
+  final ValueChanged<List<ShelfEntry>>? onLoaded;
 
   @override
   State<OnlineBookshelf> createState() => _OnlineBookshelfState();
@@ -88,6 +103,7 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           loading = false;
           error = null;
         });
+        widget.onLoaded?.call(saved);
       }
     } catch (e) {
       if (mounted) {
@@ -391,6 +407,18 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    // The rows the page's filter shows. Filtering the entries is a list
+    // operation over words already in memory; the rows themselves are still
+    // built by the builder below, which is what keeps a 1424-row shelf cheap.
+    final visible = [
+      for (final entry in books)
+        if (shelfRowMatches(
+          widget.filter,
+          title: entry.title,
+          author: entry.book.author,
+        ))
+          entry,
+    ];
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
@@ -452,8 +480,8 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           ),
         ),
         SliverList.builder(
-          itemCount: books.length,
-          itemBuilder: (context, index) => _bookRow(books[index]),
+          itemCount: visible.length,
+          itemBuilder: (context, index) => _bookRow(visible[index]),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ],

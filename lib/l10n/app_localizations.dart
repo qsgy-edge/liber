@@ -186,6 +186,30 @@ abstract class AppLocalizations {
   /// **'Windows-first MVP · 共享书源契约验证台'**
   String get shelfSubtitle;
 
+  /// No description provided for @shelfFilterHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'按书名或作者筛选'**
+  String get shelfFilterHint;
+
+  /// No description provided for @shelfFilterClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除筛选'**
+  String get shelfFilterClear;
+
+  /// No description provided for @shelfFilterNoMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有匹配的书'**
+  String get shelfFilterNoMatch;
+
+  /// No description provided for @shelfFilterShown.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示 {shown} / {total}'**
+  String shelfFilterShown(int shown, int total);
+
   /// No description provided for @controlledSourceTitle.
   ///
   /// In zh, this message translates to:

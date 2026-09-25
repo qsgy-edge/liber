@@ -13,6 +13,20 @@
   "imageEmptyAddress": "图片地址为空",
   "actionInterfaceLanguage": "界面语言",
   "shelfSubtitle": "Windows-first MVP · 共享书源契约验证台",
+  "shelfFilterHint": "按书名或作者筛选",
+  "shelfFilterClear": "清除筛选",
+  "shelfFilterNoMatch": "没有匹配的书",
+  "shelfFilterShown": "显示 {shown} / {total}",
+  "@shelfFilterShown": {
+    "placeholders": {
+      "shown": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "controlledSourceTitle": "Wayfinder 受控书源",
   "controlledSourceDescription": "用于验证搜索、书籍信息、目录和正文的最小链路。",
   "notRunYet": "尚未运行",

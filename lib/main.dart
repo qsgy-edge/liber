@@ -25,6 +25,7 @@ import 'source/source_login_dialog.dart';
 import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'source/precise_search_page.dart';
+import 'source/shelf_filter.dart';
 import 'store/legacy_import.dart';
 import 'store/local_library.dart';
 import 'store/shelf.dart';
@@ -749,7 +750,14 @@ class _LiberHomePageState extends State<LiberHomePage> {
 /// was an extrapolation between wildly unequal children that the next layout
 /// corrected: the position and the scrollbar thumb snapped to the corrected
 /// extent while the reader scrolled (#86).
-class _BookshelfPage extends StatelessWidget {
+///
+/// The filter field (#88) is this page's own: all three sections — the online
+/// shelf, the migrated rows and the local books — narrow to the rows whose
+/// title or author carries what was typed, the count line says how many of the
+/// shelf's rows are left, and a filter that matches nothing says so. Nothing
+/// reaches the network or the store: the rows are the ones the page already
+/// has.
+class _BookshelfPage extends StatefulWidget {
   const _BookshelfPage({
     required this.run,
     required this.localBooks,
@@ -780,9 +788,61 @@ class _BookshelfPage extends StatelessWidget {
   final ValueChanged<LocalBook> onOpenBook;
 
   @override
+  State<_BookshelfPage> createState() => _BookshelfPageState();
+}
+
+class _BookshelfPageState extends State<_BookshelfPage> {
+  /// What the operator typed into the filter field; its text is the query, and
+  /// the clear button is what empties it again.
+  final _filter = TextEditingController();
+
+  /// The online section's rows as it last loaded them (#88).
+  ///
+  /// The count line spans every section and the page counts the migrated and
+  /// local rows itself; the online section owns its own load, reload and rows,
+  /// so it reports what it read and the page counts from that. Nothing here
+  /// renders a row.
+  List<ShelfEntry> _onlineBooks = const <ShelfEntry>[];
+
+  @override
+  void dispose() {
+    _filter.dispose();
+    super.dispose();
+  }
+
+  /// The query the sections filter on: the field's own words without the
+  /// surrounding spaces, so a field holding only spaces shows the whole shelf.
+  String get _query => _filter.text.trim();
+
+  /// Whether the row is one the filter shows.
+  bool _matches(String title, {String? author}) =>
+      shelfRowMatches(_query, title: title, author: author);
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final filtering = _query.isNotEmpty;
+    // Each section shows the rows that match, in the order the page already
+    // had them; the filtering is over words in memory, and every section below
+    // is still a `SliverList.builder` over the matches, so narrowing builds the
+    // rows the viewport reaches and no others.
+    final importedBooks = [
+      for (final entry in widget.importedBooks)
+        if (_matches(entry.title, author: entry.book.author)) entry,
+    ];
+    final localBooks = [
+      for (final book in widget.localBooks)
+        if (_matches(book.title)) book,
+    ];
+    final onlineShown = _onlineBooks
+        .where((entry) => _matches(entry.title, author: entry.book.author))
+        .length;
+    final shown = onlineShown + importedBooks.length + localBooks.length;
+    final total =
+        _onlineBooks.length +
+        widget.importedBooks.length +
+        widget.localBooks.length;
     return Padding(
       padding: const EdgeInsets.all(32),
       child: CustomScrollView(
@@ -815,36 +875,82 @@ class _BookshelfPage extends StatelessWidget {
                               Text(l10n.controlledSourceDescription),
                               const SizedBox(height: 18),
                               Text(
-                                run.message?.text(l10n) ?? l10n.notRunYet,
+                                widget.run.message?.text(l10n) ??
+                                    l10n.notRunYet,
                                 key: const ValueKey('run-status'),
                               ),
                               const SizedBox(height: 12),
                               FilledButton.icon(
                                 onPressed:
-                                    run.stage == BookSourceStage.completed
+                                    widget.run.stage ==
+                                        BookSourceStage.completed
                                     ? null
-                                    : onRunSource,
+                                    : widget.onRunSource,
                                 icon: const Icon(Icons.play_arrow),
                                 label: Text(l10n.runControlledSource),
                               ),
                             ],
                           ),
                         ),
-                        _StageList(current: run.stage),
+                        _StageList(current: widget.run.stage),
                       ],
                     ),
                   ),
                 ),
+                const SizedBox(height: 20),
+                // The filter (#88) sits with the section titles it narrows,
+                // above the online shelf's own header. Its words are the
+                // field's own: every keystroke rebuilds this page, and the
+                // sections below filter on what it holds.
+                TextField(
+                  key: const ValueKey('shelf-filter'),
+                  controller: _filter,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: l10n.shelfFilterHint,
+                    prefixIcon: const Icon(Icons.filter_alt_outlined),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: filtering
+                        ? IconButton(
+                            key: const ValueKey('shelf-filter-clear'),
+                            tooltip: l10n.shelfFilterClear,
+                            onPressed: () => setState(_filter.clear),
+                            icon: const Icon(Icons.clear),
+                          )
+                        : null,
+                  ),
+                ),
+                if (filtering) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.shelfFilterShown(shown, total),
+                    key: const ValueKey('shelf-filter-count'),
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  if (shown == 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.shelfFilterNoMatch,
+                      key: const ValueKey('shelf-filter-empty'),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ],
               ],
             ),
           ),
-          if (shelf case final service?)
-            OnlineBookshelf(service: service, revision: onlineRevision)
+          if (widget.shelf case final service?)
+            OnlineBookshelf(
+              service: service,
+              revision: widget.onlineRevision,
+              filter: _query,
+              onLoaded: (books) => setState(() => _onlineBooks = books),
+            )
           else
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(spaceMessage ?? l10n.openingSpaceStore),
+                child: Text(widget.spaceMessage ?? l10n.openingSpaceStore),
               ),
             ),
           if (importedBooks.isNotEmpty) ...[
@@ -892,14 +998,14 @@ class _BookshelfPage extends StatelessWidget {
                     leading: const Icon(Icons.description),
                     title: Text(book.title),
                     subtitle: Text(l10n.progressOffset(book.textOffset)),
-                    onTap: () => onOpenBook(book),
+                    onTap: () => widget.onOpenBook(book),
                   ),
                 );
               },
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
           ],
-          if (trace.isNotEmpty) ...[
+          if (widget.trace.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Card(
                 child: Padding(
@@ -911,7 +1017,7 @@ class _BookshelfPage extends StatelessWidget {
                         l10n.requestTraceTitle,
                         style: theme.textTheme.titleMedium,
                       ),
-                      for (final entry in trace)
+                      for (final entry in widget.trace)
                         Text('${entry.stage.name}: ${entry.path}'),
                     ],
                   ),
