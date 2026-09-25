@@ -240,6 +240,30 @@ void main() {
     expect(find.textContaining('· 精确匹配'), findsNothing);
   });
 
+  testWidgets('换源列表：默认只搜启用的书源；停用的书源可被显式选中（与冻结的差异）', (tester) async {
+    // The frozen dialog searches only `enabled = 1` (`allEnabledPart`). This
+    // page lists a chip for every source and pre-selects the enabled ones, so a
+    // disabled source is skipped by default but can be searched once selected.
+    await store.putSourceJson({...sourceB.source, 'enabled': false});
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpEntry(tester);
+
+    expect(sourceB.searchCalls, 0, reason: '停用的书源默认不搜索');
+    expect(find.textContaining('· 精确匹配'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('precise-search')));
+    await tester.pumpAndSettle();
+
+    expect(sourceB.searchCalls, 1, reason: '显式选中后停用的书源也被搜索');
+    expect(find.textContaining('· 精确匹配'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('页面销毁后不再搜索后面的书源，也不新建分析', (tester) async {
     // 甲源's answer is held open, so the page can be disposed while its
     // analysis is in flight — the window in which the run would otherwise walk
