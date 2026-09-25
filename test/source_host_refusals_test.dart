@@ -11,6 +11,8 @@ import 'native_library.dart';
 
 import 'l10n_support.dart';
 
+import 'temp_directory.dart';
+
 void main() {
   group('SourceNoticeLimiter', () {
     test('delivers the first notice and suppresses the window', () {
@@ -62,7 +64,7 @@ void main() {
         expect(await second.androidId(), id);
         await second.close();
       } finally {
-        await directory.delete(recursive: true);
+        await deleteTempDirectory(directory);
       }
     });
   });

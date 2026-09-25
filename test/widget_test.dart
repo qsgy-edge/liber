@@ -9,6 +9,8 @@ import 'package:liber/settings/interface_language.dart';
 
 import 'l10n_support.dart';
 
+import 'temp_directory.dart';
+
 void defaultAppTest(Directory Function() root) {
   testWidgets('Windows MVP shows the controlled source workbench', (
     tester,
@@ -725,13 +727,13 @@ void main() {
   tearDown(() async {
     for (var attempt = 0; attempt < 40; attempt++) {
       try {
-        await root.delete(recursive: true);
+        await deleteTempDirectory(root);
         return;
       } on FileSystemException {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
     }
-    await root.delete(recursive: true);
+    await deleteTempDirectory(root);
   });
 
   defaultAppTest(() => root);

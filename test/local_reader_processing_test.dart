@@ -12,6 +12,8 @@ import 'package:liber/store/space_store.dart';
 
 import 'local_reader_support.dart';
 
+import 'temp_directory.dart';
+
 /// The reader's processed path: the bounded unit materialised and run through
 /// #17's one text entry, and the raw-space position translated through the
 /// unit's raw ↔ processed map.
@@ -29,7 +31,7 @@ void main() {
 
   tearDown(() async {
     try {
-      await root.delete(recursive: true);
+      await deleteTempDirectory(root);
     } on FileSystemException {
       // Only the fixture is on disk; the space's database is in memory.
     }

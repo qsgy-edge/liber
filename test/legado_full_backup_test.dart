@@ -13,6 +13,8 @@ import 'package:liber/store/space_store.dart';
 
 import 'space_test_support.dart';
 
+import 'temp_directory.dart';
+
 /// A `config.xml` with two preferences, the shape the Android `SharedPreferences`
 /// backup writer produces.
 const String defaultConfig =
@@ -169,7 +171,7 @@ void main() {
 
   tearDown(() async {
     await space.delete();
-    await fixtures.delete(recursive: true);
+    await deleteTempDirectory(fixtures);
   });
 
   /// The one book on the shelf, or the one whose title is [titles].

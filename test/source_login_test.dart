@@ -15,6 +15,8 @@ import 'package:liber/store/workspace.dart';
 
 import 'native_library.dart';
 
+import 'temp_directory.dart';
+
 /// One answer of a fixture path: the body it is sent with and the headers it
 /// carries.
 class _Page {
@@ -408,7 +410,7 @@ void main() {
   group('the stored login information', () {
     test('round-trips through a restart with the frozen AES shape', () async {
       final root = await Directory.systemTemp.createTemp('liber-60-login-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDirectory(root));
       final workspace = await Workspace.open(root: root);
       final store = await workspace.openSpace();
       final state = SourceHostState(

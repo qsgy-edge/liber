@@ -7,6 +7,8 @@ import 'package:liber/store/host_state.dart';
 import 'package:liber/store/space_store.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 /// Reclaiming a source's host-surface rows (#36): both a source delete and a
 /// `bookSourceUrl` change remove that source's `source_entries` rows and the
 /// `source_cookies` rows it wrote, while a cookie another source of the same
@@ -20,7 +22,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('liber-source-cleanup-');
   });
 
-  tearDown(() => root.delete(recursive: true));
+  tearDown(() => deleteTempDirectory(root));
 
   /// The `source_entries` keys the store holds for one source, by key.
   Future<List<String>> storedEntryKeys(

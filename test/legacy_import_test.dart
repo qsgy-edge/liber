@@ -6,6 +6,8 @@ import 'package:liber/domain/store_message.dart';
 import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 /// The three JSON stores as the product wrote them, in a home directory of
 /// their own.
 class LegacyHome {
@@ -167,7 +169,7 @@ void main() {
     ).writeAsString('第一章\n正文');
   });
 
-  tearDown(() => root.delete(recursive: true));
+  tearDown(() => deleteTempDirectory(root));
 
   Future<(LegacyImport, Workspace)> workspaceWithStores() async {
     final legacyHome = await LegacyHome.create(home);

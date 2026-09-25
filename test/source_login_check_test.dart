@@ -17,6 +17,8 @@ import 'package:liber/store/workspace.dart';
 
 import 'native_library.dart';
 
+import 'temp_directory.dart';
+
 /// One answer of a fixture path: the status it is sent with and its body.
 class _Page {
   const _Page(this.body, {this.status = 200});
@@ -727,7 +729,7 @@ JSON.stringify([first, second, source.getVariable()]);
 
     test('round-trips across two analyses and a restart', () async {
       final root = await Directory.systemTemp.createTemp('liber-59-login-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDirectory(root));
       final site = await _Site.start(_htmlPages());
       addTearDown(site.close);
       final source = _htmlSource(

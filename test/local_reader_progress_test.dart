@@ -9,6 +9,8 @@ import 'package:liber/store/space_store.dart';
 
 import 'local_reader_support.dart';
 
+import 'temp_directory.dart';
+
 /// The reader's open path over the store: the five-field record it writes and
 /// reads back, the restore it does when the file behind a book changed, the
 /// relink flag that change feeds, and the window bound that keeps a whole
@@ -24,7 +26,7 @@ void main() {
 
   tearDown(() async {
     try {
-      await root.delete(recursive: true);
+      await deleteTempDirectory(root);
     } on FileSystemException {
       // Only the fixture is on disk; the space's database is in memory.
     }

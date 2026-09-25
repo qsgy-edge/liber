@@ -8,6 +8,8 @@ import 'package:liber/source/native_library.dart';
 import 'local_reader_support.dart';
 import 'native_library.dart';
 
+import 'temp_directory.dart';
+
 /// The reader against the real engine, which is the path the app takes: a
 /// generated Chinese TXT on disk, indexed once through the bridge, opened as
 /// bounded windows, and opened again from the stored position without a second
@@ -27,7 +29,7 @@ void main() {
   });
 
   tearDown(() async {
-    await root.delete(recursive: true);
+    await deleteTempDirectory(root);
   });
 
   test('真引擎：一本书只按窗口读，位置与锚点写回后又按原样恢复', () async {

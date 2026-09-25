@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 void main() {
   late Directory root;
 
@@ -12,7 +14,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('liber-store-');
   });
 
-  tearDown(() => root.delete(recursive: true));
+  tearDown(() => deleteTempDirectory(root));
 
   test('工作区创建 manifest 与默认空间，重开后数据仍在', () async {
     final workspace = await Workspace.open(root: root);

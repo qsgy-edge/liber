@@ -12,6 +12,8 @@ import 'local_reader_support.dart';
 
 import 'l10n_support.dart';
 
+import 'temp_directory.dart';
+
 /// The reader page with the engine faked: the test binding never settles
 /// `flutter_rust_bridge`'s pending work, so the native library is out of reach
 /// here — which is why the page is written against [ReaderEngine] at all.
@@ -31,7 +33,7 @@ void main() {
     final directory = root;
     for (var attempt = 0; attempt < 20; attempt++) {
       try {
-        await directory.delete(recursive: true);
+        await deleteTempDirectory(directory);
         return;
       } on FileSystemException {
         await Future<void>.delayed(const Duration(milliseconds: 50));

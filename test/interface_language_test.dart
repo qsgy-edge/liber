@@ -15,6 +15,8 @@ import 'package:liber/store/space_store.dart';
 import 'l10n_support.dart';
 import 'space_test_support.dart';
 
+import 'temp_directory.dart';
+
 /// The interface language (#28) and its independence from the content's script
 /// (#27).
 ///
@@ -259,27 +261,7 @@ Future<void> _waitFor(WidgetTester tester, Finder finder) async {
   throw StateError('$finder never appeared');
 }
 
-/// The space is released when the app's page is disposed, which is
-/// asynchronous: the directory can only go once the database file is closed.
-///
-/// Windows CI has been observed to hold the file for longer than this loop's
-/// first window (one red run: `PathAccessException: Deletion failed … being used
-/// by another process`, OS error 32), so the retries span ten seconds and a
-/// directory that still cannot go is reported through `printOnFailure` rather
-/// than failing the row: the row's assertions have already passed by then, and a
-/// lingering scratch handle is hygiene, not the behaviour under test.
-Future<void> _delete(Directory root) async {
-  for (var attempt = 0; attempt < 200; attempt++) {
-    try {
-      await root.delete(recursive: true);
-      return;
-    } on FileSystemException {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-  }
-  try {
-    await root.delete(recursive: true);
-  } on FileSystemException catch (error) {
-    printOnFailure('the scratch directory could not be removed: $error');
-  }
-}
+/// The scratch directory goes through the shared helper: the space's database
+/// file is released asynchronously, and Windows held it past this file's own
+/// first retry window once (one red run). See `temp_directory.dart`.
+Future<void> _delete(Directory root) => deleteTempDirectory(root);

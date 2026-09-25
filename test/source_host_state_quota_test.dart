@@ -7,6 +7,8 @@ import 'package:liber/store/host_state.dart';
 import 'package:liber/store/space_store.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 /// The per-source cap (#37): one source's `cache.*` entries and its
 /// `java.put`/`java.get` variables live in two separate buckets, the write path
 /// keeps each bucket at its cap, and the least recently written row of a bucket
@@ -19,7 +21,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('liber-source-quota-');
   });
 
-  tearDown(() => root.delete(recursive: true));
+  tearDown(() => deleteTempDirectory(root));
 
   /// The keys the store holds for one source, oldest write first.
   Future<List<String>> storedKeys(SpaceStore store, String sourceRef) async {

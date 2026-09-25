@@ -7,6 +7,8 @@ import 'package:liber/source/source_host_state.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 /// A transport that answers without a network and records every request, so the
 /// outbound `Cookie` header a restarted source sends is observable.
 class _RecordingTransport implements SourceHttpTransport {
@@ -34,7 +36,7 @@ void main() {
     root = await Directory.systemTemp.createTemp('liber-host-state-');
   });
 
-  tearDown(() => root.delete(recursive: true));
+  tearDown(() => deleteTempDirectory(root));
 
   test('cookies, cache entries and rule state survive a restart', () async {
     const sourceRef = 'https://www.example.com/book';

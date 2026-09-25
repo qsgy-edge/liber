@@ -14,6 +14,8 @@ import 'local_reader_support.dart';
 
 import 'l10n_support.dart';
 
+import 'temp_directory.dart';
+
 /// The local reader's conversion (#27): the page resolves the setting before it
 /// opens the book, and changing it re-renders what is on screen without opening
 /// the book again.
@@ -57,7 +59,7 @@ void main() {
     final directory = root;
     for (var attempt = 0; attempt < 20; attempt++) {
       try {
-        await directory.delete(recursive: true);
+        await deleteTempDirectory(directory);
         return;
       } on FileSystemException {
         await Future<void>.delayed(const Duration(milliseconds: 50));

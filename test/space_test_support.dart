@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:liber/store/space_store.dart';
 import 'package:liber/store/workspace.dart';
 
+import 'temp_directory.dart';
+
 /// A space in a temporary directory, opened the way the app opens it, so a test
 /// can close it and reopen the same file — a restart.
 class TestSpace {
@@ -25,7 +27,7 @@ class TestSpace {
 
   Future<void> delete() async {
     await store.close();
-    await directory.delete(recursive: true);
+    await deleteTempDirectory(directory);
   }
 
   /// The file a space's database lives in, for the assertions that care about
