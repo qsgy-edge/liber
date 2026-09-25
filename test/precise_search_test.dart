@@ -37,6 +37,11 @@ class FakeSource {
 
   /// How long this source's search takes, for the walk's own rows.
   final Duration? delay;
+
+  /// Whether this source's pipeline was already cancelled when its search
+  /// returned from its own delay — the walk's cancellation, seen from inside a
+  /// search that was in flight.
+  bool? cancelledDuringSearch;
   int searchCalls = 0;
   int detailsCalls = 0;
   int contentCalls = 0;
@@ -137,6 +142,7 @@ class TimedPipeline extends ScriptedPipeline {
     try {
       final delay = fake.delay;
       if (delay != null) await Future<void>.delayed(delay);
+      fake.cancelledDuringSearch = cancelled;
       return await super.search(keyword, page: page);
     } finally {
       watch.end();
@@ -817,6 +823,11 @@ void main() {
       isTrue,
       reason: '在飞的分析被取消',
     );
+    expect(
+      [for (final fake in fakes.take(3)) fake.cancelledDuringSearch],
+      everyElement(isTrue),
+      reason: '取消时这三个书源的搜索还在飞，走查已经把它们停了',
+    );
   });
 
   test('一个书源超过限时：记为失败，位置让给下一个书源', () async {
@@ -928,6 +939,50 @@ void main() {
       '候选 2 本，其中精确匹配 2 本',
     );
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('先回答的书源不插队：候选还是按书源顺序列', (tester) async {
+    // 甲源 answers last, 乙源 first — the walk streams in completion order, and
+    // the list must still be the sources' own order.
+    sourceA.gate = Completer<void>();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await tester.pumpWidget(
+      localizedApp(
+        home: PreciseSearchPage(
+          service: shelf,
+          initialName: name,
+          initialAuthor: author,
+          openPipeline: open,
+        ),
+      ),
+    );
+    for (var i = 0; i < 40 && sourceB.searchCalls == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    final fromA = find.byKey(
+      const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+    );
+    final fromB = find.byKey(
+      const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+    );
+    expect(fromB, findsOneWidget, reason: '乙源先回答，先上屏');
+    expect(fromA, findsNothing);
+
+    sourceA.gate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(fromA, findsOneWidget);
+    expect(
+      tester.getTopLeft(fromA).dy,
+      lessThan(tester.getTopLeft(fromB).dy),
+      reason: '甲源后回答，但排在乙源前面',
+    );
     expect(tester.takeException(), isNull);
   });
 
