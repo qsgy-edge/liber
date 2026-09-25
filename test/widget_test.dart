@@ -52,7 +52,7 @@ void defaultAppTest(Directory Function() root) {
         matching: find.byType(IconButton),
       ),
     );
-    expect(direct.tooltip, '直连');
+    expect(direct.tooltip, '使用系统代理');
     expect(direct.onPressed, isNull);
   });
 }
@@ -169,7 +169,7 @@ void settingsEntryTest(Directory Function() root) {
     });
   });
 
-  testWidgets('直连的入口打开设置页，开关读的是已存的行', (tester) async {
+  testWidgets('系统代理的入口打开设置页，开关读的是已存的行', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
       await tester.pumpWidget(
@@ -179,20 +179,17 @@ void settingsEntryTest(Directory Function() root) {
       await _waitFor(tester, find.text('在线书架'));
 
       await tester.tap(find.byIcon(Icons.route));
-      await _waitFor(
-        tester,
-        find.byKey(const ValueKey('direct-connection-switch')),
-      );
+      await _waitFor(tester, find.byKey(const ValueKey('system-proxy-switch')));
 
-      expect(find.text('直连'), findsOneWidget, reason: '设置页的标题');
+      expect(find.text('使用系统代理'), findsNWidgets(2), reason: '设置页的标题与开关的名字');
       expect(
         tester
             .widget<SwitchListTile>(
-              find.byKey(const ValueKey('direct-connection-switch')),
+              find.byKey(const ValueKey('system-proxy-switch')),
             )
             .value,
         isFalse,
-        reason: '没有行时是默认值 false：Dart 自己的默认（系统代理）',
+        reason: '没有行时是默认值 false：直连，本应用一直以来的行为',
       );
 
       await tester.pumpWidget(const SizedBox.shrink());

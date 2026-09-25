@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../domain/contracts.dart';
-import '../settings/direct_connection.dart';
+import '../settings/system_proxy.dart';
 import '../store/space_store.dart';
 import 'book_source_service.dart';
 import 'source_encoding.dart';
@@ -99,15 +99,15 @@ const _sourceRedirectStatuses = {300, 301, 302, 303, 307, 308};
 /// OkHttp's `MAX_FOLLOW_UPS`: the 21st redirect throws.
 const _maxSourceFollowUps = 20;
 
-/// The proxy answer one request gets (#87): the `network.direct` switch as the
-/// one function the client's `findProxy` is.
+/// The proxy answer one request gets (#87): the `network.system_proxy` switch
+/// as the one function the client's `findProxy` is.
 ///
-/// On is `DIRECT` whatever [environment] says, so the request does not go
-/// through the system proxy. Off — and with no row at all — is Dart's own
-/// default, `HttpClient.findProxyFromEnvironment`: an installation that has a
-/// proxy configured keeps using it, and one that has none answers `DIRECT`
-/// there anyway, which is the behaviour every installation had before this
-/// switch existed.
+/// Off — and with no row at all — is `DIRECT`: the direct connection this
+/// application has always used, which is what the transport hardcoded before
+/// this switch existed, so an installation that never turns it on sends every
+/// request exactly the way it did before. On is Dart's own default,
+/// `HttpClient.findProxyFromEnvironment`: the request follows the machine's
+/// proxy variables, and a machine with none answers `DIRECT` there anyway.
 ///
 /// One Dart code path, therefore one behaviour on all five platforms
 /// (`windows`, `macos`, `linux`, `android`, `ios`): there is deliberately no
@@ -125,19 +125,18 @@ const _maxSourceFollowUps = 20;
 /// null.
 String sourceFindProxy(
   Uri url, {
-  required bool directConnection,
+  required bool useSystemProxy,
   Map<String, String>? environment,
-}) => directConnection
-    ? 'DIRECT'
-    : HttpClient.findProxyFromEnvironment(url, environment: environment);
+}) => useSystemProxy
+    ? HttpClient.findProxyFromEnvironment(url, environment: environment)
+    : 'DIRECT';
 
 /// The client one Book Source request runs on: the connection timeout the
 /// frozen client's 20 s is, and [sourceFindProxy] as its proxy answer.
-HttpClient sourceHttpClient({bool directConnection = false}) {
+HttpClient sourceHttpClient({bool useSystemProxy = false}) {
   final client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 20)
-    ..findProxy = (url) =>
-        sourceFindProxy(url, directConnection: directConnection);
+    ..findProxy = (url) => sourceFindProxy(url, useSystemProxy: useSystemProxy);
   return client;
 }
 
@@ -150,15 +149,15 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
 
   final Duration timeout;
 
-  /// The space whose `network.direct` row (#87) decides whether this
-  /// transport's requests bypass the system proxy; null — a test, a tool —
-  /// leaves Dart's default standing.
+  /// The space whose `network.system_proxy` row (#87) decides whether this
+  /// transport's requests follow the machine's proxy configuration; null — a
+  /// test, a tool — leaves the direct connection standing.
   final SpaceStore? store;
 
   /// How each request's client is built. The default applies the connection
-  /// timeout and the proxy switch; a test hands its own to read the policy the
+  /// timeout and the proxy switch; a test hands its own to read the setting the
   /// transport asked for without sending a request.
-  final HttpClient Function({bool directConnection}) clientFactory;
+  final HttpClient Function({bool useSystemProxy}) clientFactory;
 
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest sourceRequest) async {
@@ -176,9 +175,9 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     // flipped while a source is open applies to that page's next request
     // instead of waiting for it to be reopened.
     final space = store;
-    final directConnection =
-        space != null && await DirectConnectionSetting.resolve(space);
-    final client = clientFactory(directConnection: directConnection);
+    final useSystemProxy =
+        space != null && await SystemProxySetting.resolve(space);
+    final client = clientFactory(useSystemProxy: useSystemProxy);
     if (sourceRequest.allowInvalidCertificate) {
       // ADR 0011 §5: the user's per-source, per-host exception. This client
       // serves one `send`, so the callback cannot lower validation for another

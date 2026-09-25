@@ -27,7 +27,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionAutoChangeSource => 'Automatic source switch';
 
   @override
-  String get actionDirectConnection => 'Direct connection';
+  String get actionSystemProxy => 'Use the system proxy';
 
   @override
   String get readerScriptTitle => 'Chinese conversion';
@@ -430,12 +430,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get directConnectionLabel =>
-      'Direct connection (bypass the system proxy)';
+  String get systemProxyLabel => 'Use the system proxy';
 
   @override
-  String get directConnectionHint =>
-      'On: the Book Source requests this product sends itself do not go through the system proxy (findProxy answers DIRECT). Off: Dart\'s default behaviour, the system proxy configuration, stands. A VPN-mode proxy on a phone intercepts at the system level and cannot be bypassed from inside the app; the built-in WebView pages (the webView request options and the reading pages) keep the platform engine\'s own proxy handling, which this setting does not change. Off by default.';
+  String get systemProxyHint =>
+      'On: the Book Source requests this product sends itself follow the machine\'s proxy configuration (Dart\'s default behaviour). Off: the direct connection this app has always used — no system proxy, findProxy answers DIRECT. A VPN-mode proxy on a phone intercepts at the system level and cannot be bypassed from inside the app; the built-in WebView pages (the webView request options and the reading pages) keep the platform engine\'s own proxy handling, which this setting does not change. Off by default.';
 
   @override
   String get interfaceLanguageIntro =>
