@@ -119,6 +119,32 @@ void main() {
     expect(again.chapters.first.chapterKey, '$sourceUrl/C/1');
   });
 
+  test('书籍地址文本原样进的是 source_book_url', () async {
+    await shelf.add(source, book('A'));
+    final id = (await entryOf('A')).id;
+    // #97: the column holds the address the import wrote — option tail
+    // included, exactly as the frozen keeps `book.bookUrl`. A row rewritten by
+    // this build keeps whatever is in the column: nothing migrates.
+    const stored =
+        '$sourceUrl/A?isSearch=1,{\n  "js": "java.toast(\'正在加载详情页\')"\n}';
+    await store.putBook(
+      BooksCompanion(
+        id: Value(id),
+        sourceBookUrl: const Value(stored),
+        title: const Value('A'),
+      ),
+    );
+
+    final entry = (await shelf.onlineShelf()).single;
+    expect(entry.id, id);
+    expect(entry.book.sourceBookUrl, stored);
+    // The book the pipeline is handed carries that text beside the URL: the
+    // URL's own tail is percent-encoded (`%7B`), which is why the text is what
+    // a fetch parses.
+    expect(entry.htmlBook.rawAddress, stored);
+    expect('${entry.htmlBook.url}', contains('%7B'));
+  });
+
   test('重复加入不新建书籍，刷新目录保留进度与书架位置', () async {
     await shelf.add(source, book('A', title: '甲'), chapters('A'));
     final before = await entryOf('A');

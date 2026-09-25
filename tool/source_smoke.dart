@@ -14,7 +14,10 @@
 // It selects one record out of the backup through the shared reader
 // (`readSourceBackup`, `tool/source_usage.dart`); a live workspace `data.db` is
 // the fourth spelling of the same input and is read here, read-only (see
-// `readSmokeDatabase`). It then runs `details` -> `toc` ->
+// `readSmokeDatabase`). `--book` is an address *text*, not a URL: it is what a
+// shelf row's `source_book_url` holds — the rule's own string, option tail
+// included — and the details request parses that text the way the frozen
+// `AnalyzeUrl` does (#97). It then runs `details` -> `toc` ->
 // one `chapter` through `openBookSourcePipeline` over `HttpSourceTransport`
 // (no store: both pipelines build an in-memory host surface when none is
 // given), and prints, per stage, the addresses it requested, the details'
@@ -263,7 +266,15 @@ Future<SourceSmokeReport> _runSmoke(
   Map<String, dynamic> source,
   String bookUrl,
 ) async {
-  final hit = HtmlBook(url: SourceHttpUri.parse(bookUrl), title: '');
+  // `--book` is the book's address text, the shape the frozen stores as
+  // `book.bookUrl`: the details stage splits its `,{…}` options out of this
+  // text rather than out of the URL (which `Uri.toString()` would have
+  // percent-encoded them in, #97).
+  final hit = HtmlBook(
+    url: SourceHttpUri.parse(bookUrl),
+    rawAddress: bookUrl,
+    title: '',
+  );
   var from = pipeline.trace.length;
   final HtmlBook book;
   final List<SourceChapter> chapters;

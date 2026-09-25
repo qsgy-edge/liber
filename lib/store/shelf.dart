@@ -88,8 +88,14 @@ class ShelfEntry {
   int get textOffset => progress?.textOffset ?? 0;
 
   /// The book as the pipeline hands it around: a row is not an `HtmlBook`.
+  ///
+  /// The stored address text travels with it ([HtmlBook.rawAddress]): the
+  /// column holds what the import wrote — options included, exactly as the
+  /// frozen keeps a `bookUrl` — so the pipeline that fetches the details can
+  /// split it the way the frozen `AnalyzeUrl` does (#97).
   HtmlBook get htmlBook => HtmlBook(
     url: Uri.parse(book.sourceBookUrl ?? ''),
+    rawAddress: book.sourceBookUrl,
     title: book.title,
     author: book.author,
     intro: book.intro,

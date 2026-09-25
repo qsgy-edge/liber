@@ -321,7 +321,9 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
           builder: (_) => HtmlSourceBrowser(
             source: chosen!.data,
             keyword: '',
-            directBook: HtmlBook(url: url, title: ''),
+            // The pasted text is the address: the frozen keeps a book URL as the
+            // string it was given and splits its options per request (#97).
+            directBook: HtmlBook(url: url, title: '', rawAddress: text),
             service: widget.service,
             transport: widget.transport,
           ),

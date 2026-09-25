@@ -166,7 +166,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// text, the base it resolved against and the options it carried, kept for
   /// the stage that fetches it, because a book URL is handed around without
   /// them. A *chapter*'s options do not need this map: the chapter keeps its
-  /// own address text, so they survive the hand-off and a restart.
+  /// own address text, so they survive the hand-off and a restart, and a book
+  /// keeps its own too ([HtmlBook.rawAddress]) — what this map still holds for
+  /// a search hit is the response URL its address resolved against (#97).
   final _bookRequests =
       <Uri, ({String address, Uri base, SourceUrlOptions options})>{};
 
@@ -898,6 +900,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       books.add(
         HtmlBook(
           url: bookUrl,
+          // The rule's own text: the address a shelf row keeps and a later
+          // fetch parses (#97).
+          rawAddress: bookAddress,
           title: name,
           author: author,
           intro: formatSourceIntro(intro),
@@ -926,21 +931,36 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final info = _rules('ruleBookInfo', const []);
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
     final bookRequest = _bookRequests.remove(hit.url);
+    // The book's own address text is what this request analyzes, the way the
+    // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
+    // request targets the text before its option tail and carries the options
+    // it found, so a stored address's `,{…}` tail never reaches the site as
+    // percent-encoded query text (#97). A search hit already resolved its
+    // address against the search response, so it keeps the request it made; a
+    // book rebuilt from the store or from a pasted address has only the text,
+    // which resolves against the source's own URL as it does there. The frozen
+    // stage binds no key and no page, so a stored address's `{{key}}`/`{{page}}`
+    // bind nothing here either.
+    final (bookUrl, bookOptions) = bookRequest == null
+        ? await _request(_base, hit.address, '')
+        : (hit.url, bookRequest.options);
     final bookInfo = await _loginCheck(
       await _fetch(
         BookSourceStage.bookInfo,
-        hit.url,
-        options: bookRequest?.options ?? const SourceUrlOptions(),
-        address: bookRequest?.address,
-        base: bookRequest?.base,
+        bookUrl,
+        options: bookOptions,
+        address: bookRequest?.address ?? hit.address,
+        base: bookRequest?.base ?? _base,
       ),
     );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, page) = await _readBookInfo(document, hit, info);
     final tocAddress = JsonSourceRules.template(page, info['tocUrl'] ?? '');
     // An empty `tocUrl` resolves to the book's own address, which is the frozen
-    // fallback (`BookInfo.kt:150-152`).
-    final (tocUrl, tocOptions) = await _request(hit.url, tocAddress, _keyword);
+    // fallback (`BookInfo.kt:150-152`), whose options that request parses again.
+    final (tocUrl, tocOptions) = tocAddress.isEmpty
+        ? (bookUrl, bookOptions)
+        : await _request(hit.url, tocAddress, _keyword);
     final chapters = <SourceChapter>[];
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
@@ -1210,6 +1230,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final book = HtmlBook(
       url: hit.url,
+      // The address text the book was opened with survives this stage, so a
+      // refresh of the book this returns fetches the same address (#97).
+      rawAddress: hit.rawAddress,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
       title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)

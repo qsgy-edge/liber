@@ -280,6 +280,34 @@ void main() {
   );
 
   testWidgets(
+    'a pasted address keeps its option tail out of the request (#97)',
+    (tester) async {
+      // The text a user pastes is the frozen's `bookUrl`: an address, not a
+      // URL. A `,{…}` tail on it is split before the request, so the tail's own
+      // characters never reach the query percent-encoded. The tail here is a
+      // `retry` one rather than the operator's `js` one, because a source's
+      // script cannot be awaited under this binding's fake clock; the `js` tail
+      // itself is pinned by `source_book_address_test.dart`.
+      final transport = RecordedPages();
+      await store.putSourceJson(
+        matchingSource('书源甲', sourceUrl, r'.*/book/73.*'),
+      );
+      await showShelf(tester, transport);
+      await paste(
+        tester,
+        '$sourceUrl/book/73?isSearch=1,{"retry":1}',
+      );
+      expect(find.byType(HtmlSourceBrowser), findsOneWidget);
+      expect(find.text('真实书名'), findsOneWidget);
+      expect(find.text('第一章'), findsOneWidget);
+      expect(transport.paths, [
+        '$sourceUrl/book/73?isSearch=1',
+        '$sourceUrl/toc/73',
+      ]);
+    },
+  );
+
+  testWidgets(
     'credential-bearing URL is rejected before a permissive source can fetch',
     (tester) async {
       final transport = RecordedPages();
