@@ -7,12 +7,14 @@
 // is that probe as a tool, so the next real-source report costs one command:
 //
 //   dart run tool/source_smoke.dart \
-//     --backup <legado-backup.zip|bookSource.json> \
+//     --backup <legado-backup.zip|bookSource.json|data.db> \
 //     --source <bookSourceUrl> \
 //     --book <bookUrl>
 //
 // It selects one record out of the backup through the shared reader
-// (`readSourceBackup`, `tool/source_usage.dart`), runs `details` -> `toc` ->
+// (`readSourceBackup`, `tool/source_usage.dart`); a live workspace `data.db` is
+// the fourth spelling of the same input and is read here, read-only (see
+// `readSmokeDatabase`). It then runs `details` -> `toc` ->
 // one `chapter` through `openBookSourcePipeline` over `HttpSourceTransport`
 // (no store: both pipelines build an in-memory host surface when none is
 // given), and prints, per stage, the addresses it requested, the details'
@@ -33,7 +35,9 @@
 //
 // Exit code 0 on success; 2 for a usage error; 1 for a failed read or stage,
 // with the stage, the address and the message on stderr.
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
@@ -41,6 +45,8 @@ import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_http_uri.dart';
+import 'package:pointycastle/export.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import 'source_usage.dart';
 
@@ -52,7 +58,8 @@ const smokeFieldLimit = 120;
 
 /// The usage line the tool prints on a bad command line.
 const smokeUsage =
-    'dart run tool/source_smoke.dart --backup <backup.zip|bookSource.json> '
+    'dart run tool/source_smoke.dart '
+    '--backup <backup.zip|bookSource.json|data.db> '
     '--source <bookSourceUrl> --book <bookUrl>';
 
 /// A URL query value: the `=…` after a `?` or a `&`.
@@ -365,6 +372,117 @@ Map<String, dynamic> findSmokeSource(SourceBackup backup, String sourceUrl) {
   );
 }
 
+/// The tool's input as a [SourceBackup]: a live workspace `data.db` when [file]
+/// is one, else the shared backup reader (`readSourceBackup`).
+///
+/// A database is searched for [sourceUrl]'s `sources.raw` row and answers a
+/// collection of that one record, so `findSmokeSource` and the rest of the run
+/// are unchanged.
+SourceBackup readSmokeInput(File file, String sourceUrl) {
+  if (!_isSmokeDatabase(file)) return readSourceBackup(file.path);
+  return readSmokeDatabase(file, sourceUrl);
+}
+
+/// Reads [sourceUrl]'s `sources.raw` row out of a live workspace database.
+///
+/// The copy, not the operator's file, is what SQLite opens. A workspace
+/// database is in WAL mode (`SpaceDatabase`'s `beforeOpen`), and a read-only
+/// connection to a WAL database creates `-shm`/`-wal` beside it — measured:
+/// `sqlite3.open(path, mode: OpenMode.readOnly)` of a WAL database with no
+/// side files left `data.db-shm` and `data.db-wal` in the operator's directory.
+/// So the database and, when present, its `-wal` are copied into a temporary
+/// directory, the copy is opened read-only, and the directory is deleted; the
+/// `raw` column is the imported source JSON the pipeline already runs.
+SourceBackup readSmokeDatabase(File file, String sourceUrl) {
+  final directory = Directory.systemTemp.createTempSync('liber_smoke_db_');
+  try {
+    final copy = File('${directory.path}/data.db');
+    file.copySync(copy.path);
+    final wal = File('${file.path}-wal');
+    if (wal.existsSync()) wal.copySync('${copy.path}-wal');
+    return SourceBackup(
+      input: file.path,
+      sha256: _sha256OfFile(copy),
+      collectionMember: 'sources.raw',
+      shelfMember: null,
+      sources: _readDatabaseSources(copy.path, sourceUrl),
+      shelf: null,
+    );
+  } finally {
+    directory.deleteSync(recursive: true);
+  }
+}
+
+/// Whether [file] is a SQLite database, by its 16-byte header magic.
+bool _isSmokeDatabase(File file) {
+  if (!file.existsSync()) return false;
+  final reader = file.openSync();
+  try {
+    final header = reader.readSync(16);
+    return header.length == 16 &&
+        String.fromCharCodes(header).startsWith('SQLite format 3');
+  } on Object {
+    return false;
+  } finally {
+    reader.closeSync();
+  }
+}
+
+/// The records the database's `sources.raw` column holds for [sourceUrl].
+///
+/// An empty answer is an unknown URL, which `findSmokeSource` reports as
+/// `source-not-found`; a file with no `sources` table is not a workspace
+/// database and is reported as `backup-unreadable` by the caller.
+List<Map<String, dynamic>> _readDatabaseSources(String path, String sourceUrl) {
+  final database = sqlite3.open(path, mode: OpenMode.readOnly);
+  try {
+    final rows = database.select(
+      'SELECT raw FROM sources WHERE book_source_url = ?',
+      <Object?>[sourceUrl],
+    );
+    final sources = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final raw = row['raw'];
+      final Object? decoded = raw is String && raw.isNotEmpty
+          ? jsonDecode(raw)
+          : null;
+      final record = decoded is Map<String, dynamic>
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+      // The row's identity is the natural key the query matched on; a `raw`
+      // that does not repeat it still belongs to that row.
+      record.putIfAbsent('bookSourceUrl', () => sourceUrl);
+      sources.add(record);
+    }
+    return sources;
+  } finally {
+    database.close();
+  }
+}
+
+/// The SHA-256 of [file], read in bounded blocks so a large database is never
+/// held in memory.
+String _sha256OfFile(File file) {
+  final digest = SHA256Digest();
+  final reader = file.openSync();
+  try {
+    final buffer = Uint8List(64 * 1024);
+    while (true) {
+      final read = reader.readIntoSync(buffer);
+      if (read <= 0) break;
+      digest.update(buffer, 0, read);
+    }
+  } finally {
+    reader.closeSync();
+  }
+  final output = Uint8List(digest.digestSize);
+  final length = digest.doFinal(output, 0);
+  return output
+      .sublist(0, length)
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+      .join();
+}
+
 /// The tool's command line, returning the exit code instead of setting it.
 ///
 /// [out] and [err] stand in for the process streams so a test can read what a
@@ -390,7 +508,7 @@ Future<int> runSmokeCli(
   final SourceBackup backup;
   final Map<String, dynamic> source;
   try {
-    backup = readSourceBackup(parsed.backup);
+    backup = readSmokeInput(File(parsed.backup), parsed.source);
     source = findSmokeSource(backup, parsed.source);
   } on SourceSmokeFailure catch (failure) {
     errors.writeln(renderSmokeFailure(failure));

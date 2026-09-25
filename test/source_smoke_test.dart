@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import '../tool/source_smoke.dart';
 import '../tool/source_usage.dart';
@@ -23,6 +24,7 @@ void main() {
   late Directory directory;
   late HttpServer server;
   late String origin;
+  late Map<String, dynamic> sourceRecord;
 
   /// The addresses the site saw, so the header pin is not vacuous: the source's
   /// `header` really reached the wire, and still never reached the output.
@@ -66,30 +68,44 @@ void main() {
     });
 
     directory = Directory.systemTemp.createTempSync('liber_source_smoke');
-    File('${directory.path}/bookSource.json').writeAsStringSync(
-      jsonEncode(<String, dynamic>{
-        'bookSourceName': 'smoke fixture',
-        'bookSourceUrl': origin,
-        'header': '{"X-Api-Key":"HEADERSECRETVALUE"}',
-        'enabledCookieJar': true,
-        'ruleSearch': <String, dynamic>{
-          'bookList': r'$.items',
-          'name': r'$.name',
-          'bookUrl': r'$.url',
-        },
-        'ruleBookInfo': <String, dynamic>{
-          'name': r'$.title',
-          'author': r'$.author',
-          'tocUrl': r'$.toc',
-        },
-        'ruleToc': <String, dynamic>{
-          'chapterList': r'$.list',
-          'chapterName': r'$.label',
-          'chapterUrl': r'$.href',
-        },
-        'ruleContent': <String, dynamic>{'content': r'$.body'},
-      }),
+    sourceRecord = <String, dynamic>{
+      'bookSourceName': 'smoke fixture',
+      'bookSourceUrl': origin,
+      'header': '{"X-Api-Key":"HEADERSECRETVALUE"}',
+      'enabledCookieJar': true,
+      'ruleSearch': <String, dynamic>{
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+      },
+      'ruleBookInfo': <String, dynamic>{
+        'name': r'$.title',
+        'author': r'$.author',
+        'tocUrl': r'$.toc',
+      },
+      'ruleToc': <String, dynamic>{
+        'chapterList': r'$.list',
+        'chapterName': r'$.label',
+        'chapterUrl': r'$.href',
+      },
+      'ruleContent': <String, dynamic>{'content': r'$.body'},
+    };
+    File(
+      '${directory.path}/bookSource.json',
+    ).writeAsStringSync(jsonEncode(sourceRecord));
+    // A tiny live workspace database, in the WAL mode the product's own
+    // `SpaceDatabase` sets, so the read-only row pins that no `-wal`/`-shm`
+    // appears beside it (a plain `mode=ro` connection would add both).
+    final database = sqlite3.open('${directory.path}/data.db');
+    database.execute('PRAGMA journal_mode = WAL');
+    database.execute(
+      'CREATE TABLE sources (book_source_url TEXT PRIMARY KEY, raw TEXT)',
     );
+    database.execute(
+      'INSERT INTO sources (book_source_url, raw) VALUES (?, ?)',
+      <Object?>[origin, jsonEncode(sourceRecord)],
+    );
+    database.close();
   });
 
   tearDownAll(() async {
@@ -209,6 +225,130 @@ void main() {
         1,
       );
       expect(notFound.toString(), contains('source-not-found'));
+
+      // The same database, an unknown URL: the row is not there, named as
+      // before.
+      final databaseMissing = StringBuffer();
+      expect(
+        await runSmokeCli(<String>[
+          '--backup',
+          '${directory.path}/data.db',
+          '--source',
+          'https://missing.example',
+          '--book',
+          '$origin/book/1',
+        ], err: databaseMissing),
+        1,
+      );
+      expect(databaseMissing.toString(), contains('source-not-found'));
+
+      // A file that is neither a backup nor a workspace database keeps
+      // `backup-unreadable`.
+      File(
+        '${directory.path}/not-a-backup.txt',
+      ).writeAsStringSync('plain text, not JSON, not SQLite');
+      final notBackup = StringBuffer();
+      expect(
+        await runSmokeCli(<String>[
+          '--backup',
+          '${directory.path}/not-a-backup.txt',
+          '--source',
+          origin,
+          '--book',
+          '$origin/book/1',
+        ], err: notBackup),
+        1,
+      );
+      expect(notBackup.toString(), contains('backup-unreadable'));
+
+      // A SQLite file that is not the workspace database is the same reason.
+      final otherDatabase = sqlite3.open('${directory.path}/other.db');
+      otherDatabase.execute('CREATE TABLE t (x TEXT)');
+      otherDatabase.close();
+      final notWorkspace = StringBuffer();
+      expect(
+        await runSmokeCli(<String>[
+          '--backup',
+          '${directory.path}/other.db',
+          '--source',
+          origin,
+          '--book',
+          '$origin/book/1',
+        ], err: notWorkspace),
+        1,
+      );
+      expect(notWorkspace.toString(), contains('backup-unreadable'));
     },
   );
+
+  test('a live data.db is read read-only and leaves the file and its directory '
+      'alone', () async {
+    final database = File('${directory.path}/data.db');
+    final before = _stat(database);
+    final listing = _listing(directory);
+    final tempBefore = _smokeTempDirectories();
+
+    final backup = readSmokeInput(database, origin);
+    expect(backup.collectionMember, 'sources.raw');
+    expect(backup.shelfMember, isNull);
+    expect(backup.sources, hasLength(1));
+    expect(backup.sha256, hasLength(64));
+
+    final out = StringBuffer();
+    final err = StringBuffer();
+    expect(
+      await runSmokeCli(
+        <String>[
+          '--backup',
+          database.path,
+          '--source',
+          origin,
+          '--book',
+          '$origin/book/1?token=SECRETTOKEN',
+        ],
+        out: out,
+        err: err,
+      ),
+      0,
+      reason: err.toString(),
+    );
+    final text = out.toString();
+    expect(text, contains('input: ${database.path}'));
+    expect(text, contains('collection: 1 records from sources.raw'));
+    expect(text, contains('title: 真实解析标题'));
+    expect(text, contains('author: 作者甲'));
+    expect(text, contains('chapters: 2'));
+    expect(text, contains('first chapter: 首章'));
+    expect(text, contains('token=$redactedValue'));
+
+    // The operator's file and its directory are exactly as they were: no
+    // write, and no `-wal`/`-shm` beside it.
+    expect(_stat(database), before);
+    expect(_listing(directory), listing);
+    expect(_smokeTempDirectories(), tempBefore);
+  });
 }
+
+/// [file]'s size and modification time, to show a read did not change it.
+({int size, DateTime modified}) _stat(File file) =>
+    (size: file.lengthSync(), modified: file.statSync().modified);
+
+/// [directory]'s entry names, sorted.
+List<String> _listing(Directory directory) => <String>[
+  for (final entry
+      in directory.listSync()..sort((a, b) => a.path.compareTo(b.path)))
+    entry.path.split(Platform.pathSeparator).last,
+];
+
+/// The tool's temporary database directories still under the system temp
+/// directory, so a read can be shown to clean up after itself.
+List<String> _smokeTempDirectories() => <String>[
+  for (final entry
+      in Directory.systemTemp.listSync()
+        ..sort((a, b) => a.path.compareTo(b.path)))
+    if (entry.path
+        .split(Platform.pathSeparator)
+        .last
+        .startsWith('liber_smoke_db_'))
+      entry.path,
+];
