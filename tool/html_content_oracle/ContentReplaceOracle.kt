@@ -66,6 +66,7 @@ data class ReplaceCase(
     val name: String,
     val shape: String = "",
     val note: String = "",
+    val compare: String = "exact",
     val pageHtml: String = "",
     val pageValues: List<String> = emptyList(),
     val contentField: String = "",
@@ -94,6 +95,12 @@ data class ReplaceFixtures(
 data class ReplaceRow(
     val shape: String,
     val note: String,
+    /**
+     * `exact` for a row the product must answer identically, or the name of the
+     * branch it does not: a row whose `compare` is not `exact` is a recorded
+     * divergence, and the product test asserts both answers for it.
+     */
+    val compare: String,
     val pageRules: List<String?>,
     val fieldReads: List<String>,
     val pageReads: List<String>,
@@ -302,6 +309,7 @@ private fun readCase(case: ReplaceCase): ReplaceRow {
     return ReplaceRow(
         shape = case.shape,
         note = case.note,
+        compare = case.compare,
         pageRules = pageRules,
         fieldReads = fieldReads,
         pageReads = pageReads,
