@@ -633,9 +633,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   ) async {
     final split = splitSourceUrlOptions(await _expand(template, keyword));
     final script = split.options.js;
+    // The frozen replaces the URL with the option script's result only when that
+    // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
+    // notice answers nothing, so the address the rule wrote stands; stringifying
+    // that nothing into `'null'` sent the request to `/null` (#94).
     final text = script == null
         ? split.path
-        : '${await _evalJs(script, keyword, '${_resolve(base, split.path, keepFragment: true)}')}';
+        : (await _evalJs(
+                script,
+                keyword,
+                '${_resolve(base, split.path, keepFragment: true)}',
+              ))
+              ?.toString() ??
+              split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
       url = _resolve(

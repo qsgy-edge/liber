@@ -329,6 +329,46 @@ void main() {
     });
   });
 
+  test(
+    'a js option whose script answers nothing keeps the URL (#94)',
+    () async {
+      // The frozen `AnalyzeUrl.kt:238-242` assigns the option script's result to
+      // the URL only when the result is not null. A real source's search, detail
+      // and TOC addresses carry `,{"js":"java.toast('…')"}` — a script that only
+      // shows a notice — and stringifying that nothing into `'null'` sent the
+      // request to `/null` (a 404), which is what the operator's search hit.
+      final transport = RecordingHttpTransport({
+        '/search':
+            '<div class="container"><div class="item"><div class="itemtxt">'
+            '<h3><a href="/book/1">书</a></h3></div></div></div>',
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://source.test',
+        'searchUrl':
+            r'/search?keyword={{key}}&page={{page}},'
+            r'''{"js":"java.toast('正在搜索中，请稍等！');"}''',
+        'ruleSearch': {
+          'bookList': '@CSS:.item',
+          'name': '@CSS:h3 a@text',
+          'bookUrl': '@CSS:h3 a@href',
+        },
+      };
+      final hits = await HtmlSourcePipeline(source, transport).search('书');
+      expect(hits.single.title, '书');
+      expect(transport.requests, hasLength(1));
+      expect(
+        transport.requests.single.url.toString(),
+        isNot(contains('/null')),
+        reason: 'the toast-only script must not replace the URL',
+      );
+      expect(
+        transport.requests.single.url.path,
+        '/search',
+        reason: 'the address the rule wrote stands',
+      );
+    },
+  );
+
   test('JSON options carry a structured body on the search stage', () async {
     final transport = RecordingHttpTransport({
       '/search': '{"items":[{"name":"标题","url":"/details"}]}',

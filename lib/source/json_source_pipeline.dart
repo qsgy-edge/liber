@@ -576,9 +576,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final split = splitSourceUrlOptions(await _expand(template, keyword));
     var url = _url(base, split.path);
     final script = split.options.js;
+    // The frozen replaces the URL with the option script's result only when that
+    // result is not null (`AnalyzeUrl.kt:238-242`: `evalJS(jsStr, url)
+    // ?.toString()?.let { url = it }`). A script that only shows a toast answers
+    // nothing, so the URL it was given stands — stringifying that nothing into
+    // `'null'` sent the request to `/null` (a real source's search, #94).
     final text = script == null
         ? split.path
-        : '${await _evalJs(script, keyword, '$url')}';
+        : (await _evalJs(script, keyword, '$url'))?.toString() ?? split.path;
     url = _url(base, text);
     if (!split.options.isPost) {
       url = _url(
