@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
@@ -107,6 +108,13 @@ const expectedMembers = <String>[
   'java.randomUUID',
   'java.toNumChapter',
   'java.toURL',
+  // The frozen `AnalyzeRule` rule-evaluation family (#90): one rule read by the
+  // analysis's own rule path, against the content object the member was given
+  // or the `src` binding of the rule field it runs in.
+  'java.getString',
+  'java.getStringList',
+  'java.getElement',
+  'java.getElements',
   'cookie.setCookie',
   'cookie.replaceCookie',
   'cookie.getCookie',
@@ -162,6 +170,19 @@ Future<void> main(List<String> args) async {
         request.response.write(
           '<div class="item"><h3><a href="/book/">书</a></h3></div>',
         );
+      case '/json-search':
+        request.response.write('{"items":[{"name":"书","url":"/json-book"}]}');
+      case '/json-book':
+        request.response.write(
+          '{"name":"书","toc":"/json-toc","status":"1",'
+          '"tags":["甲","乙"],"meta":{"n":2}}',
+        );
+      case '/json-toc':
+        request.response.write(
+          '{"items":[{"name":"第一章","url":"/json-content"}]}',
+        );
+      case '/json-content':
+        request.response.write('{"text":"正文"}');
       case '/echo':
         request.response.write(request.headers.value('cookie') ?? 'none');
       case '/headers':
@@ -668,7 +689,68 @@ Future<void> main(List<String> args) async {
     checks['deferredMembersRefuse'] = refusedByName;
     checks['refusalLoggedInSourceLog'] = refusalInLog;
 
-    // 9. The emulated identity is the installation's, shared by two sources; the
+    // 9. The frozen rule-evaluation members (#90): `AnalyzeRule.getString` and
+    //    its three siblings read one rule through the analysis's own rule path,
+    //    against the content object the member was given or the `src` binding
+    //    of the rule field it runs in. This runtime owns no analysis, so the
+    //    rows that need an engine are the pipeline row in 12; here are the
+    //    answers that need none and the forms this slice leaves out, each of
+    //    which refuses by name.
+    //    With no content object the frozen answers `""`/`null`/`null`/`[]`
+    //    (`AnalyzeRule.kt:196-200,267-289,335-338,370-373`), and a null or
+    //    empty rule is the `TextUtils.isEmpty` branch, which never reaches a
+    //    content at all.
+    checks['ruleMembersEmptyRule'] =
+        await run(
+          'JSON.stringify([java.getString(""), java.getStringList(null), '
+          'java.getElement(undefined), java.getElements("")])',
+        ) ==
+        jsonEncode(['', null, null, <Object?>[]]);
+    checks['ruleMembersWithoutContent'] =
+        await run(
+          'JSON.stringify([java.getString("\$.a"), '
+          'java.getStringList("\$.a"), java.getElement("\$.a"), '
+          'java.getElements("\$.a")])',
+        ) ==
+        jsonEncode(['', null, null, <Object?>[]]);
+    // A content object needs an analysis to read it with, and the two forms the
+    // frozen does not serve here — `getString(ruleStr, unescape)`'s false value
+    // (a Boolean second argument) and `isUrl` (the third) — refuse by name
+    // rather than answering something the frozen would not.
+    var ruleFormsRefuseByName = true;
+    for (final member in ['java.getString', 'java.getStringList']) {
+      for (final script in [
+        '$member("\$.a", null, true)',
+        '$member("\$.a", {a: 1})',
+        if (member == 'java.getString') '$member("\$.a", false)',
+      ]) {
+        SourceScriptError? failure;
+        try {
+          await run(script);
+        } on SourceScriptError catch (error) {
+          failure = error;
+        }
+        if (failure == null ||
+            failure.category != 'policy' ||
+            !failure.message.contains(member)) {
+          ruleFormsRefuseByName = false;
+        }
+      }
+    }
+    checks['ruleMemberFormsRefuseByName'] = ruleFormsRefuseByName;
+    // The frozen declares one argument for the element forms, so a second one
+    // is refused instead of being read as the analysis's content.
+    SourceScriptError? elementArity;
+    try {
+      await run('java.getElement("\$.a", {a: 1})');
+    } on SourceScriptError catch (error) {
+      elementArity = error;
+    }
+    checks['elementMembersTakeOneArgument'] =
+        elementArity?.message.contains('java.getElement expects one argument') ==
+        true;
+
+    // 10. The emulated identity is the installation's, shared by two sources; the
     //    emulated user agent is non-empty and platform-plausible.
     checks['androidIdIsInstallationValue'] =
         await run('java.androidId()') == installationId;
@@ -692,7 +774,7 @@ Future<void> main(List<String> args) async {
     checks['speakTextAndSpeedStayNull'] =
         speakBindings == jsonEncode(['object', true, 'object', true]);
 
-    // 10. The log is bounded and a toast is recorded but delivered
+    // 11. The log is bounded and a toast is recorded but delivered
     //     rate-limited (one display per source per window).
     final bounded = InProcessSourceScriptRuntime(
       dispatcher: SourceHostDispatcher(transport: HttpSourceTransport()),
@@ -722,7 +804,11 @@ Future<void> main(List<String> args) async {
     checks['toastRateLimited'] =
         notices.length == 1 && notices.single.message == 'a';
 
-    // 11. A rule that uses the blocked sample pattern end to end.
+    // 12. Two pipelines end to end. The first is a rule that uses the blocked
+    //     sample pattern; the second is the operator's own failing shape (#90),
+    //     a JSON source whose `ruleBookInfo.kind` asks `java.getString` for one
+    //     field of the detail page, read through the JSON pipeline's own rule
+    //     path.
     final pipeline = HtmlSourcePipeline(<String, dynamic>{
       'bookSourceUrl': origin,
       'searchUrl': '/search?q={{cookie.removeCookie(source.getKey())}}{{key}}',
@@ -736,7 +822,50 @@ Future<void> main(List<String> args) async {
     checks['cookieInUrlRuleRan'] = requests.last.startsWith('GET /search?q=');
     checks['cookieInUrlRuleParsed'] = hits.single.title == '书';
 
-    // 12. The stage request surface a `loginCheckJs` hook owns: the members
+    final ruleSource = <String, dynamic>{
+      'bookSourceUrl': origin,
+      'searchUrl': '/json-search',
+      'ruleSearch': {
+        'bookList': r'$.items',
+        'name': r'$.name',
+        'bookUrl': r'$.url',
+        'kind': "{{java.getString('\$.name')}}",
+      },
+      'ruleBookInfo': {
+        'canReName': 'true',
+        'name': r'$.name',
+        'tocUrl': r'$.toc',
+        'kind': "{{java.getString('\$.status')=='1'?'完结':'连载';}}",
+        'intro': "{{java.getStringList('\$.tags[*]').join('|')}}",
+        'author': "{{java.getElement('\$.meta').n}}",
+        'lastChapter': "{{java.getElements('\$.tags[*]').length}}",
+      },
+      'ruleToc': {
+        'chapterList': r'$.items',
+        'chapterName': r'$.name',
+        'chapterUrl': r'$.url',
+      },
+      'ruleContent': {'content': r'$.text'},
+    };
+    final rulePipeline = openBookSourcePipeline(
+      ruleSource,
+      HttpSourceTransport(),
+    );
+    final ruleHits = await rulePipeline.search('甲');
+    final (ruleBook, ruleChapters) = await rulePipeline.details(ruleHits.single);
+    final ruleBody = await rulePipeline.chapter(ruleChapters.single);
+    // The per-element field's content object is the matched element (the frozen
+    // `AnalyzeRule.setContent(item)`), the detail field's the page: both members
+    // answered the element's own `$.name`, and the page's `$.status`.
+    checks['ruleMembersReadTheAnalysisContent'] =
+        ruleHits.single.kind == '书' && ruleBook.kind == '完结';
+    checks['ruleMembersListAndElementForms'] =
+        ruleBook.intro == '甲|乙' &&
+        ruleBook.author == '2' &&
+        ruleBook.lastChapter == '2';
+    checks['ruleMembersLeaveTheStageWorking'] = ruleBody.text == '正文';
+
+    // 13. The stage request surface a `loginCheckJs` hook owns: the members
     //     answer the stage's own request, and a response header is readable on
     //     the response the hook returns.
     final stageResponse = SourceStageResponse(
@@ -777,7 +906,7 @@ Future<void> main(List<String> args) async {
         hooked.statusCode == 201 &&
         await runtime.hostState.entry(origin, 'hook-stage') == 'yes';
 
-    // 13. The user-confirmed hatches (ADR 0011 §4, ticket #32). Without a
+    // 14. The user-confirmed hatches (ADR 0011 §4, ticket #32). Without a
     //     confirmation surface every member refuses by name: a process with no
     //     window cannot confirm, and showing nothing silently is what the
     //     policy forbids.

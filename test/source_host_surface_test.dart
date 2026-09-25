@@ -599,6 +599,227 @@ void main() {
   }
 
   test(
+    'rule members answer the frozen empty results and name the forms left out',
+    () async {
+      // The frozen `AnalyzeRule.getString`/`getStringList`/`getElement`/
+      // `getElements` (#90). With no content object the frozen answers
+      // `""`/`null`/`null`/`[]` (`AnalyzeRule.kt:196-200,267-289,335-338,
+      // 370-373`), and a null or empty rule is the `TextUtils.isEmpty` branch,
+      // which never reaches a content at all.
+      expect(
+        await run(
+          r'JSON.stringify([java.getString("$.a"), java.getStringList("$.a"), '
+          r'java.getElement("$.a"), java.getElements("$.a")])',
+        ),
+        jsonEncode(['', null, null, <Object?>[]]),
+      );
+      expect(
+        await run(
+          r'JSON.stringify([java.getString(""), java.getStringList(null), '
+          r'java.getElement(undefined), java.getElements("")])',
+        ),
+        jsonEncode(['', null, null, <Object?>[]]),
+      );
+      // A content object a source passes needs an analysis to read it with: a
+      // runtime that owns no rule path refuses by name instead of reading it
+      // with an engine of its own.
+      await expectLater(
+        run(r'java.getString("$.a", {a: 1})'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having((error) => error.message, 'member', contains('java.getString')),
+        ),
+      );
+      // The two forms this slice leaves out refuse by name, in the frozen's own
+      // shape: `getString(ruleStr, unescape)` is a Boolean second argument
+      // (Rhino picks that overload by type), and `isUrl` is the third.
+      await expectLater(
+        run(r'java.getString("$.a", false)'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having((error) => error.message, 'form', contains('unescape=false')),
+        ),
+      );
+      for (final member in ['java.getString', 'java.getStringList']) {
+        await expectLater(
+          run('$member("\$.a", null, true)'),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((error) => error.category, 'category', 'policy')
+                .having((error) => error.message, 'member', contains(member))
+                .having((error) => error.message, 'form', contains('isUrl')),
+          ),
+        );
+      }
+      // The frozen declares one argument for the element forms, so a second is
+      // refused rather than read as the analysis's content (Rhino would find no
+      // such overload either).
+      await expectLater(
+        run(r'java.getElement("$.a", {a: 1})'),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'arguments',
+            contains('java.getElement expects one argument'),
+          ),
+        ),
+      );
+      // And a member this slice still defers keeps failing by name, which is
+      // what the rule members must not turn into a `TypeError`.
+      await expectLater(
+        run('java.readFile("/tmp/x")'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having((error) => error.message, 'member', contains('java.readFile'))
+              .having((error) => error.message, 'deferred', contains('deferred')),
+        ),
+      );
+    },
+  );
+
+  test(
+    'rule members read the analysis content through the pipeline rule path',
+    () async {
+      transport.pages.addAll({
+        '/search': '{"items":[{"name":"Hit","url":"/book"}]}',
+        '/book':
+            '{"name":"书","toc":"/toc","status":"1",'
+            '"tags":["甲","乙"],"meta":{"n":2}}',
+        '/toc': '{"items":[{"name":"第一章","url":"/content"}]}',
+        '/content': '{"text":"正文"}',
+        '/html-search': '<a href="/html-book">Hit</a>',
+        '/html-book':
+            '<h1>书名</h1><p class="k">完结</p><a href="/html-toc">目录</a>',
+        '/html-toc': '<a href="/html-content">第一章</a>',
+        '/html-content': '<p>正文</p>',
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://a.test',
+        'bookSourceName': '契约源',
+        'searchUrl': '/search',
+        'ruleSearch': {
+          'bookList': r'$.items',
+          'name': r'$.name',
+          'bookUrl': r'$.url',
+          // A per-element field's content object is the matched element, which
+          // is the frozen `AnalyzeRule.setContent(item)` (`BookList.kt:208`).
+          'kind': "{{java.getString('\$.name')}}",
+          // The member's rule runs in the analysis's own scope: its `@js:`
+          // segment reads the source's variables and reaches the host surface
+          // through the same bridge the field's script does.
+          'intro':
+              "@js:source.put('k', 'v'); "
+              "java.getString('\$.name@js:source.get(\"k\") + result')",
+        },
+        'ruleBookInfo': {
+          'tocUrl': r'$.toc',
+          // The frozen `canReName` decides whether the detail page's name
+          // replaces the search hit's, so the member's answer is readable.
+          'canReName': 'true',
+          // The operator's own failing shape (#90): a `{{…}}` rule that asks
+          // the member for one field of the detail page.
+          'kind': "{{java.getString('\$.status')=='1'?'完结':'连载';}}",
+          'intro': "{{java.getStringList('\$.tags[*]').join('|')}}",
+          'name': "{{java.getElement('\$.meta').n}}",
+          'wordCount': "{{java.getElements('\$.tags[*]').length}}",
+          // The member's own content argument, over the analysis's content:
+          // the frozen `getString(ruleStr, mContent)`.
+          'author': "{{java.getString('\$.n', {n: 7})}}",
+          // A rule that itself carries `{{…}}` is resolved by the same rule
+          // path a field is, for both the script form and the `$.` form. The
+          // text is assembled in the script because a `{{…}}` written literally
+          // in a rule field is resolved by the field before the script runs.
+          'lastChapter':
+              r"@js:java.getString('{'+'{source.getName()}}') + "
+              r"java.getString('{'+'{$.status}}')",
+        },
+        'ruleToc': {
+          'chapterList': r'$.items',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+        'ruleContent': {'content': r'$.text'},
+      };
+      final pipeline = openBookSourcePipeline(source, transport);
+      final hits = await pipeline.search('key');
+      expect(hits.single.kind, 'Hit');
+      expect(hits.single.intro, 'vHit');
+      final (book, chapters) = await pipeline.details(hits.single);
+      expect(book.kind, '完结');
+      expect(book.intro, '甲|乙');
+      expect(book.title, '2');
+      expect(book.lastChapter, '契约源1');
+      expect(book.wordCount, '2字');
+      expect(book.author, '7');
+      expect(chapters.single.name, '第一章');
+      pipeline.cancel();
+      // The same members over HTML content read through the Rust adapter, which
+      // is this source's own rule path. The list and element forms refuse by
+      // name there: the frozen's jsoup element objects cannot cross this
+      // boundary, so a source reads the same text with `java.getString`.
+      final htmlSource = <String, dynamic>{
+        'bookSourceUrl': 'http://a.test',
+        'searchUrl': '/html-search',
+        'ruleSearch': {'bookList': 'a', 'name': 'a@text', 'bookUrl': 'a@href'},
+        // The member is asked from a `@js:` field here: an HTML field whose
+        // whole text is one `{{…}}` is a shape this adapter reads differently
+        // (its substituted text is re-read as a selector), which is a
+        // divergence this ticket does not change.
+        'ruleBookInfo': {
+          'canReName': 'true',
+          'name': 'h1@text',
+          'tocUrl': 'a@href',
+          'kind': "@js:java.getString('p@text')",
+        },
+        'ruleToc': {
+          'chapterList': 'a',
+          'chapterName': 'a@text',
+          'chapterUrl': 'a@href',
+        },
+        'ruleContent': {'content': "@js:java.getString('p@text')"},
+      };
+      final htmlPipeline = openBookSourcePipeline(htmlSource, transport);
+      final htmlHits = await htmlPipeline.search('key');
+      final (htmlBook, htmlChapters) = await htmlPipeline.details(
+        htmlHits.single,
+      );
+      expect(htmlBook.title, '书名');
+      expect(htmlBook.kind, '完结');
+      expect(
+        (await htmlPipeline.chapter(htmlChapters.single)).text,
+        '正文',
+      );
+      htmlPipeline.cancel();
+      final refusalPipeline = openBookSourcePipeline(
+        <String, dynamic>{...htmlSource}
+          ..['ruleBookInfo'] = {
+            'name': 'h1@text',
+            'kind': "{{java.getElements('p')}}",
+          },
+        transport,
+      );
+      final refusalHits = await refusalPipeline.search('key');
+      expect(refusalHits.single.title, 'Hit');
+      await expectLater(
+        refusalPipeline.details(refusalHits.single),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'policy')
+              .having(
+                (error) => error.message,
+                'member',
+                contains('java.getElements'),
+              ),
+        ),
+      );
+      refusalPipeline.cancel();
+    },
+  );
+
+  test(
     'toNumChapter preserves frozen conversion, shorthand, invalid and overflow outcomes',
     () async {
       // Source-derived: JsExtensions.kt:905-912; StringUtils.kt:133-218.

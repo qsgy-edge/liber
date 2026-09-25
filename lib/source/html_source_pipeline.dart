@@ -209,6 +209,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         jsLib: source['jsLib'] as String? ?? '',
         androidId: androidId,
         onMessage: (message) => onHostMessage?.call(message),
+        ruleEvaluator: _readScriptRule,
       );
   @override
   final trace = <BookSourceTraceEntry>[];
@@ -295,12 +296,21 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return headers;
   }
 
-  Map<String, Object?> _scriptInput(String keyword, Object? result) => {
+  Map<String, Object?> _scriptInput(
+    String keyword,
+    Object? result, {
+    Object? content,
+  }) => {
     'sourceKey': _sourceRef,
     'source': _sourceFields,
     'key': keyword,
     'page': _page,
     'result': result,
+    // The frozen `AnalyzeRule.evalJS` binds the analysis's own content as `src`
+    // (`AnalyzeRule.kt:759`): it is the content the field being read carries, so
+    // `java.getString` and its siblings read the object this field's own rule
+    // read used when the source passes no content of its own.
+    'src': ?content,
     'baseUrl': source['bookSourceUrl'],
     'title': _chapterTitle,
     'nextChapterUrl': _nextChapterUrl,
@@ -332,11 +342,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword,
     Object? result, {
     String label = '',
+    Object? content,
   }) async {
     try {
       return await _runtime.evaluate(
         source: script,
-        input: _scriptInput(keyword, result),
+        input: _scriptInput(keyword, result, content: content),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
@@ -408,13 +419,20 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// [label] is the rule field being read (`ruleBookInfo.kind`): a script this
   /// field runs carries it into the failure it reports, so the interface and the
   /// source log name the field instead of the bare `js`.
-  RuleFieldContext _ruleContext(String label) => RuleFieldContext(
-    evaluateScript: (script, result) =>
-        _evalJs(script, _keyword, result, label: label),
-    extract: _eagerExtract,
-    readVariable: _readRuleVariable,
-    writeVariable: _writeRuleVariable,
-  );
+  ///
+  /// [content] is the object the field is read against, bound as the frozen
+  /// `src` for the field's scripts. This adapter reads an element field's values
+  /// through one batch over the page, so a script inside an element field sees
+  /// the page where the JSON adapter sees the matched element — a recorded
+  /// divergence of the two-adapter split.
+  RuleFieldContext _ruleContext(String label, Object? content) =>
+      RuleFieldContext(
+        evaluateScript: (script, result) =>
+            _evalJs(script, _keyword, result, label: label, content: content),
+        extract: _eagerExtract,
+        readVariable: _readRuleVariable,
+        writeVariable: _writeRuleVariable,
+      );
 
   Future<String> _readRuleVariable(String key) async {
     if (key == 'bookName') return _book?.title ?? '';
@@ -447,13 +465,60 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }) async {
     final field = await RuleField.resolve(
       raw,
-      _ruleContext(label),
+      _ruleContext(label, content),
       content: content,
     );
     if (!allowScripts && field.scripts.isNotEmpty) {
       throw UnsupportedError('暂不支持元素列表规则里的 JavaScript：$raw');
     }
     return field;
+  }
+
+  /// One `java.getString`/`getStringList`/`getElement`/`getElements` call from a
+  /// rule script — the frozen `AnalyzeRule.getString` and its three siblings
+  /// (`AnalyzeRule.kt:159,166,246,252,259,328,363`) — read by *this* adapter's
+  /// rule path over the content object the member was given: the same
+  /// [RuleField] path and Rust extraction this stage reads its own fields with,
+  /// not a second engine (ADR 0012).
+  ///
+  /// The frozen's element forms answer the matched jsoup elements, which no
+  /// boundary here carries — this adapter's engine answers text — so over HTML
+  /// content they refuse by name (the JSON adapter's element forms answer the
+  /// matched value) and a source reads the same text with
+  /// `java.getString`/`java.getStringList`. The list form is the adapter's
+  /// `AnalyzeRule.getStringList` read ([_declareList]); a rule whose script
+  /// segment cannot be re-parsed as a document refuses, as this adapter's
+  /// element-list fields do.
+  Future<Object?> _readScriptRule(SourceRuleRead read) async {
+    if (read.form == SourceRuleForm.element ||
+        read.form == SourceRuleForm.elements) {
+      throw SourceScriptError(
+        'policy',
+        '${read.member} 无法回答 HTML 内容的元素对象：本产品的 HTML 规则引擎只回答文本，'
+        '请用 java.getString/java.getStringList',
+      );
+    }
+    final field = await _field(
+      read.rule,
+      content: '${read.content}',
+      label: read.member,
+    );
+    if (read.form == SourceRuleForm.stringList) {
+      if (field.scripts.isNotEmpty) {
+        throw SourceScriptError(
+          'policy',
+          '${read.member} 暂不支持带脚本的列表规则：${read.rule}',
+        );
+      }
+      final batch = HtmlRuleBatch('${read.content}');
+      final job = batch.documentTextList('rule', field.extractionRule!);
+      await batch.run();
+      return job.values;
+    }
+    final extracted = field.isScriptOnly
+        ? read.content
+        : await _eagerExtract(read.content, field.extractionRule!);
+    return '${await field.apply(extracted) ?? ''}';
   }
 
   /// One per-element value rule of a stage. `{{...}}`/`@get:` substitution
