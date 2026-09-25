@@ -18,6 +18,12 @@ import 'source_tls_confirmation.dart';
 
 /// Inline online section of the existing bookshelf; the parent owns scrolling.
 ///
+/// Its rows are a sliver rather than one box `Column`, and the parent must place
+/// it in a `CustomScrollView`'s `slivers`. A shelf holds thousands of rows: one
+/// child of them all is what made the enclosing scroll view estimate its extent
+/// from a child the size of the whole shelf and correct that estimate while the
+/// reader scrolled (#86), on top of building every row it showed.
+///
 /// The list comes from the space's store: a book is on the shelf because
 /// `books.shelved` says so, and removing one keeps its chapters and its
 /// position. A book whose source was deleted (#53) stays in the list marked as
@@ -382,116 +388,130 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          l10n.onlineShelfTitle,
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
+    final theme = Theme.of(context);
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _bookUrl,
-                  decoration: InputDecoration(
-                    labelText: l10n.bookUrl,
-                    prefixIcon: Icon(Icons.link),
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.url,
-                  onSubmitted: (_) => openUrl(),
+              Text(l10n.onlineShelfTitle, style: theme.textTheme.titleLarge),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _bookUrl,
+                        decoration: InputDecoration(
+                          labelText: l10n.bookUrl,
+                          prefixIcon: Icon(Icons.link),
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.url,
+                        onSubmitted: (_) => openUrl(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      tooltip: l10n.openBookUrl,
+                      onPressed: matchingUrl ? null : openUrl,
+                      icon: matchingUrl
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.arrow_forward),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: l10n.openBookUrl,
-                onPressed: matchingUrl ? null : openUrl,
-                icon: matchingUrl
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_forward),
-              ),
+              if (urlResult != null && urlResult!.isNotEmpty)
+                Text(
+                  urlResult!,
+                  key: const ValueKey('shelf-url-result'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              if (loading) const LinearProgressIndicator(),
+              if (error != null)
+                Row(
+                  children: [
+                    Expanded(child: Text(error!)),
+                    TextButton(onPressed: reload, child: Text(l10n.retry)),
+                  ],
+                ),
+              if (!loading && books.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(l10n.shelfFromSourceHint),
+                ),
             ],
           ),
         ),
-        if (urlResult != null && urlResult!.isNotEmpty)
-          Text(
-            urlResult!,
-            key: const ValueKey('shelf-url-result'),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        if (loading) const LinearProgressIndicator(),
-        if (error != null)
-          Row(
-            children: [
-              Expanded(child: Text(error!)),
-              TextButton(onPressed: reload, child: Text(l10n.retry)),
-            ],
-          ),
-        if (!loading && books.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(l10n.shelfFromSourceHint),
-          ),
-        for (final entry in books)
-          ListTile(
-            title: Text(entry.title),
-            subtitle: Text(
-              switchingId == entry.id
-                  ? l10n.autoChangingSource
-                  : entry.sourceMissing
-                  ? l10n.sourceDeletedKept
-                  : entry.chapterKey.isEmpty
-                  ? l10n.notReadYet
-                  : entry.chapterName ?? l10n.continueLastChapter,
-            ),
-            leading: Icon(
-              entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
-            ),
-            enabled: busyId == null && switchingId == null,
-            // A book whose source is gone opens by switching (#69); taking it
-            // off the shelf stays its other action.
-            onTap: entry.sourceMissing
-                ? (busyId == null && switchingId == null
-                      ? () => autoSwitch(entry)
-                      : null)
-                : () => open(entry),
-            trailing: busyId == entry.id || switchingId == entry.id
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(),
-                  )
-                : PopupMenuButton<String>(
-                    enabled: busyId == null && switchingId == null,
-                    tooltip: l10n.bookActions,
-                    onSelected: (value) => action(value, entry),
-                    itemBuilder: (_) => [
-                      if (!entry.sourceMissing)
-                        PopupMenuItem(
-                          value: 'refresh',
-                          child: Text(l10n.updateTableOfContents),
-                        ),
-                      if (!entry.sourceMissing)
-                        PopupMenuItem(
-                          value: 'switch',
-                          child: Text(l10n.switchSource),
-                        ),
-                      PopupMenuItem(
-                        value: 'remove',
-                        child: Text(l10n.removeFromShelf),
-                      ),
-                    ],
-                  ),
-          ),
-        const SizedBox(height: 16),
+        SliverList.builder(
+          itemCount: books.length,
+          itemBuilder: (context, index) => _bookRow(books[index]),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
       ],
+    );
+  }
+
+  /// One shelved book's row: its words, its spinner and its actions are the
+  /// widget's own state, so the row is rebuilt from those fields the way the
+  /// eager `for` loop used to read them.
+  Widget _bookRow(ShelfEntry entry) {
+    final l10n = AppLocalizations.of(context);
+    return ListTile(
+      title: Text(entry.title),
+      subtitle: Text(
+        switchingId == entry.id
+            ? l10n.autoChangingSource
+            : entry.sourceMissing
+            ? l10n.sourceDeletedKept
+            : entry.chapterKey.isEmpty
+            ? l10n.notReadYet
+            : entry.chapterName ?? l10n.continueLastChapter,
+      ),
+      leading: Icon(
+        entry.sourceMissing ? Icons.link_off : Icons.menu_book_outlined,
+      ),
+      enabled: busyId == null && switchingId == null,
+      // A book whose source is gone opens by switching (#69); taking it
+      // off the shelf stays its other action.
+      onTap: entry.sourceMissing
+          ? (busyId == null && switchingId == null
+                ? () => autoSwitch(entry)
+                : null)
+          : () => open(entry),
+      trailing: busyId == entry.id || switchingId == entry.id
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(),
+            )
+          : PopupMenuButton<String>(
+              enabled: busyId == null && switchingId == null,
+              tooltip: l10n.bookActions,
+              onSelected: (value) => action(value, entry),
+              itemBuilder: (_) => [
+                if (!entry.sourceMissing)
+                  PopupMenuItem(
+                    value: 'refresh',
+                    child: Text(l10n.updateTableOfContents),
+                  ),
+                if (!entry.sourceMissing)
+                  PopupMenuItem(
+                    value: 'switch',
+                    child: Text(l10n.switchSource),
+                  ),
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text(l10n.removeFromShelf),
+                ),
+              ],
+            ),
     );
   }
 }

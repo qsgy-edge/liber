@@ -69,7 +69,9 @@ void main() {
       );
       Widget shelf(ShelfService current) => localizedApp(
         home: Scaffold(
-          body: ListView(children: [OnlineBookshelf(service: current)]),
+          body: CustomScrollView(
+            slivers: [OnlineBookshelf(service: current)],
+          ),
         ),
       );
 
