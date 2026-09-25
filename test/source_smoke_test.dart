@@ -132,7 +132,11 @@ void main() {
       expect(report.firstChapterName, '首章');
       expect(report.firstChapterUrl, '$origin/text/108');
       expect(report.chapterRequests, ['$origin/text/108']);
-      expect(report.chapterLength, '正文第一行\n第二行'.length);
+      // The frozen content stage indents the line after a newline inside one
+      // page's value (`BookContent.kt:178`; `tool/html_content_oracle`'s
+      // `json-page-value-multiline` row), so the reported length is the
+      // formatted text's.
+      expect(report.chapterLength, '正文第一行\n　　第二行'.length);
       expect(report.chapterFirstLine, '正文第一行');
 
       final text = renderSmokeReport(report);
@@ -143,7 +147,7 @@ void main() {
       expect(text, contains('chapters: 2'));
       expect(text, contains('first chapter: 首章'));
       expect(text, contains('first chapter url: $origin/text/108'));
-      expect(text, contains('length: ${'正文第一行\n第二行'.length} characters'));
+      expect(text, contains('length: ${'正文第一行\n　　第二行'.length} characters'));
       expect(text, contains('first line: 正文第一行'));
     },
   );

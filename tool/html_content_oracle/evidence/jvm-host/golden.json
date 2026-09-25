@@ -1,0 +1,103 @@
+{
+  "fixtureId": "CONTENT-HTML-01",
+  "corpusVersion": 1,
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "surface": "the frozen content stage's HTML pass, `BookContent.kt:178-181`: `HtmlFormatter.formatKeepImg(content, rUrl)` then `StringEscapeUtils.unescapeHtml4(content)` when the formatted text still carries `&`",
+  "cases": {
+    "site-shape-contentdiv": {
+      "formatted": "　　　　最新网址：x.test\n　　铁锈湖。\n　　第二十三号特种垃圾处理场。\n　　也被称为“法宝坟墓”。\n　　",
+      "content": "　　　　最新网址：x.test\n　　铁锈湖。\n　　第二十三号特种垃圾处理场。\n　　也被称为“法宝坟墓”。\n　　",
+      "unescapeApplied": false
+    },
+    "p-tags": {
+      "formatted": "　　　　第一段\n　　第二段\n　　",
+      "content": "　　　　第一段\n　　第二段\n　　",
+      "unescapeApplied": false
+    },
+    "br-spellings": {
+      "formatted": "第一段\n　　第二段\n　　第三段\n　　第四段",
+      "content": "第一段\n　　第二段\n　　第三段\n　　第四段",
+      "unescapeApplied": false
+    },
+    "wrap-family": {
+      "formatted": "　　　　标题\n　　词条\n　　正文\n　　",
+      "content": "　　　　标题\n　　词条\n　　正文\n　　",
+      "unescapeApplied": false
+    },
+    "meaningless-tags": {
+      "formatted": "粗斜强重点链接下划线",
+      "content": "粗斜强重点链接下划线",
+      "unescapeApplied": false
+    },
+    "img-prefix-tags": {
+      "formatted": "甲<img src=\"y\">乙",
+      "content": "甲<img src=\"y\">乙",
+      "unescapeApplied": false
+    },
+    "self-closing-non-wrap-kept": {
+      "formatted": "<span/>甲\n　　乙",
+      "content": "<span/>甲\n　　乙",
+      "unescapeApplied": false
+    },
+    "comments": {
+      "formatted": "前中<!--含>大于号-->后",
+      "content": "前中<!--含>大于号-->后",
+      "unescapeApplied": false
+    },
+    "entities-folded": {
+      "formatted": "　　甲 乙 丙丁戊己庚",
+      "content": "　　甲 乙 丙丁戊己庚",
+      "unescapeApplied": false
+    },
+    "escaped-tags": {
+      "formatted": "&lt;p&gt;不是标签&lt;/p&gt;&amp; 乙",
+      "content": "<p>不是标签</p>& 乙",
+      "unescapeApplied": true
+    },
+    "blank-lines": {
+      "formatted": "第一段\n　　第二段\n　　第三段",
+      "content": "第一段\n　　第二段\n　　第三段",
+      "unescapeApplied": false
+    },
+    "crlf-lines": {
+      "formatted": "第一段\n　　第二段\n　　",
+      "content": "第一段\n　　第二段\n　　",
+      "unescapeApplied": false
+    },
+    "leading-and-trailing": {
+      "formatted": "　　第一段",
+      "content": "　　第一段",
+      "unescapeApplied": false
+    },
+    "tags-only": {
+      "formatted": "　　　　",
+      "content": "　　　　",
+      "unescapeApplied": false
+    },
+    "image-kept": {
+      "formatted": "　　　　前<img src=\"/i/1.png\">后\n　　",
+      "content": "　　　　前<img src=\"/i/1.png\">后\n　　",
+      "unescapeApplied": false
+    },
+    "image-absolute-base": {
+      "formatted": "　　　　前<img src=\"http://a.test/i/1.png\">后\n　　",
+      "content": "　　　　前<img src=\"http://a.test/i/1.png\">后\n　　",
+      "unescapeApplied": false
+    },
+    "image-option-tail-kept": {
+      "formatted": "<img src=\"/i/1.png,{\\\"js\\\":\\\"java.toast('x')\\\"}\">",
+      "content": "<img src=\"/i/1.png,{\\\"js\\\":\\\"java.toast('x')\\\"}\">",
+      "unescapeApplied": false
+    },
+    "json-page-value": {
+      "formatted": "第一页",
+      "content": "第一页",
+      "unescapeApplied": false
+    },
+    "json-page-value-multiline": {
+      "formatted": "第一页\n　　第二页",
+      "content": "第一页\n　　第二页",
+      "unescapeApplied": false
+    }
+  }
+}

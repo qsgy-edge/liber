@@ -387,8 +387,11 @@ void main() {
       expect(output.title, '真实标题');
       // The slice kept the first two of the three declared chapters.
       expect(output.chapters.map((chapter) => chapter.name), ['第一章', '第二章']);
-      // The filter kept two rows and the frozen join carries both.
-      expect(output.content, '段落一\n段落二');
+      // The filter kept two rows and the frozen join carries both. The frozen
+      // content stage then indents the line after the join (`BookContent.kt:178`;
+      // `tool/html_content_oracle`'s `json-page-value-multiline` row executes it), so
+      // the value this pipeline stores carries the frozen's own indent.
+      expect(output.content, '段落一\n　　段落二');
       expect(paths, ['/search', '/b/1', '/toc/1', '/ch/1']);
 
       // An unsupported form is refused with its field name before any request is

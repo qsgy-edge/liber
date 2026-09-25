@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "CONTENT-HTML-01",
+  "corpusVersion": 1,
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "surface": "the frozen content stage's HTML pass, `BookContent.kt:178-181`: `HtmlFormatter.formatKeepImg(content, rUrl)` then `StringEscapeUtils.unescapeHtml4(content)` when the formatted text still carries `&`",
+  "note": "The input of every case is one page's `getString(ruleContent.content, unescape = false)` value — for the ticket's source, the outer HTML of `id.ChapterContents` with its `##` replacement applied. The frozen bytes under test are HtmlFormatter.kt; the two members its image branch calls are transcribed (see the manifest).",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "082685b5d75ad2ef14bb5fc8d5dd8273667fe5cf",
+      "role": "compiled from the frozen bytes; `formatKeepImg` and `format` are what this corpus executes"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "c262b0a01355b600e8c0cdae39955b4f3fd12d12",
+      "role": "lines 178-181, the deciding call and the unescape that follows it; transcribed into the harness and verified against this file at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "c07a674525254d3539687f7b205aaa609375b941",
+      "role": "`getAbsoluteURL(URL?, String)` (lines 174-189), reached by the image branch; transcribed into the harness's stub and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "ad323d5a7f4f77f7a4c0aef1ffb0b2bdac7651c1",
+      "role": "`isAbsUrl` (lines 36-39) and `isDataUrl` (lines 41-44), the two predicates inside `getAbsoluteURL`; transcribed and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d3e3de8230a58b5f7a7419c2c981096f6b8815be",
+      "role": "`paramPattern` (line 658), reached by a templated image src; transcribed and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "compiled from the frozen bytes; `dataUriRegex` is what the transcribed `isDataUrl` uses"
+    }
+  ],
+  "cases": [
+    {
+      "name": "site-shape-contentdiv",
+      "note": "the operator's page shape: the @html value of `id.ChapterContents` is the element's outer HTML, whose body is `&nbsp;` runs, `<br />` plus CRLF, an ad `<div>` and a `<b>` (fetched 2026-09-25, http://www.77shuku.info/chapter/4057/3867674.html, HTTP 200, 22889 bytes)",
+      "input": "<div class=\"page-content\" id=\"ChapterContents\"><div id=\"content_tip\"><b>最新网址：x.test</b></div>      &nbsp;&nbsp;&nbsp;&nbsp;铁锈湖。<br />\r\n<br />\r\n&nbsp;&nbsp;&nbsp;&nbsp;第二十三号特种垃圾处理场。<br />\r\n<br />\r\n&nbsp;&nbsp;&nbsp;&nbsp;也被称为“法宝坟墓”。<br />\r\n</div>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "p-tags",
+      "note": "`<p>`/`</p>`, the wrap family the ticket names",
+      "input": "<p>第一段</p><p>第二段</p>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "br-spellings",
+      "note": "every `<br>` spelling the wrap pattern `</?(?:div|p|br|hr|h\\d|article|dd|dl)[^>]*>` accepts",
+      "input": "第一段<br>第二段<br/>第三段<br />第四段",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "wrap-family",
+      "note": "the rest of the wrap family: `hr`, `h\\d`, `dl`/`dd`, `article`",
+      "input": "<h3>标题</h3><hr><dl><dd>词条</dd></dl><article>正文</article>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "meaningless-tags",
+      "note": "`</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>`: tags that carry nothing the reader shows are dropped, with no paragraph break",
+      "input": "<b>粗</b><i>斜</i><em>强</em><strong>重点</strong><a href=\"/x\" class=\"aw\">链接</a><u>下划线</u>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "img-prefix-tags",
+      "note": "the strip pattern's `(?!img)` tests the first three letters: `<image …>` is a meaningless tag and is dropped like any other, while a tag whose first three letters are `img` (`<imgs …>`) survives it and the image pass then rewrites it to `<img …>`",
+      "input": "<image src=\"x\">甲</image><imgs src=\"y\">乙",
+      "baseUrl": null,
+      "compare": "img-src-verbatim"
+    },
+    {
+      "name": "self-closing-non-wrap-kept",
+      "note": "`(?=[ >])` needs a space or `>` right after the tag name, so a self-closing tag outside the wrap family is not stripped",
+      "input": "<span/>甲<br />乙",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "comments",
+      "note": "`<!--[^>]*-->`: a comment without `>` is dropped, a comment carrying one is not (the pattern cannot cross it)",
+      "input": "前<!--简单-->中<!--含>大于号-->后",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "entities-folded",
+      "note": "the three entity branches: `(&nbsp;)+` and `(&ensp;|&emsp;)` become one space, `(&thinsp;|&zwnj;|&zwj;|\\u2009|\\u200C|\\u200D)` is removed",
+      "input": "&nbsp;&nbsp;&nbsp;&nbsp;甲&ensp;乙&emsp;丙&thinsp;丁&zwnj;戊 己‍庚",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "escaped-tags",
+      "note": "tags the page escaped: the formatter sees no `<`, and the frozen's unescape runs after it, so the reader shows them",
+      "input": "&lt;p&gt;不是标签&lt;/p&gt;&amp;&nbsp;乙",
+      "baseUrl": null,
+      "compare": "unescape-order"
+    },
+    {
+      "name": "blank-lines",
+      "note": "`\\s*\\n+\\s*` collapses a run of blank lines and the whitespace around them into one paragraph break",
+      "input": "第一段\n\n\n    第二段   \n第三段",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "crlf-lines",
+      "note": "a CRLF source: Java's `\\s` carries the `\\r`",
+      "input": "第一段\r\n第二段\r\n",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "leading-and-trailing",
+      "note": "`^[\\n\\s]+` and `[\\n\\s]+$`: the leading run becomes one indent, the trailing run is removed",
+      "input": "   第一段   ",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "tags-only",
+      "note": "what a page that extracts to markup alone answers after both ends are shaped",
+      "input": "<p></p><span></span>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "image-kept",
+      "note": "the strip pattern keeps `<img>`; with no base URL the frozen `NetworkUtils.getAbsoluteURL(null, src)` returns the trimmed src",
+      "input": "<p>前<img src=\"/i/1.png\">后</p>",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "image-absolute-base",
+      "note": "with a base URL the frozen rewrites the kept `<img>`'s src to the absolute address — the image half this ticket does not implement",
+      "input": "<p>前<img src=\"/i/1.png\">后</p>",
+      "baseUrl": "http://a.test/chapter/4057/1.html",
+      "compare": "img-src-verbatim"
+    },
+    {
+      "name": "image-option-tail-kept",
+      "note": "a templated/option-carrying src reaches `AnalyzeUrl.paramPattern` (`\\s*,\\s*(?=\\{)`), whose tail the frozen appends to the resolved address",
+      "input": "<img src=\"/i/1.png,{\\\"js\\\":\\\"java.toast('x')\\\"}\">",
+      "baseUrl": null,
+      "compare": "exact"
+    },
+    {
+      "name": "json-page-value",
+      "input": "第一页",
+      "baseUrl": null,
+      "compare": "exact",
+      "note": "one page's value from a JSON content rule (`$.body`) with no markup: the frozen content stage is adapter-agnostic, and this pass leaves such a value as it is"
+    },
+    {
+      "name": "json-page-value-multiline",
+      "input": "第一页\n第二页",
+      "baseUrl": null,
+      "compare": "exact",
+      "note": "a JSON page value carrying a newline: the formatter indents the line after it. A JSON chapter's page join (`BookContent.kt:129`) happens after this pass, so the join's own newline is not this pass's input"
+    }
+  ]
+}

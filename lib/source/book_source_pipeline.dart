@@ -98,18 +98,70 @@ bool _sourceIsKotlinWhitespace(int unit) =>
     unit == 0x205F ||
     unit == 0x3000;
 
-/// Frozen HtmlFormatter.format used for search and book-information intros.
-String formatSourceIntro(String value) => value
+/// `HtmlFormatter.wrapHtmlRegex`: the tag family that stands for a paragraph
+/// break in the frozen formatter.
+final RegExp _wrapHtmlRegex = RegExp(
+  r'</?(?:div|p|br|hr|h\d|article|dd|dl)[^>]*>',
+);
+
+/// `HtmlFormatter.otherHtmlRegex`, the tag pass of `format`'s default call.
+final RegExp _otherHtmlRegex = RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>');
+
+/// `HtmlFormatter.notImgHtmlRegex`: the same pass with `img` kept, which is what
+/// `formatKeepImg` hands to `format`.
+final RegExp _keepImgHtmlRegex = RegExp(r'</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>');
+
+/// Frozen `HtmlFormatter.format(html, otherHtmlRegex)`: the entity folding, the
+/// paragraph-break tag family, comments, the tag pass [otherHtmlRegex] picks,
+/// then the paragraph indentation (`HtmlFormatter.kt:20-34`).
+String _formatHtml(String value, RegExp otherHtmlRegex) => value
     .replaceAll(RegExp(r'(&nbsp;)+'), ' ')
     .replaceAll(RegExp(r'(&ensp;|&emsp;)'), ' ')
     .replaceAll(RegExp('(&thinsp;|&zwnj;|&zwj;|\u2009|\u200C|\u200D)'), '')
-    .replaceAll(RegExp(r'</?(?:div|p|br|hr|h\d|article|dd|dl)[^>]*>'), '\n')
+    .replaceAll(_wrapHtmlRegex, '\n')
     .replaceAll(RegExp(r'<!--[^>]*-->'), '')
-    .replaceAll(RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>'), '')
+    .replaceAll(otherHtmlRegex, '')
     // Java's default \\s is ASCII, unlike Dart's ECMAScript whitespace class.
     .replaceAll(RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'), '\n　　')
     .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), '　　')
     .replaceAll(RegExp(r'[\n \t\x0b\f\r]+$'), '');
+
+/// Frozen `HtmlFormatter.format` used for search and book-information intros
+/// (`BookList.kt:251`, `BookInfo.kt:123`), whose tag pass is the house one.
+String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
+
+/// The frozen content stage's own HTML pass, `BookContent.kt:178`:
+///
+/// ```kotlin
+/// content = HtmlFormatter.formatKeepImg(content, rUrl)
+/// ```
+///
+/// A source whose `ruleContent.content` ends in `@html` hands this stage HTML
+/// by design — the field is jsoup's `Elements.outerHtml()`, so the tags are the
+/// data. The frozen reader turns that HTML into text before any reader sees it,
+/// and this is that turn: `formatKeepImg` is `format` with the `img`-keeping
+/// tag pass, so the tag family that carries a paragraph break (`div`, `p`, `br`,
+/// `hr`, `h\d`, `article`, `dd`, `dl`) becomes a newline, every other tag
+/// becomes nothing, an HTML comment is dropped, `&nbsp;`/`&ensp;`/`&emsp;` fold
+/// to one space and `&thinsp;`/`&zwnj;`/`&zwj;` (and their literal forms) are
+/// removed, then every paragraph is indented — the frozen expression chain, in
+/// the frozen order (`tool/html_content_oracle/` executes it as it stands).
+///
+/// Two divergences are deliberate, and both are recorded rather than hidden:
+///
+/// - the frozen `formatKeepImg` also rewrites a kept `<img>` element's `src` to
+///   an absolute address through `NetworkUtils.getAbsoluteURL(rUrl, …)`. This
+///   product reads the element out of the text ([extractChapterImages]) and
+///   resolves its address against the chapter's own URL at fetch time, so the
+///   markup keeps the source's own text here. `#67` owns the reader's images.
+/// - the frozen unescapes entities *after* this pass, and only when a `&`
+///   survives it (`BookContent.kt:179-181`), while this product's rule read has
+///   already unescaped once (`HtmlRuleBatch.documentText`). The entity branches
+///   therefore fire for a rule value that still carries the entity text — a
+///   value a `@js:` segment produced — and a page that wrote its tags escaped
+///   (`&lt;p&gt;`) keeps them on the frozen side where this pass strips them.
+String formatChapterContent(String value) =>
+    _formatHtml(value, _keepImgHtmlRegex);
 
 /// Formats a source word-count value using Legado's `StringUtils.wordCountFormat`.
 ///

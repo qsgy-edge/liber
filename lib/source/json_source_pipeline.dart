@@ -1335,11 +1335,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
             );
           }
         }
+        // The frozen content stage turns one page's value into text here, before
+        // the pages are joined (`BookContent.kt:178`) — the same pass the HTML
+        // adapter runs, because the frozen stage is adapter-agnostic.
         parts.add(
-          await _text(
-            document,
-            content['content']!,
-            label: 'ruleContent.content',
+          formatChapterContent(
+            await _text(
+              document,
+              content['content']!,
+              label: 'ruleContent.content',
+            ),
           ),
         );
         // The frozen reads a page's next-URL rule only on the pages it walks

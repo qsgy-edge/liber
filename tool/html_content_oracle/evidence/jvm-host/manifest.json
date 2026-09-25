@@ -1,0 +1,60 @@
+{
+  "surface": "the frozen content stage's HTML pass, `BookContent.kt:178-181`: `HtmlFormatter.formatKeepImg(content, rUrl)` then `StringEscapeUtils.unescapeHtml4(content)` when the formatted text still carries `&`",
+  "provenance": "source-executed on a host JVM; NOT the four-stage device oracle",
+  "baseline": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "082685b5d75ad2ef14bb5fc8d5dd8273667fe5cf",
+      "role": "compiled from the frozen bytes; `formatKeepImg` and `format` are what this corpus executes"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "c262b0a01355b600e8c0cdae39955b4f3fd12d12",
+      "role": "lines 178-181, the deciding call and the unescape that follows it; transcribed into the harness and verified against this file at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "c07a674525254d3539687f7b205aaa609375b941",
+      "role": "`getAbsoluteURL(URL?, String)` (lines 174-189), reached by the image branch; transcribed into the harness's stub and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "ad323d5a7f4f77f7a4c0aef1ffb0b2bdac7651c1",
+      "role": "`isAbsUrl` (lines 36-39) and `isDataUrl` (lines 41-44), the two predicates inside `getAbsoluteURL`; transcribed and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d3e3de8230a58b5f7a7419c2c981096f6b8815be",
+      "role": "`paramPattern` (line 658), reached by a templated image src; transcribed and verified at run time"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/AppPattern.kt",
+      "sha1": "b70471e4da24bbd574b6a83007e99828ee44c82e",
+      "role": "compiled from the frozen bytes; `dataUriRegex` is what the transcribed `isDataUrl` uses"
+    }
+  ],
+  "harness": "tool/html_content_oracle/HtmlContentOracle.kt",
+  "fixtures": "tool/html_content_oracle/fixtures.json",
+  "golden": "tool/html_content_oracle/evidence/jvm-host/golden.json",
+  "goldenSha1": "99354ca699565459daf43863ad898478b53a62a3",
+  "command": "bash tool/html_content_oracle/run_golden.sh",
+  "toolchain": {
+    "kotlinCompiler": "kotlin-compiler-embeddable-2.3.20",
+    "kotlinStdlib": "kotlin-stdlib-2.3.20",
+    "kotlinReflect": "kotlin-reflect-2.2.0",
+    "gson": "gson-2.11.0",
+    "commonsText": "commons-text-1.13.0",
+    "commonsLang3": "commons-lang3-3.17.0",
+    "jvmTarget": "1.8"
+  },
+  "jvm": "Oracle Corporation 1.8.0_503 (Windows 11)",
+  "recordedAt": "2026-09-25T11:40:45.183Z",
+  "determinism": "Every case is evaluated twice and the run is refused when the two runs differ. HtmlFormatter reads no clock, no random source and no state, so this guards a future corpus row rather than a known non-deterministic branch.",
+  "transcription": "HtmlFormatter.kt is compiled from the frozen bytes. Four statements reached through it are transcribed and verified at run time against the frozen files, because the files that declare them import OkHttp/hutool/Room and cannot be compiled on a desktop JVM: the content pass's unescape (BookContent.kt:178-181), NetworkUtils.getAbsoluteURL (NetworkUtils.kt:174-189, reached only by an image src), StringExtensions.isAbsUrl/isDataUrl (StringExtensions.kt:36-44) and AnalyzeUrl.paramPattern (AnalyzeUrl.kt:658, reached only by a templated image src). The one statement dropped from the getAbsoluteURL transcription is its AppLog.put failure log, which writes through Android's Log.",
+  "deviceRow": {
+    "status": "not-run",
+    "owner": "#101",
+    "reason": "The frozen's own content stage inside the installed APK (`BookContent.analyzeContent`) is not driven here: this host harness executes the frozen HtmlFormatter bytes and a verified transcription of the four statements around them. No device golden exists for this row."
+  }
+}
