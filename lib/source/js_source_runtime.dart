@@ -28,6 +28,49 @@ typedef SourceHostCall =
 /// give the parked budget back. `false` means the execution is gone.
 typedef SourceDeadlinePark = Future<bool> Function(BigInt executionId);
 
+/// The four frozen `AnalyzeRule` members a rule reaches through `java`
+/// (`AnalyzeRule.kt:159,246,252,259,328,363`): one rule read against the
+/// analysis's content object.
+enum SourceRuleForm { string, stringList, element, elements }
+
+/// One `@js:`/`<js>` segment of a rule a member asked for: the value the
+/// previous segment produced is bound as `result`, exactly as the frozen
+/// `AnalyzeRule.evalJS(rule, result)` does (`AnalyzeRule.kt:749-768`).
+typedef SourceRuleScript =
+    Future<Object?> Function(String script, Object? result);
+
+/// One `java.getString`/`getStringList`/`getElement`/`getElements` call, as the
+/// pipeline that owns the running analysis reads it.
+class SourceRuleRead {
+  const SourceRuleRead({
+    required this.member,
+    required this.form,
+    required this.rule,
+    required this.content,
+    required this.evaluateScript,
+  });
+
+  /// The member that asked (`java.getString`), as its refusal names it.
+  final String member;
+  final SourceRuleForm form;
+
+  /// The rule text. Never empty: the frozen `TextUtils.isEmpty` branch answers
+  /// before any content is read, and the facade short-circuits it there.
+  final String rule;
+
+  /// The content object the rule is evaluated against: the analysis's own
+  /// content, or the argument the source passed.
+  final Object? content;
+
+  final SourceRuleScript evaluateScript;
+}
+
+/// One rule evaluated by the pipeline that owns the analysis: the frozen
+/// `AnalyzeRule.getString` and its three siblings *are* that pipeline's rule
+/// evaluator, so the host member calls into it instead of starting a second
+/// engine (ADR 0012's "three edits" seam).
+typedef SourceRuleEvaluator = Future<Object?> Function(SourceRuleRead read);
+
 /// One stage response as the pipeline reads it and as a source's `loginCheckJs`
 /// sees it.
 ///
@@ -291,6 +334,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.jsLib = '',
     this.androidId = '',
     this.onMessage,
+    this.ruleEvaluator,
     SourceHostState? hostState,
     this.webViewFactory,
     this.hatchSurface,
@@ -320,6 +364,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   final SourceHostCall? hostCall;
   final SourceHostDispatcher? dispatcher;
   final SourceHostState? _providedState;
+
+  /// The rule evaluator `java.getString`/`getStringList`/`getElement`/
+  /// `getElements` run through: the pipeline's own rule path over the content
+  /// object the member was given (ADR 0012). Null when this runtime owns no
+  /// analysis — a gate, a tool, a login script — and then a member that carries
+  /// a content object refuses by name instead of reading it with an engine of
+  /// its own.
+  final SourceRuleEvaluator? ruleEvaluator;
 
   /// The rendered-document adapter factory the `java.webView*` helpers use. Null
   /// builds one from [dispatcher]'s source scope; a test substitutes its own,
@@ -603,6 +655,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             );
           } else if (method == 'convert') {
             answer = _handleConvert(payload);
+          } else if (method == 'rule') {
+            answer = await _handleRule(payload, request.id, input, token);
           } else if (method == 'request') {
             answer = await _dispatch(host, payload, request.id, input, token);
           } else if (method == 'connect') {
@@ -1593,6 +1647,109 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     return decoded;
   }
 
+  /// Frozen `AnalyzeRule.getString`/`getStringList`/`getElement`/
+  /// `getElements` (`AnalyzeRule.kt:166,246,259,328,363`): one rule read
+  /// against the analysis's content object by the pipeline that owns that
+  /// analysis ([ruleEvaluator]) — the member is that pipeline's own rule path,
+  /// not a second engine, so the source's variables, book/chapter snapshots and
+  /// host surface are the ones the rule field already runs in.
+  ///
+  /// The content is the object the source passed, or the `src` binding of the
+  /// rule field the script runs in: the frozen `AnalyzeRule.evalJS` binds its
+  /// own `content` as `src` (`AnalyzeRule.kt:759`), and the pipelines bind the
+  /// content a field is being read against. With neither, the frozen's
+  /// `content == null` branch answers its empty result and reads nothing
+  /// (`AnalyzeRule.kt:196-200,267-289,335-338,370-373`).
+  Future<Object?> _handleRule(
+    Object? payload,
+    BigInt requestId,
+    Map<String, Object?> input,
+    SourceCancellation token,
+  ) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid rule call');
+    }
+    final member = payload['member'] is String
+        ? payload['member'] as String
+        : 'java.getString';
+    final form = switch ('${payload['form']}') {
+      'string' => SourceRuleForm.string,
+      'stringList' => SourceRuleForm.stringList,
+      'element' => SourceRuleForm.element,
+      'elements' => SourceRuleForm.elements,
+      _ => throw const SourceScriptError('host-method', 'rule form refused'),
+    };
+    final rule = payload['rule'];
+    if (rule is! String || rule.isEmpty) {
+      throw const SourceScriptError('host-input', 'invalid rule');
+    }
+    final content = payload['content'] ?? input['src'];
+    if (content == null) {
+      return switch (form) {
+        SourceRuleForm.string => '',
+        SourceRuleForm.stringList => null,
+        SourceRuleForm.element => null,
+        SourceRuleForm.elements => const <Object?>[],
+      };
+    }
+    final evaluator = ruleEvaluator;
+    if (evaluator == null) {
+      throw _refuseMember(
+        member,
+        '$member 需要一个规则求值器：这次求值没有书源规则字段的读取路径（ADR 0012）',
+      );
+    }
+    try {
+      return await evaluator(
+        SourceRuleRead(
+          member: member,
+          form: form,
+          rule: rule,
+          content: content,
+          evaluateScript: (script, result) =>
+              _evaluateRuleScript(script, result, requestId, input, token),
+        ),
+      );
+    } on SourceScriptError {
+      rethrow;
+    } on Object catch (error) {
+      // The reader's own refusal belongs to the source, which reads it through
+      // the bridge: the classification is kept and its message carried, so a
+      // rule the adapter cannot run names itself instead of arriving as a bare
+      // category.
+      final failure = _classifyScript(error);
+      throw SourceScriptError(
+        failure.category,
+        failure.message.isEmpty ? '$member: $error' : failure.message,
+      );
+    }
+  }
+
+  /// One `@js:`/`<js>` segment of a rule a member asked for, on the running
+  /// execution's own bridge (like a URL segment's `{{…}}`): the frozen
+  /// `AnalyzeRule.evalJS` runs it in the analysis's scope, with the value the
+  /// previous segment produced as `result` and the analysis's content still
+  /// bound as `src`.
+  Future<Object?> _evaluateRuleScript(
+    String script,
+    Object? result,
+    BigInt requestId,
+    Map<String, Object?> outerInput,
+    SourceCancellation token,
+  ) async {
+    token.throwIfCancelled();
+    final value = await evalBridgeRequestGlobal(
+      id: requestId,
+      source: _wrap(script, {...outerInput, 'result': result}),
+    );
+    token.throwIfCancelled();
+    final decoded = value.value;
+    if (utf8.encode(jsonEncode(decoded)).length > maxHostBytes) {
+      throw const SourceScriptError('host-output-cap');
+    }
+    return decoded;
+  }
+
   /// BaseSource.kt:103-130: evaluate the header afresh, tolerate malformed
   /// JSON, and add User-Agent only if no case-insensitive slot exists.
   ///
@@ -2307,6 +2464,18 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   // A source's `title` argument is a value binding, not an optional one: the frozen
   // member declares a String, so an absent one is the empty title.
   const optionalText = value => (value === null || value === undefined) ? null : String(value);
+  // The frozen rule members' rule text: `TextUtils.isEmpty` reads a null or
+  // empty rule, and Rhino coerces any other argument to the declared String.
+  const ruleText = rule => (rule === null || rule === undefined) ? '' : String(rule);
+  // Frozen `AnalyzeRule.getString`'s `isUrl` branch answers an absolute address
+  // resolved against the analysis's own redirect/base URL
+  // (`AnalyzeRule.kt:303-311`), which this product's members do not carry, so
+  // that form refuses by name. `AnalyzeRule.getMessageUrl`'s deduplicating list
+  // form (`:236-246`) is the same refusal for `getStringList`.
+  const refuseRuleUrl = member => call('refuse', {
+    member: member,
+    policy: 'the isUrl form: an absolute address needs the analysis\'s own redirect/base URL (#90)'
+  });
 
   const java = Object.freeze({
     connect: (...args) => {
@@ -2333,6 +2502,53 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     initUrl: () => {
       if (!checkResponse) return refuseStage('java.initUrl');
       call('stageInitUrl', null);
+    },
+    // Frozen `AnalyzeRule.getString`/`getStringList`/`getElement`/
+    // `getElements` (`AnalyzeRule.kt:159,166,246,252,259,328,363`): each member
+    // reads one rule with the analysis's own evaluator, against the content
+    // object the source passes or the `src` binding of the rule field this
+    // script runs in. A null or empty rule is the frozen `TextUtils.isEmpty`
+    // answer and never reaches a content object; the Boolean second argument of
+    // `getString` is the frozen `(ruleStr, unescape)` overload, which Rhino
+    // picks by type, with `unescape = true` as the frozen default.
+    getString: (rule, contentOrUnescape, isUrl) => {
+      const text = ruleText(rule);
+      if (text === '') return '';
+      const unescapeOnly = typeof contentOrUnescape === 'boolean' && isUrl === undefined;
+      if (unescapeOnly && contentOrUnescape === false) {
+        return call('refuse', {
+          member: 'java.getString',
+          policy: 'the unescape=false form: the rule read owns the entity pass (AnalyzeRule.kt:296-302)'
+        });
+      }
+      if (isUrl === true) return refuseRuleUrl('java.getString');
+      return call('rule', {
+        member:'java.getString', form:'string', rule:text,
+        content: unescapeOnly ? undefined : contentOrUnescape
+      });
+    },
+    getStringList: (rule, content, isUrl) => {
+      const text = ruleText(rule);
+      if (text === '') return null;
+      if (isUrl === true) return refuseRuleUrl('java.getStringList');
+      return call('rule', {
+        member:'java.getStringList', form:'stringList', rule:text, content: content
+      });
+    },
+    // The frozen declares one argument for these two (no content overload), so a
+    // second argument is refused here instead of being read as the analysis's
+    // content.
+    getElement: function(rule) {
+      if (arguments.length > 1) throw new Error('java.getElement expects one argument');
+      const text = ruleText(rule);
+      if (text === '') return null;
+      return call('rule', {member:'java.getElement', form:'element', rule:text});
+    },
+    getElements: function(rule) {
+      if (arguments.length > 1) throw new Error('java.getElements expects one argument');
+      const text = ruleText(rule);
+      if (text === '') return [];
+      return call('rule', {member:'java.getElements', form:'elements', rule:text});
     },
     get: (...args) => {
       if (args.length === 1) return call('state', {op:'get', key:String(args[0])});

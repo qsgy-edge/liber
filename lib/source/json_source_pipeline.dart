@@ -221,6 +221,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     hostState: _hostSurface,
     androidId: androidId,
     onMessage: (message) => onHostMessage?.call(message),
+    ruleEvaluator: _readScriptRule,
   );
 
   /// The headers every request and `java.ajax` carries: the source's own
@@ -257,13 +258,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'loginUrl': source['loginUrl'],
   };
 
-  Map<String, Object?> _scriptInput(String keyword, Object? result) => {
+  Map<String, Object?> _scriptInput(
+    String keyword,
+    Object? result, {
+    Object? content,
+  }) => {
     'sourceKey': _sourceRef,
     'source': _sourceFields,
     'key': keyword,
     'page': _page,
     'baseUrl': '$_base',
     'result': result,
+    // The frozen `AnalyzeRule.evalJS` binds the analysis's own content as `src`
+    // (`AnalyzeRule.kt:759`): it is the content the field being read carries, so
+    // `java.getString` and its siblings read the object this field's own rule
+    // read used when the source passes no content of its own.
+    'src': ?content,
     'title': _chapterTitle,
     'nextChapterUrl': _nextChapterUrl,
     'book': _book == null
@@ -294,11 +304,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String keyword,
     Object? result, {
     String label = '',
+    Object? content,
   }) async {
     try {
       return await _runtime.evaluate(
         source: script,
-        input: _scriptInput(keyword, result),
+        input: _scriptInput(keyword, result, content: content),
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
@@ -370,13 +381,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// [label] is the rule field being read (`ruleBookInfo.kind`): a script this
   /// field runs carries it into the failure it reports, so the interface and the
   /// source log name the field instead of the bare `js`.
-  RuleFieldContext _ruleContext(String label) => RuleFieldContext(
-    evaluateScript: (script, result) =>
-        _evalJs(script, _keyword, result, label: label),
-    extract: (value, rule) async => JsonSourceRules.extract(value, rule),
-    readVariable: _readRuleVariable,
-    writeVariable: _writeRuleVariable,
-  );
+  RuleFieldContext _ruleContext(String label, Object? content) =>
+      RuleFieldContext(
+        evaluateScript: (script, result) =>
+            _evalJs(script, _keyword, result, label: label, content: content),
+        extract: (value, rule) async => JsonSourceRules.extract(value, rule),
+        readVariable: _readRuleVariable,
+        writeVariable: _writeRuleVariable,
+      );
 
   Future<String> _readRuleVariable(String key) async {
     if (key == 'bookName') return _book?.title ?? '';
@@ -397,7 +409,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<Object?> _field(Object? value, String rule, {String label = ''}) async {
     final field = await RuleField.resolve(
       rule,
-      _ruleContext(label),
+      _ruleContext(label, value),
       content: value,
     );
     final extracted = field.isScriptOnly
@@ -417,7 +429,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     final field = await RuleField.resolve(
       rule,
-      _ruleContext(label),
+      _ruleContext(label, value),
       content: value,
     );
     if (field.scripts.isNotEmpty) {
@@ -445,6 +457,53 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     if (rule.trim().isEmpty) return '';
     return '${await _field(value, rule, label: label) ?? ''}';
+  }
+
+  /// One `java.getString`/`getStringList`/`getElement`/`getElements` call from a
+  /// rule script — the frozen `AnalyzeRule.getString` and its three siblings
+  /// (`AnalyzeRule.kt:159,166,246,252,259,328,363`) — read by *this* adapter's
+  /// rule path over the content object the member was given: the same
+  /// `RuleField`/`JsonSourceRules` read this stage reads its own fields with,
+  /// not a second engine (ADR 0012).
+  ///
+  /// The frozen list and element forms are the JSON reader's own reads:
+  /// `getStringList` is `AnalyzeByJSonPath.getStringList` (one text per match),
+  /// `getElement` its `getObject` and `getElements` its `getList`
+  /// (`AnalyzeByJSonPath.kt:79-154`). A rule that carries a script segment in
+  /// those three forms refuses by name, as this adapter's element-list fields
+  /// do: the frozen answers such a rule with the script's value re-read as a
+  /// document, which this reader does not do.
+  Future<Object?> _readScriptRule(SourceRuleRead read) async {
+    final field = await RuleField.resolve(
+      read.rule,
+      _ruleContext(read.member, read.content),
+      content: read.content,
+    );
+    if (read.form != SourceRuleForm.string && field.scripts.isNotEmpty) {
+      throw SourceScriptError(
+        'policy',
+        '${read.member} 暂不支持带脚本的列表/元素规则：${read.rule}',
+      );
+    }
+    switch (read.form) {
+      case SourceRuleForm.string:
+        final extracted = field.isScriptOnly
+            ? read.content
+            : JsonSourceRules.extract(read.content, field.extractionRule!);
+        return '${await field.apply(extracted) ?? ''}';
+      case SourceRuleForm.stringList:
+        return [
+          for (final value in JsonSourceRules.list(
+            read.content,
+            field.extractionRule!,
+          ))
+            '$value',
+        ];
+      case SourceRuleForm.element:
+        return JsonSourceRules.read(read.content, field.extractionRule!);
+      case SourceRuleForm.elements:
+        return JsonSourceRules.list(read.content, field.extractionRule!);
+    }
   }
 
   Future<String> _expand(String template, String keyword) => expandSourceUrl(
@@ -1307,7 +1366,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     final field = await RuleField.resolve(
       rule,
-      _ruleContext(label),
+      _ruleContext(label, document),
       content: document,
     );
     if (field.isScriptOnly) {
