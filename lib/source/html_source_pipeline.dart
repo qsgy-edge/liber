@@ -142,6 +142,35 @@ List<SourceChapterImage> extractChapterImages(String text) => [
     ),
 ];
 
+/// One item an element-list rule produced, as the frozen `BookList` loop reads
+/// it (`BookList.kt:101-127`): an element, or a plain value a list script built.
+class _ListItem {
+  const _ListItem.element(this.dom, this.rule) : value = null;
+  const _ListItem.value(this.value) : dom = null, rule = null;
+
+  /// The document the element lives in, or null for a value item.
+  final String? dom;
+
+  /// The rule that selects the element in [dom], or null for its root.
+  final String? rule;
+
+  /// The value item, or null for an element item.
+  final Object? value;
+
+  bool get isElement => dom != null;
+}
+
+/// One step of the frozen element-list walk: the raw value a segment produced,
+/// or the elements an extraction segment selected (each with the rule that
+/// addresses it in the step's document).
+class _ListStep {
+  const _ListStep.raw(this.value) : elements = null;
+  const _ListStep.elements(this.elements) : value = null;
+
+  final Object? value;
+  final List<({String dom, String rule})>? elements;
+}
+
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
 ///
 /// Every stage parses its page once and hands the whole document plus that
@@ -236,6 +265,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         androidId: androidId,
         onMessage: (message) => onHostMessage?.call(message),
         ruleEvaluator: _readScriptRule,
+        domEvaluator: _domOp,
       );
   @override
   final trace = <BookSourceTraceEntry>[];
@@ -475,31 +505,37 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<void> _writeRuleVariable(String key, String value) => _hostSurface
       .putEntry(_sourceRef, sourceRuleVariableKey(_sourceRef, key), value);
 
+  /// One node-façade read ([SourceDomRead]) over the product's own Rust HTML
+  /// adapter. `count` runs the selector and answers how many elements it
+  /// matched; `extract` runs the selector and answers one value per matched
+  /// element — jsoup `Element.text()`, `Element.outerHtml()` (`html`), or an
+  /// attribute name. The tree is parsed from [SourceDomRead.html], which is the
+  /// document the node came from, so a node's own `select` scopes to its
+  /// subtree exactly as jsoup's does.
+  Future<Object?> _domOp(SourceDomRead read) async {
+    final batch = HtmlRuleBatch(read.html);
+    final selection = batch.elements('node', read.rule ?? ':root');
+    if (read.op == SourceDomOp.count) {
+      await batch.run();
+      return selection.length;
+    }
+    final values = batch.elementsText('value', '@${read.extract}', selection);
+    await batch.run();
+    return values.values;
+  }
+
   /// One rule field through the shared path: the `@js:`/`<js>` split and the
   /// `{{...}}`/`@get:`/`@put:` substitution happen before the stage's batch is
   /// declared, the script segments run on the extracted value afterwards.
   ///
   /// [label] is the rule field this value comes from (`ruleBookInfo.kind`); a
   /// script failure inside it reports the field's name.
-  ///
-  /// [allowScripts] is false for an element-*list* rule (`bookList`,
-  /// `chapterList`): an element set is not a value this path can hand back, so a
-  /// script there is refused by name rather than dropped.
   Future<RuleField> _field(
     String raw, {
     required String content,
-    bool allowScripts = true,
     String label = '',
   }) async {
-    final field = await RuleField.resolve(
-      raw,
-      _ruleContext(label, content),
-      content: content,
-    );
-    if (!allowScripts && field.scripts.isNotEmpty) {
-      throw UnsupportedError('暂不支持元素列表规则里的 JavaScript：$raw');
-    }
-    return field;
+    return RuleField.resolve(raw, _ruleContext(label, content), content: content);
   }
 
   /// One `java.getString`/`getStringList`/`getElement`/`getElements` call from a
@@ -550,20 +586,200 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }
 
   /// One per-element value rule of a stage. `{{...}}`/`@get:` substitution
-  /// applies; a rule that is *only* a script is refused by name, because the
-  /// frozen `result` of such a rule is the matched element, which the JavaScript
-  /// boundary cannot carry.
+  /// applies, and the rule's `@js:`/`<js>` scripts run on the value the rule
+  /// produced (the extraction text when it declares one, the element the
+  /// element-list rule matched when the field is script only — the frozen
+  /// `AnalyzeRule.setContent(item)` binding, `BookList.kt:208`).
   Future<RuleField> _elementField(
     String raw, {
     required String content,
     String label = '',
-  }) async {
-    final field = await _field(raw, content: content, label: label);
-    if (field.isScriptOnly) {
-      throw UnsupportedError('暂不支持只有脚本的元素规则：$raw');
+  }) => _field(raw, content: content, label: label);
+
+  /// One item an element-list rule produced, as the frozen `BookList` loop
+  /// reads it (`BookList.kt:101-127`): an element (the document it lives in and
+  /// the rule that selects it, so its own `select`/`attr`/`text` read that
+  /// element) or a plain value a list script built (a string, or a JSON object).
+  /// A string item is the frozen `AnalyzeRule.setContent(item)` binding for a
+  /// per-element field script.
+  Future<List<_ListItem>> _listItems(
+    String raw,
+    String body,
+    String label,
+  ) async {
+    var step = _ListStep.raw(body);
+    for (final segment in parseRuleFieldSegments(raw)) {
+      if (segment.isScript) {
+        // The frozen loop binds the previous segment's value as `result`
+        // (`AnalyzeRule.kt:363-390`): after an extraction that value is the
+        // matched element list, which the façade answers as node descriptors so
+        // a script can index, iterate or stringify it.
+        final elements = step.elements;
+        final value = elements == null
+            ? step.value
+            : [
+                for (final element in elements)
+                  <String, Object?>{'__dom': element.dom, '__rule': element.rule},
+              ];
+        step = _ListStep.raw(
+          await _evalJs(segment.text, _keyword, value, label: label),
+        );
+      } else {
+        step = await _listExtract(step, segment.text, label);
+      }
     }
-    return field;
+    return _itemsOfStep(step);
   }
+
+  /// One extraction segment of a scripted element-list rule: the frozen
+  /// `getAnalyzeByJSoup(result).getElements(rule)` parses the current value as a
+  /// document and selects from it. The value may be the response body string, a
+  /// string a script produced, or a node the façade answered.
+  Future<_ListStep> _listExtract(
+    _ListStep step,
+    String rule,
+    String label,
+  ) async {
+    if (step.elements != null) {
+      throw UnsupportedError('$label 的提取片段不能跟在另一个提取片段之后：$rule');
+    }
+    final String dom;
+    final String combined;
+    final value = step.value;
+    if (value is Map) {
+      final source = value['__dom'];
+      if (source is! String) {
+        throw UnsupportedError('$label 的脚本结果不是可提取的文档：$rule');
+      }
+      dom = source;
+      final base = value['__rule'];
+      combined = base is String ? '$base@$rule' : rule;
+    } else if (value is String) {
+      dom = value;
+      combined = rule;
+    } else {
+      throw UnsupportedError('$label 的脚本结果不是文本或元素，无法继续提取：$rule');
+    }
+    final batch = HtmlRuleBatch(dom);
+    final selection = batch.elements('items', combined);
+    await batch.run();
+    return _ListStep.elements([
+      for (var index = 0; index < selection.length; index++)
+        (dom: dom, rule: '$combined.$index'),
+    ]);
+  }
+
+  /// The items one scripted element-list rule's final value carries: an element
+  /// selection, a string list the frozen `AnalyzeRule.getStringList` splits on
+  /// newlines, or a script's own array (element descriptors, strings, objects).
+  List<_ListItem> _itemsOfStep(_ListStep step) {
+    final elements = step.elements;
+    if (elements != null) {
+      return [for (final element in elements) _ListItem.element(element.dom, element.rule)];
+    }
+    final value = step.value;
+    if (value == null) return const <_ListItem>[];
+    if (value is String) {
+      return [
+        for (final line in value.split('\n'))
+          if (line.isNotEmpty) _ListItem.value(line),
+      ];
+    }
+    if (value is List) return [for (final item in value) _listItemOf(item)];
+    return <_ListItem>[_listItemOf(value)];
+  }
+
+  _ListItem _listItemOf(Object? value) {
+    if (value is Map && value['__dom'] is String) {
+      final rule = value['__rule'];
+      return _ListItem.element(
+        value['__dom'] as String,
+        rule is String ? rule : null,
+      );
+    }
+    return _ListItem.value(value);
+  }
+
+  /// One element-list field's values, over either the page batch or the items a
+  /// scripted list rule produced. A script-only field runs its script against
+  /// the item itself (an element node, or a plain value); an extraction field
+  /// keeps the batch read.
+  Future<List<String>> _listFieldValues({
+    required RuleField field,
+    required List<_ListItem>? scriptedItems,
+    required HtmlStringList? job,
+    required List<String> itemHtmls,
+    String label = '',
+    bool url = false,
+  }) async {
+    if (scriptedItems != null) {
+      return [
+        for (final item in scriptedItems)
+          await _itemFieldValue(item, field, label, url: url),
+      ];
+    }
+    if (field.isScriptOnly) {
+      return [
+        for (final html in itemHtmls)
+          await _itemFieldValue(
+            _ListItem.element(html, 'body > :first-child'),
+            field,
+            label,
+            url: url,
+          ),
+      ];
+    }
+    return _perElement(field, job!.values, url: url);
+  }
+
+  Future<String> _itemFieldValue(
+    _ListItem item,
+    RuleField field,
+    String label, {
+    bool url = false,
+  }) async {
+    if (item.isElement) {
+      final dom = item.dom!;
+      final rule = item.rule ?? ':root';
+      if (field.isScriptOnly) {
+        final value = await field.apply(<String, Object?>{
+          '__dom': dom,
+          '__rule': rule,
+        });
+        return '${value ?? ''}';
+      }
+      final batch = HtmlRuleBatch(dom);
+      final selection = batch.elements('item', rule);
+      final values = batch.elementsText(
+        'value',
+        field.extractionRule!,
+        selection,
+      );
+      await batch.run();
+      final extracted = values.values.isEmpty ? '' : values.values.first;
+      return '${await field.apply(_urlFallback(field, extracted, url)) ?? ''}';
+    }
+    if (field.isScriptOnly) {
+      return '${await field.apply(item.value) ?? ''}';
+    }
+    // The frozen `AnalyzeByJSoup(result)` parses a non-element item's text as a
+    // document before its rule runs.
+    final batch = HtmlRuleBatch('${item.value ?? ''}');
+    final value = batch.documentText('value', field.extractionRule!);
+    await batch.run();
+    return '${await field.apply(_urlFallback(field, value.value, url)) ?? ''}';
+  }
+
+  /// The URL mode's replacement when the extraction found nothing, as
+  /// [_perElement] applies it.
+  String _urlFallback(RuleField field, String value, bool url) =>
+      url && value.isEmpty && !field.isScriptOnly
+      ? applyRuleReplacement(
+          '',
+          splitRuleFields(field.extractionRule!),
+          label: 'HTML',
+        )
+      : value;
 
   /// Declares the document job of one field, or none when the field is a script
   /// only.
@@ -870,84 +1086,110 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         )) {
       return _detailPageBooks(finalUrl, html);
     }
-    final batch = HtmlRuleBatch(html);
+    final rawList = _rule('ruleSearch', 'bookList');
     final listRule = await _field(
-      _rule('ruleSearch', 'bookList'),
+      rawList,
       content: html,
-      allowScripts: false,
       label: 'ruleSearch.bookList',
     );
-    final items = batch.elements('items', listRule.extractionRule!);
+    // A scripted element-list rule reads its own item list (the frozen
+    // `AnalyzeRule.getElements`); the extraction-only shape keeps the one
+    // batch over the page.
+    final scriptedItems = listRule.scripts.isEmpty
+        ? null
+        : await _listItems(rawList, html, 'ruleSearch.bookList');
+    final batch = HtmlRuleBatch(scriptedItems == null ? html : '');
+    final items = scriptedItems == null
+        ? batch.elements('items', listRule.extractionRule!)
+        : null;
     final name = await _elementField(
       _rule('ruleSearch', 'name'),
       content: html,
       label: 'ruleSearch.name',
     );
-    final names = batch.elementsText('name', name.extractionRule!, items);
     final bookUrl = await _elementField(
       _rule('ruleSearch', 'bookUrl'),
       content: html,
       label: 'ruleSearch.bookUrl',
     );
-    final urls = batch.elementsText('url', bookUrl.extractionRule!, items);
     final author = await _elementField(
       _rule('ruleSearch', 'author', optional: true),
       content: html,
       label: 'ruleSearch.author',
     );
-    final authors = batch.elementsText('author', author.extractionRule!, items);
     final intro = await _elementField(
       _rule('ruleSearch', 'intro', optional: true),
       content: html,
       label: 'ruleSearch.intro',
     );
-    final intros = batch.elementsText('intro', intro.extractionRule!, items);
     final lastChapter = await _elementField(
       _rule('ruleSearch', 'lastChapter', optional: true),
       content: html,
       label: 'ruleSearch.lastChapter',
-    );
-    final lastChapters = batch.elementsText(
-      'lastChapter',
-      lastChapter.extractionRule!,
-      items,
     );
     final wordCount = await _elementField(
       _rule('ruleSearch', 'wordCount', optional: true),
       content: html,
       label: 'ruleSearch.wordCount',
     );
-    final wordCounts = batch.elementsText(
-      'wordCount',
-      wordCount.extractionRule!,
-      items,
-    );
     final kind = await _elementField(
       _rule('ruleSearch', 'kind', optional: true),
       content: html,
       label: 'ruleSearch.kind',
     );
-    final kinds = batch.elementsText('kind', kind.extractionRule!, items);
+    final searchFields = <String, RuleField>{
+      'name': name,
+      'bookUrl': bookUrl,
+      'author': author,
+      'intro': intro,
+      'lastChapter': lastChapter,
+      'wordCount': wordCount,
+      'kind': kind,
+    };
+    final jobs = <String, HtmlStringList?>{
+      for (final entry in searchFields.entries)
+        entry.key: (scriptedItems == null && !entry.value.isScriptOnly)
+            ? batch.elementsText(
+                entry.key,
+                entry.value.extractionRule!,
+                items!,
+              )
+            : null,
+    };
+    // A script-only per-element field needs each item's own element
+    // (`BookList.kt:208` `setContent(item)`): its outer html is the node a
+    // script's `result` answers.
+    final itemHtmls = scriptedItems == null &&
+            searchFields.values.any((field) => field.isScriptOnly)
+        ? batch.elementsText('item-html', '@html', items!)
+        : null;
     await batch.run();
+    final count = scriptedItems?.length ?? items!.length;
     // The frozen companion to the branch above: an empty element list and no
     // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
-    if (items.isEmpty && bookUrlPattern.isEmpty) {
+    if (count == 0 && bookUrlPattern.isEmpty) {
       return _detailPageBooks(finalUrl, html);
     }
 
-    final titles = await _perElement(name, names.values);
-    final links = await _perElement(bookUrl, urls.values, url: true);
-    final authorValues = await _perElement(author, authors.values);
-    final introValues = await _perElement(intro, intros.values);
-    final lastChapterValues = await _perElement(
-      lastChapter,
-      lastChapters.values,
-    );
-    final wordCountValues = await _perElement(wordCount, wordCounts.values);
-    final kindValues = await _perElement(kind, kinds.values);
+    Future<List<String>> fieldValues(String key, {bool url = false}) =>
+        _listFieldValues(
+          field: searchFields[key]!,
+          scriptedItems: scriptedItems,
+          job: jobs[key],
+          itemHtmls: itemHtmls?.values ?? const <String>[],
+          label: 'ruleSearch.$key',
+          url: url,
+        );
+    final titles = await fieldValues('name');
+    final links = await fieldValues('bookUrl', url: true);
+    final authorValues = await fieldValues('author');
+    final introValues = await fieldValues('intro');
+    final lastChapterValues = await fieldValues('lastChapter');
+    final wordCountValues = await fieldValues('wordCount');
+    final kindValues = await fieldValues('kind');
 
     final books = <HtmlBook>[];
-    for (var index = 0; index < items.length; index++) {
+    for (var index = 0; index < count; index++) {
       // The address text the rule produced, option tail included: it is what
       // this book keeps ([HtmlBook.rawAddress]) and what the details request
       // parses, exactly as the frozen stores `book.bookUrl` (#97).
@@ -1064,23 +1306,23 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         final page = fetched.body;
         final pageUrl = fetched.url;
         tocPages++;
-        final batch = HtmlRuleBatch(page);
+        final rawList = _rule('ruleToc', 'chapterList');
         final listRule = await _field(
-          _rule('ruleToc', 'chapterList'),
+          rawList,
           content: page,
-          allowScripts: false,
           label: 'ruleToc.chapterList',
         );
-        final items = batch.elements('items', listRule.extractionRule!);
+        final scriptedItems = listRule.scripts.isEmpty
+            ? null
+            : await _listItems(rawList, page, 'ruleToc.chapterList');
+        final batch = HtmlRuleBatch(scriptedItems == null ? page : '');
+        final items = scriptedItems == null
+            ? batch.elements('items', listRule.extractionRule!)
+            : null;
         final nameField = await _elementField(
           _rule('ruleToc', 'chapterName'),
           content: page,
           label: 'ruleToc.chapterName',
-        );
-        final names = batch.elementsText(
-          'name',
-          nameField.extractionRule!,
-          items,
         );
         // A blank `chapterUrl` is not a refusal: the frozen reads an empty rule
         // list as `""` and then takes the empty-URL fallback
@@ -1091,35 +1333,48 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           content: page,
           label: 'ruleToc.chapterUrl',
         );
-        final urls = batch.elementsText('url', urlField.extractionRule!, items);
         final tagField = await _elementField(
           _rule('ruleToc', 'updateTime', optional: true),
           content: page,
           label: 'ruleToc.updateTime',
         );
-        final tags = batch.elementsText('tag', tagField.extractionRule!, items);
         final volumeField = await _elementField(
           _rule('ruleToc', 'isVolume', optional: true),
           content: page,
           label: 'ruleToc.isVolume',
-        );
-        final volumes = batch.elementsText(
-          'volume',
-          volumeField.extractionRule!,
-          items,
         );
         final vipField = await _elementField(
           _rule('ruleToc', 'isVip', optional: true),
           content: page,
           label: 'ruleToc.isVip',
         );
-        final vips = batch.elementsText('vip', vipField.extractionRule!, items);
         final payField = await _elementField(
           _rule('ruleToc', 'isPay', optional: true),
           content: page,
           label: 'ruleToc.isPay',
         );
-        final pays = batch.elementsText('pay', payField.extractionRule!, items);
+        final tocFields = <String, RuleField>{
+          'chapterName': nameField,
+          'chapterUrl': urlField,
+          'updateTime': tagField,
+          'isVolume': volumeField,
+          'isVip': vipField,
+          'isPay': payField,
+        };
+        final jobs = <String, HtmlStringList?>{
+          for (final entry in tocFields.entries)
+            entry.key: (scriptedItems == null && !entry.value.isScriptOnly)
+                ? batch.elementsText(
+                    entry.key,
+                    entry.value.extractionRule!,
+                    items!,
+                  )
+                : null,
+        };
+        final itemHtmls = scriptedItems == null &&
+                tocFields.values.any((field) => field.isScriptOnly)
+            ? batch.elementsText('item-html', '@html', items!)
+            : null;
         // The frozen reads a page's next-URL rule only on the pages it walks
         // through; the declared-list branch parses its pages with
         // `getNextUrl = false` (`BookChapterList.kt:104-121`).
@@ -1134,14 +1389,24 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? null
             : _declareList(batch, 'next', next);
         await batch.run();
-        if (items.isEmpty) throw StateError('目录页为空');
-        final names2 = await _perElement(nameField, names.values);
-        final urls2 = await _perElement(urlField, urls.values, url: true);
-        final tagValues = await _perElement(tagField, tags.values);
-        final volumeValues = await _perElement(volumeField, volumes.values);
-        final vipValues = await _perElement(vipField, vips.values);
-        final payValues = await _perElement(payField, pays.values);
-        for (var index = 0; index < items.length; index++) {
+        final count = scriptedItems?.length ?? items!.length;
+        if (count == 0) throw StateError('目录页为空');
+        Future<List<String>> fieldValues(String key, {bool url = false}) =>
+            _listFieldValues(
+              field: tocFields[key]!,
+              scriptedItems: scriptedItems,
+              job: jobs[key],
+              itemHtmls: itemHtmls?.values ?? const <String>[],
+              label: 'ruleToc.$key',
+              url: url,
+            );
+        final names2 = await fieldValues('chapterName');
+        final urls2 = await fieldValues('chapterUrl', url: true);
+        final tagValues = await fieldValues('updateTime');
+        final volumeValues = await fieldValues('isVolume');
+        final vipValues = await fieldValues('isVip');
+        final payValues = await fieldValues('isPay');
+        for (var index = 0; index < count; index++) {
           // The frozen adds a chapter only when its title is non-empty
           // (`BookChapterList.kt:244`), so an element the name rule matched
           // nothing on is skipped instead of failing the whole TOC.

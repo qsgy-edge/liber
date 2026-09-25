@@ -48,18 +48,6 @@ void main() {
       'content',
       r'div#content $1',
     ),
-    'html-list-rule-script': _withField(
-      _html('scripted-list.example'),
-      'ruleSearch',
-      'bookList',
-      'div.book@js:result',
-    ),
-    'html-script-only-element-field': _withField(
-      _html('script-only.example'),
-      'ruleSearch',
-      'name',
-      '@js:result',
-    ),
     'html-content-replace-rule': _withField(
       _withField(
         _html('replace.example'),
@@ -179,6 +167,20 @@ void main() {
         'ruleToc',
         'chapterUrl',
         'href,{"headers":{"User-Agent":"x"},"retry":2,"webView":true}',
+      ),
+      // #100: the script element family is read with the frozen binding and
+      // the measured node façade, so neither class refuses any longer.
+      _withField(
+        _html('scripted-list.example'),
+        'ruleSearch',
+        'bookList',
+        'div.book@js:result',
+      ),
+      _withField(
+        _html('script-only.example'),
+        'ruleSearch',
+        'name',
+        '@js:result',
       ),
     ]) {
       expect(
@@ -331,15 +333,15 @@ void main() {
   });
 
   test('the counts are the used set and the whole collection', () {
-    expect(report.collection.total, 19, reason: 'the whole collection');
+    expect(report.collection.total, 17, reason: 'the whole collection');
     expect(report.collection.ready, 3, reason: 'the ready records');
-    expect(report.collection.refused, 16, reason: 'one per reason');
+    expect(report.collection.refused, 14, reason: 'one per reason');
     expect(report.used!.total, 3, reason: 'origins that resolve');
     expect(report.used!.ready, 1);
     expect(report.used!.refused, 2);
     expect(report.jsonCollection, 7);
     expect(report.jsonUsed, 1);
-    expect(report.htmlCollection, 12);
+    expect(report.htmlCollection, 10);
     expect(report.htmlUsed, 2);
     for (final id in <String>[
       'json-unsupported-field',
@@ -388,7 +390,7 @@ void main() {
     expect(exportReport.backup.shelfMember, isNull);
     expect(exportReport.used, isNull);
     expect(exportReport.jsonUsed, isNull);
-    expect(exportReport.collection.total, 19);
+    expect(exportReport.collection.total, 17);
     expect(
       renderReadinessReport(exportReport),
       contains('used n/a (no shelf in the input)'),
@@ -398,7 +400,7 @@ void main() {
   test('the report names the input, its digest, its members and its gaps', () {
     final text = renderReadinessReport(report);
     expect(text, contains(report.backup.sha256));
-    expect(text, contains('collection: 19 records from bookSource.json'));
+    expect(text, contains('collection: 17 records from bookSource.json'));
     expect(text, contains('4 entries, 4 distinct origins, 3 resolved'));
     expect(text, contains('bookshelf.json'));
     for (final gap in readinessGaps) {

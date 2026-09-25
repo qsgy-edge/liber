@@ -171,26 +171,38 @@ final _evalPattern = RegExp(
 final _putPattern = RegExp(r'@put:(\{[^}]+?\})', caseSensitive: false);
 final _capturePattern = RegExp(r'\$\d{1,2}');
 
-/// Splits one rule field the way the frozen `AnalyzeRule.splitSourceRule` does.
-///
-/// The frozen `@js:` pattern consumes the rest of the field, so a script can
-/// only be the last segment; a `<js>...</js>` block is the one form that can
-/// stand in the middle, and a rule that continues after it is refused by name
-/// because the frozen reader re-parses the script's value as a document and
-/// neither adapter does that yet.
-RuleFieldText parseRuleField(String field) {
-  final extraction = <String>[];
-  final scripts = <String>[];
+/// One segment of a rule field in the frozen `splitSourceRule` order
+/// (`AnalyzeRule.kt:471-520`): an extraction rule (Mode.Default), or a
+/// `@js:`/`<js>` script body (Mode.Js). [parseRuleField] folds these into one
+/// extraction text and a script list; this keeps the order, which the frozen
+/// element-list read needs: a rule that continues after a `<js>` block runs
+/// that extraction on the script's own value.
+class RuleFieldSegment {
+  const RuleFieldSegment.extraction(this.text) : isScript = false;
+  const RuleFieldSegment.script(this.text) : isScript = true;
+
+  final String text;
+  final bool isScript;
+}
+
+/// Splits one rule field into its ordered segments, refusing the same shapes
+/// [parseRuleField] refuses (an unterminated `<js>`, a `$n` capture reference).
+/// Unlike [parseRuleField] it keeps more than one extraction segment, so the
+/// element-list read can run them in the frozen order.
+List<RuleFieldSegment> parseRuleFieldSegments(String field) {
+  final segments = <RuleFieldSegment>[];
   var start = 0;
   for (final match in _scriptPattern.allMatches(field)) {
     final text = field.substring(start, match.start).trim();
-    if (text.isNotEmpty) extraction.add(text);
-    scripts.add(match[1] ?? match[2] ?? '');
+    if (text.isNotEmpty) segments.add(RuleFieldSegment.extraction(text));
+    segments.add(RuleFieldSegment.script(match[1] ?? match[2] ?? ''));
     start = match.end;
   }
   final tail = field.substring(start).trim();
-  if (tail.isNotEmpty) extraction.add(tail);
-  for (final text in extraction) {
+  if (tail.isNotEmpty) segments.add(RuleFieldSegment.extraction(tail));
+  for (final segment in segments) {
+    if (segment.isScript) continue;
+    final text = segment.text;
     if (_jsOpenPattern.hasMatch(text)) {
       throw FormatException('规则字段的 <js> 缺少 </js>：$field');
     }
@@ -202,6 +214,26 @@ RuleFieldText parseRuleField(String field) {
       throw UnsupportedError('暂不支持规则字段的 \$n 捕获引用：$text');
     }
   }
+  return segments;
+}
+
+/// Splits one rule field the way the frozen `AnalyzeRule.splitSourceRule` does.
+///
+/// The frozen `@js:` pattern consumes the rest of the field, so a script can
+/// only be the last segment; a `<js>...</js>` block is the one form that can
+/// stand in the middle, and a rule that continues after it is refused by name
+/// because the frozen reader re-parses the script's value as a document and
+/// neither adapter does that yet.
+RuleFieldText parseRuleField(String field) {
+  final segments = parseRuleFieldSegments(field);
+  final extraction = <String>[
+    for (final segment in segments)
+      if (!segment.isScript) segment.text,
+  ];
+  final scripts = <String>[
+    for (final segment in segments)
+      if (segment.isScript) segment.text,
+  ];
   if (extraction.length > 1) {
     throw UnsupportedError('暂不支持 <js> 之后的规则片段（提取引擎无法就地重解析脚本结果）：$field');
   }

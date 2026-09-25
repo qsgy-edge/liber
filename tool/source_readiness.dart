@@ -84,7 +84,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     productCode:
         "the stage's own read of `source['bookSourceUrl'] as String` and "
         'SourceHttpUri.parse: HtmlSourcePipeline.search '
-        '(lib/source/html_source_pipeline.dart:707) and JsonSourcePipeline._base '
+        '(lib/source/html_source_pipeline.dart:1088) and JsonSourcePipeline._base '
         '(lib/source/json_source_pipeline.dart:70)',
     refuses: _sourceUrlRefused,
   ),
@@ -93,7 +93,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     reads: 'the record declares no `searchUrl` string to search with',
     productCode:
         "the stage's own read of `source['searchUrl'] as String`: "
-        'HtmlSourcePipeline.search (lib/source/html_source_pipeline.dart:710) '
+        'HtmlSourcePipeline.search (lib/source/html_source_pipeline.dart:1091) '
         'and JsonSourcePipeline.search '
         '(lib/source/json_source_pipeline.dart:614)',
     refuses: _searchUrlRefused,
@@ -107,7 +107,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         '`BaseSource.getHeaderMap` does)',
     productCode:
         'HtmlSourcePipeline._headers '
-        '(lib/source/html_source_pipeline.dart:267-295), '
+        '(lib/source/html_source_pipeline.dart:326-354), '
         'JsonSourcePipeline._readHeaders/_validate '
         '(lib/source/json_source_pipeline.dart:165-171,358-385) over '
         'parseSourceHeaderMap (lib/source/source_url_rules.dart)',
@@ -119,9 +119,9 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'a `ruleSearch`/`ruleToc`/`ruleContent` field a stage reads without an '
         'optional fallback is absent or blank',
     productCode:
-        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:571-584) '
-        'at its call sites: search (740-751), the TOC builder (906-925) and the '
-        'content stage (1236)',
+        'HtmlSourcePipeline._rule (lib/source/html_source_pipeline.dart:922-933) '
+        'at its call sites: search (1089-1120), the TOC builder (1323-1341) and '
+        'the content stage (_contentRule, 1649-1664)',
     pipeline: SourcePipeline.html,
     refuses: _htmlMissingRequiredField,
   ),
@@ -144,29 +144,9 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
     productCode:
         'RuleField.parseRuleField/extractionText '
         '(lib/source/rule_field.dart:181-241), reached through '
-        'HtmlSourcePipeline._field (lib/source/html_source_pipeline.dart:419-434)',
+        'HtmlSourcePipeline._field (lib/source/html_source_pipeline.dart:533-538)',
     pipeline: SourcePipeline.html,
     refuses: _htmlRuleFieldSyntax,
-  ),
-  ReadinessCheck(
-    id: 'html-list-rule-script',
-    reads:
-        'an element-list rule (`ruleSearch.bookList`, `ruleToc.chapterList`) '
-        'carries an `@js:`/`<js>` script',
-    productCode:
-        'HtmlSourcePipeline._field(allowScripts: false) '
-        '(lib/source/html_source_pipeline.dart:419-434) at both stages',
-    pipeline: SourcePipeline.html,
-    refuses: _htmlListRuleScript,
-  ),
-  ReadinessCheck(
-    id: 'html-script-only-element-field',
-    reads: 'a per-element value rule is only a script, with no extraction text',
-    productCode:
-        'HtmlSourcePipeline._elementField '
-        '(lib/source/html_source_pipeline.dart:435-443)',
-    pipeline: SourcePipeline.html,
-    refuses: _htmlScriptOnlyElementField,
   ),
   ReadinessCheck(
     id: 'html-content-replace-rule',
@@ -176,7 +156,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'beside a `##` field on the content rule',
     productCode:
         'HtmlSourcePipeline._contentRule '
-        '(lib/source/html_source_pipeline.dart:1202-1217)',
+        '(lib/source/html_source_pipeline.dart:1649-1664)',
     pipeline: SourcePipeline.html,
     refuses: _htmlContentReplaceRefused,
   ),
@@ -188,7 +168,7 @@ final List<ReadinessCheck> readinessChecks = <ReadinessCheck>[
         'applied instead)',
     productCode:
         'the chapter-address guard in HtmlSourcePipeline.details '
-        '(lib/source/html_source_pipeline.dart:1026-1030) over '
+        '(lib/source/html_source_pipeline.dart:1462-1467) over '
         'splitSourceUrlOptions (lib/source/source_url_rules.dart:291-330)',
     pipeline: SourcePipeline.html,
     refuses: _htmlTocChapterOptionsRefused,
@@ -581,10 +561,12 @@ bool _headerRuleRefused(Map<String, dynamic> source) {
 
 /// How one of the HTML pipeline's stages reads one declared field.
 enum HtmlRuleRead {
-  /// `_field(allowScripts: false)`: an element list, where a script refuses.
+  /// An element list: `_field` at `ruleSearch.bookList`/`ruleToc.chapterList`,
+  /// which since #100 runs a script in the frozen `getElements` order.
   elementList,
 
-  /// `_elementField`: one value per element, where a script-only rule refuses.
+  /// One value per element: `_elementField`, which since #100 runs a
+  /// script-only field against the matched element (`BookList.kt:208`).
   elementValue,
 
   /// `_field`: one document value; a script-only rule is applied to the page.
@@ -608,7 +590,8 @@ class HtmlRuleSlot {
 }
 
 /// Every field the HTML pipeline's stages read
-/// (lib/source/html_source_pipeline.dart:744-790, 910-961, 1109-1155, 1236-1330).
+/// (lib/source/html_source_pipeline.dart:1089-1120, 1323-1341, 1683-1700,
+/// 1756-1780).
 const htmlRuleSlots = <HtmlRuleSlot>[
   HtmlRuleSlot(
     'ruleSearch',
@@ -773,26 +756,6 @@ bool _htmlRuleFieldSyntax(Map<String, dynamic> source) {
   for (final slot in htmlRuleSlots) {
     final text = _ruleText(source, slot.group, slot.field);
     if (text != null && _ruleFieldText(text) == null) return true;
-  }
-  return false;
-}
-
-bool _htmlListRuleScript(Map<String, dynamic> source) {
-  for (final slot in htmlRuleSlots) {
-    if (slot.read != HtmlRuleRead.elementList) continue;
-    final text = _ruleText(source, slot.group, slot.field);
-    final parts = text == null ? null : _ruleFieldText(text);
-    if (parts != null && parts.scripts.isNotEmpty) return true;
-  }
-  return false;
-}
-
-bool _htmlScriptOnlyElementField(Map<String, dynamic> source) {
-  for (final slot in htmlRuleSlots) {
-    if (slot.read != HtmlRuleRead.elementValue) continue;
-    final text = _ruleText(source, slot.group, slot.field);
-    final parts = text == null ? null : _ruleFieldText(text);
-    if (parts != null && parts.extractionRule == null) return true;
   }
   return false;
 }

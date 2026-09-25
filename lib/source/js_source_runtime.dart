@@ -71,6 +71,52 @@ class SourceRuleRead {
 /// engine (ADR 0012's "three edits" seam).
 typedef SourceRuleEvaluator = Future<Object?> Function(SourceRuleRead read);
 
+/// The two read-only operations the minimal node façade (#100) performs over
+/// the product's own parsed HTML tree: the number of elements a rule selector
+/// matches, and one extracted value per match of the `dom` bridge member's
+/// `extract` payload.
+enum SourceDomOp { count, extract }
+
+/// One node-façade call, as the pipeline that owns the running analysis reads
+/// it: `Jsoup.parse(html).select(css)`, `selectFirst`, `attr` and `text` are all
+/// this one read against the tree [html] parses to. [rule] is a frozen rule
+/// selector, or null for the document root (`:root`). [extract] is `text`,
+/// `html`, or the attribute name `attr` was given.
+class SourceDomRead {
+  const SourceDomRead({
+    required this.op,
+    required this.html,
+    required this.rule,
+    required this.extract,
+  });
+
+  final SourceDomOp op;
+  final String html;
+  final String? rule;
+  final String extract;
+}
+
+/// One node-façade read by the pipeline that owns the analysis. Like
+/// [SourceRuleEvaluator] it is that pipeline's own adapter call (the Rust HTML
+/// adapter, ADR 0008), not a second HTML parser, so a pipeline with no HTML
+/// tree leaves it null and the façade refuses by name.
+typedef SourceDomEvaluator = Future<Object?> Function(SourceDomRead read);
+
+/// The minimal node façade's member list (#100): `Jsoup.parse` and the node
+/// operations the measured used set reaches. The host-surface gate and the
+/// façade's own rows read this list, so a method cannot appear silently; a name
+/// outside it refuses by name. The frozen call sites are `Jsoup.parse`
+/// (`AnalyzeByJSoup.kt:37`), `Element.select` (`:101`), `Elements.select`,
+/// `Element.selectFirst` (jsoup 1.16.2 `Element.selectFirst`) and `Element.attr`
+/// / `Element.text`.
+const sourceDomMembers = <String>[
+  'parse',
+  'select',
+  'selectFirst',
+  'attr',
+  'text',
+];
+
 /// One stage response as the pipeline reads it and as a source's `loginCheckJs`
 /// sees it.
 ///
@@ -335,6 +381,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.androidId = '',
     this.onMessage,
     this.ruleEvaluator,
+    this.domEvaluator,
     SourceHostState? hostState,
     this.webViewFactory,
     this.hatchSurface,
@@ -372,6 +419,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// a content object refuses by name instead of reading it with an engine of
   /// its own.
   final SourceRuleEvaluator? ruleEvaluator;
+
+  /// The node evaluator `Jsoup.parse`/`select`/`selectFirst`/`attr`/`text` run
+  /// through (#100): the pipeline's own HTML adapter, over the tree the node
+  /// came from. Null when this runtime owns no analysis, or owns one without an
+  /// HTML tree (the JSON pipeline), and then every façade call refuses by name.
+  final SourceDomEvaluator? domEvaluator;
 
   /// The rendered-document adapter factory the `java.webView*` helpers use. Null
   /// builds one from [dispatcher]'s source scope; a test substitutes its own,
@@ -657,6 +710,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             answer = _handleConvert(payload);
           } else if (method == 'rule') {
             answer = await _handleRule(payload, request.id, input, token);
+          } else if (method == 'dom') {
+            answer = await _handleDom(payload);
           } else if (method == 'request') {
             answer = await _dispatch(host, payload, request.id, input, token);
           } else if (method == 'connect') {
@@ -1645,6 +1700,43 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       throw const SourceScriptError('host-output-cap');
     }
     return decoded;
+  }
+
+  /// One `Jsoup.parse`/node operation (#100) over the analysis's own HTML tree.
+  /// The member routes to the pipeline's [domEvaluator] — the Rust HTML adapter
+  /// the rest of that analysis reads with — so the façade never starts a second
+  /// parser; a runtime that owns no such tree refuses by name.
+  Future<Object?> _handleDom(Object? payload) async {
+    if (payload is! Map) {
+      throw const SourceScriptError('host-input', 'invalid dom call');
+    }
+    final op = switch ('${payload['op']}') {
+      'count' => SourceDomOp.count,
+      'extract' => SourceDomOp.extract,
+      _ => throw const SourceScriptError('host-method', 'dom op refused'),
+    };
+    final html = payload['html'];
+    if (html is! String) {
+      throw const SourceScriptError('host-input', 'invalid dom html');
+    }
+    final rule = payload['rule'];
+    final extract = payload['extract'];
+    final evaluator = domEvaluator;
+    if (evaluator == null) {
+      throw _refuseMember(
+        'Jsoup',
+        'Jsoup.parse/select/selectFirst/attr/text 需要一个 HTML 分析树：'
+            '这次求值没有 HTML 规则字段的读取路径（ADR 0012）',
+      );
+    }
+    return evaluator(
+      SourceDomRead(
+        op: op,
+        html: html,
+        rule: rule is String ? rule : null,
+        extract: extract is String ? extract : 'text',
+      ),
+    );
   }
 
   /// Frozen `AnalyzeRule.getString`/`getStringList`/`getElement`/
@@ -2684,12 +2776,94 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getQueryTTF: refuseFont('cache.getQueryTTF')
   });
 
+  // The minimal node façade (#100): the frozen scripts of the two #11 script
+  // element classes call `Jsoup.parse(html[, baseUri])` and then `select`,
+  // `selectFirst`, `attr` or `text` on what it answers. Every operation runs
+  // over this product's own parsed tree through the `dom` bridge member (the
+  // Rust adapter, ADR 0008) — never a second parser. The semantics are the
+  // jsoup calls the frozen scripts make: `Jsoup.parse(String, String baseUri)`
+  // (`AnalyzeByJSoup.kt:37`), `Element.select`/`Elements.select` (`:101,131`),
+  // `Element.selectFirst`, `Element.attr` and `Element.text` (jsoup 1.16.2).
+  // `baseUri` is accepted and ignored: the two methods that use it in jsoup,
+  // `absUrl`/`baseUri`, are outside this surface and refuse by name. Any other
+  // member refuses by name, listing the name.
+  const domPolicy =
+    'the minimal node façade (#100): Jsoup.parse/select/selectFirst/attr/text';
+  const domRefuse = member => () => call('refuse', {member: member, policy: domPolicy});
+  const domRule = (rule, css) =>
+    (rule === null || rule === undefined) ? String(css) : rule + '@' + String(css);
+  const domCount = (html, rule) => Number(call('dom', {op:'count', html:html, rule:rule, extract:null})) || 0;
+  const domValues = (html, rule, extract) =>
+    call('dom', {op:'extract', html:html, rule:rule, extract:String(extract)});
+  const domFirst = values => (values && values.length) ? String(values[0]) : '';
+  function domSelect(html, rule) {
+    const count = domCount(html, rule);
+    const elements = [];
+    for (let index = 0; index < count; index++) elements.push(domNode(html, rule + '.' + index));
+    // jsoup `Elements` *is* the list, with the same read members; the element
+    // itself keeps its own `select`, so `lis[i].attr(...)` and
+    // `lis.text()` both answer as the frozen calls do.
+    const define = (name, fn) => Object.defineProperty(elements, name, {value: fn, enumerable: false});
+    define('select', css => domSelect(html, domRule(rule, css)));
+    define('selectFirst', css => domFirstNode(html, domRule(rule, css)));
+    define('attr', name => domFirst(domValues(html, rule, String(name))));
+    define('text', () => domValues(html, rule, 'text').join(' '));
+    define('toString', () => domValues(html, rule, 'html').join('\n'));
+    return elements;
+  }
+  function domFirstNode(html, rule) {
+    const first = rule + '.0';
+    return domCount(html, first) > 0 ? domNode(html, first) : null;
+  }
+  function domNode(html, rule) {
+    const methods = Object.create(null);
+    const define = (name, fn) => Object.defineProperty(methods, name, {value: fn, enumerable: false});
+    define('select', css => domSelect(html, domRule(rule, css)));
+    define('selectFirst', css => domFirstNode(html, domRule(rule, css)));
+    define('attr', name => domFirst(domValues(html, rule === null || rule === undefined ? ':root' : rule, String(name))));
+    define('text', () => domValues(html, rule === null || rule === undefined ? ':root' : rule, 'text').join(' '));
+    define('toString', () => (rule === null || rule === undefined)
+      ? String(html) : domFirst(domValues(html, rule, 'html')));
+    // A name outside the list refuses by name instead of arriving as a
+    // `TypeError`; the JS internals a value needs (`toJSON`, `then`, the
+    // prototype's own members) stay themselves. The prototype is the proxy, so
+    // the node's own enumerable properties are only its two data fields and a
+    // `props()` walk over the result stays serializable.
+    const proto = new Proxy(methods, {
+      get: (target, name) => {
+        if (typeof name === 'symbol') return undefined;
+        if (name === 'toJSON' || name === 'then' || name === 'length' || name === 'inspect') return undefined;
+        if (name in target) return target[name];
+        if (name in Object.prototype) return Object.prototype[name];
+        return domRefuse('Jsoup.' + String(name));
+      }
+    });
+    const node = Object.create(proto);
+    node.__dom = html;
+    node.__rule = (rule === undefined) ? null : rule;
+    return node;
+  }
+  // The frozen `@js:` field's `result` may be an element the element-list rule
+  // produced (`BookList.kt:208` `setContent(item)`); the pipeline passes it as
+  // this plain descriptor, which the façade turns back into a node.
+  const asDom = value => (value !== null && typeof value === 'object' &&
+      !Array.isArray(value) && typeof value.__dom === 'string')
+    ? domNode(value.__dom, value.__rule === undefined ? null : value.__rule) : value;
+  const Jsoup = Object.freeze({
+    parse: (html, baseUri) => domNode(String(html), null)
+  });
+
   return {key:null, page:null, book:book, chapter:chapter, result:null, speakText:null, speakSpeed:null,
     ...input, __LIBER_INPUT__: input, book, chapter, source, java, cookie, cache,
+    Jsoup: Jsoup,
+    // The frozen Rhino scope reaches jsoup through the `org.jsoup` package too
+    // (`AnalyzeByJSoup.kt`'s own import; a source script writes
+    // `org.jsoup.Jsoup.parse`), so the same object answers both spellings.
+    org: Object.freeze({jsoup: Object.freeze({Jsoup: Jsoup})}),
     // The `loginCheckJs` hook sees the stage's response as `result` through the
     // response accessors; every other evaluation keeps the raw value the rule
-    // field produced.
-    result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result)) : input.result};
+    // field produced, with a node descriptor resolved to the façade's node.
+    result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result)) : asDom(input.result)};
 }
 ''';
 }

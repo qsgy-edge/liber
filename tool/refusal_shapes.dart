@@ -15,9 +15,11 @@
 // the audit's own convention.
 //
 // `--script-surface <backup.zip|bookSource.json>` is the deeper probe of the two
-// script refusal classes (#98): `html-list-rule-script` (an element-list rule
-// carrying a script) and `html-script-only-element-field` (a per-element value
-// rule that is a script only) are the *script element family* #11 deferred. The
+// script classes (#98): an element-list rule carrying a script and a per-element
+// value rule that is a script only — the *script element family* #11 deferred
+// and #100 implemented with the surface this probe measured. The measured
+// classes are named by the `ReadinessCheck`s #100 retired
+// (`html-list-rule-script`, `html-script-only-element-field`). The
 // frozen hands such a script the current analysis value and reads its JavaScript
 // result (`AnalyzeRule.getElement(s)`/`getString` on `Mode.Js`,
 // AnalyzeRule.kt:363, 265) — the list script gets the response *body* string
@@ -25,13 +27,13 @@
 // whatever the element-list rule produced (`BookList.kt:208`
 // `setContent(item)`), a jsoup `Element` only when that rule was a selector.
 // This mode measures which Jsoup/DOM calls the scripts of the operator's own
-// library actually reach, and what shape each hands back, so a later decision
-// session can size the façade by evidence. It reuses the audit's own
-// classification (`htmlRuleSlots`, `HtmlRuleRead`, `auditSource`,
-// `parseRuleField`), so its two classes are exactly the records the audit names,
-// and it prints counts, call names and shapes only: never a rule text, URL,
-// host, header value or source name. It is a reading of the script's call
-// tokens, not an evaluation (see `scriptSurfaceGaps`).
+// library actually reach, and what shape each hands back; #98's numbers sized
+// the façade #100 implemented. It reuses the audit's own classification
+// (`htmlRuleSlots`, `HtmlRuleRead`, `auditSource`, `parseRuleField`), so its two
+// classes are exactly the fields the family names, and it prints counts, call
+// names and shapes only: never a rule text, URL, host, header value or source
+// name. It is a reading of the script's call tokens, not an evaluation (see
+// `scriptSurfaceGaps`).
 import 'dart:convert';
 import 'dart:io';
 
@@ -114,10 +116,6 @@ List<String> _shapes(String reason, Map<String, dynamic> source) {
   switch (reason) {
     case 'header-rule':
       return <String>[_headerShape(source)];
-    case 'html-list-rule-script':
-      return _slotShapes(source, HtmlRuleRead.elementList);
-    case 'html-script-only-element-field':
-      return _slotShapes(source, HtmlRuleRead.elementValue);
     case 'html-rule-field-syntax':
       return _slotShapes(source, null);
     case 'html-missing-required-field':
