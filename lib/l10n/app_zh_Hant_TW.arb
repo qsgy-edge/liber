@@ -243,6 +243,7 @@
   "search": "搜尋",
   "searchFailed": "搜尋失敗：{error}",
   "searchKeyword": "搜尋關鍵詞",
+  "searchProgress": "結果 {results}, 當前進度 {answered} / {total}: {name}",
   "searchResults": "搜尋結果",
   "searchedSources": "搜尋的書源",
   "searching": "正在搜尋",

@@ -635,6 +635,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String searchProgress(int results, int answered, int total, String name) {
+    return 'Result $results, Progress $answered / $total: $name';
+  }
+
+  @override
   String searchFailed(String error) {
     return 'The search failed: $error';
   }

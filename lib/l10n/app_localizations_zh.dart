@@ -626,6 +626,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String searchProgress(int results, int answered, int total, String name) {
+    return '结果 $results, 当前进度 $answered / $total: $name';
+  }
+
+  @override
   String searchFailed(String error) {
     return '搜索失败：$error';
   }
@@ -1709,6 +1714,11 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
+  String searchProgress(int results, int answered, int total, String name) {
+    return '結果 $results, 當前進度 $answered / $total: $name';
+  }
+
+  @override
   String searchFailed(String error) {
     return '搜尋失敗：$error';
   }
@@ -2789,6 +2799,11 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   @override
   String searchingSource(Object index, Object name, Object total) {
     return '正在搜尋 $name（$index/$total）';
+  }
+
+  @override
+  String searchProgress(int results, int answered, int total, String name) {
+    return '結果 $results, 當前進度 $answered / $total: $name';
   }
 
   @override

@@ -528,6 +528,23 @@
     }
   },
   "searchingSource": "正在搜索 {name}（{index}/{total}）",
+  "searchProgress": "结果 {results}, 当前进度 {answered} / {total}: {name}",
+  "@searchProgress": {
+    "placeholders": {
+      "results": {
+        "type": "int"
+      },
+      "answered": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "searchFailed": "搜索失败：{error}",
   "@searchFailed": {
     "placeholders": {
