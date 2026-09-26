@@ -830,7 +830,7 @@ void main() {
     );
   });
 
-  test('一个书源超过限时：记为失败，位置让给下一个书源', () async {
+  test('一个书源超过限时：记为失败，请求停下，位置让给下一个书源', () async {
     final held = Completer<void>();
     final hanging = FakeSource({
       'bookSourceUrl': 'https://hang.test',
@@ -842,20 +842,43 @@ void main() {
     );
     final watch = WalkWatch();
     final fakes = [hanging, answering];
+    final byUrl = {
+      for (final fake in fakes) '${fake.source['bookSourceUrl']}': fake,
+    };
+    TimedPipeline? hangingPipeline;
     final search = PreciseSearch(
       name: name,
       author: author,
-      openPipeline: timedOpen(fakes, watch),
+      openPipeline: (source) {
+        final pipeline = TimedPipeline(
+          byUrl['${source['bookSourceUrl']}']!,
+          watch,
+        );
+        if ('${source['bookSourceUrl']}' == 'https://hang.test') {
+          hangingPipeline = pipeline;
+        }
+        return pipeline;
+      },
       concurrency: 1,
       // The frozen's own per-source budget, made short enough to wait for: the
       // dialog bounds one source at 60000L (`ChangeBookSourceViewModel.kt:237-243`).
       sourceTimeout: const Duration(milliseconds: 50),
     );
 
+    final outcomes = <PreciseSearchOutcome>[];
+    bool? stoppedWhenTimedOut;
     final stopwatch = Stopwatch()..start();
-    final outcomes = await search.searchAll([
-      for (final fake in fakes) imported(fake),
-    ]).toList();
+    final answers = search
+        .searchAll([for (final fake in fakes) imported(fake)])
+        .listen((outcome) {
+          outcomes.add(outcome);
+          if (outcome.failure != null) {
+            // Read while the walk is still running: 好源 has not answered yet,
+            // so nothing has closed the run's pipelines at this point.
+            stoppedWhenTimedOut = hangingPipeline!.cancelled;
+          }
+        });
+    await answers.asFuture<void>();
     stopwatch.stop();
 
     expect(outcomes, hasLength(2));
@@ -864,6 +887,11 @@ void main() {
     expect(outcomes.first.hits, isEmpty);
     expect(outcomes.last.sourceRef, 'https://ok.test', reason: '限时后位置让给下一个书源');
     expect(outcomes.last.hits.single.book.title, name);
+    expect(
+      stoppedWhenTimedOut,
+      isTrue,
+      reason: '限时一到这本书源的请求就停了（冻结的 withTimeout 一样取消调用）',
+    );
     expect(stopwatch.elapsed, greaterThan(const Duration(milliseconds: 50)));
     expect(
       stopwatch.elapsed,
@@ -875,6 +903,7 @@ void main() {
     // closed stream.
     held.complete();
     await Future<void>.delayed(Duration.zero);
+    expect(outcomes, hasLength(2));
   });
 
   testWidgets('走查还在进行时命中就上屏，进度行说出已经走过多少书源', (tester) async {

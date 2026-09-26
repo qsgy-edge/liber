@@ -238,13 +238,15 @@ class PreciseSearch {
   )?
   confirm;
 
-  /// The pipelines [searchAll]'s walk has open right now — one per source being
-  /// searched — so a walk that stops can cancel the requests already in flight:
-  /// [BookSourcePipeline.cancel] is what stops a stage, the same call a page's
-  /// dispose makes. A pipeline leaves the set when its source's read returns.
+  /// The pipelines this search's sources have open right now, by the source map
+  /// they were opened for — the identity the walk handed in — so a walk that
+  /// stops, or one source that runs out of its time, can cancel the request in
+  /// flight: [BookSourcePipeline.cancel] is what closes a request's client
+  /// (`http_source_transport.dart`), the same call a page's dispose makes. A
+  /// pipeline leaves the map when its source's read returns.
   ///
-  /// One instance runs one search, so this set is exactly the running walk's.
-  final Set<BookSourcePipeline> _openPipelines = <BookSourcePipeline>{};
+  /// One instance runs one search, so this map is exactly the running walk's.
+  final Map<Map<String, dynamic>, BookSourcePipeline> _openPipelines = {};
 
   /// Searches every source in [sources] and yields what each one produced, as
   /// soon as that source answers.
@@ -255,9 +257,11 @@ class PreciseSearch {
   /// (`:236`) on its pool of `min(threadCount, MAX_THREAD)` threads — and the
   /// outcomes are emitted in completion order, exactly as the frozen's
   /// `flatMapMerge` emits them. A source that does not answer within
-  /// [sourceTimeout] is reported as a failure and its slot goes to the next
-  /// source (the frozen's own `withTimeout(60000L)` around the same stage), so
-  /// one hanging site cannot hold the walk.
+  /// [sourceTimeout] is reported as a failure, **its request is cancelled**, and
+  /// its slot goes to the next source: the frozen's own `withTimeout(60000L)`
+  /// around the same stage, whose `Call.await` cancels the call with the
+  /// coroutine (`help/http/OkHttpUtils.kt:63-77`), so one hanging site cannot
+  /// hold a slot or a connection.
   ///
   /// One source's own read is [searchSource]: its hits are read in page order, a
   /// hit is admitted when its formatted name equals the searched name (and, with
@@ -298,7 +302,7 @@ class PreciseSearch {
     void end() {
       if (done) return;
       done = true;
-      for (final pipeline in _openPipelines.toList()) {
+      for (final pipeline in _openPipelines.values.toList()) {
         pipeline.cancel();
       }
       unawaited(controller.close());
@@ -311,14 +315,20 @@ class PreciseSearch {
       running = searchSource(source, isCancelled: shouldStop)
           .timeout(
             sourceTimeout,
-            // The frozen catches its own timeout and walks on; the shape this
-            // product reports is the outcome's failure, so a hanging site is
-            // visible instead of silent.
-            onTimeout: () => PreciseSearchOutcome(
-              source: source,
-              hits: const <PreciseSearchHit>[],
-              failure: '${SourceSearchTimeout(sourceTimeout)}',
-            ),
+            // The frozen's `withTimeout` cancels the coroutine and its
+            // `Call.await` cancels the call with it; this product stops the same
+            // request through the pipeline's own cancel, so a timed-out source
+            // is not left holding a connection while the walk goes on. The
+            // outcome is the failure this product reports, not the frozen's
+            // silence.
+            onTimeout: () {
+              _openPipelines[source]?.cancel();
+              return PreciseSearchOutcome(
+                source: source,
+                hits: const <PreciseSearchHit>[],
+                failure: '${SourceSearchTimeout(sourceTimeout)}',
+              );
+            },
           )
           .then((outcome) {
             inFlight.remove(running);
@@ -410,7 +420,7 @@ class PreciseSearch {
     bool Function()? isCancelled,
   }) async {
     final pipeline = openPipeline(source);
-    _openPipelines.add(pipeline);
+    _openPipelines[source] = pipeline;
     try {
       final books = await pipeline.search(name);
       final hits = <PreciseSearchHit>[];
@@ -431,7 +441,7 @@ class PreciseSearch {
       return PreciseSearchOutcome(source: source, hits: hits);
     } finally {
       pipeline.cancel();
-      _openPipelines.remove(pipeline);
+      _openPipelines.remove(source);
     }
   }
 }
