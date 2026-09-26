@@ -302,9 +302,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     );
     try {
       // The page's lifetime is the run's lifetime: a disposed page stops the
-      // walk at its next source — leaving the sources in flight alone, which
-      // dispose cancels — instead of walking the rest of the list under a State
-      // that no longer exists.
+      // walk — no source behind the ones already in flight is started, and those
+      // sources' pipelines are cancelled — instead of walking the rest of the
+      // list under a State that no longer exists.
       final answers = search.searchAll(chosen, isCancelled: () => !mounted);
       await for (final outcome in answers) {
         if (!mounted) break;
