@@ -1052,6 +1052,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('几百个书源只构建可见的书源筛选项', (tester) async {
+    // Source chips must have the same viewport-backed construction as the
+    // candidate rows: the last of 300 extra sources is not built at first.
+    await moreSources(300);
+
+    await tester.pumpWidget(
+      localizedApp(home: PreciseSearchPage(service: shelf)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(FilterChip).evaluate().length,
+      lessThan(40),
+      reason: '303 个书源里只有可见的几十个筛选项被构建',
+    );
+    final last = find.byKey(const ValueKey('precise-source-https://s299.test'));
+    expect(last, findsNothing, reason: '视口之外的书源筛选项根本没有建');
+
+    await tester.scrollUntilVisible(
+      last,
+      600,
+      maxScrolls: 60,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(last, findsOneWidget);
+    expect(
+      find.byType(FilterChip).evaluate().length,
+      lessThan(60),
+      reason: '滚到末尾也只构建视口和缓存附近的书源筛选项',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   group('formatSearchBookName / formatSearchBookAuthor', () {
     test('去掉搜索页写在书名里的作者与作者字段的前后缀', () {
       expect(formatSearchBookName('凡人修仙传 作者 忘语'), '凡人修仙传');
