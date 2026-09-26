@@ -1128,12 +1128,6 @@ abstract class AppLocalizations {
   /// **'正在搜索 {count} 个书源'**
   String searchingSources(int count);
 
-  /// No description provided for @searchingSource.
-  ///
-  /// In zh, this message translates to:
-  /// **'正在搜索 {name}（{index}/{total}）'**
-  String searchingSource(Object index, Object name, Object total);
-
   /// No description provided for @searchProgress.
   ///
   /// In zh, this message translates to:
