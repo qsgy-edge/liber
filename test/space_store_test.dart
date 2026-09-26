@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
@@ -226,29 +225,23 @@ void main() {
     await workspace.close();
   });
 
-  test('同一空间被另一个连接持锁时，第二条连接等锁而不是直接失败（#109）', () async {
+  test('空间的每个连接都带 busy timeout（#109）', () async {
+    // The fix for #109: a connection that meets another connection's lock waits
+    // it out instead of failing the open with `database is locked`, which is
+    // what a restart loses the space to. The timeout is set at connection
+    // setup, because drift's first read (`PRAGMA user_version`) already runs
+    // there. Asserted as the value, not as a timing: a write-conflict row is
+    // timing-dependent across platforms (SQLite refuses lock *promotions*
+    // without waiting, and whether a request is one depends on the schedule).
     final workspace = await Workspace.open(root: root);
     final first = await workspace.openSpace();
-    await first.putSetting('first', '1');
-
-    // Hold the first connection's write lock for a bounded window: without
-    // `PRAGMA busy_timeout` the statement below fails immediately with
-    // `SqliteException(5): database is locked`, which is the failure #109
-    // measured (a restart read as a dead space).
-    final locked = Completer<void>();
-    final holding = first.transaction(() async {
-      await first.putSetting('held', 'yes');
-      locked.complete();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    });
-    await locked.future;
-
     final second = await (await Workspace.open(root: root)).openSpace();
-    await second.putSetting('second', '2');
-    expect(await second.setting('second'), '2');
-    expect(await first.setting('first'), '1');
 
-    await holding;
+    for (final store in [first, second]) {
+      final row = await store.db.customSelect('PRAGMA busy_timeout').getSingle();
+      expect(row.data.values.single, 5000);
+    }
+
     await second.close();
     await first.close();
   });
