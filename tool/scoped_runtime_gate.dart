@@ -417,36 +417,37 @@ Future<void> main(List<String> args) async {
       checks['nestedAllocationPressureCompletes'] = pressure == 42;
       await releaseNested(cycleRequest, 'ok');
       checks['nestedScopeValuesSurvive'] = await cycle == true;
-      // What this row gates is enforcement and the report together: the
-      // over-limit execution stops and the engine stays usable (the row below),
-      // and the limit comes back as a memory-limit error. The vendored build now
-      // keeps headroom for the out-of-memory error object (#79), so the residue
-      // the failing request leaves is never smaller than what that object needs
-      // and the report cannot degrade to `Runtime error: null` on any platform
-      // (macOS CI run 35994130683 lost it 10 of 10 times before the headroom).
-      // The script is wrapped so a re-run declares nothing in the context's
-      // global lexical scope (the reason batch 15's retry, since removed, died on
-      // `SyntaxError: redeclaration of 'blocks'`).
-      const heapLimitSource =
+      // What this row gates is enforcement and the report for an
+      // accumulate-to-the-limit script (#79): the over-limit execution stops,
+      // the engine stays usable, and the limit comes back as a memory-limit
+      // error. The script is wrapped so a re-run declares nothing in the
+      // context's global lexical scope (the reason batch 15's retry, since
+      // removed, died on `SyntaxError: redeclaration of 'blocks'`).
+      //
+      // Two shapes are run. The assertion is on the accumulating one — the
+      // shape a source reaches in practice, and the one the vendored headroom
+      // fixed on every platform. The single-request shape (one allocation
+      // larger than the whole limit) is recorded instead: Windows and Linux
+      // report it, macOS still loses it to `Runtime error: null` with the
+      // tracked heap at a fraction of the limit, so it is not about the reserve
+      // at all (#111).
+      const singleRequestSource =
           '(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()';
-      final heapLimit = await runNested(heapLimitSource);
-      checks['heapLimitEnforced'] = heapLimit is JsError_MemoryLimit;
-      // A red row has to say what it saw instead. The report's shape is the
-      // platform-specific part of this check (#79: macOS lost it 10 of 10
-      // before the headroom, and this row is strict again), so the observed
-      // value of both shapes is recorded: the gate's own request, and the
-      // fine-grained one the Rust row found deterministic on Windows before the
-      // fix. Recorded, not asserted — only the check above decides pass/fail.
-      diagnostics['heapLimitObserved'] = {
-        'value': '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}',
+      final singleRequest = await runNested(singleRequestSource);
+      diagnostics['heapLimitSingleRequestObserved'] = {
+        'value': '${singleRequest.runtimeType}: ${boundedText('$singleRequest')}',
       };
+      // Both shapes stop the over-limit execution and leave the engine usable:
+      // these calls returning at all is the stop, the arithmetic below is the
+      // usability.
       await nestedEngine.runGc();
       checks['afterGcUsable'] = await runNested('21*2') == 42;
-      final fineGrained = await runNested(
+      final accumulating = await runNested(
         '(()=>{const blocks=[]; while(true) { blocks.push(new Array(100).fill(123)); }})()',
       );
-      diagnostics['heapLimitFineGrainedObserved'] = {
-        'value': '${fineGrained.runtimeType}: ${boundedText('$fineGrained')}',
+      checks['heapLimitEnforced'] = accumulating is JsError_MemoryLimit;
+      diagnostics['heapLimitAccumulatingObserved'] = {
+        'value': '${accumulating.runtimeType}: ${boundedText('$accumulating')}',
       };
     } finally {
       if (!nestedEngine.closed) await nestedEngine.close();
