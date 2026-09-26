@@ -71,22 +71,19 @@ fn patch_poll_quantum(out_dir: &Path) {
 /// cannot push the tracked heap past the configured limit. A limit at or below
 /// the headroom keeps the previous behaviour.
 ///
-/// 16 KiB kept the report on Windows and Linux and did not on macOS (CI run
-/// `36227056236`: the gate's own over-limit request still came back as
-/// `Runtime error: null` there while the fine-grained shape reported the limit,
-/// so the space left at the refusal is what macOS needs more of). The tracked
-/// total is adjusted by the allocator's *usable* sizes, so a platform whose
-/// rounding overshoots the reduced limit eats into the reserve; 64 KiB is that
-/// margin times a wide factor, at 0.1 % of the product's 64 MiB cap.
+/// 16 KiB carries the error object on every platform measured (the fine-grained
+/// and accumulating shapes report the limit on Windows, Linux and macOS with
+/// it). The shape macOS still loses — one request larger than the whole limit —
+/// is not a reserve problem: that refusal happens with the tracked heap at a
+/// fraction of the limit (#111).
 const OOM_HEADROOM_HELPER: &str = r#"/* Bytes of the tracked heap kept out of a running script's reach so the
    out-of-memory error object (and its message string) can always be
    allocated. JS_ThrowError2 otherwise throws JS_NULL when JS_MakeError
    cannot allocate, and the report is lost (#79); JS_ThrowOutOfMemory marks
    the throw path with in_out_of_memory, which is the only path that sees the
-   whole malloc_limit. The tracked total moves by the allocator's usable
-   sizes, so the reserve has to exceed that platform's rounding; a limit at or
-   below the headroom keeps the old behaviour. */
-#define JS_OOM_HEADROOM (64 * 1024)
+   whole malloc_limit. A limit at or below the headroom keeps the old
+   behaviour. */
+#define JS_OOM_HEADROOM (16 * 1024)
 
 static size_t js_malloc_limit(JSRuntime *rt)
 {
