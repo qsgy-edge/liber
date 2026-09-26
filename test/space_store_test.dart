@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
@@ -223,5 +224,32 @@ void main() {
       ],
     );
     await workspace.close();
+  });
+
+  test('同一空间被另一个连接持锁时，第二条连接等锁而不是直接失败（#109）', () async {
+    final workspace = await Workspace.open(root: root);
+    final first = await workspace.openSpace();
+    await first.putSetting('first', '1');
+
+    // Hold the first connection's write lock for a bounded window: without
+    // `PRAGMA busy_timeout` the statement below fails immediately with
+    // `SqliteException(5): database is locked`, which is the failure #109
+    // measured (a restart read as a dead space).
+    final locked = Completer<void>();
+    final holding = first.transaction(() async {
+      await first.putSetting('held', 'yes');
+      locked.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await locked.future;
+
+    final second = await (await Workspace.open(root: root)).openSpace();
+    await second.putSetting('second', '2');
+    expect(await second.setting('second'), '2');
+    expect(await first.setting('first'), '1');
+
+    await holding;
+    await second.close();
+    await first.close();
   });
 }

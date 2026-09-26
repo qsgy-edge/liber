@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
+import 'package:sqlite3/common.dart' show CommonDatabase;
+
 import 'migrations.dart';
 import 'schema_versions.dart';
 
@@ -479,7 +481,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The space's SQLite file, opened in a background isolate.
   SpaceDatabase.file(File file)
-    : super(NativeDatabase.createInBackground(file));
+    : super(NativeDatabase.createInBackground(file, setup: _waitOutLocks));
 
   @override
   int get schemaVersion => latestVersion;
@@ -523,4 +525,20 @@ class SpaceDatabase extends _$SpaceDatabase {
       }
     },
   );
+}
+
+/// Waits out a transient lock instead of failing the open: every connection to
+/// a space's file sets a busy timeout before its first statement.
+///
+/// Two connections to one space exist in practice — a second app instance, or an
+/// in-process restart whose previous store is still closing — and without a busy
+/// timeout SQLite answers SQLITE_BUSY (`SqliteException(5): database is locked`)
+/// the moment a lock is held. The statement that meets it is drift's own
+/// `PRAGMA user_version` read, which runs at connection setup, *before*
+/// `beforeOpen`: the failure is then the whole open, the space reads as
+/// unavailable, and the reader gets a dead screen. #109 measured that as 4 of 15
+/// red CI runs (and reproduced it under load); five seconds outlasts any lock our
+/// own close or a second instance holds and still fails on a stuck file.
+void _waitOutLocks(CommonDatabase database) {
+  database.execute('PRAGMA busy_timeout = 5000');
 }
