@@ -595,21 +595,35 @@ fn test_runtime_dump_flags() {
 }
 
 // ============================================================================
-// Scoped heap-limit row (ticket #77)
+// Scoped heap-limit rows (tickets #77 and #79)
 // ============================================================================
 
 /// The scoped-runtime gate's `heapLimitEnforced` script: one request larger
-/// than the whole 16 MiB budget, inside a scope of its own.
-///
-/// The previous shape grew the heap one 80 KB array at a time, which fails with
-/// a residue anywhere in `[0, 80 KB)`. When that residue was smaller than what
-/// QuickJS needs to build the OOM error object, `JS_ThrowError2` threw a bare
-/// null instead of the `InternalError` and the row saw
-/// `JsError_Runtime: Runtime error: null` (30 of 1000 engine-level runs in
-/// WSL2; ticket #77). A request larger than the budget leaves the whole budget
-/// free when the limit refuses it, so the report always has room.
+/// than the whole 16 MiB budget, inside a scope of its own. A request larger
+/// than the budget leaves the whole budget free when the limit refuses it.
 const HEAP_LIMIT_ROW_SOURCE: &str =
     "(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()";
+
+/// The shape #77 measured and #79 is about: the heap grows one ~80 KB array at
+/// a time, so the request the limit refuses can leave any residue in
+/// `[0, 80 KB)`. When that residue was smaller than what QuickJS needs to build
+/// the OOM error object, `JS_ThrowError2` threw a bare null instead of the
+/// `InternalError` and the row saw `JsError_Runtime: Runtime error: null`
+/// (30 of 1000 engine-level runs in WSL2; 10 of 200 across processes; 10 of 10
+/// on macOS CI run 36024098730). The vendored build now keeps headroom for the
+/// error object, so this shape must report `JsError_MemoryLimit` every time.
+const HEAP_LIMIT_ACCUMULATING_SOURCE: &str =
+    "(()=>{const blocks=[]; while(true) { blocks.push(new Array(10000).fill(123)); }})()";
+
+/// The same accumulation with a ~1.6 KB request per step. A smaller request
+/// leaves a smaller residue when the limit refuses it, so on a platform whose
+/// allocator keeps the residue above the error object's need for the 80 KB
+/// shape this finer shape still starves it: on Windows before the headroom
+/// patch every run lost the report (30 of 30, `Runtime error: null`,
+/// `afterGcUsable` true), which is the reproduction the ticket's WSL2 and
+/// macOS runs could only make probabilistic.
+const HEAP_LIMIT_FINE_GRAINED_SOURCE: &str =
+    "(()=>{const blocks=[]; while(true) { blocks.push(new Array(100).fill(1)); }})()";
 
 /// The row's JS heap limit in bytes, as the gate sets it.
 const HEAP_LIMIT_ROW_BYTES: usize = 16 * 1024 * 1024;
@@ -664,10 +678,10 @@ fn heap_limit_outcome_label(error: &JsError) -> &'static str {
     }
 }
 
-/// Runs the gate's `heapLimitEnforced` row engine-level: the same 16 MiB limit,
-/// the same `gcThreshold: 1`, the same script, inside a scoped execution in an
-/// engine that already ran the gate's parked-cycle and nested-pressure rows.
-async fn run_heap_limit_row() -> HeapLimitRowOutcome {
+/// Runs one heap-limit row engine-level: the same 16 MiB limit, the same
+/// `gcThreshold: 1`, the given script, inside a scoped execution in an engine
+/// that already ran the gate's parked-cycle and nested-pressure rows.
+async fn run_heap_limit_row(source: &str) -> HeapLimitRowOutcome {
     let engine = Arc::new(
         JsEngine::create(
             Some(JsBuiltinOptions::none()),
@@ -745,7 +759,7 @@ async fn run_heap_limit_row() -> HeapLimitRowOutcome {
         .expect("reserve the row's scope");
     let first = tokio::time::timeout(
         Duration::from_secs(60),
-        engine.eval_scoped(row_id, HEAP_LIMIT_ROW_SOURCE.to_string()),
+        engine.eval_scoped(row_id, source.to_string()),
     )
     .await
     .expect("the over-limit script stops");
@@ -774,40 +788,14 @@ async fn run_heap_limit_row() -> HeapLimitRowOutcome {
     }
 }
 
-/// The gate's `heapLimitEnforced` row must report the JS heap limit as
-/// `JsError::MemoryLimit` on every attempt, and the engine must stay usable
-/// afterwards.
-///
-/// Ticket #77: the row was red roughly every other Linux CI run while Windows
-/// was 15/15, and the red runs did not name what the engine returned instead.
-/// The row's script now makes one over-budget request, so the failing
-/// allocation leaves the whole budget free for the OOM report. The evidence in
-/// #77 (30 of 1000 runs divergent for the old accumulating shape, 0 of 400 for
-/// this one) was taken by raising the iteration count:
-/// `FJS_HEAP_LIMIT_ROW_ITERATIONS=200 cargo test scoped_heap_limit_row`.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn scoped_heap_limit_row_reports_the_memory_limit() {
-    let iterations: usize = std::env::var("FJS_HEAP_LIMIT_ROW_ITERATIONS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(10);
-    // Two outcomes satisfy this row, and the difference between them is #79:
-    //
-    // * the engine reports the limit (`JsError_MemoryLimit`), or
-    // * the engine throws the bare null that the vendored QuickJS produces when
-    //   the failing request's residue starves the OOM error object
-    //   (`Runtime("null") / Runtime error: null`). The limit is still enforced
-    //   in that case and the engine stays usable; only the report is lost. macOS
-    //   produced the second outcome in 10 of 10 runs on CI (run 36024098730,
-    //   heap `malloc_size=138208 of 16777216`, engine usable after every row),
-    //   so a test that demands the first one everywhere tests the platform's
-    //   allocator rather than this engine. #79 owns the headroom fix; when it
-    //   closes, the strict assertion comes back (the shape is already written
-    //   below as `report_lost`).
+/// Drives one heap-limit shape through [`run_heap_limit_row`] `iterations`
+/// times. Returns how many runs lost the limit's report, and the runs that
+/// neither reported the limit nor left the engine usable.
+async fn drive_heap_limit_shape(shape: &str, iterations: usize) -> (usize, Vec<String>) {
     let mut divergences = Vec::new();
     let mut report_lost_runs = 0usize;
     for iteration in 0..iterations {
-        let outcome = run_heap_limit_row().await;
+        let outcome = run_heap_limit_row(shape).await;
         let report_kept = outcome.label == "JsError_MemoryLimit";
         let report_lost = outcome.label == "JsError_Runtime"
             && outcome.detail.contains("Runtime error: null");
@@ -820,7 +808,7 @@ async fn scoped_heap_limit_row_reports_the_memory_limit() {
             outcome.label, outcome.malloc_size, outcome.malloc_limit, report_kept, report_lost,
             outcome.after_gc_usable, outcome.detail,
         );
-        if !(report_kept || report_lost) || !outcome.after_gc_usable {
+        if !report_kept || !outcome.after_gc_usable {
             divergences.push(format!(
                 "#{iteration}: {} (malloc_size={} of {}), engine usable after the row: {}",
                 outcome.detail, outcome.malloc_size, outcome.malloc_limit, outcome.after_gc_usable
@@ -828,14 +816,81 @@ async fn scoped_heap_limit_row_reports_the_memory_limit() {
         }
     }
     eprintln!(
-        "FJS heap-limit row: {report_lost_runs} of {iterations} runs lost the limit's report \
-         (#79); the enforcement guarantee held in every run."
+        "FJS heap-limit row: {report_lost_runs} of {iterations} runs lost the limit's report."
     );
+    (report_lost_runs, divergences)
+}
+
+/// The gate's `heapLimitEnforced` row must report the JS heap limit as
+/// `JsError::MemoryLimit` on every attempt, and the engine must stay usable
+/// afterwards.
+///
+/// Ticket #77: the row was red roughly every other Linux CI run while Windows
+/// was 15/15, and the red runs did not name what the engine returned instead.
+/// macOS lost the report in 10 of 10 runs of this row (CI run 36024098730),
+/// and ticket #79 traced the loss to `JS_ThrowError2` throwing a bare null
+/// when the failing request's residue could not fit the OOM error object. The
+/// vendored build now keeps headroom for that object, so both rows below
+/// assert the report on every iteration. The evidence in #77 (30 of 1000 runs
+/// divergent for the accumulating shape, 0 of 400 for this one) was taken by
+/// raising the iteration count:
+/// `FJS_HEAP_LIMIT_ROW_ITERATIONS=200 cargo test scoped_heap_limit_row`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn scoped_heap_limit_row_reports_the_memory_limit() {
+    let iterations: usize = std::env::var("FJS_HEAP_LIMIT_ROW_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(10);
+    let (report_lost_runs, divergences) =
+        drive_heap_limit_shape(HEAP_LIMIT_ROW_SOURCE, iterations).await;
     assert!(
         divergences.is_empty(),
-        "the row must enforce the JS heap limit every time — reporting it as a memory-limit error \
-         or losing the report to the vendored null throw (#79) — but {} of {iterations} runs did \
-         neither or left the engine unusable: {divergences:#?}",
+        "the row must report the JS heap limit as JsError_MemoryLimit every time and leave the \
+         engine usable, but {} of {iterations} runs did not ({report_lost_runs} lost the report): \
+         {divergences:#?}",
+        divergences.len()
+    );
+}
+
+/// The accumulating shape of tickets #77 and #79 (`new Array(10000)` per
+/// step): the failing request's residue can be smaller than the OOM error
+/// object, which is what the vendored headroom exists for. Every iteration
+/// must report `JsError::MemoryLimit` and leave the engine usable. Raise the
+/// iteration count with `FJS_HEAP_LIMIT_ACCUMULATING_ITERATIONS=...`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn accumulating_heap_limit_shape_reports_the_memory_limit() {
+    let iterations: usize = std::env::var("FJS_HEAP_LIMIT_ACCUMULATING_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(20);
+    let (report_lost_runs, divergences) =
+        drive_heap_limit_shape(HEAP_LIMIT_ACCUMULATING_SOURCE, iterations).await;
+    assert!(
+        divergences.is_empty(),
+        "the accumulating shape must report the JS heap limit as JsError_MemoryLimit every time \
+         and leave the engine usable, but {} of {iterations} runs did not ({report_lost_runs} lost \
+         the report): {divergences:#?}",
+        divergences.len()
+    );
+}
+
+/// The fine-grained accumulation of ticket #79: the same defect as the
+/// accumulating row, on a shape whose residue starves the error object on
+/// every host. Raise the iteration count with
+/// `FJS_HEAP_LIMIT_FINE_GRAINED_ITERATIONS=...`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn fine_grained_accumulation_reports_the_memory_limit() {
+    let iterations: usize = std::env::var("FJS_HEAP_LIMIT_FINE_GRAINED_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(20);
+    let (report_lost_runs, divergences) =
+        drive_heap_limit_shape(HEAP_LIMIT_FINE_GRAINED_SOURCE, iterations).await;
+    assert!(
+        divergences.is_empty(),
+        "the fine-grained accumulation must report the JS heap limit as JsError_MemoryLimit every \
+         time and leave the engine usable, but {} of {iterations} runs did not ({report_lost_runs} \
+         lost the report): {divergences:#?}",
         divergences.len()
     );
 }
