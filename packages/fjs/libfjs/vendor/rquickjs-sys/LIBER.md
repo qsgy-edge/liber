@@ -22,9 +22,12 @@ out-of-memory error object can always be allocated (ticket #79). It inserts a
 `js_malloc_limit()` helper before the first allocator helper and routes the
 three limit checks -- `js_malloc_rt`, `js_calloc_rt`, `js_realloc_rt` --
 through it. While `in_out_of_memory` is false those checks stop a running
-script 16 KiB short of the configured limit; `JS_ThrowOutOfMemory` sets that
+script 64 KiB short of the configured limit; `JS_ThrowOutOfMemory` sets that
 flag around the throw, so the `InternalError: out of memory` report always has
-room and the tracked heap never exceeds the configured limit. Without it
+room and the tracked heap never exceeds the configured limit. 64 KiB and not
+16 KiB because macOS still lost the report at 16 KiB (CI run `36227056236`),
+and the tracked total moves by the allocator's usable sizes, so the reserve has
+to exceed the platform's rounding. Without it
 `JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot allocate and the
 script sees `Runtime error: null` instead. The script asserts the helper and
 each of the three replacements happened exactly once and fails the build
