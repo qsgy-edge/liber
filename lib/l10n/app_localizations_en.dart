@@ -630,8 +630,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String searchingSource(Object index, Object name, Object total) {
-    return 'Searching $name ($index/$total)';
+  String searchProgress(int results, int answered, int total, String name) {
+    return 'Result $results, Progress $answered / $total: $name';
   }
 
   @override

@@ -25,6 +25,7 @@ class FakeSource {
     this.failure,
     List<String>? titles,
     this.contentFailure,
+    this.delay,
   }) : hits = hits ?? <HtmlBook>[],
        titles = titles ?? <String>[];
 
@@ -33,6 +34,14 @@ class FakeSource {
   Object? failure;
   final List<String> titles;
   Object? contentFailure;
+
+  /// How long this source's search takes, for the walk's own rows.
+  final Duration? delay;
+
+  /// Whether this source's pipeline was already cancelled when its search
+  /// returned from its own delay — the walk's cancellation, seen from inside a
+  /// search that was in flight.
+  bool? cancelledDuringSearch;
   int searchCalls = 0;
   int detailsCalls = 0;
   int contentCalls = 0;
@@ -90,6 +99,57 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   }
 }
 
+/// How many of a run's sources are being searched at the same time, and what
+/// has happened to them — the #108 rows' own instrument. The pipeline below
+/// feeds it, so a row can assert the bound the walk kept and when answers
+/// arrived rather than only what the page ended up showing.
+class WalkWatch {
+  /// Sources whose search has begun.
+  int started = 0;
+
+  /// Sources whose search is running right now.
+  int inFlight = 0;
+
+  /// The most that were ever running at once — the walk's real bound.
+  int maxInFlight = 0;
+
+  /// Sources whose search has returned.
+  int completed = 0;
+
+  void begin() {
+    started++;
+    inFlight++;
+    if (inFlight > maxInFlight) maxInFlight = inFlight;
+  }
+
+  void end() {
+    inFlight--;
+    completed++;
+  }
+}
+
+/// A scripted source whose search answers after [fake]'s own [FakeSource.delay]
+/// and which reports to [watch] — the timing, cancellation and timeout rows of
+/// #108 drive this one.
+class TimedPipeline extends ScriptedPipeline {
+  TimedPipeline(super.fake, this.watch);
+
+  final WalkWatch watch;
+
+  @override
+  Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
+    watch.begin();
+    try {
+      final delay = fake.delay;
+      if (delay != null) await Future<void>.delayed(delay);
+      fake.cancelledDuringSearch = cancelled;
+      return await super.search(keyword, page: page);
+    } finally {
+      watch.end();
+    }
+  }
+}
+
 /// The multi-source search entry (#40): the frozen precise search across the
 /// selected sources, its candidates, its early stop and its no-match answer,
 /// driven through scripted pipelines.
@@ -118,6 +178,16 @@ void main() {
   BookSourcePipeline open(Map<String, dynamic> source) =>
       ScriptedPipeline(byRef['${source['bookSourceUrl']}']!);
 
+  /// One scripted source as the walk takes it.
+  ImportedBookSource imported(FakeSource fake) => ImportedBookSource(
+    id: '${fake.source['bookSourceUrl']}',
+    data: fake.source,
+  );
+
+  /// [count] more scripted sources past 甲/乙/丙, in the store and in [byRef]:
+  /// the #108 rows need more sources than the walk's own bound, so that there
+  /// is a queue behind the sources already in flight.
+
   setUp(() async {
     // A widget test cannot await a background-isolate database
     // (`SpaceDatabase.file`), so this drives an in-memory store in the test's
@@ -145,6 +215,20 @@ void main() {
       await store.putSourceJson(fake.source);
     }
   });
+
+  Future<List<FakeSource>> moreSources(int count) async {
+    final more = <FakeSource>[];
+    for (var i = 0; i < count; i++) {
+      final fake = FakeSource({
+        'bookSourceUrl': 'https://s$i.test',
+        'bookSourceName': '源$i',
+      });
+      byRef['https://s$i.test'] = fake;
+      await store.putSourceJson(fake.source);
+      more.add(fake);
+    }
+    return more;
+  }
 
   tearDown(() => store.close());
 
@@ -178,12 +262,22 @@ void main() {
     // 甲源 list order: the inexact hit before the exact one is a candidate, and
     // the early stop drops the one after it.
     expect(find.text('第三本'), findsNothing);
-    expect(find.textContaining('别人的作者'), findsNWidgets(2));
+    expect(find.textContaining('别人的作者'), findsOneWidget);
     expect(find.textContaining('· 精确匹配'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
       '候选 3 本，其中精确匹配 1 本',
     );
+    // The candidate list is lazy (#86), so 乙源's row is built when the viewport
+    // reaches it: the two inexact candidates are both there, 乙源's below 甲源's.
+    await tester.scrollUntilVisible(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('别人的作者'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 
@@ -264,14 +358,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('页面销毁后不再搜索后面的书源，也不新建分析', (tester) async {
-    // 甲源's answer is held open, so the page can be disposed while its
-    // analysis is in flight — the window in which the run would otherwise walk
-    // on to 乙源 and 丙源 under a State that no longer exists. The run's own
-    // cancellation hook is what stops that walk: the sources after the disposed
-    // one are not asked at all, so no pipeline is opened for them and no
-    // request is issued on their behalf.
-    sourceA.gate = Completer<void>();
+  testWidgets('页面销毁后不再为后面的书源发起搜索，在飞的分析被取消', (tester) async {
+    // The walk searches several sources at once (#108), so the "sources after
+    // the one in flight" are the ones behind its own bound: the page is given
+    // more sources than that bound, so there is a queue that must never start.
+    // Every source is held, so nothing settles until this row says so.
+    // 甲/乙/丙 plus enough for a queue behind the walk's own bound.
+    final more = await moreSources(PreciseSearch.defaultConcurrency);
+    final all = [...byRef.values];
+    expect(all, hasLength(3 + more.length));
+    expect(
+      all.length,
+      greaterThan(PreciseSearch.defaultConcurrency),
+      reason: '比走查自己的上界多出几个书源，队列才有意义',
+    );
+    for (final fake in all) {
+      fake.gate = Completer<void>();
+    }
     final created = <ScriptedPipeline>[];
     BookSourcePipeline openRecording(Map<String, dynamic> source) {
       final pipeline = ScriptedPipeline(byRef['${source['bookSourceUrl']}']!);
@@ -289,23 +392,47 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 20 && sourceA.searchCalls == 0; i++) {
+    for (
+      var i = 0;
+      i < 50 && created.length < PreciseSearch.defaultConcurrency;
+      i++
+    ) {
       await tester.pump(const Duration(milliseconds: 10));
     }
-    expect(sourceA.searchCalls, 1);
-    expect(created, hasLength(1));
+    int searched() => all.where((fake) => fake.searchCalls > 0).length;
+    expect(
+      created,
+      hasLength(PreciseSearch.defaultConcurrency),
+      reason: '一次最多这么多个书源在飞',
+    );
+    expect(searched(), PreciseSearch.defaultConcurrency);
 
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    expect(created.single.cancelled, isTrue, reason: '在飞的分析随页面销毁取消');
+    expect(
+      created.every((pipeline) => pipeline.cancelled),
+      isTrue,
+      reason: '在飞的分析随页面销毁取消',
+    );
 
-    sourceA.gate!.complete();
+    // Every held source answers now: the queue behind the walk must still not
+    // be started, and no pipeline may be opened for it.
+    for (final fake in all) {
+      fake.gate!.complete();
+    }
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 10));
     }
 
-    expect(sourceB.searchCalls, 0, reason: '销毁后不得再为后面的书源发起搜索');
-    expect(sourceC.searchCalls, 0);
-    expect(created, hasLength(1), reason: '销毁后不得再新建 pipeline');
+    expect(
+      created,
+      hasLength(PreciseSearch.defaultConcurrency),
+      reason: '销毁后不得再新建 pipeline',
+    );
+    expect(
+      searched(),
+      PreciseSearch.defaultConcurrency,
+      reason: '销毁后不得再为后面的书源发起搜索',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -586,6 +713,343 @@ void main() {
     ]);
 
     expect(hit, isNull);
+  });
+
+  /// The walk's own rows (#108) drive timed scripted pipelines: this file's
+  /// transport is a scripted pipeline, because the native rule adapter cannot
+  /// load in a widget test and a real loopback site cannot be searched without
+  /// it. What the timings pin is the walk's own shape, not a site's speed.
+  List<FakeSource> timedSources(List<Duration> delays) => [
+    for (var i = 0; i < delays.length; i++)
+      FakeSource({
+        'bookSourceUrl': 'https://t$i.test',
+        'bookSourceName': '源$i',
+      }, delay: delays[i]),
+  ];
+
+  BookSourcePipeline Function(Map<String, dynamic>) timedOpen(
+    List<FakeSource> fakes,
+    WalkWatch watch,
+  ) {
+    final byUrl = {
+      for (final fake in fakes) '${fake.source['bookSourceUrl']}': fake,
+    };
+    return (source) =>
+        TimedPipeline(byUrl['${source['bookSourceUrl']}']!, watch);
+  }
+
+  test('并发上界：9 个书源、最慢的排在最前，耗时由并发而不是 N×最慢决定', () async {
+    final watch = WalkWatch();
+    // Slowest first, so a sequential walk would take their sum — 900 ms — while
+    // three at a time take three rounds of it.
+    final fakes = timedSources([
+      for (var i = 0; i < 9; i++) Duration(milliseconds: 120 - i * 5),
+    ]);
+    final search = PreciseSearch(
+      name: name,
+      author: author,
+      openPipeline: timedOpen(fakes, watch),
+      // The frozen's own bound, made small so the row walks nine sources.
+      concurrency: 3,
+    );
+
+    final arrived = <PreciseSearchOutcome>[];
+    var startedAtFirstAnswer = -1;
+    final stopwatch = Stopwatch()..start();
+    await for (final outcome in search.searchAll([
+      for (final fake in fakes) imported(fake),
+    ])) {
+      if (arrived.isEmpty) startedAtFirstAnswer = watch.started;
+      arrived.add(outcome);
+    }
+    stopwatch.stop();
+
+    expect(arrived, hasLength(9));
+    expect(watch.maxInFlight, 3, reason: '一次只有三个书源在飞');
+    expect(
+      startedAtFirstAnswer,
+      lessThan(9),
+      reason: '第一条结果在走查结束之前就到了：还有书源没有开始',
+    );
+    expect(
+      stopwatch.elapsed,
+      lessThan(const Duration(milliseconds: 600)),
+      reason: '串行会是 900ms（九个书源耗时之和）',
+    );
+  });
+
+  test('取消订阅：不再问后面的书源，且等三个在飞的书源结束后才完成', () async {
+    final watch = WalkWatch();
+    final fakes = timedSources([
+      for (var i = 0; i < 6; i++) const Duration(milliseconds: 150),
+    ]);
+    final byUrl = {
+      for (final fake in fakes) '${fake.source['bookSourceUrl']}': fake,
+    };
+    final created = <TimedPipeline>[];
+    final search = PreciseSearch(
+      name: name,
+      author: author,
+      openPipeline: (source) {
+        final pipeline = TimedPipeline(
+          byUrl['${source['bookSourceUrl']}']!,
+          watch,
+        );
+        created.add(pipeline);
+        return pipeline;
+      },
+      concurrency: 3,
+    );
+
+    final received = <PreciseSearchOutcome>[];
+    final answers = search
+        .searchAll([for (final fake in fakes) imported(fake)])
+        .listen(received.add);
+    for (var i = 0; i < 100 && watch.started < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+    expect(watch.started, 3, reason: '一次三个书源在飞');
+    expect(watch.inFlight, 3);
+
+    await answers.cancel();
+
+    expect(watch.started, 3, reason: '取消后不再问后面的书源');
+    expect(watch.inFlight, 0);
+    expect(watch.completed, 3, reason: '取消要等在飞的书源结束，调用方拿到它时它们已经结束');
+    expect(received, isEmpty);
+    expect(created, hasLength(3));
+    expect(
+      created.every((pipeline) => pipeline.cancelled),
+      isTrue,
+      reason: '在飞的分析被取消',
+    );
+    expect(
+      [for (final fake in fakes.take(3)) fake.cancelledDuringSearch],
+      everyElement(isTrue),
+      reason: '取消时这三个书源的搜索还在飞，走查已经把它们停了',
+    );
+  });
+
+  test('一个书源超过限时：记为失败，请求停下，位置让给下一个书源', () async {
+    final held = Completer<void>();
+    final hanging = FakeSource({
+      'bookSourceUrl': 'https://hang.test',
+      'bookSourceName': '挂源',
+    })..gate = held;
+    final answering = FakeSource(
+      {'bookSourceUrl': 'https://ok.test', 'bookSourceName': '好源'},
+      hits: [candidate('https://ok.test', '1', name, author)],
+    );
+    final watch = WalkWatch();
+    final fakes = [hanging, answering];
+    final byUrl = {
+      for (final fake in fakes) '${fake.source['bookSourceUrl']}': fake,
+    };
+    TimedPipeline? hangingPipeline;
+    final search = PreciseSearch(
+      name: name,
+      author: author,
+      openPipeline: (source) {
+        final pipeline = TimedPipeline(
+          byUrl['${source['bookSourceUrl']}']!,
+          watch,
+        );
+        if ('${source['bookSourceUrl']}' == 'https://hang.test') {
+          hangingPipeline = pipeline;
+        }
+        return pipeline;
+      },
+      concurrency: 1,
+      // The frozen's own per-source budget, made short enough to wait for: the
+      // dialog bounds one source at 60000L (`ChangeBookSourceViewModel.kt:237-243`).
+      sourceTimeout: const Duration(milliseconds: 50),
+    );
+
+    final outcomes = <PreciseSearchOutcome>[];
+    bool? stoppedWhenTimedOut;
+    final stopwatch = Stopwatch()..start();
+    final answers = search
+        .searchAll([for (final fake in fakes) imported(fake)])
+        .listen((outcome) {
+          outcomes.add(outcome);
+          if (outcome.failure != null) {
+            // Read while the walk is still running: 好源 has not answered yet,
+            // so nothing has closed the run's pipelines at this point.
+            stoppedWhenTimedOut = hangingPipeline!.cancelled;
+          }
+        });
+    await answers.asFuture<void>();
+    stopwatch.stop();
+
+    expect(outcomes, hasLength(2));
+    expect(outcomes.first.sourceRef, 'https://hang.test');
+    expect(outcomes.first.failure, contains('书源搜索超时'));
+    expect(outcomes.first.hits, isEmpty);
+    expect(outcomes.last.sourceRef, 'https://ok.test', reason: '限时后位置让给下一个书源');
+    expect(outcomes.last.hits.single.book.title, name);
+    expect(
+      stoppedWhenTimedOut,
+      isTrue,
+      reason: '限时一到这本书源的请求就停了（冻结的 withTimeout 一样取消调用）',
+    );
+    expect(stopwatch.elapsed, greaterThan(const Duration(milliseconds: 50)));
+    expect(
+      stopwatch.elapsed,
+      lessThan(const Duration(milliseconds: 1000)),
+      reason: '一个挂住的书源不把走查拖在它身上',
+    );
+
+    // The abandoned search settles after the walk is over and must not touch a
+    // closed stream.
+    held.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(outcomes, hasLength(2));
+  });
+
+  testWidgets('走查还在进行时命中就上屏，进度行说出已经走过多少书源', (tester) async {
+    // All three sources are held, so this row can look at the page while the
+    // walk is still running: the bound must be visible before anyone answers,
+    // the candidates must appear as their sources answer, and the run must
+    // still be running when they do.
+    sourceA.gate = Completer<void>();
+    sourceB.gate = Completer<void>();
+    sourceC.gate = Completer<void>();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceC.hits.add(candidate('https://c.test', '1', name, author));
+
+    await tester.pumpWidget(
+      localizedApp(
+        home: PreciseSearchPage(
+          service: shelf,
+          initialName: name,
+          initialAuthor: author,
+          openPipeline: open,
+        ),
+      ),
+    );
+    for (var i = 0; i < 40 && sourceC.searchCalls == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    await tester.pump();
+    expect(sourceC.searchCalls, 1, reason: '三个书源一起开始');
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
+      '正在搜索 3 个书源',
+      reason: '还没人回答时也看得见这一次走查多少书源',
+    );
+
+    // 乙源 and 丙源 answer while 甲源 stays held.
+    sourceB.gate!.complete();
+    sourceC.gate!.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(
+      find.textContaining('· 精确匹配'),
+      findsNWidgets(2),
+      reason: '走查还在跑，命中已经在页面上',
+    );
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsOneWidget,
+      reason: '走查还没结束',
+    );
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
+      '结果 2, 当前进度 2 / 3: 丙源',
+      reason: '冻结换源对话框自己的进度行',
+    );
+
+    sourceA.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
+      '候选 2 本，其中精确匹配 2 本',
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('先回答的书源不插队：候选还是按书源顺序列', (tester) async {
+    // 甲源 answers last, 乙源 first — the walk streams in completion order, and
+    // the list must still be the sources' own order.
+    sourceA.gate = Completer<void>();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await tester.pumpWidget(
+      localizedApp(
+        home: PreciseSearchPage(
+          service: shelf,
+          initialName: name,
+          initialAuthor: author,
+          openPipeline: open,
+        ),
+      ),
+    );
+    for (var i = 0; i < 40 && sourceB.searchCalls == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    final fromA = find.byKey(
+      const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+    );
+    final fromB = find.byKey(
+      const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+    );
+    expect(fromB, findsOneWidget, reason: '乙源先回答，先上屏');
+    expect(fromA, findsNothing);
+
+    sourceA.gate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(fromA, findsOneWidget);
+    expect(
+      tester.getTopLeft(fromA).dy,
+      lessThan(tester.getTopLeft(fromB).dy),
+      reason: '甲源后回答，但排在乙源前面',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('几百本候选只构建可见的几行', (tester) async {
+    // #86's lesson: a run over thousands of sources can admit hundreds of
+    // candidates, and building every one of them on every answer is what makes
+    // such a page unusable. 300 rows make "the rows on screen" and "all of
+    // them" unmistakable.
+    for (var i = 0; i < 300; i++) {
+      sourceA.hits.add(candidate('https://a.test', '$i', name, '别人的作者'));
+    }
+
+    await pumpEntry(tester);
+
+    expect(find.textContaining('候选 300 本'), findsOneWidget);
+    expect(
+      find.byType(Card).evaluate().length,
+      lessThan(40),
+      reason: '300 行里只有可见的几十行被构建',
+    );
+    final last = find.byKey(
+      const ValueKey('precise-hit-https://a.test-https://a.test/book/299'),
+    );
+    expect(last, findsNothing, reason: '视口之外的行根本没有建');
+
+    await tester.scrollUntilVisible(
+      last,
+      600,
+      maxScrolls: 60,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(last, findsOneWidget);
+    expect(
+      find.byType(Card).evaluate().length,
+      lessThan(40),
+      reason: '滚到末尾也一样',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   group('formatSearchBookName / formatSearchBookAuthor', () {

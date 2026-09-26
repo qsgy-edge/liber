@@ -180,7 +180,7 @@
   "enterBookName": "Enter a book title",
   "chooseSourcesToSearchStatus": "Choose the book sources to search",
   "searchingSources": "Searching {count} book sources",
-  "searchingSource": "Searching {name} ({index}/{total})",
+  "searchProgress": "Result {results}, Progress {answered} / {total}: {name}",
   "searchFailed": "The search failed: {error}",
   "noResults": "Nothing found for <{name}>{author}",
   "noResultsWithFailures": "Nothing found for <{name}>{author} ({count} sources failed)",

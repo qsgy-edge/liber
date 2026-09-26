@@ -621,8 +621,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String searchingSource(Object index, Object name, Object total) {
-    return '正在搜索 $name（$index/$total）';
+  String searchProgress(int results, int answered, int total, String name) {
+    return '结果 $results, 当前进度 $answered / $total: $name';
   }
 
   @override
@@ -1704,8 +1704,8 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
-  String searchingSource(Object index, Object name, Object total) {
-    return '正在搜尋 $name（$index/$total）';
+  String searchProgress(int results, int answered, int total, String name) {
+    return '結果 $results, 當前進度 $answered / $total: $name';
   }
 
   @override
@@ -2787,8 +2787,8 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   }
 
   @override
-  String searchingSource(Object index, Object name, Object total) {
-    return '正在搜尋 $name（$index/$total）';
+  String searchProgress(int results, int answered, int total, String name) {
+    return '結果 $results, 當前進度 $answered / $total: $name';
   }
 
   @override

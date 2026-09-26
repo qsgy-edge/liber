@@ -29,10 +29,13 @@ import 'source_tls_confirmation.dart';
 ///   position onto the candidate's table of contents, the way the frozen
 ///   `ChangeBookSourceDialog` plus `Book.migrateTo` do.
 ///
-/// Every source is searched in turn and the sources are not searched
-/// concurrently (the frozen dialog runs them under a thread pool); each
-/// source's own requests are serialized per source by the rate limiter the
-/// transport already applies (#42).
+/// Every source is searched, several at a time, and each source's answer
+/// appears on the page as it arrives (#108): the walk is the frozen dialog's
+/// `mapParallel(threadCount)` — nine sources in flight by default, its pool
+/// being `min(threadCount, MAX_THREAD)` — and a source that does not answer
+/// within the frozen's own 60 s is reported as one that failed. Each source's
+/// own requests are serialized per source by the rate limiter the transport
+/// already applies (#42).
 ///
 /// Verified against that dialog for #103, frozen checkout `14dd24945`:
 ///
@@ -77,8 +80,6 @@ import 'source_tls_confirmation.dart';
 ///   absent — a #69 non-goal.
 /// * **A failed pick.** The frozen logs `换源获取目录出错` and keeps the dialog;
 ///   this page shows `switchSourceFailed`.
-/// * **Sequential search.** `mapParallel` across sources is the product's
-///   one-at-a-time walk (`lib/source/precise_search.dart`, #40's divergence).
 ///
 /// The one divergence the operator met is the flow's *shape*, not a field: the
 /// frozen has no user-invoked first-that-answers walk — its only such walk is
@@ -150,17 +151,25 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// initial line is the build's, because it is copy (`lib/l10n/`).
   String? status;
   String? error;
-  List<PreciseSearchOutcome> outcomes = const <PreciseSearchOutcome>[];
 
-  /// Every candidate the last search admitted, in source order.
-  List<PreciseSearchHit> get hits => [
-    for (final outcome in outcomes) ...outcome.hits,
-  ];
+  /// The running search's outcomes, one slot per searched source, filled as the
+  /// walk streams them in. The slots keep the page in **source order** however
+  /// the answers arrive, which is the order the candidate list has always had.
+  List<PreciseSearchOutcome?> placed = const <PreciseSearchOutcome?>[];
 
-  List<PreciseSearchOutcome> get failures => [
-    for (final outcome in outcomes)
-      if (outcome.failure != null) outcome,
-  ];
+  /// Where each mid-flight answer's source sits in [placed]: the walk streams a
+  /// source's ref, and a run of thousands of answers must not search a list of
+  /// thousands of sources for each one.
+  Map<String, int> slotOf = const <String, int>{};
+
+  /// Every candidate the run has admitted so far, in source order.
+  List<PreciseSearchHit> hits = const <PreciseSearchHit>[];
+
+  /// Every source that has failed to answer, in source order.
+  List<PreciseSearchOutcome> failures = const <PreciseSearchOutcome>[];
+
+  /// How many of the run's sources have answered, for the progress line.
+  int answered = 0;
 
   @override
   void initState() {
@@ -266,7 +275,14 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     setState(() {
       running = true;
       error = null;
-      outcomes = const <PreciseSearchOutcome>[];
+      placed = List<PreciseSearchOutcome?>.filled(chosen.length, null);
+      slotOf = {
+        for (var index = 0; index < chosen.length; index++)
+          chosen[index].id: index,
+      };
+      hits = const <PreciseSearchHit>[];
+      failures = const <PreciseSearchOutcome>[];
+      answered = 0;
       status = l10n.searchingSources(chosen.length);
     });
     final search = PreciseSearch(
@@ -285,27 +301,28 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       ),
     );
     try {
-      final result = await search.searchAll(
-        chosen,
-        // The page's lifetime is the run's lifetime: a disposed page stops the
-        // run at the next source instead of walking the rest of the list under
-        // a State that no longer exists.
-        isCancelled: () => !mounted,
-        onProgress: (progress) {
-          if (mounted) {
-            setState(
-              () => status = l10n.searchingSource(
-                progress.sourceName,
-                progress.index,
-                progress.total,
-              ),
-            );
-          }
-        },
-      );
+      // The page's lifetime is the run's lifetime: a disposed page stops the
+      // walk — no source behind the ones already in flight is started, and those
+      // sources' pipelines are cancelled — instead of walking the rest of the
+      // list under a State that no longer exists.
+      final answers = search.searchAll(chosen, isCancelled: () => !mounted);
+      await for (final outcome in answers) {
+        if (!mounted) break;
+        setState(() {
+          _place(outcome);
+          // The frozen dialog's own progress line: what this run has found so
+          // far, how many of the sources have answered, and the one that just
+          // did.
+          status = l10n.searchProgress(
+            hits.length,
+            answered,
+            chosen.length,
+            outcome.sourceName,
+          );
+        });
+      }
       if (!mounted) return;
       setState(() {
-        outcomes = result;
         running = false;
         status = _summary(l10n, name, author);
       });
@@ -318,13 +335,35 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       }
     } finally {
       // The run's own pipelines cancel themselves when their source finishes
-      // (`PreciseSearch._readSource`), so this usually cancels nothing; a
-      // cancelled pipeline is inert, so cancelling again is safe and keeps the
-      // list from dropping anything that could still be in flight.
+      // (`PreciseSearch._readSource`), and the walk cancels the ones left in
+      // flight when it stops; a cancelled pipeline is inert, so cancelling
+      // again is safe and keeps the list from dropping anything that could
+      // still be open.
       for (final pipeline in _pipelines) {
         pipeline.cancel();
       }
       _pipelines.clear();
+    }
+  }
+
+  /// Puts one streamed answer in its own source's slot and refreshes the two
+  /// ordered lists the page's slivers read.
+  ///
+  /// The walk streams in completion order; the slots are what keep the page in
+  /// source order. The lists are rebuilt only when an answer adds a row, so the
+  /// thousands of sources that find nothing do not each rescan the run.
+  void _place(PreciseSearchOutcome outcome) {
+    final slot = slotOf[outcome.sourceRef];
+    if (slot != null) placed[slot] = outcome;
+    answered++;
+    if (outcome.hits.isNotEmpty) {
+      hits = [for (final slot in placed) ...?slot?.hits];
+    }
+    if (outcome.failure != null) {
+      failures = [
+        for (final slot in placed)
+          if (slot?.failure != null) slot!,
+      ];
     }
   }
 
@@ -425,123 +464,159 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
               : l10n.switchSourceTitle(book.title),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          if (book != null)
-            Text(
-              l10n.currentSourceLine(
-                book.source?.name ?? book.sourceRef,
-                book.textOffset,
-              ),
-              key: const ValueKey('switch-source-current'),
-            ),
-          if (loadingSources)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: LinearProgressIndicator(),
-            )
-          else ...[
-            Text(l10n.searchedSources, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final source in sources)
-                  FilterChip(
-                    key: ValueKey('precise-source-${source.id}'),
-                    label: Text(
-                      '${source.data['bookSourceName'] ?? source.id}',
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (book != null)
+                    Text(
+                      l10n.currentSourceLine(
+                        book.source?.name ?? book.sourceRef,
+                        book.textOffset,
+                      ),
+                      key: const ValueKey('switch-source-current'),
                     ),
-                    selected: selected.contains(source.id),
-                    onSelected: running
-                        ? null
-                        : (value) => setState(() {
-                            if (value) {
-                              selected.add(source.id);
-                            } else {
-                              selected.remove(source.id);
-                            }
-                          }),
+                  if (loadingSources)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: LinearProgressIndicator(),
+                    )
+                  else ...[
+                    Text(
+                      l10n.searchedSources,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final source in sources)
+                          FilterChip(
+                            key: ValueKey('precise-source-${source.id}'),
+                            label: Text(
+                              '${source.data['bookSourceName'] ?? source.id}',
+                            ),
+                            selected: selected.contains(source.id),
+                            onSelected: running
+                                ? null
+                                : (value) => setState(() {
+                                    if (value) {
+                                      selected.add(source.id);
+                                    } else {
+                                      selected.remove(source.id);
+                                    }
+                                  }),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _name,
+                    key: const ValueKey('precise-name'),
+                    decoration: InputDecoration(labelText: l10n.bookName),
+                    onSubmitted: (_) => search(),
                   ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 12),
-          TextField(
-            controller: _name,
-            key: const ValueKey('precise-name'),
-            decoration: InputDecoration(labelText: l10n.bookName),
-            onSubmitted: (_) => search(),
-          ),
-          TextField(
-            controller: _author,
-            key: const ValueKey('precise-author'),
-            decoration: InputDecoration(labelText: l10n.authorName),
-            onSubmitted: (_) => search(),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Checkbox(
-                value: checkAuthor,
-                key: const ValueKey('precise-check-author'),
-                onChanged: running
-                    ? null
-                    : (value) => setState(() => checkAuthor = value ?? false),
-              ),
-              Expanded(child: Text(l10n.mustMatchAuthor)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              FilledButton.icon(
-                key: const ValueKey('precise-search'),
-                onPressed: running ? null : search,
-                icon: const Icon(Icons.search),
-                label: Text(l10n.search),
-              ),
-              const SizedBox(width: 12),
-              if (running)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(status, key: const ValueKey('precise-status')),
-          if (error != null) Text(error!, key: const ValueKey('precise-error')),
-          for (final outcome in failures)
-            Text(
-              l10n.sourceErrorLine(outcome.sourceName, '${outcome.failure}'),
-              style: theme.textTheme.bodySmall,
-            ),
-          const SizedBox(height: 8),
-          for (final hit in hits)
-            Card(
-              child: ListTile(
-                key: ValueKey('precise-hit-${hit.sourceRef}-${hit.book.url}'),
-                leading: Icon(
-                  hit.exact ? Icons.check_circle : Icons.circle_outlined,
-                ),
-                title: Text(hit.book.title),
-                subtitle: Text(
-                  [
-                    hit.book.author.isEmpty ? l10n.noAuthor : hit.book.author,
-                    hit.sourceName,
-                    if (hit.exact) l10n.exactMatch,
-                  ].join(' · '),
-                ),
-                trailing: const Icon(Icons.arrow_forward),
-                onTap: running ? null : () => pick(hit),
+                  TextField(
+                    controller: _author,
+                    key: const ValueKey('precise-author'),
+                    decoration: InputDecoration(labelText: l10n.authorName),
+                    onSubmitted: (_) => search(),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: checkAuthor,
+                        key: const ValueKey('precise-check-author'),
+                        onChanged: running
+                            ? null
+                            : (value) =>
+                                  setState(() => checkAuthor = value ?? false),
+                      ),
+                      Expanded(child: Text(l10n.mustMatchAuthor)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        key: const ValueKey('precise-search'),
+                        onPressed: running ? null : search,
+                        icon: const Icon(Icons.search),
+                        label: Text(l10n.search),
+                      ),
+                      const SizedBox(width: 12),
+                      if (running)
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(status, key: const ValueKey('precise-status')),
+                  if (error != null)
+                    Text(error!, key: const ValueKey('precise-error')),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
+          ),
+          // A walk over thousands of sources admits its candidates as they
+          // arrive; each row below is built when the viewport reaches it and no
+          // sooner (#86's lesson: 8 716 rows are not built one per frame), and
+          // an answer that adds a row rebuilds the rows on screen only.
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverList.builder(
+              itemCount: failures.length,
+              itemBuilder: (_, index) => Text(
+                l10n.sourceErrorLine(
+                  failures[index].sourceName,
+                  '${failures[index].failure}',
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            sliver: SliverList.builder(
+              itemCount: hits.length,
+              itemBuilder: (_, index) => _candidate(hits[index], l10n, running),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  /// One candidate of the candidate list.
+  Widget _candidate(
+    PreciseSearchHit hit,
+    AppLocalizations l10n,
+    bool running,
+  ) => Card(
+    child: ListTile(
+      key: ValueKey('precise-hit-${hit.sourceRef}-${hit.book.url}'),
+      leading: Icon(hit.exact ? Icons.check_circle : Icons.circle_outlined),
+      title: Text(hit.book.title),
+      subtitle: Text(
+        [
+          hit.book.author.isEmpty ? l10n.noAuthor : hit.book.author,
+          hit.sourceName,
+          if (hit.exact) l10n.exactMatch,
+        ].join(' · '),
+      ),
+      trailing: const Icon(Icons.arrow_forward),
+      onTap: running ? null : () => pick(hit),
+    ),
+  );
 }
