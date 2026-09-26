@@ -468,7 +468,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -491,31 +491,52 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final source in sources)
-                          FilterChip(
-                            key: ValueKey('precise-source-${source.id}'),
-                            label: Text(
-                              '${source.data['bookSourceName'] ?? source.id}',
-                            ),
-                            selected: selected.contains(source.id),
-                            onSelected: running
-                                ? null
-                                : (value) => setState(() {
-                                    if (value) {
-                                      selected.add(source.id);
-                                    } else {
-                                      selected.remove(source.id);
-                                    }
-                                  }),
-                          ),
-                      ],
-                    ),
                   ],
-                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+          if (!loadingSources)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              sliver: SliverGrid.builder(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 240,
+                  mainAxisExtent: 48,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: sources.length,
+                itemBuilder: (_, index) {
+                  final source = sources[index];
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilterChip(
+                      key: ValueKey('precise-source-${source.id}'),
+                      label: Text(
+                        '${source.data['bookSourceName'] ?? source.id}',
+                      ),
+                      selected: selected.contains(source.id),
+                      onSelected: running
+                          ? null
+                          : (value) => setState(() {
+                              if (value) {
+                                selected.add(source.id);
+                              } else {
+                                selected.remove(source.id);
+                              }
+                            }),
+                    ),
+                  );
+                },
+              ),
+            ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   TextField(
                     controller: _name,
                     key: const ValueKey('precise-name'),
