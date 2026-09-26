@@ -431,8 +431,23 @@ Future<void> main(List<String> args) async {
           '(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()';
       final heapLimit = await runNested(heapLimitSource);
       checks['heapLimitEnforced'] = heapLimit is JsError_MemoryLimit;
+      // A red row has to say what it saw instead. The report's shape is the
+      // platform-specific part of this check (#79: macOS lost it 10 of 10
+      // before the headroom, and this row is strict again), so the observed
+      // value of both shapes is recorded: the gate's own request, and the
+      // fine-grained one the Rust row found deterministic on Windows before the
+      // fix. Recorded, not asserted — only the check above decides pass/fail.
+      diagnostics['heapLimitObserved'] = {
+        'value': '${heapLimit.runtimeType}: ${boundedText('$heapLimit')}',
+      };
       await nestedEngine.runGc();
       checks['afterGcUsable'] = await runNested('21*2') == 42;
+      final fineGrained = await runNested(
+        '(()=>{const blocks=[]; while(true) { blocks.push(new Array(100).fill(123)); }})()',
+      );
+      diagnostics['heapLimitFineGrainedObserved'] = {
+        'value': '${fineGrained.runtimeType}: ${boundedText('$fineGrained')}',
+      };
     } finally {
       if (!nestedEngine.closed) await nestedEngine.close();
     }
