@@ -28,7 +28,11 @@ Map<String, dynamic> bookSourceJson(BookSource source) {
     final decoded = jsonDecode(raw);
     if (decoded is Map<String, dynamic>) return decoded;
   }
-  return {'bookSourceUrl': source.bookSourceUrl, 'bookSourceName': source.name};
+  return {
+    'bookSourceUrl': source.bookSourceUrl,
+    'bookSourceName': source.name,
+    'enabled': source.enabled,
+  };
 }
 
 /// One shelf book with everything opening it needs: the row, its source, its

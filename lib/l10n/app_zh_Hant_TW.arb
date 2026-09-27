@@ -161,6 +161,7 @@
   "nextChapter": "下一章",
   "nextPage": "下一頁",
   "noAuthor": "（無作者）",
+  "noEnabledSourcesInSpace": "空間裡沒有啟用的書源",
   "noLoginHeader": "（沒有儲存登入頭部資訊）",
   "noNewFiles": "沒有新的檔案加入書架",
   "noOnlineReading": "尚無線上閱讀記錄",

@@ -44,8 +44,16 @@ import 'source_tls_confirmation.dart';
 ///   (`select ... where enabled = 1 order by customOrder asc`), falling back to
 ///   it when the selected `AppConfig.searchGroup` is blank (its default). This
 ///   page reads `ShelfService.sources()` — every source in the space,
-///   `customOrder` then `bookSourceUrl` — and pre-selects the enabled ones, so
-///   the default set and its order are the frozen ones.
+///   `customOrder` then `bookSourceUrl` — and keeps only the enabled ones, all
+///   of them selected, so the default set and its order are the frozen ones.
+/// * **A disabled source is not searched (#114).** `allEnabledPart` is
+///   `enabled = 1` and the dialog has no way to add a disabled source to the
+///   run; this page lists no chip for a disabled source, so no selection can
+///   reach it. The set is read from the store each time the page loads, so a
+///   source whose stored `enabled` has become true is searched the next time.
+///   Like `allEnabledPart`, the filter is the enabled flag alone — no
+///   `bookSourceType` filter; that one is `allTextEnabledPart`'s, which the
+///   automatic switch (`auto_change_source.dart`) follows.
 /// * **What admits a hit.** The dialog's filter is `fName == name &&
 ///   (!checkAuthor || fAuthor.contains(author))` with
 ///   `AppConfig.changeSourceCheckAuthor` defaulting to false;
@@ -66,9 +74,6 @@ import 'source_tls_confirmation.dart';
 ///   searches only that group's enabled sources, with a group menu; this page
 ///   has no group picker, so a group selected there has no counterpart here.
 ///   The default (no group) is the same set.
-/// * **A disabled source can be searched.** The frozen's `allEnabledPart` is
-///   `enabled = 1`; this page lists a chip for every source and only
-///   *pre*-selects the enabled ones, so a user may search a disabled source.
 /// * **Per-candidate fields.** The frozen card shows the hit's own latest
 ///   chapter title (`SearchBook.getDisplayLastChapterTitle`), ticks the current
 ///   source's row (`oldBookUrl == bookUrl`) and, with
@@ -189,28 +194,34 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     super.dispose();
   }
 
-  /// Reads the space's sources and starts on those the space has enabled — the
-  /// frozen flow's `allEnabledPart` — with every one of them selected.
+  /// Reads the space's sources and keeps those the space has enabled — the
+  /// frozen flow's `allEnabledPart` — with every one of them selected. A
+  /// disabled source gets no chip, so it cannot be selected into a run.
   Future<void> _loadSources() async {
     try {
       final loaded = await widget.service.sources();
+      final enabled = [
+        for (final source in loaded)
+          if (source.data['enabled'] != false) source,
+      ];
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
       setState(() {
-        sources = loaded;
+        sources = enabled;
         selected
           ..clear()
-          ..addAll([
-            for (final source in loaded)
-              if (source.data['enabled'] != false) source.id,
-          ]);
+          ..addAll([for (final source in enabled) source.id]);
         loadingSources = false;
         status = loaded.isEmpty
             ? l10n.noSourcesInSpace
+            : enabled.isEmpty
+            ? l10n.noEnabledSourcesInSpace
             : l10n.chooseSourcesToSearch;
       });
-      // The frozen dialog searches as soon as it opens when it has a name.
-      if (_name.text.trim().isNotEmpty) await search();
+      // The frozen dialog searches as soon as it opens when it has a name; with
+      // no enabled source there is nothing to search, and the line above says
+      // why.
+      if (_name.text.trim().isNotEmpty && enabled.isNotEmpty) await search();
     } on Object catch (failure) {
       if (mounted) {
         setState(() {

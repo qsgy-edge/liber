@@ -175,6 +175,7 @@
   "exactMatch": "Exact match",
   "readingSources": "Reading the book sources",
   "noSourcesInSpace": "The space has no book sources yet",
+  "noEnabledSourcesInSpace": "The space has no enabled book sources",
   "chooseSourcesToSearch": "Choose the book sources, then search by title",
   "loadSourcesFailed": "Reading the book sources failed: {error}",
   "enterBookName": "Enter a book title",
