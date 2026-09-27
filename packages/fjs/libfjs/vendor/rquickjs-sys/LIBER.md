@@ -17,14 +17,15 @@ each of the two replacements happened exactly once and fails the build otherwise
 so a QuickJS bump that moves or renumbers either define cannot silently restore
 10 000.
 
-The same build script patches `quickjs.c`'s memory-limit checks so the
-out-of-memory error object can always be allocated (ticket #79). It inserts a
+The same build script patches `quickjs.c`'s memory-limit checks to reserve
+capacity for the out-of-memory error object (ticket #79). It inserts a
 `js_malloc_limit()` helper before the first allocator helper and routes the
 three limit checks -- `js_malloc_rt`, `js_calloc_rt`, `js_realloc_rt` --
-through it. While `in_out_of_memory` is false those checks stop a running
-script 16 KiB short of the configured limit; `JS_ThrowOutOfMemory` sets that
-flag around the throw, so the `InternalError: out of memory` report always has
-room. Without it `JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot
+through it. While `in_out_of_memory` is false those checks use a limit 16 KiB
+below the configured cap; `JS_ThrowOutOfMemory` sets that flag around the throw,
+so report construction can use the reserved capacity. This preserves the report
+in the measured budget-limited shapes, not under every allocation failure.
+Without it `JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot
 allocate and the script sees `Runtime error: null` instead. The script asserts the helper and
 each of the three replacements happened exactly once and fails the build
 otherwise; the frozen `quickjs/quickjs.c` is not touched.
@@ -48,7 +49,10 @@ limit, the 16 KiB reserve, the recursion guard, or error mapping. The budget is
 QuickJS's tracked allocation accounting, not a process RSS cap: OS slack and
 allocator metadata are not all counted (the Rust header is not included in its
 reported usable size; QuickJS's fixed overhead is 0 on Apple and 8 elsewhere).
-The frozen sources and C patch logic remain unchanged by #111.
+The frozen sources and C patch logic remain unchanged by #111. Limits at or
+below 16 KiB retain the existing no-reserve behaviour. System allocator failure
+can still prevent an error object from being built; arbitrary small limits and
+all alignment/overhead boundary values have not been proven by these rows.
 
 There is no stack accessor any more. The Windows fiber scheduler that needed one
 — to detach and restore QuickJS's stack-frame state before every resumption — is

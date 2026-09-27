@@ -62,24 +62,24 @@ fn patch_poll_quantum(out_dir: &Path) {
     }
 }
 
-/// The bytes of tracked heap kept out of a running script's reach so the
-/// out-of-memory error object can always be built. `JS_ThrowError2` throws
-/// `JS_NULL` when `JS_MakeError` cannot allocate, and the report is lost
-/// (tickets #77/#79); this headroom is what makes that allocation succeed.
-/// `JS_ThrowOutOfMemory` marks the throw path with `in_out_of_memory`, and
-/// that is the only path that sees the whole `malloc_limit`, so a script still
-/// cannot push the tracked heap past the configured limit. A limit at or below
-/// the headroom keeps the previous behaviour.
+/// The bytes reserved by a running script's allocation checks for building the
+/// out-of-memory error object. `JS_ThrowError2` throws `JS_NULL` when
+/// `JS_MakeError` cannot allocate (tickets #77/#79); this headroom preserves the
+/// report in the measured budget-limited shapes, not under system allocation
+/// failure. `JS_ThrowOutOfMemory` marks the throw path with `in_out_of_memory`,
+/// and only that path's checks see the whole `malloc_limit`. Checks precede
+/// allocator rounding and accounting; they are not a process RSS cap. A limit
+/// at or below the headroom keeps the previous behaviour without a reserve.
 ///
 /// The runtime also selects rquickjs's `rust-alloc` feature (#111): its usable
 /// sizes are aligned requests, not the libc allocator's potentially much larger
 /// slack. Without that, an accepted allocation can consume this reserve and even
 /// exceed the cap before the next limit check. Heap usage after eval unwinds is
 /// not the usage at refusal. Keep this reserve at 16 KiB.
-const OOM_HEADROOM_HELPER: &str = r#"/* Bytes of the tracked heap kept out of a running script's reach so the
-   out-of-memory error object (and its message string) can always be
-   allocated. JS_ThrowError2 otherwise throws JS_NULL when JS_MakeError
-   cannot allocate, and the report is lost (#79); JS_ThrowOutOfMemory marks
+const OOM_HEADROOM_HELPER: &str = r#"/* Bytes reserved by script allocation checks for the out-of-memory
+   error object and its message string, not a system-allocation guarantee.
+   JS_ThrowError2 throws JS_NULL when JS_MakeError cannot allocate,
+   and the report is lost (#79); JS_ThrowOutOfMemory marks
    the throw path with in_out_of_memory, which is the only path that sees the
    whole malloc_limit. A limit at or below the headroom keeps the old
    behaviour. */
@@ -111,10 +111,10 @@ const OOM_HEADROOM_LIMIT_CHECKS: [(&str, &str); 3] = [
     ),
 ];
 
-/// Patches the build copy of `quickjs.c` so an out-of-memory error object can
-/// always be allocated, however little of the heap the failing request left:
-/// inserts the headroom helper before the first allocator helper and routes
-/// the three limit checks through it, asserting each edit lands exactly once.
+/// Reserves capacity for the budget-limit report in the build copy of
+/// `quickjs.c`: inserts the headroom helper before the first allocator helper
+/// and routes the three limit checks through it, asserting each edit lands
+/// exactly once. This does not guarantee allocation under system exhaustion.
 /// The anchor is a single line, so a CRLF or LF checkout patches identically.
 /// The frozen `quickjs/` sources stay unchanged, as `LIBER.md` records.
 fn patch_oom_headroom(out_dir: &Path) {

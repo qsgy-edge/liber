@@ -74,9 +74,14 @@ GC accounting and allocator callbacks change on every platform, so each platform
 rows; cross-builds do not establish Android/iOS runtime behaviour. The branch-scoped probe comparison and
 candidate verification belong to #111, not to the older limits measurements below.
 
+The reserved capacity preserves the OOM report for the measured budget-limited shapes; it is not a promise
+that the system allocator can always satisfy the error object's request. Limits at or below 16 KiB retain
+the existing no-reserve behaviour. Arbitrary small limits and every alignment/overhead boundary value remain
+unproven; do not promote the measured rows to a universal allocation guarantee.
+
 The residual accepted here is: **a hostile source can hold the engine's own thread
-for seconds per execution — it cannot exceed the heap cap, cannot escape, and the user can still cancel or
-close the analysis.** Reopen condition, recorded rather than implied: if a source in the wild
+for seconds per execution — its JS allocation requests are checked against the configured budget, not a
+process RSS bound, and the user can still cancel or close the analysis.** Reopen condition, recorded rather than implied: if a source in the wild
 is observed exploiting the residual, or if sources ever run unattended or in batches instead of one analysis
 at a user's request, isolation returns as its own decision with the child-process and state-sharing costs
 above. The rejected alternative is a design document with no implementation behind it.
