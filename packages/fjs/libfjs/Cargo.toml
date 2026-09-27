@@ -19,7 +19,8 @@ flutter_rust_bridge = "=2.12.0"
 liber_html = { path = "../liber_html" }
 liber_text = { path = "../liber_text" }
 futures = "0.3"
-rquickjs = { git = "https://github.com/DelSkayn/rquickjs.git", rev = "04e2734", version = "0.12.1", features = ["full-async", "bindgen", "loader", "dyn-load", "parallel", "macro", "futures"] }
+# Keep QuickJS's usable-size accounting independent of platform malloc slack (#111).
+rquickjs = { git = "https://github.com/DelSkayn/rquickjs.git", rev = "04e2734", version = "0.12.1", features = ["full-async", "bindgen", "loader", "dyn-load", "parallel", "macro", "futures", "rust-alloc"] }
 tokio = { version = "1", features = ["full"] }
 
 llrt_abort = { git = "https://github.com/awslabs/llrt", rev = "952fd20" }

@@ -424,16 +424,16 @@ Future<void> main(List<String> args) async {
       // context's global lexical scope (the reason batch 15's retry, since
       // removed, died on `SyntaxError: redeclaration of 'blocks'`).
       //
-      // Two shapes are run. The assertion is on the accumulating one — the
-      // shape a source reaches in practice, and the one the vendored headroom
-      // fixed on every platform. The single-request shape (one allocation
-      // larger than the whole limit) is recorded instead: Windows and Linux
-      // report it, macOS still loses it to `Runtime error: null` with the
-      // tracked heap at a fraction of the limit, so it is not about the reserve
-      // at all (#111).
+      // Both shapes must preserve the OOM report. The historically named
+      // single-request shape grows its backing array during fill; libc usable
+      // sizes could exceed the cap on macOS before the error was built (#111).
+      // The Rust allocator reports aligned requested sizes instead of OS slack.
       const singleRequestSource =
           '(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()';
       final singleRequest = await runNested(singleRequestSource);
+      checks['heapLimitSingleRequestEnforced'] =
+          singleRequest is JsError_MemoryLimit &&
+          '$singleRequest'.contains('InternalError: out of memory');
       diagnostics['heapLimitSingleRequestObserved'] = {
         'value': '${singleRequest.runtimeType}: ${boundedText('$singleRequest')}',
       };

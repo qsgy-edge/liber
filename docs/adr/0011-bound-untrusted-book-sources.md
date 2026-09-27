@@ -54,12 +54,27 @@ down from QuickJS's 10 000/10 000 to 1 000/1 000):
   `JSON.parse` under a 200 ms deadline, through the product.
 
 The interrupt error stays uncatchable, so a source cannot swallow the deadline, and the heap limit stays
-enforced at the allocator. Of the configured cap, 16 KiB is reserved: a running script's allocations stop
-that much short of it, while the out-of-memory throw path sees the whole cap, so the `out of memory` report
-always has room to be built and the tracked total still never exceeds the configured cap (#79). The shape macOS
-still loses is one request larger than the whole limit, which is not about this reserve — the refusal there
-happens with the tracked heap at a fraction of the cap (#111). The residual
-accepted here is: **a hostile source can hold the engine's own thread
+enforced at the allocator. Of the configured cap, 16 KiB is reserved: a running script's allocation checks
+stop that much short of it, while the out-of-memory throw path sees the whole cap (#79).
+
+**Allocator correction (#111).** The previous claim that macOS refused a single allocation with a nearly
+empty heap was based on a post-eval measurement, after array cleanup. `new Array(4000000).fill` actually grows
+its backing array during fill. In the macOS Dart probe, the tracked heap was **16 932 864 bytes against a
+16 777 216-byte cap** before the refusal; the 96-byte OOM object was refused too, and `JS_ThrowError2` threw
+null. The standalone Rust executable did not reproduce this. The build had not enabled `rust-alloc`:
+rquickjs used libc, and QuickJS checked requested sizes before charging the system allocator's potentially
+larger usable sizes. The earlier accounting premise and unconditional tracked-cap claim were therefore wrong.
+
+The candidate uses rquickjs's existing `rust-alloc` feature on every platform: usable sizes are the requested
+sizes rounded to `align_of::<u64>()`, retained in allocation headers, rather than OS slack. The heap budgets,
+16 KiB reserve, recursion guard, poll quantum and deadline behaviour are unchanged. This is a tracked JS
+allocation budget, **not a process RSS cap**: allocator metadata and OS slack are not all charged (the Rust
+header is excluded from usable size; QuickJS adds fixed overhead of 0 on Apple and 8 elsewhere). Array growth,
+GC accounting and allocator callbacks change on every platform, so each platform still needs its own executed
+rows; cross-builds do not establish Android/iOS runtime behaviour. The branch-scoped probe comparison and
+candidate verification belong to #111, not to the older limits measurements below.
+
+The residual accepted here is: **a hostile source can hold the engine's own thread
 for seconds per execution — it cannot exceed the heap cap, cannot escape, and the user can still cancel or
 close the analysis.** Reopen condition, recorded rather than implied: if a source in the wild
 is observed exploiting the residual, or if sources ever run unattended or in batches instead of one analysis

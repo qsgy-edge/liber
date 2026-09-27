@@ -71,11 +71,11 @@ fn patch_poll_quantum(out_dir: &Path) {
 /// cannot push the tracked heap past the configured limit. A limit at or below
 /// the headroom keeps the previous behaviour.
 ///
-/// 16 KiB carries the error object on every platform measured (the fine-grained
-/// and accumulating shapes report the limit on Windows, Linux and macOS with
-/// it). The shape macOS still loses — one request larger than the whole limit —
-/// is not a reserve problem: that refusal happens with the tracked heap at a
-/// fraction of the limit (#111).
+/// The runtime also selects rquickjs's `rust-alloc` feature (#111): its usable
+/// sizes are aligned requests, not the libc allocator's potentially much larger
+/// slack. Without that, an accepted allocation can consume this reserve and even
+/// exceed the cap before the next limit check. Heap usage after eval unwinds is
+/// not the usage at refusal. Keep this reserve at 16 KiB.
 const OOM_HEADROOM_HELPER: &str = r#"/* Bytes of the tracked heap kept out of a running script's reach so the
    out-of-memory error object (and its message string) can always be
    allocated. JS_ThrowError2 otherwise throws JS_NULL when JS_MakeError

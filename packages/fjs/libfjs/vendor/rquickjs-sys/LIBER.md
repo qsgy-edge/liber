@@ -24,14 +24,31 @@ three limit checks -- `js_malloc_rt`, `js_calloc_rt`, `js_realloc_rt` --
 through it. While `in_out_of_memory` is false those checks stop a running
 script 16 KiB short of the configured limit; `JS_ThrowOutOfMemory` sets that
 flag around the throw, so the `InternalError: out of memory` report always has
-room and the tracked heap never exceeds the configured limit. (The shape macOS
-still loses — one request larger than the whole limit — is not about this
-reserve: the refusal there happens with the tracked heap at a fraction of the
-limit; #111.) Without it
-`JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot allocate and the
-script sees `Runtime error: null` instead. The script asserts the helper and
+room. Without it `JS_ThrowError2` throws `JS_NULL` when `JS_MakeError` cannot
+allocate and the script sees `Runtime error: null` instead. The script asserts the helper and
 each of the three replacements happened exactly once and fails the build
 otherwise; the frozen `quickjs/quickjs.c` is not touched.
+
+Libfjs also selects rquickjs's existing `rust-alloc` feature (#111), on every
+platform. Without that feature `RawRuntime::new` calls `JS_NewRuntime`, using
+libc, not rquickjs's header-based Rust allocator. QuickJS checks requested bytes
+before allocating but charges the allocator's usable size afterwards, including
+OS slack. The macOS Dart probe reached 16 932 864 tracked bytes with a 16 777 216
+limit; even the 96-byte error object was then refused, so `JS_MakeError` failed
+and `JS_ThrowError2` threw null. The same Rust test executable did not reproduce
+that failure. The row's small *post-eval* heap was measured after array cleanup,
+not at refusal; `new Array(4000000).fill` grows its backing array during fill,
+rather than making one allocation against an empty budget.
+
+`RustAllocator` uses Rust's global allocator and reports requests rounded to
+`align_of::<u64>()`, stored in a header, rather than exposing the system
+allocator's extra slack. This changes array growth, GC accounting and allocation
+callbacks across all five platforms; it does not change the configured heap
+limit, the 16 KiB reserve, the recursion guard, or error mapping. The budget is
+QuickJS's tracked allocation accounting, not a process RSS cap: OS slack and
+allocator metadata are not all counted (the Rust header is not included in its
+reported usable size; QuickJS's fixed overhead is 0 on Apple and 8 elsewhere).
+The frozen sources and C patch logic remain unchanged by #111.
 
 There is no stack accessor any more. The Windows fiber scheduler that needed one
 — to detach and restore QuickJS's stack-frame state before every resumption — is
