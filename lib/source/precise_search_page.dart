@@ -121,12 +121,39 @@ const String _loadWordCountSettingOn = '1';
 ///   leaves a blank; this row keeps the product's own answers for those two —
 ///   `（无作者）` and the source URL — and uses the frozen `无最新章节信息` for the
 ///   new latest-chapter line alone.
-/// * **What the word-count line measures.** The frozen measures the *processed*
-///   content, `contentProcessor.getContent(oldBook, chapter, content, false)`
+/// * **What the word-count line measures, and why the existing port is not
+///   reused here.** The frozen measures the *processed* content,
+///   `contentProcessor.getContent(oldBook, chapter, content, false)`
 ///   (`ChangeBookSourceViewModel.kt:330`), so its length carries the reading
-///   page's replace rules, Chinese conversion and re-segmentation; this page
-///   owns no reading pipeline and measures the body the content stage returned.
-///   A source with such rules therefore shows a different number.
+///   page's replace rules, Chinese conversion and re-segmentation;
+///   `content_processing.dart` is that port (`ContentProcessing.content` with
+///   `includeTitle: false`), and this page measures the body the content stage
+///   returned instead. A source whose rules rewrite the chapter therefore shows
+///   a different number. The bounded check run for #115's stage-1 gate found
+///   three of the port's inputs have no entry point here, which is why it is a
+///   follow-up rather than this ticket:
+///   * the **rules** and the **chapter** do have one — `store.replaceRules()`
+///     plus `ReplaceRuleSet.forBook` are the reader's own two calls
+///     (`online_reader_page.dart`, `main.dart`) and the chapter is this
+///     candidate's own;
+///   * the **book** has one only in switch mode ([switchBook]): the frozen takes
+///     the rule scope (and the duplicated-title match's book name) from
+///     `oldBook`, while the search entry has no book at all — the frozen's own
+///     `oldBook!!` has no counterpart there and throws, which is how the frozen
+///     reaches its failure line. Which rules reach a candidate in the search
+///     entry is therefore a decision the frozen does not make, and the same row
+///     would mean two different things in the two modes;
+///   * the **conversion** has none: the frozen reads the app-global
+///     `AppConfig.chineseConverterType` (default 0, no conversion,
+///     `ContentProcessor.kt:135-143`), where the product's equivalent is
+///     `ReaderScriptSetting.resolve`, whose default resolves to a target on a
+///     zh system — so the page would call the native `TextEngine.convertTo`, and
+///     the reader carries its `convert` parameter for exactly that reason;
+///   * the port's rule-timeout path disables the rule in the store through
+///     `onRuleDisabled`, state the reader owns.
+///   Proposed follow-up (a decision ticket, not a lane): fix the search entry's
+///   rule scope, the conversion input and the `convert` seam, then reuse the
+///   port for both modes.
 /// * **A candidate whose details or table of contents do not answer.** The
 ///   frozen chain throws out of its source's `forEach` (`:251-260`), so with the
 ///   switch on that candidate never reaches the list at all; this page keeps it
