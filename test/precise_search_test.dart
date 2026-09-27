@@ -993,6 +993,12 @@ void main() {
   });
 
   testWidgets('换源列表：一个书源出错或没有精确命中，后面的候选照常按书源顺序入列', (tester) async {
+    // The rows now carry the frozen card's fields (#115), so both of them need a
+    // taller surface than the default to be built at once: the list is lazy
+    // (#86), and the position comparison below needs both rows in the tree.
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final entry = await shelvedBook();
     sourceA.failure = StateError('页面读取失败');
     sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
@@ -1084,6 +1090,186 @@ void main() {
     expect(sourceB.contentCalls, 0, reason: '列表流程不取正文');
     expect(popped, isTrue);
     expect((await store.bookById(entry.id))!.sourceRef, 'https://b.test');
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Scrolls the candidate list until the row for [url] on [sourceUrl] is
+  /// built: the list is lazy (#86), so a row below the fold is not in the tree
+  /// yet.
+  Future<void> showHit(WidgetTester tester, String sourceUrl, String url) =>
+      tester.scrollUntilVisible(
+        find.byKey(ValueKey('precise-hit-$sourceUrl-$url')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+  testWidgets('候选行给出冻结的最新章节，空值答冻结的无最新章节信息', (tester) async {
+    // `SearchBook.getDisplayLastChapterTitle`: the field as the search page
+    // answered it, or 无最新章节信息 when it is empty.
+    sourceA.hits.add(
+      HtmlBook(
+        url: Uri.parse('https://a.test/book/1'),
+        title: name,
+        author: '别人的作者',
+        lastChapter: '第 1300 章 大战',
+      ),
+    );
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpEntry(tester);
+
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('第 1300 章 大战'), findsOneWidget);
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.text('无最新章节信息'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：当前书源的那一行带冻结的逐行勾选（oldBookUrl == bookUrl）', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/1',
+        ),
+      ),
+      findsOneWidget,
+      reason: '甲源正是这本书当前的来源',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://b.test-https://b.test/book/1',
+        ),
+      ),
+      findsNothing,
+      reason: '乙源不是当前来源',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数默认关闭：候选行没有字数与响应时间行，候选不多取一次正文', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('precise-load-word-count')),
+          )
+          .value,
+      isFalse,
+      reason: '冻结的 AppConfig.changeSourceLoadWordCount 默认关着',
+    );
+    expect(sourceB.detailsCalls, 0, reason: '关着时读搜索页答复的字段，不读详情');
+    expect(sourceB.contentCalls, 0, reason: '关着时不取正文');
+    expect(find.textContaining('响应时间：'), findsNothing);
+    expect(find.textContaining('字数：'), findsNothing);
+    // 最新章节的空值占位仍在
+    expect(find.text('无最新章节信息'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数打开：候选行给出冻结的字数行与响应时间，每个候选取一次正文', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章', '第四章']);
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    // 进度在第三章，冻结的 BookHelp.getDurChapter 落回新目录的下标 2，正文是
+    // 脚本给出的“第三章的正文”,6 个码元。
+    expect(find.text('[3] 第三章\n字数：6'), findsOneWidget);
+    expect(find.textContaining('响应时间：'), findsOneWidget);
+    expect(sourceB.detailsCalls, 1, reason: '每个候选读一次自己的目录');
+    expect(sourceB.contentCalls, 1, reason: '每个候选取一次正文');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数开关跨页面重开仍然有效', (tester) async {
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpEntry(tester);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    expect(await store.setting('changeSourceLoadWordCount'), '1');
+    expect(sourceA.contentCalls, 1);
+    // 没有换源的入口就没有阅读进度，冻结取目录的最后一章（chapters.lastIndex）
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('[3] 第三章\n字数：6'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    sourceA.detailsCalls = 0;
+    await pumpEntry(tester);
+
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('precise-load-word-count')),
+          )
+          .value,
+      isTrue,
+    );
+    // 重开的页面已经把开关读回来了，按冻结的链自己补上字数
+    expect(sourceA.detailsCalls, 1);
+    expect(sourceA.contentCalls, 2);
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('[3] 第三章\n字数：6'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数关掉后可选行隐藏，也不再多发请求', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    expect(sourceB.contentCalls, 1);
+
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    expect(await store.setting('changeSourceLoadWordCount'), '');
+    expect(sourceB.contentCalls, 1, reason: '关掉不再发请求');
+    expect(find.textContaining('响应时间：'), findsNothing);
+    expect(find.textContaining('字数：'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('取正文失败时仍给冻结的获取字数失败行', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+    sourceB.contentFailure = StateError('正文分页读取失败');
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.textContaining('[3] 第三章\n获取字数失败：'), findsOneWidget);
+    expect(find.textContaining('响应时间：'), findsOneWidget);
+    // 候选仍在列表里：字数取不到不改变收录
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

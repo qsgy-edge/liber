@@ -506,6 +506,18 @@
   },
   "noAuthor": "（无作者）",
   "exactMatch": "精确匹配",
+  "noLatestChapter": "无最新章节信息",
+  "loadWordCount": "加载字数",
+  "respondTime": "响应时间：{ms} ms",
+  "@respondTime": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "likeSource": "赞",
+  "notLikeSource": "踩",
   "readingSources": "正在读取书源",
   "noSourcesInSpace": "空间里还没有书源",
   "noEnabledSourcesInSpace": "空间里没有启用的书源",

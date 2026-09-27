@@ -604,6 +604,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exactMatch => 'Exact match';
 
   @override
+  String get noLatestChapter => 'No latest chapter.';
+
+  @override
+  String get loadWordCount => 'Load word count';
+
+  @override
+  String respondTime(int ms) {
+    return 'respondTime: $ms ms';
+  }
+
+  @override
+  String get likeSource => 'Like';
+
+  @override
+  String get notLikeSource => 'Not like';
+
+  @override
   String get readingSources => 'Reading the book sources';
 
   @override

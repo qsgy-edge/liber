@@ -596,6 +596,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exactMatch => '精确匹配';
 
   @override
+  String get noLatestChapter => '无最新章节信息';
+
+  @override
+  String get loadWordCount => '加载字数';
+
+  @override
+  String respondTime(int ms) {
+    return '响应时间：$ms ms';
+  }
+
+  @override
+  String get likeSource => '赞';
+
+  @override
+  String get notLikeSource => '踩';
+
+  @override
   String get readingSources => '正在读取书源';
 
   @override
@@ -1696,6 +1713,23 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get exactMatch => '精確匹配';
 
   @override
+  String get noLatestChapter => '無最新章節信息';
+
+  @override
+  String get loadWordCount => '加載字數';
+
+  @override
+  String respondTime(int ms) {
+    return '響應時間：$ms ms';
+  }
+
+  @override
+  String get likeSource => '赞';
+
+  @override
+  String get notLikeSource => '踩';
+
+  @override
   String get readingSources => '正在讀取書源';
 
   @override
@@ -2794,6 +2828,23 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get exactMatch => '精確匹配';
+
+  @override
+  String get noLatestChapter => '無最新章節訊息';
+
+  @override
+  String get loadWordCount => '加載字數';
+
+  @override
+  String respondTime(int ms) {
+    return '反應時間：$ms ms';
+  }
+
+  @override
+  String get likeSource => '讚';
+
+  @override
+  String get notLikeSource => '踩';
 
   @override
   String get readingSources => '正在讀取書源';

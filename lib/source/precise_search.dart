@@ -107,8 +107,14 @@ String _trimSpacesBelow(String value) {
 /// One book a source's search returned for the searched name, with whether it
 /// is the exact name-and-author match the frozen `preciseSearchAwait` filters
 /// for.
+///
+/// The three mutable fields are the ones the frozen list's word-count mode
+/// computes per candidate (`ChangeBookSourceViewModel.loadBookWordCount`,
+/// `:314-343`): they start at the frozen columns' own defaults
+/// (`SearchBook.kt:50-54`) and are written once that stage has run for this
+/// candidate.
 class PreciseSearchHit {
-  const PreciseSearchHit({
+  PreciseSearchHit({
     required this.source,
     required this.book,
     required this.exact,
@@ -123,6 +129,22 @@ class PreciseSearchHit {
   /// Whether the formatted name and author equal the searched ones — the
   /// frozen filter `{ fName, fAuthor -> fName == name && fAuthor == author }`.
   final bool exact;
+
+  /// The frozen `SearchBook.chapterWordCountText` (`SearchBook.kt:50`), the
+  /// line the word-count stage builds: the new table of contents' ordinal, the
+  /// chapter's title and the chapter text's length, or its failure line. Null
+  /// until that stage has run, which is the state the frozen row hides.
+  String? chapterWordCountText;
+
+  /// The frozen `SearchBook.chapterWordCount` (`SearchBook.kt:52`): the
+  /// computed chapter text's length, or `-1` — the frozen column's default for
+  /// a candidate whose word count has not been computed, and its answer when
+  /// the content stage failed.
+  int chapterWordCount = -1;
+
+  /// The frozen `SearchBook.respondTime` (`SearchBook.kt:54`): how many
+  /// milliseconds the word-count computation took, or `-1` before it ran.
+  int respondTime = -1;
 
   String get sourceRef => '${source['bookSourceUrl'] ?? ''}';
 
