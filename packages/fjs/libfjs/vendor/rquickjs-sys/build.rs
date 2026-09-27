@@ -76,6 +76,16 @@ fn patch_poll_quantum(out_dir: &Path) {
 /// slack. Without that, an accepted allocation can consume this reserve and even
 /// exceed the cap before the next limit check. Heap usage after eval unwinds is
 /// not the usage at refusal. Keep this reserve at 16 KiB.
+///
+/// `js_malloc_limit_exceeded()` replaces the pinned limit arithmetic, which a
+/// 32-bit target can wrap: with `malloc_size` of a few kilobytes,
+/// `new ArrayBuffer(8).transfer(4294967295)` made
+/// `malloc_size + SIZE_MAX - 8` wrap to `malloc_size - 9`, so the pinned check
+/// accepted a request of `SIZE_MAX` bytes, `RustAllocator::round_size` rounded
+/// it up to 2^32 (back to zero), the allocator handed back a header-only block,
+/// and the transfer then cleared ~4 GB outside it (#111). The helper also
+/// refuses the requests the selected allocator cannot lay out at all; see
+/// `JS_ALLOC_LAYOUT_PADDING`.
 const OOM_HEADROOM_HELPER: &str = r#"/* Bytes reserved by script allocation checks for the out-of-memory
    error object and its message string, not a system-allocation guarantee.
    JS_ThrowError2 throws JS_NULL when JS_MakeError cannot allocate,
@@ -85,6 +95,15 @@ const OOM_HEADROOM_HELPER: &str = r#"/* Bytes reserved by script allocation chec
    behaviour. */
 #define JS_OOM_HEADROOM (16 * 1024)
 
+/* The allocator this build selects (rquickjs's rust-alloc) rounds every request
+   up to the alignment of u64 (8 bytes) and keeps an 8-byte size header in front
+   of the block it returns, so laying a request out needs this much padding on
+   top of it. A request in the last JS_ALLOC_LAYOUT_PADDING bytes of the address
+   space cannot be laid out: the rounding wraps and the allocator returns a
+   block it never sized for that request. Refuse those requests at the limit
+   check instead (#111). */
+#define JS_ALLOC_LAYOUT_PADDING ((8 - 1) + 8)
+
 static size_t js_malloc_limit(JSRuntime *rt)
 {
     size_t limit = rt->malloc_state.malloc_limit;
@@ -92,31 +111,60 @@ static size_t js_malloc_limit(JSRuntime *rt)
     if (limit != 0 && !rt->in_out_of_memory && limit > JS_OOM_HEADROOM)
         limit -= JS_OOM_HEADROOM;
     return limit;
+}
+
+/* True when a request of `size` bytes on top of `tracked` already tracked bytes
+   must be refused. This is the pinned test `tracked + size > js_malloc_limit(rt)
+   - 1` computed so that neither the sum nor the subtraction can wrap, so the
+   16 KiB reserve applies to it exactly as it does to the pinned checks;
+   `tracked` is `malloc_size` for js_malloc_rt/js_calloc_rt and
+   `malloc_size - old_size` for js_realloc_rt. Two deliberate differences from
+   the pinned form, and only where the pinned form wrapped or could not be
+   satisfied: a request the allocator cannot lay out is refused above, and with
+   `malloc_limit == 0` (unlimited) a request that would take the tracked total
+   to SIZE_MAX is refused too, where the pinned form accepted it (`limit - 1`
+   is SIZE_MAX there) although no allocator can satisfy that total. */
+static bool js_malloc_limit_exceeded(JSRuntime *rt, size_t tracked, size_t size)
+{
+    size_t limit = js_malloc_limit(rt);
+
+    if (unlikely(size > SIZE_MAX - JS_ALLOC_LAYOUT_PADDING))
+        return true;
+    if (limit == 0)
+        limit = SIZE_MAX; /* unlimited: the pinned `limit - 1` is SIZE_MAX */
+    if (unlikely(tracked >= limit))
+        return true;
+    return size > limit - 1 - tracked;
 }"#;
 
 /// The three allocator limit checks the build copy reroutes through
-/// `js_malloc_limit()`. Each pinned string must occur exactly once.
+/// `js_malloc_limit_exceeded()`. Each pinned string must occur exactly once.
+/// The pinned `count != (count * size) / size` test above the calloc check
+/// stays as it is: with `size > 0` it rejects every wrapping product, so the
+/// size the helper is handed cannot itself wrap. Nothing is allocated, freed or
+/// cleared between these checks and the requests they decide.
 const OOM_HEADROOM_LIMIT_CHECKS: [(&str, &str); 3] = [
     (
         "s->malloc_size + (count * size) > s->malloc_limit - 1",
-        "s->malloc_size + (count * size) > js_malloc_limit(rt) - 1",
+        "js_malloc_limit_exceeded(rt, s->malloc_size, count * size)",
     ),
     (
         "s->malloc_size + size > s->malloc_limit - 1",
-        "s->malloc_size + size > js_malloc_limit(rt) - 1",
+        "js_malloc_limit_exceeded(rt, s->malloc_size, size)",
     ),
     (
         "s->malloc_size + size - old_size > s->malloc_limit - 1",
-        "s->malloc_size + size - old_size > js_malloc_limit(rt) - 1",
+        "js_malloc_limit_exceeded(rt, s->malloc_size - old_size, size)",
     ),
 ];
 
 /// Reserves capacity for the budget-limit report in the build copy of
-/// `quickjs.c`: inserts the headroom helper before the first allocator helper
-/// and routes the three limit checks through it, asserting each edit lands
-/// exactly once. This does not guarantee allocation under system exhaustion.
-/// The anchor is a single line, so a CRLF or LF checkout patches identically.
-/// The frozen `quickjs/` sources stay unchanged, as `LIBER.md` records.
+/// `quickjs.c` and keeps every limit decision free of wrapping arithmetic:
+/// inserts the headroom helper before the first allocator helper and routes the
+/// three limit checks through it, asserting each edit lands exactly once. This
+/// does not guarantee allocation under system exhaustion. The anchor is a
+/// single line, so a CRLF or LF checkout patches identically. The frozen
+/// `quickjs/` sources stay unchanged, as `LIBER.md` records.
 fn patch_oom_headroom(out_dir: &Path) {
     let path = out_dir.join("quickjs.c");
     let source = fs::read_to_string(&path)
@@ -129,8 +177,7 @@ fn patch_oom_headroom(out_dir: &Path) {
         "quickjs.c does not carry exactly one `{anchor}`; update patch_oom_headroom() for this \
          QuickJS revision"
     );
-    let mut patched_source =
-        source.replace(anchor, &format!("{OOM_HEADROOM_HELPER}\n{anchor}"));
+    let mut patched_source = source.replace(anchor, &format!("{OOM_HEADROOM_HELPER}\n{anchor}"));
     assert_eq!(
         patched_source.matches(OOM_HEADROOM_HELPER).count(),
         1,
@@ -157,6 +204,76 @@ fn patch_oom_headroom(out_dir: &Path) {
         );
     }
 
+    fs::write(&path, patched_source)
+        .unwrap_or_else(|error| panic!("cannot write the build copy of quickjs.c: {error}"));
+}
+
+/// The `ArrayBuffer.prototype.transfer` request the build copy bounds. That
+/// function takes a `uint64_t` length and hands it to `js_realloc`, whose size
+/// is a `size_t`, so on a 32-bit target the pinned code truncates the length
+/// first: `transfer(2**32)` reaches `js_realloc_rt` as a zero-byte realloc,
+/// which frees the backing store the ArrayBuffer still points at, and a length
+/// that truncates to a small non-zero size keeps the buffer but `memset`s far
+/// past it (#111). A length a `size_t` cannot hold is refused before that
+/// conversion. The `INT32_MAX` bound the ArrayBuffer constructor applies is not
+/// mirrored here: that bound is upstream behaviour, not a pointer-width
+/// truncation.
+const TRANSFER_LENGTH_GUARD: (&str, [&str; 2]) = (
+    "        new_bs = js_realloc(ctx, bs, new_len);",
+    [
+        "if (unlikely(new_len > (uint64_t)SIZE_MAX))",
+        "    return JS_ThrowRangeError(ctx, \"invalid array buffer length\");",
+    ],
+);
+
+/// What `patch_transfer_length_guard()` asserts it inserted: one line of the
+/// guard, which is unique in the build copy because only this patch writes it.
+const TRANSFER_LENGTH_GUARD_NEEDLE: &str = "if (unlikely(new_len > (uint64_t)SIZE_MAX))";
+
+/// Refuses a transfer length wider than the target's `size_t` in the build copy
+/// of `quickjs.c`, before the pinned `js_realloc` call converts it. The pinned
+/// anchor is a single line and the inserted text is written with the file's own
+/// line ending, so a CRLF or LF checkout patches identically. On a 64-bit
+/// target `UINTPTR_MAX == UINT64_MAX` and the guard is not compiled, leaving
+/// the pinned path byte-identical there.
+fn patch_transfer_length_guard(out_dir: &Path) {
+    let path = out_dir.join("quickjs.c");
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cannot read the build copy of quickjs.c: {error}"));
+
+    let newline = if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let (pinned, lines) = TRANSFER_LENGTH_GUARD;
+    assert_eq!(
+        source.matches(pinned).count(),
+        1,
+        "quickjs.c does not carry exactly one `{pinned}`; update TRANSFER_LENGTH_GUARD for this \
+         QuickJS revision"
+    );
+    let guarded: Vec<String> = lines
+        .iter()
+        .map(|line| format!("            {line}"))
+        .collect();
+    let guard = format!(
+        "        #if UINTPTR_MAX < UINT64_MAX{newline}{}{newline}        #endif",
+        guarded.join(newline)
+    );
+    let patched_source = source.replace(pinned, &format!("{guard}{newline}{pinned}"));
+    assert_eq!(
+        patched_source.matches(pinned).count(),
+        1,
+        "the transfer length guard must leave exactly one pinned `{pinned}` in place"
+    );
+    for needle in ["#if UINTPTR_MAX < UINT64_MAX", TRANSFER_LENGTH_GUARD_NEEDLE] {
+        assert_eq!(
+            patched_source.matches(needle).count(),
+            1,
+            "quickjs.c does not carry exactly one `{needle}` after the transfer length guard patch"
+        );
+    }
     fs::write(&path, patched_source)
         .unwrap_or_else(|error| panic!("cannot write the build copy of quickjs.c: {error}"));
 }
@@ -361,6 +478,7 @@ fn main() {
     // Keep the frozen QuickJS sources untouched; only the build copy is patched.
     patch_poll_quantum(out_dir);
     patch_oom_headroom(out_dir);
+    patch_transfer_length_guard(out_dir);
     println!("cargo:rerun-if-changed=quickjs.bind.h");
     fs::copy("quickjs.bind.h", out_dir.join("quickjs.bind.h")).expect("Unable to copy source");
 

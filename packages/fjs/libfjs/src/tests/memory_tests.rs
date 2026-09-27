@@ -899,3 +899,203 @@ async fn fine_grained_accumulation_reports_the_memory_limit() {
         divergences.len()
     );
 }
+
+// ============================================================================
+// Pointer-width allocation boundaries (#111)
+// ============================================================================
+
+/// Creates the 8-byte probe buffer the refused requests must leave alone, and
+/// keeps it reachable from later scoped executions through `globalThis`.
+const TRANSFER_PROBE_SETUP: &str = "globalThis.__liberTransferProbe=(()=>{const \
+     b=new ArrayBuffer(8);new Uint8Array(b).fill(7);return b})();true";
+
+/// The probe buffer as one line: length, detach state and contents.
+const TRANSFER_PROBE_STATE: &str = "(()=>{const b=globalThis.__liberTransferProbe;const \
+     v=new Uint8Array(b);return b.byteLength+'|'+b.detached+'|'+Array.from(v).join(',')})()";
+
+/// What [`TRANSFER_PROBE_STATE`] reports while nothing has touched the buffer.
+const TRANSFER_PROBE_INTACT: &str = "8|false|7,7,7,7,7,7,7,7";
+
+/// One boundary row's engine: the gate's 16 MiB limit with `gcThreshold: 1`,
+/// or no limit at all (`None`), which leaves QuickJS's `malloc_limit` at 0.
+async fn boundary_engine(memory_limit: Option<usize>) -> Arc<JsEngine> {
+    Arc::new(
+        JsEngine::create(
+            Some(JsBuiltinOptions::none()),
+            None,
+            Some(JsEngineRuntimeOptions {
+                memory_limit,
+                gc_threshold: Some(1),
+                ..JsEngineRuntimeOptions::default()
+            }),
+        )
+        .await
+        .expect("the boundary row's engine is created"),
+    )
+}
+
+/// Runs `source` in a scope of its own and returns the Dart-facing label of the
+/// outcome with the Rust result behind it.
+async fn run_boundary_script(
+    engine: &JsEngine,
+    source: &str,
+) -> (String, Result<JsValue, JsError>) {
+    let scope = engine
+        .create_scoped_execution(None)
+        .expect("reserve the boundary scope");
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(60),
+        engine.eval_scoped(scope, source.to_string()),
+    )
+    .await
+    .expect("the boundary script stops");
+    let label = match &outcome {
+        Ok(_) => "JsValue".to_string(),
+        Err(error) => heap_limit_outcome_label(error).to_string(),
+    };
+    (label, outcome)
+}
+
+/// Asserts that a boundary script was refused with `label` and `needle` in its
+/// payload instead of running.
+fn assert_refused(outcome: &Result<JsValue, JsError>, label: &str, needle: &str, what: &str) {
+    match outcome {
+        Err(error) => {
+            let actual = heap_limit_outcome_label(error).to_string();
+            let detail = format!("{error:?} / {error}");
+            assert_eq!(actual, label, "{what} must be refused as {label}: {detail}");
+            assert!(
+                detail.contains(needle),
+                "{what} must report `{needle}`, not `{detail}`"
+            );
+        }
+        Ok(value) => panic!("{what} must be refused, but the script returned {value:?}"),
+    }
+}
+
+/// Asserts that a row returned the string it reports, and returns it.
+fn boundary_string(outcome: &Result<JsValue, JsError>, what: &str) -> String {
+    match outcome {
+        Ok(JsValue::String(value)) => value.clone(),
+        other => panic!("{what} must return a string, got {other:?}"),
+    }
+}
+
+/// Asserts that the probe buffer is still the attached 8 bytes of 7 it was
+/// created as, and returns what it reported.
+async fn assert_probe_buffer_intact(engine: &JsEngine, what: &str) -> String {
+    let (_, state) = run_boundary_script(engine, TRANSFER_PROBE_STATE).await;
+    let state = boundary_string(&state, &format!("{what}: reading the probe buffer"));
+    assert_eq!(
+        state, TRANSFER_PROBE_INTACT,
+        "{what}: a refused transfer must leave the original ArrayBuffer attached and unchanged"
+    );
+    state
+}
+
+/// Runs the pointer-width transfer rows against one engine: the requests the
+/// pinned 32-bit checks let through, the transfer lengths that do not fit a
+/// `size_t`, and the ordinary grow and shrink transfers that must keep working.
+async fn run_transfer_boundary_rows(engine: &JsEngine, context: &str) {
+    let (_, created) = run_boundary_script(engine, TRANSFER_PROBE_SETUP).await;
+    assert!(
+        matches!(created, Ok(JsValue::Boolean(true))),
+        "{context}: the probe buffer must be created: {created:?}"
+    );
+
+    for size in [usize::MAX, usize::MAX - 14, usize::MAX - 15] {
+        let what = format!("{context}: transfer({size})");
+        let source = format!("globalThis.__liberTransferProbe.transfer({size})");
+        let (_, outcome) = run_boundary_script(engine, &source).await;
+        assert_refused(
+            &outcome,
+            "JsError_MemoryLimit",
+            "InternalError: out of memory",
+            &what,
+        );
+        let state = assert_probe_buffer_intact(engine, &what).await;
+        eprintln!("FJS pointer-width row {what}: buffer={state}");
+    }
+
+    for size in [1u64 << 32, (1u64 << 32) + 100] {
+        let what = format!("{context}: transfer({size})");
+        let source = format!("globalThis.__liberTransferProbe.transfer({size})");
+        let (_, outcome) = run_boundary_script(engine, &source).await;
+        assert_refused(
+            &outcome,
+            "JsError_Runtime",
+            "RangeError: invalid array buffer length",
+            &what,
+        );
+        let state = assert_probe_buffer_intact(engine, &what).await;
+        eprintln!("FJS pointer-width row {what}: buffer={state}");
+    }
+
+    let grow = "(()=>{const b=globalThis.__liberTransferProbe.transfer(16);\
+                globalThis.__liberTransferProbe=b;const v=new Uint8Array(b);return \
+                b.byteLength+'|'+Array.from(v).join(',')})()";
+    let (_, grown) = run_boundary_script(engine, grow).await;
+    assert_eq!(
+        boundary_string(&grown, &format!("{context}: the growing transfer")),
+        "16|7,7,7,7,7,7,7,7,0,0,0,0,0,0,0,0",
+        "{context}: a growing transfer must keep the prefix and zero-fill the rest"
+    );
+
+    let shrink = "(()=>{const b=globalThis.__liberTransferProbe.transfer(4);\
+                   globalThis.__liberTransferProbe=b;const v=new Uint8Array(b);return \
+                   b.byteLength+'|'+Array.from(v).join(',')})()";
+    let (_, shrunk) = run_boundary_script(engine, shrink).await;
+    assert_eq!(
+        boundary_string(&shrunk, &format!("{context}: the shrinking transfer")),
+        "4|7,7,7,7",
+        "{context}: a shrinking transfer must keep the surviving prefix"
+    );
+
+    let (_, usable) = run_boundary_script(engine, "21*2").await;
+    assert!(
+        matches!(usable, Ok(JsValue::Integer(42))),
+        "{context}: the engine must stay usable after the boundary rows: {usable:?}"
+    );
+}
+
+/// The 32-bit allocation boundary of #111. On this target a `size_t` is 32 bits
+/// wide and `ArrayBuffer.prototype.transfer` takes a `uint64_t`: the pinned
+/// check `malloc_size + size - old_size > malloc_limit - 1` wrapped for a
+/// request of `SIZE_MAX` bytes, `RustAllocator::round_size` rounded that request
+/// back to zero, the allocator returned a header-only block, and the transfer
+/// then cleared ~4 GB outside it. The vendored guard refuses a request whose
+/// layout wraps, and the transfer length guard refuses a length a `size_t`
+/// cannot hold, which the pinned code truncated (dropping the backing store of a
+/// still-attached ArrayBuffer, or keeping it while `memset`ting past it).
+///
+/// The rows run in the same shape as the gate rows (16 MiB limit,
+/// `gcThreshold: 1`), once against that limit and once against an engine with no
+/// limit at all, where only the layout bound can refuse the request. On a 64-bit
+/// target the pinned arithmetic does not wrap and the same input is refused by
+/// the configured limit, so the row is not-applicable and says so.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn pointer_width_transfer_boundaries_report_and_keep_the_buffer() {
+    if usize::BITS != 32 {
+        eprintln!(
+            "FJS pointer-width row: not-applicable on a {}-bit target; the pinned transfer only \
+             truncates where `size_t` is narrower than the `uint64_t` length",
+            usize::BITS
+        );
+        return;
+    }
+
+    for (context, memory_limit) in [
+        ("16 MiB limit", Some(HEAP_LIMIT_ROW_BYTES)),
+        ("no limit", None),
+    ] {
+        let engine = boundary_engine(memory_limit).await;
+        run_transfer_boundary_rows(&engine, context).await;
+        let usage = engine.memory_usage().await.expect("usage is readable");
+        eprintln!(
+            "FJS pointer-width row ({context}): malloc_size={} of {}",
+            usage.malloc_size(),
+            usage.malloc_limit()
+        );
+        engine.close().await.expect("the boundary engine closes");
+    }
+}

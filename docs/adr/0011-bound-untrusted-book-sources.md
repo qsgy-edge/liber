@@ -79,6 +79,35 @@ that the system allocator can always satisfy the error object's request. Limits 
 the existing no-reserve behaviour. Arbitrary small limits and every alignment/overhead boundary value remain
 unproven; do not promote the measured rows to a universal allocation guarantee.
 
+**32-bit pointer-width guard (#111).** The pinned limit arithmetic wrapped where `size_t` is 32 bits wide:
+with a few kilobytes tracked, `new ArrayBuffer(8).transfer(4294967295)` made
+`malloc_size + SIZE_MAX - 8` wrap to `malloc_size - 9`, so the request was accepted, `RustAllocator`'s
+rounding to `align_of::<u64>()` sent `SIZE_MAX` back to zero, the allocator returned a header-only block, and
+the transfer then cleared ~4 GB outside it. The vendored build copy now decides every limit through
+`js_malloc_limit_exceeded(rt, tracked, size)`, which reaches the same decision as the pinned test wherever
+that test did not wrap, and refuses two classes it could not decide: a request in the last 15 bytes of the
+address space, where the selected allocator's rounding plus its 8-byte header cannot be represented, and —
+with an unlimited limit (`malloc_limit == 0`, what `JsEngineRuntimeOptions { memory_limit: None, .. }`
+selects) — a request that would take the tracked total to `SIZE_MAX`, which the pinned form accepted and no
+allocator can satisfy. `count * size` remains covered by the pinned QuickJS overflow test above the calloc
+check, which rejects every wrapping product. The same patch group refuses an
+`ArrayBuffer.prototype.transfer` length wider than the target's `size_t` before the pinned code truncates it:
+`transfer(2**32)` otherwise reached `js_realloc_rt` as a zero-byte realloc and freed the backing store of a
+still-attached ArrayBuffer. The configured heap budgets, the 16 KiB reserve, the recursion guard, the poll
+quantum and error mapping are unchanged, and on a 64-bit target the pinned transfer path is byte-identical.
+
+The rows for this guard are `pointer_width_transfer_boundaries_report_and_keep_the_buffer` in
+`libfjs/src/tests/memory_tests.rs` (transfer of `SIZE_MAX`, `SIZE_MAX - 14` and `SIZE_MAX - 15`, each
+refused with `JsError_MemoryLimit` and the original buffer still readable; `transfer(2**32)` and
+`transfer(2**32 + 100)` refused with a `RangeError`; the same rows against an engine with no limit; and
+the ordinary grow/shrink transfers), which run on a 32-bit target and say so elsewhere. The i686 job of
+the probe branch (`probe/111-b20-r6`) is what executes them, once against the guard and once against the
+build script the review audited. A 32-bit Linux binary is arithmetic and engine evidence, **not** an
+Android run: the Android APK job compiles `libfjs.so` for `armeabi-v7a` at 32-bit width, but no armv7
+device or emulator has executed these rows, so Android's pointer-width row stays `not-run`. Every other
+32-bit truncation of a wider length into a `size_t` remains unaudited; #111 covers the allocation
+boundary and this one transfer call.
+
 The residual accepted here is: **a hostile source can hold the engine's own thread
 for seconds per execution — its JS allocation requests are checked against the configured budget, not a
 process RSS bound, and the user can still cancel or close the analysis.** Reopen condition, recorded rather than implied: if a source in the wild
