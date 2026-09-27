@@ -157,6 +157,41 @@ fn patch_oom_headroom(out_dir: &Path) {
         );
     }
 
+    // Throwaway #111 probe: observe only, never allocate JS values or change limits.
+    for (pinned, patched) in [
+        (
+            "if (unlikely(s->malloc_size + (count * size) > js_malloc_limit(rt) - 1))\n        return NULL;",
+            "if (unlikely(s->malloc_size + (count * size) > js_malloc_limit(rt) - 1)) {\n        fprintf(stderr, \"[DEBUG-111] calloc refused request=%zu heap=%zu limit=%zu oom=%d\\n\", count * size, s->malloc_size, js_malloc_limit(rt), rt->in_out_of_memory);\n        return NULL;\n    }",
+        ),
+        (
+            "if (unlikely(s->malloc_size + size > js_malloc_limit(rt) - 1))\n        return NULL;",
+            "if (unlikely(s->malloc_size + size > js_malloc_limit(rt) - 1)) {\n        fprintf(stderr, \"[DEBUG-111] malloc refused request=%zu heap=%zu limit=%zu oom=%d\\n\", size, s->malloc_size, js_malloc_limit(rt), rt->in_out_of_memory);\n        return NULL;\n    }",
+        ),
+        (
+            "if (s->malloc_size + size - old_size > js_malloc_limit(rt) - 1)\n        return NULL;",
+            "if (s->malloc_size + size - old_size > js_malloc_limit(rt) - 1) {\n        fprintf(stderr, \"[DEBUG-111] realloc refused request=%zu old=%zu heap=%zu limit=%zu oom=%d\\n\", size, old_size, s->malloc_size, js_malloc_limit(rt), rt->in_out_of_memory);\n        return NULL;\n    }",
+        ),
+        (
+            "    obj = JS_MakeError(ctx, error_num, add_backtrace, fmt, ap);",
+            "    obj = JS_MakeError(ctx, error_num, add_backtrace, fmt, ap);\n    if (ctx->rt->in_out_of_memory || JS_IsException(obj))\n        fprintf(stderr, \"[DEBUG-111] MakeError tag=%d heap=%zu oom=%d\\n\", (int)JS_VALUE_GET_TAG(obj), ctx->rt->malloc_state.malloc_size, ctx->rt->in_out_of_memory);",
+        ),
+        (
+            "    rt->current_exception = obj;",
+            "    rt->current_exception = obj;\n    if (rt->in_out_of_memory || JS_IsNull(obj))\n        fprintf(stderr, \"[DEBUG-111] Throw tag=%d heap=%zu oom=%d\\n\", (int)JS_VALUE_GET_TAG(obj), rt->malloc_state.malloc_size, rt->in_out_of_memory);",
+        ),
+        (
+            "    if (!rt->in_out_of_memory) {",
+            "    fprintf(stderr, \"[DEBUG-111] OOM entry heap=%zu limit=%zu oom=%d pending=%d\\n\", rt->malloc_state.malloc_size, rt->malloc_state.malloc_limit, rt->in_out_of_memory, (int)JS_VALUE_GET_TAG(rt->current_exception));\n    if (!rt->in_out_of_memory) {",
+        ),
+        (
+            "        JS_ThrowInternalError(ctx, \"out of memory\");",
+            "        JS_ThrowInternalError(ctx, \"out of memory\");\n        fprintf(stderr, \"[DEBUG-111] OOM exit heap=%zu pending=%d\\n\", rt->malloc_state.malloc_size, (int)JS_VALUE_GET_TAG(rt->current_exception));",
+        ),
+    ] {
+        assert_eq!(patched_source.matches(pinned).count(), 1, "#111 probe anchor: {pinned}");
+        patched_source = patched_source.replace(pinned, patched);
+    }
+
     fs::write(&path, patched_source)
         .unwrap_or_else(|error| panic!("cannot write the build copy of quickjs.c: {error}"));
 }

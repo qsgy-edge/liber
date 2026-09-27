@@ -434,6 +434,9 @@ Future<void> main(List<String> args) async {
       const singleRequestSource =
           '(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()';
       final singleRequest = await runNested(singleRequestSource);
+      checks['heapLimitSingleRequestEnforced'] =
+          singleRequest is JsError_MemoryLimit &&
+          '$singleRequest'.contains('InternalError: out of memory');
       diagnostics['heapLimitSingleRequestObserved'] = {
         'value': '${singleRequest.runtimeType}: ${boundedText('$singleRequest')}',
       };

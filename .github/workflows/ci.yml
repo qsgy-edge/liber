@@ -14,6 +14,8 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
   FJS_HEAP_LIMIT_ROW_ITERATIONS: '200'
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+  CC_ENABLE_DEBUG_OUTPUT: '1'
 
 jobs:
   platform:
@@ -57,25 +59,42 @@ jobs:
       - name: Apple libclang
         if: runner.os == 'macOS'
         run: echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
-      - name: Standalone and full-suite strict reproduction
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.44.6'
+          channel: stable
+          cache: true
+      - name: Flutter dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Native, Rust and Dart observations
         run: |
           set +e
           set -o pipefail
+          cargo build -vv --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' 2>&1 | tee native-build.log
+          native=$?
+          find packages/fjs/libfjs/target/aarch64-apple-darwin/debug/build -path '*/out/quickjs.c' -exec shasum -a 256 {} \; | tee build-copy-hashes.log
           cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' single_request -- --nocapture 2>&1 | tee single-request.log
           standalone=$?
           grep -Eq 'test result: ok\. 1 passed;' single-request.log || standalone=1
           grep -Fq '0 lost the report, 0 left the engine unusable, 200 runs.' single-request.log || standalone=1
-          cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' -- --nocapture 2>&1 | tee full-suite.log
-          suite=$?
-          grep -Fq '0 lost the report, 0 left the engine unusable, 200 runs.' full-suite.log || suite=1
-          printf 'standalone=%s full_suite=%s\n' "$standalone" "$suite" | tee probe-status.log
-          test "$standalone" = 0 && test "$suite" = 0
+          library="$PWD/packages/fjs/libfjs/target/aarch64-apple-darwin/debug/libfjs.dylib"
+          shasum -a 256 "$library" | tee native-hash.log
+          DYLD_PRINT_LIBRARIES=1 dart run tool/scoped_runtime_gate.dart "$library" 2>&1 | tee scoped-gate.log
+          gate=$?
+          grep -Fq '"heapLimitSingleRequestEnforced":true' scoped-gate.log || gate=1
+          grep -Fq "$library" scoped-gate.log || gate=1
+          if grep -Fq '===== CRASH =====' scoped-gate.log; then gate=1; fi
+          printf 'native=%s standalone=%s dart_gate=%s\n' "$native" "$standalone" "$gate" | tee probe-status.log
+          test "$native" = 0 && test "$standalone" = 0 && test "$gate" = 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: probe-111-${{ matrix.platform }}
           path: |
             single-request.log
-            full-suite.log
+            native-build.log
+            build-copy-hashes.log
+            native-hash.log
+            scoped-gate.log
             probe-status.log
           if-no-files-found: error
