@@ -903,6 +903,8 @@ async fn single_request_heap_limit_row_stops_and_records_the_report() {
         "FJS heap-limit row (single request): {report_lost_runs} lost the report, {unusable_runs} \
          left the engine unusable, {iterations} runs."
     );
+    assert!(iterations > 0, "the probe must execute the single-request row");
+    assert_eq!(report_lost_runs, 0, "#111: every single request must retain the OOM report");
 }
 
 /// The accumulating shape of tickets #77 and #79 (`new Array(10000)` per
