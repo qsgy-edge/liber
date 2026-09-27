@@ -13,7 +13,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
-  FJS_HEAP_LIMIT_ROW_ITERATIONS: '10'
+  FJS_HEAP_LIMIT_ROW_ITERATIONS: '200'
 
 jobs:
   platform:
@@ -22,9 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux
-            os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
           - platform: macos
             os: macos-15
             target: aarch64-apple-darwin
@@ -60,14 +57,25 @@ jobs:
       - name: Apple libclang
         if: runner.os == 'macOS'
         run: echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
-      - name: Single-request strict reproduction
+      - name: Standalone and full-suite strict reproduction
         run: |
+          set +e
           set -o pipefail
           cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' single_request -- --nocapture 2>&1 | tee single-request.log
-          grep -Eq 'test result: ok\. 1 passed;' single-request.log
+          standalone=$?
+          grep -Eq 'test result: ok\. 1 passed;' single-request.log || standalone=1
+          grep -Fq '0 lost the report, 0 left the engine unusable, 200 runs.' single-request.log || standalone=1
+          cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' -- --nocapture 2>&1 | tee full-suite.log
+          suite=$?
+          grep -Fq '0 lost the report, 0 left the engine unusable, 200 runs.' full-suite.log || suite=1
+          printf 'standalone=%s full_suite=%s\n' "$standalone" "$suite" | tee probe-status.log
+          test "$standalone" = 0 && test "$suite" = 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: probe-111-${{ matrix.platform }}
-          path: single-request.log
+          path: |
+            single-request.log
+            full-suite.log
+            probe-status.log
           if-no-files-found: error
