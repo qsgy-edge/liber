@@ -1098,6 +1098,12 @@ abstract class AppLocalizations {
   /// **'空间里还没有书源'**
   String get noSourcesInSpace;
 
+  /// No description provided for @noEnabledSourcesInSpace.
+  ///
+  /// In zh, this message translates to:
+  /// **'空间里没有启用的书源'**
+  String get noEnabledSourcesInSpace;
+
   /// No description provided for @chooseSourcesToSearch.
   ///
   /// In zh, this message translates to:

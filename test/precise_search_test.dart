@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -334,27 +335,107 @@ void main() {
     expect(find.textContaining('· 精确匹配'), findsNothing);
   });
 
-  testWidgets('换源列表：默认只搜启用的书源；停用的书源可被显式选中（与冻结的差异）', (tester) async {
-    // The frozen dialog searches only `enabled = 1` (`allEnabledPart`). This
-    // page lists a chip for every source and pre-selects the enabled ones, so a
-    // disabled source is skipped by default but can be searched once selected.
-    await store.putSourceJson({...sourceB.source, 'enabled': false});
+  /// 乙源 as the operator's backup carries a disabled used source (#107: 5 of
+  /// 150): grouped, ordered, a text source, and `enabled: false`.
+  Map<String, dynamic> disabledUsedStyle(FakeSource fake) => {
+    ...fake.source,
+    'bookSourceGroup': '精品,常用',
+    'bookSourceType': 0,
+    'customOrder': 1,
+    'enabled': false,
+  };
+
+  testWidgets('换源列表：停用的书源不列出、不被搜索，启用的照常搜索（冻结 allEnabledPart）', (tester) async {
+    // The frozen dialog searches only `enabled = 1` (`allEnabledPart`) and has
+    // no way to add a disabled source to the run (#114).
+    await store.putSourceJson(disabledUsedStyle(sourceB));
+    sourceA.hits.add(candidate('https://a.test', '1', name, '别人的作者'));
     sourceB.hits.add(candidate('https://b.test', '1', name, author));
 
     await pumpEntry(tester);
 
-    expect(sourceB.searchCalls, 0, reason: '停用的书源默认不搜索');
-    expect(find.textContaining('· 精确匹配'), findsNothing);
-
-    await tester.tap(
+    expect(sourceA.searchCalls, 1, reason: '启用的书源照常搜索一次');
+    expect(sourceC.searchCalls, 1, reason: '启用的书源照常搜索一次');
+    expect(sourceB.searchCalls, 0, reason: '停用的书源不被搜索');
+    expect(
       find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsNothing,
+      reason: '停用的书源没有筛选项，也就无从选中',
     );
-    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('precise-source-https://a.test')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('· 精确匹配'), findsNothing);
+    expect(find.textContaining('候选 1 本，其中精确匹配 0 本'), findsOneWidget);
+
+    // Searching again from the page still leaves the disabled source out.
     await tester.tap(find.byKey(const ValueKey('precise-search')));
     await tester.pumpAndSettle();
+    expect(sourceB.searchCalls, 0, reason: '再搜一次也不搜停用的书源');
+    expect(sourceA.searchCalls, 2);
+    expect(tester.takeException(), isNull);
+  });
 
-    expect(sourceB.searchCalls, 1, reason: '显式选中后停用的书源也被搜索');
+  testWidgets('换源：停用的书源在库里被启用后，下一次打开页面就能被搜索', (tester) async {
+    // No product surface flips `enabled` yet (the source-management gap #114
+    // records); the store row is what the page reads on each load.
+    await store.putSourceJson(disabledUsedStyle(sourceB));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpEntry(tester);
+    expect(sourceB.searchCalls, 0);
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await store.putSourceJson({...disabledUsedStyle(sourceB), 'enabled': true});
+
+    await pumpEntry(tester);
+    expect(sourceB.searchCalls, 1, reason: '重新启用后下一次搜索就包括它');
+    expect(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsOneWidget,
+    );
     expect(find.textContaining('· 精确匹配'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('书源没有 raw 时仍按存储的 enabled 排除停用源', (tester) async {
+    await store.deleteSource('https://b.test');
+    await store.putSource(
+      SourcesCompanion.insert(
+        bookSourceUrl: 'https://b.test',
+        name: '乙源',
+        enabled: const Value(false),
+      ),
+    );
+    expect((await store.sourceByUrl('https://b.test'))!.raw, isNull);
+
+    await pumpEntry(tester);
+
+    expect(sourceB.searchCalls, 0);
+    expect(sourceA.searchCalls, 1);
+    expect(sourceC.searchCalls, 1);
+    expect(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsNothing,
+    );
+    expect(await shelf.sources(), hasLength(3), reason: '仅搜索页过滤，不删除存储的书源');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空间里的书源全部停用：不搜索，并说明没有启用的书源', (tester) async {
+    for (final fake in byRef.values) {
+      await store.putSourceJson({...fake.source, 'enabled': false});
+    }
+
+    await pumpEntry(tester);
+
+    expect(byRef.values.every((fake) => fake.searchCalls == 0), isTrue);
+    expect(find.byType(FilterChip), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('precise-status'))).data,
+      '空间里没有启用的书源',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -580,6 +661,38 @@ void main() {
     await tester.tap(find.text('打开换源'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('手动换源只列出并搜索启用源，保留冻结 allEnabledPart 的类型范围', (tester) async {
+    final entry = await shelvedBook();
+    await store.putSourceJson(disabledUsedStyle(sourceB));
+    // allEnabledPart has no bookSourceType predicate. This pins eligibility,
+    // not support for reading a non-text source (the real pipeline owns that).
+    await store.putSourceJson({...sourceC.source, 'bookSourceType': 1});
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceC.hits.add(candidate('https://c.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(sourceA.searchCalls, 1);
+    expect(sourceB.searchCalls, 0);
+    expect(sourceC.searchCalls, 1);
+    expect(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+      findsNothing,
+    );
+    expect(find.textContaining('· 精确匹配'), findsOneWidget);
+    expect((await store.sourceByUrl('https://b.test'))!.enabled, isFalse);
+    expect(await shelf.sources(), hasLength(3));
+    expect((await store.bookById(entry.id))!.sourceRef, 'https://a.test');
+    expect((await store.progressOf(entry.id))!.textOffset, 42);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('换源列表：一个书源出错或没有精确命中，后面的候选照常按书源顺序入列', (tester) async {
     final entry = await shelvedBook();

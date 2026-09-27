@@ -508,6 +508,7 @@
   "exactMatch": "精确匹配",
   "readingSources": "正在读取书源",
   "noSourcesInSpace": "空间里还没有书源",
+  "noEnabledSourcesInSpace": "空间里没有启用的书源",
   "chooseSourcesToSearch": "选择书源，输入书名后搜索",
   "loadSourcesFailed": "读取书源失败：{error}",
   "@loadSourcesFailed": {

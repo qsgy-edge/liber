@@ -610,6 +610,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noSourcesInSpace => 'The space has no book sources yet';
 
   @override
+  String get noEnabledSourcesInSpace => 'The space has no enabled book sources';
+
+  @override
   String get chooseSourcesToSearch =>
       'Choose the book sources, then search by title';
 

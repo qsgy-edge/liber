@@ -602,6 +602,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noSourcesInSpace => '空间里还没有书源';
 
   @override
+  String get noEnabledSourcesInSpace => '空间里没有启用的书源';
+
+  @override
   String get chooseSourcesToSearch => '选择书源，输入书名后搜索';
 
   @override
@@ -1685,6 +1688,9 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get noSourcesInSpace => '空間裏還沒有書源';
 
   @override
+  String get noEnabledSourcesInSpace => '空間裏沒有啓用的書源';
+
+  @override
   String get chooseSourcesToSearch => '選擇書源，輸入書名後搜尋';
 
   @override
@@ -2766,6 +2772,9 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get noSourcesInSpace => '空間裡還沒有書源';
+
+  @override
+  String get noEnabledSourcesInSpace => '空間裡沒有啟用的書源';
 
   @override
   String get chooseSourcesToSearch => '選擇書源，輸入書名後搜尋';
