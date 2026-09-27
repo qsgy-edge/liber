@@ -605,6 +605,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noEnabledSourcesInSpace => '空间里没有启用的书源';
 
   @override
+  String get sourceGroup => '书源分组';
+
+  @override
+  String get allSources => '全部书源';
+
+  @override
+  String get sourceGroupNoResultsTitle => '搜索结果为空';
+
+  @override
+  String sourceGroupNoResults(String group) {
+    return '$group分组搜索结果为空，是否切换到全部分组？';
+  }
+
+  @override
   String get chooseSourcesToSearch => '选择书源，输入书名后搜索';
 
   @override
@@ -1691,6 +1705,20 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get noEnabledSourcesInSpace => '空間裏沒有啓用的書源';
 
   @override
+  String get sourceGroup => '書源分組';
+
+  @override
+  String get allSources => '全部書源';
+
+  @override
+  String get sourceGroupNoResultsTitle => '搜尋結果為空';
+
+  @override
+  String sourceGroupNoResults(String group) {
+    return '$group分組搜尋結果為空，是否切換到全部分組？';
+  }
+
+  @override
   String get chooseSourcesToSearch => '選擇書源，輸入書名後搜尋';
 
   @override
@@ -2775,6 +2803,20 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get noEnabledSourcesInSpace => '空間裡沒有啟用的書源';
+
+  @override
+  String get sourceGroup => '書源分組';
+
+  @override
+  String get allSources => '全部書源';
+
+  @override
+  String get sourceGroupNoResultsTitle => '搜尋結果為空';
+
+  @override
+  String sourceGroupNoResults(String group) {
+    return '$group分組搜尋結果為空，是否切換到全部分組？';
+  }
 
   @override
   String get chooseSourcesToSearch => '選擇書源，輸入書名後搜尋';

@@ -509,6 +509,15 @@
   "readingSources": "正在读取书源",
   "noSourcesInSpace": "空间里还没有书源",
   "noEnabledSourcesInSpace": "空间里没有启用的书源",
+  "sourceGroup": "书源分组",
+  "allSources": "全部书源",
+  "sourceGroupNoResultsTitle": "搜索结果为空",
+  "sourceGroupNoResults": "{group}分组搜索结果为空，是否切换到全部分组？",
+  "@sourceGroupNoResults": {
+    "placeholders": {
+      "group": {"type": "String"}
+    }
+  },
   "chooseSourcesToSearch": "选择书源，输入书名后搜索",
   "loadSourcesFailed": "读取书源失败：{error}",
   "@loadSourcesFailed": {
