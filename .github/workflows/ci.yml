@@ -263,14 +263,22 @@ jobs:
   # and keep the ArrayBuffer, and the row is run again against the unguarded
   # build copy to record the failure. A 32-bit Linux binary is arithmetic and
   # engine evidence for armv7, never an Android-device run.
+  #
+  # r6 (run 36329154405) failed at "Build the 32-bit test binary": `cargo test
+  # --target i686-unknown-linux-gnu --no-run` exited 101 with "could not compile
+  # `rquickjs-sys` (lib) due to 30 previous errors", and the diagnostics were
+  # lost because they only existed in the redirected JSON stdout. r7 keeps the
+  # same rows but makes every attempt leave its evidence: the toolchain and
+  # header search paths, the generated bindings, the target macros clang
+  # resolves the header to, and the rendered diagnostics -- and it tries the
+  # bindgen argument shapes in turn, because the vendored crate's 32-bit path
+  # needs `JSValue` to be the nan-boxed `u64` that `quickjs.h` picks when
+  # `INTPTR_MAX < INT64_MAX`, and cargokit's working armv7 build passes the
+  # bindgen arguments through the target-suffixed variable plus include dirs.
   linux-i686:
     name: linux-i686
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      # bindgen must see the target ABI, exactly as the Android job's
-      # BINDGEN_EXTRA_CLANG_ARGS does, or it emits x86_64-sized bindings.
-      BINDGEN_EXTRA_CLANG_ARGS: '--target=i686-unknown-linux-gnu'
     defaults:
       run:
         shell: bash
@@ -278,9 +286,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The red run restores the build script the review audited
-          # (`1eea0eb`, the probe branch's third commit), so this job needs
-          # that object and not only the tip.
-          fetch-depth: 3
+          # (`1eea0eb`), and the probe branch gains a commit per round, so the
+          # job takes the whole history rather than guessing a depth.
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: '1.97.0'
@@ -303,27 +311,197 @@ jobs:
       - name: Probe inputs
         run: |
           git rev-parse HEAD
-          git rev-parse HEAD^^
+          git log --oneline -4
+          # The build script the red run reverts to (the review audited 1eea0eb).
+          git cat-file -t 1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
+          git rev-parse 1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
           rustc -vV
           sha256sum \
             packages/fjs/libfjs/vendor/rquickjs-sys/build.rs \
             packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c \
+            packages/fjs/libfjs/vendor/rquickjs-sys/src/inlines/ptr_32_nan_boxing.rs \
             packages/fjs/libfjs/src/tests/memory_tests.rs | tee probe-inputs.sha256
-      - name: Build the 32-bit test binary
+      # Everything the 32-bit build depends on that has nothing to do with the
+      # vendored crate: the Rust target's own width, whether both C toolchains
+      # can build and run a 32-bit binary, where clang looks for headers, and
+      # whether the multiarch 32-bit headers are installed at all.
+      - name: 32-bit toolchain and header probe
         run: |
+          set +e
           set -o pipefail
-          cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml \
-            --target i686-unknown-linux-gnu --no-run --message-format=json \
-            > test-artifacts.json 2> test-build.log
-          python3 - <<'PY' | tee test-binary.path
+          {
+            echo '== rustc target cfg =='
+            rustc --print cfg --target i686-unknown-linux-gnu \
+              | grep -E 'target_arch|target_os|target_env|pointer_width|target_pointer' | sort
+            printf '#include <stddef.h>\n#include <stdint.h>\n_Static_assert(sizeof(void *) == 4, "pointer width");\n_Static_assert(sizeof(size_t) == 4, "size_t width");\nint main(void) { return 0; }\n' > probe32.c
+            echo '== gcc -m32 =='
+            gcc -m32 probe32.c -o probe32-gcc
+            echo "gcc -m32 build exit=$?"
+            ./probe32-gcc
+            echo "gcc -m32 run exit=$?"
+            echo '== clang --target=i686-unknown-linux-gnu =='
+            clang --target=i686-unknown-linux-gnu probe32.c -o probe32-clang
+            echo "clang --target build exit=$?"
+            ./probe32-clang
+            echo "clang --target run exit=$?"
+            echo '== clang target macros, no extra arguments =='
+            clang -E -dM -xc /dev/null | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|__ILP32__' | sort
+            echo '== clang target macros, --target=i686-unknown-linux-gnu =='
+            clang --target=i686-unknown-linux-gnu -E -dM -xc /dev/null \
+              | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|__ILP32__' | sort
+            echo '== clang include search path, no extra arguments =='
+            clang -E -v -xc /dev/null 2>&1 \
+              | sed -n '/#include <...> search starts here/,/End of search list/p'
+            echo '== clang include search path, --target=i686-unknown-linux-gnu =='
+            clang --target=i686-unknown-linux-gnu -E -v -xc /dev/null 2>&1 \
+              | sed -n '/#include <...> search starts here/,/End of search list/p'
+            echo '== multiarch header directories and packages =='
+            ls -d /usr/include/i386-linux-gnu /usr/include/x86_64-linux-gnu 2>&1
+            dpkg -l | grep -E 'gcc-multilib|libc6-dev|libc6-i386' | head -20
+            echo '== environment =='
+            env | grep -E 'BINDGEN|^CC|^CXX|CFLAGS|^TARGET|CARGO_TARGET' | sort
+          } 2>&1 | tee toolchain-probe.log
+          # Recorded, never a gate: the build step below decides.
+          exit 0
+      - name: Build the 32-bit test binary (bindgen arguments in turn)
+        run: |
+          set +e
+          set -o pipefail
+          manifest=packages/fjs/libfjs/Cargo.toml
+          target=i686-unknown-linux-gnu
+          cat > render_diagnostics.py <<'PY'
+          """Print the diagnostics cargo embedded in its JSON message stream.
+
+          `--message-format=json` sends the rendered diagnostics to stdout, so a
+          build that redirects stdout to a file loses them unless they are
+          rendered back out. Errors come first, then warnings, then the rest.
+          """
           import json
-          for line in open('test-artifacts.json'):
-              artifact = json.loads(line)
+          import sys
+
+          path, want = sys.argv[1], int(sys.argv[2])
+          groups = {'error': [], 'warning': [], 'other': []}
+          plain = []
+          for line in open(path, encoding='utf-8', errors='replace'):
+              line = line.strip()
+              if not line:
+                  continue
+              if not line.startswith('{'):
+                  # Build-script output and other untyped lines cargo forwards.
+                  plain.append(line)
+                  continue
+              try:
+                  message = json.loads(line)
+              except json.JSONDecodeError:
+                  plain.append(line)
+                  continue
+              if message.get('reason') != 'compiler-message':
+                  continue
+              body = message.get('message') or {}
+              rendered = body.get('rendered')
+              level = body.get('level')
+              if not rendered or level == 'note':
+                  continue
+              groups['error' if level == 'error' else 'warning' if level == 'warning' else 'other'].append(rendered)
+          for level, rendered in groups.items():
+              print(f'--- {len(rendered)} {level}-level diagnostics ---')
+              for text in rendered[:want]:
+                  print(text, end='')
+          print(f'--- {len(plain)} untyped lines ---')
+          for text in plain[:want]:
+              print(text)
+          PY
+          cat > test_binary_path.py <<'PY'
+          """Print the first test executable of `fjs` in a cargo JSON stream."""
+          import json
+          import sys
+
+          for line in open(sys.argv[1], encoding='utf-8', errors='replace'):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  artifact = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
               if (artifact.get('reason') == 'compiler-artifact'
                       and artifact.get('target', {}).get('name') == 'fjs'
                       and artifact.get('executable')):
                   print(artifact['executable'])
           PY
+          # The bindgen arguments to try, in order. The first one is r6's
+          # setting; the last two mirror how cargokit configures the vendored
+          # crate's armv7 build (target-suffixed variable, explicit 32-bit
+          # include directory) rather than assuming the Android recipe applies.
+          # `BINDGEN_EXTRA_CLANG_ARGS_<triple>` is not a valid shell identifier,
+          # so every attempt runs under `env`, which can set and unset it.
+          attempts='unsuffixed-target host-default suffixed-target suffixed-target-include'
+          build=1
+          winning=none
+          winning_args=''
+          : > bindgen-attempts.log
+          for label in $attempts; do
+            case "$label" in
+              unsuffixed-target)
+                args='--target=i686-unknown-linux-gnu'
+                runner=(env -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu "BINDGEN_EXTRA_CLANG_ARGS=$args") ;;
+              host-default)
+                args=''
+                runner=(env -u BINDGEN_EXTRA_CLANG_ARGS -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu) ;;
+              suffixed-target)
+                args='--target=i686-unknown-linux-gnu'
+                runner=(env -u BINDGEN_EXTRA_CLANG_ARGS "BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu=$args") ;;
+              suffixed-target-include)
+                args='--target=i686-unknown-linux-gnu -I/usr/include/i386-linux-gnu'
+                runner=(env -u BINDGEN_EXTRA_CLANG_ARGS "BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu=$args") ;;
+            esac
+            printf '=== attempt %s: bindgen args %s (%s)\n' "$label" "${args:-none}" "${runner[*]}" \
+              | tee -a bindgen-attempts.log
+            cargo clean -p rquickjs-sys --manifest-path "$manifest" --target "$target" >/dev/null 2>&1
+            "${runner[@]}" cargo test --locked --manifest-path "$manifest" --target "$target" --no-run \
+              --message-format=json > "test-artifacts-$label.json" 2> "test-build-$label.log"
+            status=$?
+            echo "attempt $label: cargo exit=$status" | tee -a bindgen-attempts.log
+            python3 render_diagnostics.py "test-artifacts-$label.json" 40 \
+              2>&1 | tee "rendered-diagnostics-$label.log" | grep -E '^(---|error|warning)' | head -20 \
+              | tee -a bindgen-attempts.log
+            bindings="$(find packages/fjs/libfjs/target -path '*/out/bindings.rs' | head -1)"
+            if [ -n "$bindings" ]; then
+              printf 'bindings %s\n' "$bindings" | tee -a "bindings-$label.log"
+              grep -nE 'pub (struct|union|type) JSValue|pub (struct|union) JSValueUnion' "$bindings" \
+                | tee -a "bindings-$label.log"
+              sha256sum "$bindings" | tee -a "bindings-$label.log"
+            else
+              echo "bindings $label: none generated" | tee -a "bindings-$label.log"
+            fi
+            header="$(find packages/fjs/libfjs/target -path '*/out/quickjs.bind.h' | head -1)"
+            if [ -n "$header" ]; then
+              printf 'header %s\n== effective target macros ==\n' "$header" > "macros-$label.log"
+              "${runner[@]}" clang -E -dM -xc "$header" -D_GNU_SOURCE 2>&1 \
+                | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|INTPTR_MAX|INT64_MAX|JS_NAN_BOXING' \
+                | sort >> "macros-$label.log"
+              tee -a bindgen-attempts.log < "macros-$label.log"
+            else
+              echo "header $label: none generated" | tee -a "macros-$label.log"
+            fi
+            if [ "$status" = 0 ]; then
+              build=0
+              winning="$label"
+              winning_args="$args"
+              cp "test-artifacts-$label.json" test-artifacts.json
+              python3 test_binary_path.py "test-artifacts-$label.json" > test-binary.path
+              break
+            fi
+          done
+          # The later steps are separate shells: carry the arguments that worked
+          # into the job environment, in the unsuffixed variable bindgen falls
+          # back to, so the red rebuild uses the same recipe.
+          if [ "$build" = 0 ]; then
+            printf 'BINDGEN_EXTRA_CLANG_ARGS=%s\n' "$winning_args" >> "$GITHUB_ENV"
+          fi
+          printf 'build=%s winning_attempt=%s winning_args=%s\n' "$build" "$winning" \
+            "${winning_args:-none}" | tee probe-status.log
+          test "$build" = 0
       - name: Green — the guarded build copy refuses the wrapped requests
         run: |
           set +e
@@ -361,7 +539,7 @@ jobs:
             if [ "$status" != 0 ]; then heap=1; fi
           done
           printf 'green_build_copy=%s green_boundary=%s green_heap=%s\n' \
-            "$patches" "$boundary" "$heap" | tee probe-status.log
+            "$patches" "$boundary" "$heap" | tee -a probe-status.log
           test "$patches" = 0 && test "$boundary" = 0 && test "$heap" = 0
       - name: Red — the unguarded build copy accepts them
         run: |
@@ -398,18 +576,9 @@ jobs:
               --manifest-path packages/fjs/libfjs/Cargo.toml \
               --target i686-unknown-linux-gnu --no-run --message-format=json \
               > "red-$profile-artifacts.json" 2> "red-$profile-build.log"
-            redbin="$(python3 - "$profile" <<'PY'
-          import json
-          import sys
-          profile = sys.argv[1]
-          for line in open(f'red-{profile}-artifacts.json'):
-              artifact = json.loads(line)
-              if (artifact.get('reason') == 'compiler-artifact'
-                      and artifact.get('target', {}).get('name') == 'fjs'
-                      and artifact.get('executable')):
-                  print(artifact['executable'])
-          PY
-          )"
+            python3 test_binary_path.py "red-$profile-artifacts.json" > "red-$profile.path"
+            redbin="$(cat "red-$profile.path")"
+            test -n "$redbin" || { echo "the $profile red build produced no test binary" >&2; exit 1; }
             # The ulimit keeps the ~4 GB clear of the unguarded run inside one
             # process's 256 MiB address space, where the write faults; the
             # timeout is the second bound. `--list` first proves the limit is
@@ -425,8 +594,8 @@ jobs:
             test "$list" = 0
             test "$red" != 0
           done
-          git checkout HEAD -- packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
-          grep -Fq 'js_malloc_limit_exceeded' packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
+          git checkout HEAD -- "$path"
+          grep -Fq 'js_malloc_limit_exceeded' "$path"
       - name: Coverage boundaries
         if: always()
         run: |
@@ -434,12 +603,24 @@ jobs:
           echo '- Executed in an i686 Linux process: the guard arithmetic, the transfer boundary and the three heap-limit rows the armv7 Android build compiles but has never run.' >> "$GITHUB_STEP_SUMMARY"
           echo '- The unguarded run is the accepted candidate build script, bounded by a 256 MiB address space and a hard timeout.' >> "$GITHUB_STEP_SUMMARY"
           echo '- This is arithmetic and engine evidence, not an Android-device run: the armv7 row stays not-run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- A failed build now leaves its toolchain probe, bindgen attempts, generated bindings, effective target macros and rendered diagnostics in the uploaded artifact.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: probe-111-linux-i686
           path: |
             probe-inputs.sha256
+            toolchain-probe.log
+            bindgen-attempts.log
+            test-artifacts.json
+            test-binary.path
+            test_binary_path.py
+            render_diagnostics.py
+            test-artifacts-*.json
+            test-build-*.log
+            rendered-diagnostics-*.log
+            bindings-*.log
+            macros-*.log
             build-copy-guards.log
             green-32bit.log
             green-32bit-heap.log
@@ -450,5 +631,7 @@ jobs:
             test-build.log
             red-debug-build.log
             red-wrap-build.log
+            red-debug.path
+            red-wrap.path
             probe-status.log
           if-no-files-found: warn
