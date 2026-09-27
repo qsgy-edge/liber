@@ -38,7 +38,7 @@ jobs:
         run: |
           git rev-parse HEAD
           uname -a
-          shasum -a 256 packages/fjs/libfjs/Cargo.lock packages/fjs/libfjs/vendor/rquickjs-sys/build.rs packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c packages/fjs/libfjs/src/tests/memory_tests.rs
+          shasum -a 256 packages/fjs/libfjs/Cargo.toml packages/fjs/libfjs/Cargo.lock packages/fjs/libfjs/vendor/rquickjs-sys/build.rs packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c packages/fjs/libfjs/src/tests/memory_tests.rs tool/scoped_runtime_gate.dart
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
           toolchain: '1.97.0'
@@ -72,6 +72,9 @@ jobs:
           set -o pipefail
           cargo build -vv --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' 2>&1 | tee native-build.log
           native=$?
+          cargo tree --locked --manifest-path packages/fjs/libfjs/Cargo.toml -e features -i rquickjs-core 2>&1 | tee allocator-features.log
+          features=$?
+          grep -Fq 'rquickjs-core feature "rust-alloc"' allocator-features.log || features=1
           find packages/fjs/libfjs/target/aarch64-apple-darwin/debug/build -path '*/out/quickjs.c' -exec shasum -a 256 {} \; | tee build-copy-hashes.log
           cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' single_request -- --nocapture 2>&1 | tee single-request.log
           standalone=$?
@@ -84,8 +87,8 @@ jobs:
           grep -Fq '"heapLimitSingleRequestEnforced":true' scoped-gate.log || gate=1
           grep -Fq "$library" scoped-gate.log || gate=1
           if grep -Fq '===== CRASH =====' scoped-gate.log; then gate=1; fi
-          printf 'native=%s standalone=%s dart_gate=%s\n' "$native" "$standalone" "$gate" | tee probe-status.log
-          test "$native" = 0 && test "$standalone" = 0 && test "$gate" = 0
+          printf 'native=%s features=%s standalone=%s dart_gate=%s\n' "$native" "$features" "$standalone" "$gate" | tee probe-status.log
+          test "$native" = 0 && test "$features" = 0 && test "$standalone" = 0 && test "$gate" = 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -93,6 +96,7 @@ jobs:
           path: |
             single-request.log
             native-build.log
+            allocator-features.log
             build-copy-hashes.log
             native-hash.log
             scoped-gate.log
