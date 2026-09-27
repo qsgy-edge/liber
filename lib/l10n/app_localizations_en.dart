@@ -613,6 +613,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noEnabledSourcesInSpace => 'The space has no enabled book sources';
 
   @override
+  String get sourceGroup => 'Book source group';
+
+  @override
+  String get allSources => 'All book sources';
+
+  @override
+  String get sourceGroupNoResultsTitle => 'No search results';
+
+  @override
+  String sourceGroupNoResults(String group) {
+    return 'No results in $group. Search all groups?';
+  }
+
+  @override
   String get chooseSourcesToSearch =>
       'Choose the book sources, then search by title';
 

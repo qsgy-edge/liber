@@ -1104,6 +1104,30 @@ abstract class AppLocalizations {
   /// **'空间里没有启用的书源'**
   String get noEnabledSourcesInSpace;
 
+  /// No description provided for @sourceGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源分组'**
+  String get sourceGroup;
+
+  /// No description provided for @allSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部书源'**
+  String get allSources;
+
+  /// No description provided for @sourceGroupNoResultsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索结果为空'**
+  String get sourceGroupNoResultsTitle;
+
+  /// No description provided for @sourceGroupNoResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'{group}分组搜索结果为空，是否切换到全部分组？'**
+  String sourceGroupNoResults(String group);
+
   /// No description provided for @chooseSourcesToSearch.
   ///
   /// In zh, this message translates to:

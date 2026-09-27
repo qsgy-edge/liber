@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -43,7 +44,8 @@ import 'source_tls_confirmation.dart';
 ///   `bookSourceParts` from `appDb.bookSourceDao.allEnabledPart`
 ///   (`select ... where enabled = 1 order by customOrder asc`), falling back to
 ///   it when the selected `AppConfig.searchGroup` is blank (its default). This
-///   page reads `ShelfService.sources()` — every source in the space,
+///   page reads the same store rows and `bookSourceJson` as
+///   `ShelfService.sources()` — every source in the space,
 ///   `customOrder` then `bookSourceUrl` — and keeps only the enabled ones, all
 ///   of them selected, so the default set and its order are the frozen ones.
 /// * **A disabled source is not searched (#114).** `allEnabledPart` is
@@ -54,6 +56,17 @@ import 'source_tls_confirmation.dart';
 ///   Like `allEnabledPart`, the filter is the enabled flag alone — no
 ///   `bookSourceType` filter; that one is `allTextEnabledPart`'s, which the
 ///   automatic switch (`auto_change_source.dart`) follows.
+/// * **Source groups (#113).** `ChangeBookSourceViewModel.startSearch`
+///   (`:195-208`) uses `getEnabledPartByGroup` for a nonblank `searchGroup`,
+///   and clears an empty eligible group before searching all enabled sources.
+///   The space-global `searchGroup` setting serves both page modes here. The
+///   menu follows `ChangeBookSourceDialog.initLiveData` (`:260-265`), whose
+///   `flowEnabledGroups` includes only enabled sources' groups. Membership
+///   uses the store's split/trimmed `groupNames`, not SQL LIKE: whitespace and
+///   wildcard/case behavior can differ. Menu order is Dart string order, not
+///   the frozen `cnCompare`'s Chinese ICU collation (no equivalent is shipped).
+///   A populated group with no hits asks before searching all groups, as the
+///   dialog's `searchFinishCallback` (`:79-93`) does; cancel keeps that group.
 /// * **What admits a hit.** The dialog's filter is `fName == name &&
 ///   (!checkAuthor || fAuthor.contains(author))` with
 ///   `AppConfig.changeSourceCheckAuthor` defaulting to false;
@@ -70,10 +83,6 @@ import 'source_tls_confirmation.dart';
 ///
 /// Named gaps against that dialog, recorded rather than fixed:
 ///
-/// * **No source-group filter.** The frozen reads `AppConfig.searchGroup` and
-///   searches only that group's enabled sources, with a group menu; this page
-///   has no group picker, so a group selected there has no counterpart here.
-///   The default (no group) is the same set.
 /// * **Per-candidate fields.** The frozen card shows the hit's own latest
 ///   chapter title (`SearchBook.getDisplayLastChapterTitle`), ticks the current
 ///   source's row (`oldBookUrl == bookUrl`) and, with
@@ -150,7 +159,17 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   final Set<String> selected = <String>{};
   bool loadingSources = true;
   bool running = false;
+  bool picking = false;
   bool checkAuthor = false;
+  String searchGroup = '';
+  List<String> sourceGroups = const [];
+
+  // A group change cancels the old walk and waits for its in-flight work to
+  // settle before starting another. Rapid changes coalesce to the latest
+  // generation; they cannot multiply the walk's concurrency bound.
+  int _generation = 0;
+  Future<void> _sourceLoad = Future<void>.value();
+  Future<void> _searchTask = Future<void>.value();
 
   /// What the page last did, or null before it has read the sources: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -186,6 +205,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
 
   @override
   void dispose() {
+    _generation++;
     for (final pipeline in _pipelines) {
       pipeline.cancel();
     }
@@ -194,23 +214,86 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     super.dispose();
   }
 
-  /// Reads the space's sources and keeps those the space has enabled — the
-  /// frozen flow's `allEnabledPart` — with every one of them selected. A
-  /// disabled source gets no chip, so it cannot be selected into a run.
-  Future<void> _loadSources() async {
+  /// Re-reads eligibility on every load. Serializing the store work also keeps
+  /// a superseded preference write from overwriting the latest group choice.
+  Future<void> _loadSources({String? group}) {
+    if (!mounted || picking) return Future<void>.value();
+    final generation = ++_generation;
+    for (final pipeline in _pipelines) {
+      pipeline.cancel();
+    }
+    final previousSearch = _searchTask;
+    setState(() {
+      loadingSources = true;
+      running = false;
+      error = null;
+      hits = const [];
+      failures = const [];
+    });
+    return _sourceLoad = _sourceLoad.then((_) async {
+      await previousSearch;
+      if (!_isCurrent(generation)) return;
+      await _readSources(generation, group);
+    });
+  }
+
+  bool _isCurrent(int generation) => mounted && generation == _generation;
+
+  Future<void> _readSources(int generation, String? group) async {
     try {
-      final loaded = await widget.service.sources();
+      final store = widget.service.store;
+      final stored = await store.allSources();
+      // Keep #114's raw-vs-typed authority exactly as ShelfService.sources
+      // does, and use the store's already normalized group membership.
+      final loaded = [
+        for (final source in stored)
+          ImportedBookSource(
+            id: source.bookSourceUrl,
+            data: bookSourceJson(source),
+          ),
+      ];
       final enabled = [
         for (final source in loaded)
           if (source.data['enabled'] != false) source,
       ];
-      if (!mounted) return;
+      final groupsBySource = {
+        for (final source in stored)
+          source.bookSourceUrl: (jsonDecode(source.groupNames) as List)
+              .cast<String>(),
+      };
+      final groups =
+          enabled
+              .expand((source) => groupsBySource[source.id]!)
+              .toSet()
+              .toList()
+            ..sort();
+      final requested = group ?? await store.setting('searchGroup') ?? '';
+      var chosenGroup = requested.trim().isEmpty ? '' : requested;
+      var eligible = [
+        for (final source in enabled)
+          if (chosenGroup.isEmpty ||
+              groupsBySource[source.id]!.contains(chosenGroup))
+            source,
+      ];
+      // Frozen startSearch: an absent/disabled-only group resets to all. The
+      // control shows the reset before the replacement search begins.
+      if (eligible.isEmpty && chosenGroup.isNotEmpty) {
+        chosenGroup = '';
+        eligible = enabled;
+      }
+      if (!_isCurrent(generation)) return;
+      if (group != null || requested != chosenGroup) {
+        await store.putSetting('searchGroup', chosenGroup);
+      }
+      if (!_isCurrent(generation)) return;
       final l10n = AppLocalizations.of(context);
       setState(() {
-        sources = enabled;
+        searchGroup = chosenGroup;
+        sourceGroups = groups;
+        sources = eligible;
         selected
           ..clear()
-          ..addAll([for (final source in enabled) source.id]);
+          ..addAll([for (final source in eligible) source.id]);
         loadingSources = false;
         status = loaded.isEmpty
             ? l10n.noSourcesInSpace
@@ -218,12 +301,10 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
             ? l10n.noEnabledSourcesInSpace
             : l10n.chooseSourcesToSearch;
       });
-      // The frozen dialog searches as soon as it opens when it has a name; with
-      // no enabled source there is nothing to search, and the line above says
-      // why.
-      if (_name.text.trim().isNotEmpty && enabled.isNotEmpty) await search();
+      if (_name.text.trim().isNotEmpty && eligible.isNotEmpty)
+        unawaited(search());
     } on Object catch (failure) {
-      if (mounted) {
+      if (_isCurrent(generation)) {
         setState(() {
           loadingSources = false;
           error = AppLocalizations.of(context).loadSourcesFailed('$failure');
@@ -265,15 +346,48 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   }
 
   Future<void> search() async {
-    // A page a run has outlived must not start another one; [running] keeps
-    // one run at a time.
-    if (!mounted || running) return;
+    if (!mounted || running || loadingSources) return;
+    final generation = _generation;
+    final task = _runSearch(generation);
+    _searchTask = task.then((_) {});
+    final completed = await task;
+    if (!completed ||
+        !_isCurrent(generation) ||
+        hits.isNotEmpty ||
+        searchGroup.isEmpty)
+      return;
+    final group = searchGroup;
+    final l10n = AppLocalizations.of(context);
+    final allGroups = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.sourceGroupNoResultsTitle),
+        content: Text(l10n.sourceGroupNoResults(group)),
+        actions: [
+          TextButton(
+            key: const ValueKey('precise-group-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            key: const ValueKey('precise-group-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.confirm),
+          ),
+        ],
+      ),
+    );
+    if (allGroups == true && _isCurrent(generation))
+      await _loadSources(group: '');
+  }
+
+  Future<bool> _runSearch(int generation) async {
     final l10n = AppLocalizations.of(context);
     final name = _name.text.trim();
     final author = _author.text.trim();
     if (name.isEmpty) {
       setState(() => status = l10n.enterBookName);
-      return;
+      return false;
     }
     final chosen = [
       for (final source in sources)
@@ -281,7 +395,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     ];
     if (chosen.isEmpty) {
       setState(() => status = l10n.chooseSourcesToSearchStatus);
-      return;
+      return false;
     }
     setState(() {
       running = true;
@@ -316,9 +430,12 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       // walk — no source behind the ones already in flight is started, and those
       // sources' pipelines are cancelled — instead of walking the rest of the
       // list under a State that no longer exists.
-      final answers = search.searchAll(chosen, isCancelled: () => !mounted);
+      final answers = search.searchAll(
+        chosen,
+        isCancelled: () => !_isCurrent(generation),
+      );
       await for (final outcome in answers) {
-        if (!mounted) break;
+        if (!_isCurrent(generation)) break;
         setState(() {
           _place(outcome);
           // The frozen dialog's own progress line: what this run has found so
@@ -332,18 +449,20 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           );
         });
       }
-      if (!mounted) return;
+      if (!_isCurrent(generation)) return false;
       setState(() {
         running = false;
         status = _summary(l10n, name, author);
       });
+      return true;
     } on Object catch (failure) {
-      if (mounted) {
+      if (_isCurrent(generation)) {
         setState(() {
           running = false;
           error = AppLocalizations.of(context).searchFailed('$failure');
         });
       }
+      return false;
     } finally {
       // The run's own pipelines cancel themselves when their source finishes
       // (`PreciseSearch._readSource`), and the walk cancels the ones left in
@@ -416,6 +535,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     }
     setState(() {
       running = true;
+      picking = true;
       error = null;
       status = l10n.readingSourceToc(hit.sourceName);
     });
@@ -458,6 +578,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     } finally {
       pipeline.cancel();
       _pipelines.remove(pipeline);
+      if (mounted) setState(() => picking = false);
     }
   }
 
@@ -474,6 +595,45 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
               ? l10n.preciseSearchTitle
               : l10n.switchSourceTitle(book.title),
         ),
+        actions: [
+          PopupMenuButton<String>(
+            key: const ValueKey('precise-source-group'),
+            tooltip: l10n.sourceGroup,
+            enabled: !picking,
+            initialValue: searchGroup,
+            onSelected: (group) => unawaited(_loadSources(group: group)),
+            itemBuilder: (_) => [
+              for (final group in ['', ...sourceGroups])
+                CheckedPopupMenuItem<String>(
+                  key: ValueKey('precise-group-$group'),
+                  value: group,
+                  checked: group == searchGroup,
+                  child: Text(group.isEmpty ? l10n.allSources : group),
+                ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.4,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        searchGroup.isEmpty ? l10n.allSources : searchGroup,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: CustomScrollView(
         slivers: [
@@ -528,7 +688,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                         '${source.data['bookSourceName'] ?? source.id}',
                       ),
                       selected: selected.contains(source.id),
-                      onSelected: running
+                      onSelected: running || loadingSources
                           ? null
                           : (value) => setState(() {
                               if (value) {
@@ -566,7 +726,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                       Checkbox(
                         value: checkAuthor,
                         key: const ValueKey('precise-check-author'),
-                        onChanged: running
+                        onChanged: running || loadingSources
                             ? null
                             : (value) =>
                                   setState(() => checkAuthor = value ?? false),
@@ -579,7 +739,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                     children: [
                       FilledButton.icon(
                         key: const ValueKey('precise-search'),
-                        onPressed: running ? null : search,
+                        onPressed: running || loadingSources ? null : search,
                         icon: const Icon(Icons.search),
                         label: Text(l10n.search),
                       ),

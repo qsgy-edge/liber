@@ -662,6 +662,304 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> groupedSources({bool hits = true}) async {
+    await store.putSourceJson({
+      ...sourceA.source,
+      'bookSourceGroup': '常用, 精品 ,常用',
+    });
+    await store.putSourceJson({
+      ...disabledUsedStyle(sourceB),
+      'bookSourceGroup': '精品,停用组',
+    });
+    await store.putSourceJson({...sourceC.source, 'bookSourceGroup': '备用'});
+    if (hits) {
+      sourceA.hits.add(candidate('https://a.test', '1', name, author));
+      sourceC.hits.add(candidate('https://c.test', '1', name, author));
+    }
+  }
+
+  // Fixed pumps allow using the real menu while a search is still in flight;
+  // pumpAndSettle would wait forever on the walk's progress indicator.
+  Future<void> chooseGroup(WidgetTester tester, String group) async {
+    await tester.tap(find.byKey(const ValueKey('precise-source-group')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(ValueKey('precise-group-$group')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets('分组：仅启用的成员可选，菜单排除停用组，切组持久化并跨入口重读', (tester) async {
+    final entry = await shelvedBook();
+    await groupedSources();
+    await store.putSetting('searchGroup', '精品');
+    await pumpSwitchEntry(tester, entry);
+
+    expect(sourceA.searchCalls, 1);
+    expect(sourceB.searchCalls, 0);
+    expect(sourceC.searchCalls, 0);
+    expect(
+      find.byKey(const ValueKey('precise-source-https://a.test')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('precise-source-https://c.test')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('precise-source-group')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('precise-group-停用组')), findsNothing);
+    expect(find.byKey(const ValueKey('precise-group-常用')), findsOneWidget);
+    final items = tester
+        .widgetList<CheckedPopupMenuItem<String>>(
+          find.byType(CheckedPopupMenuItem<String>),
+        )
+        .map((item) => item.value)
+        .toList();
+    expect(items, ['', '备用', '常用', '精品'], reason: '确定的 Dart 字符序，不冒充冻结 ICU 排序');
+    await tester.tap(find.byKey(const ValueKey('precise-group-备用')));
+    await tester.pumpAndSettle();
+
+    expect(sourceA.searchCalls, 1);
+    expect(sourceC.searchCalls, 1);
+    expect(await store.setting('searchGroup'), '备用');
+    expect(
+      find.byKey(const ValueKey('precise-source-https://a.test')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('precise-source-https://c.test')),
+      findsOneWidget,
+    );
+    // Close the pushed switch route before opening the plain search entry;
+    // swapping in a bare MaterialApp would strip its localization delegates
+    // while Navigator still owns that route.
+    await tapBack(tester);
+    expect(find.byType(PreciseSearchPage), findsNothing);
+    await pumpEntry(tester);
+    expect(sourceC.searchCalls, 2, reason: '普通搜索入口共享空间分组设置');
+    expect(sourceA.searchCalls, 1);
+    expect(find.text('备用'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final missingGroup in ['不存在', '停用组', '精']) {
+    testWidgets('分组 $missingGroup 无启用成员：可见重置为全部并持久化，不弹空结果确认', (tester) async {
+      await groupedSources();
+      await store.putSetting('searchGroup', missingGroup);
+      await pumpEntry(tester);
+      expect(await store.setting('searchGroup'), '');
+      expect(find.text('全部书源'), findsOneWidget);
+      expect(sourceA.searchCalls, 1);
+      expect(sourceC.searchCalls, 1);
+      expect(sourceB.searchCalls, 0);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final confirm in [false, true]) {
+    testWidgets('分组有书源但无结果：${confirm ? '确认才搜索全部' : '取消保持分组且不重搜'}', (
+      tester,
+    ) async {
+      final entry = await shelvedBook();
+      await groupedSources(hits: false);
+      sourceC.hits.add(candidate('https://c.test', '1', name, author));
+      await store.putSetting('searchGroup', '精品');
+      await pumpSwitchEntry(tester, entry);
+      expect(find.text('精品分组搜索结果为空，是否切换到全部分组？'), findsOneWidget);
+      expect(sourceA.searchCalls, 1);
+      expect(sourceC.searchCalls, 0);
+      await tester.tap(
+        find.byKey(
+          ValueKey(confirm ? 'precise-group-confirm' : 'precise-group-cancel'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(sourceA.searchCalls, confirm ? 2 : 1);
+      expect(sourceB.searchCalls, 0);
+      expect(sourceC.searchCalls, confirm ? 1 : 0);
+      expect(await store.setting('searchGroup'), confirm ? '' : '精品');
+      expect(find.text(confirm ? '全部书源' : '精品'), findsOneWidget);
+      expect((await store.bookById(entry.id))!.sourceRef, 'https://a.test');
+      expect((await store.progressOf(entry.id))!.textOffset, 42);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('所有源停用时也重置已存分组，不搜索、不弹确认', (tester) async {
+    await groupedSources();
+    for (final fake in byRef.values) {
+      await store.putSourceJson({
+        ...fake.source,
+        'enabled': false,
+        'bookSourceGroup': '精品',
+      });
+    }
+    await store.putSetting('searchGroup', '精品');
+    await pumpEntry(tester);
+    expect(await store.setting('searchGroup'), '');
+    expect(find.text('全部书源'), findsOneWidget);
+    expect(find.text('空间里没有启用的书源'), findsOneWidget);
+    expect(byRef.values.every((fake) => fake.searchCalls == 0), isTrue);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  for (final rapid in [false, true]) {
+    testWidgets('搜索中${rapid ? '快速连续' : ''}切组：旧任务取消排空后才搜最新组，过期结果不污染', (
+      tester,
+    ) async {
+      final old = [sourceA, ...await moreSources(12)];
+      for (final fake in old) {
+        fake.gate = Completer<void>();
+        await store.putSourceJson({...fake.source, 'bookSourceGroup': '旧组'});
+      }
+      sourceA.hits.add(candidate('https://a.test', '1', name, author));
+      await store.putSourceJson({...sourceB.source, 'bookSourceGroup': '中组'});
+      await store.putSourceJson({...sourceC.source, 'bookSourceGroup': '新组'});
+      sourceB.hits.add(candidate('https://b.test', '1', name, author));
+      sourceC.hits.add(candidate('https://c.test', '1', name, author));
+      await store.putSetting('searchGroup', '旧组');
+      final created = <ScriptedPipeline>[];
+      await tester.pumpWidget(
+        localizedApp(
+          home: PreciseSearchPage(
+            service: shelf,
+            initialName: name,
+            initialAuthor: author,
+            openPipeline: (source) {
+              final pipeline = ScriptedPipeline(
+                byRef['${source['bookSourceUrl']}']!,
+              );
+              created.add(pipeline);
+              return pipeline;
+            },
+          ),
+        ),
+      );
+      for (
+        var i = 0;
+        i < 50 && created.length < PreciseSearch.defaultConcurrency;
+        i++
+      ) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(created, hasLength(PreciseSearch.defaultConcurrency));
+      await chooseGroup(tester, '中组');
+      if (rapid) await chooseGroup(tester, '新组');
+      expect(created.every((pipeline) => pipeline.cancelled), isTrue);
+      expect(sourceB.searchCalls, 0, reason: '等待旧的在飞请求结束，不叠加新走查');
+      expect(sourceC.searchCalls, 0);
+      for (final fake in old) {
+        fake.gate!.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(
+        old.fold<int>(0, (count, fake) => count + fake.searchCalls),
+        PreciseSearch.defaultConcurrency,
+        reason: '取消后旧组队列没有继续启动',
+      );
+      expect(created, hasLength(PreciseSearch.defaultConcurrency + 1));
+      expect(sourceB.searchCalls, rapid ? 0 : 1);
+      expect(sourceC.searchCalls, rapid ? 1 : 0);
+      expect(await store.setting('searchGroup'), rapid ? '新组' : '中组');
+      expect(find.byType(AlertDialog), findsNothing, reason: '过期走查不能弹空结果提示');
+      expect(
+        find.byKey(
+          const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('候选 1 本，其中精确匹配 1 本'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('切组等待旧请求时销毁页面，不再启动新组或弹出确认', (tester) async {
+    await groupedSources(hits: false);
+    sourceA.gate = Completer<void>();
+    await store.putSetting('searchGroup', '精品');
+    await tester.pumpWidget(
+      localizedApp(
+        home: PreciseSearchPage(
+          service: shelf,
+          initialName: name,
+          initialAuthor: author,
+          openPipeline: open,
+        ),
+      ),
+    );
+    for (var i = 0; i < 50 && sourceA.searchCalls == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(sourceA.searchCalls, 1);
+    await chooseGroup(tester, '备用');
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    sourceA.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(sourceC.searchCalls, 0);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分组内数百筛选项保持惰性，滚动后的取消选择不丢失', (tester) async {
+    final more = await moreSources(300);
+    for (var i = 0; i < more.length; i++) {
+      await store.putSourceJson({
+        ...more[i].source,
+        'bookSourceGroup': '规模',
+        'customOrder': i,
+      });
+    }
+    await store.putSetting('searchGroup', '规模');
+    await tester.pumpWidget(
+      localizedApp(
+        home: PreciseSearchPage(service: shelf, openPipeline: open),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final first = find.byKey(const ValueKey('precise-source-https://s0.test'));
+    final last = find.byKey(const ValueKey('precise-source-https://s299.test'));
+    expect(find.byType(FilterChip).evaluate().length, lessThan(40));
+    expect(last, findsNothing);
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      last,
+      600,
+      maxScrolls: 60,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.widget<FilterChip>(last).selected, isTrue);
+    await tester.tap(last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      first,
+      -600,
+      maxScrolls: 60,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.widget<FilterChip>(first).selected, isFalse);
+    expect(find.byType(FilterChip).evaluate().length, lessThan(60));
+    expect(
+      find.byKey(const ValueKey('precise-source-https://a.test')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('手动换源只列出并搜索启用源，保留冻结 allEnabledPart 的类型范围', (tester) async {
     final entry = await shelvedBook();
     await store.putSourceJson(disabledUsedStyle(sourceB));
@@ -740,6 +1038,8 @@ void main() {
   testWidgets('换源：新目录顺序变了，进度按冻结的映射落到同一章', (tester) async {
     final entry = await shelvedBook();
     sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    await store.putSourceJson({...sourceB.source, 'bookSourceGroup': '精品'});
+    await store.putSetting('searchGroup', '精品');
     // 乙源 prepends a 楔子, so the old 第三章 is at index 3 — only the frozen
     // name-and-number mapping finds it; carrying the old index would land on
     // 第二章.
