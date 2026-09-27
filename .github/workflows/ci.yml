@@ -26,6 +26,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
+  FJS_HEAP_LIMIT_ROW_ITERATIONS: '200'
   # pubspec.lock records the host every package came from, and this project
   # resolves against the mirror; the runners reach both it and its storage host
   # (probed 2026-09-16). A run without this variable rewrites all 105 `url:`
@@ -140,7 +141,7 @@ jobs:
       # the host a second time.
       - name: Runtime tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
-        run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
+        run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' -- --nocapture
       # Every job builds its platform's app now, so Flutter is installed for the
       # mobile jobs too; only the Dart tests stay desktop-only. (#68)
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
