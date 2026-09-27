@@ -264,21 +264,29 @@ jobs:
   # build copy to record the failure. A 32-bit Linux binary is arithmetic and
   # engine evidence for armv7, never an Android-device run.
   #
-  # r6 (run 36329154405) failed at "Build the 32-bit test binary": `cargo test
-  # --target i686-unknown-linux-gnu --no-run` exited 101 with "could not compile
-  # `rquickjs-sys` (lib) due to 30 previous errors", and the diagnostics were
-  # lost because they only existed in the redirected JSON stdout. r7 keeps the
-  # same rows but makes every attempt leave its evidence: the toolchain and
-  # header search paths, the generated bindings, the target macros clang
-  # resolves the header to, and the rendered diagnostics -- and it tries the
-  # bindgen argument shapes in turn, because the vendored crate's 32-bit path
-  # needs `JSValue` to be the nan-boxed `u64` that `quickjs.h` picks when
-  # `INTPTR_MAX < INT64_MAX`, and cargokit's working armv7 build passes the
-  # bindgen arguments through the target-suffixed variable plus include dirs.
+  # r6 failed to build. r7 built, but its rows never ran: `--exact` was given a
+  # bare function name, libtest needs the full `tests::memory_tests::…` path, so
+  # every row reported "running 0 tests … 633 filtered out" and exited 0, and
+  # the step's bare `test` statements could not fail a `set +e` script. r7 also
+  # showed that an explicit `--target=i686-unknown-linux-gnu` fails while no
+  # BINDGEN_EXTRA_CLANG_ARGS at all succeeds: bindgen inserts the cargo target
+  # itself (`bindgen lib.rs:729-795`: with no explicit `--target` in its clang
+  # arguments it uses `TARGET` and inserts `--target=<triple>`), so "no
+  # explicit target" is the configuration that produces 32-bit bindings, and
+  # nothing may be run until that ABI is asserted.
+  #
+  # r8 therefore: picks rows with a filter that libtest actually matches and
+  # asserts the count of tests that ran; runs the same filter on a 64-bit host
+  # build first as the filter control; records the r6-shaped explicit target as
+  # a diagnosis-only build; gates every row behind an ABI gate (generated
+  # `JSValue` is the nan-boxed `u64`, the effective macros are 32-bit for both
+  # `clang` and `gcc -m32`, and the row is listed in the binary); and makes every
+  # check fail closed -- no bare `test` statements, an accumulated failure flag
+  # and a final `exit`.
   linux-i686:
     name: linux-i686
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -286,7 +294,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The red run restores the build script the review audited
-          # (`1eea0eb`), and the probe branch gains a commit per round, so the
+          # (`1eea0eb`) and the probe branch gains a commit per round, so the
           # job takes the whole history rather than guessing a depth.
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -301,6 +309,16 @@ jobs:
             packages/fjs/libfjs/target
           key: native-i686-unknown-linux-gnu-${{ hashFiles('packages/fjs/libfjs/Cargo.lock', 'packages/fjs/libfjs/vendor/**', '.github/workflows/ci.yml') }}
           restore-keys: native-i686-unknown-linux-gnu-
+      # The 64-bit filter control builds the same crate for the runner's own
+      # target; this reuses the Linux platform job's cache when it exists.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/fjs/libfjs/target
+          key: native-x86_64-unknown-linux-gnu-${{ hashFiles('packages/fjs/libfjs/Cargo.lock', 'packages/fjs/libfjs/vendor/**', '.github/workflows/ci.yml') }}
+          restore-keys: native-x86_64-unknown-linux-gnu-
       - name: 32-bit build dependencies
         run: |
           # gcc-multilib supplies the 32-bit glibc headers and the `gcc -m32`
@@ -310,25 +328,29 @@ jobs:
           sudo apt-get install -y clang libclang-dev cmake ninja-build pkg-config libssl-dev gcc-multilib
       - name: Probe inputs
         run: |
+          set +e
+          fail=0
           git rev-parse HEAD
-          git log --oneline -4
-          # The build script the red run reverts to (the review audited 1eea0eb).
-          git cat-file -t 1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
-          git rev-parse 1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
+          git log --oneline -5
           rustc -vV
           sha256sum \
             packages/fjs/libfjs/vendor/rquickjs-sys/build.rs \
             packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c \
             packages/fjs/libfjs/vendor/rquickjs-sys/src/inlines/ptr_32_nan_boxing.rs \
             packages/fjs/libfjs/src/tests/memory_tests.rs | tee probe-inputs.sha256
-      # Everything the 32-bit build depends on that has nothing to do with the
-      # vendored crate: the Rust target's own width, whether both C toolchains
-      # can build and run a 32-bit binary, where clang looks for headers, and
-      # whether the multiarch 32-bit headers are installed at all.
-      - name: 32-bit toolchain and header probe
+          # The red run needs this object; fail here instead of there.
+          if ! git cat-file -e 1eea0ebfdc77478f8fa2f5958d7d337b369ed52b^{commit}; then
+            echo 'FAIL: the review-audited commit 1eea0eb is not in the history' | tee -a probe-inputs.sha256
+            fail=1
+          fi
+          exit "$fail"
+      # Informational, never a gate: the rustc target's own width, whether both C
+      # toolchains build and run a 32-bit binary, where each looks for headers,
+      # and -- the question r6 got wrong -- which target macros the vendored
+      # header resolves to under each bindgen configuration.
+      - name: Toolchain, headers and target macros
         run: |
           set +e
-          set -o pipefail
           {
             echo '== rustc target cfg =='
             rustc --print cfg --target i686-unknown-linux-gnu \
@@ -344,12 +366,7 @@ jobs:
             echo "clang --target build exit=$?"
             ./probe32-clang
             echo "clang --target run exit=$?"
-            echo '== clang target macros, no extra arguments =='
-            clang -E -dM -xc /dev/null | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|__ILP32__' | sort
-            echo '== clang target macros, --target=i686-unknown-linux-gnu =='
-            clang --target=i686-unknown-linux-gnu -E -dM -xc /dev/null \
-              | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|__ILP32__' | sort
-            echo '== clang include search path, no extra arguments =='
+            echo '== clang include search path, host default =='
             clang -E -v -xc /dev/null 2>&1 \
               | sed -n '/#include <...> search starts here/,/End of search list/p'
             echo '== clang include search path, --target=i686-unknown-linux-gnu =='
@@ -360,15 +377,29 @@ jobs:
             dpkg -l | grep -E 'gcc-multilib|libc6-dev|libc6-i386' | head -20
             echo '== environment =='
             env | grep -E 'BINDGEN|^CC|^CXX|CFLAGS|^TARGET|CARGO_TARGET' | sort
+            header=packages/fjs/libfjs/vendor/rquickjs-sys/quickjs.bind.h
+            include=packages/fjs/libfjs/vendor/rquickjs-sys/quickjs
+            macros() {
+              grep -E '^#define (__i386__|__x86_64__|__ILP32__|__SIZEOF_POINTER__|INTPTR_MAX|INT64_MAX|JS_NAN_BOXING)' | sort
+            }
+            echo '== vendored header macros: clang, host default =='
+            clang -E -dM -xc "$header" -I"$include" -D_GNU_SOURCE 2>&1 | macros
+            echo '== vendored header macros: clang, --target first (bindgen inserts it here) =='
+            clang -E -dM -xc --target=i686-unknown-linux-gnu "$header" -I"$include" -D_GNU_SOURCE 2>&1 | macros
+            echo '== vendored header macros: clang, --target last (BINDGEN_EXTRA_CLANG_ARGS position) =='
+            clang -E -dM -xc "$header" -I"$include" -D_GNU_SOURCE --target=i686-unknown-linux-gnu 2>&1 | macros
+            echo '== vendored header macros: gcc -m32 (the ABI the cc crate compiles) =='
+            gcc -m32 -E -dM -xc "$header" -I"$include" -D_GNU_SOURCE 2>&1 | macros
           } 2>&1 | tee toolchain-probe.log
-          # Recorded, never a gate: the build step below decides.
           exit 0
-      - name: Build the 32-bit test binary (bindgen arguments in turn)
+      # The filter control: the same row, the same filter, on the 64-bit host
+      # binary. It must be selected and must report the row's not-applicable
+      # path, which is what proves the filter selects a row at all.
+      - name: Evidence helpers
         run: |
-          set +e
-          set -o pipefail
-          manifest=packages/fjs/libfjs/Cargo.toml
-          target=i686-unknown-linux-gnu
+          set -e
+          # Written once so the later steps (and the artifact) use the same
+          # renderers and checks; a malformed helper fails here, not at a row.
           cat > render_diagnostics.py <<'PY'
           """Print the diagnostics cargo embedded in its JSON message stream.
 
@@ -387,7 +418,6 @@ jobs:
               if not line:
                   continue
               if not line.startswith('{'):
-                  # Build-script output and other untyped lines cargo forwards.
                   plain.append(line)
                   continue
               try:
@@ -402,7 +432,8 @@ jobs:
               level = body.get('level')
               if not rendered or level == 'note':
                   continue
-              groups['error' if level == 'error' else 'warning' if level == 'warning' else 'other'].append(rendered)
+              key = 'error' if level == 'error' else 'warning' if level == 'warning' else 'other'
+              groups[key].append(rendered)
           for level, rendered in groups.items():
               print(f'--- {len(rendered)} {level}-level diagnostics ---')
               for text in rendered[:want]:
@@ -429,22 +460,130 @@ jobs:
                       and artifact.get('executable')):
                   print(artifact['executable'])
           PY
-          # The bindgen arguments to try, in order. The first one is r6's
-          # setting; the last two mirror how cargokit configures the vendored
-          # crate's armv7 build (target-suffixed variable, explicit 32-bit
-          # include directory) rather than assuming the Android recipe applies.
-          # `BINDGEN_EXTRA_CLANG_ARGS_<triple>` is not a valid shell identifier,
-          # so every attempt runs under `env`, which can set and unset it.
-          attempts='unsuffixed-target host-default suffixed-target suffixed-target-include'
+          cat > check_row_log.py <<'PY'
+          """Fail-closed checks that a libtest row actually ran, with the wanted outcome.
+
+          Usage: check_row_log.py <log> passed|failed <exit-status> [required markers...]
+
+          Prints every problem it finds and exits non-zero when there is one, so a caller
+          can use `if ! python3 check_row_log.py ...; then fail; fi`. A filter that
+          selected nothing ("running 0 tests ... filtered out") is always a problem: that
+          is exactly how the r7 probe reported four rows as green without running any.
+          """
+          import re
+          import sys
+
+          path, mode, status = sys.argv[1], sys.argv[2], int(sys.argv[3])
+          markers = sys.argv[4:]
+          text = open(path, encoding="utf-8", errors="replace").read()
+          problems = []
+
+          if "running 1 test" not in text:
+              problems.append("the row never started (no 'running 1 test' line)")
+          if "running 0 tests" in text:
+              problems.append("the filter selected no test ('running 0 tests')")
+
+          if mode == "passed":
+              if not re.search(r"test result: ok\. 1 passed", text):
+                  problems.append("the row did not report exactly one passing test")
+              if status != 0:
+                  problems.append(f"the row exited {status}")
+          elif mode == "failed":
+              if status == 0:
+                  problems.append("the row exited 0; it was expected to fail")
+              if re.search(r"test result: ok\. 1 passed", text):
+                  problems.append("the row passed; it was expected to fail")
+              crash = re.search(
+                  r"test result: FAILED|panicked|attempt to|Segmentation fault|SIGSEGV|"
+                  r"SIGABRT|core dumped|Killed|Aborted|memory allocation of",
+                  text,
+              )
+              if not crash and status not in (101, 124, 134, 137, 139):
+                  problems.append("no crash, panic or FAILED marker in the log")
+          else:
+              problems.append(f"unknown mode {mode!r}")
+
+          for marker in markers:
+              if marker not in text:
+                  problems.append(f"the log does not carry {marker!r}")
+
+          if problems:
+              for problem in problems:
+                  print(f"FAIL: {problem}")
+              sys.exit(1)
+          print("ok: the row ran and matched every expectation")
+          PY
+            python3 -m py_compile render_diagnostics.py test_binary_path.py check_row_log.py
+      - name: 64-bit filter control (host build)
+        run: |
+          set +e
+          fail=0
+          manifest=packages/fjs/libfjs/Cargo.toml
+          row=pointer_width_transfer_boundaries_report_and_keep_the_buffer
+          cargo test --locked --manifest-path "$manifest" --target x86_64-unknown-linux-gnu \
+            --no-run --message-format=json > host-artifacts.json 2> host-build.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "FAIL: the 64-bit control build exited $status" | tee control-status.log
+            fail=1
+          fi
+          if [ "$fail" -eq 0 ]; then
+            python3 test_binary_path.py host-artifacts.json > host-binary.path
+            hostbin="$(cat host-binary.path)"
+            if [ -z "$hostbin" ]; then
+              echo 'FAIL: the 64-bit control build produced no test binary' | tee -a control-status.log
+              fail=1
+            else
+              "$hostbin" --list | tee host-list.log
+              if ! grep -qF "$row" host-list.log; then
+                echo "FAIL: the row is not listed in the 64-bit binary; the filter cannot select it" | tee -a control-status.log
+                fail=1
+              fi
+              "$hostbin" "$row" --nocapture --test-threads=1 > host-row.log 2>&1
+              host_status=$?
+              echo "host_row_status=$host_status" >> host-row.log
+              if ! python3 check_row_log.py host-row.log passed "$host_status" 'not-applicable on a 64-bit target' >> control-status.log; then
+                fail=1
+              fi
+            fi
+          fi
+          if [ "$fail" -eq 0 ]; then
+            echo 'control=ok: the filter selects the row and the 64-bit row prints not-applicable' | tee -a control-status.log
+          fi
+          exit "$fail"
+      # The 32-bit build. The r6-shaped explicit target is recorded first as a
+      # diagnosis-only build (its 30 errors are what r6 lost), then the bindgen
+      # argument shapes are tried in turn and the first that compiles is used.
+      - name: Build the 32-bit test binary (bindgen arguments in turn)
+        run: |
+          set +e
+          fail=0
+          manifest=packages/fjs/libfjs/Cargo.toml
+          target=i686-unknown-linux-gnu
+          : > bindgen-attempts.log
+          : > bindgen-diagnosis.log
+
+          # 1. r6's configuration, diagnosis only: an explicit target in the
+          #    unsuffixed variable. r6 lost these diagnostics, so record them.
+          cargo clean -p rquickjs-sys --manifest-path "$manifest" --target "$target" >/dev/null 2>&1
+          ( env -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu \
+              BINDGEN_EXTRA_CLANG_ARGS=--target=i686-unknown-linux-gnu \
+              cargo test --locked --manifest-path "$manifest" --target "$target" --no-run \
+              --message-format=json ) > test-artifacts-explicit-target.json 2> test-build-explicit-target.log
+          explicit_status=$?
+          echo "=== diagnosis attempt explicit-target: cargo exit=$explicit_status" | tee -a bindgen-diagnosis.log
+          python3 render_diagnostics.py test-artifacts-explicit-target.json 40 \
+            2>&1 | tee rendered-diagnostics-explicit-target.log | tee -a bindgen-diagnosis.log
+
+          # 2. The bindgen argument shapes, in order. No BINDGEN_EXTRA_CLANG_ARGS
+          #    is first: bindgen then inserts `--target=<cargo TARGET>` itself, so
+          #    the bindings match the 32-bit target. `BINDGEN_EXTRA_CLANG_ARGS_<triple>`
+          #    is not a valid shell identifier, so each attempt runs under `env`.
+          attempts='host-default suffixed-target suffixed-target-include'
           build=1
           winning=none
-          winning_args=''
-          : > bindgen-attempts.log
           for label in $attempts; do
             case "$label" in
-              unsuffixed-target)
-                args='--target=i686-unknown-linux-gnu'
-                runner=(env -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu "BINDGEN_EXTRA_CLANG_ARGS=$args") ;;
               host-default)
                 args=''
                 runner=(env -u BINDGEN_EXTRA_CLANG_ARGS -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu) ;;
@@ -455,8 +594,7 @@ jobs:
                 args='--target=i686-unknown-linux-gnu -I/usr/include/i386-linux-gnu'
                 runner=(env -u BINDGEN_EXTRA_CLANG_ARGS "BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu=$args") ;;
             esac
-            printf '=== attempt %s: bindgen args %s (%s)\n' "$label" "${args:-none}" "${runner[*]}" \
-              | tee -a bindgen-attempts.log
+            echo '=== attempt %s: bindgen args %s (%s)\n' "$label" "${args:-none}" "${runner[*]}" \' >> abi-gate.log
             cargo clean -p rquickjs-sys --manifest-path "$manifest" --target "$target" >/dev/null 2>&1
             "${runner[@]}" cargo test --locked --manifest-path "$manifest" --target "$target" --no-run \
               --message-format=json > "test-artifacts-$label.json" 2> "test-build-$label.log"
@@ -476,36 +614,116 @@ jobs:
             fi
             header="$(find packages/fjs/libfjs/target -path '*/out/quickjs.bind.h' | head -1)"
             if [ -n "$header" ]; then
-              printf 'header %s\n== effective target macros ==\n' "$header" > "macros-$label.log"
-              "${runner[@]}" clang -E -dM -xc "$header" -D_GNU_SOURCE 2>&1 \
-                | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|INTPTR_MAX|INT64_MAX|JS_NAN_BOXING' \
-                | sort >> "macros-$label.log"
+              printf 'header %s\n' "$header" > "macros-$label.log"
+              echo "== the attempt's own arguments ==" >> "macros-$label.log"
+              "${runner[@]}" clang -E -dM -xc "$header" -D_GNU_SOURCE 2>&1 | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|INTPTR_MAX|INT64_MAX|JS_NAN_BOXING' | sort >> "macros-$label.log"
+              echo "== bindgen's effective target (it inserts the cargo target itself) ==" >> "macros-$label.log"
+              clang -E -dM -xc --target=i686-unknown-linux-gnu "$header" -D_GNU_SOURCE 2>&1 | grep -E '__i386__|__x86_64__|__SIZEOF_POINTER__|INTPTR_MAX|INT64_MAX|JS_NAN_BOXING' | sort >> "macros-$label.log"
               tee -a bindgen-attempts.log < "macros-$label.log"
             else
               echo "header $label: none generated" | tee -a "macros-$label.log"
             fi
-            if [ "$status" = 0 ]; then
+            if [ "$status" -eq 0 ]; then
               build=0
               winning="$label"
-              winning_args="$args"
               cp "test-artifacts-$label.json" test-artifacts.json
               python3 test_binary_path.py "test-artifacts-$label.json" > test-binary.path
+              printf '%s\n' "$label" > bindgen-winner.label
+              if [ -n "$bindings" ]; then printf '%s\n' "$bindings" > bindings.path; fi
+              printf 'BINDGEN_EXTRA_CLANG_ARGS=%s\n' "$args" >> "$GITHUB_ENV"
               break
             fi
           done
-          # The later steps are separate shells: carry the arguments that worked
-          # into the job environment, in the unsuffixed variable bindgen falls
-          # back to, so the red rebuild uses the same recipe.
-          if [ "$build" = 0 ]; then
-            printf 'BINDGEN_EXTRA_CLANG_ARGS=%s\n' "$winning_args" >> "$GITHUB_ENV"
+          if [ "$build" -ne 0 ]; then
+            echo 'FAIL: no bindgen argument shape compiled the 32-bit test binary' | tee -a bindgen-attempts.log
+            fail=1
           fi
-          printf 'build=%s winning_attempt=%s winning_args=%s\n' "$build" "$winning" \
-            "${winning_args:-none}" | tee probe-status.log
-          test "$build" = 0
+          printf 'explicit_target_status=%s build=%s winning_attempt=%s\n' \
+            "$explicit_status" "$build" "$winning" | tee probe-status.log
+          exit "$fail"
+      # No row runs until the 32-bit bindings are shown to be the 32-bit ABI:
+      # the nan-boxed `JSValue = u64` the C library is also compiled with.
+      - name: 32-bit ABI gate
+        run: |
+          set +e
+          fail=0
+          target=i686-unknown-linux-gnu
+          : > abi-gate.log
+          winner="$(cat bindgen-winner.label 2>/dev/null || echo none)"
+          bindings="$(cat bindings.path 2>/dev/null || true)"
+          echo "winning_attempt=$winner" | tee -a abi-gate.log
+          bin="$(cat test-binary.path 2>/dev/null || true)"
+          if [ -z "$bindings" ] || [ ! -s "$bindings" ]; then
+            echo 'FAIL: no generated bindings to judge the ABI by' | tee -a abi-gate.log
+            fail=1
+          fi
+          if [ "$fail" -eq 0 ] && ! grep -qE '^pub type JSValue = u64;' "$bindings"; then
+            echo 'FAIL: the generated bindings do not carry the 32-bit nan-boxed JSValue' | tee -a abi-gate.log
+            grep -nE 'pub (struct|union|type) JSValue' "$bindings" | tee -a abi-gate.log
+            fail=1
+          fi
+          header="$(find packages/fjs/libfjs/target -path '*/out/quickjs.bind.h' | head -1)"
+          macros() {
+            grep -E '^#define (__i386__|__x86_64__|__ILP32__|__SIZEOF_POINTER__|INTPTR_MAX|JS_NAN_BOXING)' | sort
+          }
+          if [ "$fail" -eq 0 ] && [ -n "$header" ]; then
+            echo "== clang, bindgen target ($target) ==" >> abi-gate.log
+            clang -E -dM -xc --target="$target" "$header" -D_GNU_SOURCE 2>&1 | macros >> abi-gate.log
+            echo '== gcc -m32, the ABI the cc crate compiles ==' >> abi-gate.log
+            gcc -m32 -E -dM -xc "$header" -D_GNU_SOURCE 2>&1 | macros >> abi-gate.log
+            # A compile-time probe of the vendored header, not a grep of macro
+            # text: it fails unless the pointer width, the nan-boxing switch and
+            # the nan-boxed JSValue are the 32-bit ones.
+            include="$(dirname "$header")"
+            cat > abi_probe.c <<'PROBE'
+          #include <stddef.h>
+          #include <stdint.h>
+          #include "quickjs.h"
+          _Static_assert(sizeof(void *) == 4, "32-bit pointers");
+          _Static_assert(sizeof(size_t) == 4, "32-bit size_t");
+          _Static_assert(JS_NAN_BOXING == 1, "nan boxing off");
+          _Static_assert(sizeof(JSValue) == 8, "JSValue is not one nan-boxed u64");
+          int main(void) { return 0; }
+          PROBE
+            echo '== gcc -m32 compiles the header probe ==' >> abi-gate.log
+            if ! gcc -m32 -I"$include" -D_GNU_SOURCE -c abi_probe.c -o abi_probe_gcc_m32.o >> abi-gate.log 2>&1; then
+              echo 'FAIL: gcc -m32 rejects the 32-bit ABI probe' | tee -a abi-gate.log
+              fail=1
+            fi
+            echo '== clang --target compiles the header probe ==' >> abi-gate.log
+            if ! clang --target="$target" -I"$include" -D_GNU_SOURCE -c abi_probe.c -o abi_probe_clang.o >> abi-gate.log 2>&1; then
+              echo 'FAIL: clang --target=i686-unknown-linux-gnu rejects the 32-bit ABI probe' | tee -a abi-gate.log
+              fail=1
+            fi
+            # Sensitivity control: the same probe must be rejected on the host,
+            # otherwise the two compilations above prove nothing.
+            echo '== host control: the same probe must be rejected ==' >> abi-gate.log
+            if gcc -I"$include" -D_GNU_SOURCE -c abi_probe.c -o abi_probe_host.o >> abi-gate.log 2>&1; then
+              echo 'FAIL: the host build accepted the 32-bit ABI probe; the probe is not selective' | tee -a abi-gate.log
+              fail=1
+            fi
+          fi
+          if [ "$fail" -eq 0 ]; then
+            if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+              echo 'FAIL: no 32-bit test binary to run' | tee -a abi-gate.log
+              fail=1
+            else
+              "$bin" --list | tee i686-list.log
+              if ! grep -qF pointer_width_transfer_boundaries_report_and_keep_the_buffer i686-list.log; then
+                echo 'FAIL: the row is not listed in the 32-bit binary' | tee -a abi-gate.log
+                fail=1
+              fi
+            fi
+          fi
+          cat abi-gate.log
+          if [ "$fail" -eq 0 ]; then echo 'abi_gate=ok' | tee -a probe-status.log; else echo 'abi_gate=failed' | tee -a probe-status.log; fi
+          exit "$fail"
       - name: Green — the guarded build copy refuses the wrapped requests
         run: |
           set +e
-          set -o pipefail
+          fail=0
+          : > green-status.log
+          bin="$(cat test-binary.path)"
           : > build-copy-guards.log
           found=0
           while read -r copy; do
@@ -516,94 +734,123 @@ jobs:
               "$copy" "$helpers" "$layout" "$guards" | tee -a build-copy-guards.log
             if [ "$helpers" = 4 ] && [ "$layout" = 3 ] && [ "$guards" = 1 ]; then found=1; fi
           done < <(find packages/fjs/libfjs/target -path '*/out/quickjs.c')
-          test "$found" = 1
-          patches=$?
-          bin="$(cat test-binary.path)"
-          "$bin" pointer_width_transfer_boundaries_report_and_keep_the_buffer --exact \
-            --nocapture --test-threads=1 2>&1 | tee green-32bit.log
-          boundary=$?
-          # The three heap-limit rows at 32-bit width, with the 200-run row the
-          # probe branch sets in the environment: the reformulated limit checks
-          # must keep the reserve behaviour those rows assert.
-          heap=0
-          : > green-32bit-heap.log
-          for row in \
-            single_request_heap_limit_shape_reports_the_memory_limit \
-            accumulating_heap_limit_shape_reports_the_memory_limit \
-            fine_grained_accumulation_reports_the_memory_limit; do
-            echo "### $row" >> green-32bit-heap.log
-            "$bin" "$row" --exact --nocapture --test-threads=1 \
-              2>&1 | tee -a green-32bit-heap.log
+          if [ "$found" -ne 1 ]; then
+            echo 'FAIL: the guarded build copy was not found' | tee -a green-status.log
+            fail=1
+          fi
+          run_row() {
+            label="$1"
+            row="$2"
+            shift 2
+            log="green-32bit-$label.log"
+            "$bin" "$row" --nocapture --test-threads=1 > "$log" 2>&1
             status=$?
-            echo "### $row status=$status" >> green-32bit-heap.log
-            if [ "$status" != 0 ]; then heap=1; fi
-          done
-          printf 'green_build_copy=%s green_boundary=%s green_heap=%s\n' \
-            "$patches" "$boundary" "$heap" | tee -a probe-status.log
-          test "$patches" = 0 && test "$boundary" = 0 && test "$heap" = 0
+            echo "green_row=$label status=$status" >> "$log"
+            if ! python3 check_row_log.py "$log" passed "$status" "$@" >> green-status.log; then
+              echo "FAIL: green row $label" >> green-status.log
+              fail=1
+            fi
+            tail -20 "$log"
+          }
+          run_row pointer-width pointer_width_transfer_boundaries_report_and_keep_the_buffer \
+            'FJS pointer-width row (16 MiB limit): malloc_size=' \
+            'FJS pointer-width row (no limit): malloc_size=' \
+            'buffer=8|false|7,7,7,7,7,7,7,7'
+          # 200 iterations: FJS_HEAP_LIMIT_ROW_ITERATIONS is set for the job.
+          run_row heap-single-request single_request_heap_limit_shape_reports_the_memory_limit \
+            'FJS heap-limit single-request: 200 runs'
+          run_row heap-accumulating accumulating_heap_limit_shape_reports_the_memory_limit \
+            'FJS heap-limit row #0:'
+          run_row heap-fine-grained fine_grained_accumulation_reports_the_memory_limit \
+            'FJS heap-limit row #0:'
+          cat green-status.log
+          exit "$fail"
       - name: Red — the unguarded build copy accepts them
         run: |
           set +e
-          set -o pipefail
+          fail=0
+          : > red-status.log
           # The red run reverts only the build script, to the bytes the review
-          # audited (`accepted`, the probe branch's third commit); the test
-          # source and the compiler stay the same, and both blob hashes are
-          # recorded so a wrong revision fails here instead of running a green
-          # row as a red one.
+          # audited (`accepted`); the test source and the compiler stay the same,
+          # and both blob hashes are recorded so a wrong revision fails here
+          # instead of running a green row as a red one.
           accepted=1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
           path=packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
+          row=pointer_width_transfer_boundaries_report_and_keep_the_buffer
           git checkout "$accepted" -- "$path"
-          printf 'reverted to %s\n' "$accepted" | tee red-build-source.commit
-          printf 'blob now %s\n' "$(git hash-object "$path")" | tee -a red-build-source.commit
-          printf 'blob at %s %s\n' "$accepted" "$(git rev-parse "$accepted:$path")" \
-            | tee -a red-build-source.commit
-          test "$(git hash-object "$path")" = "$(git rev-parse "$accepted:$path")"
-          if grep -Fq 'js_malloc_limit_exceeded' "$path"; then
-            echo 'the reverted build script still carries the guard' >&2
-            exit 1
+          printf 'reverted to %s\n' "$accepted" > red-build-source.commit
+          printf 'blob now %s\n' "$(git hash-object "$path")" >> red-build-source.commit
+          printf 'blob at %s %s\n' "$accepted" "$(git rev-parse "$accepted:$path")" >> red-build-source.commit
+          if [ "$(git hash-object "$path")" != "$(git rev-parse "$accepted:$path")" ]; then
+            echo 'FAIL: the reverted build script is not the audited revision' | tee -a red-status.log
+            fail=1
           fi
-          sha256sum "$path" | tee red-build.rs.sha256
+          if grep -qF 'js_malloc_limit_exceeded' "$path"; then
+            echo 'FAIL: the reverted build script still carries the guard' | tee -a red-status.log
+            fail=1
+          fi
+          sha256sum "$path" > red-build.rs.sha256
           for profile in debug wrap; do
             flags=''
             if [ "$profile" = 'wrap' ]; then
               # A debug build stops at the allocator's own overflow check; the
               # product is built with overflow checks off, where the rounding
-              # wraps and the request reaches the transfer's memset. This
-              # second build records that path with the same test source.
+              # wraps and the request reaches the transfer's memset.
               flags='-C debug-assertions=off -C overflow-checks=off'
             fi
             RUSTFLAGS="$flags" cargo test --locked \
               --manifest-path packages/fjs/libfjs/Cargo.toml \
               --target i686-unknown-linux-gnu --no-run --message-format=json \
               > "red-$profile-artifacts.json" 2> "red-$profile-build.log"
+            built=$?
+            echo "red_build_$profile=$built" >> red-status.log
+            if [ "$built" -ne 0 ]; then
+              echo "FAIL: the $profile red build exited $built" >> red-status.log
+              fail=1
+              continue
+            fi
             python3 test_binary_path.py "red-$profile-artifacts.json" > "red-$profile.path"
             redbin="$(cat "red-$profile.path")"
-            test -n "$redbin" || { echo "the $profile red build produced no test binary" >&2; exit 1; }
-            # The ulimit keeps the ~4 GB clear of the unguarded run inside one
-            # process's 256 MiB address space, where the write faults; the
-            # timeout is the second bound. `--list` first proves the limit is
-            # not what stops the binary from starting.
-            ( ulimit -v 262144; "$redbin" --list ) > /dev/null 2>&1
-            list=$?
-            ( ulimit -v 262144; echo "ulimit -v $(ulimit -v)"; timeout -s KILL 120 \
-                "$redbin" pointer_width_transfer_boundaries_report_and_keep_the_buffer --exact \
-                --nocapture --test-threads=1 ) 2>&1 | tee "red-$profile-32bit.log"
+            if [ -z "$redbin" ] || [ ! -x "$redbin" ]; then
+              echo "FAIL: the $profile red build produced no test binary" >> red-status.log
+              fail=1
+              continue
+            fi
+            "$redbin" --list > "red-$profile-list.log"
+            if ! grep -qF "$row" "red-$profile-list.log"; then
+              echo "FAIL: the row is not listed in the $profile red binary" >> red-status.log
+              fail=1
+              continue
+            fi
+            log="red-$profile-32bit.log"
+            # `stdbuf -oL` keeps the harness's own lines flushed, so a crashed
+            # row still shows that it started. The 256 MiB address space bounds
+            # the ~4 GB clear inside one process, where the write faults.
+            ( ulimit -v 262144; echo "ulimit -v $(ulimit -v)"; stdbuf -oL -eL \
+                timeout -s KILL 120 "$redbin" "$row" --nocapture --test-threads=1 ) > "$log" 2>&1
             red=$?
-            printf 'red_%s_list=%s red_%s_run=%s\n' "$profile" "$list" "$profile" "$red" \
-              | tee -a probe-status.log
-            test "$list" = 0
-            test "$red" != 0
+            echo "red_status=$red" >> "$log"
+            if ! python3 check_row_log.py "$log" failed "$red" >> red-status.log; then
+              echo "FAIL: red row $profile did not fail as expected" >> red-status.log
+              fail=1
+            fi
+            tail -20 "$log"
           done
           git checkout HEAD -- "$path"
-          grep -Fq 'js_malloc_limit_exceeded' "$path"
+          if ! grep -qF 'js_malloc_limit_exceeded' "$path"; then
+            echo 'FAIL: the guarded build script was not restored' | tee -a red-status.log
+            fail=1
+          fi
+          cat red-status.log
+          exit "$fail"
       - name: Coverage boundaries
         if: always()
         run: |
           echo '### 32-bit allocation boundary (#111)' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Executed in an i686 Linux process: the guard arithmetic, the transfer boundary and the three heap-limit rows the armv7 Android build compiles but has never run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Every row is gated behind an ABI check (nan-boxed `JSValue = u64` in the generated bindings, 32-bit target macros for `clang` and `gcc -m32`, the row listed in the binary) and a count of tests that actually ran; `running 0 tests` is a failure, not a pass.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- The same filter runs on the 64-bit host binary first as the filter control.' >> "$GITHUB_STEP_SUMMARY"
           echo '- The unguarded run is the accepted candidate build script, bounded by a 256 MiB address space and a hard timeout.' >> "$GITHUB_STEP_SUMMARY"
           echo '- This is arithmetic and engine evidence, not an Android-device run: the armv7 row stays not-run.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- A failed build now leaves its toolchain probe, bindgen attempts, generated bindings, effective target macros and rendered diagnostics in the uploaded artifact.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -611,27 +858,39 @@ jobs:
           path: |
             probe-inputs.sha256
             toolchain-probe.log
+            host-build.log
+            host-artifacts.json
+            host-binary.path
+            host-list.log
+            host-row.log
+            control-status.log
+            bindgen-diagnosis.log
+            rendered-diagnostics-explicit-target.log
             bindgen-attempts.log
+            bindgen-winner.label
             test-artifacts.json
-            test-binary.path
-            test_binary_path.py
-            render_diagnostics.py
             test-artifacts-*.json
             test-build-*.log
+            test-binary.path
+            bindings.path
             rendered-diagnostics-*.log
             bindings-*.log
             macros-*.log
+            abi-gate.log
+            abi_probe.c
+            i686-list.log
+            render_diagnostics.py
+            test_binary_path.py
+            check_row_log.py
             build-copy-guards.log
-            green-32bit.log
-            green-32bit-heap.log
+            green-status.log
+            green-32bit-*.log
+            red-status.log
             red-build-source.commit
             red-build.rs.sha256
-            red-debug-32bit.log
-            red-wrap-32bit.log
-            test-build.log
-            red-debug-build.log
-            red-wrap-build.log
-            red-debug.path
-            red-wrap.path
+            red-*-list.log
+            red-*-32bit.log
+            red-*-build.log
+            red-*.path
             probe-status.log
           if-no-files-found: warn
