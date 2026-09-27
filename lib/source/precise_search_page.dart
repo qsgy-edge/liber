@@ -92,7 +92,9 @@ const String _loadWordCountSettingOn = '1';
 ///   the hit's source name, its author, its latest chapter through
 ///   `SearchBook.getDisplayLastChapterTitle` (`SearchBook.kt:89-96`, which
 ///   answers `无最新章节信息` for an empty field), ticks the current source's row
-///   (`oldBookUrl == bookUrl`, `:63-67`), and — with
+///   (`oldBookUrl == bookUrl`, `:63-67` — both sides the resolved target, which
+///   is what the frozen resolves the rule's `bookUrl` into at
+///   `BookList.kt:272`), and — with
 ///   `AppConfig.changeSourceLoadWordCount` — shows the computed
 ///   `chapterWordCountText` and `R.string.respondTime` lines (`:120-131`).
 ///   This row shows those fields too: the title stays the row's identity, the
@@ -154,6 +156,13 @@ const String _loadWordCountSettingOn = '1';
 ///   Proposed follow-up (a decision ticket, not a lane): fix the search entry's
 ///   rule scope, the conversion input and the `convert` seam, then reuse the
 ///   port for both modes.
+/// * **The tick's two address texts.** Both sides are the *resolved* target, as
+///   the frozen's are. A row whose stored `sourceBookUrl` is a verbatim address
+///   text rather than a resolved one — the Legado backup import keeps the
+///   backup's `bookUrl` as it stands, option tail and all
+///   (`legado_full_backup.dart:466`), and `Uri.parse(text).toString()` is not
+///   the text again — can therefore miss the tick where the frozen's comparison
+///   of two stored texts would have matched. Recorded, not converted.
 /// * **A candidate whose details or table of contents do not answer.** The
 ///   frozen chain throws out of its source's `forEach` (`:251-260`), so with the
 ///   switch on that candidate never reaches the list at all; this page keeps it
@@ -1020,10 +1029,15 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// computed word-count and respond-time lines.
   Widget _candidate(PreciseSearchHit hit, AppLocalizations l10n, bool running) {
     final book = widget.switchBook;
-    // The frozen `callBack.oldBookUrl == item.bookUrl` (`:63-67`): the book's
-    // stored address text against the candidate's own, option tail included
-    // (`HtmlBook.address`, #97).
-    final current = book != null && book.book.sourceBookUrl == hit.book.address;
+    // The frozen `callBack.oldBookUrl == item.bookUrl` (`:63-67`), both sides the
+    // *resolved* target: the frozen resolves the rule's own `bookUrl` before the
+    // dialog ever compares it (`BookList.kt:272`, `getString(ruleBookUrl, isUrl
+    // = true)`), and the shelf stores that same resolved target
+    // (`ShelfService._ensureBook`/`switchSource` write `'${book.url}'`).
+    // Comparing the rule's raw text (`HtmlBook.address`) instead would decline
+    // the tick for every source whose search rule answers a relative href.
+    final current =
+        book != null && book.book.sourceBookUrl == '${hit.book.url}';
     final wordCountText = hit.chapterWordCountText;
     return Card(
       child: ListTile(

@@ -1153,6 +1153,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('换源：规则的相对地址也点亮当前源标记（比较解析后的目标）', (tester) async {
+    final entry = await shelvedBook();
+    // 搜索规则给的是相对 href：冻结的 BookList 先把它绝对化（isUrl = true），
+    // 库里落的是同一个解析目标，所以标记必须比 url，而不是规则原文。
+    sourceA.hits.add(
+      HtmlBook(
+        url: Uri.parse('https://a.test/book/1'),
+        rawAddress: 'book/1',
+        title: name,
+        author: author,
+      ),
+    );
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/1',
+        ),
+      ),
+      findsOneWidget,
+      reason: '规则原文是相对地址，解析目标正是库里存的那个',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://b.test-https://b.test/book/1',
+        ),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：解析目标与库里不同的候选不点亮标记', (tester) async {
+    final entry = await shelvedBook(); // 库里是 https://a.test/book/1
+    sourceA.hits.add(candidate('https://a.test', '2', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/2'),
+      ),
+      findsOneWidget,
+      reason: '候选本身照常入列',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/2',
+        ),
+      ),
+      findsNothing,
+      reason: '解析目标不是库里那本书',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('加载字数默认关闭：候选行没有字数与响应时间行，候选不多取一次正文', (tester) async {
     final entry = await shelvedBook();
     sourceB.hits.add(candidate('https://b.test', '1', name, author));
