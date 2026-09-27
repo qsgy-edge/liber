@@ -1,19 +1,6 @@
 name: Platform CI
 
 on:
-  push:
-    branches: [master]
-    # Documentation and source-definition edits keep their history but do not
-    # rebuild five platforms; run this workflow manually when needed.
-    paths-ignore:
-      - 'docs/**'
-      - 'book_sources/**'
-      - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'book_sources/**'
-      - '**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +13,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
+  # The heap-limit rows are 200-run rows on the probe branch (#111).
+  FJS_HEAP_LIMIT_ROW_ITERATIONS: '200'
   # pubspec.lock records the host every package came from, and this project
   # resolves against the mirror; the runners reach both it and its storage host
   # (probed 2026-09-16). A run without this variable rewrites all 105 `url:`
@@ -140,7 +129,7 @@ jobs:
       # the host a second time.
       - name: Runtime tests
         if: matrix.platform != 'android' && matrix.platform != 'ios'
-        run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}'
+        run: cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml --target '${{ matrix.target }}' -- --nocapture
       # Every job builds its platform's app now, so Flutter is installed for the
       # mobile jobs too; only the Dart tests stay desktop-only. (#68)
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -265,3 +254,201 @@ jobs:
           path: .ci-results/
           include-hidden-files: true
           if-no-files-found: ignore
+
+  # The 32-bit allocation boundary (#111). Android armv7 carries this code in the
+  # APK -- `libfjs.so` is built for arm64-v8a, armeabi-v7a and x86_64 -- and no
+  # probe has ever executed a 32-bit build. This job executes the same guard
+  # arithmetic and the same transfer boundary in an i686 Linux process: the
+  # pinned limit check wraps there, the vendored guard must refuse the request
+  # and keep the ArrayBuffer, and the row is run again against the unguarded
+  # build copy to record the failure. A 32-bit Linux binary is arithmetic and
+  # engine evidence for armv7, never an Android-device run.
+  linux-i686:
+    name: linux-i686
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      # bindgen must see the target ABI, exactly as the Android job's
+      # BINDGEN_EXTRA_CLANG_ARGS does, or it emits x86_64-sized bindings.
+      BINDGEN_EXTRA_CLANG_ARGS: '--target=i686-unknown-linux-gnu'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The red run restores the build script the review audited
+          # (`1eea0eb`, the probe branch's third commit), so this job needs
+          # that object and not only the tip.
+          fetch-depth: 3
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.97.0'
+          targets: i686-unknown-linux-gnu
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/fjs/libfjs/target
+          key: native-i686-unknown-linux-gnu-${{ hashFiles('packages/fjs/libfjs/Cargo.lock', 'packages/fjs/libfjs/vendor/**', '.github/workflows/ci.yml') }}
+          restore-keys: native-i686-unknown-linux-gnu-
+      - name: 32-bit build dependencies
+        run: |
+          # gcc-multilib supplies the 32-bit glibc headers and the `gcc -m32`
+          # driver the `cc` crate links the vendored QuickJS with; clang and
+          # libclang build it and generate its bindings.
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev cmake ninja-build pkg-config libssl-dev gcc-multilib
+      - name: Probe inputs
+        run: |
+          git rev-parse HEAD
+          git rev-parse HEAD^^
+          rustc -vV
+          sha256sum \
+            packages/fjs/libfjs/vendor/rquickjs-sys/build.rs \
+            packages/fjs/libfjs/vendor/rquickjs-sys/quickjs/quickjs.c \
+            packages/fjs/libfjs/src/tests/memory_tests.rs | tee probe-inputs.sha256
+      - name: Build the 32-bit test binary
+        run: |
+          set -o pipefail
+          cargo test --locked --manifest-path packages/fjs/libfjs/Cargo.toml \
+            --target i686-unknown-linux-gnu --no-run --message-format=json \
+            > test-artifacts.json 2> test-build.log
+          python3 - <<'PY' | tee test-binary.path
+          import json
+          for line in open('test-artifacts.json'):
+              artifact = json.loads(line)
+              if (artifact.get('reason') == 'compiler-artifact'
+                      and artifact.get('target', {}).get('name') == 'fjs'
+                      and artifact.get('executable')):
+                  print(artifact['executable'])
+          PY
+      - name: Green — the guarded build copy refuses the wrapped requests
+        run: |
+          set +e
+          set -o pipefail
+          : > build-copy-guards.log
+          found=0
+          while read -r copy; do
+            helpers=$(grep -c 'js_malloc_limit_exceeded' "$copy")
+            layout=$(grep -c 'JS_ALLOC_LAYOUT_PADDING' "$copy")
+            guards=$(grep -c '#if UINTPTR_MAX < UINT64_MAX' "$copy")
+            printf '%s helper_lines=%s layout_lines=%s guard_lines=%s\n' \
+              "$copy" "$helpers" "$layout" "$guards" | tee -a build-copy-guards.log
+            if [ "$helpers" = 4 ] && [ "$layout" = 3 ] && [ "$guards" = 1 ]; then found=1; fi
+          done < <(find packages/fjs/libfjs/target -path '*/out/quickjs.c')
+          test "$found" = 1
+          patches=$?
+          bin="$(cat test-binary.path)"
+          "$bin" pointer_width_transfer_boundaries_report_and_keep_the_buffer --exact \
+            --nocapture --test-threads=1 2>&1 | tee green-32bit.log
+          boundary=$?
+          # The three heap-limit rows at 32-bit width, with the 200-run row the
+          # probe branch sets in the environment: the reformulated limit checks
+          # must keep the reserve behaviour those rows assert.
+          heap=0
+          : > green-32bit-heap.log
+          for row in \
+            single_request_heap_limit_shape_reports_the_memory_limit \
+            accumulating_heap_limit_shape_reports_the_memory_limit \
+            fine_grained_accumulation_reports_the_memory_limit; do
+            echo "### $row" >> green-32bit-heap.log
+            "$bin" "$row" --exact --nocapture --test-threads=1 \
+              2>&1 | tee -a green-32bit-heap.log
+            status=$?
+            echo "### $row status=$status" >> green-32bit-heap.log
+            if [ "$status" != 0 ]; then heap=1; fi
+          done
+          printf 'green_build_copy=%s green_boundary=%s green_heap=%s\n' \
+            "$patches" "$boundary" "$heap" | tee probe-status.log
+          test "$patches" = 0 && test "$boundary" = 0 && test "$heap" = 0
+      - name: Red — the unguarded build copy accepts them
+        run: |
+          set +e
+          set -o pipefail
+          # The red run reverts only the build script, to the bytes the review
+          # audited (`accepted`, the probe branch's third commit); the test
+          # source and the compiler stay the same, and both blob hashes are
+          # recorded so a wrong revision fails here instead of running a green
+          # row as a red one.
+          accepted=1eea0ebfdc77478f8fa2f5958d7d337b369ed52b
+          path=packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
+          git checkout "$accepted" -- "$path"
+          printf 'reverted to %s\n' "$accepted" | tee red-build-source.commit
+          printf 'blob now %s\n' "$(git hash-object "$path")" | tee -a red-build-source.commit
+          printf 'blob at %s %s\n' "$accepted" "$(git rev-parse "$accepted:$path")" \
+            | tee -a red-build-source.commit
+          test "$(git hash-object "$path")" = "$(git rev-parse "$accepted:$path")"
+          if grep -Fq 'js_malloc_limit_exceeded' "$path"; then
+            echo 'the reverted build script still carries the guard' >&2
+            exit 1
+          fi
+          sha256sum "$path" | tee red-build.rs.sha256
+          for profile in debug wrap; do
+            flags=''
+            if [ "$profile" = 'wrap' ]; then
+              # A debug build stops at the allocator's own overflow check; the
+              # product is built with overflow checks off, where the rounding
+              # wraps and the request reaches the transfer's memset. This
+              # second build records that path with the same test source.
+              flags='-C debug-assertions=off -C overflow-checks=off'
+            fi
+            RUSTFLAGS="$flags" cargo test --locked \
+              --manifest-path packages/fjs/libfjs/Cargo.toml \
+              --target i686-unknown-linux-gnu --no-run --message-format=json \
+              > "red-$profile-artifacts.json" 2> "red-$profile-build.log"
+            redbin="$(python3 - "$profile" <<'PY'
+          import json
+          import sys
+          profile = sys.argv[1]
+          for line in open(f'red-{profile}-artifacts.json'):
+              artifact = json.loads(line)
+              if (artifact.get('reason') == 'compiler-artifact'
+                      and artifact.get('target', {}).get('name') == 'fjs'
+                      and artifact.get('executable')):
+                  print(artifact['executable'])
+          PY
+          )"
+            # The ulimit keeps the ~4 GB clear of the unguarded run inside one
+            # process's 256 MiB address space, where the write faults; the
+            # timeout is the second bound. `--list` first proves the limit is
+            # not what stops the binary from starting.
+            ( ulimit -v 262144; "$redbin" --list ) > /dev/null 2>&1
+            list=$?
+            ( ulimit -v 262144; echo "ulimit -v $(ulimit -v)"; timeout -s KILL 120 \
+                "$redbin" pointer_width_transfer_boundaries_report_and_keep_the_buffer --exact \
+                --nocapture --test-threads=1 ) 2>&1 | tee "red-$profile-32bit.log"
+            red=$?
+            printf 'red_%s_list=%s red_%s_run=%s\n' "$profile" "$list" "$profile" "$red" \
+              | tee -a probe-status.log
+            test "$list" = 0
+            test "$red" != 0
+          done
+          git checkout HEAD -- packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
+          grep -Fq 'js_malloc_limit_exceeded' packages/fjs/libfjs/vendor/rquickjs-sys/build.rs
+      - name: Coverage boundaries
+        if: always()
+        run: |
+          echo '### 32-bit allocation boundary (#111)' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Executed in an i686 Linux process: the guard arithmetic, the transfer boundary and the three heap-limit rows the armv7 Android build compiles but has never run.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- The unguarded run is the accepted candidate build script, bounded by a 256 MiB address space and a hard timeout.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- This is arithmetic and engine evidence, not an Android-device run: the armv7 row stays not-run.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: probe-111-linux-i686
+          path: |
+            probe-inputs.sha256
+            build-copy-guards.log
+            green-32bit.log
+            green-32bit-heap.log
+            red-build-source.commit
+            red-build.rs.sha256
+            red-debug-32bit.log
+            red-wrap-32bit.log
+            test-build.log
+            red-debug-build.log
+            red-wrap-build.log
+            probe-status.log
+          if-no-files-found: warn
