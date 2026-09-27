@@ -13,7 +13,8 @@ import 'package:liber/settings/interface_language.dart';
 const Locale testLocale = Locale('zh');
 
 /// A `MaterialApp` around [home] with the application's own delegates and
-/// locale, the way `LiberApp` installs them.
+/// locale, the way `LiberApp` installs them, and [theme] when a test needs the
+/// product's own layout constraints rather than `MaterialApp`'s default ones.
 ///
 /// A page that reads `AppLocalizations.of(context)` throws without this, which
 /// is the point: a page reaching for copy no delegate provides is a bug, not an
@@ -23,12 +24,14 @@ MaterialApp localizedApp({
   GlobalKey<NavigatorState>? navigatorKey,
   required Widget home,
   Locale locale = testLocale,
+  ThemeData? theme,
 }) => MaterialApp(
   key: key,
   navigatorKey: navigatorKey,
   locale: locale,
   localizationsDelegates: AppLocalizations.localizationsDelegates,
   supportedLocales: InterfaceLanguageSetting.supportedLocales,
+  theme: theme,
   home: home,
 );
 

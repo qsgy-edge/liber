@@ -195,6 +195,23 @@ void main() {
   /// the #108 rows need more sources than the walk's own bound, so that there
   /// is a queue behind the sources already in flight.
 
+  /// The application's own theme (`LiberApp.build`, `lib/main.dart:102-105`) at
+  /// the density the desktop platforms give it.
+  ///
+  /// `ThemeData`'s density default is the platform's, and every desktop platform
+  /// is `VisualDensity.compact` — which is what makes a `ListTile` cap its
+  /// leading at `(isDense ? 48 : 56) + density` = 48 logical pixels
+  /// (`ListTile.maxIconHeightConstraint`) instead of the widget test binding's
+  /// own Android 56. The suite pins it so a row that overflows the real window
+  /// fails here: #116's stacked score column fitted Android's 56/56 and overflowed
+  /// the Windows app's 50/48 by 2.3 px. The seed colour is the product's own and
+  /// decides nothing about the layout.
+  final ThemeData testProductTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
+    useMaterial3: true,
+    visualDensity: VisualDensity.compact,
+  );
+
   setUp(() async {
     // A widget test cannot await a background-isolate database
     // (`SpaceDatabase.file`), so this drives an in-memory store in the test's
@@ -242,6 +259,7 @@ void main() {
   Future<void> pumpEntry(WidgetTester tester) async {
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -471,6 +489,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -562,6 +581,7 @@ void main() {
     var popped = false;
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -645,6 +665,7 @@ void main() {
   }) async {
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -870,6 +891,7 @@ void main() {
       final created = <ScriptedPipeline>[];
       await tester.pumpWidget(
         localizedApp(
+          theme: testProductTheme,
           home: PreciseSearchPage(
             service: shelf,
             initialName: name,
@@ -928,6 +950,7 @@ void main() {
     await store.putSetting('searchGroup', '精品');
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -961,6 +984,7 @@ void main() {
     await store.putSetting('searchGroup', '规模');
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(service: shelf, openPipeline: open),
       ),
     );
@@ -1379,7 +1403,19 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(tester.takeException(), isNull);
+    // 行里的约束就是产品的约束（setUp 钉的平台）：ListTile 给 leading 的上限是 48，
+    // 评分列必须落在里面（溢出由框架当错误上报），而每个点击区不得低于框架自己的
+    // 最小值（48 减紧凑密度 8 = 40，不是这里自己缩出来的）。
+    expect(tester.takeException(), isNull, reason: '评分列不得溢出');
+    for (final side in const ['good', 'bad']) {
+      final size = tester.getSize(
+        find.byKey(
+          ValueKey('precise-score-$side-https://a.test-https://a.test/book/1'),
+        ),
+      );
+      expect(size.height, greaterThanOrEqualTo(40.0));
+      expect(size.width, greaterThanOrEqualTo(40.0));
+    }
   });
 
   testWidgets('普通搜索入口的行上没有评分控件', (tester) async {
@@ -1933,6 +1969,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -1994,6 +2031,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -2072,7 +2110,10 @@ void main() {
     await moreSources(300);
 
     await tester.pumpWidget(
-      localizedApp(home: PreciseSearchPage(service: shelf)),
+      localizedApp(
+        theme: testProductTheme,
+        home: PreciseSearchPage(service: shelf),
+      ),
     );
     await tester.pumpAndSettle();
 

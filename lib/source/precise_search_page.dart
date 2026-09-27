@@ -216,10 +216,12 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   nothing is being switched. The comparator itself runs in both modes, so a
 ///   plain search is ordered by whatever scores the space already holds.
 /// * **The score column's rendering.** The frozen hides the icon of the
-///   direction that does not hold (`ivBad.gone()` / `ivGood.gone()`); this row
-///   keeps both in place and relies on the frozen's own accent/faded tints, so
-///   the tile's height does not move under the finger. The tap values are the
-///   frozen's.
+///   direction that does not hold (`ivBad.gone()` / `ivGood.gone()`) and stacks
+///   the pair in a fixed-height row; this row keeps both in place and lets the
+///   tint say it, and puts them side by side because a `ListTile`'s leading is
+///   capped at 48 logical pixels on this product's platform — a stacked pair
+///   would either overflow or need touch targets below the framework's own
+///   minimum. The tap values are the frozen's.
 /// * **The score mirror.** The page holds the two score maps for its own
 ///   lifetime and writes through them, so a re-order needs no store read where
 ///   the frozen reads its two preferences synchronously — a score another page
@@ -1316,13 +1318,20 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// the frozen tap's value — tapping the direction already chosen clears the
   /// score to 0 again, which is how the frozen's three states are reached.
   ///
+  /// The pair sits **side by side**, and neither control sizes itself. A
+  /// `ListTile` caps its leading at `(isDense ? 48 : 56) + density`
+  /// (`ListTile.maxIconHeightConstraint`), which on this product's platform is
+  /// 48 — 56 plus the desktop theme's compact density — so a stacked pair cannot
+  /// hold two accessible targets, and overriding the size with `constraints` or
+  /// `MaterialTapTargetSize.shrinkWrap` would put the touch target below the
+  /// framework's own minimum (48 with the density adjustment: 40 here).
+  ///
   /// The frozen hides the icon of the direction that does not hold; this row
-  /// keeps both in place and lets the tint say it, so the tile's height does not
-  /// change under the finger.
+  /// keeps both in place and lets the tint say it.
   Widget _scoreControls(PreciseSearchHit hit, AppLocalizations l10n) {
     final score = _bookScore(hit);
     final ref = '${hit.sourceRef}-${hit.book.url}';
-    return Column(
+    return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -1330,14 +1339,8 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           key: ValueKey('precise-score-good-$ref'),
           tooltip: l10n.likeSource,
           onPressed: () => unawaited(setBookScore(hit, score > 0 ? 0 : 1)),
-          // Two of these stack in the tile's leading, whose height the tile caps
-          // at 56 logical pixels: the shrunk tap target keeps the pair inside it.
-          style: IconButton.styleFrom(
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
           iconSize: 18,
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 32, height: 25),
           icon: Icon(
             Icons.thumb_up,
             color: score > 0 ? Colors.redAccent : Colors.red.shade100,
@@ -1347,12 +1350,8 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           key: ValueKey('precise-score-bad-$ref'),
           tooltip: l10n.notLikeSource,
           onPressed: () => unawaited(setBookScore(hit, score < 0 ? 0 : -1)),
-          style: IconButton.styleFrom(
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
           iconSize: 18,
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 32, height: 25),
           icon: Icon(
             Icons.thumb_down,
             color: score < 0 ? Colors.blueAccent : Colors.blue.shade100,
