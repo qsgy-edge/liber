@@ -1006,6 +1006,7 @@ async fn run_transfer_boundary_rows(engine: &JsEngine, context: &str) {
     for size in [usize::MAX, usize::MAX - 14, usize::MAX - 15] {
         let what = format!("{context}: transfer({size})");
         let source = format!("globalThis.__liberTransferProbe.transfer({size})");
+        eprintln!("FJS pointer-width boundary begin context={context} size={size}");
         let (_, outcome) = run_boundary_script(engine, &source).await;
         assert_refused(
             &outcome,
@@ -1020,6 +1021,7 @@ async fn run_transfer_boundary_rows(engine: &JsEngine, context: &str) {
     for size in [1u64 << 32, (1u64 << 32) + 100] {
         let what = format!("{context}: transfer({size})");
         let source = format!("globalThis.__liberTransferProbe.transfer({size})");
+        eprintln!("FJS pointer-width boundary begin context={context} size={size}");
         let (_, outcome) = run_boundary_script(engine, &source).await;
         assert_refused(
             &outcome,
