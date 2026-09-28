@@ -649,7 +649,6 @@ jobs:
               python3 test_binary_path.py "test-artifacts-$label.json" > test-binary.path
               printf '%s\n' "$label" > bindgen-winner.label
               if [ -n "$bindings" ]; then printf '%s\n' "$bindings" > bindings.path; fi
-              printf 'BINDGEN_EXTRA_CLANG_ARGS=%s\n' "$args" >> "$GITHUB_ENV"
               break
             fi
           done
@@ -837,7 +836,22 @@ jobs:
             fail=1
           fi
           sha256sum "$path" > red-build.rs.sha256
+          winner="$(cat bindgen-winner.label 2>/dev/null || true)"
+          case "$winner" in
+            host-default)
+              red_runner=(env -u BINDGEN_EXTRA_CLANG_ARGS -u BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu) ;;
+            suffixed-target)
+              red_runner=(env -u BINDGEN_EXTRA_CLANG_ARGS \
+                BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu=--target=i686-unknown-linux-gnu) ;;
+            suffixed-target-include)
+              red_runner=(env -u BINDGEN_EXTRA_CLANG_ARGS \
+                'BINDGEN_EXTRA_CLANG_ARGS_i686-unknown-linux-gnu=--target=i686-unknown-linux-gnu -I/usr/include/i386-linux-gnu') ;;
+            *)
+              echo "FAIL: missing or unknown bindgen winner '$winner'; refusing red builds" | tee -a red-status.log
+              fail=1 ;;
+          esac
           for profile in debug wrap; do
+            if [ "$fail" -ne 0 ]; then break; fi
             flags=''
             if [ "$profile" = 'wrap' ]; then
               # A debug build stops at the allocator's own overflow check; the
@@ -845,7 +859,7 @@ jobs:
               # wraps and the request reaches the transfer's memset.
               flags='-C debug-assertions=off -C overflow-checks=off'
             fi
-            RUSTFLAGS="$flags" cargo test --locked \
+            RUSTFLAGS="$flags" "${red_runner[@]}" cargo test --locked \
               --manifest-path packages/fjs/libfjs/Cargo.toml \
               --target i686-unknown-linux-gnu --no-run --message-format=json \
               > "red-$profile-artifacts.json" 2> "red-$profile-build.log"
