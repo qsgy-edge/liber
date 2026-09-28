@@ -675,7 +675,8 @@ jobs:
             echo 'FAIL: no generated bindings to judge the ABI by' | tee -a abi-gate.log
             fail=1
           fi
-          if [ "$fail" -eq 0 ] && ! grep -qE '^pub type JSValue = u64;' "$bindings"; then
+          # Bindgen can emit the type mid-line and put whitespace before `;`.
+          if [ "$fail" -eq 0 ] && ! grep -qE 'pub type JSValue[[:space:]]*=[[:space:]]*u64[[:space:]]*;' "$bindings"; then
             echo 'FAIL: the generated bindings do not carry the 32-bit nan-boxed JSValue' | tee -a abi-gate.log
             grep -nE 'pub (struct|union|type) JSValue' "$bindings" | tee -a abi-gate.log
             fail=1
