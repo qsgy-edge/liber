@@ -603,16 +603,17 @@ jobs:
             python3 render_diagnostics.py "test-artifacts-$label.json" 40 \
               2>&1 | tee "rendered-diagnostics-$label.log" | grep -E '^(---|error|warning)' | head -20 \
               | tee -a bindgen-attempts.log
-            bindings="$(find packages/fjs/libfjs/target -path '*/out/bindings.rs' | head -1)"
+            target_root="packages/fjs/libfjs/target/$target"
+            bindings="$(find "$target_root" -path '*/out/bindings.rs' -print | sort | head -1)"
             if [ -n "$bindings" ]; then
-              printf 'bindings %s\n' "$bindings" | tee -a "bindings-$label.log"
+              printf 'target bindings %s\n' "$bindings" | tee -a "bindings-$label.log"
               grep -nE 'pub (struct|union|type) JSValue|pub (struct|union) JSValueUnion' "$bindings" \
                 | tee -a "bindings-$label.log"
               sha256sum "$bindings" | tee -a "bindings-$label.log"
             else
-              echo "bindings $label: none generated" | tee -a "bindings-$label.log"
+              echo "target bindings $label: none generated under $target_root" | tee -a "bindings-$label.log"
             fi
-            header="$(find packages/fjs/libfjs/target -path '*/out/quickjs.bind.h' | head -1)"
+            header="$(find "$target_root" -path '*/out/quickjs.bind.h' -print | sort | head -1)"
             if [ -n "$header" ]; then
               printf 'header %s\n' "$header" > "macros-$label.log"
               echo "== the attempt's own arguments ==" >> "macros-$label.log"
@@ -662,11 +663,20 @@ jobs:
             grep -nE 'pub (struct|union|type) JSValue' "$bindings" | tee -a abi-gate.log
             fail=1
           fi
-          header="$(find packages/fjs/libfjs/target -path '*/out/quickjs.bind.h' | head -1)"
+          target_root="packages/fjs/libfjs/target/$target"
+          case "$bindings" in
+            "$target_root"/*) ;;
+            *) echo "FAIL: bindings are not under $target_root" | tee -a abi-gate.log; fail=1 ;;
+          esac
+          header="$(find "$target_root" -path '*/out/quickjs.bind.h' -print | sort | head -1)"
           macros() {
             grep -E '^#define (__i386__|__x86_64__|__ILP32__|__SIZEOF_POINTER__|INTPTR_MAX|JS_NAN_BOXING)' | sort
           }
-          if [ "$fail" -eq 0 ] && [ -n "$header" ]; then
+          if [ -z "$header" ] || [ ! -s "$header" ]; then
+            echo "FAIL: no generated QuickJS header under $target_root" | tee -a abi-gate.log
+            fail=1
+          fi
+          if [ "$fail" -eq 0 ]; then
             echo "== clang, bindgen target ($target) ==" >> abi-gate.log
             clang -E -dM -xc --target="$target" "$header" -D_GNU_SOURCE 2>&1 | macros >> abi-gate.log
             echo '== gcc -m32, the ABI the cc crate compiles ==' >> abi-gate.log
@@ -708,10 +718,29 @@ jobs:
               echo 'FAIL: no 32-bit test binary to run' | tee -a abi-gate.log
               fail=1
             else
-              "$bin" --list | tee i686-list.log
-              if ! grep -qF pointer_width_transfer_boundaries_report_and_keep_the_buffer i686-list.log; then
-                echo 'FAIL: the row is not listed in the 32-bit binary' | tee -a abi-gate.log
-                fail=1
+              case "$bin" in
+                "$target_root"/*) ;;
+                *) echo "FAIL: test binary is not under $target_root: $bin" | tee -a abi-gate.log; fail=1 ;;
+              esac
+              if [ "$fail" -eq 0 ]; then
+                file "$bin" | tee -a abi-gate.log
+                readelf -hW "$bin" | tee -a abi-gate.log
+                if ! file "$bin" | grep -q 'ELF 32-bit.*Intel 80386'; then
+                  echo 'FAIL: test binary is not ELF32 Intel 80386' | tee -a abi-gate.log
+                  fail=1
+                fi
+                if ! readelf -hW "$bin" | grep -qE 'Class:[[:space:]]+ELF32' \
+                    || ! readelf -hW "$bin" | grep -qE 'Machine:[[:space:]]+Intel 80386'; then
+                  echo 'FAIL: readelf does not identify an ELF32 Intel 80386 test binary' | tee -a abi-gate.log
+                  fail=1
+                fi
+              fi
+              if [ "$fail" -eq 0 ]; then
+                "$bin" --list | tee i686-list.log
+                if ! grep -qF pointer_width_transfer_boundaries_report_and_keep_the_buffer i686-list.log; then
+                  echo 'FAIL: the row is not listed in the 32-bit binary' | tee -a abi-gate.log
+                  fail=1
+                fi
               fi
             fi
           fi
@@ -733,7 +762,7 @@ jobs:
             printf '%s helper_lines=%s layout_lines=%s guard_lines=%s\n' \
               "$copy" "$helpers" "$layout" "$guards" | tee -a build-copy-guards.log
             if [ "$helpers" = 4 ] && [ "$layout" = 3 ] && [ "$guards" = 1 ]; then found=1; fi
-          done < <(find packages/fjs/libfjs/target -path '*/out/quickjs.c')
+          done < <(find "packages/fjs/libfjs/target/i686-unknown-linux-gnu" -path '*/out/quickjs.c')
           if [ "$found" -ne 1 ]; then
             echo 'FAIL: the guarded build copy was not found' | tee -a green-status.log
             fail=1
@@ -811,8 +840,22 @@ jobs:
             fi
             python3 test_binary_path.py "red-$profile-artifacts.json" > "red-$profile.path"
             redbin="$(cat "red-$profile.path")"
+            target_root=packages/fjs/libfjs/target/i686-unknown-linux-gnu
             if [ -z "$redbin" ] || [ ! -x "$redbin" ]; then
               echo "FAIL: the $profile red build produced no test binary" >> red-status.log
+              fail=1
+              continue
+            fi
+            case "$redbin" in
+              "$target_root"/*) ;;
+              *) echo "FAIL: $profile red binary is not under $target_root: $redbin" >> red-status.log; fail=1; continue ;;
+            esac
+            file "$redbin" | tee "red-$profile-elf.log"
+            readelf -hW "$redbin" | tee -a "red-$profile-elf.log"
+            if ! file "$redbin" | grep -q 'ELF 32-bit.*Intel 80386' \
+                || ! readelf -hW "$redbin" | grep -qE 'Class:[[:space:]]+ELF32' \
+                || ! readelf -hW "$redbin" | grep -qE 'Machine:[[:space:]]+Intel 80386'; then
+              echo "FAIL: $profile red binary is not ELF32 Intel 80386" >> red-status.log
               fail=1
               continue
             fi
@@ -891,6 +934,7 @@ jobs:
             red-*-list.log
             red-*-32bit.log
             red-*-build.log
+            red-*-elf.log
             red-*.path
             probe-status.log
           if-no-files-found: warn
