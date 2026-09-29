@@ -354,6 +354,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     if (!completed ||
         !_isCurrent(generation) ||
         hits.isNotEmpty ||
+        failures.isNotEmpty ||
         searchGroup.isEmpty)
       return;
     final group = searchGroup;
