@@ -84,10 +84,23 @@ Requirements: Flutter 3.44.6 (Dart SDK `^3.12.2`), a Rust toolchain
 (`1.97.0` in CI) for the native library, Python 3 for the gate runner, and the
 WebView2 Runtime on Windows. On Linux, the operator-run
 [`tool/bootstrap_linux.sh`](tool/bootstrap_linux.sh) installs the Linux CI
-build packages and prepares those pinned Flutter and Rust toolchains (with
-`rustup` already installed). Review the script before running it; it uses
-`sudo apt-get` and downloads the Flutter SDK. It is not run by CI or as part of a
-lane.
+build packages and prepares those pinned Flutter and Rust toolchains. Review the
+script before running it; it uses `sudo apt-get` and downloads the Flutter and
+Rustup installers. Rustup's toolchain is pinned for this repository by
+[`rust-toolchain.toml`](rust-toolchain.toml), without changing your global Rust
+default. Rustup and the installed toolchain persist under the user's home
+(`~/.cargo` and `~/.rustup`); the Linux packages persist on the system. The
+script does not edit shell startup files and prints the `export`
+command needed to add Flutter, Dart, and Rust to the current shell's `PATH`;
+run the printed command in the shell where you want to use them. With the
+script's default install paths, the command is:
+
+```bash
+export PATH="$HOME/.local/share/liber/flutter-3.44.6/bin:$HOME/.cargo/bin:$PATH"
+```
+
+This affects only that shell; it does not edit shell startup files. The script is
+not run by CI or as part of a lane.
 
 ```bash
 flutter pub get --enforce-lockfile
