@@ -799,6 +799,23 @@ void main() {
     });
   }
 
+  testWidgets('所选分组的请求失败时不误提示切换到全部分组', (tester) async {
+    final entry = await shelvedBook();
+    await groupedSources(hits: false);
+    sourceA.failure = StateError('分组书源搜索失败');
+    await store.putSetting('searchGroup', '精品');
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(sourceA.searchCalls, 1);
+    expect(sourceB.searchCalls, 0);
+    expect(sourceC.searchCalls, 0);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('甲源 出错：'), findsOneWidget);
+    expect(await store.setting('searchGroup'), '精品');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('所有源停用时也重置已存分组，不搜索、不弹确认', (tester) async {
     await groupedSources();
     for (final fake in byRef.values) {
