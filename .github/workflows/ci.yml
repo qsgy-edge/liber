@@ -508,6 +508,7 @@ jobs:
               if mode == "red-debug":
                   allocator_overflow = (
                       "panicked at" in after_boundary
+                      and "allocator/rust.rs:29:5" in after_boundary
                       and "attempt to multiply with overflow" in after_boundary
                   )
                   if not (assertion_failure or allocator_overflow):
@@ -869,6 +870,15 @@ jobs:
               echo "FAIL: missing or unknown bindgen winner '$winner'; refusing red builds" | tee -a red-status.log
               fail=1 ;;
           esac
+          # GDB itself must remain uncapped so it can record the inferior's
+          # bounded release-like memory fault. Only the wrapper applies the
+          # address-space limit to the process under test.
+          cat > limit-inferior.sh <<'SH'
+          #!/usr/bin/env bash
+          ulimit -v 262144
+          exec "$@"
+          SH
+          chmod +x limit-inferior.sh
           for profile in debug wrap; do
             if [ "$fail" -ne 0 ]; then break; fi
             flags=''
@@ -927,26 +937,24 @@ jobs:
               continue
             fi
             log="red-$profile-32bit.log"
-            (
-              ulimit -v 262144
-              echo "ulimit -v $(ulimit -v)"
-              if [ "$profile" = 'wrap' ]; then
-                # A bare signal is not causal evidence. The 256 MiB limit bounds
-                # the release-like ~4 GB clear, and GDB must capture the transfer
-                # memset on the faulting stack.
-                timeout -s KILL 120 gdb --nx --batch --quiet \
-                  -ex 'set pagination off' \
-                  -ex 'set confirm off' \
-                  -ex 'set disable-randomization off' \
-                  -ex 'handle SIGSEGV stop print nopass' \
-                  -ex run \
-                  -ex bt \
-                  -ex 'quit 1' \
-                  --args "$redbin" "$row" --nocapture --test-threads=1
-              else
-                timeout -s KILL 120 "$redbin" "$row" --nocapture --test-threads=1
-              fi
-            ) > "$log" 2>&1
+            if [ "$profile" = 'wrap' ]; then
+              echo 'GDB uncapped; inferior address-space limit=262144 KiB' > "$log"
+              # A bare signal is not causal evidence. The wrapper bounds only
+              # the release-like ~4 GB clear; GDB records the transfer memset
+              # on the faulting stack without inheriting the inferior's limit.
+              timeout -s KILL 120 gdb --nx --batch --quiet \
+                -ex 'set pagination off' \
+                -ex 'set confirm off' \
+                -ex 'set disable-randomization off' \
+                -ex 'handle SIGSEGV stop print nopass' \
+                -ex 'set exec-wrapper ./limit-inferior.sh' \
+                -ex run \
+                -ex bt \
+                -ex 'quit 1' \
+                --args "$redbin" "$row" --nocapture --test-threads=1 >> "$log" 2>&1
+            else
+              timeout -s KILL 120 "$redbin" "$row" --nocapture --test-threads=1 > "$log" 2>&1
+            fi
             red=$?
             echo "red_status=$red" >> "$log"
             if ! python3 check_row_log.py "$log" "red-$profile" "$red" \
@@ -1006,6 +1014,7 @@ jobs:
             render_diagnostics.py
             test_binary_path.py
             check_row_log.py
+            limit-inferior.sh
             build-copy-guards.log
             green-status.log
             green-32bit-*.log
