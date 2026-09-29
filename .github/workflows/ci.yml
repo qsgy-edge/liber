@@ -515,13 +515,15 @@ jobs:
                           "debug red log lacks the exact first-boundary assertion or allocator-rounding overflow panic"
                       )
               else:
-                  bounded_memory_fault = (
-                      status == 139
-                      and re.search(r"Segmentation fault|SIGSEGV|signal 11", after_boundary, re.IGNORECASE)
+                  transfer_memset_fault = (
+                      status == 1
+                      and "Program received signal SIGSEGV" in after_boundary
+                      and re.search(r'(?m)^#0\s+.*(?:memset|bzero)', after_boundary, re.IGNORECASE)
+                      and re.search(r'(?m)^#\d+\s+.*js_array_buffer_transfer', after_boundary)
                   )
-                  if not (assertion_failure or bounded_memory_fault):
+                  if not (assertion_failure or transfer_memset_fault):
                       problems.append(
-                          "wrap red log lacks the exact first-boundary assertion or bounded SIGSEGV evidence"
+                          "wrap red log lacks a debugger-confirmed SIGSEGV in memset under js_array_buffer_transfer"
                       )
           else:
               problems.append(f"unknown mode {mode!r}")
@@ -823,6 +825,11 @@ jobs:
             'FJS heap-limit row #0:'
           cat green-status.log
           exit "$fail"
+      - name: Install GDB for the release-like negative control
+        run: |
+          sudo apt-get update 2>&1 | tee gdb-install.log
+          sudo apt-get install -y --no-install-recommends gdb 2>&1 | tee -a gdb-install.log
+          gdb --version | tee gdb-version.log
       - name: Red — the unguarded build copy accepts them
         run: |
           set +e
@@ -920,11 +927,26 @@ jobs:
               continue
             fi
             log="red-$profile-32bit.log"
-            # `stdbuf -oL` keeps the harness's own lines flushed, so a crashed
-            # row still shows that it started. The 256 MiB address space bounds
-            # the ~4 GB clear inside one process, where the write faults.
-            ( ulimit -v 262144; echo "ulimit -v $(ulimit -v)"; stdbuf -oL -eL \
-                timeout -s KILL 120 "$redbin" "$row" --nocapture --test-threads=1 ) > "$log" 2>&1
+            (
+              ulimit -v 262144
+              echo "ulimit -v $(ulimit -v)"
+              if [ "$profile" = 'wrap' ]; then
+                # A bare signal is not causal evidence. The 256 MiB limit bounds
+                # the release-like ~4 GB clear, and GDB must capture the transfer
+                # memset on the faulting stack.
+                timeout -s KILL 120 gdb --nx --batch --quiet \
+                  -ex 'set pagination off' \
+                  -ex 'set confirm off' \
+                  -ex 'set disable-randomization off' \
+                  -ex 'handle SIGSEGV stop print nopass' \
+                  -ex run \
+                  -ex bt \
+                  -ex 'quit 1' \
+                  --args "$redbin" "$row" --nocapture --test-threads=1
+              else
+                timeout -s KILL 120 "$redbin" "$row" --nocapture --test-threads=1
+              fi
+            ) > "$log" 2>&1
             red=$?
             echo "red_status=$red" >> "$log"
             if ! python3 check_row_log.py "$log" "red-$profile" "$red" \
@@ -948,6 +970,7 @@ jobs:
           echo '- Every row is gated behind an ABI check (nan-boxed `JSValue = u64` in the generated bindings, 32-bit target macros for `clang` and `gcc -m32`, the row listed in the binary) and a count of tests that actually ran; `running 0 tests` is a failure, not a pass.' >> "$GITHUB_STEP_SUMMARY"
           echo '- The same filter runs on the 64-bit host binary first as the filter control.' >> "$GITHUB_STEP_SUMMARY"
           echo '- The unguarded run is the accepted candidate build script, bounded by a 256 MiB address space and a hard timeout.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- The release-like red control is accepted only if GDB shows SIGSEGV in `memset` with `js_array_buffer_transfer` on the stack; a bare signal is inconclusive.' >> "$GITHUB_STEP_SUMMARY"
           echo '- This is arithmetic and engine evidence, not an Android-device run: the armv7 row stays not-run.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -956,6 +979,8 @@ jobs:
           path: |
             probe-inputs.sha256
             toolchain-probe.log
+            gdb-install.log
+            gdb-version.log
             host-build.log
             host-artifacts.json
             host-binary.path
