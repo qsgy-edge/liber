@@ -919,7 +919,7 @@ const TRANSFER_PROBE_INTACT: &str = "8|false|7,7,7,7,7,7,7,7";
 /// One boundary row's engine: the gate's 16 MiB limit with `gcThreshold: 1`,
 /// or no limit at all (`None`), which leaves QuickJS's `malloc_limit` at 0.
 async fn boundary_engine(memory_limit: Option<usize>) -> Arc<JsEngine> {
-    Arc::new(
+    let engine = Arc::new(
         JsEngine::create(
             Some(JsBuiltinOptions::none()),
             None,
@@ -931,7 +931,13 @@ async fn boundary_engine(memory_limit: Option<usize>) -> Arc<JsEngine> {
         )
         .await
         .expect("the boundary row's engine is created"),
-    )
+    );
+    // Scoped execution needs the broker even though these rows make no host calls.
+    engine
+        .init_broker(|_| Box::pin(async {}), |_| Box::pin(async {}))
+        .await
+        .expect("the boundary row's broker attaches");
+    engine
 }
 
 /// Runs `source` in a scope of its own and returns the Dart-facing label of the
@@ -1072,9 +1078,11 @@ async fn run_transfer_boundary_rows(engine: &JsEngine, context: &str) {
 ///
 /// The rows run in the same shape as the gate rows (16 MiB limit,
 /// `gcThreshold: 1`), once against that limit and once against an engine with no
-/// limit at all, where only the layout bound can refuse the request. On a 64-bit
-/// target the pinned arithmetic does not wrap and the same input is refused by
-/// the configured limit, so the row is not-applicable and says so.
+/// limit at all (`None`). There, requests above the layout bound are refused by
+/// that guard; `SIZE_MAX - 15` reaches the tracked-total check because the
+/// engine already has nonzero tracked allocations. On a 64-bit target the
+/// pinned arithmetic does not wrap and the same input is refused by the
+/// configured limit, so the row is not-applicable and says so.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn pointer_width_transfer_boundaries_report_and_keep_the_buffer() {
     if usize::BITS != 32 {

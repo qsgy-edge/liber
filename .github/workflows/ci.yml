@@ -13,7 +13,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
-  # The heap-limit rows are 200-run rows on the probe branch (#111).
+  # Only the single-request heap-limit row runs 200 iterations on the #111
+  # probe branch; accumulating/fine-grained rows keep their test defaults.
   FJS_HEAP_LIMIT_ROW_ITERATIONS: '200'
   # pubspec.lock records the host every package came from, and this project
   # resolves against the mirror; the runners reach both it and its storage host
@@ -889,9 +890,17 @@ jobs:
               fail=1
               continue
             fi
-            case "$redbin" in
-              "$target_root"/*) ;;
-              *) echo "FAIL: $profile red binary is not under $target_root: $redbin" >> red-status.log; fail=1; continue ;;
+            target_root_abs="$(realpath "$target_root" 2>/dev/null || true)"
+            redbin_abs="$(realpath "$redbin" 2>/dev/null || true)"
+            if [ -z "$target_root_abs" ] || [ -z "$redbin_abs" ]; then
+              echo "FAIL: could not canonicalize the $profile red binary or target root" >> red-status.log
+              fail=1
+              continue
+            fi
+            printf 'target_root_abs=%s\nredbin_abs=%s\n' "$target_root_abs" "$redbin_abs" >> red-status.log
+            case "$redbin_abs" in
+              "$target_root_abs"/*) ;;
+              *) echo "FAIL: $profile red binary is not under $target_root_abs: $redbin_abs" >> red-status.log; fail=1; continue ;;
             esac
             printf 'executable=%s\n' "$redbin" | tee "red-$profile-elf.log"
             sha256sum "$redbin" | tee -a "red-$profile-elf.log"
