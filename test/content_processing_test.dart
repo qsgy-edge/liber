@@ -521,6 +521,26 @@ void main() {
       expect(notices.single.arguments, ['超时 JS 规则', 100]);
     });
 
+    test(
+      'a JavaScript replacement timeout can be reported without disabling',
+      () async {
+        final notices = <StoreMessage>[];
+        final content = (await processing([
+          rule(
+            id: 'js-slow-no-disable',
+            pattern: '广告',
+            replacement: '@js:while (true) {}',
+            ruleName: '超时 JS 规则',
+            timeoutMillisecond: 100,
+          ),
+        ], onNotice: notices.add).content('广告', chapterTitle: '第一章')).text;
+
+        expect(content, '　　广告');
+        expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+        expect(notices.single.arguments, ['超时 JS 规则', 100]);
+      },
+    );
+
     test('an ordinary regex replacement remains unchanged', () async {
       final content = (await processing([
         rule(pattern: r'(\d+)字', replacement: r'$1 字'),

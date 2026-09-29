@@ -1086,6 +1086,36 @@ abstract class AppLocalizations {
   /// **'精确匹配'**
   String get exactMatch;
 
+  /// No description provided for @noLatestChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'无最新章节信息'**
+  String get noLatestChapter;
+
+  /// No description provided for @loadWordCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载字数'**
+  String get loadWordCount;
+
+  /// No description provided for @respondTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'响应时间：{ms} ms'**
+  String respondTime(int ms);
+
+  /// No description provided for @likeSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'赞'**
+  String get likeSource;
+
+  /// No description provided for @notLikeSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'踩'**
+  String get notLikeSource;
+
   /// No description provided for @readingSources.
   ///
   /// In zh, this message translates to:

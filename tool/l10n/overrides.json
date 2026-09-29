@@ -1,4 +1,11 @@
 {
-  "zh_Hant_TW": {},
-  "zh_Hant_HK": {}
+  "zh_Hant_TW": {
+    "likeSource": "讚",
+    "loadWordCount": "加載字數",
+    "noLatestChapter": "無最新章節訊息",
+    "respondTime": "反應時間：{ms} ms"
+  },
+  "zh_Hant_HK": {
+    "likeSource": "赞"
+  }
 }

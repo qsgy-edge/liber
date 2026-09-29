@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
+import 'package:liber/settings/reader_script.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/precise_search.dart';
 import 'package:liber/source/precise_search_page.dart';
@@ -27,6 +30,7 @@ class FakeSource {
     List<String>? titles,
     this.contentFailure,
     this.delay,
+    this.chapterBody,
   }) : hits = hits ?? <HtmlBook>[],
        titles = titles ?? <String>[];
 
@@ -35,6 +39,10 @@ class FakeSource {
   Object? failure;
   final List<String> titles;
   Object? contentFailure;
+
+  /// The raw chapter body this source answers with, or null for
+  /// `'<章名>的正文'`. The displayed count is measured after content processing.
+  String? chapterBody;
 
   /// How long this source's search takes, for the walk's own rows.
   final Duration? delay;
@@ -96,7 +104,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   }) async {
     fake.contentCalls++;
     if (fake.contentFailure != null) throw fake.contentFailure!;
-    return HtmlChapterBody('${chapter.name}的正文', 1);
+    return HtmlChapterBody(fake.chapterBody ?? '${chapter.name}的正文', 1);
   }
 }
 
@@ -167,8 +175,18 @@ void main() {
   const name = '凡人修仙传';
   const author = '忘语';
 
-  HtmlBook candidate(String sourceUrl, String id, String title, String by) =>
-      HtmlBook(url: Uri.parse('$sourceUrl/book/$id'), title: title, author: by);
+  HtmlBook candidate(
+    String sourceUrl,
+    String id,
+    String title,
+    String by, {
+    String? rawAddress,
+  }) => HtmlBook(
+    url: Uri.parse('$sourceUrl/book/$id'),
+    rawAddress: rawAddress,
+    title: title,
+    author: by,
+  );
 
   late FakeSource sourceA;
   late FakeSource sourceB;
@@ -189,12 +207,30 @@ void main() {
   /// the #108 rows need more sources than the walk's own bound, so that there
   /// is a queue behind the sources already in flight.
 
+  /// The application's own theme (`LiberApp.build`, `lib/main.dart:102-105`) at
+  /// the density the desktop platforms give it.
+  ///
+  /// `ThemeData`'s density default is the platform's, and every desktop platform
+  /// is `VisualDensity.compact` — which is what makes a `ListTile` cap its
+  /// leading at `(isDense ? 48 : 56) + density` = 48 logical pixels
+  /// (`ListTile.maxIconHeightConstraint`) instead of the widget test binding's
+  /// own Android 56. The suite pins it so a row that overflows the real window
+  /// fails here: #116's stacked score column fitted Android's 56/56 and overflowed
+  /// the Windows app's 50/48 by 2.3 px. The seed colour is the product's own and
+  /// decides nothing about the layout.
+  final ThemeData testProductTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
+    useMaterial3: true,
+    visualDensity: VisualDensity.compact,
+  );
+
   setUp(() async {
     // A widget test cannot await a background-isolate database
     // (`SpaceDatabase.file`), so this drives an in-memory store in the test's
     // own isolate, the way `html_source_browser_test.dart` does.
     store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
     shelf = ShelfService(store);
+    await ReaderScriptSetting.putGlobal(store, ReaderScriptChoice.none);
     sourceA = FakeSource({
       'bookSourceUrl': 'https://a.test',
       'bookSourceName': '甲源',
@@ -233,14 +269,19 @@ void main() {
 
   tearDown(() => store.close());
 
-  Future<void> pumpEntry(WidgetTester tester) async {
+  Future<void> pumpEntry(
+    WidgetTester tester, {
+    String Function(String text, ConvertTarget target)? convert,
+  }) async {
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
           initialAuthor: author,
           openPipeline: open,
+          convert: convert,
         ),
       ),
     );
@@ -465,6 +506,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -556,6 +598,7 @@ void main() {
     var popped = false;
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -630,15 +673,25 @@ void main() {
     return (await shelf.find('https://a.test', 'https://a.test/book/1'))!;
   }
 
+  ShelfEntry withSourceBookUrl(ShelfEntry entry, String sourceBookUrl) =>
+      ShelfEntry(
+        book: entry.book.copyWith(sourceBookUrl: Value(sourceBookUrl)),
+        source: entry.source,
+        chapters: entry.chapters,
+        progress: entry.progress,
+      );
+
   /// Opens the switch-source page on [entry] through a pushed route, so a
   /// pick's `pop(true)` has somewhere to go.
   Future<void> pumpSwitchEntry(
     WidgetTester tester,
     ShelfEntry entry, {
     void Function(bool)? onPopped,
+    String Function(String text, ConvertTarget target)? convert,
   }) async {
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -648,6 +701,7 @@ void main() {
                     service: shelf,
                     switchBook: entry,
                     openPipeline: open,
+                    convert: convert,
                   ),
                 ),
               );
@@ -689,6 +743,34 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
   }
+
+  /// A surface tall enough for two candidate rows at once: the rows carry the
+  /// frozen card's fields (#115/#116), the list is lazy (#86) and only builds
+  /// what the viewport reaches, so an order assertion over two rows needs more
+  /// room than the default viewport has.
+  void tallSurface(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
+  /// The candidate rows the viewport has built, in the order they are drawn —
+  /// the frozen list order, read off the tree rather than off two positions.
+  List<String> listedHits(WidgetTester tester) => [
+    for (final tile in tester.widgetList<ListTile>(find.byType(ListTile)))
+      if (tile.key case final ValueKey<String> key) key.value,
+  ];
+
+  /// Every score control the page has drawn: the frozen row's good/bad pair.
+  final scoreControls = find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> && key.value.startsWith('precise-score-');
+  });
+
+  /// The page's collision-safe tuple key for one frozen `(origin, name, author)`
+  /// score row.
+  String bookScoreKey(String origin, String bookName, String bookAuthor) =>
+      'bookScore:${jsonEncode([origin, bookName, bookAuthor])}';
 
   testWidgets('分组：仅启用的成员可选，菜单排除停用组，切组持久化并跨入口重读', (tester) async {
     final entry = await shelvedBook();
@@ -852,6 +934,7 @@ void main() {
       final created = <ScriptedPipeline>[];
       await tester.pumpWidget(
         localizedApp(
+          theme: testProductTheme,
           home: PreciseSearchPage(
             service: shelf,
             initialName: name,
@@ -910,6 +993,7 @@ void main() {
     await store.putSetting('searchGroup', '精品');
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -943,6 +1027,7 @@ void main() {
     await store.putSetting('searchGroup', '规模');
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(service: shelf, openPipeline: open),
       ),
     );
@@ -1010,6 +1095,7 @@ void main() {
   });
 
   testWidgets('换源列表：一个书源出错或没有精确命中，后面的候选照常按书源顺序入列', (tester) async {
+    tallSurface(tester);
     final entry = await shelvedBook();
     sourceA.failure = StateError('页面读取失败');
     sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
@@ -1101,6 +1187,784 @@ void main() {
     expect(sourceB.contentCalls, 0, reason: '列表流程不取正文');
     expect(popped, isTrue);
     expect((await store.bookById(entry.id))!.sourceRef, 'https://b.test');
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Scrolls the candidate list until the row for [url] on [sourceUrl] is
+  /// built: the list is lazy (#86), so a row below the fold is not in the tree
+  /// yet.
+  Future<void> showHit(WidgetTester tester, String sourceUrl, String url) =>
+      tester.scrollUntilVisible(
+        find.byKey(ValueKey('precise-hit-$sourceUrl-$url')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+  testWidgets('候选行给出冻结的最新章节，空值答冻结的无最新章节信息', (tester) async {
+    // `SearchBook.getDisplayLastChapterTitle`: the field as the search page
+    // answered it, or 无最新章节信息 when it is empty.
+    sourceA.hits.add(
+      HtmlBook(
+        url: Uri.parse('https://a.test/book/1'),
+        title: name,
+        author: '别人的作者',
+        lastChapter: '第 1300 章 大战',
+      ),
+    );
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpEntry(tester);
+
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('第 1300 章 大战'), findsOneWidget);
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.text('无最新章节信息'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('候选行的空作者和空书源名保持空白，不显示占位文本', (tester) async {
+    await store.putSourceJson({...sourceB.source, 'bookSourceName': ''});
+    sourceB.hits.add(candidate('https://b.test', '1', name, ''));
+
+    await pumpEntry(tester);
+
+    final row = find.byKey(
+      const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+    );
+    final texts = tester
+        .widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
+        .map((text) => text.data)
+        .toList();
+    expect(texts, hasLength(3));
+    expect(texts[1], isEmpty);
+    expect(texts.any((text) => text?.contains('作者') ?? false), isFalse);
+    expect(texts.any((text) => text?.startsWith(' · ') ?? false), isFalse);
+    expect(
+      texts.any((text) => text?.contains('https://b.test') ?? false),
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：当前书源的那一行带冻结的逐行勾选（oldBookUrl == bookUrl）', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/1',
+        ),
+      ),
+      findsOneWidget,
+      reason: '甲源正是这本书当前的来源',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://b.test-https://b.test/book/1',
+        ),
+      ),
+      findsNothing,
+      reason: '乙源不是当前来源',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：规则的相对地址也点亮当前源标记（比较解析后的目标）', (tester) async {
+    final entry = await shelvedBook();
+    // 搜索规则给的是相对 href：冻结的 BookList 先把它绝对化（isUrl = true），
+    // 库里落的是同一个解析目标，所以标记必须比 url，而不是规则原文。
+    sourceA.hits.add(
+      HtmlBook(
+        url: Uri.parse('https://a.test/book/1'),
+        rawAddress: 'book/1',
+        title: name,
+        author: author,
+      ),
+    );
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/1',
+        ),
+      ),
+      findsOneWidget,
+      reason: '规则原文是相对地址，解析目标正是库里存的那个',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://b.test-https://b.test/book/1',
+        ),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final rawAddress in [
+    'https://a.test/book/1,{"webView":true}',
+    'HTTPS://A.TEST/book/1',
+  ]) {
+    testWidgets('换源：导入的原始地址 $rawAddress 仍点亮当前源标记', (tester) async {
+      final entry = withSourceBookUrl(await shelvedBook(), rawAddress);
+      sourceA.hits.add(
+        candidate('https://a.test', '1', name, author, rawAddress: rawAddress),
+      );
+
+      await pumpSwitchEntry(tester, entry);
+
+      expect(
+        find.byKey(
+          const ValueKey(
+            'precise-current-source-https://a.test-https://a.test/book/1',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('换源：解析目标与库里不同的候选不点亮标记', (tester) async {
+    final entry = await shelvedBook(); // 库里是 https://a.test/book/1
+    sourceA.hits.add(candidate('https://a.test', '2', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/2'),
+      ),
+      findsOneWidget,
+      reason: '候选本身照常入列',
+    );
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-current-source-https://a.test-https://a.test/book/2',
+        ),
+      ),
+      findsNothing,
+      reason: '解析目标不是库里那本书',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数默认关闭：候选行没有字数与响应时间行，候选不多取一次正文', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('precise-load-word-count')),
+          )
+          .value,
+      isFalse,
+      reason: '冻结的 AppConfig.changeSourceLoadWordCount 默认关着',
+    );
+    expect(sourceB.detailsCalls, 0, reason: '关着时读搜索页答复的字段，不读详情');
+    expect(sourceB.contentCalls, 0, reason: '关着时不取正文');
+    expect(find.textContaining('响应时间：'), findsNothing);
+    expect(find.textContaining('字数：'), findsNothing);
+    // 最新章节的空值占位仍在
+    expect(find.text('无最新章节信息'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数打开：候选行给出冻结的字数行与响应时间，每个候选取一次正文', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章', '第四章']);
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    // 进度映射到第三章；ContentProcessing 去重后再按阅读正文排版计数。
+    expect(find.text('[3] 第三章\n字数：5'), findsOneWidget);
+    expect(find.textContaining('响应时间：'), findsOneWidget);
+    expect(sourceB.detailsCalls, 1, reason: '每个候选读一次自己的目录');
+    expect(sourceB.contentCalls, 1, reason: '每个候选取一次正文');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('普通搜索字数按候选书源规则和全局阅读转换计算', (tester) async {
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceA.titles.add('第三章');
+    sourceB.titles.add('第三章');
+    sourceA.chapterBody = '台AD';
+    sourceB.chapterBody = '台AD';
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'source-b-content-rule',
+        name: '乙源正文规则',
+        pattern: 'AD',
+        replacement: const Value('X'),
+        scope: const Value('https://b.test'),
+        isRegex: const Value(false),
+      ),
+    );
+    await ReaderScriptSetting.putGlobal(store, ReaderScriptChoice.simplified);
+    final targets = <ConvertTarget>[];
+
+    await pumpEntry(
+      tester,
+      convert: (text, target) {
+        targets.add(target);
+        return text.replaceAll('台', 'tai');
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('[1] 第三章\n字数：7'), findsOneWidget);
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.text('[1] 第三章\n字数：6'), findsOneWidget);
+    expect(targets, [
+      ConvertTarget.simplifiedMainland,
+      ConvertTarget.simplifiedMainland,
+    ]);
+    expect(sourceA.contentCalls, 1);
+    expect(sourceB.contentCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源字数遵循当前书的阅读转换覆盖', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+    sourceB.chapterBody = '台AD';
+    await store.putReplaceRule(
+      ReplaceRulesCompanion.insert(
+        id: 'source-b-content-rule',
+        name: '乙源正文规则',
+        pattern: 'AD',
+        replacement: const Value('X'),
+        scope: const Value('https://b.test'),
+        isRegex: const Value(false),
+      ),
+    );
+    await ReaderScriptSetting.putGlobal(store, ReaderScriptChoice.simplified);
+    await ReaderScriptSetting.putBook(store, entry.id, ReaderScriptChoice.none);
+    final targets = <ConvertTarget>[];
+
+    await pumpSwitchEntry(
+      tester,
+      entry,
+      convert: (text, target) {
+        targets.add(target);
+        return text.replaceAll('台', 'tai');
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.text('[3] 第三章\n字数：4'), findsOneWidget);
+    expect(targets, isEmpty, reason: '当前书的 none 覆盖全局简化转换');
+    expect((await store.replaceRules()).single.isEnabled, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数开关跨页面重开仍然有效', (tester) async {
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpEntry(tester);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    expect(await store.setting('changeSourceLoadWordCount'), '1');
+    expect(sourceA.contentCalls, 1);
+    // 没有换源的入口就没有阅读进度，冻结取目录的最后一章（chapters.lastIndex）
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('[3] 第三章\n字数：5'), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    sourceA.detailsCalls = 0;
+    await pumpEntry(tester);
+
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('precise-load-word-count')),
+          )
+          .value,
+      isTrue,
+    );
+    // 重开的页面已经把开关读回来了，按冻结的链自己补上字数
+    expect(sourceA.detailsCalls, 1);
+    expect(sourceA.contentCalls, 2);
+    await showHit(tester, 'https://a.test', 'https://a.test/book/1');
+    expect(find.text('[3] 第三章\n字数：5'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('加载字数关掉后可选行隐藏，也不再多发请求', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    expect(sourceB.contentCalls, 1);
+
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    expect(await store.setting('changeSourceLoadWordCount'), '');
+    expect(sourceB.contentCalls, 1, reason: '关掉不再发请求');
+    expect(find.textContaining('响应时间：'), findsNothing);
+    expect(find.textContaining('字数：'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('取正文失败时仍给冻结的获取字数失败行', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, author));
+    sourceB.titles.addAll(const ['第一章', '第二章', '第三章']);
+    sourceB.contentFailure = StateError('正文分页读取失败');
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    await showHit(tester, 'https://b.test', 'https://b.test/book/1');
+    expect(find.textContaining('[3] 第三章\n获取字数失败：'), findsOneWidget);
+    expect(find.textContaining('响应时间：'), findsOneWidget);
+    // 候选仍在列表里：字数取不到不改变收录
+    expect(
+      find.byKey(
+        const ValueKey('precise-hit-https://b.test-https://b.test/book/1'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：行上的评分控件只在换源模式出现（当前行只有一对）', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+
+    await pumpSwitchEntry(tester, entry);
+
+    expect(scoreControls, findsNWidgets(2), reason: '一行一对正/负，冻结的 ivGood/ivBad');
+    expect(
+      find.byKey(
+        const ValueKey(
+          'precise-score-good-https://a.test-https://a.test/book/1',
+        ),
+      ),
+      findsOneWidget,
+    );
+    // 行里的约束就是产品的约束（setUp 钉的平台）：ListTile 给 leading 的上限是 48，
+    // 评分列必须落在里面（溢出由框架当错误上报），而每个点击区不得低于框架自己的
+    // 最小值（48 减紧凑密度 8 = 40，不是这里自己缩出来的）。
+    expect(tester.takeException(), isNull, reason: '评分列不得溢出');
+    for (final side in const ['good', 'bad']) {
+      final size = tester.getSize(
+        find.byKey(
+          ValueKey('precise-score-$side-https://a.test-https://a.test/book/1'),
+        ),
+      );
+      expect(size.height, greaterThanOrEqualTo(40.0));
+      expect(size.width, greaterThanOrEqualTo(40.0));
+    }
+  });
+
+  testWidgets('普通搜索入口的行上没有评分控件', (tester) async {
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+
+    await pumpEntry(tester);
+
+    expect(scoreControls, findsNothing, reason: '没有换源对象，也就没有可评的源');
+    expect(find.text(name), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：给后面的候选点赞后它按源分升到前面，不重搜也不丢字段', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+
+    await pumpSwitchEntry(tester, entry);
+    expect(listedHits(tester), [
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://c.test-https://c.test/book/1',
+    ], reason: '初始是冻结的源序');
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'precise-score-good-https://c.test-https://c.test/book/1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(listedHits(tester), [
+      'precise-hit-https://c.test-https://c.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/1',
+    ], reason: '源分 1 > 0，源序在后的候选升到前面');
+    expect(
+      await store.setting(bookScoreKey('https://c.test', name, '别人的作者')),
+      '1',
+    );
+    expect(await store.setting('https://c.test'), '1');
+    expect(sourceB.searchCalls, 1, reason: '重排不重搜');
+    expect(sourceC.searchCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：书分相同时按源分降序（SourceConfig 的源分是各本书分之和）', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    // 冻结按 (origin, name, author) 给书计分，所以同一源的两本书要有不同的作者才是
+    // 两行分数（同书名同作者是同一个键）。
+    sourceB.hits.addAll([
+      candidate('https://b.test', '1', name, '甲作者'),
+      candidate('https://b.test', '2', name, '乙作者'),
+    ]);
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+
+    await pumpSwitchEntry(tester, entry);
+    expect(listedHits(tester), [
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/2',
+      'precise-hit-https://c.test-https://c.test/book/1',
+    ]);
+
+    // 乙源 一本赞、一本踩：书分 +1/-1，源分回到 0；丙源 一本赞：源分 1。
+    for (final key in const [
+      'precise-score-good-https://b.test-https://b.test/book/1',
+      'precise-score-bad-https://b.test-https://b.test/book/2',
+      'precise-score-good-https://c.test-https://c.test/book/1',
+    ]) {
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '甲作者')),
+      '1',
+    );
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '乙作者')),
+      '-1',
+    );
+    expect(await store.setting('https://b.test'), '0');
+    expect(await store.setting('https://c.test'), '1');
+    expect(listedHits(tester), [
+      'precise-hit-https://c.test-https://c.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/2',
+    ], reason: '书分 1 的两本先比源分（丙源 1 > 乙源 0），书分 -1 的排最后');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：书分与源分都相同时回到源序（冻结的稳定排序）', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'precise-score-good-https://c.test-https://c.test/book/1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'precise-score-good-https://b.test-https://b.test/book/1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(listedHits(tester), [
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://c.test-https://c.test/book/1',
+    ], reason: '两边都是书分 1、源分 1，回落到源序');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：评分是冻结的三态值（再点已选方向回到中性）', (tester) async {
+    final entry = await shelvedBook();
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+
+    await pumpSwitchEntry(tester, entry);
+
+    final good = find.byKey(
+      const ValueKey('precise-score-good-https://b.test-https://b.test/book/1'),
+    );
+    final bad = find.byKey(
+      const ValueKey('precise-score-bad-https://b.test-https://b.test/book/1'),
+    );
+    Future<int> stored() async => int.parse(
+      (await store.setting(bookScoreKey('https://b.test', name, '别人的作者'))) ??
+          '0',
+    );
+    Future<String?> sourceScore() => store.setting('https://b.test');
+
+    await tester.tap(good);
+    await tester.pumpAndSettle();
+    expect(await stored(), 1);
+    expect(await sourceScore(), '1');
+
+    await tester.tap(good);
+    await tester.pumpAndSettle();
+    expect(await stored(), 0, reason: '再点已选的正方向回到中性');
+    expect(await sourceScore(), '0');
+
+    await tester.tap(bad);
+    await tester.pumpAndSettle();
+    expect(await stored(), -1);
+    expect(await sourceScore(), '-1');
+
+    await tester.tap(bad);
+    await tester.pumpAndSettle();
+    expect(await stored(), 0, reason: '再点已选的负方向也回到中性');
+
+    await tester.tap(good);
+    await tester.pumpAndSettle();
+    expect(await stored(), 1, reason: '从 0 再点正方向是 1');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('书分键对包含分隔符的源地址和作者仍无歧义', (tester) async {
+    tallSurface(tester);
+    const originB = 'https://a.test/?x=';
+    final originA = 'https://a.test/?x=|$name';
+    const firstAuthor = '作者';
+    final secondAuthor = '$name|作者';
+
+    await store.close();
+    store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    shelf = ShelfService(store);
+    sourceA = FakeSource({
+      'bookSourceUrl': originA,
+      'bookSourceName': '甲源',
+      'customOrder': 0,
+    });
+    sourceB = FakeSource({
+      'bookSourceUrl': originB,
+      'bookSourceName': '乙源',
+      'customOrder': 1,
+    });
+    sourceC = FakeSource({
+      'bookSourceUrl': 'https://c.test',
+      'bookSourceName': '丙源',
+    });
+    byRef = {originA: sourceA, originB: sourceB};
+    await store.putSourceJson(sourceA.source);
+    await store.putSourceJson(sourceB.source);
+    sourceA.hits.addAll([
+      HtmlBook(
+        url: Uri.parse('https://books.test/a1'),
+        title: name,
+        author: firstAuthor,
+      ),
+      HtmlBook(
+        url: Uri.parse('https://books.test/a2'),
+        title: name,
+        author: author,
+      ),
+    ]);
+    sourceB.hits.addAll([
+      HtmlBook(
+        url: Uri.parse('https://books.test/b1'),
+        title: name,
+        author: secondAuthor,
+      ),
+      HtmlBook(
+        url: Uri.parse('https://books.test/b2'),
+        title: name,
+        author: author,
+      ),
+    ]);
+
+    final legacyKeyA = 'bookScore:$originA|$name|$firstAuthor';
+    final legacyKeyB = 'bookScore:$originB|$name|$secondAuthor';
+    expect(legacyKeyA, legacyKeyB, reason: '复现旧分隔符拼接的真实键碰撞');
+    final keyA = bookScoreKey(originA, name, firstAuthor);
+    final keyB = bookScoreKey(originB, name, secondAuthor);
+    expect(keyA, isNot(keyB));
+    await store.putSetting(keyA, '-1');
+    await store.putSetting(keyB, '1');
+
+    await pumpEntry(tester);
+
+    final rows = listedHits(tester);
+    final firstCandidate = 'precise-hit-$originA-https://books.test/a1';
+    final secondCandidate = 'precise-hit-$originB-https://books.test/b1';
+    expect(rows, containsAll([firstCandidate, secondCandidate]));
+    expect(
+      rows.indexOf(secondCandidate),
+      lessThan(rows.indexOf(firstCandidate)),
+      reason: '第二本的 +1 分应压过第一本的 -1 分',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：字数模式按冻结的比较器排序，关掉开关恢复基础序且不多请求', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    sourceB.chapterBody = '短' * 500;
+    sourceC.chapterBody = '长' * 1200;
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+    for (final fake in [sourceB, sourceC]) {
+      fake.titles.addAll(const ['第一章', '第二章', '第三章']);
+    }
+
+    await pumpSwitchEntry(tester, entry);
+    expect(listedHits(tester), [
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://c.test-https://c.test/book/1',
+    ], reason: '基础序是冻结的源序');
+
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    expect(listedHits(tester), [
+      'precise-hit-https://c.test-https://c.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/1',
+    ], reason: '丙源正文 1200 > 1000，字数模式排到前面');
+    expect(find.text('[3] 第三章\n字数：1202'), findsOneWidget);
+    expect(sourceB.contentCalls, 1);
+    expect(sourceC.contentCalls, 1);
+
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+
+    expect(listedHits(tester), [
+      'precise-hit-https://b.test-https://b.test/book/1',
+      'precise-hit-https://c.test-https://c.test/book/1',
+    ], reason: '关掉开关回到基础序');
+    expect(sourceB.contentCalls, 1, reason: '关掉不再发请求');
+    expect(sourceC.contentCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：改分重排是冻结的先后（书分在字数模式之前），已取字段不丢', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    sourceB.chapterBody = '短' * 500;
+    sourceC.chapterBody = '长' * 1200;
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+    for (final fake in [sourceB, sourceC]) {
+      fake.titles.addAll(const ['第一章', '第二章', '第三章']);
+    }
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(find.byKey(const ValueKey('precise-load-word-count')));
+    await tester.pumpAndSettle();
+    expect(listedHits(tester).first, contains('c.test'));
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'precise-score-good-https://b.test-https://b.test/book/1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      listedHits(tester).first,
+      'precise-hit-https://b.test-https://b.test/book/1',
+      reason: '冻结的书分在最前，压过字数模式的次序',
+    );
+    expect(find.text('[3] 第三章\n字数：502'), findsOneWidget, reason: '已取的字数行不丢');
+    expect(find.textContaining('响应时间：'), findsNWidgets(2));
+    expect(sourceB.contentCalls, 1, reason: '重排不重取正文');
+    expect(sourceC.contentCalls, 1);
+    expect(sourceB.searchCalls, 1, reason: '重排不重搜');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：源分是同一源各本书分变化量的累计，取消评分只减掉自己那一份', (tester) async {
+    tallSurface(tester);
+    final entry = await shelvedBook();
+    sourceB.hits.addAll([
+      candidate('https://b.test', '1', name, '甲作者'),
+      candidate('https://b.test', '2', name, '乙作者'),
+    ]);
+
+    await pumpSwitchEntry(tester, entry);
+    final first = find.byKey(
+      const ValueKey('precise-score-good-https://b.test-https://b.test/book/1'),
+    );
+    final second = find.byKey(
+      const ValueKey('precise-score-good-https://b.test-https://b.test/book/2'),
+    );
+
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    expect(await store.setting('https://b.test'), '1', reason: '第一次 +1');
+
+    await tester.tap(second);
+    await tester.pumpAndSettle();
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '甲作者')),
+      '1',
+    );
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '乙作者')),
+      '1',
+    );
+    expect(await store.setting('https://b.test'), '2', reason: '两次增量的和');
+
+    // 取消第一本的评分：只减掉它自己的增量，第二本的书分与源的累计都不动。
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '甲作者')),
+      '0',
+    );
+    expect(
+      await store.setting(bookScoreKey('https://b.test', name, '乙作者')),
+      '1',
+    );
+    expect(await store.setting('https://b.test'), '1');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：已存的分数在下一个页面上照样决定顺序', (tester) async {
+    tallSurface(tester);
+    await store.putSetting(bookScoreKey('https://c.test', name, '别人的作者'), '1');
+    await store.putSetting('https://c.test', '1');
+    sourceB.hits.add(candidate('https://b.test', '1', name, '别人的作者'));
+    sourceC.hits.add(candidate('https://c.test', '1', name, '别人的作者'));
+
+    await pumpEntry(tester);
+
+    expect(listedHits(tester), [
+      'precise-hit-https://c.test-https://c.test/book/1',
+      'precise-hit-https://b.test-https://b.test/book/1',
+    ], reason: '设置表里的分数一开页就生效，普通入口也一样');
     expect(tester.takeException(), isNull);
   });
 
@@ -1349,6 +2213,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -1410,6 +2275,7 @@ void main() {
 
     await tester.pumpWidget(
       localizedApp(
+        theme: testProductTheme,
         home: PreciseSearchPage(
           service: shelf,
           initialName: name,
@@ -1488,7 +2354,10 @@ void main() {
     await moreSources(300);
 
     await tester.pumpWidget(
-      localizedApp(home: PreciseSearchPage(service: shelf)),
+      localizedApp(
+        theme: testProductTheme,
+        home: PreciseSearchPage(service: shelf),
+      ),
     );
     await tester.pumpAndSettle();
 

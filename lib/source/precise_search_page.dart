@@ -1,18 +1,46 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
+import '../local/text_engine.dart';
 import '../l10n/app_localizations.dart';
+import '../l10n/store_message_text.dart';
+import '../settings/reader_script.dart';
+import '../source/content_processing.dart';
+import '../store/database.dart' show ReplaceRule;
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
+import 'chapter_position.dart';
 import 'html_source_browser.dart';
 import 'http_source_transport.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'precise_search.dart';
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
+
+/// The space-global setting the frozen `AppConfig.changeSourceLoadWordCount` is
+/// kept in: `''` off, `'1'` on — the frozen preference's own two states
+/// (`AppConfig.kt:373-377`), in the existing settings table (D2's key/value
+/// row), so no schema change carries the switch.
+const String _loadWordCountSettingKey = 'changeSourceLoadWordCount';
+const String _loadWordCountSettingOn = '1';
+
+/// The frozen `SourceConfig`'s book-score key (`SourceConfig.kt:19`,
+/// `"${origin}_${name}_${author}"`) as one settings key: the source URL, book
+/// name and author encoded as a JSON tuple, so separators inside any field
+/// cannot make two books collide. The value is the book's *absolute* score, as
+/// the frozen stores; the source's own key is its URL alone, the frozen
+/// `putInt(origin, …)` (`:17`), and its value is the running sum of those books'
+/// score changes rather than a score of its own.
+const String _bookScorePrefix = 'bookScore:';
+
+/// The frozen `chapterNumRegex` (`ChangeBookSourceViewModel.kt:83`,
+/// `Kotlin Regex("^\\[(\\d+)]")`): the ordinal the word-count line starts with,
+/// or -1 when the line carries none.
+final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 
 /// The product's one multi-source search entry: the frozen precise search over
 /// the selected Book Sources, with the candidates a reader can pick from.
@@ -65,8 +93,9 @@ import 'source_tls_confirmation.dart';
 ///   uses the store's split/trimmed `groupNames`, not SQL LIKE: whitespace and
 ///   wildcard/case behavior can differ. Menu order is Dart string order, not
 ///   the frozen `cnCompare`'s Chinese ICU collation (no equivalent is shipped).
-///   A populated group with no hits asks before searching all groups, as the
-///   dialog's `searchFinishCallback` (`:79-93`) does; cancel keeps that group.
+///   A populated group whose searches all succeed but return no hits asks
+///   before searching all groups; request failures are shown, not treated as
+///   proof that the group has no results. Cancel keeps the selected group.
 /// * **What admits a hit.** The dialog's filter is `fName == name &&
 ///   (!checkAuthor || fAuthor.contains(author))` with
 ///   `AppConfig.changeSourceCheckAuthor` defaulting to false;
@@ -80,18 +109,99 @@ import 'source_tls_confirmation.dart';
 ///   old position through `Book.migrateTo` → `BookHelp.getDurChapter`
 ///   (`Book.kt:341-358`, `BookHelp.kt:495-542`); `ShelfService.switchSource`
 ///   applies the ported `mapChapterIndex`, pinned in `chapter_position_test.dart`.
+/// * **The candidate row.** `ChangeBookSourceAdapter.convert` (`:56-131`) prints
+///   the hit's source name, its author, its latest chapter through
+///   `SearchBook.getDisplayLastChapterTitle` (`SearchBook.kt:89-96`, which
+///   answers `无最新章节信息` for an empty field), ticks the current source's row
+///   (`oldBookUrl == bookUrl`, `:63-67` — both sides the resolved target, which
+///   is what the frozen resolves the rule's `bookUrl` into at
+///   `BookList.kt:272`), and — with
+///   `AppConfig.changeSourceLoadWordCount` — shows the computed
+///   `chapterWordCountText` and `R.string.respondTime` lines (`:120-131`).
+///   This row shows those fields too: the title stays the row's identity, the
+///   line under it carries non-empty source/author fields and the exact-match
+///   marker, the latest chapter is its own line, and the optional lines appear
+///   only while the switch is on.
+/// * **The word-count switch.** The dialog's `menu_load_word_count` toggles
+///   `AppConfig.changeSourceLoadWordCount` (`ChangeBookSourceDialog.kt:171-176`)
+///   and, turned on, loads the word count of every candidate that has none yet
+///   (`ChangeBookSourceViewModel.onLoadWordCountChecked` → `startRefreshList`,
+///   `:346-370`). This page carries the same switch as a space-global setting
+///   (`changeSourceLoadWordCount`, off by default, the frozen
+///   `AppConfig.changeSourceLoadWordCount`): off, no candidate costs a request
+///   beyond its search; on, each candidate's own information, its table of
+///   contents and the chosen chapter are fetched — the frozen
+///   `loadBookInfo`/`loadBookToc`/`loadBookWordCount` chain (`:262-343`) — and
+///   the chapter is the one the reading position maps onto
+///   (the frozen `fromReadBookActivity` through `BookHelp.getDurChapter`,
+///   [mapChapterIndex]) when the page was opened on a book, and the last one
+///   otherwise.
 ///
-/// Named gaps against that dialog, recorded rather than fixed:
+/// Implementation notes and remaining differences:
 ///
-/// * **Per-candidate fields.** The frozen card shows the hit's own latest
-///   chapter title (`SearchBook.getDisplayLastChapterTitle`), ticks the current
-///   source's row (`oldBookUrl == bookUrl`) and, with
-///   `AppConfig.changeSourceLoadWordCount`, a word-count line and respond time;
-///   this card shows title/author/source and the exact-match marker, and states
-///   the current source once above the list.
-/// * **Scoring and ordering.** `getBookScore`/`SourceConfig` scores and the
-///   comparator they drive (`defaultComparator`, the word-count comparator) are
-///   absent — a #69 non-goal.
+/// * **Empty candidate fields.** Empty author and source-name fields stay blank,
+///   matching the frozen row; the latest chapter uses the frozen
+///   `无最新章节信息` placeholder.
+/// * **Word count (operator decision #119 B).** The selected chapter body passes
+///   through `ContentProcessing.content` with `includeTitle: false`. Rules are
+///   selected for the candidate's own title and source URL. Conversion follows
+///   `ReaderScriptSetting.resolve`: the existing book override in switch mode,
+///   and the global choice in plain search. Re-segmentation remains off, the
+///   product reader's current default. A processing notice produces the frozen
+///   failure line; no `onRuleDisabled` callback is supplied, so displaying a
+///   count never persists a rule change.
+/// * **The scores and the order.** The frozen comparator
+///   (`ChangeBookSourceViewModel.kt:84-95`) reads `getBookScore`, then
+///   `SourceConfig.getSourceScore(it.origin)`, then — while
+///   `AppConfig.changeSourceLoadWordCount` is on — `chapterWordCount > 1000`,
+///   the parsed `^\[(\d+)]` chapter number and the descending word count, and
+///   finally `it.originOrder` ascending. This page orders the same way, over the
+///   space's two score settings — the book's own absolute score under
+///   `bookScore:<JSON tuple [origin, name, author]>` and the source's running sum
+///   under its URL (`SourceConfig.kt:9-29`). Both default to 0 in a fresh space;
+///   the comparator also uses the word-count fields #115 fetches. The frozen
+///   row's good/bad pair
+///   (`ChangeBookSourceAdapter.kt:85-118` and its listeners, `:135-176`, whose
+///   values are the frozen 1/0/-1) is the score control in switch mode: the
+///   accent colour is the chosen direction, the faded one is not, and tapping
+///   the direction already chosen clears the score to 0. A tap writes the book's
+///   own row and moves the source's by the difference between the new score and
+///   the old one, exactly `SourceConfig.setBookScore` (`:9-21`), and re-orders
+///   the list in place — no new search, no field already fetched dropped. The
+///   frozen's `originOrder` is this page's `customOrder`-then-URL source order
+///   (`SpaceStore.allSources`).
+/// * **The tick's two address texts.** A book imported from Legado may retain
+///   the verbatim `bookUrl`, option tail included (`legado_full_backup.dart:466`);
+///   a book picked in this product stores the resolved URL. The marker accepts
+///   either `HtmlBook.address` or the resolved `HtmlBook.url`, without relying on
+///   URI normalization to recreate the imported text.
+/// * **A candidate whose details or table of contents do not answer.** The
+///   frozen chain throws out of its source's `forEach` (`:251-260`), so with the
+///   switch on that candidate never reaches the list at all; this page keeps it
+///   — admission stays #113/#114's — with no optional line until the word count
+///   can be computed.
+/// * **What the switch leaves behind for the pick.** The frozen's `loadBookToc`
+///   keeps the candidate's book and chapter list in `bookMap`/`tocMap`
+///   (`:301-309`) and `changeSource` reads them back
+///   (`ChangeBookSourceDialog.kt:301-306`), so a pick after a word-count load
+///   fetches nothing; this page's pick always runs the details and
+///   table-of-contents stages, so it reads them again.
+/// * **Where the score control shows.** Every frozen row carries the good/bad
+///   pair because every row is the change-source dialog's; this page shows it in
+///   switch mode only, because its plain entry is the product's own search where
+///   nothing is being switched. The comparator itself runs in both modes, so a
+///   plain search is ordered by whatever scores the space already holds.
+/// * **The score column's rendering.** The frozen hides the icon of the
+///   direction that does not hold (`ivBad.gone()` / `ivGood.gone()`) and stacks
+///   the pair in a fixed-height row; this row keeps both in place and lets the
+///   tint say it, and puts them side by side because a `ListTile`'s leading is
+///   capped at 48 logical pixels on this product's platform — a stacked pair
+///   would either overflow or need touch targets below the framework's own
+///   minimum. The tap values are the frozen's.
+/// * **The score mirror.** The page holds the two score maps for its own
+///   lifetime and writes through them, so a re-order needs no store read where
+///   the frozen reads its two preferences synchronously — a score another page
+///   writes meanwhile is picked up on the next page load, not mid-list.
 /// * **A failed pick.** The frozen logs `换源获取目录出错` and keeps the dialog;
 ///   this page shows `switchSourceFailed`.
 ///
@@ -112,6 +222,7 @@ class PreciseSearchPage extends StatefulWidget {
     this.initialAuthor,
     this.transport,
     this.openPipeline,
+    this.convert,
   });
 
   /// The space's shelf: the sources that can be searched, the host surface the
@@ -141,6 +252,10 @@ class PreciseSearchPage extends StatefulWidget {
   /// pending work).
   final BookSourcePipeline Function(Map<String, dynamic> source)? openPipeline;
 
+  /// Conversion boundary shared with [ContentProcessing]; null uses the native
+  /// reader engine.
+  final String Function(String text, ConvertTarget target)? convert;
+
   @override
   State<PreciseSearchPage> createState() => _PreciseSearchPageState();
 }
@@ -161,6 +276,12 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   bool running = false;
   bool picking = false;
   bool checkAuthor = false;
+
+  /// The frozen `AppConfig.changeSourceLoadWordCount`, as this space's
+  /// `changeSourceLoadWordCount` setting: off by default, and the frozen
+  /// default too (`AppConfig.kt:373-377`).
+  bool loadWordCount = false;
+
   String searchGroup = '';
   List<String> sourceGroups = const [];
 
@@ -186,8 +307,28 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// thousands of sources for each one.
   Map<String, int> slotOf = const <String, int>{};
 
-  /// Every candidate the run has admitted so far, in source order.
+  /// Every candidate the run has admitted so far, in **source order** — the
+  /// canonical order every other order is derived from, and the one
+  /// [_ordered]'s stable last key speaks in. `_place` never reorders it, so a
+  /// candidate keeps its canonical position however often the list is re-sorted.
   List<PreciseSearchHit> hits = const <PreciseSearchHit>[];
+
+  /// The admitted candidates in the order the rows are drawn in: the frozen
+  /// comparator's ([_ordered]).
+  List<PreciseSearchHit> listed = const <PreciseSearchHit>[];
+
+  /// The space's per-book scores: the frozen `SourceConfig.getBookScore`
+  /// (`SourceConfig.kt:23-25`), keyed the frozen way —
+  /// [_bookScoreKey] over `(origin, name, author)` — whose absent row is 0. Read
+  /// once per candidate when it is admitted ([_loadScores]) and written through
+  /// when a control is tapped ([setBookScore]), so sorting never goes to the
+  /// store.
+  final Map<String, int> bookScores = <String, int>{};
+
+  /// The space's per-source scores: the frozen `SourceConfig.getSourceScore`
+  /// (`:27-29`), keyed by the source's own URL and holding the running sum of
+  /// its books' score changes.
+  final Map<String, int> sourceScores = <String, int>{};
 
   /// Every source that has failed to answer, in source order.
   List<PreciseSearchOutcome> failures = const <PreciseSearchOutcome>[];
@@ -228,6 +369,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       running = false;
       error = null;
       hits = const [];
+      listed = const [];
       failures = const [];
     });
     return _sourceLoad = _sourceLoad.then((_) async {
@@ -268,6 +410,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
               .toList()
             ..sort();
       final requested = group ?? await store.setting('searchGroup') ?? '';
+      // Read on every load, like the search group: the setting is the space's,
+      // not this page instance's.
+      final wordCount =
+          await store.setting(_loadWordCountSettingKey) ==
+          _loadWordCountSettingOn;
       var chosenGroup = requested.trim().isEmpty ? '' : requested;
       var eligible = [
         for (final source in enabled)
@@ -291,6 +438,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         searchGroup = chosenGroup;
         sourceGroups = groups;
         sources = eligible;
+        loadWordCount = wordCount;
         selected
           ..clear()
           ..addAll([for (final source in eligible) source.id]);
@@ -407,6 +555,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           chosen[index].id: index,
       };
       hits = const <PreciseSearchHit>[];
+      listed = const <PreciseSearchHit>[];
       failures = const <PreciseSearchOutcome>[];
       answered = 0;
       status = l10n.searchingSources(chosen.length);
@@ -437,6 +586,10 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       );
       await for (final outcome in answers) {
         if (!_isCurrent(generation)) break;
+        // The scores the order is made of are read before the answer is placed,
+        // so a row never appears in one order and jumps to another.
+        await _loadScores(outcome.hits);
+        if (!_isCurrent(generation)) break;
         setState(() {
           _place(outcome);
           // The frozen dialog's own progress line: what this run has found so
@@ -450,6 +603,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           );
         });
       }
+      if (!_isCurrent(generation)) return false;
+      // The frozen chain loads each candidate's word count before it is
+      // admitted; this page admits as the answers arrive (#108) and loads what
+      // the optional lines need once the walk is done.
+      if (loadWordCount) await _loadWordCounts(generation);
       if (!_isCurrent(generation)) return false;
       setState(() {
         running = false;
@@ -477,10 +635,182 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     }
   }
 
+  /// The frozen `menu_load_word_count` (`ChangeBookSourceDialog.kt:171-176`):
+  /// the switch is written to the space's `changeSourceLoadWordCount` setting,
+  /// and turning it on loads the word count of the candidates that have none
+  /// yet, exactly the set `ChangeBookSourceViewModel.startRefreshList(true)`
+  /// visits (`:355-363`). Turning it off only hides the lines: the frozen loads
+  /// nothing and drops nothing.
+  Future<void> setLoadWordCount(bool value) async {
+    setState(() {
+      loadWordCount = value;
+      // The comparator's word-count keys are read only while the mode is on, so
+      // turning it off is the frozen base order again — the frozen picks
+      // `defaultComparator` in exactly that case (`:135-138`) — with no request
+      // and no field dropped.
+      listed = _ordered(hits);
+    });
+    await widget.service.store.putSetting(
+      _loadWordCountSettingKey,
+      value ? _loadWordCountSettingOn : '',
+    );
+    // A run already in flight reaches the fill at the end of its own walk; an
+    // idle page starts it here, which is the frozen `startRefreshList(true)`.
+    if (value && !running && hits.isNotEmpty) {
+      unawaited(_loadWordCounts(_generation));
+    }
+  }
+
+  /// Loads the word count of every candidate that has none yet, in list order
+  /// and one candidate at a time.
+  ///
+  /// The frozen `startRefreshList(true)` refreshes exactly the candidates whose
+  /// `chapterWordCountText` is still null (`:355-363`); a candidate whose count
+  /// is already there is not asked for again. The fill stops when the page's
+  /// run is superseded or the switch is turned off, and `running` holds the
+  /// page's own busy state around it, the way the frozen's refresh holds its
+  /// list.
+  Future<void> _loadWordCounts(int generation) async {
+    final pending = [
+      for (final hit in hits)
+        if (hit.chapterWordCountText == null) hit,
+    ];
+    if (pending.isEmpty) return;
+    if (mounted) setState(() => running = true);
+    try {
+      final replaceRules = await widget.service.store.replaceRules();
+      final script = await ReaderScriptSetting.resolve(
+        widget.service.store,
+        bookId: widget.switchBook?.book.id ?? '',
+      );
+      for (final hit in pending) {
+        if (!_isCurrent(generation) || !loadWordCount) return;
+        await _loadWordCount(
+          hit,
+          generation,
+          replaceRules: replaceRules,
+          script: script,
+        );
+        if (mounted) setState(() {});
+      }
+    } on Object catch (failure) {
+      if (_isCurrent(generation)) {
+        setState(
+          () => error = AppLocalizations.of(context).searchFailed('$failure'),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          // The word-count fields are order keys now, so the list settles into
+          // the frozen word-count order once the counts are in.
+          listed = _ordered(hits);
+          running = false;
+        });
+      }
+    }
+  }
+
+  /// One candidate's word-count stage: the frozen
+  /// `loadBookInfo` → `loadBookToc` → `loadBookWordCount` chain
+  /// (`ChangeBookSourceViewModel.kt:262-343`), which is what the switch buys.
+  ///
+  /// The chapter is the one the reading position maps onto when the page was
+  /// opened on a book — the frozen `fromReadBookActivity` through
+  /// `BookHelp.getDurChapter` ([mapChapterIndex]) — and the last one otherwise
+  /// (the frozen `chapters.lastIndex`). The frozen measures the content stage's
+  /// own failure into `获取字数失败` and `-1` rather than failing the search, and
+  /// this does the same; its `startTime` starts after the table of contents, so
+  /// [PreciseSearchHit.respondTime] covers fetching and processing the chosen
+  /// chapter. A details or TOC stage that does not answer leaves all three fields
+  /// and the candidate keeps its place in the list.
+  Future<void> _loadWordCount(
+    PreciseSearchHit hit,
+    int generation, {
+    required List<ReplaceRule> replaceRules,
+    required ConvertTarget? script,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    final book = widget.switchBook;
+    final pipeline = _openPipeline(hit.source);
+    Future<T> run<T>(Future<T> Function() analysis) =>
+        withTlsExceptionConfirmation<T>(
+          context: context,
+          hostState: widget.service.hostState,
+          sourceRef: hit.sourceRef,
+          sourceName: hit.sourceName,
+          run: analysis,
+        );
+    try {
+      final (_, chapters) = await run(() => pipeline.details(hit.book));
+      if (!_isCurrent(generation) || chapters.isEmpty) return;
+      final index = book == null
+          ? chapters.length - 1
+          : mapChapterIndex(
+              oldIndex: book.chapterIndex,
+              oldTitle: book.chapterName,
+              newTitles: [for (final chapter in chapters) chapter.name],
+              oldChapterCount: book.chapters.length,
+            );
+      final chapter = chapters[index];
+      final nextChapterUrl = index + 1 < chapters.length
+          ? '${chapters[index + 1].url}'
+          : null;
+      final title = chapter.name.trim();
+      final started = DateTime.now();
+      try {
+        final body = await run(
+          () => pipeline.chapter(
+            chapter,
+            book: hit.book,
+            nextChapterUrl: nextChapterUrl,
+          ),
+        );
+        String? processingFailure;
+        final processed = await ContentProcessing(
+          rules: ReplaceRuleSet.forBook(
+            replaceRules,
+            bookName: hit.book.title,
+            bookOrigin: hit.sourceRef,
+          ),
+          bookName: hit.book.title,
+          script: script,
+          convert: widget.convert ?? TextEngine.convertTo,
+          useReplaceRule: true,
+          useReSegment: false,
+          onNotice: (message) {
+            processingFailure ??= message.text(l10n);
+          },
+          // Word-count display must report a timed-out rule, not disable it.
+        ).content(body.text, chapterTitle: chapter.name, includeTitle: false);
+        if (!_isCurrent(generation) || !loadWordCount) return;
+        if (processingFailure case final failure?) {
+          hit.chapterWordCount = -1;
+          hit.chapterWordCountText = '[${index + 1}] $title\n获取字数失败：$failure';
+        } else {
+          hit.chapterWordCount = processed.text.length;
+          hit.chapterWordCountText =
+              '[${index + 1}] $title\n字数：${processed.text.length}';
+        }
+      } on Object catch (failure) {
+        hit.chapterWordCount = -1;
+        hit.chapterWordCountText = '[${index + 1}] $title\n获取字数失败：$failure';
+      }
+      hit.respondTime = DateTime.now().difference(started).inMilliseconds;
+    } on Object {
+      // The frozen chain throws out of its source's own loop here, so nothing
+      // of this candidate's word count is recorded: `chapterWordCountText`
+      // stays null and the row shows neither optional line.
+    } finally {
+      pipeline.cancel();
+      _pipelines.remove(pipeline);
+    }
+  }
+
   /// Puts one streamed answer in its own source's slot and refreshes the two
   /// ordered lists the page's slivers read.
   ///
-  /// The walk streams in completion order; the slots are what keep the page in
+  /// The walk streams in completion order; the slots are what keep [hits] in
   /// source order. The lists are rebuilt only when an answer adds a row, so the
   /// thousands of sources that find nothing do not each rescan the run.
   void _place(PreciseSearchOutcome outcome) {
@@ -489,6 +819,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     answered++;
     if (outcome.hits.isNotEmpty) {
       hits = [for (final slot in placed) ...?slot?.hits];
+      listed = _ordered(hits);
     }
     if (outcome.failure != null) {
       failures = [
@@ -511,6 +842,141 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     final exact = admitted.where((hit) => hit.exact).length;
     return l10n.candidatesFound(admitted.length, exact);
   }
+
+  // --- The frozen scores and list order ------------------------------------
+
+  /// Reads the scores of the candidates just admitted: one settings read per key
+  /// not already held, so a book's score is read once per page rather than once
+  /// per comparison. The frozen reads its two `SourceConfig` preferences
+  /// synchronously on every comparison; this is the async store's answer, with
+  /// the page as the mirror that keeps sorting synchronous.
+  Future<void> _loadScores(Iterable<PreciseSearchHit> admitted) async {
+    final store = widget.service.store;
+    for (final hit in admitted) {
+      final sourceKey = _sourceScoreKey(hit);
+      if (!sourceScores.containsKey(sourceKey)) {
+        sourceScores[sourceKey] = _storedScore(await store.setting(sourceKey));
+      }
+      final bookKey = _bookScoreKey(hit);
+      if (!bookScores.containsKey(bookKey)) {
+        bookScores[bookKey] = _storedScore(await store.setting(bookKey));
+      }
+    }
+  }
+
+  /// The frozen `SharedPreferences.getInt(key, 0)` stand-in: a row that is
+  /// absent, empty or not a number is 0 (the operator's backup carries no
+  /// `SourceConfig` rows at all).
+  int _storedScore(String? stored) => int.tryParse(stored ?? '') ?? 0;
+
+  /// The frozen `SourceConfig.getBookScore`'s key (`SourceConfig.kt:11-19`):
+  /// the source's URL, the book's *own* name and its author, packed as one
+  /// JSON tuple under [_bookScorePrefix]. It is the
+  /// candidate's identity as the search page produced it, which is the frozen
+  /// `SearchBook`'s own `origin`/`name`/`author`.
+  String _bookScoreKey(PreciseSearchHit hit) =>
+      '$_bookScorePrefix${jsonEncode([hit.sourceRef, hit.book.title, hit.book.author])}';
+
+  /// The frozen `SourceConfig.getSourceScore`'s key (`SourceConfig.kt:17`,
+  /// `putInt(origin, …)`): the source's own URL, a key no other setting of this
+  /// space uses.
+  String _sourceScoreKey(PreciseSearchHit hit) => hit.sourceRef;
+
+  /// The frozen `SourceConfig.getBookScore` for this candidate's book row.
+  int _bookScore(PreciseSearchHit hit) => bookScores[_bookScoreKey(hit)] ?? 0;
+
+  /// The frozen `SourceConfig.getSourceScore` for this candidate's source row.
+  int _sourceScore(PreciseSearchHit hit) =>
+      sourceScores[_sourceScoreKey(hit)] ?? 0;
+
+  /// The frozen good/bad tap (`ChangeBookSourceAdapter.registerListener`,
+  /// `:135-176`, whose values are 1/0/-1) through
+  /// `ChangeBookSourceViewModel.setBookScore` → `SourceConfig.setBookScore`
+  /// (`SourceConfig.kt:9-21`): the book's own row takes the *absolute* [score]
+  /// and the source's row moves by the difference between the new score and the
+  /// old one — `putInt(origin, getSourceScore(origin) + (score - preScore))`, so
+  /// the source's value is the running sum of its books' changes, and clearing
+  /// one book takes back only that book's own change. The list then re-orders —
+  /// the frozen `searchCallback?.upAdapter()` — without a new search and without
+  /// dropping a field already fetched.
+  ///
+  /// The in-memory maps are updated first and are what a second tap reads, so
+  /// two quick taps accumulate exactly as the frozen's synchronous preference
+  /// reads do; the store rows follow.
+  Future<void> setBookScore(PreciseSearchHit hit, int score) async {
+    final bookKey = _bookScoreKey(hit);
+    final sourceKey = _sourceScoreKey(hit);
+    final previous = _bookScore(hit);
+    final moved = _sourceScore(hit) + score - previous;
+    setState(() {
+      bookScores[bookKey] = score;
+      sourceScores[sourceKey] = moved;
+      listed = _ordered(hits);
+    });
+    final store = widget.service.store;
+    await store.putSetting(bookKey, '$score');
+    await store.putSetting(sourceKey, '$moved');
+  }
+
+  /// The admitted candidates in the frozen comparator's order
+  /// (`ChangeBookSourceViewModel.kt:84-95`).
+  ///
+  /// The canonical order is carried in as the last key because `sortedWith` is
+  /// a stable sort and `List.sort` is not: it is what the frozen's stability
+  /// would have decided for two candidates of one source, and for two sources
+  /// that share a `customOrder`, where the frozen keeps the order the store
+  /// handed it.
+  List<PreciseSearchHit> _ordered(List<PreciseSearchHit> admitted) {
+    final indexed = [
+      for (var index = 0; index < admitted.length; index++)
+        (index, admitted[index]),
+    ];
+    indexed.sort((a, b) {
+      final byKeys = _compareCandidates(a.$2, b.$2);
+      return byKeys != 0 ? byKeys : a.$1 - b.$1;
+    });
+    return [for (final entry in indexed) entry.$2];
+  }
+
+  /// One pair of candidates in the frozen's own order: descending book score,
+  /// descending source score, then — in word-count mode — `chapterWordCount >
+  /// 1000`, the parsed chapter number and the word count descending, and finally
+  /// the source's order ascending (`originOrder`).
+  int _compareCandidates(PreciseSearchHit a, PreciseSearchHit b) {
+    final byBookScore = _bookScore(b) - _bookScore(a);
+    if (byBookScore != 0) return byBookScore;
+    final bySourceScore = _sourceScore(b) - _sourceScore(a);
+    if (bySourceScore != 0) return bySourceScore;
+    if (loadWordCount) {
+      final byLongChapter = _overThousand(b) - _overThousand(a);
+      if (byLongChapter != 0) return byLongChapter;
+      final byChapterNumber = _chapterNumber(b) - _chapterNumber(a);
+      if (byChapterNumber != 0) return byChapterNumber;
+      final byWordCount = b.chapterWordCount - a.chapterWordCount;
+      if (byWordCount != 0) return byWordCount;
+    }
+    return _sourceRank(a) - _sourceRank(b);
+  }
+
+  /// The frozen `it.chapterWordCount > 1000`, as a comparator key.
+  int _overThousand(PreciseSearchHit hit) =>
+      hit.chapterWordCount > 1000 ? 1 : 0;
+
+  /// The frozen `getChapterNum` (`ChangeBookSourceViewModel.kt:566-569`): the
+  /// ordinal in `[3] 第三章`'s leading brackets, or -1 when there is none —
+  /// which is the value a candidate whose word count never ran has.
+  int _chapterNumber(PreciseSearchHit hit) {
+    final text = hit.chapterWordCountText;
+    if (text == null) return -1;
+    return int.tryParse(
+          _chapterNumberPattern.firstMatch(text)?.group(1) ?? '',
+        ) ??
+        -1;
+  }
+
+  /// The frozen `it.originOrder`: the source's own position in the run, which is
+  /// this page's `customOrder`-then-URL order (`SpaceStore.allSources`).
+  int _sourceRank(PreciseSearchHit hit) => slotOf[hit.sourceRef] ?? 0;
 
   /// Picks a candidate: switches the book onto it in the switch flow, and opens
   /// it in the plain search flow.
@@ -735,6 +1201,19 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
                       Expanded(child: Text(l10n.mustMatchAuthor)),
                     ],
                   ),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: loadWordCount,
+                        key: const ValueKey('precise-load-word-count'),
+                        onChanged: loadingSources || picking
+                            ? null
+                            : (value) =>
+                                  unawaited(setLoadWordCount(value ?? false)),
+                      ),
+                      Expanded(child: Text(l10n.loadWordCount)),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -782,8 +1261,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
             sliver: SliverList.builder(
-              itemCount: hits.length,
-              itemBuilder: (_, index) => _candidate(hits[index], l10n, running),
+              itemCount: listed.length,
+              itemBuilder: (_, index) =>
+                  _candidate(listed[index], l10n, running),
             ),
           ),
         ],
@@ -791,25 +1271,118 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     );
   }
 
-  /// One candidate of the candidate list.
-  Widget _candidate(
-    PreciseSearchHit hit,
-    AppLocalizations l10n,
-    bool running,
-  ) => Card(
-    child: ListTile(
-      key: ValueKey('precise-hit-${hit.sourceRef}-${hit.book.url}'),
-      leading: Icon(hit.exact ? Icons.check_circle : Icons.circle_outlined),
-      title: Text(hit.book.title),
-      subtitle: Text(
-        [
-          hit.book.author.isEmpty ? l10n.noAuthor : hit.book.author,
-          hit.sourceName,
-          if (hit.exact) l10n.exactMatch,
-        ].join(' · '),
+  /// One candidate of the candidate list, in the frozen row's fields
+  /// (`ChangeBookSourceAdapter.convert`, `:56-131`).
+  ///
+  /// The product's own identity and affordances stay: the title is the row's
+  /// identity, the exact-match marker stays in the line under it, and the row
+  /// is still picked by tapping it. What the frozen row shows and this one did
+  /// not is the hit's own latest chapter — its placeholder included — the tick
+  /// on the book's own current source, the good/bad score pair in switch mode,
+  /// and, with the word-count switch on, the computed word-count and
+  /// respond-time lines.
+  Widget _candidate(PreciseSearchHit hit, AppLocalizations l10n, bool running) {
+    final book = widget.switchBook;
+    // Imported books may retain the rule's raw `bookUrl` (including its option
+    // tail); books picked in this product store the resolved URL. Match either
+    // representation so relative links still match the resolved shelf URL and
+    // imported verbatim addresses still match without URI normalization.
+    final current =
+        book != null &&
+        (book.book.sourceBookUrl == hit.book.address ||
+            book.book.sourceBookUrl == '${hit.book.url}');
+    final wordCountText = hit.chapterWordCountText;
+    return Card(
+      child: ListTile(
+        key: ValueKey('precise-hit-${hit.sourceRef}-${hit.book.url}'),
+        leading: book == null
+            ? Icon(hit.exact ? Icons.check_circle : Icons.circle_outlined)
+            : _scoreControls(hit, l10n),
+        title: Text(hit.book.title),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              [
+                if (hit.book.author.isNotEmpty) hit.book.author,
+                if (hit.sourceName.isNotEmpty) hit.sourceName,
+                if (hit.exact) l10n.exactMatch,
+              ].join(' · '),
+            ),
+            // `SearchBook.getDisplayLastChapterTitle`.
+            Text(
+              hit.book.lastChapter.isEmpty
+                  ? l10n.noLatestChapter
+                  : hit.book.lastChapter,
+            ),
+            // The frozen `AppConfig.changeSourceLoadWordCount &&
+            // !chapterWordCountText.isNullOrBlank()` and its `respondTime >= 0`
+            // (`:120-131`).
+            if (loadWordCount && (wordCountText ?? '').isNotEmpty)
+              Text(wordCountText!),
+            if (loadWordCount && hit.respondTime >= 0)
+              Text(l10n.respondTime(hit.respondTime)),
+          ],
+        ),
+        trailing: current
+            ? Icon(
+                Icons.check,
+                key: ValueKey(
+                  'precise-current-source-${hit.sourceRef}-${hit.book.url}',
+                ),
+              )
+            : const Icon(Icons.arrow_forward),
+        onTap: running ? null : () => pick(hit),
       ),
-      trailing: const Icon(Icons.arrow_forward),
-      onTap: running ? null : () => pick(hit),
-    ),
-  );
+    );
+  }
+
+  /// The frozen row's score column (`ChangeBookSourceAdapter.convert`, `:85-118`
+  /// and its listeners, `:135-176`): the good/bad pair, each an accent colour
+  /// while its own direction holds and the faded colour otherwise, and each tap
+  /// the frozen tap's value — tapping the direction already chosen clears the
+  /// score to 0 again, which is how the frozen's three states are reached.
+  ///
+  /// The pair sits **side by side**, and neither control sizes itself. A
+  /// `ListTile` caps its leading at `(isDense ? 48 : 56) + density`
+  /// (`ListTile.maxIconHeightConstraint`), which on this product's platform is
+  /// 48 — 56 plus the desktop theme's compact density — so a stacked pair cannot
+  /// hold two accessible targets, and overriding the size with `constraints` or
+  /// `MaterialTapTargetSize.shrinkWrap` would put the touch target below the
+  /// framework's own minimum (48 with the density adjustment: 40 here).
+  ///
+  /// The frozen hides the icon of the direction that does not hold; this row
+  /// keeps both in place and lets the tint say it.
+  Widget _scoreControls(PreciseSearchHit hit, AppLocalizations l10n) {
+    final score = _bookScore(hit);
+    final ref = '${hit.sourceRef}-${hit.book.url}';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          key: ValueKey('precise-score-good-$ref'),
+          tooltip: l10n.likeSource,
+          onPressed: () => unawaited(setBookScore(hit, score > 0 ? 0 : 1)),
+          iconSize: 18,
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            Icons.thumb_up,
+            color: score > 0 ? Colors.redAccent : Colors.red.shade100,
+          ),
+        ),
+        IconButton(
+          key: ValueKey('precise-score-bad-$ref'),
+          tooltip: l10n.notLikeSource,
+          onPressed: () => unawaited(setBookScore(hit, score < 0 ? 0 : -1)),
+          iconSize: 18,
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            Icons.thumb_down,
+            color: score < 0 ? Colors.blueAccent : Colors.blue.shade100,
+          ),
+        ),
+      ],
+    );
+  }
 }
