@@ -1,0 +1,102 @@
+name: '#111 iOS simulator runtime probe'
+
+# This probe exists only on its diagnostic branch. A branch push (not a
+# workflow_dispatch that requires a default-branch workflow) runs it once.
+on:
+  push:
+    branches:
+      - probe/111-b20-r9
+    paths:
+      - .github/workflows/111-mobile-runtime-probe.yml
+      - integration_test/heap_limit_mobile_probe_test.dart
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-111-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+  FLUTTER_SWIFT_PACKAGE_MANAGER: 'false'
+
+jobs:
+  ios-simulator:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.97.0'
+          targets: aarch64-apple-ios-sim
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.44.6'
+          channel: stable
+          cache: true
+      - name: Discover a usable iOS 18 simulator
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | tee probe-commit.txt
+          shasum -a 256 integration_test/heap_limit_mobile_probe_test.dart | tee probe-source.sha256
+          xcodebuild -version | tee xcode-version.log
+          xcrun simctl list devices available -j > simulator-devices.json
+          python3 - <<'PY'
+          import json, sys
+          data = json.load(open('simulator-devices.json'))['devices']
+          candidates = [
+              (runtime, device)
+              for runtime, devices in data.items()
+              if 'iOS-18-' in runtime
+              for device in devices
+              if device.get('isAvailable') and device['name'].startswith('iPhone 16')
+          ]
+          if not candidates:
+              sys.exit('NO_IOS_18_SIMULATOR: no available iPhone 16; runtime test not-run')
+          runtime, device = sorted(candidates, key=lambda row: row[0])[-1]
+          print('simulator_runtime=' + runtime)
+          print('simulator_name=' + device['name'])
+          print('simulator_udid=' + device['udid'])
+          open('simulator-udid.txt', 'w').write(device['udid'] + '\n')
+          PY
+          udid="$(cat simulator-udid.txt)"
+          if ! xcrun simctl list devices booted | grep -Fq "$udid"; then
+            xcrun simctl boot "$udid"
+          fi
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl getenv "$udid" HOME >/dev/null
+          flutter devices --machine | tee flutter-devices.json
+          python3 - <<'PY'
+          import json, sys
+          udid = open('simulator-udid.txt').read().strip()
+          devices = json.load(open('flutter-devices.json'))
+          if not any(d.get('id') == udid and d.get('targetPlatform', '').startswith('ios') for d in devices):
+              sys.exit('NO_FLUTTER_IOS_DEVICE: the booted simulator is not runnable by Flutter')
+          print('FLUTTER_IOS_SIMULATOR_AVAILABLE=' + udid)
+          PY
+      - name: Run #111 in the iOS simulator app process
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile
+          udid="$(cat simulator-udid.txt)"
+          flutter test integration_test/heap_limit_mobile_probe_test.dart \
+            -d "$udid" --no-pub --reporter expanded 2>&1 | tee ios-runtime-test.log
+          grep -q '^FJS_MOBILE_SINGLE_REQUEST passed=200 lost=0 usable=200$' ios-runtime-test.log
+          grep -q '^FJS_MOBILE_ACCUMULATING passed=1 usable=1$' ios-runtime-test.log
+          grep -q '^FJS_MOBILE_POINTER_WIDTH bits=64 not-applicable$' ios-runtime-test.log
+          grep -q 'All tests passed!' ios-runtime-test.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: probe-111-ios-runtime
+          path: |
+            probe-commit.txt
+            probe-source.sha256
+            xcode-version.log
+            simulator-devices.json
+            simulator-udid.txt
+            flutter-devices.json
+            ios-runtime-test.log
+          if-no-files-found: ignore
