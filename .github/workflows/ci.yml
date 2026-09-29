@@ -682,10 +682,18 @@ jobs:
             fail=1
           fi
           target_root="packages/fjs/libfjs/target/$target"
-          case "$bindings" in
-            "$target_root"/*) ;;
-            *) echo "FAIL: bindings are not under $target_root" | tee -a abi-gate.log; fail=1 ;;
-          esac
+          target_root_abs="$(realpath "$target_root" 2>/dev/null || true)"
+          if [ -z "$target_root_abs" ]; then
+            echo "FAIL: missing target tree $target_root" | tee -a abi-gate.log
+            fail=1
+          fi
+          if [ "$fail" -eq 0 ]; then
+            bindings_abs="$(realpath "$bindings" 2>/dev/null || true)"
+            case "$bindings_abs" in
+              "$target_root_abs"/*) ;;
+              *) echo "FAIL: bindings are not under $target_root: $bindings" | tee -a abi-gate.log; fail=1 ;;
+            esac
+          fi
           header="$(find "$target_root" -path '*/out/quickjs.bind.h' -print | sort | head -1)"
           macros() {
             grep -E '^#define (__i386__|__x86_64__|__ILP32__|__SIZEOF_POINTER__|INTPTR_MAX|JS_NAN_BOXING)' | sort
@@ -736,8 +744,10 @@ jobs:
               echo 'FAIL: no 32-bit test binary to run' | tee -a abi-gate.log
               fail=1
             else
-              case "$bin" in
-                "$target_root"/*) ;;
+              # Cargo reports this executable as an absolute path.
+              bin_abs="$(realpath "$bin" 2>/dev/null || true)"
+              case "$bin_abs" in
+                "$target_root_abs"/*) ;;
                 *) echo "FAIL: test binary is not under $target_root: $bin" | tee -a abi-gate.log; fail=1 ;;
               esac
               if [ "$fail" -eq 0 ]; then
