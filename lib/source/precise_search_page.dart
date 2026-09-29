@@ -1,9 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
+import '../local/text_engine.dart';
 import '../l10n/app_localizations.dart';
+import '../l10n/store_message_text.dart';
+import '../settings/reader_script.dart';
+import '../source/content_processing.dart';
+import '../store/database.dart' show ReplaceRule;
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
@@ -23,15 +29,13 @@ const String _loadWordCountSettingKey = 'changeSourceLoadWordCount';
 const String _loadWordCountSettingOn = '1';
 
 /// The frozen `SourceConfig`'s book-score key (`SourceConfig.kt:19`,
-/// `"${origin}_${name}_${author}"`) as one settings key: the source's URL, the
-/// book's own name and its author, packed with `|` — a character a source URL
-/// and a book name do not carry, where the frozen's own `_` can be part of any
-/// of the three. The value is the book's *absolute* score, as the frozen stores
-/// it; the source's own key is its URL alone, the frozen `putInt(origin, …)`
-/// (`:17`), and its value is the running sum of those books' score changes
-/// rather than a score of its own.
+/// `"${origin}_${name}_${author}"`) as one settings key: the source URL, book
+/// name and author encoded as a JSON tuple, so separators inside any field
+/// cannot make two books collide. The value is the book's *absolute* score, as
+/// the frozen stores; the source's own key is its URL alone, the frozen
+/// `putInt(origin, …)` (`:17`), and its value is the running sum of those books'
+/// score changes rather than a score of its own.
 const String _bookScorePrefix = 'bookScore:';
-const String _bookScoreFieldSeparator = '|';
 
 /// The frozen `chapterNumRegex` (`ChangeBookSourceViewModel.kt:83`,
 /// `Kotlin Regex("^\\[(\\d+)]")`): the ordinal the word-count line starts with,
@@ -89,8 +93,9 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   uses the store's split/trimmed `groupNames`, not SQL LIKE: whitespace and
 ///   wildcard/case behavior can differ. Menu order is Dart string order, not
 ///   the frozen `cnCompare`'s Chinese ICU collation (no equivalent is shipped).
-///   A populated group with no hits asks before searching all groups, as the
-///   dialog's `searchFinishCallback` (`:79-93`) does; cancel keeps that group.
+///   A populated group whose searches all succeed but return no hits asks
+///   before searching all groups; request failures are shown, not treated as
+///   proof that the group has no results. Cancel keeps the selected group.
 /// * **What admits a hit.** The dialog's filter is `fName == name &&
 ///   (!checkAuthor || fAuthor.contains(author))` with
 ///   `AppConfig.changeSourceCheckAuthor` defaulting to false;
@@ -114,9 +119,9 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   `AppConfig.changeSourceLoadWordCount` — shows the computed
 ///   `chapterWordCountText` and `R.string.respondTime` lines (`:120-131`).
 ///   This row shows those fields too: the title stays the row's identity, the
-///   line under it carries the source, the author and the exact-match marker,
-///   the latest chapter is its own line, and the two optional lines appear only
-///   while the switch is on.
+///   line under it carries non-empty source/author fields and the exact-match
+///   marker, the latest chapter is its own line, and the optional lines appear
+///   only while the switch is on.
 /// * **The word-count switch.** The dialog's `menu_load_word_count` toggles
 ///   `AppConfig.changeSourceLoadWordCount` (`ChangeBookSourceDialog.kt:171-176`)
 ///   and, turned on, loads the word count of every candidate that has none yet
@@ -132,46 +137,19 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   [mapChapterIndex]) when the page was opened on a book, and the last one
 ///   otherwise.
 ///
-/// Named gaps against that dialog, recorded rather than fixed:
+/// Implementation notes and remaining differences:
 ///
-/// * **The row's two existing placeholders.** The frozen row prints the hit's
-///   author and source name exactly as the hit carries them, so an empty one
-///   leaves a blank; this row keeps the product's own answers for those two —
-///   `（无作者）` and the source URL — and uses the frozen `无最新章节信息` for the
-///   new latest-chapter line alone.
-/// * **What the word-count line measures, and why the existing port is not
-///   reused here.** The frozen measures the *processed* content,
-///   `contentProcessor.getContent(oldBook, chapter, content, false)`
-///   (`ChangeBookSourceViewModel.kt:330`), so its length carries the reading
-///   page's replace rules, Chinese conversion and re-segmentation;
-///   `content_processing.dart` is that port (`ContentProcessing.content` with
-///   `includeTitle: false`), and this page measures the body the content stage
-///   returned instead. A source whose rules rewrite the chapter therefore shows
-///   a different number. The bounded check run for #115's stage-1 gate found
-///   three of the port's inputs have no entry point here, which is why it is a
-///   follow-up rather than this ticket:
-///   * the **rules** and the **chapter** do have one — `store.replaceRules()`
-///     plus `ReplaceRuleSet.forBook` are the reader's own two calls
-///     (`online_reader_page.dart`, `main.dart`) and the chapter is this
-///     candidate's own;
-///   * the **book** has one only in switch mode ([switchBook]): the frozen takes
-///     the rule scope (and the duplicated-title match's book name) from
-///     `oldBook`, while the search entry has no book at all — the frozen's own
-///     `oldBook!!` has no counterpart there and throws, which is how the frozen
-///     reaches its failure line. Which rules reach a candidate in the search
-///     entry is therefore a decision the frozen does not make, and the same row
-///     would mean two different things in the two modes;
-///   * the **conversion** has none: the frozen reads the app-global
-///     `AppConfig.chineseConverterType` (default 0, no conversion,
-///     `ContentProcessor.kt:135-143`), where the product's equivalent is
-///     `ReaderScriptSetting.resolve`, whose default resolves to a target on a
-///     zh system — so the page would call the native `TextEngine.convertTo`, and
-///     the reader carries its `convert` parameter for exactly that reason;
-///   * the port's rule-timeout path disables the rule in the store through
-///     `onRuleDisabled`, state the reader owns.
-///   Proposed follow-up (a decision ticket, not a lane): fix the search entry's
-///   rule scope, the conversion input and the `convert` seam, then reuse the
-///   port for both modes.
+/// * **Empty candidate fields.** Empty author and source-name fields stay blank,
+///   matching the frozen row; the latest chapter uses the frozen
+///   `无最新章节信息` placeholder.
+/// * **Word count (operator decision #119 B).** The selected chapter body passes
+///   through `ContentProcessing.content` with `includeTitle: false`. Rules are
+///   selected for the candidate's own title and source URL. Conversion follows
+///   `ReaderScriptSetting.resolve`: the existing book override in switch mode,
+///   and the global choice in plain search. Re-segmentation remains off, the
+///   product reader's current default. A processing notice produces the frozen
+///   failure line; no `onRuleDisabled` callback is supplied, so displaying a
+///   count never persists a rule change.
 /// * **The scores and the order.** The frozen comparator
 ///   (`ChangeBookSourceViewModel.kt:84-95`) reads `getBookScore`, then
 ///   `SourceConfig.getSourceScore(it.origin)`, then — while
@@ -179,10 +157,10 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   the parsed `^\[(\d+)]` chapter number and the descending word count, and
 ///   finally `it.originOrder` ascending. This page orders the same way, over the
 ///   space's two score settings — the book's own absolute score under
-///   `bookScore:<origin>|<name>|<author>` and the source's running sum of those
-///   books' changes under the source's URL (`SourceConfig.kt:9-29`), both 0 when
-///   absent, the state a fresh space is in — and over the word-count fields #115
-///   already fetches. The frozen row's good/bad pair
+///   `bookScore:<JSON tuple [origin, name, author]>` and the source's running sum
+///   under its URL (`SourceConfig.kt:9-29`). Both default to 0 in a fresh space;
+///   the comparator also uses the word-count fields #115 fetches. The frozen
+///   row's good/bad pair
 ///   (`ChangeBookSourceAdapter.kt:85-118` and its listeners, `:135-176`, whose
 ///   values are the frozen 1/0/-1) is the score control in switch mode: the
 ///   accent colour is the chosen direction, the faded one is not, and tapping
@@ -192,13 +170,11 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   the list in place — no new search, no field already fetched dropped. The
 ///   frozen's `originOrder` is this page's `customOrder`-then-URL source order
 ///   (`SpaceStore.allSources`).
-/// * **The tick's two address texts.** Both sides are the *resolved* target, as
-///   the frozen's are. A row whose stored `sourceBookUrl` is a verbatim address
-///   text rather than a resolved one — the Legado backup import keeps the
-///   backup's `bookUrl` as it stands, option tail and all
-///   (`legado_full_backup.dart:466`), and `Uri.parse(text).toString()` is not
-///   the text again — can therefore miss the tick where the frozen's comparison
-///   of two stored texts would have matched. Recorded, not converted.
+/// * **The tick's two address texts.** A book imported from Legado may retain
+///   the verbatim `bookUrl`, option tail included (`legado_full_backup.dart:466`);
+///   a book picked in this product stores the resolved URL. The marker accepts
+///   either `HtmlBook.address` or the resolved `HtmlBook.url`, without relying on
+///   URI normalization to recreate the imported text.
 /// * **A candidate whose details or table of contents do not answer.** The
 ///   frozen chain throws out of its source's `forEach` (`:251-260`), so with the
 ///   switch on that candidate never reaches the list at all; this page keeps it
@@ -246,6 +222,7 @@ class PreciseSearchPage extends StatefulWidget {
     this.initialAuthor,
     this.transport,
     this.openPipeline,
+    this.convert,
   });
 
   /// The space's shelf: the sources that can be searched, the host surface the
@@ -274,6 +251,10 @@ class PreciseSearchPage extends StatefulWidget {
   /// native rule adapter (the binding never settles flutter_rust_bridge's
   /// pending work).
   final BookSourcePipeline Function(Map<String, dynamic> source)? openPipeline;
+
+  /// Conversion boundary shared with [ContentProcessing]; null uses the native
+  /// reader engine.
+  final String Function(String text, ConvertTarget target)? convert;
 
   @override
   State<PreciseSearchPage> createState() => _PreciseSearchPageState();
@@ -696,10 +677,26 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
     if (pending.isEmpty) return;
     if (mounted) setState(() => running = true);
     try {
+      final replaceRules = await widget.service.store.replaceRules();
+      final script = await ReaderScriptSetting.resolve(
+        widget.service.store,
+        bookId: widget.switchBook?.book.id ?? '',
+      );
       for (final hit in pending) {
         if (!_isCurrent(generation) || !loadWordCount) return;
-        await _loadWordCount(hit, generation);
+        await _loadWordCount(
+          hit,
+          generation,
+          replaceRules: replaceRules,
+          script: script,
+        );
         if (mounted) setState(() {});
+      }
+    } on Object catch (failure) {
+      if (_isCurrent(generation)) {
+        setState(
+          () => error = AppLocalizations.of(context).searchFailed('$failure'),
+        );
       }
     } finally {
       if (mounted) {
@@ -723,10 +720,16 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// (the frozen `chapters.lastIndex`). The frozen measures the content stage's
   /// own failure into `获取字数失败` and `-1` rather than failing the search, and
   /// this does the same; its `startTime` starts after the table of contents, so
-  /// [PreciseSearchHit.respondTime] covers the content stage alone. A details or
-  /// TOC stage that does not answer leaves all three fields at their defaults,
+  /// [PreciseSearchHit.respondTime] covers fetching and processing the chosen
+  /// chapter. A details or TOC stage that does not answer leaves all three fields
   /// and the candidate keeps its place in the list.
-  Future<void> _loadWordCount(PreciseSearchHit hit, int generation) async {
+  Future<void> _loadWordCount(
+    PreciseSearchHit hit,
+    int generation, {
+    required List<ReplaceRule> replaceRules,
+    required ConvertTarget? script,
+  }) async {
+    final l10n = AppLocalizations.of(context);
     final book = widget.switchBook;
     final pipeline = _openPipeline(hit.source);
     Future<T> run<T>(Future<T> Function() analysis) =>
@@ -762,9 +765,32 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
             nextChapterUrl: nextChapterUrl,
           ),
         );
-        hit.chapterWordCount = body.text.length;
-        hit.chapterWordCountText =
-            '[${index + 1}] $title\n字数：${body.text.length}';
+        String? processingFailure;
+        final processed = await ContentProcessing(
+          rules: ReplaceRuleSet.forBook(
+            replaceRules,
+            bookName: hit.book.title,
+            bookOrigin: hit.sourceRef,
+          ),
+          bookName: hit.book.title,
+          script: script,
+          convert: widget.convert ?? TextEngine.convertTo,
+          useReplaceRule: true,
+          useReSegment: false,
+          onNotice: (message) {
+            processingFailure ??= message.text(l10n);
+          },
+          // Word-count display must report a timed-out rule, not disable it.
+        ).content(body.text, chapterTitle: chapter.name, includeTitle: false);
+        if (!_isCurrent(generation) || !loadWordCount) return;
+        if (processingFailure case final failure?) {
+          hit.chapterWordCount = -1;
+          hit.chapterWordCountText = '[${index + 1}] $title\n获取字数失败：$failure';
+        } else {
+          hit.chapterWordCount = processed.text.length;
+          hit.chapterWordCountText =
+              '[${index + 1}] $title\n字数：${processed.text.length}';
+        }
       } on Object catch (failure) {
         hit.chapterWordCount = -1;
         hit.chapterWordCountText = '[${index + 1}] $title\n获取字数失败：$failure';
@@ -843,13 +869,12 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   int _storedScore(String? stored) => int.tryParse(stored ?? '') ?? 0;
 
   /// The frozen `SourceConfig.getBookScore`'s key (`SourceConfig.kt:11-19`):
-  /// the source's URL, the book's *own* name and its author, packed into one
-  /// settings key ([_bookScorePrefix], [_bookScoreFieldSeparator]). It is the
+  /// the source's URL, the book's *own* name and its author, packed as one
+  /// JSON tuple under [_bookScorePrefix]. It is the
   /// candidate's identity as the search page produced it, which is the frozen
   /// `SearchBook`'s own `origin`/`name`/`author`.
   String _bookScoreKey(PreciseSearchHit hit) =>
-      '$_bookScorePrefix${hit.sourceRef}$_bookScoreFieldSeparator'
-      '${hit.book.title}$_bookScoreFieldSeparator${hit.book.author}';
+      '$_bookScorePrefix${jsonEncode([hit.sourceRef, hit.book.title, hit.book.author])}';
 
   /// The frozen `SourceConfig.getSourceScore`'s key (`SourceConfig.kt:17`,
   /// `putInt(origin, …)`): the source's own URL, a key no other setting of this
@@ -1257,15 +1282,14 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// respond-time lines.
   Widget _candidate(PreciseSearchHit hit, AppLocalizations l10n, bool running) {
     final book = widget.switchBook;
-    // The frozen `callBack.oldBookUrl == item.bookUrl` (`:63-67`), both sides the
-    // *resolved* target: the frozen resolves the rule's own `bookUrl` before the
-    // dialog ever compares it (`BookList.kt:272`, `getString(ruleBookUrl, isUrl
-    // = true)`), and the shelf stores that same resolved target
-    // (`ShelfService._ensureBook`/`switchSource` write `'${book.url}'`).
-    // Comparing the rule's raw text (`HtmlBook.address`) instead would decline
-    // the tick for every source whose search rule answers a relative href.
+    // Imported books may retain the rule's raw `bookUrl` (including its option
+    // tail); books picked in this product store the resolved URL. Match either
+    // representation so relative links still match the resolved shelf URL and
+    // imported verbatim addresses still match without URI normalization.
     final current =
-        book != null && book.book.sourceBookUrl == '${hit.book.url}';
+        book != null &&
+        (book.book.sourceBookUrl == hit.book.address ||
+            book.book.sourceBookUrl == '${hit.book.url}');
     final wordCountText = hit.chapterWordCountText;
     return Card(
       child: ListTile(
@@ -1279,8 +1303,8 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           children: [
             Text(
               [
-                hit.book.author.isEmpty ? l10n.noAuthor : hit.book.author,
-                hit.sourceName,
+                if (hit.book.author.isNotEmpty) hit.book.author,
+                if (hit.sourceName.isNotEmpty) hit.sourceName,
                 if (hit.exact) l10n.exactMatch,
               ].join(' · '),
             ),
