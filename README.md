@@ -82,7 +82,12 @@ executed evidence is not published here), and the CI artifacts older notes cite.
 
 Requirements: Flutter 3.44.6 (Dart SDK `^3.12.2`), a Rust toolchain
 (`1.97.0` in CI) for the native library, Python 3 for the gate runner, and the
-WebView2 Runtime on Windows.
+WebView2 Runtime on Windows. On Linux, the operator-run
+[`tool/bootstrap_linux.sh`](tool/bootstrap_linux.sh) installs the Linux CI
+build packages and prepares those pinned Flutter and Rust toolchains (with
+`rustup` already installed). Review the script before running it; it uses
+`sudo apt-get` and downloads the Flutter SDK. It is not run by CI or as part of a
+lane.
 
 ```bash
 flutter pub get --enforce-lockfile
