@@ -519,17 +519,23 @@ jobs:
                   libc_fault = re.search(
                       r'(?m)^#0\s+.*from\s+.*libc\.so', after_boundary, re.IGNORECASE
                   )
-                  transfer_callsite = re.search(
+                  transfer_callsites = list(re.finditer(
                       r'(?m)^#1\s+.*js_array_buffer_transfer.*quickjs\.c:\d+', after_boundary
+                  ))
+                  source_after_transfer_frame = (
+                      after_boundary[transfer_callsites[-1].end():] if transfer_callsites else ""
                   )
                   memset_callsite = re.search(
-                      r'(?m)^\s*\d+\s+.*\bmemset\s*\(', after_boundary
+                      r'(?m)^\s*\d+\s+.*\bmemset\s*\(', source_after_transfer_frame
                   )
                   transfer_memset_fault = (
                       status == 1
-                      and "Program received signal SIGSEGV" in after_boundary
+                      and re.search(
+                          r'(?m)^(?:Program|Thread\s+\d+(?:\s+"[^"]*")?)\s+received signal SIGSEGV\b',
+                          after_boundary,
+                      )
                       and libc_fault
-                      and transfer_callsite
+                      and transfer_callsites
                       and memset_callsite
                   )
                   if not (assertion_failure or transfer_memset_fault):
