@@ -285,7 +285,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       if (group != null || requested != chosenGroup) {
         await store.putSetting('searchGroup', chosenGroup);
       }
-      if (!_isCurrent(generation)) return;
+      if (!mounted || !_isCurrent(generation)) return;
       final l10n = AppLocalizations.of(context);
       setState(() {
         searchGroup = chosenGroup;
@@ -301,8 +301,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
             ? l10n.noEnabledSourcesInSpace
             : l10n.chooseSourcesToSearch;
       });
-      if (_name.text.trim().isNotEmpty && eligible.isNotEmpty)
+      if (_name.text.trim().isNotEmpty && eligible.isNotEmpty) {
         unawaited(search());
+      }
     } on Object catch (failure) {
       if (_isCurrent(generation)) {
         setState(() {
@@ -355,8 +356,12 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         !_isCurrent(generation) ||
         hits.isNotEmpty ||
         failures.isNotEmpty ||
-        searchGroup.isEmpty)
+        searchGroup.isEmpty) {
       return;
+    }
+    if (!mounted) {
+      return;
+    }
     final group = searchGroup;
     final l10n = AppLocalizations.of(context);
     final allGroups = await showDialog<bool>(
@@ -378,8 +383,9 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         ],
       ),
     );
-    if (allGroups == true && _isCurrent(generation))
+    if (allGroups == true && _isCurrent(generation)) {
       await _loadSources(group: '');
+    }
   }
 
   Future<bool> _runSearch(int generation) async {
