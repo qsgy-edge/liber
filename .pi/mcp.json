@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "dart-mcp-server": {
+    "dart": {
       "command": "dart",
       "args": ["mcp-server", "--force-roots-fallback", "--enable", "all"],
       "exposure": "deferred"
