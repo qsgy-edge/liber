@@ -451,9 +451,14 @@ class LegacyImport {
       final existing =
           await store.localBookByOriginalKey(rootId, relative) ??
           await store.localBook(rootId, relative);
+      final currentFile = existing == null
+          ? null
+          : await store.localFile(existing.rootId!, existing.relativePath!);
       final moved =
           existing != null &&
-          (existing.rootId != rootId || existing.relativePath != relative);
+          (existing.rootId != rootId ||
+              existing.relativePath != relative ||
+              (currentFile?.locator != null && currentFile!.locator != path));
       final exists = moved
           ? !existing.needsRelink
           : path.isNotEmpty && await File(path).exists();
@@ -493,6 +498,15 @@ class LegacyImport {
         localFiles++;
       }
 
+      final currentProgress = await store.progressOf(id);
+      // A retired snapshot cannot replace the position already established
+      // against the current managed file's text and anchors.
+      if (currentProgress != null &&
+          (currentProgress.textLength != null ||
+              currentProgress.anchor != null ||
+              currentProgress.chapterKey != null)) {
+        continue;
+      }
       final advanced = await store.saveProgress(
         ProgressCompanion.insert(
           bookId: id,

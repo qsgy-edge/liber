@@ -559,7 +559,7 @@ class LegadoFullBackupImport {
       );
       totals.books++;
       if (local) totals.localBooks++;
-      await _writeProgress(id, book, totals);
+      await _writeProgress(id, book, totals, local: local);
       await _writeMembership(id, book, groupIds, totals);
     }
   }
@@ -577,8 +577,20 @@ class LegadoFullBackupImport {
   Future<void> _writeProgress(
     String bookId,
     Map<String, dynamic> book,
-    _Totals totals,
-  ) async {
+    _Totals totals, {
+    required bool local,
+  }) async {
+    // A native local position is an absolute text offset with reader anchors.
+    // Legado's chapter-relative tuple cannot order or replace those facts.
+    if (local) {
+      final current = await store.progressOf(bookId);
+      if (current != null &&
+          (current.textLength != null ||
+              current.anchor != null ||
+              current.chapterKey != null)) {
+        return;
+      }
+    }
     final chapterIndex = _legacyInt(book['durChapterIndex']);
     final textOffset = _legacyInt(book['durChapterPos']);
     final updatedAt = _legacyInt(book['durChapterTime']);

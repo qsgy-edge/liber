@@ -100,6 +100,13 @@ void main() {
         expect(moved.id, first.id);
         expect(moved.rootId, first.rootId);
         expect(await File(updated.path).readAsString(), prefix + text);
+        await library.deletePreviousCopies(migration);
+        expect(await File(updated.path).exists(), isFalse);
+        expect(await File(moved.path).readAsString(), prefix + text);
+        // Only the migration's exact superseded copy is removed. The retained
+        // earlier version and independently downloaded source are untouched.
+        expect(await File(first.path).readAsString(), text);
+        expect(await source.readAsString(), prefix + text);
         await space.reopen();
         library = LocalLibrary(space.store, access: access);
         await library.load();

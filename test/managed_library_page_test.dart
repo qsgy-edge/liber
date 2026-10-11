@@ -116,6 +116,66 @@ void main() {
   );
   tearDown(() => deleteTempDirectory(scratch));
 
+  testWidgets(
+    'shelf removal hides the book while retaining its file and progress',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() async {
+        final io = MemoryLibraryAccess();
+        final access = PickerAccess(io)..selectedDirectory = io.addRoot('one');
+        access.selectedFiles = [
+          io.addFile('source-one', 'book.txt', 'first version'),
+        ];
+        final store = await openPage(tester, scratch, access);
+        try {
+          await importCurrentSelection(tester);
+          final book = (await store.localBooks()).single;
+          await store.putProgress(
+            ProgressCompanion(
+              bookId: Value(book.id),
+              textOffset: const Value(8),
+            ),
+          );
+          final managedFile = (await store.localFile(
+            book.rootId!,
+            book.relativePath!,
+          ))!;
+          final menu = find.byType(PopupMenuButton<String>);
+          await tester.ensureVisible(menu.last);
+          await tester.pump();
+          await tester.tap(menu.last);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Remove from the shelf (progress kept)'));
+          await tester.pump();
+          await waitFor(tester, () => idle(tester));
+          expect((await store.bookById(book.id))!.shelved, isFalse);
+          await tester.tap(find.text('Bookshelf'));
+          await tester.pump(const Duration(milliseconds: 350));
+          await Future<void>.delayed(const Duration(milliseconds: 60));
+          await tester.pump();
+          expect(
+            find.text(book.title),
+            findsNothing,
+            reason: 'Removed books cannot still be listed on the bookshelf',
+          );
+          expect(await store.bookById(book.id), isNotNull);
+          expect((await store.progressOf(book.id))!.textOffset, 8);
+          expect(io.bytes[managedFile.locator], 'first version');
+          expect(io.deleted, isEmpty);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          await store.close();
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+        }
+      });
+    },
+  );
+
   testWidgets('recursive discovery finds nested books without importing them', (
     tester,
   ) async {

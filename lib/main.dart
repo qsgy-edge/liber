@@ -170,6 +170,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
       widget.libraryAccess ?? PlatformLibraryAccess();
   bool _libraryBusy = false;
   List<ShelfEntry> _importedBooks = const <ShelfEntry>[];
+  Set<String> _localShelfIds = const <String>{};
   List<ImportedBookSource> _sources = const <ImportedBookSource>[];
   MigrationImportRecord? _migrationResult;
   String? _migrationMessage;
@@ -226,6 +227,9 @@ class _LiberHomePageState extends State<LiberHomePage> {
       await library.load();
       final imported = await shelf.migratedBooks();
       final sources = await shelf.sources();
+      final localShelfIds = (await store.shelf(
+        kind: 'local',
+      )).map((book) => book.id).toSet();
       final path = workspace.databaseFile(store.spaceId).path;
       if (!mounted) return;
       setState(() {
@@ -235,6 +239,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
         _spaceImport = report;
         _spaceStorePath = path;
         _importedBooks = imported;
+        _localShelfIds = localShelfIds;
         _sources = sources;
         if (importError != null) _spaceMessage = importError;
       });
@@ -366,10 +371,14 @@ class _LiberHomePageState extends State<LiberHomePage> {
     if (shelf == null) return;
     final sources = await shelf.sources();
     final imported = await shelf.migratedBooks();
+    final localShelfIds = (await shelf.store.shelf(
+      kind: 'local',
+    )).map((book) => book.id).toSet();
     if (!mounted) return;
     setState(() {
       _sources = sources;
       _importedBooks = imported;
+      _localShelfIds = localShelfIds;
       _onlineRevision++;
     });
   }
@@ -550,7 +559,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
     final pages = <Widget>[
       _BookshelfPage(
         run: _run,
-        localBooks: library?.books ?? const <LocalBook>[],
+        localBooks:
+            library?.books
+                .where((book) => _localShelfIds.contains(book.id))
+                .toList() ??
+            const <LocalBook>[],
         importedBooks: _importedBooks,
         onlineRevision: _onlineRevision,
         shelf: shelf,

@@ -23,10 +23,15 @@ void main() {
         final archive = LegadoBackupArchive.decode(
           backupZip(
             books: [
-              localBook(
-                'content://provider/document/old-book',
-                originName: 'book.txt',
-              ),
+              {
+                ...localBook(
+                  'content://provider/document/old-book',
+                  originName: 'book.txt',
+                ),
+                'durChapterIndex': 100,
+                'durChapterPos': 50,
+                'durChapterTime': 1,
+              },
             ],
           ),
         );
@@ -74,9 +79,16 @@ void main() {
           ProgressCompanion(
             bookId: Value(original.id),
             textOffset: const Value(800),
+            chapterIndex: const Value(2),
+            chapterKey: const Value('native-chapter-2'),
+            anchor: const Value('当前正文锚点'),
+            lineIndex: const Value(17),
+            offsetInLine: const Value(25),
+            textLength: const Value(900),
             updatedAt: const Value(999999),
           ),
         );
+        final nativeProgress = (await space.store.progressOf(original.id))!;
         if (reclaimed) {
           await space.store.putBook(
             BooksCompanion(
@@ -99,7 +111,12 @@ void main() {
         expect(current.originalRootId, original.rootId);
         expect(current.originalRelativePath, original.relativePath);
         expect(current.title, '用户的书名');
-        expect((await space.store.progressOf(original.id))!.textOffset, 800);
+        expect(
+          await space.store.progressOf(original.id),
+          nativeProgress,
+          reason:
+              'An older chapter-relative snapshot cannot replace the current native position',
+        );
         expect((await space.store.localFile(root.id, key))!.textLength, 900);
         expect(await file.readAsString(), contains('已经迁入'));
         if (reclaimed) {
@@ -116,9 +133,13 @@ void main() {
     );
   }
 
-  for (final reusedRootId in [false, true]) {
+  for (final (reusedRootId, retainedKey) in [
+    (false, false),
+    (true, false),
+    (true, true),
+  ]) {
     test(
-      'legacy reimport preserves moved book and root metadata (reuse=$reusedRootId)',
+      'legacy reimport preserves moved book and root metadata (reuse=$reusedRootId, sameKey=$retainedKey)',
       () async {
         final oldFolder = Directory('${space.directory.path}/old-books');
         await oldFolder.create();
@@ -133,6 +154,9 @@ void main() {
         legacyData['books'] = (legacyData['books'] as List)
             .where((entry) => (entry as Map)['relativePath'] == 'kept.txt')
             .toList();
+        for (final entry in legacyData['books'] as List) {
+          (entry as Map)['textOffset'] = 65535;
+        }
         await legacyJson.writeAsString(jsonEncode(legacyData));
         final legacy = LegacyImport(home: home.directory);
         await legacy.run(space.store);
@@ -142,7 +166,7 @@ void main() {
         ))!;
         final newFolder = Directory('${space.directory.path}/managed');
         await newFolder.create();
-        const key = 'kept (2).md';
+        final key = retainedKey ? 'kept.txt' : 'kept (2).md';
         final newFile = File('${newFolder.path}/$key');
         await newFile.writeAsString('新版和用户进度');
         final root = await space.store.putLocalRoot(
@@ -159,9 +183,11 @@ void main() {
               .toCompanion(false)
               .copyWith(
                 rootId: Value(root.id),
-                relativePath: const Value(key),
-                originalRootId: Value(original.rootId),
-                originalRelativePath: Value(original.relativePath),
+                relativePath: Value(key),
+                originalRootId: Value(retainedKey ? null : original.rootId),
+                originalRelativePath: Value(
+                  retainedKey ? null : original.relativePath,
+                ),
                 needsRelink: const Value(false),
                 title: const Value('用户的书名'),
                 format: const Value('md'),
@@ -171,10 +197,10 @@ void main() {
         await space.store.putLocalFile(
           LocalFilesCompanion(
             rootId: Value(root.id),
-            relativePath: const Value(key),
+            relativePath: Value(key),
             bookId: Value(original.id),
             locator: Value(newFile.path),
-            name: const Value(key),
+            name: Value(key),
             importName: const Value('kept.txt'),
             format: const Value('md'),
             textLength: const Value(900),
@@ -185,15 +211,25 @@ void main() {
           ProgressCompanion(
             bookId: Value(original.id),
             textOffset: const Value(800),
+            chapterIndex: const Value(0),
+            chapterKey: const Value('native-current-chapter'),
+            anchor: const Value('当前已恢复的正文锚点'),
+            lineIndex: const Value(17),
+            offsetInLine: const Value(25),
+            textLength: const Value(900),
             updatedAt: const Value(999999),
           ),
         );
-        await (space.store.db.delete(space.store.db.localFiles)..where(
-              (file) =>
-                  file.rootId.equals(original.rootId!) &
-                  file.relativePath.equals(original.relativePath!),
-            ))
-            .go();
+        final nativeProgress = (await space.store.progressOf(original.id))!;
+        if (!retainedKey) {
+          await (space.store.db.delete(space.store.db.localFiles)..where(
+                (file) =>
+                    file.rootId.equals(original.rootId!) &
+                    file.relativePath.equals(original.relativePath!),
+              ))
+              .go();
+        }
+        final beforeFile = (await space.store.localFile(root.id, key))!;
         await originalFile.delete();
         final before = await space.store.localBooks();
         await legacy.run(space.store, force: true);
@@ -204,9 +240,12 @@ void main() {
         expect(current.format, 'md');
         expect(current.title, '用户的书名');
         expect(current.needsRelink, isFalse);
-        expect(current.originalRootId, original.rootId);
-        expect(current.originalRelativePath, original.relativePath);
-        expect((await space.store.progressOf(original.id))!.textOffset, 800);
+        expect(current.originalRootId, retainedKey ? null : original.rootId);
+        expect(
+          current.originalRelativePath,
+          retainedKey ? null : original.relativePath,
+        );
+        expect(await space.store.progressOf(original.id), nativeProgress);
         final roots = await space.store.allLocalRoots();
         final currentRoot = roots.singleWhere((r) => r.id == root.id);
         expect(currentRoot.displayName, 'Managed books');
@@ -214,13 +253,21 @@ void main() {
         expect(currentRoot.identity, 'verified-new-location');
         expect(currentRoot.needsRelink, isFalse);
         final storedFile = (await space.store.localFile(root.id, key))!;
+        expect(
+          storedFile,
+          beforeFile,
+          reason:
+              'An old same-key snapshot cannot alter current file/index facts',
+        );
         expect(storedFile.textLength, 900);
         expect(storedFile.needsRelink, isFalse);
-        expect(
-          (await space.store.localFile(original.rootId!, 'kept.txt'))?.bookId,
-          isNot(original.id),
-          reason: 'Reimport cannot create a second current file association',
-        );
+        if (!retainedKey) {
+          expect(
+            (await space.store.localFile(original.rootId!, 'kept.txt'))?.bookId,
+            isNot(original.id),
+            reason: 'Reimport cannot create a second current file association',
+          );
+        }
         expect(await newFile.readAsString(), '新版和用户进度');
         expect(jsonDecode(current.raw!)['title'], 'kept.txt');
       },
