@@ -1092,12 +1092,34 @@ class LocalLibrary {
             'Managed file needs relinking',
           );
         }
+        LibraryFileReference? present;
+        try {
+          present = await access.stat(reference);
+        } on LibraryAccessFailure catch (error) {
+          if (error.code != LibraryAccessError.missing) rethrow;
+        }
+        if (present == null) {
+          // Absence cannot prove ownership, but the stored book identity must
+          // remain available to the explicit update/conflict decision.
+          candidates.add(
+            _LibraryCandidate(
+              reference,
+              file.importName ?? reference.name,
+              await store.bookById(file.bookId!),
+            ),
+          );
+          continue;
+        }
+        final member = await access.fileInRoot(location, present);
+        if (member == null) {
+          throw const LibraryAccessFailure(
+            LibraryAccessError.verification,
+            'Stored candidate membership could not be verified',
+          );
+        }
+        final owner = (await _ownersOf(location, [member]))[member.key];
         candidates.add(
-          _LibraryCandidate(
-            reference,
-            file.importName ?? reference.name,
-            await store.bookById(file.bookId!),
-          ),
+          _LibraryCandidate(member, file.importName ?? reference.name, owner),
         );
       }
     }

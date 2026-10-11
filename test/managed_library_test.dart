@@ -1020,6 +1020,87 @@ void main() {
   );
 
   test(
+    'external equal import reuses the unique owner of an unlisted nested candidate',
+    () async {
+      final managed = await import(
+        access.addFile('managed-source', 'book.txt', 'nested'),
+      );
+      access.nestedFiles.add(managed.path);
+      await library.updateOffset(managed.id, 42);
+      await store.setShelved(managed.id, false);
+      final copies = access.copyCount;
+      final reused = await import(
+        access.addFile('external-repeat', 'book.txt', 'nested'),
+      );
+      expect(reused.id, managed.id);
+      expect(reused.textOffset, 42);
+      expect((await store.bookById(managed.id))!.shelved, isTrue);
+      expect(access.copyCount, copies);
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test(
+    'typed missing stored candidate retains identity for explicit update',
+    () async {
+      final managed = await import(
+        access.addFile('managed-source', 'book.txt', 'old'),
+      );
+      access.nestedFiles.add(managed.path);
+      await library.updateOffset(managed.id, 18);
+      await library.deleteBookFile(managed.id);
+      access.statFailures[managed.path] = LibraryAccessError.missing;
+      var conflicts = 0;
+      final updated = await import(
+        access.addFile('replacement', 'book.txt', 'new'),
+        resolve: (conflict) async {
+          conflicts++;
+          expect(conflict.existingBookId, managed.id);
+          expect(conflict.canUpdate, isTrue);
+          return LibraryConflictChoice.update;
+        },
+      );
+      expect(conflicts, 1);
+      expect(updated.id, managed.id);
+      expect(updated.textOffset, 18);
+      expect((await store.bookById(managed.id))!.needsRelink, isFalse);
+      expect(access.bytes[updated.path], 'new');
+    },
+  );
+
+  for (final code in [
+    LibraryAccessError.permission,
+    LibraryAccessError.unsupported,
+    LibraryAccessError.verification,
+    LibraryAccessError.io,
+  ]) {
+    test(
+      'unlisted stored candidate propagates ${code.name} from stat',
+      () async {
+        final managed = await import(
+          access.addFile('managed-source', 'book.txt', 'nested'),
+        );
+        access.nestedFiles.add(managed.path);
+        await library.updateOffset(managed.id, 29);
+        await store.setShelved(managed.id, false);
+        final booksBefore = await store.localBooks();
+        final progressBefore = await store.progressOf(managed.id);
+        final copies = access.copyCount;
+        access.statFailures[managed.path] = code;
+        await expectLater(
+          import(access.addFile('external-repeat', 'book.txt', 'nested')),
+          throwsA(accessError(code)),
+        );
+        expect(await store.localBooks(), booksBefore);
+        expect(await store.progressOf(managed.id), progressBefore);
+        expect(access.bytes[managed.path], 'nested');
+        expect(access.copyCount, copies);
+        expect(access.deleted, isEmpty);
+      },
+    );
+  }
+
+  test(
     'import refuses multiple verified owners of one physical file',
     () async {
       final managed = await import(
@@ -1447,6 +1528,7 @@ class MemoryLibraryAccess implements LibraryAccess {
   final rootFailures = <String, LibraryAccessError>{};
   final inspectedRoots = <String>[];
   final fingerprintFailures = <String, LibraryAccessError>{};
+  final statFailures = <String, LibraryAccessError>{};
   final nestedFiles = <String>{};
   LibraryAccessError? listFailure;
   LibraryAccessError? membershipFailure;
@@ -1517,6 +1599,7 @@ class MemoryLibraryAccess implements LibraryAccess {
 
   @override
   Future<LibraryFileReference?> stat(LibraryFileReference file) async {
+    if (statFailures[file.locator] case final failure?) fail(failure);
     if (file.root != null) await inspectRoot(file.root!);
     return bytes.containsKey(file.locator) ? files[file.locator] : null;
   }
