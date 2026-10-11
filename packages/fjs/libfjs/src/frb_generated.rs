@@ -28,6 +28,7 @@
 
 use crate::api::bytecode::*;
 use crate::api::engine::*;
+use crate::api::library_files::*;
 use crate::api::runtime::*;
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
 use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
@@ -41,7 +42,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 885283798;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2087631881;
 
 // Section: executor
 
@@ -4197,6 +4198,189 @@ fn wire__crate__api__runtime__JsRuntime_set_memory_limit_impl(
         },
     )
 }
+fn wire__crate__api__library_files__LibraryCopyJob_cancel_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LibraryCopyJob_cancel",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Result::<_, ()>::Ok({
+                    crate::api::library_files::LibraryCopyJob::cancel(&*api_that_guard);
+                })?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library_files__LibraryCopyJob_copied_bytes_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LibraryCopyJob_copied_bytes",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Result::<_, ()>::Ok(
+                    crate::api::library_files::LibraryCopyJob::copied_bytes(&*api_that_guard),
+                )?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__library_files__LibraryCopyJob_copy_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LibraryCopyJob_copy",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>,
+            >>::sse_decode(&mut deserializer);
+            let api_source_path = <String>::sse_decode(&mut deserializer);
+            let api_destination_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::library_files::LibraryFileError>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::library_files::LibraryCopyJob::copy(
+                            &*api_that_guard,
+                            api_source_path,
+                            api_destination_path,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__library_files__LibraryCopyJob_new_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LibraryCopyJob_new",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::library_files::LibraryCopyJob::new())?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__runtime__MemoryUsage_array_count_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -7087,6 +7271,122 @@ fn wire__crate__api__value__js_value_type_name_impl(
         },
     )
 }
+fn wire__crate__api__library_files__library_file_fingerprint_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_file_fingerprint",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::library_files::LibraryFileError>(
+                    (move || {
+                        let output_ok =
+                            crate::api::library_files::library_file_fingerprint(api_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__library_files__library_files_equal_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_files_equal",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_first_path = <String>::sse_decode(&mut deserializer);
+            let api_second_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::library_files::LibraryFileError>(
+                    (move || {
+                        let output_ok = crate::api::library_files::library_files_equal(
+                            api_first_path,
+                            api_second_path,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__library_files__library_replace_file_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "library_replace_file",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_staged_path = <String>::sse_decode(&mut deserializer);
+            let api_destination_path = <String>::sse_decode(&mut deserializer);
+            let api_backup_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::library_files::LibraryFileError>(
+                    (move || {
+                        let output_ok = crate::api::library_files::library_replace_file(
+                            api_staged_path,
+                            api_destination_path,
+                            api_backup_path,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__engine__pause_scoped_execution_global_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -7317,6 +7617,39 @@ fn wire__crate__api__text__text_detect_encoding_impl(
         },
     )
 }
+fn wire__crate__api__text__text_detect_encoding_fd_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "text_detect_encoding_fd",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_fd = <i32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::text::TextEngineError>((move || {
+                    let output_ok = crate::api::text::text_detect_encoding_fd(api_fd)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__text__text_encode_bytes_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -7345,6 +7678,40 @@ fn wire__crate__api__text__text_encode_bytes_impl(
             move |context| {
                 transform_result_sse::<_, crate::api::text::TextEngineError>((move || {
                     let output_ok = crate::api::text::text_encode_bytes(api_text, api_encoding)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__text__text_index_fd_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "text_index_fd",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_fd = <i32>::sse_decode(&mut deserializer);
+            let api_options = <crate::api::text::TextIndexOptions>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::text::TextEngineError>((move || {
+                    let output_ok = crate::api::text::text_index_fd(api_fd, api_options)?;
                     Ok(output_ok)
                 })())
             }
@@ -7412,6 +7779,40 @@ fn wire__crate__api__text__text_read_window_impl(
             move |context| {
                 transform_result_sse::<_, crate::api::text::TextEngineError>((move || {
                     let output_ok = crate::api::text::text_read_window(api_request)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__text__text_read_window_fd_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "text_read_window_fd",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_request =
+                <crate::api::text::TextDescriptorWindowRequest>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, crate::api::text::TextEngineError>((move || {
+                    let output_ok = crate::api::text::text_read_window_fd(api_request)?;
                     Ok(output_ok)
                 })())
             }
@@ -7584,6 +7985,9 @@ flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsRuntime>
 );
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>
+);
+flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MemoryUsage>
 );
 
@@ -7652,6 +8056,16 @@ impl SseDecode for JsRuntime {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <RustOpaqueMoi<
             flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsRuntime>,
+        >>::sse_decode(deserializer);
+        return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
+    }
+}
+
+impl SseDecode for LibraryCopyJob {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <RustOpaqueMoi<
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
     }
@@ -7735,6 +8149,16 @@ impl SseDecode
 
 impl SseDecode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsRuntime>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <usize>::sse_decode(deserializer);
+        return decode_rust_opaque_moi(inner);
+    }
+}
+
+impl SseDecode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -8290,6 +8714,43 @@ impl SseDecode for crate::api::value::JsValue {
     }
 }
 
+impl SseDecode for crate::api::library_files::LibraryCopyResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_bytesCopied = <i64>::sse_decode(deserializer);
+        let mut var_sha256 = <String>::sse_decode(deserializer);
+        return crate::api::library_files::LibraryCopyResult {
+            bytes_copied: var_bytesCopied,
+            sha256: var_sha256,
+        };
+    }
+}
+
+impl SseDecode for crate::api::library_files::LibraryFileError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                return crate::api::library_files::LibraryFileError::Cancelled;
+            }
+            1 => {
+                return crate::api::library_files::LibraryFileError::AlreadyExists;
+            }
+            2 => {
+                return crate::api::library_files::LibraryFileError::VerificationFailed;
+            }
+            3 => {
+                let mut var_field0 = <String>::sse_decode(deserializer);
+                return crate::api::library_files::LibraryFileError::Io(var_field0);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -8628,6 +9089,26 @@ impl SseDecode for crate::api::text::TextChapter {
             byte_offset: var_byteOffset,
             code_unit_offset: var_codeUnitOffset,
             line_index: var_lineIndex,
+        };
+    }
+}
+
+impl SseDecode for crate::api::text::TextDescriptorWindowRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_fd = <i32>::sse_decode(deserializer);
+        let mut var_encoding = <String>::sse_decode(deserializer);
+        let mut var_anchor = <Option<crate::api::text::TextAnchor>>::sse_decode(deserializer);
+        let mut var_codeUnitOffset = <i64>::sse_decode(deserializer);
+        let mut var_maxCodeUnits = <i64>::sse_decode(deserializer);
+        let mut var_maxScanBytes = <i64>::sse_decode(deserializer);
+        return crate::api::text::TextDescriptorWindowRequest {
+            fd: var_fd,
+            encoding: var_encoding,
+            anchor: var_anchor,
+            code_unit_offset: var_codeUnitOffset,
+            max_code_units: var_maxCodeUnits,
+            max_scan_bytes: var_maxScanBytes,
         };
     }
 }
@@ -9057,85 +9538,114 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         69 => wire__crate__api__runtime__JsRuntime_create_impl(port, ptr, rust_vec_len, data_len),
-        109 => wire__crate__api__engine__cancel_scoped_execution_global_impl(
+        82 => wire__crate__api__library_files__LibraryCopyJob_copy_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        110 => wire__crate__api__engine__complete_bridge_request_global_impl(
+        113 => wire__crate__api__engine__cancel_scoped_execution_global_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        111 => wire__crate__api__engine__discard_scoped_execution_global_impl(
+        114 => wire__crate__api__engine__complete_bridge_request_global_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        112 => wire__crate__api__engine__eval_bridge_request_global_impl(
+        115 => wire__crate__api__engine__discard_scoped_execution_global_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        114 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        116 => wire__crate__api__source__js_builtin_options_default_impl(
+        116 => wire__crate__api__engine__eval_bridge_request_global_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        121 => wire__crate__api__source__js_bytecode_endianness_default_impl(
+        118 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        120 => wire__crate__api__source__js_builtin_options_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        125 => wire__crate__api__engine__js_engine_runtime_options_default_impl(
+        125 => wire__crate__api__source__js_bytecode_endianness_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        129 => wire__crate__api__source__js_eval_options_default_impl(
+        129 => wire__crate__api__engine__js_engine_runtime_options_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        136 => wire__crate__api__source__js_module_bytecode_options_default_impl(
+        133 => wire__crate__api__source__js_eval_options_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        143 => wire__crate__api__source__js_script_bytecode_options_default_impl(
+        140 => wire__crate__api__source__js_module_bytecode_options_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        145 => wire__crate__api__value__js_value_default_impl(port, ptr, rust_vec_len, data_len),
-        156 => wire__crate__api__engine__pause_scoped_execution_global_impl(
+        147 => wire__crate__api__source__js_script_bytecode_options_default_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        157 => wire__crate__api__engine__resume_scoped_execution_global_impl(
+        149 => wire__crate__api__value__js_value_default_impl(port, ptr, rust_vec_len, data_len),
+        160 => wire__crate__api__library_files__library_file_fingerprint_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        160 => wire__crate__api__text__text_decode_bytes_impl(port, ptr, rust_vec_len, data_len),
-        162 => wire__crate__api__text__text_detect_encoding_impl(port, ptr, rust_vec_len, data_len),
-        163 => wire__crate__api__text__text_encode_bytes_impl(port, ptr, rust_vec_len, data_len),
-        164 => wire__crate__api__text__text_index_file_impl(port, ptr, rust_vec_len, data_len),
-        165 => wire__crate__api__text__text_read_window_impl(port, ptr, rust_vec_len, data_len),
+        161 => wire__crate__api__library_files__library_files_equal_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        162 => wire__crate__api__library_files__library_replace_file_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        163 => wire__crate__api__engine__pause_scoped_execution_global_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        164 => wire__crate__api__engine__resume_scoped_execution_global_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        167 => wire__crate__api__text__text_decode_bytes_impl(port, ptr, rust_vec_len, data_len),
+        169 => wire__crate__api__text__text_detect_encoding_impl(port, ptr, rust_vec_len, data_len),
+        170 => {
+            wire__crate__api__text__text_detect_encoding_fd_impl(port, ptr, rust_vec_len, data_len)
+        }
+        171 => wire__crate__api__text__text_encode_bytes_impl(port, ptr, rust_vec_len, data_len),
+        172 => wire__crate__api__text__text_index_fd_impl(port, ptr, rust_vec_len, data_len),
+        173 => wire__crate__api__text__text_index_file_impl(port, ptr, rust_vec_len, data_len),
+        174 => wire__crate__api__text__text_read_window_impl(port, ptr, rust_vec_len, data_len),
+        175 => wire__crate__api__text__text_read_window_fd_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -9218,133 +9728,142 @@ fn pde_ffi_dispatcher_sync_impl(
         79 => {
             wire__crate__api__runtime__JsRuntime_set_memory_limit_impl(ptr, rust_vec_len, data_len)
         }
-        80 => wire__crate__api__runtime__MemoryUsage_array_count_impl(ptr, rust_vec_len, data_len),
-        81 => wire__crate__api__runtime__MemoryUsage_atom_count_impl(ptr, rust_vec_len, data_len),
-        82 => wire__crate__api__runtime__MemoryUsage_atom_size_impl(ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__runtime__MemoryUsage_binary_object_count_impl(
+        80 => {
+            wire__crate__api__library_files__LibraryCopyJob_cancel_impl(ptr, rust_vec_len, data_len)
+        }
+        81 => wire__crate__api__library_files__LibraryCopyJob_copied_bytes_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        84 => wire__crate__api__runtime__MemoryUsage_binary_object_size_impl(
+        83 => wire__crate__api__library_files__LibraryCopyJob_new_impl(ptr, rust_vec_len, data_len),
+        84 => wire__crate__api__runtime__MemoryUsage_array_count_impl(ptr, rust_vec_len, data_len),
+        85 => wire__crate__api__runtime__MemoryUsage_atom_count_impl(ptr, rust_vec_len, data_len),
+        86 => wire__crate__api__runtime__MemoryUsage_atom_size_impl(ptr, rust_vec_len, data_len),
+        87 => wire__crate__api__runtime__MemoryUsage_binary_object_count_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        85 => wire__crate__api__runtime__MemoryUsage_c_func_count_impl(ptr, rust_vec_len, data_len),
-        86 => wire__crate__api__runtime__MemoryUsage_fast_array_count_impl(
+        88 => wire__crate__api__runtime__MemoryUsage_binary_object_size_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        87 => wire__crate__api__runtime__MemoryUsage_fast_array_elements_impl(
+        89 => wire__crate__api__runtime__MemoryUsage_c_func_count_impl(ptr, rust_vec_len, data_len),
+        90 => wire__crate__api__runtime__MemoryUsage_fast_array_count_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        88 => wire__crate__api__runtime__MemoryUsage_js_func_code_size_impl(
+        91 => wire__crate__api__runtime__MemoryUsage_fast_array_elements_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        89 => {
+        92 => wire__crate__api__runtime__MemoryUsage_js_func_code_size_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        93 => {
             wire__crate__api__runtime__MemoryUsage_js_func_count_impl(ptr, rust_vec_len, data_len)
         }
-        90 => wire__crate__api__runtime__MemoryUsage_js_func_pc2line_count_impl(
+        94 => wire__crate__api__runtime__MemoryUsage_js_func_pc2line_count_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        91 => wire__crate__api__runtime__MemoryUsage_js_func_pc2line_size_impl(
+        95 => wire__crate__api__runtime__MemoryUsage_js_func_pc2line_size_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        92 => wire__crate__api__runtime__MemoryUsage_js_func_size_impl(ptr, rust_vec_len, data_len),
-        93 => wire__crate__api__runtime__MemoryUsage_malloc_count_impl(ptr, rust_vec_len, data_len),
-        94 => wire__crate__api__runtime__MemoryUsage_malloc_limit_impl(ptr, rust_vec_len, data_len),
-        95 => wire__crate__api__runtime__MemoryUsage_malloc_size_impl(ptr, rust_vec_len, data_len),
-        96 => wire__crate__api__runtime__MemoryUsage_memory_used_count_impl(
+        96 => wire__crate__api__runtime__MemoryUsage_js_func_size_impl(ptr, rust_vec_len, data_len),
+        97 => wire__crate__api__runtime__MemoryUsage_malloc_count_impl(ptr, rust_vec_len, data_len),
+        98 => wire__crate__api__runtime__MemoryUsage_malloc_limit_impl(ptr, rust_vec_len, data_len),
+        99 => wire__crate__api__runtime__MemoryUsage_malloc_size_impl(ptr, rust_vec_len, data_len),
+        100 => wire__crate__api__runtime__MemoryUsage_memory_used_count_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        97 => wire__crate__api__runtime__MemoryUsage_memory_used_size_impl(
+        101 => wire__crate__api__runtime__MemoryUsage_memory_used_size_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        98 => wire__crate__api__runtime__MemoryUsage_obj_count_impl(ptr, rust_vec_len, data_len),
-        99 => wire__crate__api__runtime__MemoryUsage_obj_size_impl(ptr, rust_vec_len, data_len),
-        100 => wire__crate__api__runtime__MemoryUsage_prop_count_impl(ptr, rust_vec_len, data_len),
-        101 => wire__crate__api__runtime__MemoryUsage_prop_size_impl(ptr, rust_vec_len, data_len),
-        102 => wire__crate__api__runtime__MemoryUsage_shape_count_impl(ptr, rust_vec_len, data_len),
-        103 => wire__crate__api__runtime__MemoryUsage_shape_size_impl(ptr, rust_vec_len, data_len),
-        104 => wire__crate__api__runtime__MemoryUsage_str_count_impl(ptr, rust_vec_len, data_len),
-        105 => wire__crate__api__runtime__MemoryUsage_str_size_impl(ptr, rust_vec_len, data_len),
-        106 => wire__crate__api__runtime__MemoryUsage_summary_impl(ptr, rust_vec_len, data_len),
-        107 => wire__crate__api__runtime__MemoryUsage_total_allocations_impl(
+        102 => wire__crate__api__runtime__MemoryUsage_obj_count_impl(ptr, rust_vec_len, data_len),
+        103 => wire__crate__api__runtime__MemoryUsage_obj_size_impl(ptr, rust_vec_len, data_len),
+        104 => wire__crate__api__runtime__MemoryUsage_prop_count_impl(ptr, rust_vec_len, data_len),
+        105 => wire__crate__api__runtime__MemoryUsage_prop_size_impl(ptr, rust_vec_len, data_len),
+        106 => wire__crate__api__runtime__MemoryUsage_shape_count_impl(ptr, rust_vec_len, data_len),
+        107 => wire__crate__api__runtime__MemoryUsage_shape_size_impl(ptr, rust_vec_len, data_len),
+        108 => wire__crate__api__runtime__MemoryUsage_str_count_impl(ptr, rust_vec_len, data_len),
+        109 => wire__crate__api__runtime__MemoryUsage_str_size_impl(ptr, rust_vec_len, data_len),
+        110 => wire__crate__api__runtime__MemoryUsage_summary_impl(ptr, rust_vec_len, data_len),
+        111 => wire__crate__api__runtime__MemoryUsage_total_allocations_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        108 => {
+        112 => {
             wire__crate__api__runtime__MemoryUsage_total_memory_impl(ptr, rust_vec_len, data_len)
         }
-        113 => wire__crate__api__html__html_analyze_impl(ptr, rust_vec_len, data_len),
-        115 => wire__crate__api__source__js_builtin_options_all_impl(ptr, rust_vec_len, data_len),
-        117 => {
+        117 => wire__crate__api__html__html_analyze_impl(ptr, rust_vec_len, data_len),
+        119 => wire__crate__api__source__js_builtin_options_all_impl(ptr, rust_vec_len, data_len),
+        121 => {
             wire__crate__api__source__js_builtin_options_essential_impl(ptr, rust_vec_len, data_len)
         }
-        118 => wire__crate__api__source__js_builtin_options_node_impl(ptr, rust_vec_len, data_len),
-        119 => wire__crate__api__source__js_builtin_options_none_impl(ptr, rust_vec_len, data_len),
-        120 => wire__crate__api__source__js_builtin_options_web_impl(ptr, rust_vec_len, data_len),
-        122 => wire__crate__api__source__js_code_is_bytes_impl(ptr, rust_vec_len, data_len),
-        123 => wire__crate__api__source__js_code_is_code_impl(ptr, rust_vec_len, data_len),
-        124 => wire__crate__api__source__js_code_is_path_impl(ptr, rust_vec_len, data_len),
-        126 => wire__crate__api__error__js_error_code_impl(ptr, rust_vec_len, data_len),
-        127 => wire__crate__api__error__js_error_is_recoverable_impl(ptr, rust_vec_len, data_len),
-        128 => wire__crate__api__error__js_error_to_string_impl(ptr, rust_vec_len, data_len),
-        130 => wire__crate__api__source__js_eval_options_defaults_impl(ptr, rust_vec_len, data_len),
-        131 => wire__crate__api__source__js_eval_options_module_impl(ptr, rust_vec_len, data_len),
-        132 => wire__crate__api__source__js_eval_options_new_impl(ptr, rust_vec_len, data_len),
-        133 => {
+        122 => wire__crate__api__source__js_builtin_options_node_impl(ptr, rust_vec_len, data_len),
+        123 => wire__crate__api__source__js_builtin_options_none_impl(ptr, rust_vec_len, data_len),
+        124 => wire__crate__api__source__js_builtin_options_web_impl(ptr, rust_vec_len, data_len),
+        126 => wire__crate__api__source__js_code_is_bytes_impl(ptr, rust_vec_len, data_len),
+        127 => wire__crate__api__source__js_code_is_code_impl(ptr, rust_vec_len, data_len),
+        128 => wire__crate__api__source__js_code_is_path_impl(ptr, rust_vec_len, data_len),
+        130 => wire__crate__api__error__js_error_code_impl(ptr, rust_vec_len, data_len),
+        131 => wire__crate__api__error__js_error_is_recoverable_impl(ptr, rust_vec_len, data_len),
+        132 => wire__crate__api__error__js_error_to_string_impl(ptr, rust_vec_len, data_len),
+        134 => wire__crate__api__source__js_eval_options_defaults_impl(ptr, rust_vec_len, data_len),
+        135 => wire__crate__api__source__js_eval_options_module_impl(ptr, rust_vec_len, data_len),
+        136 => wire__crate__api__source__js_eval_options_new_impl(ptr, rust_vec_len, data_len),
+        137 => {
             wire__crate__api__source__js_eval_options_with_promise_impl(ptr, rust_vec_len, data_len)
         }
-        134 => wire__crate__api__source__js_module_bytecode_bundle_new_impl(
+        138 => wire__crate__api__source__js_module_bytecode_bundle_new_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        135 => wire__crate__api__source__js_module_bytecode_new_impl(ptr, rust_vec_len, data_len),
-        137 => wire__crate__api__source__js_module_bytecode_options_defaults_impl(
+        139 => wire__crate__api__source__js_module_bytecode_new_impl(ptr, rust_vec_len, data_len),
+        141 => wire__crate__api__source__js_module_bytecode_options_defaults_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        138 => wire__crate__api__source__js_module_bytes_impl(ptr, rust_vec_len, data_len),
-        139 => wire__crate__api__source__js_module_code_impl(ptr, rust_vec_len, data_len),
-        140 => wire__crate__api__source__js_module_new_impl(ptr, rust_vec_len, data_len),
-        141 => wire__crate__api__source__js_module_path_impl(ptr, rust_vec_len, data_len),
-        142 => wire__crate__api__source__js_script_bytecode_new_impl(ptr, rust_vec_len, data_len),
-        144 => wire__crate__api__source__js_script_bytecode_options_defaults_impl(
+        142 => wire__crate__api__source__js_module_bytes_impl(ptr, rust_vec_len, data_len),
+        143 => wire__crate__api__source__js_module_code_impl(ptr, rust_vec_len, data_len),
+        144 => wire__crate__api__source__js_module_new_impl(ptr, rust_vec_len, data_len),
+        145 => wire__crate__api__source__js_module_path_impl(ptr, rust_vec_len, data_len),
+        146 => wire__crate__api__source__js_script_bytecode_new_impl(ptr, rust_vec_len, data_len),
+        148 => wire__crate__api__source__js_script_bytecode_options_defaults_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        146 => wire__crate__api__value__js_value_is_array_impl(ptr, rust_vec_len, data_len),
-        147 => wire__crate__api__value__js_value_is_boolean_impl(ptr, rust_vec_len, data_len),
-        148 => wire__crate__api__value__js_value_is_bytes_impl(ptr, rust_vec_len, data_len),
-        149 => wire__crate__api__value__js_value_is_date_impl(ptr, rust_vec_len, data_len),
-        150 => wire__crate__api__value__js_value_is_none_impl(ptr, rust_vec_len, data_len),
-        151 => wire__crate__api__value__js_value_is_number_impl(ptr, rust_vec_len, data_len),
-        152 => wire__crate__api__value__js_value_is_object_impl(ptr, rust_vec_len, data_len),
-        153 => wire__crate__api__value__js_value_is_primitive_impl(ptr, rust_vec_len, data_len),
-        154 => wire__crate__api__value__js_value_is_string_impl(ptr, rust_vec_len, data_len),
-        155 => wire__crate__api__value__js_value_type_name_impl(ptr, rust_vec_len, data_len),
-        158 => wire__crate__api__text__text_convert_impl(ptr, rust_vec_len, data_len),
-        159 => wire__crate__api__text__text_convert_to_impl(ptr, rust_vec_len, data_len),
-        161 => wire__crate__api__text__text_default_options_impl(ptr, rust_vec_len, data_len),
+        150 => wire__crate__api__value__js_value_is_array_impl(ptr, rust_vec_len, data_len),
+        151 => wire__crate__api__value__js_value_is_boolean_impl(ptr, rust_vec_len, data_len),
+        152 => wire__crate__api__value__js_value_is_bytes_impl(ptr, rust_vec_len, data_len),
+        153 => wire__crate__api__value__js_value_is_date_impl(ptr, rust_vec_len, data_len),
+        154 => wire__crate__api__value__js_value_is_none_impl(ptr, rust_vec_len, data_len),
+        155 => wire__crate__api__value__js_value_is_number_impl(ptr, rust_vec_len, data_len),
+        156 => wire__crate__api__value__js_value_is_object_impl(ptr, rust_vec_len, data_len),
+        157 => wire__crate__api__value__js_value_is_primitive_impl(ptr, rust_vec_len, data_len),
+        158 => wire__crate__api__value__js_value_is_string_impl(ptr, rust_vec_len, data_len),
+        159 => wire__crate__api__value__js_value_type_name_impl(ptr, rust_vec_len, data_len),
+        165 => wire__crate__api__text__text_convert_impl(ptr, rust_vec_len, data_len),
+        166 => wire__crate__api__text__text_convert_to_impl(ptr, rust_vec_len, data_len),
+        168 => wire__crate__api__text__text_default_options_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -9437,6 +9956,21 @@ impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<
 
 impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<JsRuntime>> for JsRuntime {
     fn into_into_dart(self) -> FrbWrapper<JsRuntime> {
+        self.into()
+    }
+}
+
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<LibraryCopyJob> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
+            .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<LibraryCopyJob> {}
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<LibraryCopyJob>> for LibraryCopyJob {
+    fn into_into_dart(self) -> FrbWrapper<LibraryCopyJob> {
         self.into()
     }
 }
@@ -10028,6 +10562,58 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::value::JsValue> for crate::ap
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::library_files::LibraryCopyResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.bytes_copied.into_into_dart().into_dart(),
+            self.sha256.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::library_files::LibraryCopyResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::library_files::LibraryCopyResult>
+    for crate::api::library_files::LibraryCopyResult
+{
+    fn into_into_dart(self) -> crate::api::library_files::LibraryCopyResult {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::library_files::LibraryFileError {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::library_files::LibraryFileError::Cancelled => [0.into_dart()].into_dart(),
+            crate::api::library_files::LibraryFileError::AlreadyExists => {
+                [1.into_dart()].into_dart()
+            }
+            crate::api::library_files::LibraryFileError::VerificationFailed => {
+                [2.into_dart()].into_dart()
+            }
+            crate::api::library_files::LibraryFileError::Io(field0) => {
+                [3.into_dart(), field0.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::library_files::LibraryFileError
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::library_files::LibraryFileError>
+    for crate::api::library_files::LibraryFileError
+{
+    fn into_into_dart(self) -> crate::api::library_files::LibraryFileError {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::text::TextAnchor {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -10063,6 +10649,31 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::text::TextChapter>
     for crate::api::text::TextChapter
 {
     fn into_into_dart(self) -> crate::api::text::TextChapter {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::text::TextDescriptorWindowRequest {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.fd.into_into_dart().into_dart(),
+            self.encoding.into_into_dart().into_dart(),
+            self.anchor.into_into_dart().into_dart(),
+            self.code_unit_offset.into_into_dart().into_dart(),
+            self.max_code_units.into_into_dart().into_dart(),
+            self.max_scan_bytes.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::text::TextDescriptorWindowRequest
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::text::TextDescriptorWindowRequest>
+    for crate::api::text::TextDescriptorWindowRequest
+{
+    fn into_into_dart(self) -> crate::api::text::TextDescriptorWindowRequest {
         self
     }
 }
@@ -10296,6 +10907,13 @@ impl SseEncode for JsRuntime {
     }
 }
 
+impl SseEncode for LibraryCopyJob {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+    }
+}
+
 impl SseEncode for MemoryUsage {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -10377,6 +10995,17 @@ impl SseEncode
 
 impl SseEncode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsRuntime>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        let (ptr, size) = self.sse_encode_raw();
+        <usize>::sse_encode(ptr, serializer);
+        <i32>::sse_encode(size, serializer);
+    }
+}
+
+impl SseEncode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -10840,6 +11469,38 @@ impl SseEncode for crate::api::value::JsValue {
     }
 }
 
+impl SseEncode for crate::api::library_files::LibraryCopyResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i64>::sse_encode(self.bytes_copied, serializer);
+        <String>::sse_encode(self.sha256, serializer);
+    }
+}
+
+impl SseEncode for crate::api::library_files::LibraryFileError {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::library_files::LibraryFileError::Cancelled => {
+                <i32>::sse_encode(0, serializer);
+            }
+            crate::api::library_files::LibraryFileError::AlreadyExists => {
+                <i32>::sse_encode(1, serializer);
+            }
+            crate::api::library_files::LibraryFileError::VerificationFailed => {
+                <i32>::sse_encode(2, serializer);
+            }
+            crate::api::library_files::LibraryFileError::Io(field0) => {
+                <i32>::sse_encode(3, serializer);
+                <String>::sse_encode(field0, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -11117,6 +11778,18 @@ impl SseEncode for crate::api::text::TextChapter {
     }
 }
 
+impl SseEncode for crate::api::text::TextDescriptorWindowRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.fd, serializer);
+        <String>::sse_encode(self.encoding, serializer);
+        <Option<crate::api::text::TextAnchor>>::sse_encode(self.anchor, serializer);
+        <i64>::sse_encode(self.code_unit_offset, serializer);
+        <i64>::sse_encode(self.max_code_units, serializer);
+        <i64>::sse_encode(self.max_scan_bytes, serializer);
+    }
+}
+
 impl SseEncode for crate::api::text::TextDetection {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -11270,6 +11943,7 @@ mod io {
     use super::*;
     use crate::api::bytecode::*;
     use crate::api::engine::*;
+    use crate::api::library_files::*;
     use crate::api::runtime::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
@@ -11366,6 +12040,20 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_fjs_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>::increment_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_fjs_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>::decrement_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_fjs_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
         ptr: *const std::ffi::c_void,
     ) {
@@ -11393,6 +12081,7 @@ mod web {
     use super::*;
     use crate::api::bytecode::*;
     use crate::api::engine::*;
+    use crate::api::library_files::*;
     use crate::api::runtime::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
@@ -11488,6 +12177,20 @@ mod web {
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<JsRuntime>>::decrement_strong_count(ptr as _);
+    }
+
+    #[wasm_bindgen]
+    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>::increment_strong_count(ptr as _);
+    }
+
+    #[wasm_bindgen]
+    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LibraryCopyJob>>::decrement_strong_count(ptr as _);
     }
 
     #[wasm_bindgen]

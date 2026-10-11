@@ -8,8 +8,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'text.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `units`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `convert_index`, `convert_window`, `units`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 /// The defaults the frozen reader starts from: one anchor per 32 KiB, its two
 /// enabled default TXT rules, and a 4 MiB scan limit.
@@ -67,6 +67,20 @@ String textConvert({required String text, required TextDirection direction}) =>
 /// Source rule matches on what it returns.
 String textConvertTo({required String text, required ConvertTarget target}) =>
     LibFjs.instance.api.crateApiTextTextConvertTo(text: text, target: target);
+
+/// Detects using a duplicate; the native read lease must outlive this call.
+Future<TextDetection> textDetectEncodingFd({required int fd}) =>
+    LibFjs.instance.api.crateApiTextTextDetectEncodingFd(fd: fd);
+
+/// Indexes using a duplicate. Do not concurrently seek the caller's lease.
+Future<TextIndex> textIndexFd(
+        {required int fd, required TextIndexOptions options}) =>
+    LibFjs.instance.api.crateApiTextTextIndexFd(fd: fd, options: options);
+
+/// Reads using a duplicate; non-Unix platforms explicitly refuse descriptors.
+Future<TextWindow> textReadWindowFd(
+        {required TextDescriptorWindowRequest request}) =>
+    LibFjs.instance.api.crateApiTextTextReadWindowFd(request: request);
 
 /// What a reader wants the text to look like, wording included.
 ///
@@ -158,6 +172,57 @@ class TextChapter {
           byteOffset == other.byteOffset &&
           codeUnitOffset == other.codeUnitOffset &&
           lineIndex == other.lineIndex;
+}
+
+/// A descriptor window request. The caller holds a fresh read lease until completion.
+class TextDescriptorWindowRequest {
+  /// Borrowed seekable Unix descriptor; the engine owns only its duplicate.
+  final int fd;
+
+  /// The encoding name from the index that produced the anchor.
+  final String encoding;
+
+  /// The nearest anchor the caller has stored, if any.
+  final TextAnchor? anchor;
+
+  /// The code-unit offset the window starts at.
+  final PlatformInt64 codeUnitOffset;
+
+  /// How many code units at most.
+  final PlatformInt64 maxCodeUnits;
+
+  /// The longest scan from the anchor before the read reports stale anchors.
+  final PlatformInt64 maxScanBytes;
+
+  const TextDescriptorWindowRequest({
+    required this.fd,
+    required this.encoding,
+    this.anchor,
+    required this.codeUnitOffset,
+    required this.maxCodeUnits,
+    required this.maxScanBytes,
+  });
+
+  @override
+  int get hashCode =>
+      fd.hashCode ^
+      encoding.hashCode ^
+      anchor.hashCode ^
+      codeUnitOffset.hashCode ^
+      maxCodeUnits.hashCode ^
+      maxScanBytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TextDescriptorWindowRequest &&
+          runtimeType == other.runtimeType &&
+          fd == other.fd &&
+          encoding == other.encoding &&
+          anchor == other.anchor &&
+          codeUnitOffset == other.codeUnitOffset &&
+          maxCodeUnits == other.maxCodeUnits &&
+          maxScanBytes == other.maxScanBytes;
 }
 
 /// Encoding detection's answer for one file.
