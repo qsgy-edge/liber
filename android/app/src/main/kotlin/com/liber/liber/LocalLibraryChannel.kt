@@ -284,7 +284,9 @@ internal class LocalLibraryChannel(private val activity: Activity, messenger: Bi
         if (parent.authority != uri.authority) return false
         if (DocumentsContract.getDocumentId(parent) == DocumentsContract.getDocumentId(uri)) return true
         if (Build.VERSION.SDK_INT < 24) throw Failure("unsupported", "Provider membership proof requires Android 7")
-        try { return DocumentsContract.isChildDocument(resolver, parent, canonical(root, uri)) }
+        // Keep an independently granted child in its original grant context until membership is
+        // proved. Wrapping a nonmember in this tree makes the provider reject it before dispatch.
+        try { return DocumentsContract.isChildDocument(resolver, parent, uri) }
         catch (error: UnsupportedOperationException) { throw Failure("unsupported", "Provider cannot prove document membership") }
     }
 

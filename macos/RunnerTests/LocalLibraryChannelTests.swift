@@ -149,14 +149,81 @@ final class LocalLibraryChannelTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: rootURL.appendingPathComponent("previous.txt")), Data("previous bytes".utf8))
   }
 
+  func testMovedRootResolvesPersistedChildKeyWithoutRelisting() throws {
+    root = try XCTUnwrap(invoke("inspectRoot", ["root": root as Any, "writable": false]) as? [String: Any])
+    let child = rootURL.appendingPathComponent("texts/book.txt")
+    try FileManager.default.createDirectory(at: child.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("book after root move".utf8).write(to: child)
+    var persisted = rooted(child)
+    persisted["key"] = "texts/book.txt"
+    let movedRoot = scratch.appendingPathComponent("another-parent/renamed-managed", isDirectory: true)
+    try FileManager.default.createDirectory(at: movedRoot.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.moveItem(at: rootURL, to: movedRoot)
+
+    // Refresh only the root bookmark. Keep the persisted child locator and root receipt unchanged.
+    let refreshed = try XCTUnwrap(invoke("inspectRoot", ["root": root as Any, "writable": false]) as? [String: Any])
+    let movedChild = movedRoot.appendingPathComponent("texts/book.txt").resolvingSymlinksInPath()
+    let info = try XCTUnwrap(invoke("stat", ["root": refreshed, "file": persisted]) as? [String: Any])
+    let locator = try XCTUnwrap(info["locator"] as? String)
+    XCTAssertEqual(try XCTUnwrap(URL(string: locator)).resolvingSymlinksInPath(), movedChild)
+    XCTAssertEqual(info["key"] as? String, "texts/book.txt")
+    XCTAssertEqual(persisted["locator"] as? String, child.absoluteString)
+    let lease = try XCTUnwrap(invoke("acquireRead", ["root": refreshed, "file": persisted]) as? [String: Any])
+    XCTAssertEqual(try String(contentsOfFile: XCTUnwrap(lease["path"] as? String), encoding: .utf8), "book after root move")
+    XCTAssertNil(invoke("releaseRead", ["token": try XCTUnwrap(lease["token"] as? String)]))
+  }
+
+  func testRootedKeysRejectTraversalEmptyComponentsAndSymlinkEscape() throws {
+    let outside = scratch.appendingPathComponent("outside.txt")
+    try Data("retain outside".utf8).write(to: outside)
+    try FileManager.default.createSymbolicLink(at: rootURL.appendingPathComponent("escape"), withDestinationURL: scratch)
+    try FileManager.default.createSymbolicLink(at: rootURL.appendingPathComponent("linked.txt"), withDestinationURL: outside)
+    for key in ["", "/outside.txt", "../outside.txt", "nested/../outside.txt", "./outside.txt",
+                "nested//book.txt", "nested/", "outside.txt\0ignored", "escape/outside.txt", "linked.txt"] {
+      var receipt = rooted(rootURL.appendingPathComponent("book.txt"))
+      receipt["key"] = key
+      for method in ["stat", "acquireRead", "deleteFile"] {
+        XCTAssertEqual((invoke(method, ["root": root as Any, "file": receipt]) as? FlutterError)?.code, "permission", "\(method): \(key)")
+      }
+    }
+    XCTAssertEqual(try Data(contentsOf: outside), Data("retain outside".utf8))
+  }
+
+  func testRootedReceiptCannotBeReinterpretedUnderAnotherAuthorizedRoot() throws {
+    root = try XCTUnwrap(invoke("inspectRoot", ["root": root as Any, "writable": false]) as? [String: Any])
+    let original = rootURL.appendingPathComponent("book.txt")
+    try Data("original root".utf8).write(to: original)
+    let otherURL = scratch.appendingPathComponent("other-managed", isDirectory: true)
+    try FileManager.default.createDirectory(at: otherURL, withIntermediateDirectories: true)
+    let otherChild = otherURL.appendingPathComponent("book.txt")
+    try Data("other root".utf8).write(to: otherChild)
+    let otherRoot: [String: Any] = ["kind": "apple", "locator": otherURL.absoluteString, "authorization": try authorization(otherURL)]
+    for method in ["stat", "acquireRead", "deleteFile"] {
+      XCTAssertEqual((invoke(method, ["root": otherRoot, "file": rooted(original)]) as? FlutterError)?.code, "permission")
+    }
+    XCTAssertEqual(try Data(contentsOf: original), Data("original root".utf8))
+    XCTAssertEqual(try Data(contentsOf: otherChild), Data("other root".utf8))
+  }
+
   func testInvalidAuthorizationAndOutsideRootDeletionRemainVisible() throws {
     var revoked = root!
     revoked["authorization"] = "not-a-bookmark"
     XCTAssertEqual((invoke("inspectRoot", ["root": revoked, "writable": true]) as? FlutterError)?.code, "permission")
     let outside = scratch.appendingPathComponent("original.txt")
     try Data("retain".utf8).write(to: outside)
-    XCTAssertEqual((invoke("deleteFile", ["root": root as Any, "file": try source(outside)]) as? FlutterError)?.code, "permission")
+    let sameName = rootURL.appendingPathComponent("original.txt")
+    try Data("retain managed sibling".utf8).write(to: sameName)
+    for method in ["stat", "acquireRead", "deleteFile"] {
+      XCTAssertEqual((invoke(method, ["root": root as Any, "file": try source(outside)]) as? FlutterError)?.code, "permission")
+    }
     XCTAssertEqual(try Data(contentsOf: outside), Data("retain".utf8))
+    XCTAssertEqual(try Data(contentsOf: sameName), Data("retain managed sibling".utf8))
+    let originalLease = try XCTUnwrap(invoke("acquireRead", ["file": try source(outside)]) as? [String: Any])
+    XCTAssertEqual(try String(contentsOfFile: XCTUnwrap(originalLease["path"] as? String), encoding: .utf8), "retain")
+    XCTAssertNil(invoke("releaseRead", ["token": try XCTUnwrap(originalLease["token"] as? String)]))
+    let canonical = try XCTUnwrap(invoke("fileInRoot", ["root": root as Any, "file": try source(sameName)]) as? [String: Any])
+    XCTAssertNil(canonical["authorization"])
+    XCTAssertNotNil(invoke("stat", ["root": root as Any, "file": canonical]) as? [String: Any])
     XCTAssertNil(invoke("stat", ["root": root as Any, "file": rooted(rootURL.appendingPathComponent("missing.txt"))]))
   }
 }

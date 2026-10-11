@@ -652,12 +652,35 @@ final class LocalLibraryChannel: NSObject, FlutterPlugin {
     return Failure(code: kind, message: message, details: ["errno": code])
   }
   private func rootedFile(_ file: Map, root: URL) throws -> URL {
-    let url = try fileURL(string(file, "locator"))
+    // A selected source's basename is not a rooted key. fileInRoot must first prove its
+    // membership and return a rooted receipt without the independent source authorization.
+    if let authorization = file["authorization"], !(authorization is NSNull) {
+      throw Failure(code: "permission", message: "Selected source requires a canonical rooted receipt")
+    }
+    if let receiptRoot = try optionalMap(file["root"], "file.root") {
+      guard try string(receiptRoot, "kind") == "apple" else {
+        throw Failure(code: "permission", message: "File receipt belongs to a different root")
+      }
+      let authorizedIdentity = identity(try metadata(root))
+      if receiptRoot["identity"] as? String != authorizedIdentity {
+        // A bookmark can follow a move that also changes native identity. Compare the actual
+        // resolved roots, never their old display names or absolute locator strings.
+        let receiptAccess = try rootScope(receiptRoot); defer { receiptAccess.close() }
+        guard identity(try metadata(receiptAccess.url)) == authorizedIdentity else {
+          throw Failure(code: "permission", message: "File receipt belongs to a different root")
+        }
+      }
+    }
+    guard let key = file["key"] as? String else { throw Failure(code: "io", message: "Invalid file key") }
+    let components = key.components(separatedBy: "/")
+    guard !key.contains("\0"), components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+      throw Failure(code: "permission", message: "File key must be a relative path without traversal or empty components")
+    }
+    // The authorized root bookmark can move while a persisted child's absolute locator stays old.
+    let url = root.appendingPathComponent(key).standardizedFileURL
     guard contains(root, url), url.resolvingSymlinksInPath() != root.resolvingSymlinksInPath() else {
       throw Failure(code: "permission", message: "File is outside the selected root")
     }
-    let relative = url.resolvingSymlinksInPath().pathComponents.dropFirst(root.resolvingSymlinksInPath().pathComponents.count).joined(separator: "/")
-    guard try string(file, "key") == relative else { throw Failure(code: "verification", message: "File key does not match its scoped locator") }
     return url
   }
   private func contains(_ root: URL, _ file: URL) -> Bool {
