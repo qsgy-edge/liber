@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:fjs/fjs.dart' as native;
 import 'package:path/path.dart' as p;
 
+import '../source/native_library.dart';
 import 'library_access.dart';
 
 /// Ordinary path access. Only the native byte operations require an initialized
@@ -307,6 +308,7 @@ class FileSystemLibraryAccess implements LibraryAccess {
 
   static Future<T> _native<T>(Future<T> Function() operation) async {
     try {
+      await NativeLibrary.ready;
       return await _io(operation);
     } on native.LibraryFileError catch (error) {
       throw switch (error) {

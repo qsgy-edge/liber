@@ -1907,6 +1907,198 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{text}'**
   String literalCopy(String text);
+
+  /// No description provided for @libraryNoFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'首次导入本地书时选择书库目录。'**
+  String get libraryNoFolder;
+
+  /// No description provided for @libraryCopyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入时复制到书库并保留原文件。更换目录会自动迁移书库内的书籍，保留阅读进度。'**
+  String get libraryCopyHint;
+
+  /// No description provided for @libraryImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入本地书'**
+  String get libraryImport;
+
+  /// No description provided for @libraryChooseFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择书库目录'**
+  String get libraryChooseFolder;
+
+  /// No description provided for @libraryChangeFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'更换书库目录'**
+  String get libraryChangeFolder;
+
+  /// No description provided for @libraryNameConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'同名文件内容不同'**
+  String get libraryNameConflict;
+
+  /// No description provided for @libraryConflictDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 已有不同内容。可以更新此书并保留书架记录和阅读进度，也可以保留两本或取消。'**
+  String libraryConflictDescription(String name);
+
+  /// No description provided for @libraryConflictOtherBook.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 属于另一部书。请选择保留两本或取消，以保留各自的书籍记录和阅读进度。'**
+  String libraryConflictOtherBook(String name);
+
+  /// No description provided for @libraryKeepBoth.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留两本'**
+  String get libraryKeepBoth;
+
+  /// No description provided for @libraryUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新此书（覆盖）'**
+  String get libraryUpdate;
+
+  /// No description provided for @libraryDirectoryChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'书库目录已更新，书籍和阅读进度已保留。'**
+  String get libraryDirectoryChanged;
+
+  /// No description provided for @libraryCleanupTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理旧副本？'**
+  String get libraryCleanupTitle;
+
+  /// No description provided for @libraryCleanupDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'新书库已准备好。是否删除本次迁移的 {count} 个旧副本？原导入文件和其他文件会保留。'**
+  String libraryCleanupDescription(int count);
+
+  /// No description provided for @libraryKeepOld.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留旧副本'**
+  String get libraryKeepOld;
+
+  /// No description provided for @libraryDeleteOld.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除旧副本'**
+  String get libraryDeleteOld;
+
+  /// No description provided for @libraryCleanupDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'书库已更新，旧副本已清理。'**
+  String get libraryCleanupDone;
+
+  /// No description provided for @libraryCleanupFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'书库已更新，部分旧副本未能清理：{message}'**
+  String libraryCleanupFailed(String message);
+
+  /// No description provided for @libraryAdopt.
+  ///
+  /// In zh, this message translates to:
+  /// **'迁入选中的书'**
+  String get libraryAdopt;
+
+  /// No description provided for @libraryAdopted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已复制 {count} 本到书库，无法读取的文件仍待关联。'**
+  String libraryAdopted(int count);
+
+  /// No description provided for @libraryLegacyBooks.
+  ///
+  /// In zh, this message translates to:
+  /// **'待迁入的已有本地书'**
+  String get libraryLegacyBooks;
+
+  /// No description provided for @libraryWorking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在处理书库文件…'**
+  String get libraryWorking;
+
+  /// No description provided for @libraryProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前文件已复制 {bytes} 字节'**
+  String libraryProgress(int bytes);
+
+  /// No description provided for @libraryCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作已取消。'**
+  String get libraryCancelled;
+
+  /// No description provided for @libraryPermissionLost.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件或目录授权已失效，请重新选择以恢复访问。'**
+  String get libraryPermissionLost;
+
+  /// No description provided for @libraryFileMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件或目录无法读取，请恢复文件或重新关联。'**
+  String get libraryFileMissing;
+
+  /// No description provided for @libraryUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选位置不支持此操作，请选择其他目录或文件。'**
+  String get libraryUnsupported;
+
+  /// No description provided for @libraryVerificationFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制校验失败，已保留原有内容，请重新导入。'**
+  String get libraryVerificationFailed;
+
+  /// No description provided for @libraryOperationFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作失败：{message}'**
+  String libraryOperationFailed(String message);
+
+  /// No description provided for @libraryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'此目录没有 TXT 或 Markdown 书籍，可以通过导入本地书加入。'**
+  String get libraryEmpty;
+
+  /// No description provided for @libraryDeleteFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除书库文件'**
+  String get libraryDeleteFile;
+
+  /// No description provided for @libraryDeleteDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除 {name} 的书库副本？原导入文件和阅读记录会保留，之后需重新关联才能阅读。'**
+  String libraryDeleteDescription(String name);
+
+  /// No description provided for @libraryRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'阅读此书'**
+  String get libraryRead;
 }
 
 class _AppLocalizationsDelegate

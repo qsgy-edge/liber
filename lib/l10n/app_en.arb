@@ -308,5 +308,93 @@
   "runControlledToc": "The table of contents returned 12 chapters",
   "runControlledContent": "Chapter text returned",
   "runControlledCompleted": "The Windows controlled Book Source chain completed; all 4 stages have a trace",
-  "literalCopy": "{text}"
+  "literalCopy": "{text}",
+  "libraryNoFolder": "Choose a library folder when importing your first local book.",
+  "libraryCopyHint": "Imports copy books here and keep the originals. Changing this folder automatically migrates library books and keeps reading progress.",
+  "libraryImport": "Import local books",
+  "libraryChooseFolder": "Choose library folder",
+  "libraryChangeFolder": "Change library folder",
+  "libraryNameConflict": "Different content with the same name",
+  "libraryConflictDescription": "{name} already exists with different content. Update this book while keeping its shelf entry and reading progress, keep both versions, or cancel.",
+  "libraryConflictOtherBook": "{name} belongs to another book. Keep both to preserve each book's identity and reading progress, or cancel.",
+  "libraryKeepBoth": "Keep both",
+  "libraryUpdate": "Update this book (replace)",
+  "libraryDirectoryChanged": "Library folder updated. Books and reading progress are preserved.",
+  "libraryCleanupTitle": "Delete the old copies?",
+  "libraryCleanupDescription": "The new library is ready. Delete only the {count} old copies from this migration? Original imported files and unrelated files will be kept.",
+  "libraryKeepOld": "Keep old copies",
+  "libraryDeleteOld": "Delete old copies",
+  "libraryCleanupDone": "Library updated and old copies deleted.",
+  "libraryCleanupFailed": "Library updated, but some old copies could not be deleted: {message}",
+  "libraryAdopt": "Move selected books into library",
+  "libraryAdopted": "{count} books copied into the library. Unavailable files still need relinking.",
+  "libraryLegacyBooks": "Existing books to move into the library",
+  "libraryWorking": "Processing library files…",
+  "libraryProgress": "Current file: {bytes} bytes copied",
+  "libraryCancelled": "Operation cancelled.",
+  "libraryPermissionLost": "Access to the file or folder has expired. Select it again to restore access.",
+  "libraryFileMissing": "The file or folder is unavailable. Restore it or relink the book.",
+  "libraryUnsupported": "This location does not support the operation. Choose another folder or file.",
+  "libraryVerificationFailed": "Copy verification failed. The previous content is kept; try importing again.",
+  "libraryOperationFailed": "The operation failed: {message}",
+  "libraryEmpty": "This folder has no TXT or Markdown books. Import local books to add them here.",
+  "libraryDeleteFile": "Delete library file",
+  "libraryDeleteDescription": "Delete the library copy of {name}? The original import file and the reading record will be kept; reading will require relinking.",
+  "libraryRead": "Read book",
+  "@libraryConflictDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryConflictOtherBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryCleanupDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryCleanupFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryAdopted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryProgress": {
+    "placeholders": {
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryOperationFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryDeleteDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

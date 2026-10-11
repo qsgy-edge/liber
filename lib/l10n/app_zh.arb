@@ -1081,5 +1081,93 @@
         "type": "String"
       }
     }
+  },
+  "libraryNoFolder": "首次导入本地书时选择书库目录。",
+  "libraryCopyHint": "导入时复制到书库并保留原文件。更换目录会自动迁移书库内的书籍，保留阅读进度。",
+  "libraryImport": "导入本地书",
+  "libraryChooseFolder": "选择书库目录",
+  "libraryChangeFolder": "更换书库目录",
+  "libraryNameConflict": "同名文件内容不同",
+  "libraryConflictDescription": "{name} 已有不同内容。可以更新此书并保留书架记录和阅读进度，也可以保留两本或取消。",
+  "libraryConflictOtherBook": "{name} 属于另一部书。请选择保留两本或取消，以保留各自的书籍记录和阅读进度。",
+  "libraryKeepBoth": "保留两本",
+  "libraryUpdate": "更新此书（覆盖）",
+  "libraryDirectoryChanged": "书库目录已更新，书籍和阅读进度已保留。",
+  "libraryCleanupTitle": "清理旧副本？",
+  "libraryCleanupDescription": "新书库已准备好。是否删除本次迁移的 {count} 个旧副本？原导入文件和其他文件会保留。",
+  "libraryKeepOld": "保留旧副本",
+  "libraryDeleteOld": "删除旧副本",
+  "libraryCleanupDone": "书库已更新，旧副本已清理。",
+  "libraryCleanupFailed": "书库已更新，部分旧副本未能清理：{message}",
+  "libraryAdopt": "迁入选中的书",
+  "libraryAdopted": "已复制 {count} 本到书库，无法读取的文件仍待关联。",
+  "libraryLegacyBooks": "待迁入的已有本地书",
+  "libraryWorking": "正在处理书库文件…",
+  "libraryProgress": "当前文件已复制 {bytes} 字节",
+  "libraryCancelled": "操作已取消。",
+  "libraryPermissionLost": "文件或目录授权已失效，请重新选择以恢复访问。",
+  "libraryFileMissing": "文件或目录无法读取，请恢复文件或重新关联。",
+  "libraryUnsupported": "所选位置不支持此操作，请选择其他目录或文件。",
+  "libraryVerificationFailed": "复制校验失败，已保留原有内容，请重新导入。",
+  "libraryOperationFailed": "操作失败：{message}",
+  "libraryEmpty": "此目录没有 TXT 或 Markdown 书籍，可以通过导入本地书加入。",
+  "libraryDeleteFile": "删除书库文件",
+  "libraryDeleteDescription": "删除 {name} 的书库副本？原导入文件和阅读记录会保留，之后需重新关联才能阅读。",
+  "libraryRead": "阅读此书",
+  "@libraryConflictDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryConflictOtherBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryCleanupDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryCleanupFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryAdopted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryProgress": {
+    "placeholders": {
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryOperationFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryDeleteDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   }
 }

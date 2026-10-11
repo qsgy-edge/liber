@@ -418,13 +418,20 @@ class LegacyImport {
       );
       return const _Counts();
     }
-    await store.putLocalRoot(
-      LocalRootsCompanion(
-        id: Value(rootId),
-        displayName: Value(displayName),
-        needsRelink: Value(!await Directory(displayName).exists()),
-      ),
-    );
+    final existingRoot = (await store.allLocalRoots())
+        .where((root) => root.id == rootId)
+        .firstOrNull;
+    // A migrated root can retain its ID while its locator and grant change.
+    // An old snapshot cannot restore that root's previous access metadata.
+    if (existingRoot == null) {
+      await store.putLocalRoot(
+        LocalRootsCompanion(
+          id: Value(rootId),
+          displayName: Value(displayName),
+          needsRelink: Value(!await Directory(displayName).exists()),
+        ),
+      );
+    }
 
     var books = 0, localFiles = 0, progress = 0, missing = 0;
     for (final entry
@@ -439,20 +446,29 @@ class LegacyImport {
       if (relative.isEmpty) continue;
       final format = _string(entry['format'], fallback: 'txt');
       final title = _string(entry['title'], fallback: relative);
-      final exists = path.isNotEmpty && await File(path).exists();
+      // Match the captured import alias before the current file key; a key
+      // can now be owned by another book after the original one moved.
+      final existing =
+          await store.localBookByOriginalKey(rootId, relative) ??
+          await store.localBook(rootId, relative);
+      final moved =
+          existing != null &&
+          (existing.rootId != rootId || existing.relativePath != relative);
+      final exists = moved
+          ? !existing.needsRelink
+          : path.isNotEmpty && await File(path).exists();
       if (!exists) missing++;
-      // The natural key is the root plus the path inside it; a book the store
-      // does not have yet gets a minted id, like every other book (D2).
-      final existing = await store.localBook(rootId, relative);
       final id = existing?.id ?? mintId('book');
       await store.putBook(
         BooksCompanion(
           id: Value(id),
           kind: const Value('local'),
-          title: Value(title),
-          rootId: Value(rootId),
-          relativePath: Value(relative),
-          format: Value(format),
+          title: Value(
+            existing?.title.isNotEmpty == true ? existing!.title : title,
+          ),
+          rootId: Value(existing?.rootId ?? rootId),
+          relativePath: Value(existing?.relativePath ?? relative),
+          format: Value(existing?.format ?? format),
           needsRelink: Value(!exists),
           bookOrder: Value(await _position(store, existing)),
           raw: Value(jsonEncode(entry)),
@@ -460,18 +476,22 @@ class LegacyImport {
       );
       books++;
 
-      final stat = exists ? await File(path).stat() : null;
-      await store.putLocalFile(
-        LocalFilesCompanion(
-          rootId: Value(rootId),
-          relativePath: Value(relative),
-          format: Value(format),
-          modifiedAt: Value(stat?.modified.millisecondsSinceEpoch),
-          needsRelink: Value(!exists),
-          bookId: Value(id),
-        ),
-      );
-      localFiles++;
+      // The original file does not describe a moved book's current index or
+      // authorization. Its current file facts were published by LocalLibrary.
+      if (!moved) {
+        final stat = exists ? await File(path).stat() : null;
+        await store.putLocalFile(
+          LocalFilesCompanion(
+            rootId: Value(rootId),
+            relativePath: Value(relative),
+            format: Value(format),
+            modifiedAt: Value(stat?.modified.millisecondsSinceEpoch),
+            needsRelink: Value(!exists),
+            bookId: Value(id),
+          ),
+        );
+        localFiles++;
+      }
 
       final advanced = await store.saveProgress(
         ProgressCompanion.insert(

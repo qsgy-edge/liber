@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'domain/contracts.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/store_message_text.dart';
+import 'local/library_access.dart';
+import 'local/platform_library_access.dart';
 import 'local/local_reader.dart';
 import 'local/local_reader_page.dart';
 import 'local/reader_engine.dart';
@@ -28,6 +30,7 @@ import 'source/source_trial_page.dart';
 import 'source/online_bookshelf.dart';
 import 'source/precise_search_page.dart';
 import 'source/shelf_filter.dart';
+import 'store/ids.dart';
 import 'store/legacy_import.dart';
 import 'store/local_library.dart';
 import 'store/shelf.dart';
@@ -61,7 +64,12 @@ void installApplicationBindings() {
 }
 
 class LiberApp extends StatefulWidget {
-  const LiberApp({super.key, this.workspaceRoot, this.interfaceLanguage});
+  const LiberApp({
+    super.key,
+    this.workspaceRoot,
+    this.interfaceLanguage,
+    this.libraryAccess,
+  });
 
   /// The installation directory (`manifest.json` and `spaces/`). When null,
   /// Windows keeps `%APPDATA%\Liber`; other platforms use path_provider's
@@ -74,6 +82,9 @@ class LiberApp extends StatefulWidget {
   /// than inheriting the machine's locale; null leaves the resolution to the
   /// `interface.language` row and the system locale (#28).
   final Locale? interfaceLanguage;
+
+  /// The native picker/IO boundary; injected only for scoped UI verification.
+  final PlatformLibraryAccess? libraryAccess;
 
   @override
   State<LiberApp> createState() => _LiberAppState();
@@ -118,6 +129,7 @@ class _LiberAppState extends State<LiberApp> {
       supportedLocales: InterfaceLanguageSetting.supportedLocales,
       home: LiberHomePage(
         workspaceRoot: widget.workspaceRoot,
+        libraryAccess: widget.libraryAccess,
         onInterfaceLocale: (locale) => setState(() => _resolved = locale),
       ),
     );
@@ -125,9 +137,15 @@ class _LiberAppState extends State<LiberApp> {
 }
 
 class LiberHomePage extends StatefulWidget {
-  const LiberHomePage({super.key, this.workspaceRoot, this.onInterfaceLocale});
+  const LiberHomePage({
+    super.key,
+    this.workspaceRoot,
+    this.libraryAccess,
+    this.onInterfaceLocale,
+  });
 
   final Directory? workspaceRoot;
+  final PlatformLibraryAccess? libraryAccess;
 
   /// Reports the interface language the space store resolved (#28), so the
   /// application above rebuilds its `MaterialApp` in it. Null when nothing owns
@@ -148,11 +166,12 @@ class _LiberHomePageState extends State<LiberHomePage> {
   SpaceStore? _store;
   ShelfService? _shelf;
   LocalLibrary? _library;
-  List<FileSystemEntity> _folderEntries = const <FileSystemEntity>[];
+  late final PlatformLibraryAccess _libraryAccess =
+      widget.libraryAccess ?? PlatformLibraryAccess();
+  bool _libraryBusy = false;
   List<ShelfEntry> _importedBooks = const <ShelfEntry>[];
   List<ImportedBookSource> _sources = const <ImportedBookSource>[];
   MigrationImportRecord? _migrationResult;
-  String? _libraryMessage;
   String? _migrationMessage;
   LegacyImportReport? _spaceImport;
   String? _spaceStorePath;
@@ -187,7 +206,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
       final workspace = await Workspace.open(root: root);
       final store = await workspace.openSpace(Workspace.defaultSpaceId);
       final shelf = ShelfService(store, androidId: await workspace.androidId());
-      final library = LocalLibrary(store);
+      final library = LocalLibrary(store, access: _libraryAccess);
       // Importing is best effort: the space is open whether or not the retired
       // files could be merged, and a failure there must not cost the reader the
       // library that is already in the store.
@@ -219,7 +238,6 @@ class _LiberHomePageState extends State<LiberHomePage> {
         _sources = sources;
         if (importError != null) _spaceMessage = importError;
       });
-      await _refreshFolder();
       await _resolveInterfaceLanguage(store);
     } on Object catch (error) {
       if (mounted) {
@@ -253,11 +271,10 @@ class _LiberHomePageState extends State<LiberHomePage> {
   void _applyInterfaceLocale(Locale locale) =>
       widget.onInterfaceLocale?.call(locale);
 
-  Future<void> _refreshFolder() async {
-    final library = _library;
-    if (library == null) return;
-    final entries = await library.listCurrentFolder();
-    if (mounted) setState(() => _folderEntries = entries);
+  Future<void> _refreshLibraryViews() async {
+    await _library?.load();
+    await _refreshShelfViews();
+    if (mounted) setState(() {});
   }
 
   /// Opens a local book in the paged reader.
@@ -282,7 +299,18 @@ class _LiberHomePageState extends State<LiberHomePage> {
       MaterialPageRoute<void>(
         builder: (_) => LocalReaderPage(
           reader: LocalReader(
-            engine: const NativeReaderEngine(),
+            engine: NativeReaderEngine(
+              acquireRead: () async {
+                final file = await library.fileReferenceOf(book);
+                if (file == null) {
+                  throw const LibraryAccessFailure(
+                    LibraryAccessError.missing,
+                    'Local file needs relinking',
+                  );
+                }
+                return library.access.acquireRead(file);
+              },
+            ),
             library: library,
             book: book,
             processing: processing,
@@ -533,67 +561,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
       ),
       _LocalLibraryPage(
         service: library,
-        entries: _folderEntries,
-        books: library?.books ?? const <LocalBook>[],
-        message: _libraryMessage,
+        access: _libraryAccess,
         onOpenBook: _openLocalBook,
-        onEnterFolder: (path) async {
-          final entries = await library?.enterFolder(path);
-          if (mounted) {
-            setState(() {
-              if (entries != null) _folderEntries = entries;
-            });
-          }
-        },
-        onGoUp: () async {
-          final entries = await library?.goUp();
-          if (mounted) {
-            setState(() {
-              if (entries != null) _folderEntries = entries;
-            });
-          }
-        },
-        onRootSelected: (path) async {
-          final root = await library?.selectRoot(path);
-          final entries = await library?.listCurrentFolder();
-          if (!mounted) return;
-          setState(() {
-            if (entries != null) _folderEntries = entries;
-            if (root != null) {
-              _libraryMessage = AppLocalizations.of(
-                context,
-              ).rootSelected(root.displayName);
-            }
-          });
-        },
-        onScan: () async {
-          final entries = await library?.scanRecursively();
-          if (!mounted) return;
-          setState(() {
-            if (entries != null) _folderEntries = entries;
-            _libraryMessage = AppLocalizations.of(
-              context,
-            ).scanFinished(entries?.length ?? 0);
-          });
-        },
-        onAdd: () async {
-          final books = await library?.addFiles(_folderEntries);
-          if (!mounted) return;
-          setState(() {
-            _libraryMessage = books == null || books.isEmpty
-                ? l10n.noNewFiles
-                : l10n.filesAdded(books.length);
-          });
-        },
-
-        onAddEntry: (entry) async {
-          final books = await library?.addFiles([entry]);
-          if (!mounted) return;
-          setState(() {
-            _libraryMessage = books == null || books.isEmpty
-                ? l10n.fileAlreadyOnShelf
-                : l10n.fileAdded(books.first.title);
-          });
+        onChanged: _refreshLibraryViews,
+        onBusyChanged: (busy) {
+          if (mounted) setState(() => _libraryBusy = busy);
         },
       ),
       _MigrationPage(
@@ -726,9 +698,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
         children: [
           NavigationRail(
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) {
-              setState(() => _selectedIndex = index);
-            },
+            onDestinationSelected: _libraryBusy
+                ? null
+                : (index) {
+                    setState(() => _selectedIndex = index);
+                  },
             labelType: NavigationRailLabelType.all,
             destinations: [
               NavigationRailDestination(
@@ -1100,148 +1074,541 @@ class _ContractNotice extends StatelessWidget {
   }
 }
 
-class _LocalLibraryPage extends StatelessWidget {
+class _LocalLibraryPage extends StatefulWidget {
   const _LocalLibraryPage({
     required this.service,
-    required this.entries,
-    required this.books,
-    required this.message,
-    required this.onEnterFolder,
-    required this.onGoUp,
-    required this.onRootSelected,
-    required this.onScan,
-    required this.onAdd,
-    required this.onAddEntry,
+    required this.access,
     required this.onOpenBook,
+    required this.onChanged,
+    required this.onBusyChanged,
   });
 
-  /// Null until the space opens; every action below needs it.
   final LocalLibrary? service;
-  final List<FileSystemEntity> entries;
-  final List<LocalBook> books;
-  final String? message;
-  final Future<void> Function(String path) onEnterFolder;
-  final Future<void> Function() onGoUp;
-  final Future<void> Function(String path) onRootSelected;
-  final VoidCallback onScan;
-  final VoidCallback onAdd;
-  final Future<void> Function(FileSystemEntity entry) onAddEntry;
-
-  /// Opens a book already admitted to the shelf, from this page as well as from
-  /// the shelf itself.
+  final PlatformLibraryAccess access;
   final ValueChanged<LocalBook> onOpenBook;
+  final Future<void> Function() onChanged;
+  final ValueChanged<bool> onBusyChanged;
+
+  @override
+  State<_LocalLibraryPage> createState() => _LocalLibraryPageState();
+}
+
+class _LocalLibraryPageState extends State<_LocalLibraryPage> {
+  List<LibraryFileReference> _entries = const [];
+  final Set<String> _selected = {};
+  final List<LibraryFileReference?> _parents = [];
+  LibraryFileReference? _directory;
+  LibraryTransfer? _transfer;
+  String? _message;
+  bool _busy = false;
+  int _bytes = 0;
+  int? _total;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshEntries());
+  }
+
+  @override
+  void didUpdateWidget(covariant _LocalLibraryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.service != widget.service) unawaited(_refreshEntries());
+  }
+
+  Future<void> _refreshEntries() async {
+    final library = widget.service;
+    final location = library?.managedLocation;
+    try {
+      final entries = location == null
+          ? <LibraryFileReference>[]
+          : await library!.access.list(location, directory: _directory);
+      entries.removeWhere(
+        (entry) =>
+            !entry.directory &&
+            !entry.name.toLowerCase().endsWith('.txt') &&
+            !entry.name.toLowerCase().endsWith('.md'),
+      );
+      entries.sort(
+        (a, b) => a.directory == b.directory
+            ? a.name.compareTo(b.name)
+            : a.directory
+            ? -1
+            : 1,
+      );
+      if (mounted) setState(() => _entries = entries);
+    } on Object catch (error) {
+      if (mounted)
+        setState(() {
+          _entries = const [];
+          _message = _failureText(error);
+        });
+    }
+  }
+
+  String _failureText(Object error) {
+    final l10n = AppLocalizations.of(context);
+    if (error is! LibraryAccessFailure)
+      return l10n.libraryOperationFailed('$error');
+    return switch (error.code) {
+      LibraryAccessError.cancelled => l10n.libraryCancelled,
+      LibraryAccessError.permission => l10n.libraryPermissionLost,
+      LibraryAccessError.missing => l10n.libraryFileMissing,
+      LibraryAccessError.unsupported => l10n.libraryUnsupported,
+      LibraryAccessError.verification => l10n.libraryVerificationFailed,
+      LibraryAccessError.collision ||
+      LibraryAccessError.io => l10n.libraryOperationFailed(error.message),
+    };
+  }
+
+  Future<void> _run(Future<void> Function(LibraryTransfer) operation) async {
+    if (_busy || widget.service == null) return;
+    final transfer = LibraryTransfer(
+      id: mintId('library-transfer'),
+      onProgress: (bytes, total) {
+        if (mounted)
+          setState(() {
+            _bytes = bytes;
+            _total = total;
+          });
+      },
+    );
+    setState(() {
+      _busy = true;
+      _transfer = transfer;
+      _message = null;
+      _bytes = 0;
+      _total = null;
+    });
+    widget.onBusyChanged(true);
+    try {
+      await operation(transfer);
+    } on Object catch (error) {
+      if (mounted) setState(() => _message = _failureText(error));
+    } finally {
+      // A batch import can publish earlier books before a later file fails.
+      // Always refresh the actual store, including that partial-success case.
+      try {
+        await widget.onChanged();
+        await _refreshEntries();
+      } on Object catch (error) {
+        if (mounted) setState(() => _message = _failureText(error));
+      }
+      widget.onBusyChanged(false);
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _transfer = null;
+        });
+    }
+  }
+
+  Future<LibraryConflictChoice> _resolveConflict(
+    LibraryImportConflict conflict,
+  ) async {
+    if (!mounted) return LibraryConflictChoice.cancel;
+    final l10n = AppLocalizations.of(context);
+    return await showDialog<LibraryConflictChoice>(
+          context: context,
+          builder: (context) => AlertDialog(
+            scrollable: true,
+            title: Text(l10n.libraryNameConflict),
+            content: Text(
+              conflict.canUpdate
+                  ? l10n.libraryConflictDescription(conflict.name)
+                  : l10n.libraryConflictOtherBook(conflict.name),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, LibraryConflictChoice.cancel),
+                child: Text(l10n.cancel),
+              ),
+              OutlinedButton(
+                onPressed: () =>
+                    Navigator.pop(context, LibraryConflictChoice.keepBoth),
+                child: Text(l10n.libraryKeepBoth),
+              ),
+              if (conflict.canUpdate)
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(context, LibraryConflictChoice.update),
+                  child: Text(l10n.libraryUpdate),
+                ),
+            ],
+          ),
+        ) ??
+        LibraryConflictChoice.cancel;
+  }
+
+  Future<bool> _ensureLocation(LibraryTransfer transfer) async {
+    if (widget.service!.managedRoot != null) return true;
+    final selected = await widget.access.pickDirectory();
+    if (selected == null) return false;
+    await widget.service!.selectLocation(
+      selected,
+      transfer: transfer,
+      resolveConflict: _resolveConflict,
+    );
+    _directory = null;
+    _parents.clear();
+    return true;
+  }
+
+  Future<void> _importSelected() => _run((transfer) async {
+    if (!await _ensureLocation(transfer)) return;
+    final files = await widget.access.pickFiles();
+    if (files == null) return;
+    final books = await widget.service!.importFiles(
+      files,
+      transfer: transfer,
+      resolveConflict: _resolveConflict,
+    );
+    if (mounted)
+      setState(
+        () => _message = AppLocalizations.of(context).filesAdded(books.length),
+      );
+  });
+
+  Future<void> _changeLocation() => _run((transfer) async {
+    final selected = await widget.access.pickDirectory();
+    if (selected == null) return;
+    final migration = await widget.service!.selectLocation(
+      selected,
+      transfer: transfer,
+      resolveConflict: _resolveConflict,
+    );
+    _directory = null;
+    _parents.clear();
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    setState(() => _message = l10n.libraryDirectoryChanged);
+    if (migration.previousFiles.isEmpty) return;
+    final cleanup = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: Text(l10n.libraryCleanupTitle),
+        content: Text(
+          l10n.libraryCleanupDescription(migration.previousFiles.length),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l10n.libraryKeepOld),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l10n.libraryDeleteOld),
+          ),
+        ],
+      ),
+    );
+    if (cleanup != true) return;
+    try {
+      await widget.service!.deletePreviousCopies(migration);
+      if (mounted) setState(() => _message = l10n.libraryCleanupDone);
+    } on Object catch (error) {
+      if (mounted)
+        setState(
+          () => _message = l10n.libraryCleanupFailed(_failureText(error)),
+        );
+    }
+  });
+
+  Future<void> _adoptSelected() => _run((transfer) async {
+    if (!await _ensureLocation(transfer)) return;
+    final books = await widget.service!.adoptBooks(
+      _selected.toList(),
+      transfer: transfer,
+      resolveConflict: _resolveConflict,
+    );
+    _selected.removeAll(books.map((book) => book.id));
+    if (mounted)
+      setState(
+        () => _message = AppLocalizations.of(
+          context,
+        ).libraryAdopted(books.length),
+      );
+  });
+
+  Future<void> _bookAction(LocalBook book, String action) async {
+    if (action == 'remove') {
+      await _run((_) => widget.service!.store.setShelved(book.id, false));
+    } else if (action == 'delete') {
+      final l10n = AppLocalizations.of(context);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          scrollable: true,
+          title: Text(l10n.libraryDeleteFile),
+          content: Text(l10n.libraryDeleteDescription(book.title)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l10n.libraryDeleteFile),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true)
+        await _run((_) => widget.service!.deleteBookFile(book.id));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final root = service?.root;
-    final current = service?.currentPath;
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.navLocalLibrary,
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            root == null
-                ? l10n.noRootFolder
-                : root.needsRelink
-                ? l10n.currentFolderRelink(current ?? root.displayName)
-                : l10n.currentFolder(current ?? root.displayName),
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 12,
-            children: [
-              FilledButton.icon(
-                onPressed: () async {
-                  final path = await FilePicker.getDirectoryPath();
-                  if (path != null) await onRootSelected(path);
-                },
-                icon: const Icon(Icons.folder_open),
-                label: Text(l10n.chooseRootFolder),
-              ),
-              OutlinedButton.icon(
-                onPressed: root == null ? null : onGoUp,
-                icon: const Icon(Icons.arrow_upward),
-                label: Text(l10n.goUp),
-              ),
-              OutlinedButton.icon(
-                onPressed: root == null ? null : onScan,
-                icon: const Icon(Icons.search),
-                label: Text(l10n.scanRecursively),
-              ),
-              OutlinedButton.icon(
-                onPressed: entries.isEmpty ? null : onAdd,
-                icon: const Icon(Icons.playlist_add),
-                label: Text(l10n.addToShelf),
-              ),
-            ],
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(message!, key: const ValueKey('library-status')),
-          ],
-          const SizedBox(height: 20),
-          Expanded(
-            child: Card(
-              child: ListView(
-                padding: const EdgeInsets.all(12),
-                children: [
-                  for (final entry in entries)
-                    ListTile(
-                      leading: Icon(
-                        entry is Directory ? Icons.folder : Icons.description,
-                      ),
-                      title: Text(entry.path),
-                      subtitle: Text(
-                        entry is Directory ? l10n.folder : l10n.textFile,
-                      ),
-                      trailing: PopupMenuButton<String>(
-                        onSelected: (action) {
-                          if (entry is Directory && action == 'open') {
-                            onEnterFolder(entry.path);
-                          } else if (entry is File && action == 'add') {
-                            onAddEntry(entry);
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          if (entry is Directory)
-                            PopupMenuItem(
-                              value: 'open',
-                              child: Text(l10n.openFolder),
-                            ),
-                          if (entry is File)
-                            PopupMenuItem(
-                              value: 'add',
-                              child: Text(l10n.addEntryToShelf),
-                            ),
-                        ],
-                      ),
-                      onTap: entry is Directory
-                          ? () => onEnterFolder(entry.path)
-                          : null,
+    final library = widget.service;
+    final root = library?.managedRoot;
+    final books = library?.books ?? const <LocalBook>[];
+    final legacy = books.where((book) => book.rootId != root?.id).toList();
+    final managed = books.where((book) => book.rootId == root?.id).toList();
+    final enabled = library != null && !_busy;
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 20),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.navLocalLibrary,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 8),
+                SelectableText(
+                  root == null
+                      ? l10n.libraryNoFolder
+                      : root.needsRelink
+                      ? l10n.currentFolderRelink(root.displayName)
+                      : l10n.currentFolder(root.displayName),
+                ),
+                const SizedBox(height: 8),
+                Text(l10n.libraryCopyHint),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: enabled ? _importSelected : null,
+                      icon: const Icon(Icons.file_upload_outlined),
+                      label: Text(l10n.libraryImport),
                     ),
-                  if (entries.isEmpty) ListTile(title: Text(l10n.scanEmpty)),
+                    OutlinedButton.icon(
+                      onPressed: enabled ? _changeLocation : null,
+                      icon: const Icon(Icons.folder_open),
+                      label: Text(
+                        root == null
+                            ? l10n.libraryChooseFolder
+                            : l10n.libraryChangeFolder,
+                      ),
+                    ),
+                    if (_directory != null)
+                      OutlinedButton.icon(
+                        onPressed: enabled
+                            ? () => _run((_) async {
+                                _directory = _parents.removeLast();
+                                await _refreshEntries();
+                              })
+                            : null,
+                        icon: const Icon(Icons.arrow_upward),
+                        label: Text(l10n.goUp),
+                      ),
+                    if (_selected.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: enabled ? _adoptSelected : null,
+                        icon: const Icon(Icons.drive_file_move_outline),
+                        label: Text(l10n.libraryAdopt),
+                      ),
+                  ],
+                ),
+                if (_busy) ...[
+                  const SizedBox(height: 20),
+                  LinearProgressIndicator(
+                    value: _total != null && _total! > 0
+                        ? (_bytes / _total!).clamp(0.0, 1.0)
+                        : null,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        _bytes == 0
+                            ? l10n.libraryWorking
+                            : l10n.libraryProgress(_bytes),
+                      ),
+                      TextButton(
+                        onPressed: _transfer?.cancelled == true
+                            ? null
+                            : () async {
+                                try {
+                                  await _transfer?.cancel();
+                                } on Object catch (error) {
+                                  if (mounted)
+                                    setState(
+                                      () => _message = _failureText(error),
+                                    );
+                                }
+                                if (mounted) setState(() {});
+                              },
+                        child: Text(l10n.cancel),
+                      ),
+                    ],
+                  ),
                 ],
+                if (_message != null) ...[
+                  const SizedBox(height: 16),
+                  Text(_message!, key: const ValueKey('library-status')),
+                ],
+                if (_directory != null) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    _directory!.name,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          sliver: SliverList.builder(
+            itemCount: _entries.length,
+            itemBuilder: (context, index) {
+              final entry = _entries[index];
+              return ListTile(
+                key: ValueKey('library-entry-${entry.key}'),
+                leading: Icon(
+                  entry.directory
+                      ? Icons.folder_outlined
+                      : Icons.description_outlined,
+                ),
+                title: Text(entry.name),
+                onTap: entry.directory && enabled
+                    ? () => _run((_) async {
+                        _parents.add(_directory);
+                        _directory = entry;
+                        await _refreshEntries();
+                      })
+                    : null,
+                trailing: entry.directory
+                    ? const Icon(Icons.chevron_right)
+                    : TextButton(
+                        onPressed: enabled
+                            ? () => _run((transfer) async {
+                                final added = await library!.importFiles(
+                                  [entry],
+                                  transfer: transfer,
+                                  resolveConflict: _resolveConflict,
+                                );
+                                if (mounted)
+                                  setState(
+                                    () => _message = l10n.filesAdded(
+                                      added.length,
+                                    ),
+                                  );
+                              })
+                            : null,
+                        child: Text(l10n.addEntryToShelf),
+                      ),
+              );
+            },
+          ),
+        ),
+        if (root != null && _entries.isEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            sliver: SliverToBoxAdapter(child: Text(l10n.libraryEmpty)),
+          ),
+        if (legacy.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(32, 24, 32, 8),
+            sliver: SliverToBoxAdapter(
+              child: Text(
+                l10n.libraryLegacyBooks,
+                style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
           ),
-          Text(l10n.shelfLocalBookCount(books.length)),
-          for (final book in books)
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.menu_book_outlined),
-              title: Text(book.title),
-              subtitle: Text(l10n.progressOffset(book.textOffset)),
-              onTap: () => onOpenBook(book),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverList.builder(
+              itemCount: legacy.length,
+              itemBuilder: (context, index) {
+                final book = legacy[index];
+                return CheckboxListTile(
+                  key: ValueKey('library-adopt-${book.id}'),
+                  secondary: IconButton(
+                    onPressed: enabled ? () => widget.onOpenBook(book) : null,
+                    tooltip: l10n.libraryRead,
+                    icon: const Icon(Icons.menu_book_outlined),
+                  ),
+                  title: Text(book.title),
+                  subtitle: Text(l10n.progressOffset(book.textOffset)),
+                  value: _selected.contains(book.id),
+                  onChanged: enabled
+                      ? (selected) => setState(() {
+                          if (selected == true)
+                            _selected.add(book.id);
+                          else
+                            _selected.remove(book.id);
+                        })
+                      : null,
+                );
+              },
             ),
+          ),
         ],
-      ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(32, 24, 32, 8),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              l10n.shelfLocalBookCount(managed.length),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          sliver: SliverList.builder(
+            itemCount: managed.length,
+            itemBuilder: (context, index) {
+              final book = managed[index];
+              return ListTile(
+                leading: const Icon(Icons.menu_book_outlined),
+                title: Text(book.title),
+                subtitle: Text(l10n.progressOffset(book.textOffset)),
+                onTap: enabled ? () => widget.onOpenBook(book) : null,
+                trailing: PopupMenuButton<String>(
+                  enabled: enabled,
+                  tooltip: l10n.bookActions,
+                  onSelected: (action) => _bookAction(book, action),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Text(l10n.removeFromShelf),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(l10n.libraryDeleteFile),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

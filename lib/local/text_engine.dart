@@ -21,18 +21,27 @@ class TextEngine {
   TextEngine._();
 
   /// Detects [path]'s encoding without indexing the whole file.
-  static Future<TextDetection> detectEncoding(String path) async {
+  static Future<TextDetection> detectEncoding(String path, {int? fd}) async {
     await NativeLibrary.ready;
-    return textDetectEncoding(path: path);
+    return fd == null
+        ? textDetectEncoding(path: path)
+        : textDetectEncodingFd(fd: fd);
   }
 
   /// Indexes a local file in one pass.
   ///
   /// [options] defaults to the frozen reader's own: one anchor per 32 KiB, its
   /// two enabled default TXT chapter rules, and a 4 MiB window-scan limit.
-  static Future<TextIndex> index(String path, {TextIndexOptions? options}) async {
+  static Future<TextIndex> index(
+    String path, {
+    TextIndexOptions? options,
+    int? fd,
+  }) async {
     await NativeLibrary.ready;
-    return textIndexFile(path: path, options: options ?? textDefaultOptions());
+    final resolvedOptions = options ?? textDefaultOptions();
+    return fd == null
+        ? textIndexFile(path: path, options: resolvedOptions)
+        : textIndexFd(fd: fd, options: resolvedOptions);
   }
 
   /// Reads at most [maxCodeUnits] starting exactly at [codeUnitOffset], seeking
@@ -49,8 +58,21 @@ class TextEngine {
     required int maxCodeUnits,
     required int maxScanBytes,
     TextAnchor? anchor,
+    int? fd,
   }) async {
     await NativeLibrary.ready;
+    if (fd != null) {
+      return textReadWindowFd(
+        request: TextDescriptorWindowRequest(
+          fd: fd,
+          encoding: encoding,
+          anchor: anchor,
+          codeUnitOffset: codeUnitOffset,
+          maxCodeUnits: maxCodeUnits,
+          maxScanBytes: maxScanBytes,
+        ),
+      );
+    }
     return textReadWindow(
       request: TextWindowRequest(
         path: path,

@@ -449,7 +449,8 @@ class LegadoFullBackupImport {
       final fileName = local ? _localFileName(book, bookUrl) : null;
       final sourceRef = local ? '' : _string(book['origin']);
       final existing = local
-          ? await store.localBook(correlationKey, fileName!)
+          ? await store.localBookByOriginalKey(correlationKey, fileName!) ??
+                await store.localBook(correlationKey, fileName)
           : sourceRef.isEmpty
           ? await store.bookWithoutSource(bookUrl)
           : await store.bookByNaturalKey(sourceRef, bookUrl);
@@ -535,12 +536,17 @@ class LegadoFullBackupImport {
           // Rule 7: membership unions, so a re-import never takes a book off the
           // shelf.
           shelved: const Value(true),
-          // Rule 4: the correlation key stands where the Android path was, and
-          // the original file name is the relative path inside that synthetic
-          // root.
-          rootId: Value(local ? correlationKey : null),
-          relativePath: Value(fileName),
-          format: Value(local ? _fileFormat(fileName!) : existing?.format),
+          // The original alias matches the backup; the current key stays
+          // wherever the user adopted, updated or relocated the file.
+          rootId: Value(local ? existing?.rootId ?? correlationKey : null),
+          relativePath: Value(
+            local ? existing?.relativePath ?? fileName : null,
+          ),
+          format: Value(
+            local
+                ? existing?.format ?? _fileFormat(fileName!)
+                : existing?.format,
+          ),
           // A relink the user already did stays done; a book that is new to the
           // space has no file to read.
           needsRelink: Value(local ? (existing?.needsRelink ?? true) : false),

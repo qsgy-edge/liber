@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:fjs/fjs.dart' show ConvertTarget;
@@ -7,6 +6,7 @@ import '../domain/contracts.dart';
 import '../source/content_processing.dart';
 import '../store/local_library.dart';
 import '../store/progress.dart';
+import 'library_access.dart';
 import 'reader_engine.dart';
 import 'reader_offset_map.dart';
 import 'reader_restore.dart';
@@ -241,15 +241,15 @@ class LocalReader {
     _busy = true;
     _error = null;
     try {
-      final file = File(book.path);
-      if (!await file.exists()) {
+      final file = await library.statBook(book);
+      if (file == null) {
         // D4's loudest case: the path itself is gone. That is a relink, and the
         // reader says so instead of showing a file that is not there.
         await library.setNeedsRelink(book, true);
         _error = '文件不存在，需要重新关联本地文件';
         return;
       }
-      final modifiedAt = (await file.stat()).modified.millisecondsSinceEpoch;
+      final modifiedAt = file.modifiedAt;
       final facts = await library.fileIndex(book);
       final stored = await library.progressRecordOf(book.id);
       var index = facts.describes(modifiedAt) ? _asIndex(facts) : null;
@@ -324,6 +324,12 @@ class LocalReader {
         await _readRawPage();
       }
       if (restored != null && restored.changed) await save();
+    } on LibraryAccessFailure catch (error) {
+      if (error.code == LibraryAccessError.permission ||
+          error.code == LibraryAccessError.missing) {
+        await library.setNeedsRelink(book, true);
+      }
+      _error = '$error';
     } on Object catch (error) {
       _error = '$error';
     } finally {
