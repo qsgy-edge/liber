@@ -89,6 +89,9 @@ export 'src/frb/api/html.dart';
 // Text engine: encodings, indexing, window reads, Chinese conversion (Liber)
 export 'src/frb/api/text.dart';
 
+// Verified desktop file copies, fingerprints and backed-up replacement.
+export 'src/frb/api/library_files.dart';
+
 // Error handling
 export 'src/frb/api/error.dart';
 

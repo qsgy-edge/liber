@@ -106,18 +106,20 @@ impl From<engine::TextError> for TextEngineError {
             engine::TextError::UnsupportedEncoding(name) => {
                 TextEngineError::UnsupportedEncoding(name)
             }
-            engine::TextError::AnchorTooFar { scanned_bytes, limit } => {
-                TextEngineError::AnchorTooFar {
-                    scanned_bytes: scanned_bytes as i64,
-                    limit: limit as i64,
-                }
-            }
-            engine::TextError::OffsetOutOfRange { offset, code_unit_length } => {
-                TextEngineError::OffsetOutOfRange {
-                    offset: offset as i64,
-                    code_unit_length: code_unit_length as i64,
-                }
-            }
+            engine::TextError::AnchorTooFar {
+                scanned_bytes,
+                limit,
+            } => TextEngineError::AnchorTooFar {
+                scanned_bytes: scanned_bytes as i64,
+                limit: limit as i64,
+            },
+            engine::TextError::OffsetOutOfRange {
+                offset,
+                code_unit_length,
+            } => TextEngineError::OffsetOutOfRange {
+                offset: offset as i64,
+                code_unit_length: code_unit_length as i64,
+            },
         }
     }
 }
@@ -215,6 +217,23 @@ pub struct TextWindowRequest {
     pub max_scan_bytes: i64,
 }
 
+/// A descriptor window request. The caller holds a fresh read lease until completion.
+#[derive(Debug, Clone)]
+pub struct TextDescriptorWindowRequest {
+    /// Borrowed seekable Unix descriptor; the engine owns only its duplicate.
+    pub fd: i32,
+    /// The encoding name from the index that produced the anchor.
+    pub encoding: String,
+    /// The nearest anchor the caller has stored, if any.
+    pub anchor: Option<TextAnchor>,
+    /// The code-unit offset the window starts at.
+    pub code_unit_offset: i64,
+    /// How many code units at most.
+    pub max_code_units: i64,
+    /// The longest scan from the anchor before the read reports stale anchors.
+    pub max_scan_bytes: i64,
+}
+
 /// A bounded read's answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextWindow {
@@ -233,7 +252,10 @@ pub struct TextWindow {
 /// Detects a file's encoding.
 pub fn text_detect_encoding(path: String) -> Result<TextDetection, TextEngineError> {
     let detection = engine::detect_encoding(std::path::Path::new(&path))?;
-    Ok(TextDetection { encoding: detection.encoding, bom: detection.bom })
+    Ok(TextDetection {
+        encoding: detection.encoding,
+        bom: detection.bom,
+    })
 }
 
 /// Decodes an in-memory byte buffer — an HTTP response body — with a declared
@@ -271,7 +293,11 @@ pub fn text_index_file(
         max_scan_bytes: units(options.max_scan_bytes),
     };
     let index = engine::index_file(std::path::Path::new(&path), &options)?;
-    Ok(TextIndex {
+    Ok(convert_index(index))
+}
+
+fn convert_index(index: engine::Index) -> TextIndex {
+    TextIndex {
         encoding: index.encoding,
         byte_length: index.byte_length as i64,
         code_unit_length: index.code_unit_length as i64,
@@ -295,13 +321,11 @@ pub fn text_index_file(
             })
             .collect(),
         ignored_rules: index.ignored_rules,
-    })
+    }
 }
 
 /// Reads a bounded window of a local file.
-pub fn text_read_window(
-    request: TextWindowRequest,
-) -> Result<TextWindow, TextEngineError> {
+pub fn text_read_window(request: TextWindowRequest) -> Result<TextWindow, TextEngineError> {
     let anchor = request.anchor.map(|anchor| engine::Anchor {
         byte_offset: units(anchor.byte_offset),
         code_unit_offset: units(anchor.code_unit_offset),
@@ -315,13 +339,17 @@ pub fn text_read_window(
         units(request.max_code_units) as usize,
         units(request.max_scan_bytes),
     )?;
-    Ok(TextWindow {
+    Ok(convert_window(window))
+}
+
+fn convert_window(window: engine::Window) -> TextWindow {
+    TextWindow {
         text: window.text,
         code_unit_offset: window.code_unit_offset as i64,
         byte_offset: window.byte_offset as i64,
         line_index: window.line_index as i64,
         at_end: window.at_end,
-    })
+    }
 }
 
 /// Converts Chinese text with the tables ADR 0010 records.
@@ -342,4 +370,42 @@ pub fn text_convert(text: String, direction: TextDirection) -> String {
 #[frb(sync)]
 pub fn text_convert_to(text: String, target: ConvertTarget) -> String {
     engine::convert_to(&text, target.into())
+}
+
+/// Detects using a duplicate; the native read lease must outlive this call.
+pub fn text_detect_encoding_fd(fd: i32) -> Result<TextDetection, TextEngineError> {
+    let detection = engine::detect_encoding_fd(fd)?;
+    Ok(TextDetection {
+        encoding: detection.encoding,
+        bom: detection.bom,
+    })
+}
+
+/// Indexes using a duplicate. Do not concurrently seek the caller's lease.
+pub fn text_index_fd(fd: i32, options: TextIndexOptions) -> Result<TextIndex, TextEngineError> {
+    let options = engine::IndexOptions {
+        anchor_stride_bytes: units(options.anchor_stride_bytes),
+        toc_rules: options.toc_rules,
+        max_scan_bytes: units(options.max_scan_bytes),
+    };
+    Ok(convert_index(engine::index_fd(fd, &options)?))
+}
+
+/// Reads using a duplicate; non-Unix platforms explicitly refuse descriptors.
+pub fn text_read_window_fd(
+    request: TextDescriptorWindowRequest,
+) -> Result<TextWindow, TextEngineError> {
+    let anchor = request.anchor.map(|anchor| engine::Anchor {
+        byte_offset: units(anchor.byte_offset),
+        code_unit_offset: units(anchor.code_unit_offset),
+        line_index: units(anchor.line_index),
+    });
+    Ok(convert_window(engine::read_window_fd(
+        request.fd,
+        &request.encoding,
+        anchor,
+        units(request.code_unit_offset),
+        units(request.max_code_units) as usize,
+        units(request.max_scan_bytes),
+    )?))
 }

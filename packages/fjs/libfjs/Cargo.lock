@@ -658,6 +658,7 @@ dependencies = [
  "llrt_utils",
  "llrt_zlib",
  "rquickjs",
+ "sha2",
  "tokio",
 ]
 
