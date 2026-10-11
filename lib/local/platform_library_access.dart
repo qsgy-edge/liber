@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
+import '../store/ids.dart';
 import 'filesystem_library_access.dart';
 import 'library_access.dart';
 
@@ -163,21 +165,73 @@ class PlatformLibraryAccess implements LibraryAccess {
       );
     }
     transfer.checkCancelled();
-    Future<Object?>? request;
+    final operationId = mintId('copy');
+    final stopped = Completer<void>();
+    final failures = <String, (Object, StackTrace)>{};
+    var copying = false;
+    Future<void>? cancellation;
+    Future<void>? polling;
+    LibraryCopyReceipt? receipt;
+
+    Future<void> requestCancellation() async {
+      if (!copying) return;
+      await (cancellation ??= _copyControl('cancel', operationId).then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stack) {
+          failures['cancellation'] = (error, stack);
+        },
+      ));
+    }
+
+    Future<void> pollProgress() async {
+      try {
+        while (copying) {
+          final tick = Completer<void>();
+          final timer = Timer(const Duration(milliseconds: 100), tick.complete);
+          try {
+            await Future.any([tick.future, stopped.future]);
+          } finally {
+            timer.cancel();
+          }
+          if (!copying) return;
+          final progress = _map(await _copyControl('progress', operationId));
+          final bytes = progress['bytesCopied'];
+          final total = progress['totalBytes'];
+          if (bytes is! int ||
+              bytes < 0 ||
+              (total != null &&
+                  (total is! int || total < 0 || bytes > total))) {
+            throw const FormatException('Invalid native copy progress');
+          }
+          // A reply can arrive after the copy's terminal response. Validate it,
+          // but never let it report progress into a completed/next copy.
+          if (copying) transfer.report(bytes, total as int?);
+        }
+      } catch (error, stack) {
+        failures['progress'] = (error, stack);
+        await requestCancellation();
+      }
+    }
+
     await transfer.bindCancellation(() async {
-      if (request != null) {
-        await _invoke('cancel', {'operationId': transfer.id});
+      await requestCancellation();
+      final failure = failures['cancellation'];
+      if (failure != null) {
+        Error.throwWithStackTrace(failure.$1, failure.$2);
       }
     });
     try {
       transfer.checkCancelled();
       transfer.report(0, source.size);
-      request = _invoke('copyFile', {
+      transfer.checkCancelled();
+      copying = true;
+      final request = _invoke('copyFile', {
         'source': source.toJson(),
         'destinationRoot': destination.toJson(),
         'name': name,
-        'operationId': transfer.id,
+        'operationId': operationId,
       });
+      polling = pollProgress();
       final result = _map(await request);
       if (result['verified'] != true) {
         throw const LibraryAccessFailure(
@@ -185,14 +239,99 @@ class PlatformLibraryAccess implements LibraryAccess {
           'Native copy has no verified receipt',
         );
       }
-      final fingerprint = _fingerprint(result, 'bytesCopied');
-      transfer.report(fingerprint.bytes, source.size);
-      return LibraryCopyReceipt(
+      receipt = LibraryCopyReceipt(
         file: _file(result['file'], kind: destination.kind, root: destination),
-        fingerprint: fingerprint,
+        fingerprint: _fingerprint(result, 'bytesCopied'),
       );
+    } catch (error, stack) {
+      failures['copy'] = (error, stack);
     } finally {
+      copying = false;
+      stopped.complete();
       await transfer.bindCancellation(null);
+      await polling;
+      await cancellation;
+    }
+    if (failures.isEmpty) {
+      try {
+        transfer.report(receipt!.fingerprint.bytes, source.size);
+        return receipt;
+      } catch (error, stack) {
+        failures['progress'] = (error, stack);
+      }
+    }
+    // Once native verification succeeds, this adapter owns the receipt until
+    // it reaches the caller. A control/reporting failure cannot orphan it.
+    if (receipt != null) {
+      try {
+        await _cleanupCopy(receipt, source, destination);
+      } catch (error, stack) {
+        failures['cleanup'] = (error, stack);
+      }
+    }
+    final first = failures.values.first;
+    if (failures.length == 1) {
+      Error.throwWithStackTrace(first.$1, first.$2);
+    }
+    throw LibraryAccessFailure(
+      failures.containsKey('cleanup')
+          ? LibraryAccessError.io
+          : first.$1 is LibraryAccessFailure
+          ? (first.$1 as LibraryAccessFailure).code
+          : LibraryAccessError.io,
+      failures.containsKey('cleanup')
+          ? 'Native copy failed and its owned file could not be cleaned'
+          : 'Native copy failed with multiple operation errors',
+      details: {
+        for (final entry in failures.entries) entry.key: entry.value.$1,
+        if (receipt != null) 'file': receipt.file.toJson(),
+      },
+    );
+  }
+
+  // These SDK methods only inspect/set job state; they never wait for file IO.
+  // Reject a stalled control reply without letting its eventual response
+  // mutate this operation. The copy itself still owns native IO completion.
+  Future<Object?> _copyControl(String method, String operationId) =>
+      _invoke(method, {'operationId': operationId}).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw LibraryAccessFailure(
+          LibraryAccessError.io,
+          'Native copy $method did not respond',
+        ),
+      );
+
+  Future<void> _cleanupCopy(
+    LibraryCopyReceipt receipt,
+    LibraryFileReference source,
+    LibraryLocation destination,
+  ) async {
+    final file = receipt.file;
+    if (file.directory ||
+        file.locator == source.locator ||
+        (file.identity != null && file.identity == source.identity)) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.verification,
+        'Copy cleanup requires a fresh owned file',
+      );
+    }
+    final actual = await fileInRoot(destination, file);
+    if (actual == null ||
+        actual.directory ||
+        actual.locator != file.locator ||
+        actual.key != file.key ||
+        !(await fingerprint(actual)).sameBytes(receipt.fingerprint)) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.verification,
+        'Unpublished native copy changed; cleanup refused',
+      );
+    }
+    await deleteFile(actual);
+    if (await stat(actual) != null) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.io,
+        'Unpublished native copy still exists after cleanup',
+      );
     }
   }
 
