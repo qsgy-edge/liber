@@ -4,8 +4,8 @@
 // keyboard. `lib/main.dart` stays the target of a real build.
 //
 // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens that installation directory
-// instead of `%APPDATA%\Liber`, so a driven run cannot read or write the
-// operator's own library.
+// instead of the platform's application-data directory, so a driven run cannot
+// read or write the operator's own library.
 //
 // Stop a driven run by process, not by the launcher's exit: the debug
 // `liber.exe` outlives the `flutter run` wrapper, and a `dart run` server (the

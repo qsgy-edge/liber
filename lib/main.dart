@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'domain/contracts.dart';
 import 'l10n/app_localizations.dart';
@@ -36,8 +37,8 @@ import 'store/workspace.dart';
 void main() {
   installApplicationBindings();
   // `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens a different installation
-  // directory instead of `%APPDATA%\Liber`: a review run drives the real app
-  // without the operator's own library underneath it.
+  // directory instead of the platform's application-data directory: a review
+  // run drives the real app without the operator's own library underneath it.
   const workspace = String.fromEnvironment('LIBER_WORKSPACE_ROOT');
   runApp(
     LiberApp(workspaceRoot: workspace.isEmpty ? null : Directory(workspace)),
@@ -62,9 +63,9 @@ void installApplicationBindings() {
 class LiberApp extends StatefulWidget {
   const LiberApp({super.key, this.workspaceRoot, this.interfaceLanguage});
 
-  /// The installation directory (`manifest.json` and `spaces\`), the default
-  /// `%APPDATA%\Liber` when null. Tests point it at a directory of their own so
-  /// a test run never touches the user's library.
+  /// The installation directory (`manifest.json` and `spaces/`). When null,
+  /// Windows keeps `%APPDATA%\Liber`; other platforms use path_provider's
+  /// application support directory. An explicit root bypasses platform lookup.
   final Directory? workspaceRoot;
 
   /// Pins the interface language instead of resolving it from the space store.
@@ -174,7 +175,16 @@ class _LiberHomePageState extends State<LiberHomePage> {
   /// active now.
   Future<void> _openSpace() async {
     try {
-      final workspace = await Workspace.open(root: widget.workspaceRoot);
+      // Await synchronous Windows failures too: the error UI reads localized
+      // strings, which are available after this first frame's initialization.
+      final root =
+          widget.workspaceRoot ??
+          await Future<Directory>.sync(
+            () => defaultTargetPlatform == TargetPlatform.windows
+                ? Workspace.defaultRoot()
+                : getApplicationSupportDirectory(),
+          );
+      final workspace = await Workspace.open(root: root);
       final store = await workspace.openSpace(Workspace.defaultSpaceId);
       final shelf = ShelfService(store, androidId: await workspace.androidId());
       final library = LocalLibrary(store);

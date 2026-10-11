@@ -53,8 +53,9 @@ Not covered yet, and deliberately visible rather than implied:
 
 - Windows has the P1a/P2 and batch 13 product flows. Linux ARM64 has a launch
   smoke and shelf → reader run on synthetic scratch data (#112), not a real-library
-  or WebView compatibility claim. Its default workspace path still fails without
-  the explicit override (#120). The other P4 Tier B rows remain separately gated;
+  or WebView compatibility claim. Default startup now resolves the platform's
+  application support directory (#120); its real-host Linux validation is still
+  pending. The other P4 Tier B rows remain separately gated;
   app builds alone are not device or simulator runtime evidence.
 - The frozen four-stage differential corpus, the security boundary for
   untrusted sources, and the request/JS capabilities listed in
@@ -112,6 +113,17 @@ flutter test test               # shared tests
 dart analyze lib test integration_test tool
 cargo test --locked --manifest-path packages/fjs/liber_text/Cargo.toml
 ```
+
+On first launch, Liber creates its installation data (`manifest.json` and
+`spaces/<spaceId>/data.db`) automatically. Windows keeps `%APPDATA%\Liber`.
+Linux, macOS, Android and iOS use the app-specific directory returned by
+Flutter's `path_provider.getApplicationSupportDirectory()` directly: Linux's
+XDG data directory with the application ID, macOS's Application Support with
+the bundle ID, and private application storage on Android and iOS.
+`--dart-define=LIBER_WORKSPACE_ROOT=<path>` overrides this on every platform;
+standalone Dart fixture tools must pass their own scratch directory on
+non-Windows platforms. This installation data is separate from the folders
+selected for local books.
 
 `pubspec.lock` records the host each package came from. This project resolves
 against the mirror `https://pub.flutter-io.cn`, and CI sets the same
@@ -174,7 +186,7 @@ mouse and keyboard. Anything a widget test can express belongs in `test/`
 devices); what is left over is driven on the real app. `tool/driver_main.dart`
 is a debug-only entrypoint that enables the Flutter Driver extension before the
 app runs, and `--dart-define=LIBER_WORKSPACE_ROOT=<path>` opens that
-installation directory instead of `%APPDATA%\Liber`:
+installation directory instead of the platform's application-data directory:
 
 ```bash
 flutter run -d windows --target tool/driver_main.dart \

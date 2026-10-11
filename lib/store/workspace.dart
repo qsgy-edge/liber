@@ -5,7 +5,7 @@ import 'database.dart';
 import 'manifest.dart';
 import 'space_store.dart';
 
-/// The installation-level layout under `%APPDATA%\Liber`:
+/// The installation-level layout under the application's resolved directory:
 ///
 /// ```
 /// manifest.json             # space registry, format/version, UI preferences
@@ -27,16 +27,19 @@ class Workspace {
   WorkspaceManifest manifest;
   final List<SpaceStore> _openStores = <SpaceStore>[];
 
-  /// The product's own directory; `APPDATA` is where the three JSON stores this
-  /// one succeeds live today.
+  /// The legacy Windows directory, also available to standalone Dart callers.
+  /// Flutter startup resolves non-Windows application support directories in
+  /// the application layer and passes an explicit root to [open]. Standalone
+  /// tools on those platforms must supply a root; this cannot discover a mobile
+  /// application's sandbox.
   static Directory defaultRoot() {
     final appData = Platform.environment['APPDATA'];
     if (appData == null) throw StateError('APPDATA is unavailable');
     return Directory('$appData${Platform.pathSeparator}Liber');
   }
 
-  /// Opens the workspace under [root] (the default directory when omitted),
-  /// creating the manifest on first run.
+  /// Opens the workspace under [root] ([defaultRoot] when omitted), creating
+  /// the manifest on first run.
   static Future<Workspace> open({Directory? root}) async {
     final directory = root ?? defaultRoot();
     await directory.create(recursive: true);
