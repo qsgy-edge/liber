@@ -73,7 +73,9 @@ def gate_commands(dart, library, output):
     # The HTML adapter corpus is platform-independent: the same rows run wherever
     # the native library builds, so each destination platform records its own row.
     commands += [('html-adapter', [dart, 'run', 'tool/html_adapter_gate.dart', str(library), '-',
-                                   str(output / 'html-adapter.json')])]
+                                   str(output / 'html-adapter.json')]),
+                 ('library-files', [dart, 'run', 'packages/fjs/test/library_files_gate.dart',
+                                    str(library)])]
     commands += [(f'broker_gate_regression-{mode}',
                   [dart, 'run', 'tool/broker_gate_regression.dart', str(library), mode])
                  for mode in BROKER_MODES]
