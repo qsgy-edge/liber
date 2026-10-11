@@ -32,8 +32,9 @@ class LibraryLocation {
     final kind = LibraryLocationKind.values
         .where((kind) => kind.name == kindName)
         .firstOrNull;
-    if (kind == null)
+    if (kind == null) {
       throw const FormatException('Unknown library access kind');
+    }
     return LibraryLocation(
       kind: kind,
       locator: _string(json, 'locator'),
@@ -184,17 +185,16 @@ class LibraryTransfer {
 /// The original native descriptor or Apple security scope remains live until
 /// the asynchronous text operation finishes. No lease is persisted.
 class LibraryReadLease {
-  LibraryReadLease({this.path, this.fd, Future<void> Function()? release})
-    : assert((path == null) != (fd == null)),
-      _release = release;
+  LibraryReadLease({this.path, this.fd, this.onRelease})
+    : assert((path == null) != (fd == null));
 
   final String? path;
   final int? fd;
-  final Future<void> Function()? _release;
+  final Future<void> Function()? onRelease;
   Future<void>? _closing;
 
   Future<void> release() =>
-      _closing ??= Future<void>.sync(() => _release?.call());
+      _closing ??= Future<void>.sync(() => onRelease?.call());
 }
 
 /// The two current access boundaries: ordinary filesystem IO and SDK-granted
