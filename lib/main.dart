@@ -1161,7 +1161,10 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
     };
   }
 
-  Future<void> _run(Future<void> Function(LibraryTransfer) operation) async {
+  Future<void> _run(
+    Future<void> Function(LibraryTransfer) operation, {
+    bool refreshEntries = true,
+  }) async {
     if (_busy || widget.service == null) return;
     final transfer = LibraryTransfer(
       id: mintId('library-transfer'),
@@ -1190,7 +1193,7 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       // Always refresh the actual store, including that partial-success case.
       try {
         await widget.onChanged();
-        await _refreshEntries();
+        if (refreshEntries) await _refreshEntries();
       } on Object catch (error) {
         if (mounted) setState(() => _message = _failureText(error));
       }
@@ -1202,6 +1205,38 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
         });
     }
   }
+
+  Future<void> _scanRecursively() => _run((transfer) async {
+    final library = widget.service!;
+    final location = library.managedLocation;
+    if (location == null) return;
+    final files = <LibraryFileReference>[];
+    final visited = <String>{};
+    Future<void> walk(LibraryFileReference? directory) async {
+      transfer.checkCancelled();
+      if (!visited.add(directory?.locator ?? location.locator)) return;
+      for (final entry in await library.access.list(
+        location,
+        directory: directory,
+      )) {
+        transfer.checkCancelled();
+        if (entry.directory) {
+          await walk(entry);
+        } else if (entry.name.toLowerCase().endsWith('.txt') ||
+            entry.name.toLowerCase().endsWith('.md')) {
+          files.add(entry);
+        }
+      }
+    }
+
+    await walk(_directory);
+    transfer.checkCancelled();
+    if (mounted)
+      setState(() {
+        _entries = files;
+        _message = AppLocalizations.of(context).scanFinished(files.length);
+      });
+  }, refreshEntries: false);
 
   Future<LibraryConflictChoice> _resolveConflict(
     LibraryImportConflict conflict,
@@ -1410,6 +1445,12 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
                             : l10n.libraryChangeFolder,
                       ),
                     ),
+                    if (root != null)
+                      OutlinedButton.icon(
+                        onPressed: enabled ? _scanRecursively : null,
+                        icon: const Icon(Icons.manage_search),
+                        label: Text(l10n.scanRecursively),
+                      ),
                     if (_directory != null)
                       OutlinedButton.icon(
                         onPressed: enabled

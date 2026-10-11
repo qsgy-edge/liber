@@ -82,7 +82,13 @@ book legitimately exists per source).
 or `local`), `type` flags, `customTag`, `coverUrl`, `customCoverUrl`, `intro`, `customIntro`,
 `charset`, `latestChapterTitle`, `latestChapterTime`, `totalChapterNum`, `canUpdate`,
 `lastCheckTime`, `lastCheckCount`, `order`, `variable` (opaque), and for local books
-`rootId`, `relativePath`, `format`, `needsRelink`. `sourceRef` is the space-local Book Source
+`rootId`, `relativePath`, `format`, `needsRelink`, and the nullable original import
+pair `originalRootId`, `originalRelativePath`. The current root/key identifies the
+readable file; the original pair matches earlier imported snapshots after an
+adoption, update or relocation and never grants file access. These keys can
+change while the minted book ID, groups, settings and progress stay attached to
+the same book (#121; ADR 0006 amendment).
+`sourceRef` is the space-local Book Source
 key (`bookSourceUrl`) — the frozen baseline's `Book.origin`, which overloads that field with
 `loc_book` for local books, hence an explicit `kind` instead. `originName` stays denormalized
 so a deleted or renamed source does not blank the shelf, exactly as the baseline keeps it.
@@ -295,7 +301,12 @@ space means opening (and possibly decrypting) its store.
 A small Rust crate behind `flutter_rust_bridge` owns, for local files: encoding detection,
 the one-pass index build (chapter boundaries plus the sparse byte↔code-unit anchors), and
 window decoding. Dart asks for a window and receives text; the index lands in `text_index`
-(D5).
+(D5). On SDK-authorized document platforms, the same engine accepts a borrowed
+seekable file descriptor instead of a path (#121/#123). It duplicates and owns
+only its duplicate; the SDK grant and original descriptor stay alive until the
+asynchronous operation finishes, then the caller releases them. Both transports
+use the same decoding, chapter and anchor algorithms. Provider errors and
+non-seekable documents stay visible instead of resolving a URI against CWD.
 
 *Why Rust, in order of weight:*
 

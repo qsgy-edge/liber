@@ -123,7 +123,14 @@ the bundle ID, and private application storage on Android and iOS.
 `--dart-define=LIBER_WORKSPACE_ROOT=<path>` overrides this on every platform;
 standalone Dart fixture tools must pass their own scratch directory on
 non-Windows platforms. This installation data is separate from the folders
-selected for local books.
+selected for local books. At the first local-book import, choose a library folder
+on **Local library**. Imports copy and verify TXT/Markdown files into it and keep
+the external originals; files already in the library can be added directly.
+Same-name different content offers update, keep both or cancel. **Change library
+folder** automatically copies and verifies the managed books before switching;
+old-copy deletion asks separately. Existing external-reference books are shown
+for explicit selected-book adoption. See ADR 0006's #121 amendment for identity,
+progress and the recorded original-association collision limitation.
 
 `pubspec.lock` records the host each package came from. This project resolves
 against the mirror `https://pub.flutter-io.cn`, and CI sets the same
@@ -210,9 +217,10 @@ before any input, then `flutter_driver_command tap` with a finder: `ByText`,
 the accessibility tree or a screenshot rather than through the driver.
 
 Four things the driver cannot reach, and who does them instead: a Windows
-folder dialog (`选择根目录` and the trial page's `选择书源 JSON` open one, so the
-operator picks the file, or the store's `sources` row is seeded and the page is
-entered with that source selected), a caret position (`保存位置` writes the
+folder dialog (`选择书库目录` / `更改书库目录`) and native file dialogs
+(the trial page's `选择书源 JSON` opens one, so the operator picks the file,
+or the scratch store's root/file/source rows are seeded and the page is entered
+with that selection), a caret position (`保存位置` writes the
 cursor's offset, which the driver does not move), and any judgement about how
 the screen looks.
 

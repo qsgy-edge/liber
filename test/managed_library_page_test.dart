@@ -20,6 +20,7 @@ class PickerAccess extends PlatformLibraryAccess {
   final MemoryLibraryAccess memory;
   LibraryLocation? selectedDirectory;
   List<LibraryFileReference>? selectedFiles;
+  final directoryEntries = <String, List<LibraryFileReference>>{};
 
   @override
   Future<LibraryLocation?> pickDirectory() async => selectedDirectory;
@@ -34,7 +35,10 @@ class PickerAccess extends PlatformLibraryAccess {
   Future<List<LibraryFileReference>> list(
     LibraryLocation root, {
     LibraryFileReference? directory,
-  }) => memory.list(root, directory: directory);
+  }) async =>
+      directory != null && directoryEntries.containsKey(directory.locator)
+      ? List.of(directoryEntries[directory.locator]!)
+      : await memory.list(root, directory: directory);
   @override
   Future<LibraryFileReference?> stat(LibraryFileReference file) =>
       memory.stat(file);
@@ -111,6 +115,65 @@ void main() {
         scratch = await Directory.systemTemp.createTemp('liber-library-ui-'),
   );
   tearDown(() => deleteTempDirectory(scratch));
+
+  testWidgets('recursive discovery finds nested books without importing them', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.runAsync(() async {
+      final io = MemoryLibraryAccess();
+      final root = io.addRoot('one');
+      final folder = LibraryFileReference(
+        kind: root.kind,
+        locator: '${root.locator}/nested',
+        key: 'nested',
+        name: 'nested',
+        directory: true,
+        root: root,
+      );
+      io.files[folder.locator] = folder;
+      io.bytes[folder.locator] = '';
+      final book = io.addFile(
+        'nested/book.txt',
+        'nested-book.txt',
+        'nested book',
+        root: root,
+      );
+      io.nestedFiles.add(book.locator);
+      final access = PickerAccess(io)..selectedDirectory = root;
+      access.directoryEntries[folder.locator] = [book];
+      final store = await openPage(tester, scratch, access);
+      try {
+        await tester.tap(find.text('Choose library folder'));
+        await tester.pump();
+        await waitFor(
+          tester,
+          () => idle(tester) && find.text('nested').evaluate().isNotEmpty,
+        );
+        expect(find.text('nested-book.txt'), findsNothing);
+        await tester.tap(find.text('Scan this folder recursively'));
+        await tester.pump();
+        await waitFor(
+          tester,
+          () =>
+              idle(tester) &&
+              find.text('nested-book.txt').evaluate().isNotEmpty,
+        );
+        expect(await store.localBooks(), isEmpty);
+        expect(io.copyCount, 0);
+        expect(io.bytes[book.locator], 'nested book');
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await store.close();
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+      }
+    });
+  });
 
   testWidgets(
     'update conflict preserves the existing book and reading progress',
