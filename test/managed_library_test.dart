@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
@@ -1057,6 +1058,64 @@ void main() {
     return (owner: owner, file: file);
   }
 
+  test(
+    'filesystem addFiles admission reuses aliased owner without a copy',
+    () async {
+      final path = p.join(space.directory.path, 'shared-filesystem');
+      final location = LibraryLocation(
+        kind: LibraryLocationKind.filesystem,
+        locator: path,
+        identity: path,
+        displayName: path,
+      );
+      access.roots[path] = location;
+      await select(location);
+      final file = access.addFile(
+        'member.txt',
+        'member.txt',
+        'shared',
+        root: location,
+      );
+      final owner = await external('filesystem-owner', file);
+      await library.updateOffset(owner.id, 28);
+      final admitted = (await library.addFiles([File(file.locator)])).single;
+      expect(admitted.id, owner.id);
+      expect(admitted.rootId, library.managedRoot!.id);
+      expect(admitted.textOffset, 28);
+      expect(
+        (await store.localBookByOriginalKey(owner.rootId, file.key))!.id,
+        owner.id,
+      );
+      expect(access.copyCount, 0);
+      expect(access.bytes[file.locator], 'shared');
+    },
+  );
+
+  test(
+    'nested canonical member admission reuses aliased owner after relocation',
+    () async {
+      await sharedDirectory();
+      final nested = access.addFile(
+        'Nested:BOOK',
+        'nested.txt',
+        'nested',
+        root: second,
+      );
+      final owner = await external('nested-owner', nested);
+      access.nestedFiles.add(nested.locator);
+      final copies = access.copyCount;
+      final admitted = await import(nested);
+      expect(admitted.id, owner.id);
+      expect(admitted.rootId, library.managedRoot!.id);
+      expect(admitted.path, nested.locator);
+      expect(
+        (await store.localBookByOriginalKey(owner.rootId, nested.key))!.id,
+        owner.id,
+      );
+      expect(access.copyCount, copies);
+    },
+  );
+
   for (final content in ['owned', 'different']) {
     test(
       'adoption after relocation preserves aliased owner for $content bytes',
@@ -1119,6 +1178,13 @@ void main() {
       () async {
         final destination = await sharedDirectory();
         await library.updateOffset(destination.owner.id, 47);
+        await store.putLocalFile(
+          LocalFilesCompanion(
+            rootId: Value(destination.owner.rootId),
+            relativePath: Value(destination.file.key),
+            importName: const Value('original-name.txt'),
+          ),
+        );
         final group = await store.ensureGroup('owner-group');
         await store.setBookGroups(destination.owner.id, [group.id]);
         await store.putSetting('font', '21', bookId: destination.owner.id);
@@ -1140,6 +1206,30 @@ void main() {
             identity: Value(second.identity),
           ),
         );
+        final unrelatedFile = access.addFile(
+          'Unrelated:BOOK',
+          'unrelated.txt',
+          'unrelated',
+          root: unrelated,
+        );
+        await store.putBook(
+          BooksCompanion.insert(
+            id: 'unrelated-book',
+            title: 'Unrelated',
+            kind: const Value('local'),
+            rootId: const Value('unrelated'),
+            relativePath: Value(unrelatedFile.key),
+          ),
+        );
+        await store.putLocalFile(
+          LocalFilesCompanion.insert(
+            rootId: 'unrelated',
+            relativePath: unrelatedFile.key,
+            locator: Value(unrelatedFile.locator),
+            name: Value(unrelatedFile.name),
+            bookId: const Value('unrelated-book'),
+          ),
+        );
         access.rootFailures[unrelated.locator] = LibraryAccessError.permission;
         access.inspectedRoots.clear();
         final copies = access.copyCount;
@@ -1152,6 +1242,13 @@ void main() {
         expect(admitted.path, destination.file.locator);
         expect(admitted.title, destination.owner.title);
         expect(admitted.textOffset, 47);
+        expect(
+          (await store.localFile(
+            admitted.rootId,
+            destination.file.key,
+          ))!.importName,
+          'original-name.txt',
+        );
         expect((await store.groupsOf(admitted.id)).single.id, group.id);
         expect(await store.setting('font', bookId: admitted.id), '21');
         expect(
@@ -1302,6 +1399,7 @@ class MemoryLibraryAccess implements LibraryAccess {
   final rootFailures = <String, LibraryAccessError>{};
   final inspectedRoots = <String>[];
   final fingerprintFailures = <String, LibraryAccessError>{};
+  final nestedFiles = <String>{};
   LibraryAccessError? listFailure;
   LibraryAccessError? membershipFailure;
   Future<void> Function()? beforeCopyReturn;
@@ -1363,6 +1461,7 @@ class MemoryLibraryAccess implements LibraryAccess {
         .where(
           (file) =>
               file.root?.locator == root.locator &&
+              !nestedFiles.contains(file.locator) &&
               bytes.containsKey(file.locator),
         )
         .toList();

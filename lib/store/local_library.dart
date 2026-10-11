@@ -374,15 +374,21 @@ class LocalLibrary {
               name: p.basename(entry.path),
             ),
           );
-          if (file == null ||
-              file.directory ||
-              await store.localBook(root.id, file.key) != null) {
+          if (file == null || file.directory) continue;
+          final existing = (await _ownersOf(location, [file]))[file.key];
+          if (existing?.rootId == root.id &&
+              existing?.relativePath == file.key) {
             continue;
           }
+          await _checkOriginalAssociation(existing);
+          final stored = existing == null
+              ? null
+              : await store.localFile(existing.rootId!, existing.relativePath!);
           final pending = _PreparedBook(
             file: file,
-            name: file.name,
-            id: mintId('book'),
+            name: stored?.importName ?? file.name,
+            id: existing?.id ?? mintId('book'),
+            existing: existing,
           );
           await store.transaction(() => _publish(root.id, [pending]));
           ids.add(pending.id);
@@ -469,6 +475,7 @@ class LocalLibrary {
         owned,
         transfer,
         resolver,
+        rootId: root.id,
         incoming: incoming,
       );
       transfer.checkCancelled();
@@ -573,6 +580,7 @@ class LocalLibrary {
             owned,
             transfer,
             resolveConflict,
+            rootId: id,
             incoming: row,
             name: oldFile?.importName ?? source.name,
           );
@@ -714,6 +722,7 @@ class LocalLibrary {
           'Managed file identity changed',
         );
       }
+      await _ownersOf(await access.inspectRoot(reference.root!), [actual]);
       await access.deleteFile(actual);
     }
     await _markRelink(row, true);
@@ -965,18 +974,104 @@ class LocalLibrary {
         }
       });
 
+  /// Root IDs can alias one directory after relocation. Stored locators only
+  /// narrow the lookup; inspected access and canonical membership prove which
+  /// current book owns a listed file. Unrelated roots are never probed.
+  Future<Map<String, ShelfBook>> _ownersOf(
+    LibraryLocation destination,
+    List<LibraryFileReference> files,
+  ) async {
+    final owners = <String, ShelfBook>{};
+    final roots = await _rootsById();
+    final inspectedRoots = <String, LibraryLocation>{};
+    final byKey = {for (final file in files) file.key: file};
+    for (final book in await store.localBooks()) {
+      final root = roots[book.rootId];
+      final location = _location(root);
+      if (root == null ||
+          location == null ||
+          location.kind != destination.kind) {
+        continue;
+      }
+      final stored = await store.localFile(root.id, book.relativePath!);
+      final reference = _reference(root, book.relativePath!, stored);
+      final sameDirectory = _sameLocator(
+        location.kind,
+        location.locator,
+        destination.locator,
+      );
+      final sameKey = sameDirectory ? byKey[book.relativePath] : null;
+      final sameLocator = reference == null
+          ? null
+          : files
+                .where(
+                  (file) =>
+                      _sameLocator(file.kind, file.locator, reference.locator),
+                )
+                .firstOrNull;
+      if (sameKey == null && sameLocator == null) continue;
+      final actualRoot = inspectedRoots[root.id] ??= await access.inspectRoot(
+        location,
+      );
+      final refreshedRoot = root.copyWith(
+        displayName: actualRoot.displayName,
+        kind: actualRoot.kind.name,
+        locator: Value(actualRoot.locator),
+        identity: Value(actualRoot.identity),
+        authorization: Value(actualRoot.authorization),
+      );
+      final refreshedReference = _reference(
+        refreshedRoot,
+        book.relativePath!,
+        stored,
+      );
+      // Legacy native book rows can lack file facts. Their exact opaque key
+      // can name a listed member only after the directory itself is verified.
+      final known =
+          refreshedReference ??
+          (stored?.locator == null &&
+                  actualRoot.kind != LibraryLocationKind.filesystem &&
+                  actualRoot.sameLocation(destination)
+              ? sameKey
+              : null);
+      if (known == null) continue;
+      final current = await access.stat(known);
+      if (current == null) continue;
+      final actual = await access.fileInRoot(destination, current);
+      if (actual == null) continue;
+      final listed = byKey[actual.key];
+      if (listed == null || !_sameFile(actual, listed)) continue;
+      final previous = owners[actual.key];
+      if (previous != null && previous.id != book.id) {
+        throw LibraryAccessFailure(
+          LibraryAccessError.collision,
+          'Multiple books own the same library file',
+          details: {
+            'bookIds': [previous.id, book.id],
+            'locator': actual.locator,
+          },
+        );
+      }
+      owners[actual.key] = book;
+    }
+    return owners;
+  }
+
+  static bool _sameLocator(LibraryLocationKind kind, String a, String b) =>
+      kind == LibraryLocationKind.filesystem ? p.equals(a, b) : a == b;
+
   Future<List<_LibraryCandidate>> _candidates(
     String? rootId,
     LibraryLocation location,
   ) async {
+    final listed = await access.list(location);
+    final owners = await _ownersOf(location, listed);
     final candidates = <_LibraryCandidate>[];
-    for (final file in await access.list(location)) {
-      final row = rootId == null
+    for (final file in listed) {
+      final row = owners[file.key];
+      final stored = row == null
           ? null
-          : await store.localBook(rootId, file.key);
-      final stored = rootId == null
-          ? null
-          : await store.localFile(rootId, file.key);
+          : await store.localFile(row.rootId!, row.relativePath!);
       candidates.add(
         _LibraryCandidate(file, stored?.importName ?? file.name, row),
       );
@@ -1016,29 +1111,46 @@ class LocalLibrary {
     List<LibraryCopyReceipt> owned,
     LibraryTransfer transfer,
     LibraryConflictResolver resolver, {
+    required String rootId,
     ShelfBook? incoming,
     String? name,
   }) async {
     transfer.checkCancelled();
     final logicalName = name ?? source.name;
     final member = await access.fileInRoot(destination, source);
-    final canonical = member == null
-        ? null
-        : candidates
-              .where((candidate) => candidate.file.key == member.key)
-              .firstOrNull;
+    _LibraryCandidate? canonical;
+    if (member != null) {
+      // Membership can be below the listed directory. Resolve its ownership
+      // directly as well, rather than treating an unlisted child as unowned.
+      final owner = (await _ownersOf(destination, [member]))[member.key];
+      final stored = owner == null
+          ? null
+          : await store.localFile(owner.rootId!, owner.relativePath!);
+      canonical = _LibraryCandidate(
+        member,
+        stored?.importName ?? member.name,
+        owner,
+      );
+    }
     if (member != null &&
         !member.directory &&
         (incoming == null ||
             canonical?.book == null ||
             canonical!.book!.id == incoming.id)) {
-      await _checkOriginalAssociation(incoming);
+      final existing = incoming ?? canonical?.book;
+      final unchanged =
+          incoming == null &&
+          existing?.rootId == rootId &&
+          existing?.relativePath == member.key;
+      await _checkOriginalAssociation(unchanged ? null : existing);
       return _PreparedBook(
         file: member,
-        name: logicalName,
-        id: incoming?.id ?? canonical?.book?.id ?? mintId('book'),
-        existing: incoming ?? canonical?.book,
-        unchanged: incoming == null && canonical?.book != null,
+        name: incoming == null && existing != null
+            ? canonical!.name
+            : logicalName,
+        id: existing?.id ?? mintId('book'),
+        existing: existing,
+        unchanged: unchanged,
       );
     }
     final logicalMatches =
@@ -1056,13 +1168,17 @@ class LocalLibrary {
       final fingerprint = await access.fingerprint(source);
       for (final candidate in logicalMatches) {
         if (!candidate.file.directory &&
-            fingerprint.sameBytes(await access.fingerprint(candidate.file))) {
+            await _matchesFingerprint(fingerprint, candidate.file)) {
+          final unchanged =
+              candidate.book!.rootId == rootId &&
+              candidate.book!.relativePath == candidate.file.key;
+          await _checkOriginalAssociation(unchanged ? null : candidate.book);
           return _PreparedBook(
             file: candidate.file,
             name: logicalName,
             id: candidate.book!.id,
             existing: candidate.book,
-            unchanged: true,
+            unchanged: unchanged,
           );
         }
       }
@@ -1085,16 +1201,24 @@ class LocalLibrary {
       );
       if (!collision.file.directory &&
           conflict.canUpdate &&
-          (await access.fingerprint(
-            source,
-          )).sameBytes(await access.fingerprint(collision.file))) {
-        await _checkOriginalAssociation(incoming);
+          await _matchesFingerprint(
+            await access.fingerprint(source),
+            collision.file,
+          )) {
+        final reused = incoming ?? collision.book;
+        final unchanged =
+            incoming == null &&
+            reused?.rootId == rootId &&
+            reused?.relativePath == collision.file.key;
+        await _checkOriginalAssociation(unchanged ? null : reused);
         return _PreparedBook(
           file: collision.file,
-          name: logicalName,
-          id: incoming?.id ?? collision.book?.id ?? mintId('book'),
-          existing: incoming ?? collision.book,
-          unchanged: incoming == null && collision.book != null,
+          name: incoming == null && reused != null
+              ? collision.name
+              : logicalName,
+          id: reused?.id ?? mintId('book'),
+          existing: reused,
+          unchanged: unchanged,
         );
       }
       final choice = await resolver(conflict);
@@ -1155,6 +1279,18 @@ class LocalLibrary {
       existing: existing,
       fingerprint: receipt.fingerprint,
     );
+  }
+
+  Future<bool> _matchesFingerprint(
+    LibraryFingerprint source,
+    LibraryFileReference candidate,
+  ) async {
+    try {
+      return source.sameBytes(await access.fingerprint(candidate));
+    } on LibraryAccessFailure catch (error) {
+      if (error.code == LibraryAccessError.missing) return false;
+      rethrow;
+    }
   }
 
   Future<void> _checkOriginalAssociation(ShelfBook? book) async {
