@@ -213,6 +213,30 @@ jobs:
       # `evidence-<platform>` artifact records what was built rather than leaving
       # it in a log. (`tool/ci_runtime.py` gains no build rows: a build in that
       # list would run the build twice.)
+      - name: Native Apple library IO tests
+        if: matrix.platform == 'macos'
+        run: |
+          # These XCTest rows use real native IO in the test host's scratch
+          # container; picker/provider and grant-restart rows stay separate.
+          xcodebuild test -workspace macos/Runner.xcworkspace -scheme Runner \
+            -configuration Debug -destination 'platform=macOS,arch=arm64' \
+            -only-testing:RunnerTests/LocalLibraryChannelTests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "$PWD/.ci-results/apple-library-tests.xcresult" \
+            2>&1 | tee .ci-results/apple-library-tests.log
+          # Require every source-declared case to appear as passed: a selector
+          # that finds no tests must not turn this SDK gate green.
+          python - <<'PY'
+          import json, pathlib, re
+          source = pathlib.Path('macos/RunnerTests/LocalLibraryChannelTests.swift').read_text()
+          expected = set(re.findall(r'^\s+func (test\w+)\(', source, re.MULTILINE))
+          log = pathlib.Path('.ci-results/apple-library-tests.log').read_text(errors='replace')
+          passed = set(re.findall(r'(test\w+)[^\n]*\bpassed\b', log))
+          missing = sorted(expected - passed)
+          result = {'expected': sorted(expected), 'passed': sorted(expected & passed), 'missing': missing}
+          pathlib.Path('.ci-results/apple-library-tests.json').write_text(json.dumps(result, indent=2))
+          assert expected and not missing, result
+          PY
       - name: Record app build rows
         run: python tool/ci_build_row.py '${{ matrix.platform }}'
       # The limits harness is platform-neutral, but it has only ever run on

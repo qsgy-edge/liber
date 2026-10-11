@@ -213,8 +213,9 @@ void main() {
     () async {
       var releases = 0;
       messenger.setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'acquireRead')
+        if (call.method == 'acquireRead') {
           return {'token': 'lease-one', 'fd': 42};
+        }
         expect(call.method, 'releaseRead');
         expect((call.arguments as Map)['token'], 'lease-one');
         releases += 1;

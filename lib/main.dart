@@ -1138,18 +1138,20 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       );
       if (mounted) setState(() => _entries = entries);
     } on Object catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _entries = const [];
           _message = _failureText(error);
         });
+      }
     }
   }
 
   String _failureText(Object error) {
     final l10n = AppLocalizations.of(context);
-    if (error is! LibraryAccessFailure)
+    if (error is! LibraryAccessFailure) {
       return l10n.libraryOperationFailed('$error');
+    }
     return switch (error.code) {
       LibraryAccessError.cancelled => l10n.libraryCancelled,
       LibraryAccessError.permission => l10n.libraryPermissionLost,
@@ -1169,11 +1171,12 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
     final transfer = LibraryTransfer(
       id: mintId('library-transfer'),
       onProgress: (bytes, total) {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _bytes = bytes;
             _total = total;
           });
+        }
       },
     );
     setState(() {
@@ -1198,11 +1201,12 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
         if (mounted) setState(() => _message = _failureText(error));
       }
       widget.onBusyChanged(false);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
           _transfer = null;
         });
+      }
     }
   }
 
@@ -1231,11 +1235,12 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
 
     await walk(_directory);
     transfer.checkCancelled();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _entries = files;
         _message = AppLocalizations.of(context).scanFinished(files.length);
       });
+    }
   }, refreshEntries: false);
 
   Future<LibraryConflictChoice> _resolveConflict(
@@ -1299,10 +1304,11 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       transfer: transfer,
       resolveConflict: _resolveConflict,
     );
-    if (mounted)
+    if (mounted) {
       setState(
         () => _message = AppLocalizations.of(context).filesAdded(books.length),
       );
+    }
   });
 
   Future<void> _changeLocation() => _run((transfer) async {
@@ -1344,10 +1350,11 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       await widget.service!.deletePreviousCopies(migration);
       if (mounted) setState(() => _message = l10n.libraryCleanupDone);
     } on Object catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _message = l10n.libraryCleanupFailed(_failureText(error)),
         );
+      }
     }
   });
 
@@ -1359,12 +1366,13 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       resolveConflict: _resolveConflict,
     );
     _selected.removeAll(books.map((book) => book.id));
-    if (mounted)
+    if (mounted) {
       setState(
         () => _message = AppLocalizations.of(
           context,
         ).libraryAdopted(books.length),
       );
+    }
   });
 
   Future<void> _bookAction(LocalBook book, String action) async {
@@ -1390,8 +1398,9 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
           ],
         ),
       );
-      if (confirmed == true)
+      if (confirmed == true) {
         await _run((_) => widget.service!.deleteBookFile(book.id));
+      }
     }
   }
 
@@ -1494,10 +1503,11 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
                                 try {
                                   await _transfer?.cancel();
                                 } on Object catch (error) {
-                                  if (mounted)
+                                  if (mounted) {
                                     setState(
                                       () => _message = _failureText(error),
                                     );
+                                  }
                                 }
                                 if (mounted) setState(() {});
                               },
@@ -1547,17 +1557,18 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
                     : TextButton(
                         onPressed: enabled
                             ? () => _run((transfer) async {
-                                final added = await library!.importFiles(
+                                final added = await library.importFiles(
                                   [entry],
                                   transfer: transfer,
                                   resolveConflict: _resolveConflict,
                                 );
-                                if (mounted)
+                                if (mounted) {
                                   setState(
                                     () => _message = l10n.filesAdded(
                                       added.length,
                                     ),
                                   );
+                                }
                               })
                             : null,
                         child: Text(l10n.addEntryToShelf),
@@ -1599,10 +1610,11 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
                   value: _selected.contains(book.id),
                   onChanged: enabled
                       ? (selected) => setState(() {
-                          if (selected == true)
+                          if (selected == true) {
                             _selected.add(book.id);
-                          else
+                          } else {
                             _selected.remove(book.id);
+                          }
                         })
                       : null,
                 );
