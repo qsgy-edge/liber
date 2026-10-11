@@ -69,6 +69,11 @@ class Sources extends Table {
   unique: true,
 )
 @TableIndex(name: 'books_shelf_order', columns: {#shelved, #kind, #bookOrder})
+@TableIndex(
+  name: 'books_local_origin',
+  columns: {#originalRootId, #originalRelativePath},
+  unique: true,
+)
 @DataClassName('ShelfBook')
 class Books extends Table {
   /// Minted space-local id: the primary key, so a source change does not
@@ -134,7 +139,14 @@ class Books extends Table {
   // Local books (D2/D4).
   TextColumn get rootId => text().nullable()();
 
+  /// Root-relative file key, or the provider's opaque document ID.
   TextColumn get relativePath => text().nullable()();
+
+  /// Import correlation retained when an external reference is adopted. These
+  /// do not resolve a readable file and never change a book's minted identity.
+  TextColumn get originalRootId => text().nullable()();
+
+  TextColumn get originalRelativePath => text().nullable()();
 
   TextColumn get format => text().nullable()();
 
@@ -329,11 +341,22 @@ class ReplaceRules extends Table {
 
 @DataClassName('LocalRoot')
 class LocalRoots extends Table {
-  /// Stable: the lowercased absolute path, so re-authorizing the same root
-  /// keeps the shelf and the progress (ADR 0006).
+  /// Minted for new managed roots; existing path-based IDs remain valid. A
+  /// relocation or renewed grant changes access metadata, never this identity.
   TextColumn get id => text()();
 
   TextColumn get displayName => text()();
+
+  TextColumn get kind => text().withDefault(const Constant('filesystem'))();
+
+  /// A path/URL/tree URI; null on old filesystem rows uses displayName.
+  TextColumn get locator => text().nullable()();
+
+  /// The native provider's identity, separate from display text and book IDs.
+  TextColumn get identity => text().nullable()();
+
+  /// A durable Apple bookmark. Android retains its SDK grant by tree URI.
+  TextColumn get authorization => text().nullable()();
 
   BoolColumn get needsRelink => boolean().withDefault(const Constant(false))();
 
@@ -347,7 +370,20 @@ class LocalFiles extends Table {
   TextColumn get rootId =>
       text().references(LocalRoots, #id, onDelete: KeyAction.cascade)();
 
+  /// Root-relative filesystem key or opaque Android document ID.
   TextColumn get relativePath => text()();
+
+  /// Canonical physical locator and filename; legacy rows resolve their key.
+  TextColumn get locator => text().nullable()();
+
+  TextColumn get name => text().nullable()();
+
+  /// The logical filename used for import collisions, including provider
+  /// copies whose actual filename differs. It is not a book identity.
+  TextColumn get importName => text().nullable()();
+
+  /// Exact copied bytes, for guarded owned-file cleanup and recovery.
+  TextColumn get sha256 => text().nullable()();
 
   TextColumn get format => text().withDefault(const Constant('txt'))();
 
@@ -488,7 +524,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 6;
+  static const latestVersion = 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -510,12 +546,15 @@ class SpaceDatabase extends _$SpaceDatabase {
       // (#37).
       // v5 → v6 adds the table-of-contents markers (`chapters.tag`,
       // `is_volume`, `is_vip`, `is_pay`, #13).
+      // v6 → v7 keeps grants/file locators separate from stable root/book IDs
+      // and preserves the old local import correlation during adoption (#121).
       await stepByStep(
         from1To2: migrateToV2,
         from2To3: migrateToV3,
         from3To4: migrateToV4,
         from4To5: migrateToV5,
         from5To6: migrateToV6,
+        from6To7: migrateToV7,
       )(m, from, to);
     },
     beforeOpen: (details) async {

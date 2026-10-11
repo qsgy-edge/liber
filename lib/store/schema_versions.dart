@@ -2583,12 +2583,530 @@ i1.GeneratedColumn<int> _column_87(String aliasedName) =>
       $customConstraints: 'NOT NULL DEFAULT 0 CHECK (is_pay IN (0, 1))',
       defaultValue: const i1.CustomExpression('0'),
     );
+
+final class Schema7 extends i0.VersionedSchema {
+  Schema7({required super.database}) : super(version: 7);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    sources,
+    books,
+    groups,
+    bookGroups,
+    chapters,
+    localRoots,
+    localFiles,
+    textIndex,
+    progress,
+    replaceRules,
+    settings,
+    sourceCookies,
+    sourceEntries,
+    sourceTlsExceptions,
+    booksNaturalKey,
+    booksLocalKey,
+    booksShelfOrder,
+    booksLocalOrigin,
+    groupsName,
+    bookGroupsGroup,
+    chaptersTocOrder,
+    replaceRulesMergeKey,
+    replaceRulesOrder,
+    localFilesBook,
+  ];
+  late final Shape0 sources = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'sources',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(book_source_url)'],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+        _column_8,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape16 books = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'books',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_3,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_24,
+        _column_25,
+        _column_26,
+        _column_27,
+        _column_28,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_88,
+        _column_89,
+        _column_33,
+        _column_34,
+        _column_8,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 groups = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'groups',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_9,
+        _column_1,
+        _column_35,
+        _column_36,
+        _column_37,
+        _column_38,
+        _column_39,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 bookGroups = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'book_groups',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(book_id, group_id)'],
+      columns: [_column_40, _column_41],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape15 chapters = Shape15(
+    source: i0.VersionedTable(
+      entityName: 'chapters',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(book_id, chapter_key)'],
+      columns: [
+        _column_40,
+        _column_42,
+        _column_1,
+        _column_43,
+        _column_44,
+        _column_84,
+        _column_85,
+        _column_86,
+        _column_87,
+        _column_29,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape17 localRoots = Shape17(
+    source: i0.VersionedTable(
+      entityName: 'local_roots',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_9,
+        _column_45,
+        _column_90,
+        _column_91,
+        _column_92,
+        _column_93,
+        _column_34,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape18 localFiles = Shape18(
+    source: i0.VersionedTable(
+      entityName: 'local_files',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(root_id, relative_path)'],
+      columns: [
+        _column_46,
+        _column_47,
+        _column_91,
+        _column_94,
+        _column_95,
+        _column_96,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_34,
+        _column_51,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 textIndex = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'text_index',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(root_id, relative_path, byte_offset)',
+        'FOREIGN KEY(root_id, relative_path)REFERENCES local_files(root_id, relative_path)ON DELETE CASCADE',
+      ],
+      columns: [_column_46, _column_47, _column_52, _column_53, _column_54],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape8 progress = Shape8(
+    source: i0.VersionedTable(
+      entityName: 'progress',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(book_id)'],
+      columns: [
+        _column_40,
+        _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+        _column_59,
+        _column_60,
+        _column_61,
+        _column_62,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 replaceRules = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'replace_rules',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_9,
+        _column_1,
+        _column_63,
+        _column_64,
+        _column_65,
+        _column_66,
+        _column_67,
+        _column_68,
+        _column_69,
+        _column_70,
+        _column_71,
+        _column_72,
+        _column_73,
+        _column_8,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 settings = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'settings',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(book_id, "key")'],
+      columns: [_column_74, _column_75, _column_76, _column_62],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape11 sourceCookies = Shape11(
+    source: i0.VersionedTable(
+      entityName: 'source_cookies',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(domain, name)'],
+      columns: [_column_77, _column_1, _column_76, _column_78],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape14 sourceEntries = Shape14(
+    source: i0.VersionedTable(
+      entityName: 'source_entries',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(source_ref, "key")'],
+      columns: [_column_79, _column_75, _column_80, _column_81, _column_83],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape13 sourceTlsExceptions = Shape13(
+    source: i0.VersionedTable(
+      entityName: 'source_tls_exceptions',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(source_ref, host)'],
+      columns: [_column_79, _column_82],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index booksNaturalKey = i1.Index(
+    'books_natural_key',
+    'CREATE UNIQUE INDEX books_natural_key ON books (source_ref, source_book_url)',
+  );
+  final i1.Index booksLocalKey = i1.Index(
+    'books_local_key',
+    'CREATE UNIQUE INDEX books_local_key ON books (root_id, relative_path)',
+  );
+  final i1.Index booksShelfOrder = i1.Index(
+    'books_shelf_order',
+    'CREATE INDEX books_shelf_order ON books (shelved, kind, book_order)',
+  );
+  final i1.Index booksLocalOrigin = i1.Index(
+    'books_local_origin',
+    'CREATE UNIQUE INDEX books_local_origin ON books (original_root_id, original_relative_path)',
+  );
+  final i1.Index groupsName = i1.Index(
+    'groups_name',
+    'CREATE UNIQUE INDEX groups_name ON "groups" (name)',
+  );
+  final i1.Index bookGroupsGroup = i1.Index(
+    'book_groups_group',
+    'CREATE INDEX book_groups_group ON book_groups (group_id, book_id)',
+  );
+  final i1.Index chaptersTocOrder = i1.Index(
+    'chapters_toc_order',
+    'CREATE INDEX chapters_toc_order ON chapters (book_id, chapter_index)',
+  );
+  final i1.Index replaceRulesMergeKey = i1.Index(
+    'replace_rules_merge_key',
+    'CREATE UNIQUE INDEX replace_rules_merge_key ON replace_rules (name, pattern, replacement)',
+  );
+  final i1.Index replaceRulesOrder = i1.Index(
+    'replace_rules_order',
+    'CREATE INDEX replace_rules_order ON replace_rules (rule_order)',
+  );
+  final i1.Index localFilesBook = i1.Index(
+    'local_files_book',
+    'CREATE INDEX local_files_book ON local_files (book_id)',
+  );
+}
+
+class Shape16 extends i0.VersionedTable {
+  Shape16({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get kind =>
+      columnsByName['kind']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get sourceRef =>
+      columnsByName['source_ref']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get sourceBookUrl =>
+      columnsByName['source_book_url']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get title =>
+      columnsByName['title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get author =>
+      columnsByName['author']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get originName =>
+      columnsByName['origin_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get type =>
+      columnsByName['type']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get customTag =>
+      columnsByName['custom_tag']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get coverUrl =>
+      columnsByName['cover_url']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get customCoverUrl =>
+      columnsByName['custom_cover_url']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get intro =>
+      columnsByName['intro']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get customIntro =>
+      columnsByName['custom_intro']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get charset =>
+      columnsByName['charset']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get latestChapterTitle =>
+      columnsByName['latest_chapter_title']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get latestChapterTime =>
+      columnsByName['latest_chapter_time']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get totalChapterNum =>
+      columnsByName['total_chapter_num']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get canUpdate =>
+      columnsByName['can_update']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get lastCheckTime =>
+      columnsByName['last_check_time']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get lastCheckCount =>
+      columnsByName['last_check_count']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get bookOrder =>
+      columnsByName['book_order']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get variable =>
+      columnsByName['variable']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get shelved =>
+      columnsByName['shelved']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get rootId =>
+      columnsByName['root_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get relativePath =>
+      columnsByName['relative_path']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get originalRootId =>
+      columnsByName['original_root_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get originalRelativePath =>
+      columnsByName['original_relative_path']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get format =>
+      columnsByName['format']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get needsRelink =>
+      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get raw =>
+      columnsByName['raw']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_88(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'original_root_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_89(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'original_relative_path',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+
+class Shape17 extends i0.VersionedTable {
+  Shape17({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get displayName =>
+      columnsByName['display_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get kind =>
+      columnsByName['kind']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get locator =>
+      columnsByName['locator']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get identity =>
+      columnsByName['identity']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get authorization =>
+      columnsByName['authorization']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get needsRelink =>
+      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_90(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'kind',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'filesystem\'',
+      defaultValue: const i1.CustomExpression('\'filesystem\''),
+    );
+i1.GeneratedColumn<String> _column_91(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'locator',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_92(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'identity',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_93(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'authorization',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+
+class Shape18 extends i0.VersionedTable {
+  Shape18({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get rootId =>
+      columnsByName['root_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get relativePath =>
+      columnsByName['relative_path']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get locator =>
+      columnsByName['locator']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get name =>
+      columnsByName['name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get importName =>
+      columnsByName['import_name']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get sha256 =>
+      columnsByName['sha256']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get format =>
+      columnsByName['format']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get textLength =>
+      columnsByName['text_length']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get modifiedAt =>
+      columnsByName['modified_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get needsRelink =>
+      columnsByName['needs_relink']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get bookId =>
+      columnsByName['book_id']! as i1.GeneratedColumn<String>;
+}
+
+i1.GeneratedColumn<String> _column_94(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'name',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_95(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'import_name',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_96(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'sha256',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
   required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
+  required Future<void> Function(i1.Migrator m, Schema7 schema) from6To7,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -2617,6 +3135,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from5To6(migrator, schema);
         return 6;
+      case 6:
+        final schema = Schema7(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from6To7(migrator, schema);
+        return 7;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -2629,6 +3152,7 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
   required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
   required Future<void> Function(i1.Migrator m, Schema6 schema) from5To6,
+  required Future<void> Function(i1.Migrator m, Schema7 schema) from6To7,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -2636,5 +3160,6 @@ i1.OnUpgrade stepByStep({
     from3To4: from3To4,
     from4To5: from4To5,
     from5To6: from5To6,
+    from6To7: from6To7,
   ),
 );

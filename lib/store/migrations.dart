@@ -252,3 +252,20 @@ Future<void> migrateToV6(Migrator m, Schema6 schema) async {
   await m.addColumn(schema.chapters, schema.chapters.isVip);
   await m.addColumn(schema.chapters, schema.chapters.isPay);
 }
+
+/// v6 → v7: access grants and physical locators do not own book/root identity.
+/// Existing paths and rows retain their meaning; selecting a managed library
+/// and adopting old references are later explicit product actions (#121).
+Future<void> migrateToV7(Migrator m, Schema7 schema) async {
+  await m.addColumn(schema.localRoots, schema.localRoots.kind);
+  await m.addColumn(schema.localRoots, schema.localRoots.locator);
+  await m.addColumn(schema.localRoots, schema.localRoots.identity);
+  await m.addColumn(schema.localRoots, schema.localRoots.authorization);
+  await m.addColumn(schema.localFiles, schema.localFiles.locator);
+  await m.addColumn(schema.localFiles, schema.localFiles.name);
+  await m.addColumn(schema.localFiles, schema.localFiles.importName);
+  await m.addColumn(schema.localFiles, schema.localFiles.sha256);
+  await m.addColumn(schema.books, schema.books.originalRootId);
+  await m.addColumn(schema.books, schema.books.originalRelativePath);
+  await m.createIndex(schema.booksLocalOrigin);
+}

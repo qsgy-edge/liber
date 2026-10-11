@@ -37,9 +37,11 @@ void main() {
 
     final database = SpaceDatabase(schema.newConnection());
     await verifier.migrateAndValidate(database, 2);
+    final atV2 = v2.DatabaseAtV2(schema.newConnection());
 
-    // One row per natural key survived, and it is the earlier one.
-    final books = await database.select(database.books).get();
+    // One row per natural key survived, and it is the earlier one. Read the
+    // schema this step produced; current Books has later access-key columns.
+    final books = await atV2.select(atV2.books).get();
     expect(books.map((book) => book.id), ['book-1', 'local-1']);
 
     // Memberships union, and the more advanced position wins.
@@ -57,18 +59,16 @@ void main() {
     // The TOC of the row that had one moved to the survivor. The rows are read
     // through the v2 schema: the database stands at v2 after this step, and the
     // current data class reads the marker columns a later version adds (#13).
-    final chaptersAtV2 = v2.DatabaseAtV2(schema.newConnection());
-    final chapters = await (chaptersAtV2.select(
-      chaptersAtV2.chapters,
+    final chapters = await (atV2.select(
+      atV2.chapters,
     )..where((c) => c.bookId.equals('book-1'))).get();
     expect(chapters.map((c) => c.chapterKey), [
       'https://s/1/1',
       'https://s/1/2',
     ]);
-    await chaptersAtV2.close();
 
     // The local file row followed the surviving book.
-    final file = await database.select(database.localFiles).getSingle();
+    final file = await atV2.select(atV2.localFiles).getSingle();
     expect(file.bookId, 'local-1');
 
     // The text index belongs to the file now, so the local anchors survived
@@ -93,6 +93,7 @@ void main() {
           ),
       throwsA(isA<Exception>()),
     );
+    await atV2.close();
     await database.close();
     schema.close();
   });
@@ -130,7 +131,8 @@ void main() {
 
     final database = SpaceDatabase(schema.newConnection());
     await verifier.migrateAndValidate(database, 2);
-    final book = await database.select(database.books).getSingle();
+    final atV2 = v2.DatabaseAtV2(schema.newConnection());
+    final book = await atV2.select(atV2.books).getSingle();
     expect(book.id, 'book-1');
     expect(book.title, '斗破苍穹');
     expect(book.raw, '{"unknownBookField":42}');
@@ -140,6 +142,7 @@ void main() {
     expect(progress.offsetInLine, 4);
     expect(progress.textLength, 500);
     expect(progress.anchor, '正文开头');
+    await atV2.close();
     await database.close();
     schema.close();
   });
