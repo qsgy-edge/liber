@@ -502,7 +502,7 @@ class LegacyImport {
       // A retired snapshot cannot replace the position already established
       // against the current managed file's text and anchors.
       if (currentProgress != null &&
-          (currentProgress.textLength != null ||
+          (currentProgress.textLength > 0 ||
               currentProgress.anchor != null ||
               currentProgress.chapterKey != null)) {
         continue;

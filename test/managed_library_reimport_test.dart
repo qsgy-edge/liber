@@ -16,6 +16,110 @@ void main() {
   setUp(() async => space = await TestSpace.create());
   tearDown(() => space.delete());
 
+  for (final nativeFacts in ['coarse', 'length', 'empty-anchor']) {
+    test('backup local progress keeps its merge policy ($nativeFacts)', () async {
+      LegadoBackupArchive snapshot(int chapter, int offset) =>
+          LegadoBackupArchive.decode(
+            backupZip(
+              books: [
+                {
+                  ...localBook(
+                    'content://provider/document/coarse',
+                    originName: 'coarse.txt',
+                  ),
+                  'durChapterIndex': chapter,
+                  'durChapterPos': offset,
+                  'durChapterTime': chapter * 100,
+                },
+              ],
+            ),
+          );
+      final importer = LegadoFullBackupImport(space.store);
+      await importer.importArchive(snapshot(1, 10));
+      final book = (await space.store.localBooks()).single;
+      await space.store.putProgress(
+        ProgressCompanion(
+          bookId: Value(book.id),
+          textOffset: Value(nativeFacts == 'empty-anchor' ? 0 : 10),
+          textLength: Value(nativeFacts == 'length' ? 900 : 0),
+          anchor: Value(nativeFacts == 'empty-anchor' ? '' : null),
+        ),
+      );
+      final before = (await space.store.progressOf(book.id))!;
+      expect(before.chapterKey, isNull);
+      await importer.importArchive(snapshot(2, 20));
+      final advanced = (await space.store.progressOf(book.id))!;
+      if (nativeFacts == 'coarse') {
+        expect(advanced.chapterIndex, 2);
+        expect(advanced.textOffset, 20);
+        expect(advanced.textLength, 0);
+      } else {
+        expect(advanced, before);
+      }
+      await importer.importArchive(snapshot(1, 5));
+      expect(
+        await space.store.progressOf(book.id),
+        advanced,
+        reason:
+            'A backward snapshot cannot overwrite either coarse or native progress',
+      );
+      expect(await space.store.localBooks(), hasLength(1));
+    });
+
+    test('legacy local progress keeps its merge policy ($nativeFacts)', () async {
+      final folder = await Directory('${space.directory.path}/coarse').create();
+      await File('${folder.path}/kept.txt').writeAsString('保留的正文');
+      final home = await LegacyHome.create(
+        Directory('${space.directory.path}/legacy'),
+      );
+      final jsonFile = await home.writeLocalBooks(rootPath: folder.path);
+      final decoded =
+          jsonDecode(await jsonFile.readAsString()) as Map<String, dynamic>;
+      decoded['books'] = (decoded['books'] as List)
+          .where((entry) => (entry as Map)['relativePath'] == 'kept.txt')
+          .toList();
+      Future<void> snapshot(int offset) async {
+        for (final entry in decoded['books'] as List) {
+          (entry as Map)['textOffset'] = offset;
+        }
+        await jsonFile.writeAsString(jsonEncode(decoded));
+      }
+
+      await snapshot(10);
+      final importer = LegacyImport(home: home.directory);
+      await importer.run(space.store);
+      final book = (await space.store.localBooks()).single;
+      await space.store.putProgress(
+        ProgressCompanion(
+          bookId: Value(book.id),
+          textOffset: Value(nativeFacts == 'empty-anchor' ? 0 : 10),
+          textLength: Value(nativeFacts == 'length' ? 900 : 0),
+          anchor: Value(nativeFacts == 'empty-anchor' ? '' : null),
+        ),
+      );
+      final before = (await space.store.progressOf(book.id))!;
+      expect(before.chapterKey, isNull);
+      await snapshot(300);
+      await importer.run(space.store, force: true);
+      final advanced = (await space.store.progressOf(book.id))!;
+      if (nativeFacts == 'coarse') {
+        expect(advanced.textOffset, 300);
+        expect(advanced.textLength, 0);
+      } else {
+        expect(advanced, before);
+      }
+      await snapshot(5);
+      await importer.run(space.store, force: true);
+      expect(
+        await space.store.progressOf(book.id),
+        advanced,
+        reason:
+            'A backward snapshot cannot overwrite either coarse or native progress',
+      );
+      expect(await space.store.localBooks(), hasLength(1));
+    });
+  }
+
   for (final reclaimed in [false, true]) {
     test(
       'backup reimport preserves adopted current locator (reclaimed=$reclaimed)',

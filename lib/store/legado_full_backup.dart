@@ -585,7 +585,7 @@ class LegadoFullBackupImport {
     if (local) {
       final current = await store.progressOf(bookId);
       if (current != null &&
-          (current.textLength != null ||
+          (current.textLength > 0 ||
               current.anchor != null ||
               current.chapterKey != null)) {
         return;
