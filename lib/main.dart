@@ -1639,7 +1639,7 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
           padding: const EdgeInsets.fromLTRB(32, 24, 32, 8),
           sliver: SliverToBoxAdapter(
             child: Text(
-              l10n.shelfLocalBookCount(managed.length),
+              '${l10n.localBooksTitle} (${managed.length})',
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
