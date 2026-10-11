@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'domain/contracts.dart';
@@ -102,6 +103,10 @@ class _LiberAppState extends State<LiberApp> {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff315c72)),
         useMaterial3: true,
+        // The Linux directory font manager lacks automatic CJK glyph fallback.
+        fontFamilyFallback: defaultTargetPlatform == TargetPlatform.linux
+            ? const ['Noto Sans CJK SC']
+            : null,
       ),
       // The interface's own words (#28): the four locales `lib/l10n/` carries,
       // resolved by `InterfaceLanguageSetting` rather than by Flutter's own

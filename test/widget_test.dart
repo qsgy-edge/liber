@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +58,26 @@ void defaultAppTest(Directory Function() root) {
     expect(direct.tooltip, '使用系统代理');
     expect(direct.onPressed, isNull);
   });
+
+  testWidgets(
+    'CJK fallback reaches shelf text only on Linux',
+    (tester) async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: root(), interfaceLanguage: testLocale),
+      );
+
+      final shelf = find.text('书架').last;
+      final theme = Theme.of(tester.element(shelf));
+      final expected = defaultTargetPlatform == TargetPlatform.linux
+          ? const ['Noto Sans CJK SC']
+          : ThemeData(
+              useMaterial3: true,
+            ).textTheme.bodyMedium!.fontFamilyFallback;
+      expect(theme.textTheme.bodyMedium!.fontFamilyFallback, expected);
+      expect(tester.widget<Text>(shelf).style!.fontFamilyFallback, expected);
+    },
+    variant: TargetPlatformVariant.all(),
+  );
 }
 
 /// The startup path does real work — opening the space database runs in a
