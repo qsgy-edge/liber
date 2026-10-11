@@ -54,8 +54,8 @@ Not covered yet, and deliberately visible rather than implied:
 - Windows has the P1a/P2 and batch 13 product flows. Linux ARM64 has a launch
   smoke and shelf → reader run on synthetic scratch data (#112), not a real-library
   or WebView compatibility claim. Default startup now resolves the platform's
-  application support directory (#120); its real-host Linux validation is still
-  pending. The other P4 Tier B rows remain separately gated;
+  application support directory, with a real-host Linux startup and reopening
+  row (#120). The other P4 Tier B rows remain separately gated;
   app builds alone are not device or simulator runtime evidence.
 - The frozen four-stage differential corpus, the security boundary for
   untrusted sources, and the request/JS capabilities listed in
