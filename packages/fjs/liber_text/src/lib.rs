@@ -39,5 +39,6 @@ mod scan;
 pub use convert::{ConvertTarget, Direction, convert, convert_to};
 pub use scan::{
     Anchor, Chapter, Index, IndexOptions, TextError, Window, decode_bytes, detect_bytes,
-    detect_encoding, encode_bytes, index_file, read_window,
+    detect_encoding, detect_encoding_fd, detect_open_file, duplicate_descriptor, encode_bytes,
+    index_fd, index_file, index_open_file, read_window, read_window_fd, read_window_file,
 };

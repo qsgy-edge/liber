@@ -19,6 +19,7 @@ pub mod bytecode;
 pub mod engine;
 pub mod error;
 pub mod html;
+pub mod library_files;
 pub mod module;
 pub mod runtime;
 pub mod source;
@@ -28,20 +29,19 @@ pub mod value;
 // Re-export main types for convenience
 pub use bytecode::JsBytecode;
 pub use engine::{JsEngine, JsEngineRuntimeOptions};
-pub use html::{
-    HtmlJobFailure, HtmlJobOutcome, HtmlJobOutput, HtmlRuleJob, html_analyze,
-};
 pub use error::{JsError, JsResult};
-pub use text::{
-    ConvertTarget, TextAnchor, TextChapter, TextDetection, TextDirection, TextEngineError,
-    TextIndex, TextIndexOptions, TextWindow, TextWindowRequest, text_convert, text_convert_to,
-    text_default_options, text_detect_encoding, text_index_file, text_read_window,
-};
+pub use html::{HtmlJobFailure, HtmlJobOutcome, HtmlJobOutput, HtmlRuleJob, html_analyze};
 pub use module::{DynamicModuleLoader, DynamicModuleResolver, GlobalAttachment, ModuleBuilder};
 pub use runtime::{JsAsyncContext, JsAsyncRuntime, JsContext, JsRuntime, MemoryUsage};
 pub use source::{
     JsBuiltinOptions, JsBytecodeEndianness, JsCode, JsEvalOptions, JsModule, JsModuleBytecode,
     JsModuleBytecodeBundle, JsModuleBytecodeOptions, JsScriptBytecode, JsScriptBytecodeOptions,
+};
+pub use text::{
+    ConvertTarget, TextAnchor, TextChapter, TextDescriptorWindowRequest, TextDetection,
+    TextDirection, TextEngineError, TextIndex, TextIndexOptions, TextWindow, TextWindowRequest,
+    text_convert, text_convert_to, text_default_options, text_detect_encoding,
+    text_detect_encoding_fd, text_index_fd, text_index_file, text_read_window, text_read_window_fd,
 };
 pub use value::JsValue;
 

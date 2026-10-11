@@ -10,6 +10,7 @@ import 'api/bytecode.dart';
 import 'api/engine.dart';
 import 'api/error.dart';
 import 'api/html.dart';
+import 'api/library_files.dart';
 import 'api/runtime.dart';
 import 'api/source.dart';
 import 'api/text.dart';
@@ -46,6 +47,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_JsRuntimePtr =>
       wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime;
+
+  CrossPlatformFinalizerArg
+      get rust_arc_decrement_strong_count_LibraryCopyJobPtr => wire
+          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob;
 
   CrossPlatformFinalizerArg
       get rust_arc_decrement_strong_count_MemoryUsagePtr => wire
@@ -85,6 +90,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           dynamic raw);
 
   @protected
+  LibraryCopyJob
+      dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          dynamic raw);
+
+  @protected
   MemoryUsage
       dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           dynamic raw);
@@ -112,6 +122,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsRuntime
       dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
+          dynamic raw);
+
+  @protected
+  LibraryCopyJob
+      dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
           dynamic raw);
 
   @protected
@@ -172,6 +187,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsRuntime
       dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
+          dynamic raw);
+
+  @protected
+  LibraryCopyJob
+      dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
           dynamic raw);
 
   @protected
@@ -240,6 +260,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   TextAnchor dco_decode_box_autoadd_text_anchor(dynamic raw);
+
+  @protected
+  TextDescriptorWindowRequest
+      dco_decode_box_autoadd_text_descriptor_window_request(dynamic raw);
 
   @protected
   TextIndexOptions dco_decode_box_autoadd_text_index_options(dynamic raw);
@@ -327,6 +351,12 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   JsValue dco_decode_js_value(dynamic raw);
+
+  @protected
+  LibraryCopyResult dco_decode_library_copy_result(dynamic raw);
+
+  @protected
+  LibraryFileError dco_decode_library_file_error(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -420,6 +450,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   TextChapter dco_decode_text_chapter(dynamic raw);
 
   @protected
+  TextDescriptorWindowRequest dco_decode_text_descriptor_window_request(
+      dynamic raw);
+
+  @protected
   TextDetection dco_decode_text_detection(dynamic raw);
 
   @protected
@@ -489,6 +523,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
           SseDeserializer deserializer);
 
   @protected
+  LibraryCopyJob
+      sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          SseDeserializer deserializer);
+
+  @protected
   MemoryUsage
       sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           SseDeserializer deserializer);
@@ -516,6 +555,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsRuntime
       sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
+          SseDeserializer deserializer);
+
+  @protected
+  LibraryCopyJob
+      sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
           SseDeserializer deserializer);
 
   @protected
@@ -558,6 +602,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   JsRuntime
       sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
+          SseDeserializer deserializer);
+
+  @protected
+  LibraryCopyJob
+      sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
           SseDeserializer deserializer);
 
   @protected
@@ -631,6 +680,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   TextAnchor sse_decode_box_autoadd_text_anchor(SseDeserializer deserializer);
+
+  @protected
+  TextDescriptorWindowRequest
+      sse_decode_box_autoadd_text_descriptor_window_request(
+          SseDeserializer deserializer);
 
   @protected
   TextIndexOptions sse_decode_box_autoadd_text_index_options(
@@ -725,6 +779,13 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   JsValue sse_decode_js_value(SseDeserializer deserializer);
+
+  @protected
+  LibraryCopyResult sse_decode_library_copy_result(
+      SseDeserializer deserializer);
+
+  @protected
+  LibraryFileError sse_decode_library_file_error(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -828,6 +889,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   TextChapter sse_decode_text_chapter(SseDeserializer deserializer);
 
   @protected
+  TextDescriptorWindowRequest sse_decode_text_descriptor_window_request(
+      SseDeserializer deserializer);
+
+  @protected
   TextDetection sse_decode_text_detection(SseDeserializer deserializer);
 
   @protected
@@ -900,6 +965,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void
+      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          LibraryCopyJob self, SseSerializer serializer);
+
+  @protected
+  void
       sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           MemoryUsage self, SseSerializer serializer);
 
@@ -927,6 +997,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void
       sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           JsRuntime self, SseSerializer serializer);
+
+  @protected
+  void
+      sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          LibraryCopyJob self, SseSerializer serializer);
 
   @protected
   void
@@ -986,6 +1061,11 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   void
       sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
           JsRuntime self, SseSerializer serializer);
+
+  @protected
+  void
+      sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          LibraryCopyJob self, SseSerializer serializer);
 
   @protected
   void
@@ -1061,6 +1141,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   void sse_encode_box_autoadd_text_anchor(
       TextAnchor self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_text_descriptor_window_request(
+      TextDescriptorWindowRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_text_index_options(
@@ -1160,6 +1244,14 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void sse_encode_js_value(JsValue self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_library_copy_result(
+      LibraryCopyResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_library_file_error(
+      LibraryFileError self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -1265,6 +1357,10 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   void sse_encode_text_chapter(TextChapter self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_text_descriptor_window_request(
+      TextDescriptorWindowRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_text_detection(TextDetection self, SseSerializer serializer);
@@ -1383,6 +1479,18 @@ class LibFjsWire implements BaseWire {
           .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
               ptr);
 
+  void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          int ptr) =>
+      wasmModule
+          .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+              ptr);
+
+  void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          int ptr) =>
+      wasmModule
+          .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+              ptr);
+
   void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMemoryUsage(
           int ptr) =>
       wasmModule
@@ -1448,6 +1556,14 @@ extension type LibFjsWasmModule._(JSObject _) implements JSObject {
 
   external void
       rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerJsRuntime(
+          int ptr);
+
+  external void
+      rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
+          int ptr);
+
+  external void
+      rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLibraryCopyJob(
           int ptr);
 
   external void

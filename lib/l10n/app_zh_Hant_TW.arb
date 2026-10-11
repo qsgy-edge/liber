@@ -298,5 +298,93 @@
   "unsafeContinue": "繼續（不安全）",
   "updateTableOfContents": "更新目錄",
   "urlMissing": "未提供 URL",
-  "useShuduguSource": "使用速讀谷書源"
+  "useShuduguSource": "使用速讀谷書源",
+  "libraryNoFolder": "首次匯入本機書籍時選擇書庫目錄。",
+  "libraryCopyHint": "匯入時複製到書庫並保留原檔案。更換目錄會自動遷移書庫內的書籍，保留閱讀進度。",
+  "libraryImport": "匯入本機書籍",
+  "libraryChooseFolder": "選擇書庫目錄",
+  "libraryChangeFolder": "更換書庫目錄",
+  "libraryNameConflict": "同名檔案內容不同",
+  "libraryConflictDescription": "{name} 已有不同內容。可以更新此書並保留書架記錄和閱讀進度，也可以保留兩本或取消。",
+  "libraryConflictOtherBook": "{name} 屬於另一部書。請選擇保留兩本或取消，以保留各自的書籍記錄和閱讀進度。",
+  "libraryKeepBoth": "保留兩本",
+  "libraryUpdate": "更新此書（覆蓋）",
+  "libraryDirectoryChanged": "書庫目錄已更新，書籍和閱讀進度已保留。",
+  "libraryCleanupTitle": "清理舊副本？",
+  "libraryCleanupDescription": "新書庫已準備好。是否刪除本次遷移的 {count} 個舊副本？原匯入檔案和其他檔案會保留。",
+  "libraryKeepOld": "保留舊副本",
+  "libraryDeleteOld": "刪除舊副本",
+  "libraryCleanupDone": "書庫已更新，舊副本已清理。",
+  "libraryCleanupFailed": "書庫已更新，部分舊副本未能清理：{message}",
+  "libraryAdopt": "遷入選取的書籍",
+  "libraryAdopted": "已複製 {count} 本到書庫，無法讀取的檔案仍待關聯。",
+  "libraryLegacyBooks": "待遷入的既有本機書籍",
+  "libraryWorking": "正在處理書庫檔案…",
+  "libraryProgress": "目前檔案已複製 {bytes} 位元組",
+  "libraryCancelled": "操作已取消。",
+  "libraryPermissionLost": "檔案或目錄授權已失效，請重新選擇以恢復存取。",
+  "libraryFileMissing": "檔案或目錄無法讀取，請恢復檔案或重新關聯。",
+  "libraryUnsupported": "所選位置不支援此操作，請選擇其他目錄或檔案。",
+  "libraryVerificationFailed": "複製驗證失敗，已保留原有內容，請重新匯入。",
+  "libraryOperationFailed": "操作失敗：{message}",
+  "libraryEmpty": "此目錄沒有 TXT 或 Markdown 書籍，可以透過匯入本機書籍加入。",
+  "libraryDeleteFile": "刪除書庫檔案",
+  "libraryDeleteDescription": "刪除 {name} 的書庫副本？原匯入檔案和閱讀記錄會保留，之後需重新關聯才能閱讀。",
+  "libraryRead": "閱讀此書",
+  "@libraryConflictDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryConflictOtherBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryCleanupDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryCleanupFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryAdopted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryProgress": {
+    "placeholders": {
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "@libraryOperationFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "@libraryDeleteDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

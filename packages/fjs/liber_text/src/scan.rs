@@ -226,8 +226,17 @@ fn read_sample(file: &mut File, limit: usize) -> Result<Vec<u8>> {
 /// book record; this returns the same kind of answer and the caller is the one
 /// that remembers it.
 pub fn detect_encoding(path: &Path) -> Result<Detection> {
-    let mut file = File::open(path).map_err(io_error)?;
-    let mut sample = read_sample(&mut file, SAMPLE_BYTES)?;
+    detect_open_file(File::open(path).map_err(io_error)?)
+}
+
+/// Detects from an owned file, positioned explicitly at its beginning.
+pub fn detect_open_file(mut file: File) -> Result<Detection> {
+    detect_file(&mut file)
+}
+
+fn detect_file(file: &mut File) -> Result<Detection> {
+    file.rewind().map_err(io_error)?;
+    let mut sample = read_sample(file, SAMPLE_BYTES)?;
     if let Some(name) = unsupported_bom(&sample) {
         return Err(TextError::UnsupportedEncoding(name.to_string()));
     }
@@ -241,7 +250,7 @@ pub fn detect_encoding(path: &Path) -> Result<Detection> {
     // pages are very often a table of contents written in ASCII digits.
     if sample.len() == SAMPLE_BYTES && sample.iter().all(u8::is_ascii) {
         file.seek(SeekFrom::Start(0)).map_err(io_error)?;
-        sample = read_sample(&mut file, ASCII_SAMPLE_BYTES)?;
+        sample = read_sample(file, ASCII_SAMPLE_BYTES)?;
     }
     if sample_is_utf8(&sample) {
         return Ok(Detection {
@@ -437,12 +446,10 @@ impl LineReader {
             units: Vec::new(),
             scratch: Vec::new(),
         };
-        if byte_offset > 0 {
-            reader
-                .reader
-                .seek(SeekFrom::Start(byte_offset))
-                .map_err(io_error)?;
-        }
+        reader
+            .reader
+            .seek(SeekFrom::Start(byte_offset))
+            .map_err(io_error)?;
         reader.refill()?;
         Ok(reader)
     }
@@ -649,9 +656,14 @@ fn match_rule(rules: &[fancy_regex::Regex], line: &[u16]) -> Option<String> {
 /// the pass costs the file's bytes in I/O and nothing proportional to the book
 /// in memory.
 pub fn index_file(path: &Path, options: &IndexOptions) -> Result<Index> {
-    let detection = detect_encoding(path)?;
+    index_open_file(File::open(path).map_err(io_error)?, options)
+}
+
+/// Indexes one owned file using the same detection and chapter rules as paths.
+pub fn index_open_file(mut file: File, options: &IndexOptions) -> Result<Index> {
+    let detection = detect_file(&mut file)?;
     let encoding = resolve_encoding(&detection.encoding)?;
-    let mut file = File::open(path).map_err(io_error)?;
+    file.rewind().map_err(io_error)?;
     let mut skip = 0u64;
     if detection.bom {
         let bom = read_sample(&mut file, 4)?;
@@ -730,8 +742,28 @@ pub fn read_window(
     max_code_units: usize,
     max_scan_bytes: u64,
 ) -> Result<Window> {
+    resolve_encoding(encoding_name)?;
+    read_window_file(
+        File::open(path).map_err(io_error)?,
+        encoding_name,
+        anchor,
+        code_unit_offset,
+        max_code_units,
+        max_scan_bytes,
+    )
+}
+
+/// Reads a window from an owned, seekable file.
+pub fn read_window_file(
+    mut file: File,
+    encoding_name: &str,
+    anchor: Option<Anchor>,
+    code_unit_offset: u64,
+    max_code_units: usize,
+    max_scan_bytes: u64,
+) -> Result<Window> {
     let encoding = resolve_encoding(encoding_name)?;
-    let mut file = File::open(path).map_err(io_error)?;
+    file.rewind().map_err(io_error)?;
     let skip = if anchor.is_some() {
         0
     } else {
@@ -911,4 +943,61 @@ mod tests {
         assert!(rules.is_empty());
         assert_eq!(ignored, vec!["(unclosed".to_string()]);
     }
+}
+
+/// Duplicates a caller-owned descriptor and proves seekability before any read.
+/// The caller must keep its lease alive until this operation returns. A duplicate
+/// shares the original's file position: concurrent seeks on that lease are unsafe.
+#[cfg(unix)]
+pub fn duplicate_descriptor(fd: i32) -> Result<File> {
+    use std::os::fd::FromRawFd;
+    unsafe extern "C" {
+        fn dup(fd: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    if fd < 0 {
+        return Err(TextError::Io("invalid negative file descriptor".into()));
+    }
+    // dup validates closed descriptors in the OS, without creating a BorrowedFd
+    // whose validity precondition an untrusted integer cannot establish.
+    let duplicate = unsafe { dup(fd) };
+    if duplicate < 0 {
+        return Err(io_error(std::io::Error::last_os_error()));
+    }
+    // SAFETY: a successful dup returns a fresh descriptor owned by this call.
+    let mut file = unsafe { File::from_raw_fd(duplicate) };
+    file.rewind().map_err(io_error)?;
+    Ok(file)
+}
+
+#[cfg(not(unix))]
+pub fn duplicate_descriptor(_fd: i32) -> Result<File> {
+    Err(TextError::Io(
+        "file descriptor transport is unsupported on this platform".into(),
+    ))
+}
+
+pub fn detect_encoding_fd(fd: i32) -> Result<Detection> {
+    detect_open_file(duplicate_descriptor(fd)?)
+}
+
+pub fn index_fd(fd: i32, options: &IndexOptions) -> Result<Index> {
+    index_open_file(duplicate_descriptor(fd)?, options)
+}
+
+pub fn read_window_fd(
+    fd: i32,
+    encoding_name: &str,
+    anchor: Option<Anchor>,
+    code_unit_offset: u64,
+    max_code_units: usize,
+    max_scan_bytes: u64,
+) -> Result<Window> {
+    read_window_file(
+        duplicate_descriptor(fd)?,
+        encoding_name,
+        anchor,
+        code_unit_offset,
+        max_code_units,
+        max_scan_bytes,
+    )
 }

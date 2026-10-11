@@ -873,6 +873,28 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _originalRootIdMeta = const VerificationMeta(
+    'originalRootId',
+  );
+  @override
+  late final GeneratedColumn<String> originalRootId = GeneratedColumn<String>(
+    'original_root_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _originalRelativePathMeta =
+      const VerificationMeta('originalRelativePath');
+  @override
+  late final GeneratedColumn<String> originalRelativePath =
+      GeneratedColumn<String>(
+        'original_relative_path',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _formatMeta = const VerificationMeta('format');
   @override
   late final GeneratedColumn<String> format = GeneratedColumn<String>(
@@ -933,6 +955,8 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
     shelved,
     rootId,
     relativePath,
+    originalRootId,
+    originalRelativePath,
     format,
     needsRelink,
     raw,
@@ -1127,6 +1151,24 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
         ),
       );
     }
+    if (data.containsKey('original_root_id')) {
+      context.handle(
+        _originalRootIdMeta,
+        originalRootId.isAcceptableOrUnknown(
+          data['original_root_id']!,
+          _originalRootIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('original_relative_path')) {
+      context.handle(
+        _originalRelativePathMeta,
+        originalRelativePath.isAcceptableOrUnknown(
+          data['original_relative_path']!,
+          _originalRelativePathMeta,
+        ),
+      );
+    }
     if (data.containsKey('format')) {
       context.handle(
         _formatMeta,
@@ -1257,6 +1299,14 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
         DriftSqlType.string,
         data['${effectivePrefix}relative_path'],
       ),
+      originalRootId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_root_id'],
+      ),
+      originalRelativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_relative_path'],
+      ),
       format: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}format'],
@@ -1325,7 +1375,14 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
   /// rather than a deletion.
   final bool shelved;
   final String? rootId;
+
+  /// Root-relative file key, or the provider's opaque document ID.
   final String? relativePath;
+
+  /// Import correlation retained when an external reference is adopted. These
+  /// do not resolve a readable file and never change a book's minted identity.
+  final String? originalRootId;
+  final String? originalRelativePath;
   final String? format;
   final bool needsRelink;
 
@@ -1357,6 +1414,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     required this.shelved,
     this.rootId,
     this.relativePath,
+    this.originalRootId,
+    this.originalRelativePath,
     this.format,
     required this.needsRelink,
     this.raw,
@@ -1398,6 +1457,12 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     }
     if (!nullToAbsent || relativePath != null) {
       map['relative_path'] = Variable<String>(relativePath);
+    }
+    if (!nullToAbsent || originalRootId != null) {
+      map['original_root_id'] = Variable<String>(originalRootId);
+    }
+    if (!nullToAbsent || originalRelativePath != null) {
+      map['original_relative_path'] = Variable<String>(originalRelativePath);
     }
     if (!nullToAbsent || format != null) {
       map['format'] = Variable<String>(format);
@@ -1446,6 +1511,12 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       relativePath: relativePath == null && nullToAbsent
           ? const Value.absent()
           : Value(relativePath),
+      originalRootId: originalRootId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalRootId),
+      originalRelativePath: originalRelativePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalRelativePath),
       format: format == null && nullToAbsent
           ? const Value.absent()
           : Value(format),
@@ -1487,6 +1558,10 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       shelved: serializer.fromJson<bool>(json['shelved']),
       rootId: serializer.fromJson<String?>(json['rootId']),
       relativePath: serializer.fromJson<String?>(json['relativePath']),
+      originalRootId: serializer.fromJson<String?>(json['originalRootId']),
+      originalRelativePath: serializer.fromJson<String?>(
+        json['originalRelativePath'],
+      ),
       format: serializer.fromJson<String?>(json['format']),
       needsRelink: serializer.fromJson<bool>(json['needsRelink']),
       raw: serializer.fromJson<String?>(json['raw']),
@@ -1521,6 +1596,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       'shelved': serializer.toJson<bool>(shelved),
       'rootId': serializer.toJson<String?>(rootId),
       'relativePath': serializer.toJson<String?>(relativePath),
+      'originalRootId': serializer.toJson<String?>(originalRootId),
+      'originalRelativePath': serializer.toJson<String?>(originalRelativePath),
       'format': serializer.toJson<String?>(format),
       'needsRelink': serializer.toJson<bool>(needsRelink),
       'raw': serializer.toJson<String?>(raw),
@@ -1553,6 +1630,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     bool? shelved,
     Value<String?> rootId = const Value.absent(),
     Value<String?> relativePath = const Value.absent(),
+    Value<String?> originalRootId = const Value.absent(),
+    Value<String?> originalRelativePath = const Value.absent(),
     Value<String?> format = const Value.absent(),
     bool? needsRelink,
     Value<String?> raw = const Value.absent(),
@@ -1584,6 +1663,12 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     shelved: shelved ?? this.shelved,
     rootId: rootId.present ? rootId.value : this.rootId,
     relativePath: relativePath.present ? relativePath.value : this.relativePath,
+    originalRootId: originalRootId.present
+        ? originalRootId.value
+        : this.originalRootId,
+    originalRelativePath: originalRelativePath.present
+        ? originalRelativePath.value
+        : this.originalRelativePath,
     format: format.present ? format.value : this.format,
     needsRelink: needsRelink ?? this.needsRelink,
     raw: raw.present ? raw.value : this.raw,
@@ -1635,6 +1720,12 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       relativePath: data.relativePath.present
           ? data.relativePath.value
           : this.relativePath,
+      originalRootId: data.originalRootId.present
+          ? data.originalRootId.value
+          : this.originalRootId,
+      originalRelativePath: data.originalRelativePath.present
+          ? data.originalRelativePath.value
+          : this.originalRelativePath,
       format: data.format.present ? data.format.value : this.format,
       needsRelink: data.needsRelink.present
           ? data.needsRelink.value
@@ -1671,6 +1762,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
           ..write('shelved: $shelved, ')
           ..write('rootId: $rootId, ')
           ..write('relativePath: $relativePath, ')
+          ..write('originalRootId: $originalRootId, ')
+          ..write('originalRelativePath: $originalRelativePath, ')
           ..write('format: $format, ')
           ..write('needsRelink: $needsRelink, ')
           ..write('raw: $raw')
@@ -1705,6 +1798,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     shelved,
     rootId,
     relativePath,
+    originalRootId,
+    originalRelativePath,
     format,
     needsRelink,
     raw,
@@ -1738,6 +1833,8 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
           other.shelved == this.shelved &&
           other.rootId == this.rootId &&
           other.relativePath == this.relativePath &&
+          other.originalRootId == this.originalRootId &&
+          other.originalRelativePath == this.originalRelativePath &&
           other.format == this.format &&
           other.needsRelink == this.needsRelink &&
           other.raw == this.raw);
@@ -1769,6 +1866,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
   final Value<bool> shelved;
   final Value<String?> rootId;
   final Value<String?> relativePath;
+  final Value<String?> originalRootId;
+  final Value<String?> originalRelativePath;
   final Value<String?> format;
   final Value<bool> needsRelink;
   final Value<String?> raw;
@@ -1799,6 +1898,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     this.shelved = const Value.absent(),
     this.rootId = const Value.absent(),
     this.relativePath = const Value.absent(),
+    this.originalRootId = const Value.absent(),
+    this.originalRelativePath = const Value.absent(),
     this.format = const Value.absent(),
     this.needsRelink = const Value.absent(),
     this.raw = const Value.absent(),
@@ -1830,6 +1931,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     this.shelved = const Value.absent(),
     this.rootId = const Value.absent(),
     this.relativePath = const Value.absent(),
+    this.originalRootId = const Value.absent(),
+    this.originalRelativePath = const Value.absent(),
     this.format = const Value.absent(),
     this.needsRelink = const Value.absent(),
     this.raw = const Value.absent(),
@@ -1862,6 +1965,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     Expression<bool>? shelved,
     Expression<String>? rootId,
     Expression<String>? relativePath,
+    Expression<String>? originalRootId,
+    Expression<String>? originalRelativePath,
     Expression<String>? format,
     Expression<bool>? needsRelink,
     Expression<String>? raw,
@@ -1894,6 +1999,9 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
       if (shelved != null) 'shelved': shelved,
       if (rootId != null) 'root_id': rootId,
       if (relativePath != null) 'relative_path': relativePath,
+      if (originalRootId != null) 'original_root_id': originalRootId,
+      if (originalRelativePath != null)
+        'original_relative_path': originalRelativePath,
       if (format != null) 'format': format,
       if (needsRelink != null) 'needs_relink': needsRelink,
       if (raw != null) 'raw': raw,
@@ -1927,6 +2035,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     Value<bool>? shelved,
     Value<String?>? rootId,
     Value<String?>? relativePath,
+    Value<String?>? originalRootId,
+    Value<String?>? originalRelativePath,
     Value<String?>? format,
     Value<bool>? needsRelink,
     Value<String?>? raw,
@@ -1958,6 +2068,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
       shelved: shelved ?? this.shelved,
       rootId: rootId ?? this.rootId,
       relativePath: relativePath ?? this.relativePath,
+      originalRootId: originalRootId ?? this.originalRootId,
+      originalRelativePath: originalRelativePath ?? this.originalRelativePath,
       format: format ?? this.format,
       needsRelink: needsRelink ?? this.needsRelink,
       raw: raw ?? this.raw,
@@ -2043,6 +2155,14 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     if (relativePath.present) {
       map['relative_path'] = Variable<String>(relativePath.value);
     }
+    if (originalRootId.present) {
+      map['original_root_id'] = Variable<String>(originalRootId.value);
+    }
+    if (originalRelativePath.present) {
+      map['original_relative_path'] = Variable<String>(
+        originalRelativePath.value,
+      );
+    }
     if (format.present) {
       map['format'] = Variable<String>(format.value);
     }
@@ -2086,6 +2206,8 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
           ..write('shelved: $shelved, ')
           ..write('rootId: $rootId, ')
           ..write('relativePath: $relativePath, ')
+          ..write('originalRootId: $originalRootId, ')
+          ..write('originalRelativePath: $originalRelativePath, ')
           ..write('format: $format, ')
           ..write('needsRelink: $needsRelink, ')
           ..write('raw: $raw, ')
@@ -3425,6 +3547,49 @@ class $LocalRootsTable extends LocalRoots
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('filesystem'),
+  );
+  static const VerificationMeta _locatorMeta = const VerificationMeta(
+    'locator',
+  );
+  @override
+  late final GeneratedColumn<String> locator = GeneratedColumn<String>(
+    'locator',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _identityMeta = const VerificationMeta(
+    'identity',
+  );
+  @override
+  late final GeneratedColumn<String> identity = GeneratedColumn<String>(
+    'identity',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _authorizationMeta = const VerificationMeta(
+    'authorization',
+  );
+  @override
+  late final GeneratedColumn<String> authorization = GeneratedColumn<String>(
+    'authorization',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _needsRelinkMeta = const VerificationMeta(
     'needsRelink',
   );
@@ -3441,7 +3606,15 @@ class $LocalRootsTable extends LocalRoots
     defaultValue: const Constant(false),
   );
   @override
-  List<GeneratedColumn> get $columns => [id, displayName, needsRelink];
+  List<GeneratedColumn> get $columns => [
+    id,
+    displayName,
+    kind,
+    locator,
+    identity,
+    authorization,
+    needsRelink,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3470,6 +3643,33 @@ class $LocalRootsTable extends LocalRoots
     } else if (isInserting) {
       context.missing(_displayNameMeta);
     }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('locator')) {
+      context.handle(
+        _locatorMeta,
+        locator.isAcceptableOrUnknown(data['locator']!, _locatorMeta),
+      );
+    }
+    if (data.containsKey('identity')) {
+      context.handle(
+        _identityMeta,
+        identity.isAcceptableOrUnknown(data['identity']!, _identityMeta),
+      );
+    }
+    if (data.containsKey('authorization')) {
+      context.handle(
+        _authorizationMeta,
+        authorization.isAcceptableOrUnknown(
+          data['authorization']!,
+          _authorizationMeta,
+        ),
+      );
+    }
     if (data.containsKey('needs_relink')) {
       context.handle(
         _needsRelinkMeta,
@@ -3496,6 +3696,22 @@ class $LocalRootsTable extends LocalRoots
         DriftSqlType.string,
         data['${effectivePrefix}display_name'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      locator: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}locator'],
+      ),
+      identity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}identity'],
+      ),
+      authorization: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}authorization'],
+      ),
       needsRelink: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}needs_relink'],
@@ -3510,14 +3726,28 @@ class $LocalRootsTable extends LocalRoots
 }
 
 class LocalRoot extends DataClass implements Insertable<LocalRoot> {
-  /// Stable: the lowercased absolute path, so re-authorizing the same root
-  /// keeps the shelf and the progress (ADR 0006).
+  /// Minted for new managed roots; existing path-based IDs remain valid. A
+  /// relocation or renewed grant changes access metadata, never this identity.
   final String id;
   final String displayName;
+  final String kind;
+
+  /// A path/URL/tree URI; null on old filesystem rows uses displayName.
+  final String? locator;
+
+  /// The native provider's identity, separate from display text and book IDs.
+  final String? identity;
+
+  /// A durable Apple bookmark. Android retains its SDK grant by tree URI.
+  final String? authorization;
   final bool needsRelink;
   const LocalRoot({
     required this.id,
     required this.displayName,
+    required this.kind,
+    this.locator,
+    this.identity,
+    this.authorization,
     required this.needsRelink,
   });
   @override
@@ -3525,6 +3755,16 @@ class LocalRoot extends DataClass implements Insertable<LocalRoot> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['display_name'] = Variable<String>(displayName);
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || locator != null) {
+      map['locator'] = Variable<String>(locator);
+    }
+    if (!nullToAbsent || identity != null) {
+      map['identity'] = Variable<String>(identity);
+    }
+    if (!nullToAbsent || authorization != null) {
+      map['authorization'] = Variable<String>(authorization);
+    }
     map['needs_relink'] = Variable<bool>(needsRelink);
     return map;
   }
@@ -3533,6 +3773,16 @@ class LocalRoot extends DataClass implements Insertable<LocalRoot> {
     return LocalRootsCompanion(
       id: Value(id),
       displayName: Value(displayName),
+      kind: Value(kind),
+      locator: locator == null && nullToAbsent
+          ? const Value.absent()
+          : Value(locator),
+      identity: identity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(identity),
+      authorization: authorization == null && nullToAbsent
+          ? const Value.absent()
+          : Value(authorization),
       needsRelink: Value(needsRelink),
     );
   }
@@ -3545,6 +3795,10 @@ class LocalRoot extends DataClass implements Insertable<LocalRoot> {
     return LocalRoot(
       id: serializer.fromJson<String>(json['id']),
       displayName: serializer.fromJson<String>(json['displayName']),
+      kind: serializer.fromJson<String>(json['kind']),
+      locator: serializer.fromJson<String?>(json['locator']),
+      identity: serializer.fromJson<String?>(json['identity']),
+      authorization: serializer.fromJson<String?>(json['authorization']),
       needsRelink: serializer.fromJson<bool>(json['needsRelink']),
     );
   }
@@ -3554,22 +3808,45 @@ class LocalRoot extends DataClass implements Insertable<LocalRoot> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'displayName': serializer.toJson<String>(displayName),
+      'kind': serializer.toJson<String>(kind),
+      'locator': serializer.toJson<String?>(locator),
+      'identity': serializer.toJson<String?>(identity),
+      'authorization': serializer.toJson<String?>(authorization),
       'needsRelink': serializer.toJson<bool>(needsRelink),
     };
   }
 
-  LocalRoot copyWith({String? id, String? displayName, bool? needsRelink}) =>
-      LocalRoot(
-        id: id ?? this.id,
-        displayName: displayName ?? this.displayName,
-        needsRelink: needsRelink ?? this.needsRelink,
-      );
+  LocalRoot copyWith({
+    String? id,
+    String? displayName,
+    String? kind,
+    Value<String?> locator = const Value.absent(),
+    Value<String?> identity = const Value.absent(),
+    Value<String?> authorization = const Value.absent(),
+    bool? needsRelink,
+  }) => LocalRoot(
+    id: id ?? this.id,
+    displayName: displayName ?? this.displayName,
+    kind: kind ?? this.kind,
+    locator: locator.present ? locator.value : this.locator,
+    identity: identity.present ? identity.value : this.identity,
+    authorization: authorization.present
+        ? authorization.value
+        : this.authorization,
+    needsRelink: needsRelink ?? this.needsRelink,
+  );
   LocalRoot copyWithCompanion(LocalRootsCompanion data) {
     return LocalRoot(
       id: data.id.present ? data.id.value : this.id,
       displayName: data.displayName.present
           ? data.displayName.value
           : this.displayName,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      locator: data.locator.present ? data.locator.value : this.locator,
+      identity: data.identity.present ? data.identity.value : this.identity,
+      authorization: data.authorization.present
+          ? data.authorization.value
+          : this.authorization,
       needsRelink: data.needsRelink.present
           ? data.needsRelink.value
           : this.needsRelink,
@@ -3581,36 +3858,64 @@ class LocalRoot extends DataClass implements Insertable<LocalRoot> {
     return (StringBuffer('LocalRoot(')
           ..write('id: $id, ')
           ..write('displayName: $displayName, ')
+          ..write('kind: $kind, ')
+          ..write('locator: $locator, ')
+          ..write('identity: $identity, ')
+          ..write('authorization: $authorization, ')
           ..write('needsRelink: $needsRelink')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, displayName, needsRelink);
+  int get hashCode => Object.hash(
+    id,
+    displayName,
+    kind,
+    locator,
+    identity,
+    authorization,
+    needsRelink,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is LocalRoot &&
           other.id == this.id &&
           other.displayName == this.displayName &&
+          other.kind == this.kind &&
+          other.locator == this.locator &&
+          other.identity == this.identity &&
+          other.authorization == this.authorization &&
           other.needsRelink == this.needsRelink);
 }
 
 class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
   final Value<String> id;
   final Value<String> displayName;
+  final Value<String> kind;
+  final Value<String?> locator;
+  final Value<String?> identity;
+  final Value<String?> authorization;
   final Value<bool> needsRelink;
   final Value<int> rowid;
   const LocalRootsCompanion({
     this.id = const Value.absent(),
     this.displayName = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.locator = const Value.absent(),
+    this.identity = const Value.absent(),
+    this.authorization = const Value.absent(),
     this.needsRelink = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalRootsCompanion.insert({
     required String id,
     required String displayName,
+    this.kind = const Value.absent(),
+    this.locator = const Value.absent(),
+    this.identity = const Value.absent(),
+    this.authorization = const Value.absent(),
     this.needsRelink = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -3618,12 +3923,20 @@ class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
   static Insertable<LocalRoot> custom({
     Expression<String>? id,
     Expression<String>? displayName,
+    Expression<String>? kind,
+    Expression<String>? locator,
+    Expression<String>? identity,
+    Expression<String>? authorization,
     Expression<bool>? needsRelink,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (displayName != null) 'display_name': displayName,
+      if (kind != null) 'kind': kind,
+      if (locator != null) 'locator': locator,
+      if (identity != null) 'identity': identity,
+      if (authorization != null) 'authorization': authorization,
       if (needsRelink != null) 'needs_relink': needsRelink,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3632,12 +3945,20 @@ class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
   LocalRootsCompanion copyWith({
     Value<String>? id,
     Value<String>? displayName,
+    Value<String>? kind,
+    Value<String?>? locator,
+    Value<String?>? identity,
+    Value<String?>? authorization,
     Value<bool>? needsRelink,
     Value<int>? rowid,
   }) {
     return LocalRootsCompanion(
       id: id ?? this.id,
       displayName: displayName ?? this.displayName,
+      kind: kind ?? this.kind,
+      locator: locator ?? this.locator,
+      identity: identity ?? this.identity,
+      authorization: authorization ?? this.authorization,
       needsRelink: needsRelink ?? this.needsRelink,
       rowid: rowid ?? this.rowid,
     );
@@ -3651,6 +3972,18 @@ class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
     }
     if (displayName.present) {
       map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (locator.present) {
+      map['locator'] = Variable<String>(locator.value);
+    }
+    if (identity.present) {
+      map['identity'] = Variable<String>(identity.value);
+    }
+    if (authorization.present) {
+      map['authorization'] = Variable<String>(authorization.value);
     }
     if (needsRelink.present) {
       map['needs_relink'] = Variable<bool>(needsRelink.value);
@@ -3666,6 +3999,10 @@ class LocalRootsCompanion extends UpdateCompanion<LocalRoot> {
     return (StringBuffer('LocalRootsCompanion(')
           ..write('id: $id, ')
           ..write('displayName: $displayName, ')
+          ..write('kind: $kind, ')
+          ..write('locator: $locator, ')
+          ..write('identity: $identity, ')
+          ..write('authorization: $authorization, ')
           ..write('needsRelink: $needsRelink, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -3701,6 +4038,46 @@ class $LocalFilesTable extends LocalFiles
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _locatorMeta = const VerificationMeta(
+    'locator',
+  );
+  @override
+  late final GeneratedColumn<String> locator = GeneratedColumn<String>(
+    'locator',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _importNameMeta = const VerificationMeta(
+    'importName',
+  );
+  @override
+  late final GeneratedColumn<String> importName = GeneratedColumn<String>(
+    'import_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sha256Meta = const VerificationMeta('sha256');
+  @override
+  late final GeneratedColumn<String> sha256 = GeneratedColumn<String>(
+    'sha256',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _formatMeta = const VerificationMeta('format');
   @override
@@ -3765,6 +4142,10 @@ class $LocalFilesTable extends LocalFiles
   List<GeneratedColumn> get $columns => [
     rootId,
     relativePath,
+    locator,
+    name,
+    importName,
+    sha256,
     format,
     textLength,
     modifiedAt,
@@ -3801,6 +4182,30 @@ class $LocalFilesTable extends LocalFiles
       );
     } else if (isInserting) {
       context.missing(_relativePathMeta);
+    }
+    if (data.containsKey('locator')) {
+      context.handle(
+        _locatorMeta,
+        locator.isAcceptableOrUnknown(data['locator']!, _locatorMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('import_name')) {
+      context.handle(
+        _importNameMeta,
+        importName.isAcceptableOrUnknown(data['import_name']!, _importNameMeta),
+      );
+    }
+    if (data.containsKey('sha256')) {
+      context.handle(
+        _sha256Meta,
+        sha256.isAcceptableOrUnknown(data['sha256']!, _sha256Meta),
+      );
     }
     if (data.containsKey('format')) {
       context.handle(
@@ -3852,6 +4257,22 @@ class $LocalFilesTable extends LocalFiles
         DriftSqlType.string,
         data['${effectivePrefix}relative_path'],
       )!,
+      locator: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}locator'],
+      ),
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      importName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}import_name'],
+      ),
+      sha256: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sha256'],
+      ),
       format: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}format'],
@@ -3883,7 +4304,20 @@ class $LocalFilesTable extends LocalFiles
 
 class LocalFile extends DataClass implements Insertable<LocalFile> {
   final String rootId;
+
+  /// Root-relative filesystem key or opaque Android document ID.
   final String relativePath;
+
+  /// Canonical physical locator and filename; legacy rows resolve their key.
+  final String? locator;
+  final String? name;
+
+  /// The logical filename used for import collisions, including provider
+  /// copies whose actual filename differs. It is not a book identity.
+  final String? importName;
+
+  /// Exact copied bytes, for guarded owned-file cleanup and recovery.
+  final String? sha256;
   final String format;
 
   /// Cached decoded length: nothing reads a whole file to clamp an offset (D4).
@@ -3899,6 +4333,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
   const LocalFile({
     required this.rootId,
     required this.relativePath,
+    this.locator,
+    this.name,
+    this.importName,
+    this.sha256,
     required this.format,
     this.textLength,
     this.modifiedAt,
@@ -3910,6 +4348,18 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
     final map = <String, Expression>{};
     map['root_id'] = Variable<String>(rootId);
     map['relative_path'] = Variable<String>(relativePath);
+    if (!nullToAbsent || locator != null) {
+      map['locator'] = Variable<String>(locator);
+    }
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    if (!nullToAbsent || importName != null) {
+      map['import_name'] = Variable<String>(importName);
+    }
+    if (!nullToAbsent || sha256 != null) {
+      map['sha256'] = Variable<String>(sha256);
+    }
     map['format'] = Variable<String>(format);
     if (!nullToAbsent || textLength != null) {
       map['text_length'] = Variable<int>(textLength);
@@ -3928,6 +4378,16 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
     return LocalFilesCompanion(
       rootId: Value(rootId),
       relativePath: Value(relativePath),
+      locator: locator == null && nullToAbsent
+          ? const Value.absent()
+          : Value(locator),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      importName: importName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(importName),
+      sha256: sha256 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sha256),
       format: Value(format),
       textLength: textLength == null && nullToAbsent
           ? const Value.absent()
@@ -3950,6 +4410,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
     return LocalFile(
       rootId: serializer.fromJson<String>(json['rootId']),
       relativePath: serializer.fromJson<String>(json['relativePath']),
+      locator: serializer.fromJson<String?>(json['locator']),
+      name: serializer.fromJson<String?>(json['name']),
+      importName: serializer.fromJson<String?>(json['importName']),
+      sha256: serializer.fromJson<String?>(json['sha256']),
       format: serializer.fromJson<String>(json['format']),
       textLength: serializer.fromJson<int?>(json['textLength']),
       modifiedAt: serializer.fromJson<int?>(json['modifiedAt']),
@@ -3963,6 +4427,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
     return <String, dynamic>{
       'rootId': serializer.toJson<String>(rootId),
       'relativePath': serializer.toJson<String>(relativePath),
+      'locator': serializer.toJson<String?>(locator),
+      'name': serializer.toJson<String?>(name),
+      'importName': serializer.toJson<String?>(importName),
+      'sha256': serializer.toJson<String?>(sha256),
       'format': serializer.toJson<String>(format),
       'textLength': serializer.toJson<int?>(textLength),
       'modifiedAt': serializer.toJson<int?>(modifiedAt),
@@ -3974,6 +4442,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
   LocalFile copyWith({
     String? rootId,
     String? relativePath,
+    Value<String?> locator = const Value.absent(),
+    Value<String?> name = const Value.absent(),
+    Value<String?> importName = const Value.absent(),
+    Value<String?> sha256 = const Value.absent(),
     String? format,
     Value<int?> textLength = const Value.absent(),
     Value<int?> modifiedAt = const Value.absent(),
@@ -3982,6 +4454,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
   }) => LocalFile(
     rootId: rootId ?? this.rootId,
     relativePath: relativePath ?? this.relativePath,
+    locator: locator.present ? locator.value : this.locator,
+    name: name.present ? name.value : this.name,
+    importName: importName.present ? importName.value : this.importName,
+    sha256: sha256.present ? sha256.value : this.sha256,
     format: format ?? this.format,
     textLength: textLength.present ? textLength.value : this.textLength,
     modifiedAt: modifiedAt.present ? modifiedAt.value : this.modifiedAt,
@@ -3994,6 +4470,12 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
       relativePath: data.relativePath.present
           ? data.relativePath.value
           : this.relativePath,
+      locator: data.locator.present ? data.locator.value : this.locator,
+      name: data.name.present ? data.name.value : this.name,
+      importName: data.importName.present
+          ? data.importName.value
+          : this.importName,
+      sha256: data.sha256.present ? data.sha256.value : this.sha256,
       format: data.format.present ? data.format.value : this.format,
       textLength: data.textLength.present
           ? data.textLength.value
@@ -4013,6 +4495,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
     return (StringBuffer('LocalFile(')
           ..write('rootId: $rootId, ')
           ..write('relativePath: $relativePath, ')
+          ..write('locator: $locator, ')
+          ..write('name: $name, ')
+          ..write('importName: $importName, ')
+          ..write('sha256: $sha256, ')
           ..write('format: $format, ')
           ..write('textLength: $textLength, ')
           ..write('modifiedAt: $modifiedAt, ')
@@ -4026,6 +4512,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
   int get hashCode => Object.hash(
     rootId,
     relativePath,
+    locator,
+    name,
+    importName,
+    sha256,
     format,
     textLength,
     modifiedAt,
@@ -4038,6 +4528,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
       (other is LocalFile &&
           other.rootId == this.rootId &&
           other.relativePath == this.relativePath &&
+          other.locator == this.locator &&
+          other.name == this.name &&
+          other.importName == this.importName &&
+          other.sha256 == this.sha256 &&
           other.format == this.format &&
           other.textLength == this.textLength &&
           other.modifiedAt == this.modifiedAt &&
@@ -4048,6 +4542,10 @@ class LocalFile extends DataClass implements Insertable<LocalFile> {
 class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
   final Value<String> rootId;
   final Value<String> relativePath;
+  final Value<String?> locator;
+  final Value<String?> name;
+  final Value<String?> importName;
+  final Value<String?> sha256;
   final Value<String> format;
   final Value<int?> textLength;
   final Value<int?> modifiedAt;
@@ -4057,6 +4555,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
   const LocalFilesCompanion({
     this.rootId = const Value.absent(),
     this.relativePath = const Value.absent(),
+    this.locator = const Value.absent(),
+    this.name = const Value.absent(),
+    this.importName = const Value.absent(),
+    this.sha256 = const Value.absent(),
     this.format = const Value.absent(),
     this.textLength = const Value.absent(),
     this.modifiedAt = const Value.absent(),
@@ -4067,6 +4569,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
   LocalFilesCompanion.insert({
     required String rootId,
     required String relativePath,
+    this.locator = const Value.absent(),
+    this.name = const Value.absent(),
+    this.importName = const Value.absent(),
+    this.sha256 = const Value.absent(),
     this.format = const Value.absent(),
     this.textLength = const Value.absent(),
     this.modifiedAt = const Value.absent(),
@@ -4078,6 +4584,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
   static Insertable<LocalFile> custom({
     Expression<String>? rootId,
     Expression<String>? relativePath,
+    Expression<String>? locator,
+    Expression<String>? name,
+    Expression<String>? importName,
+    Expression<String>? sha256,
     Expression<String>? format,
     Expression<int>? textLength,
     Expression<int>? modifiedAt,
@@ -4088,6 +4598,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
     return RawValuesInsertable({
       if (rootId != null) 'root_id': rootId,
       if (relativePath != null) 'relative_path': relativePath,
+      if (locator != null) 'locator': locator,
+      if (name != null) 'name': name,
+      if (importName != null) 'import_name': importName,
+      if (sha256 != null) 'sha256': sha256,
       if (format != null) 'format': format,
       if (textLength != null) 'text_length': textLength,
       if (modifiedAt != null) 'modified_at': modifiedAt,
@@ -4100,6 +4614,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
   LocalFilesCompanion copyWith({
     Value<String>? rootId,
     Value<String>? relativePath,
+    Value<String?>? locator,
+    Value<String?>? name,
+    Value<String?>? importName,
+    Value<String?>? sha256,
     Value<String>? format,
     Value<int?>? textLength,
     Value<int?>? modifiedAt,
@@ -4110,6 +4628,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
     return LocalFilesCompanion(
       rootId: rootId ?? this.rootId,
       relativePath: relativePath ?? this.relativePath,
+      locator: locator ?? this.locator,
+      name: name ?? this.name,
+      importName: importName ?? this.importName,
+      sha256: sha256 ?? this.sha256,
       format: format ?? this.format,
       textLength: textLength ?? this.textLength,
       modifiedAt: modifiedAt ?? this.modifiedAt,
@@ -4127,6 +4649,18 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
     }
     if (relativePath.present) {
       map['relative_path'] = Variable<String>(relativePath.value);
+    }
+    if (locator.present) {
+      map['locator'] = Variable<String>(locator.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (importName.present) {
+      map['import_name'] = Variable<String>(importName.value);
+    }
+    if (sha256.present) {
+      map['sha256'] = Variable<String>(sha256.value);
     }
     if (format.present) {
       map['format'] = Variable<String>(format.value);
@@ -4154,6 +4688,10 @@ class LocalFilesCompanion extends UpdateCompanion<LocalFile> {
     return (StringBuffer('LocalFilesCompanion(')
           ..write('rootId: $rootId, ')
           ..write('relativePath: $relativePath, ')
+          ..write('locator: $locator, ')
+          ..write('name: $name, ')
+          ..write('importName: $importName, ')
+          ..write('sha256: $sha256, ')
           ..write('format: $format, ')
           ..write('textLength: $textLength, ')
           ..write('modifiedAt: $modifiedAt, ')
@@ -7174,6 +7712,10 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     'books_shelf_order',
     'CREATE INDEX books_shelf_order ON books (shelved, kind, book_order)',
   );
+  late final Index booksLocalOrigin = Index(
+    'books_local_origin',
+    'CREATE UNIQUE INDEX books_local_origin ON books (original_root_id, original_relative_path)',
+  );
   late final Index groupsName = Index(
     'groups_name',
     'CREATE UNIQUE INDEX groups_name ON "groups" (name)',
@@ -7220,6 +7762,7 @@ abstract class _$SpaceDatabase extends GeneratedDatabase {
     booksNaturalKey,
     booksLocalKey,
     booksShelfOrder,
+    booksLocalOrigin,
     groupsName,
     bookGroupsGroup,
     chaptersTocOrder,
@@ -7600,6 +8143,8 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<bool> shelved,
       Value<String?> rootId,
       Value<String?> relativePath,
+      Value<String?> originalRootId,
+      Value<String?> originalRelativePath,
       Value<String?> format,
       Value<bool> needsRelink,
       Value<String?> raw,
@@ -7632,6 +8177,8 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<bool> shelved,
       Value<String?> rootId,
       Value<String?> relativePath,
+      Value<String?> originalRootId,
+      Value<String?> originalRelativePath,
       Value<String?> format,
       Value<bool> needsRelink,
       Value<String?> raw,
@@ -7846,6 +8393,16 @@ class $$BooksTableFilterComposer
 
   ColumnFilters<String> get relativePath => $composableBuilder(
     column: $table.relativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originalRootId => $composableBuilder(
+    column: $table.originalRootId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originalRelativePath => $composableBuilder(
+    column: $table.originalRelativePath,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8099,6 +8656,16 @@ class $$BooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get originalRootId => $composableBuilder(
+    column: $table.originalRootId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get originalRelativePath => $composableBuilder(
+    column: $table.originalRelativePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get format => $composableBuilder(
     column: $table.format,
     builder: (column) => ColumnOrderings(column),
@@ -8216,6 +8783,16 @@ class $$BooksTableAnnotationComposer
 
   GeneratedColumn<String> get relativePath => $composableBuilder(
     column: $table.relativePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get originalRootId => $composableBuilder(
+    column: $table.originalRootId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get originalRelativePath => $composableBuilder(
+    column: $table.originalRelativePath,
     builder: (column) => column,
   );
 
@@ -8389,6 +8966,8 @@ class $$BooksTableTableManager
                 Value<bool> shelved = const Value.absent(),
                 Value<String?> rootId = const Value.absent(),
                 Value<String?> relativePath = const Value.absent(),
+                Value<String?> originalRootId = const Value.absent(),
+                Value<String?> originalRelativePath = const Value.absent(),
                 Value<String?> format = const Value.absent(),
                 Value<bool> needsRelink = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
@@ -8419,6 +8998,8 @@ class $$BooksTableTableManager
                 shelved: shelved,
                 rootId: rootId,
                 relativePath: relativePath,
+                originalRootId: originalRootId,
+                originalRelativePath: originalRelativePath,
                 format: format,
                 needsRelink: needsRelink,
                 raw: raw,
@@ -8451,6 +9032,8 @@ class $$BooksTableTableManager
                 Value<bool> shelved = const Value.absent(),
                 Value<String?> rootId = const Value.absent(),
                 Value<String?> relativePath = const Value.absent(),
+                Value<String?> originalRootId = const Value.absent(),
+                Value<String?> originalRelativePath = const Value.absent(),
                 Value<String?> format = const Value.absent(),
                 Value<bool> needsRelink = const Value.absent(),
                 Value<String?> raw = const Value.absent(),
@@ -8481,6 +9064,8 @@ class $$BooksTableTableManager
                 shelved: shelved,
                 rootId: rootId,
                 relativePath: relativePath,
+                originalRootId: originalRootId,
+                originalRelativePath: originalRelativePath,
                 format: format,
                 needsRelink: needsRelink,
                 raw: raw,
@@ -9728,6 +10313,10 @@ typedef $$LocalRootsTableCreateCompanionBuilder =
     LocalRootsCompanion Function({
       required String id,
       required String displayName,
+      Value<String> kind,
+      Value<String?> locator,
+      Value<String?> identity,
+      Value<String?> authorization,
       Value<bool> needsRelink,
       Value<int> rowid,
     });
@@ -9735,6 +10324,10 @@ typedef $$LocalRootsTableUpdateCompanionBuilder =
     LocalRootsCompanion Function({
       Value<String> id,
       Value<String> displayName,
+      Value<String> kind,
+      Value<String?> locator,
+      Value<String?> identity,
+      Value<String?> authorization,
       Value<bool> needsRelink,
       Value<int> rowid,
     });
@@ -9796,6 +10389,26 @@ class $$LocalRootsTableFilterComposer
 
   ColumnFilters<String> get displayName => $composableBuilder(
     column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get locator => $composableBuilder(
+    column: $table.locator,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get identity => $composableBuilder(
+    column: $table.identity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get authorization => $composableBuilder(
+    column: $table.authorization,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9874,6 +10487,26 @@ class $$LocalRootsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get locator => $composableBuilder(
+    column: $table.locator,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get identity => $composableBuilder(
+    column: $table.identity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get authorization => $composableBuilder(
+    column: $table.authorization,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get needsRelink => $composableBuilder(
     column: $table.needsRelink,
     builder: (column) => ColumnOrderings(column),
@@ -9894,6 +10527,20 @@ class $$LocalRootsTableAnnotationComposer
 
   GeneratedColumn<String> get displayName => $composableBuilder(
     column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get locator =>
+      $composableBuilder(column: $table.locator, builder: (column) => column);
+
+  GeneratedColumn<String> get identity =>
+      $composableBuilder(column: $table.identity, builder: (column) => column);
+
+  GeneratedColumn<String> get authorization => $composableBuilder(
+    column: $table.authorization,
     builder: (column) => column,
   );
 
@@ -9983,11 +10630,19 @@ class $$LocalRootsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> displayName = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> locator = const Value.absent(),
+                Value<String?> identity = const Value.absent(),
+                Value<String?> authorization = const Value.absent(),
                 Value<bool> needsRelink = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalRootsCompanion(
                 id: id,
                 displayName: displayName,
+                kind: kind,
+                locator: locator,
+                identity: identity,
+                authorization: authorization,
                 needsRelink: needsRelink,
                 rowid: rowid,
               ),
@@ -9995,11 +10650,19 @@ class $$LocalRootsTableTableManager
               ({
                 required String id,
                 required String displayName,
+                Value<String> kind = const Value.absent(),
+                Value<String?> locator = const Value.absent(),
+                Value<String?> identity = const Value.absent(),
+                Value<String?> authorization = const Value.absent(),
                 Value<bool> needsRelink = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalRootsCompanion.insert(
                 id: id,
                 displayName: displayName,
+                kind: kind,
+                locator: locator,
+                identity: identity,
+                authorization: authorization,
                 needsRelink: needsRelink,
                 rowid: rowid,
               ),
@@ -10090,6 +10753,10 @@ typedef $$LocalFilesTableCreateCompanionBuilder =
     LocalFilesCompanion Function({
       required String rootId,
       required String relativePath,
+      Value<String?> locator,
+      Value<String?> name,
+      Value<String?> importName,
+      Value<String?> sha256,
       Value<String> format,
       Value<int?> textLength,
       Value<int?> modifiedAt,
@@ -10101,6 +10768,10 @@ typedef $$LocalFilesTableUpdateCompanionBuilder =
     LocalFilesCompanion Function({
       Value<String> rootId,
       Value<String> relativePath,
+      Value<String?> locator,
+      Value<String?> name,
+      Value<String?> importName,
+      Value<String?> sha256,
       Value<String> format,
       Value<int?> textLength,
       Value<int?> modifiedAt,
@@ -10159,6 +10830,26 @@ class $$LocalFilesTableFilterComposer
   });
   ColumnFilters<String> get relativePath => $composableBuilder(
     column: $table.relativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get locator => $composableBuilder(
+    column: $table.locator,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get importName => $composableBuilder(
+    column: $table.importName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10243,6 +10934,26 @@ class $$LocalFilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get locator => $composableBuilder(
+    column: $table.locator,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get importName => $composableBuilder(
+    column: $table.importName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get format => $composableBuilder(
     column: $table.format,
     builder: (column) => ColumnOrderings(column),
@@ -10323,6 +11034,20 @@ class $$LocalFilesTableAnnotationComposer
     column: $table.relativePath,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get locator =>
+      $composableBuilder(column: $table.locator, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get importName => $composableBuilder(
+    column: $table.importName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sha256 =>
+      $composableBuilder(column: $table.sha256, builder: (column) => column);
 
   GeneratedColumn<String> get format =>
       $composableBuilder(column: $table.format, builder: (column) => column);
@@ -10419,6 +11144,10 @@ class $$LocalFilesTableTableManager
               ({
                 Value<String> rootId = const Value.absent(),
                 Value<String> relativePath = const Value.absent(),
+                Value<String?> locator = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> importName = const Value.absent(),
+                Value<String?> sha256 = const Value.absent(),
                 Value<String> format = const Value.absent(),
                 Value<int?> textLength = const Value.absent(),
                 Value<int?> modifiedAt = const Value.absent(),
@@ -10428,6 +11157,10 @@ class $$LocalFilesTableTableManager
               }) => LocalFilesCompanion(
                 rootId: rootId,
                 relativePath: relativePath,
+                locator: locator,
+                name: name,
+                importName: importName,
+                sha256: sha256,
                 format: format,
                 textLength: textLength,
                 modifiedAt: modifiedAt,
@@ -10439,6 +11172,10 @@ class $$LocalFilesTableTableManager
               ({
                 required String rootId,
                 required String relativePath,
+                Value<String?> locator = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> importName = const Value.absent(),
+                Value<String?> sha256 = const Value.absent(),
                 Value<String> format = const Value.absent(),
                 Value<int?> textLength = const Value.absent(),
                 Value<int?> modifiedAt = const Value.absent(),
@@ -10448,6 +11185,10 @@ class $$LocalFilesTableTableManager
               }) => LocalFilesCompanion.insert(
                 rootId: rootId,
                 relativePath: relativePath,
+                locator: locator,
+                name: name,
+                importName: importName,
+                sha256: sha256,
                 format: format,
                 textLength: textLength,
                 modifiedAt: modifiedAt,

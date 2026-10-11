@@ -21,7 +21,7 @@ The immutable Legado revision whose Book Source behavior defines compatibility f
 _Avoid_: Latest Legado
 
 **Local Library（本地书库）**:
-The supported local books discovered under folders explicitly selected by the user and added to the bookshelf.
+The supported local books explicitly added to the bookshelf and managed in a folder selected by the user.
 _Avoid_: Device-wide file scan
 
 **Space（空间）**:

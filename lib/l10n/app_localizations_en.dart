@@ -1154,4 +1154,124 @@ class AppLocalizationsEn extends AppLocalizations {
   String literalCopy(String text) {
     return '$text';
   }
+
+  @override
+  String get libraryNoFolder =>
+      'Choose a library folder when importing your first local book.';
+
+  @override
+  String get libraryCopyHint =>
+      'Imports copy books here and keep the originals. Changing this folder automatically migrates library books and keeps reading progress.';
+
+  @override
+  String get libraryImport => 'Import local books';
+
+  @override
+  String get libraryChooseFolder => 'Choose library folder';
+
+  @override
+  String get libraryChangeFolder => 'Change library folder';
+
+  @override
+  String get libraryNameConflict => 'Different content with the same name';
+
+  @override
+  String libraryConflictDescription(String name) {
+    return '$name already exists with different content. Update this book while keeping its shelf entry and reading progress, keep both versions, or cancel.';
+  }
+
+  @override
+  String libraryConflictOtherBook(String name) {
+    return '$name belongs to another book. Keep both to preserve each book\'s identity and reading progress, or cancel.';
+  }
+
+  @override
+  String get libraryKeepBoth => 'Keep both';
+
+  @override
+  String get libraryUpdate => 'Update this book (replace)';
+
+  @override
+  String get libraryDirectoryChanged =>
+      'Library folder updated. Books and reading progress are preserved.';
+
+  @override
+  String get libraryCleanupTitle => 'Delete the old copies?';
+
+  @override
+  String libraryCleanupDescription(int count) {
+    return 'The new library is ready. Delete only the $count old copies from this migration? Original imported files and unrelated files will be kept.';
+  }
+
+  @override
+  String get libraryKeepOld => 'Keep old copies';
+
+  @override
+  String get libraryDeleteOld => 'Delete old copies';
+
+  @override
+  String get libraryCleanupDone => 'Library updated and old copies deleted.';
+
+  @override
+  String libraryCleanupFailed(String message) {
+    return 'Library updated, but some old copies could not be deleted: $message';
+  }
+
+  @override
+  String get libraryAdopt => 'Move selected books into library';
+
+  @override
+  String libraryAdopted(int count) {
+    return '$count books copied into the library. Unavailable files still need relinking.';
+  }
+
+  @override
+  String get libraryLegacyBooks => 'Existing books to move into the library';
+
+  @override
+  String get libraryWorking => 'Processing library files…';
+
+  @override
+  String libraryProgress(int bytes) {
+    return 'Current file: $bytes bytes copied';
+  }
+
+  @override
+  String get libraryCancelled => 'Operation cancelled.';
+
+  @override
+  String get libraryPermissionLost =>
+      'Access to the file or folder has expired. Select it again to restore access.';
+
+  @override
+  String get libraryFileMissing =>
+      'The file or folder is unavailable. Restore it or relink the book.';
+
+  @override
+  String get libraryUnsupported =>
+      'This location does not support the operation. Choose another folder or file.';
+
+  @override
+  String get libraryVerificationFailed =>
+      'Copy verification failed. The previous content is kept; try importing again.';
+
+  @override
+  String libraryOperationFailed(String message) {
+    return 'The operation failed: $message';
+  }
+
+  @override
+  String get libraryEmpty =>
+      'This folder has no TXT or Markdown books. Import local books to add them here.';
+
+  @override
+  String get libraryDeleteFile => 'Delete library file';
+
+  @override
+  String libraryDeleteDescription(String name) {
+    return 'Delete the library copy of $name? The original import file and the reading record will be kept; reading will require relinking.';
+  }
+
+  @override
+  String get libraryRead => 'Read book';
 }

@@ -1119,6 +1119,118 @@ class AppLocalizationsZh extends AppLocalizations {
   String literalCopy(String text) {
     return '$text';
   }
+
+  @override
+  String get libraryNoFolder => '首次导入本地书时选择书库目录。';
+
+  @override
+  String get libraryCopyHint => '导入时复制到书库并保留原文件。更换目录会自动迁移书库内的书籍，保留阅读进度。';
+
+  @override
+  String get libraryImport => '导入本地书';
+
+  @override
+  String get libraryChooseFolder => '选择书库目录';
+
+  @override
+  String get libraryChangeFolder => '更换书库目录';
+
+  @override
+  String get libraryNameConflict => '同名文件内容不同';
+
+  @override
+  String libraryConflictDescription(String name) {
+    return '$name 已有不同内容。可以更新此书并保留书架记录和阅读进度，也可以保留两本或取消。';
+  }
+
+  @override
+  String libraryConflictOtherBook(String name) {
+    return '$name 属于另一部书。请选择保留两本或取消，以保留各自的书籍记录和阅读进度。';
+  }
+
+  @override
+  String get libraryKeepBoth => '保留两本';
+
+  @override
+  String get libraryUpdate => '更新此书（覆盖）';
+
+  @override
+  String get libraryDirectoryChanged => '书库目录已更新，书籍和阅读进度已保留。';
+
+  @override
+  String get libraryCleanupTitle => '清理旧副本？';
+
+  @override
+  String libraryCleanupDescription(int count) {
+    return '新书库已准备好。是否删除本次迁移的 $count 个旧副本？原导入文件和其他文件会保留。';
+  }
+
+  @override
+  String get libraryKeepOld => '保留旧副本';
+
+  @override
+  String get libraryDeleteOld => '删除旧副本';
+
+  @override
+  String get libraryCleanupDone => '书库已更新，旧副本已清理。';
+
+  @override
+  String libraryCleanupFailed(String message) {
+    return '书库已更新，部分旧副本未能清理：$message';
+  }
+
+  @override
+  String get libraryAdopt => '迁入选中的书';
+
+  @override
+  String libraryAdopted(int count) {
+    return '已复制 $count 本到书库，无法读取的文件仍待关联。';
+  }
+
+  @override
+  String get libraryLegacyBooks => '待迁入的已有本地书';
+
+  @override
+  String get libraryWorking => '正在处理书库文件…';
+
+  @override
+  String libraryProgress(int bytes) {
+    return '当前文件已复制 $bytes 字节';
+  }
+
+  @override
+  String get libraryCancelled => '操作已取消。';
+
+  @override
+  String get libraryPermissionLost => '文件或目录授权已失效，请重新选择以恢复访问。';
+
+  @override
+  String get libraryFileMissing => '文件或目录无法读取，请恢复文件或重新关联。';
+
+  @override
+  String get libraryUnsupported => '所选位置不支持此操作，请选择其他目录或文件。';
+
+  @override
+  String get libraryVerificationFailed => '复制校验失败，已保留原有内容，请重新导入。';
+
+  @override
+  String libraryOperationFailed(String message) {
+    return '操作失败：$message';
+  }
+
+  @override
+  String get libraryEmpty => '此目录没有 TXT 或 Markdown 书籍，可以通过导入本地书加入。';
+
+  @override
+  String get libraryDeleteFile => '删除书库文件';
+
+  @override
+  String libraryDeleteDescription(String name) {
+    return '删除 $name 的书库副本？原导入文件和阅读记录会保留，之后需重新关联才能阅读。';
+  }
+
+  @override
+  String get libraryRead => '阅读此书';
 }
 
 /// The translations for Chinese, as used in Hong Kong, using the Han script (`zh_Hant_HK`).
@@ -2236,6 +2348,118 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String literalCopy(String text) {
     return '$text';
   }
+
+  @override
+  String get libraryNoFolder => '首次匯入本機書籍時選擇書庫目錄。';
+
+  @override
+  String get libraryCopyHint => '匯入時複製到書庫並保留原檔案。更換目錄會自動遷移書庫內的書籍，保留閱讀進度。';
+
+  @override
+  String get libraryImport => '匯入本機書籍';
+
+  @override
+  String get libraryChooseFolder => '選擇書庫目錄';
+
+  @override
+  String get libraryChangeFolder => '更換書庫目錄';
+
+  @override
+  String get libraryNameConflict => '同名檔案內容不同';
+
+  @override
+  String libraryConflictDescription(String name) {
+    return '$name 已有不同內容。可以更新此書並保留書架記錄和閱讀進度，也可以保留兩本或取消。';
+  }
+
+  @override
+  String libraryConflictOtherBook(String name) {
+    return '$name 屬於另一部書。請選擇保留兩本或取消，以保留各自的書籍記錄和閱讀進度。';
+  }
+
+  @override
+  String get libraryKeepBoth => '保留兩本';
+
+  @override
+  String get libraryUpdate => '更新此書（覆蓋）';
+
+  @override
+  String get libraryDirectoryChanged => '書庫目錄已更新，書籍和閱讀進度已保留。';
+
+  @override
+  String get libraryCleanupTitle => '清理舊副本？';
+
+  @override
+  String libraryCleanupDescription(int count) {
+    return '新書庫已準備好。是否刪除本次遷移的 $count 個舊副本？原匯入檔案和其他檔案會保留。';
+  }
+
+  @override
+  String get libraryKeepOld => '保留舊副本';
+
+  @override
+  String get libraryDeleteOld => '刪除舊副本';
+
+  @override
+  String get libraryCleanupDone => '書庫已更新，舊副本已清理。';
+
+  @override
+  String libraryCleanupFailed(String message) {
+    return '書庫已更新，部分舊副本未能清理：$message';
+  }
+
+  @override
+  String get libraryAdopt => '遷入選取的書籍';
+
+  @override
+  String libraryAdopted(int count) {
+    return '已複製 $count 本到書庫，無法讀取的檔案仍待關聯。';
+  }
+
+  @override
+  String get libraryLegacyBooks => '待遷入的既有本機書籍';
+
+  @override
+  String get libraryWorking => '正在處理書庫檔案…';
+
+  @override
+  String libraryProgress(int bytes) {
+    return '目前檔案已複製 $bytes 位元組';
+  }
+
+  @override
+  String get libraryCancelled => '操作已取消。';
+
+  @override
+  String get libraryPermissionLost => '檔案或目錄授權已失效，請重新選擇以恢復存取。';
+
+  @override
+  String get libraryFileMissing => '檔案或目錄無法讀取，請恢復檔案或重新關聯。';
+
+  @override
+  String get libraryUnsupported => '所選位置不支援此操作，請選擇其他目錄或檔案。';
+
+  @override
+  String get libraryVerificationFailed => '複製驗證失敗，已保留原有內容，請重新匯入。';
+
+  @override
+  String libraryOperationFailed(String message) {
+    return '操作失敗：$message';
+  }
+
+  @override
+  String get libraryEmpty => '此目錄沒有 TXT 或 Markdown 書籍，可以透過匯入本機書籍加入。';
+
+  @override
+  String get libraryDeleteFile => '刪除書庫檔案';
+
+  @override
+  String libraryDeleteDescription(String name) {
+    return '刪除 $name 的書庫副本？原匯入檔案和閱讀記錄會保留，之後需重新關聯才能閱讀。';
+  }
+
+  @override
+  String get libraryRead => '閱讀此書';
 }
 
 /// The translations for Chinese, as used in Taiwan, using the Han script (`zh_Hant_TW`).
@@ -3353,4 +3577,116 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String literalCopy(String text) {
     return '$text';
   }
+
+  @override
+  String get libraryNoFolder => '首次匯入本機書籍時選擇書庫目錄。';
+
+  @override
+  String get libraryCopyHint => '匯入時複製到書庫並保留原檔案。更換目錄會自動遷移書庫內的書籍，保留閱讀進度。';
+
+  @override
+  String get libraryImport => '匯入本機書籍';
+
+  @override
+  String get libraryChooseFolder => '選擇書庫目錄';
+
+  @override
+  String get libraryChangeFolder => '更換書庫目錄';
+
+  @override
+  String get libraryNameConflict => '同名檔案內容不同';
+
+  @override
+  String libraryConflictDescription(String name) {
+    return '$name 已有不同內容。可以更新此書並保留書架記錄和閱讀進度，也可以保留兩本或取消。';
+  }
+
+  @override
+  String libraryConflictOtherBook(String name) {
+    return '$name 屬於另一部書。請選擇保留兩本或取消，以保留各自的書籍記錄和閱讀進度。';
+  }
+
+  @override
+  String get libraryKeepBoth => '保留兩本';
+
+  @override
+  String get libraryUpdate => '更新此書（覆蓋）';
+
+  @override
+  String get libraryDirectoryChanged => '書庫目錄已更新，書籍和閱讀進度已保留。';
+
+  @override
+  String get libraryCleanupTitle => '清理舊副本？';
+
+  @override
+  String libraryCleanupDescription(int count) {
+    return '新書庫已準備好。是否刪除本次遷移的 $count 個舊副本？原匯入檔案和其他檔案會保留。';
+  }
+
+  @override
+  String get libraryKeepOld => '保留舊副本';
+
+  @override
+  String get libraryDeleteOld => '刪除舊副本';
+
+  @override
+  String get libraryCleanupDone => '書庫已更新，舊副本已清理。';
+
+  @override
+  String libraryCleanupFailed(String message) {
+    return '書庫已更新，部分舊副本未能清理：$message';
+  }
+
+  @override
+  String get libraryAdopt => '遷入選取的書籍';
+
+  @override
+  String libraryAdopted(int count) {
+    return '已複製 $count 本到書庫，無法讀取的檔案仍待關聯。';
+  }
+
+  @override
+  String get libraryLegacyBooks => '待遷入的既有本機書籍';
+
+  @override
+  String get libraryWorking => '正在處理書庫檔案…';
+
+  @override
+  String libraryProgress(int bytes) {
+    return '目前檔案已複製 $bytes 位元組';
+  }
+
+  @override
+  String get libraryCancelled => '操作已取消。';
+
+  @override
+  String get libraryPermissionLost => '檔案或目錄授權已失效，請重新選擇以恢復存取。';
+
+  @override
+  String get libraryFileMissing => '檔案或目錄無法讀取，請恢復檔案或重新關聯。';
+
+  @override
+  String get libraryUnsupported => '所選位置不支援此操作，請選擇其他目錄或檔案。';
+
+  @override
+  String get libraryVerificationFailed => '複製驗證失敗，已保留原有內容，請重新匯入。';
+
+  @override
+  String libraryOperationFailed(String message) {
+    return '操作失敗：$message';
+  }
+
+  @override
+  String get libraryEmpty => '此目錄沒有 TXT 或 Markdown 書籍，可以透過匯入本機書籍加入。';
+
+  @override
+  String get libraryDeleteFile => '刪除書庫檔案';
+
+  @override
+  String libraryDeleteDescription(String name) {
+    return '刪除 $name 的書庫副本？原匯入檔案和閱讀記錄會保留，之後需重新關聯才能閱讀。';
+  }
+
+  @override
+  String get libraryRead => '閱讀此書';
 }

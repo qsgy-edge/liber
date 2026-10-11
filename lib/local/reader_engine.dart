@@ -1,5 +1,6 @@
 import 'package:fjs/fjs.dart';
 
+import 'library_access.dart';
 import 'text_engine.dart';
 
 /// One sparse line-start anchor: the byte offset, the code-unit offset and the
@@ -94,7 +95,11 @@ abstract interface class ReaderEngine {
 
 /// [TextEngine] behind [ReaderEngine].
 class NativeReaderEngine implements ReaderEngine {
-  const NativeReaderEngine();
+  const NativeReaderEngine({this.acquireRead});
+
+  /// A fresh SDK grant/descriptor for each asynchronous text operation.
+  /// The provider resource stays open until the Rust Future has completed.
+  final Future<LibraryReadLease> Function()? acquireRead;
 
   /// The frozen reader's own anchor-to-target scan limit (`TextIndexOptions`'
   /// default). The anchors are one per 32 KiB, so this is 128 strides of slack
@@ -102,30 +107,31 @@ class NativeReaderEngine implements ReaderEngine {
   static const int maxScanBytes = 4 * 1024 * 1024;
 
   @override
-  Future<ReaderIndex> index(String path) async {
-    final index = await TextEngine.index(path);
-    return ReaderIndex(
-      encoding: index.encoding,
-      codeUnitLength: index.codeUnitLength,
-      anchors: [
-        for (final anchor in index.anchors)
-          (
-            byteOffset: anchor.byteOffset,
-            codeUnitOffset: anchor.codeUnitOffset,
-            lineIndex: anchor.lineIndex,
-          ),
-      ],
-      chapters: [
-        for (final chapter in index.chapters)
-          ReaderChapter(
-            title: chapter.title,
-            codeUnitOffset: chapter.codeUnitOffset,
-            lineIndex: chapter.lineIndex,
-          ),
-      ],
-      ignoredRules: index.ignoredRules,
-    );
-  }
+  Future<ReaderIndex> index(String path) =>
+      _withRead(path, (actualPath, fd) async {
+        final index = await TextEngine.index(actualPath, fd: fd);
+        return ReaderIndex(
+          encoding: index.encoding,
+          codeUnitLength: index.codeUnitLength,
+          anchors: [
+            for (final anchor in index.anchors)
+              (
+                byteOffset: anchor.byteOffset,
+                codeUnitOffset: anchor.codeUnitOffset,
+                lineIndex: anchor.lineIndex,
+              ),
+          ],
+          chapters: [
+            for (final chapter in index.chapters)
+              ReaderChapter(
+                title: chapter.title,
+                codeUnitOffset: chapter.codeUnitOffset,
+                lineIndex: chapter.lineIndex,
+              ),
+          ],
+          ignoredRules: index.ignoredRules,
+        );
+      });
 
   @override
   Future<ReaderWindow> readWindow({
@@ -134,9 +140,10 @@ class NativeReaderEngine implements ReaderEngine {
     required int textOffset,
     required int maxCodeUnits,
     ReaderAnchor? anchor,
-  }) async {
+  }) => _withRead(path, (actualPath, fd) async {
     final window = await TextEngine.readWindow(
-      path: path,
+      path: actualPath,
+      fd: fd,
       encoding: encoding,
       anchor: anchor == null
           ? null
@@ -155,6 +162,20 @@ class NativeReaderEngine implements ReaderEngine {
       lineIndex: window.lineIndex,
       atEnd: window.atEnd,
     );
+  });
+
+  Future<T> _withRead<T>(
+    String path,
+    Future<T> Function(String path, int? fd) operation,
+  ) async {
+    final acquire = acquireRead;
+    if (acquire == null) return operation(path, null);
+    final lease = await acquire();
+    try {
+      return await operation(lease.path ?? path, lease.fd);
+    } finally {
+      await lease.release();
+    }
   }
 
   @override
