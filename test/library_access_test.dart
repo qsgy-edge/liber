@@ -44,7 +44,14 @@ void main() {
         );
         expect(memberReceipt!.key, 'same.txt');
         expect(memberReceipt.root!.locator, root.locator);
-        expect((await access.acquireRead(memberReceipt)).path, member.path);
+        final lease = await access.acquireRead(memberReceipt);
+        try {
+          // macOS temp roots and Windows short names can be aliases. The
+          // authorized reader path is the actual file's canonical path.
+          expect(lease.path, await member.resolveSymbolicLinks());
+        } finally {
+          await lease.release();
+        }
       } finally {
         await scratch.delete(recursive: true);
       }
