@@ -26,7 +26,8 @@ Early and Windows-first. What runs on `master` today:
   Sources), searches several sources at once for an exact name+author match and
   switches a book onto another source while keeping its reading position, and
   shows its own interface in four languages independently of the content's
-  script. All five platforms build their app in CI; only Windows is driven.
+  script. All five platforms build their app in CI; Windows and the Linux ARM64
+  shell have driven evidence (#112, synthetic scratch data).
 - **Source execution** for the bounded slice that the sample sources need:
   legacy and `@CSS:` selectors with `@` chains, index/exclusion/slice syntax and
   `##` replacement; a `$.`-style JSON adapter; `,{...}` request options
@@ -50,11 +51,11 @@ Early and Windows-first. What runs on `master` today:
 
 Not covered yet, and deliberately visible rather than implied:
 
-- Only Windows has been driven (P1a/P2, and batch 13's 换源 / page-chained TOC /
-  conversion / image / interface-language runs). Android, iOS, macOS and Linux
-  build their app and run the shared runtime gates (plus the limits harness on
-  Linux and macOS) in CI, but no platform's device-, simulator- or launch-level
-  rows exist yet, and their WebView rows are `not-run`.
+- Windows has the P1a/P2 and batch 13 product flows. Linux ARM64 has a launch
+  smoke and shelf → reader run on synthetic scratch data (#112), not a real-library
+  or WebView compatibility claim. Its default workspace path still fails without
+  the explicit override (#120). The other P4 Tier B rows remain separately gated;
+  app builds alone are not device or simulator runtime evidence.
 - The frozen four-stage differential corpus, the security boundary for
   untrusted sources, and the request/JS capabilities listed in
   [`docs/compatibility/book-source-capability-matrix.md`](docs/compatibility/book-source-capability-matrix.md)
@@ -84,7 +85,9 @@ Requirements: Flutter 3.44.6 (Dart SDK `^3.12.2`), a Rust toolchain
 (`1.97.0` in CI) for the native library, Python 3 for the gate runner, and the
 WebView2 Runtime on Windows. On Linux, the operator-run
 [`tool/bootstrap_linux.sh`](tool/bootstrap_linux.sh) installs the Linux CI
-build packages and prepares those pinned Flutter and Rust toolchains. Review the
+build packages, including `fonts-noto-cjk`, and prepares those pinned Flutter
+and Rust toolchains. The Linux theme explicitly falls back to `Noto Sans CJK SC`;
+the system font must be installed (it is not bundled with the app). Review the
 script before running it; it uses `sudo apt-get` and downloads the Flutter and
 Rustup installers. Rustup's toolchain is pinned for this repository by
 [`rust-toolchain.toml`](rust-toolchain.toml), without changing your global Rust
@@ -181,6 +184,10 @@ flutter run -d windows --target tool/driver_main.dart \
 Point the scratch directory at a copy of the installation being reviewed when
 the review needs real data. Nothing in a driven run reads or writes the
 operator's own library, and no input reaches the operator's devices.
+
+The app may also be started with CLI `flutter run --machine --print-dtd`, then
+connected through Dart MCP using the emitted DTD URI; #112 used that route.
+Always verify process exit independently of the lifecycle tool's receipt.
 
 With Dart MCP the sequence is `launch_app` (with `target:
 tool/driver_main.dart` and the define) → `dtd connect` → `flutter_driver_command
