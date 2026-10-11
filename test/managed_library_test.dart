@@ -972,6 +972,54 @@ void main() {
   });
 
   test(
+    'external equal import refuses shared owners of an unlisted nested candidate',
+    () async {
+      final managed = await import(
+        access.addFile('managed-source', 'book.txt', 'shared'),
+      );
+      final file = (await library.fileReferenceOf(managed))!;
+      final other = await external('nested-other-owner', file);
+      access.nestedFiles.add(file.locator);
+      await library.updateOffset(managed.id, 31);
+      await library.updateOffset(other.id, 57);
+      await store.setShelved(managed.id, false);
+      final source = access.addFile('external-repeat', 'book.txt', 'shared');
+      final booksBefore = await store.localBooks();
+      final managedFilesBefore = await store.localFilesOf(managed.rootId);
+      final otherFilesBefore = await store.localFilesOf(other.rootId);
+      final managedProgressBefore = await store.progressOf(managed.id);
+      final otherProgressBefore = await store.progressOf(other.id);
+      final bytesBefore = Map<String, String>.of(access.bytes);
+      final copies = access.copyCount;
+      await expectLater(
+        import(source),
+        throwsA(
+          isA<LibraryAccessFailure>()
+              .having(
+                (error) => error.code,
+                'code',
+                LibraryAccessError.collision,
+              )
+              .having(
+                (error) => (error.details as Map)['bookIds'],
+                'verified owners',
+                containsAll([managed.id, other.id]),
+              ),
+        ),
+      );
+      expect(await store.localBooks(), booksBefore);
+      expect(await store.localFilesOf(managed.rootId), managedFilesBefore);
+      expect(await store.localFilesOf(other.rootId), otherFilesBefore);
+      expect(await store.progressOf(managed.id), managedProgressBefore);
+      expect(await store.progressOf(other.id), otherProgressBefore);
+      expect((await store.bookById(managed.id))!.shelved, isFalse);
+      expect(access.bytes, bytesBefore);
+      expect(access.copyCount, copies);
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test(
     'import refuses multiple verified owners of one physical file',
     () async {
       final managed = await import(
