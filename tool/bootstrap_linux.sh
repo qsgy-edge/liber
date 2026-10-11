@@ -26,7 +26,8 @@ sudo apt-get install -y \
   libssl-dev \
   libgtk-3-dev \
   liblzma-dev \
-  libstdc++-12-dev
+  libstdc++-12-dev \
+  fonts-noto-cjk
 
 if [[ ! -e "$FLUTTER_ROOT" ]]; then
   mkdir -p "$(dirname "$FLUTTER_ROOT")"
@@ -51,7 +52,7 @@ rustc --version
 cargo --version
 printf '\nLinux package versions:\n'
 for package in curl git clang libclang-dev cmake ninja-build pkg-config libssl-dev \
-  libgtk-3-dev liblzma-dev libstdc++-12-dev; do
+  libgtk-3-dev liblzma-dev libstdc++-12-dev fonts-noto-cjk; do
   dpkg-query --show --showformat='${Package} ${Version}\n' "$package"
 done
 
