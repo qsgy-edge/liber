@@ -970,6 +970,71 @@ void main() {
     expect((await library.fileIndex(updated)).anchors, isEmpty);
   });
 
+  test(
+    'import refuses multiple verified owners of one physical file',
+    () async {
+      final managed = await import(
+        access.addFile('source', 'book.txt', 'shared'),
+      );
+      final file = (await library.fileReferenceOf(managed))!;
+      final other = await external('other-owner', file);
+      final copies = access.copyCount;
+      final before = await store.localBooks();
+      await expectLater(
+        import(file),
+        throwsA(
+          isA<LibraryAccessFailure>()
+              .having(
+                (error) => error.code,
+                'code',
+                LibraryAccessError.collision,
+              )
+              .having(
+                (error) => (error.details as Map)['bookIds'],
+                'owners',
+                containsAll([managed.id, other.id]),
+              ),
+        ),
+      );
+      expect(access.copyCount, copies);
+      expect(await store.localBooks(), before);
+      expect(access.bytes[file.locator], 'shared');
+    },
+  );
+
+  test(
+    'managed deletion refuses another verified current owner of its file',
+    () async {
+      final managed = await import(
+        access.addFile('source', 'book.txt', 'shared'),
+      );
+      final file = (await library.fileReferenceOf(managed))!;
+      final other = await external('other-owner', file);
+      final before = await store.localBooks();
+      await expectLater(
+        library.deleteBookFile(managed.id),
+        throwsA(
+          isA<LibraryAccessFailure>()
+              .having(
+                (error) => error.code,
+                'code',
+                LibraryAccessError.collision,
+              )
+              .having(
+                (error) => (error.details as Map)['bookIds'],
+                'owners',
+                containsAll([managed.id, other.id]),
+              ),
+        ),
+      );
+      expect(access.deleted, isEmpty);
+      expect(await store.localBooks(), before);
+      expect(access.bytes[file.locator], 'shared');
+      expect(await library.statBook(managed), isNotNull);
+      expect(await library.statBook(other), isNotNull);
+    },
+  );
+
   Future<({LocalBook owner, LibraryFileReference file})>
   sharedDirectory() async {
     final managed = await import(
