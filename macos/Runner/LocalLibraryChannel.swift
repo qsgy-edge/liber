@@ -657,19 +657,17 @@ final class LocalLibraryChannel: NSObject, FlutterPlugin {
     if let authorization = file["authorization"], !(authorization is NSNull) {
       throw Failure(code: "permission", message: "Selected source requires a canonical rooted receipt")
     }
-    if let receiptRoot = try optionalMap(file["root"], "file.root") {
-      guard try string(receiptRoot, "kind") == "apple" else {
-        throw Failure(code: "permission", message: "File receipt belongs to a different root")
-      }
-      let authorizedIdentity = identity(try metadata(root))
-      if receiptRoot["identity"] as? String != authorizedIdentity {
-        // A bookmark can follow a move that also changes native identity. Compare the actual
-        // resolved roots, never their old display names or absolute locator strings.
-        let receiptAccess = try rootScope(receiptRoot); defer { receiptAccess.close() }
-        guard identity(try metadata(receiptAccess.url)) == authorizedIdentity else {
-          throw Failure(code: "permission", message: "File receipt belongs to a different root")
-        }
-      }
+    guard let receiptRoot = try optionalMap(file["root"], "file.root") else {
+      throw Failure(code: "permission", message: "File requires a canonical rooted receipt")
+    }
+    guard try string(receiptRoot, "kind") == "apple" else {
+      throw Failure(code: "permission", message: "File receipt belongs to a different root")
+    }
+    // Identity strings are metadata, not authorization. Resolve both bookmarks' actual roots
+    // even when their claimed identities match; a renewed bookmark may still follow the same root.
+    let receiptAccess = try rootScope(receiptRoot); defer { receiptAccess.close() }
+    guard identity(try metadata(receiptAccess.url)) == identity(try metadata(root)) else {
+      throw Failure(code: "permission", message: "File receipt belongs to a different root")
     }
     guard let key = file["key"] as? String else { throw Failure(code: "io", message: "Invalid file key") }
     let components = key.components(separatedBy: "/")

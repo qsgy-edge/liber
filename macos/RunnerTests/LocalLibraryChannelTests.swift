@@ -205,6 +205,69 @@ final class LocalLibraryChannelTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: otherChild), Data("other root".utf8))
   }
 
+  func testRootlessLegacyReceiptCannotSelectManagedSibling() throws {
+    let outside = scratch.appendingPathComponent("original.txt")
+    let managed = rootURL.appendingPathComponent("original.txt")
+    try Data("legacy original".utf8).write(to: outside)
+    try Data("managed sibling".utf8).write(to: managed)
+    // Obtain the actual legacy receipt shape from standalone native stat, without a source grant.
+    let legacy = try XCTUnwrap(invoke("stat", ["file": ["locator": outside.absoluteString]]) as? [String: Any])
+    XCTAssertNil(legacy["authorization"])
+    XCTAssertNil(legacy["root"])
+    XCTAssertEqual(legacy["key"] as? String, "original.txt")
+    XCTAssertNil(invoke("fileInRoot", ["root": root as Any, "file": legacy]))
+    for method in ["stat", "acquireRead", "deleteFile"] {
+      let result = invoke(method, ["root": root as Any, "file": legacy])
+      // A failing pre-fix read must not hold coordination while the deletion counterexample runs.
+      if let lease = result as? [String: Any], let token = lease["token"] as? String {
+        _ = invoke("releaseRead", ["token": token])
+      }
+      XCTAssertEqual((result as? FlutterError)?.code, "permission", method)
+      XCTAssertEqual(try Data(contentsOf: outside), Data("legacy original".utf8))
+      XCTAssertEqual(try Data(contentsOf: managed), Data("managed sibling".utf8))
+    }
+    let originalLease = try XCTUnwrap(invoke("acquireRead", ["file": legacy]) as? [String: Any])
+    XCTAssertEqual(try String(contentsOfFile: XCTUnwrap(originalLease["path"] as? String), encoding: .utf8), "legacy original")
+    XCTAssertNil(invoke("releaseRead", ["token": try XCTUnwrap(originalLease["token"] as? String)]))
+
+    let rootlessManaged = try XCTUnwrap(invoke("stat", ["file": ["locator": managed.absoluteString]]) as? [String: Any])
+    let canonical = try XCTUnwrap(invoke("fileInRoot", ["root": root as Any, "file": rootlessManaged]) as? [String: Any])
+    XCTAssertNotNil(canonical["root"] as? [String: Any])
+    XCTAssertNil(canonical["authorization"])
+    XCTAssertNotNil(invoke("stat", ["root": root as Any, "file": canonical]) as? [String: Any])
+    let managedLease = try XCTUnwrap(invoke("acquireRead", ["root": root as Any, "file": canonical]) as? [String: Any])
+    XCTAssertEqual(try String(contentsOfFile: XCTUnwrap(managedLease["path"] as? String), encoding: .utf8), "managed sibling")
+    XCTAssertNil(invoke("releaseRead", ["token": try XCTUnwrap(managedLease["token"] as? String)]))
+  }
+
+  func testClaimedRootIdentityCannotOverrideContradictoryBookmark() throws {
+    root = try XCTUnwrap(invoke("inspectRoot", ["root": root as Any, "writable": false]) as? [String: Any])
+    let original = rootURL.appendingPathComponent("book.txt")
+    try Data("root A".utf8).write(to: original)
+    let otherURL = scratch.appendingPathComponent("other-managed", isDirectory: true)
+    try FileManager.default.createDirectory(at: otherURL, withIntermediateDirectories: true)
+    let otherChild = otherURL.appendingPathComponent("book.txt")
+    try Data("root B".utf8).write(to: otherChild)
+    let otherInput: [String: Any] = ["kind": "apple", "locator": otherURL.absoluteString, "authorization": try authorization(otherURL)]
+    let otherRoot = try XCTUnwrap(invoke("inspectRoot", ["root": otherInput, "writable": false]) as? [String: Any])
+    let targetIdentity = try XCTUnwrap(otherRoot["identity"] as? String)
+    XCTAssertNotEqual(root["identity"] as? String, targetIdentity)
+    var receipt = try XCTUnwrap(invoke("stat", ["root": root as Any, "file": rooted(original)]) as? [String: Any])
+    var contradictoryRoot = try XCTUnwrap(receipt["root"] as? [String: Any])
+    // Only falsify the identity metadata; the embedded bookmark/locator still identify A.
+    contradictoryRoot["identity"] = targetIdentity
+    receipt["root"] = contradictoryRoot
+    for method in ["stat", "acquireRead", "deleteFile"] {
+      let result = invoke(method, ["root": otherRoot, "file": receipt])
+      if let lease = result as? [String: Any], let token = lease["token"] as? String {
+        _ = invoke("releaseRead", ["token": token])
+      }
+      XCTAssertEqual((result as? FlutterError)?.code, "permission", method)
+      XCTAssertEqual(try Data(contentsOf: original), Data("root A".utf8))
+      XCTAssertEqual(try Data(contentsOf: otherChild), Data("root B".utf8))
+    }
+  }
+
   func testInvalidAuthorizationAndOutsideRootDeletionRemainVisible() throws {
     var revoked = root!
     revoked["authorization"] = "not-a-bookmark"
