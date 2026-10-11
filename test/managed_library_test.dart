@@ -970,6 +970,220 @@ void main() {
     expect((await library.fileIndex(updated)).anchors, isEmpty);
   });
 
+  Future<({LocalBook owner, LibraryFileReference file})>
+  sharedDirectory() async {
+    final managed = await import(
+      access.addFile('managed-source', 'm.txt', 'managed'),
+    );
+    final file = access.addFile(
+      'Owned:BOOK',
+      'book.txt',
+      'owned',
+      root: second,
+    );
+    final owner = await external('directory-owner', file);
+    await select(second);
+    expect(library.managedRoot!.id, managed.rootId);
+    expect((await store.bookById(owner.id))!.rootId, owner.rootId);
+    expect(
+      (await library.fileReferenceOf(managed))!.root!.locator,
+      second.locator,
+    );
+    return (owner: owner, file: file);
+  }
+
+  for (final content in ['owned', 'different']) {
+    test(
+      'adoption after relocation preserves aliased owner for $content bytes',
+      () async {
+        final destination = await sharedDirectory();
+        final third = access.addRoot('Third');
+        final source = access.addFile(
+          'Incoming:BOOK',
+          'book.txt',
+          content,
+          root: third,
+        );
+        final incoming = await external('incoming-book', source);
+        final before = await store.bookById(incoming.id);
+        final copies = access.copyCount;
+        await expectLater(
+          library.adoptBooks(
+            [incoming.id],
+            transfer: transfer(),
+            resolveConflict: (conflict) async {
+              expect(conflict.existingBookId, destination.owner.id);
+              expect(conflict.incomingBookId, incoming.id);
+              expect(conflict.canUpdate, isFalse);
+              return LibraryConflictChoice.update;
+            },
+          ),
+          throwsA(accessError(LibraryAccessError.collision)),
+        );
+        expect(access.copyCount, copies);
+        expect(await store.bookById(incoming.id), before);
+        expect(access.bytes[destination.file.locator], 'owned');
+        final adopted = (await library.adoptBooks(
+          [incoming.id],
+          transfer: transfer(),
+          resolveConflict: (conflict) async {
+            expect(conflict.existingBookId, destination.owner.id);
+            expect(conflict.canUpdate, isFalse);
+            return LibraryConflictChoice.keepBoth;
+          },
+        )).single;
+        final actual = (await library.fileReferenceOf(adopted))!;
+        expect(adopted.id, incoming.id);
+        expect(actual.locator, isNot(destination.file.locator));
+        expect(actual.key, isNot(destination.file.key));
+        await library.deleteBookFile(adopted.id);
+        expect(await library.statBook(destination.owner), isNotNull);
+        expect(access.bytes[destination.file.locator], 'owned');
+        expect(access.bytes[source.locator], content);
+        expect(
+          (await store.bookById(destination.owner.id))!.rootId,
+          destination.owner.rootId,
+        );
+      },
+    );
+  }
+
+  for (final selection in ['member', 'equal external source']) {
+    test(
+      'explicit $selection import reuses aliased owner after relocation',
+      () async {
+        final destination = await sharedDirectory();
+        await library.updateOffset(destination.owner.id, 47);
+        final group = await store.ensureGroup('owner-group');
+        await store.setBookGroups(destination.owner.id, [group.id]);
+        await store.putSetting('font', '21', bookId: destination.owner.id);
+        final untouchedFile = access.addFile(
+          'Other:BOOK',
+          'other.txt',
+          'other',
+          root: second,
+        );
+        final untouched = await external('untouched-book', untouchedFile);
+        // A matching claimed identity alone is neither ownership nor access proof.
+        final unrelated = access.addRoot('Unrelated');
+        await store.putLocalRoot(
+          LocalRootsCompanion.insert(
+            id: 'unrelated',
+            displayName: 'Unrelated',
+            kind: Value(unrelated.kind.name),
+            locator: Value(unrelated.locator),
+            identity: Value(second.identity),
+          ),
+        );
+        access.rootFailures[unrelated.locator] = LibraryAccessError.permission;
+        access.inspectedRoots.clear();
+        final copies = access.copyCount;
+        final selected = selection == 'member'
+            ? destination.file
+            : access.addFile('repeat-owner', 'book.txt', 'owned');
+        final admitted = await import(selected);
+        expect(admitted.id, destination.owner.id);
+        expect(admitted.rootId, library.managedRoot!.id);
+        expect(admitted.path, destination.file.locator);
+        expect(admitted.title, destination.owner.title);
+        expect(admitted.textOffset, 47);
+        expect((await store.groupsOf(admitted.id)).single.id, group.id);
+        expect(await store.setting('font', bookId: admitted.id), '21');
+        expect(
+          (await store.localBookByOriginalKey(
+            destination.owner.rootId,
+            destination.file.key,
+          ))!.id,
+          admitted.id,
+        );
+        expect(
+          await store.localBook(destination.owner.rootId, destination.file.key),
+          isNull,
+        );
+        expect(
+          await store.localFile(destination.owner.rootId, destination.file.key),
+          isNull,
+        );
+        expect((await store.bookById(untouched.id))!.rootId, untouched.rootId);
+        expect(access.copyCount, copies);
+        expect(access.bytes[destination.file.locator], 'owned');
+        expect(access.inspectedRoots, isNot(contains(unrelated.locator)));
+      },
+    );
+  }
+
+  test(
+    'repeat import skips deleted earlier match and reuses live keep-both sibling',
+    () async {
+      final earlier = await import(
+        access.addFile('earlier', 'book.txt', 'one'),
+      );
+      final source = access.addFile('later', 'book.txt', 'two');
+      final later = await import(source, resolve: keepBoth);
+      await library.updateOffset(later.id, 63);
+      await library.deleteBookFile(earlier.id);
+      final copies = access.copyCount;
+      final reused = await import(source);
+      expect(reused.id, later.id);
+      expect(reused.textOffset, 63);
+      expect(access.copyCount, copies);
+      expect((await store.bookById(earlier.id))!.needsRelink, isTrue);
+      expect(await store.localBooks(), hasLength(2));
+    },
+  );
+
+  test(
+    'sole deleted logical match reaches explicit update with its identity',
+    () async {
+      final old = await import(access.addFile('old', 'book.txt', 'old'));
+      await library.updateOffset(old.id, 19);
+      await library.deleteBookFile(old.id);
+      var conflicts = 0;
+      final updated = await import(
+        access.addFile('replacement', 'book.txt', 'new'),
+        resolve: (conflict) async {
+          conflicts++;
+          expect(conflict.existingBookId, old.id);
+          expect(conflict.canUpdate, isTrue);
+          return LibraryConflictChoice.update;
+        },
+      );
+      expect(conflicts, 1);
+      expect(updated.id, old.id);
+      expect(updated.textOffset, 19);
+      expect((await store.bookById(old.id))!.needsRelink, isFalse);
+      expect(
+        access.bytes[(await library.fileReferenceOf(updated))!.locator],
+        'new',
+      );
+    },
+  );
+
+  for (final code in [
+    LibraryAccessError.permission,
+    LibraryAccessError.unsupported,
+    LibraryAccessError.verification,
+    LibraryAccessError.io,
+  ]) {
+    test(
+      'repeat import propagates ${code.name} from an earlier logical match',
+      () async {
+        final earlier = await import(
+          access.addFile('earlier', 'book.txt', 'one'),
+        );
+        final source = access.addFile('later', 'book.txt', 'two');
+        await import(source, resolve: keepBoth);
+        final copies = access.copyCount;
+        final before = await store.localBooks();
+        access.fingerprintFailures[earlier.path] = code;
+        await expectLater(import(source), throwsA(accessError(code)));
+        expect(access.copyCount, copies);
+        expect(await store.localBooks(), before);
+        expect(access.deleted, isEmpty);
+      },
+    );
+  }
+
   test(
     'mutations serialize while awaiting IO and recover after a rejected operation',
     () async {
@@ -1020,6 +1234,9 @@ class MemoryLibraryAccess implements LibraryAccess {
   LibraryAccessError? copyFailure;
   final copyKeys = <String>[];
   LibraryAccessError? rootFailure;
+  final rootFailures = <String, LibraryAccessError>{};
+  final inspectedRoots = <String>[];
+  final fingerprintFailures = <String, LibraryAccessError>{};
   LibraryAccessError? listFailure;
   LibraryAccessError? membershipFailure;
   Future<void> Function()? beforeCopyReturn;
@@ -1064,6 +1281,8 @@ class MemoryLibraryAccess implements LibraryAccess {
     LibraryLocation root, {
     bool writable = false,
   }) async {
+    inspectedRoots.add(root.locator);
+    if (rootFailures[root.locator] case final failure?) fail(failure);
     if (rootFailure != null) fail(rootFailure!);
     return roots[root.locator] ?? fail(LibraryAccessError.missing);
   }
@@ -1103,6 +1322,7 @@ class MemoryLibraryAccess implements LibraryAccess {
 
   @override
   Future<LibraryFingerprint> fingerprint(LibraryFileReference file) async {
+    if (fingerprintFailures[file.locator] case final failure?) fail(failure);
     if (await stat(file) == null) fail(LibraryAccessError.missing);
     final content = utf8.encode(bytes[file.locator]!);
     return LibraryFingerprint(content.length, 'fake:${base64Encode(content)}');
