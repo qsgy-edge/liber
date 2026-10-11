@@ -246,6 +246,29 @@ class SpaceStore {
           ))
           .getSingleOrNull();
 
+  /// The immutable correlation retained when an external local is adopted.
+  /// Current-key lookup stays separate so callers explicitly choose precedence.
+  Future<ShelfBook?> localBookByOriginalKey(
+    String rootId,
+    String relativePath,
+  ) =>
+      (db.select(db.books)..where(
+            (b) =>
+                b.kind.equals('local') &
+                b.originalRootId.equals(rootId) &
+                b.originalRelativePath.equals(relativePath),
+          ))
+          .getSingleOrNull();
+
+  /// Removes only stored file/index facts; it never deletes bytes.
+  Future<void> removeLocalFile(String rootId, String relativePath) async {
+    await putTextIndex(rootId, relativePath, const []);
+    await (db.delete(db.localFiles)..where(
+          (f) => f.rootId.equals(rootId) & f.relativePath.equals(relativePath),
+        ))
+        .go();
+  }
+
   /// The shelf view: shelved books in space order. The synthetic views
   /// (all / local / ungrouped / update-error) are queries, not rows (D3).
   ///
