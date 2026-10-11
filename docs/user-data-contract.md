@@ -204,10 +204,20 @@ Relational, never a mask:
 ### D5 — Storage engine and layout *decided: SQLite, one database per space*
 
 ```
-%APPDATA%\Liber\
+<installation directory>/
   manifest.json             # installation level: space registry, format/version, UI prefs
-  spaces\<spaceId>\data.db  # everything the space owns
+  spaces/<spaceId>/data.db   # everything the space owns
 ```
+
+Application startup creates this directory on first use (#120). Windows keeps
+`%APPDATA%\Liber`; Linux, macOS, Android and iOS use the app-specific directory
+returned by Flutter's `path_provider.getApplicationSupportDirectory()` without
+an additional suffix. An explicit `LIBER_WORKSPACE_ROOT` build define or widget
+`workspaceRoot` takes precedence and bypasses platform lookup. The pure-Dart
+store accepts that resolved directory; its legacy `defaultRoot()` only resolves
+Windows `APPDATA`, so standalone tools on other platforms supply their own root.
+This directory holds installation data, independently of user-selected local
+book folders.
 
 One database per space makes the D9 boundary literal: a space *is* a file, so a private
 space can later be encrypted as a unit.

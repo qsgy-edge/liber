@@ -71,6 +71,7 @@ dependencies:
   # private-domain suffixes (`foo.blogspot.com`) and unknown labels all answer as
   # Guava's `getEffectiveTldPlusOne` does.
   public_suffix: ^3.0.0
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -88,6 +89,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.35.0
   build_runner: ^2.15.1
+  path_provider_platform_interface: ^2.1.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
