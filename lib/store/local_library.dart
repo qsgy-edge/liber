@@ -619,7 +619,6 @@ class LocalLibrary {
               relativePath: Value(file.key),
               locator: Value(file.locator),
               name: Value(file.name),
-              modifiedAt: Value(file.modifiedAt),
             ),
           );
           await _markRelink(book, false);

@@ -213,8 +213,9 @@ void main() {
             p.join(space.directory.path, 'renamed'),
           );
           final changed = File(p.join(renamed.path, 'two.md'));
-          if (problem == 'different bytes')
+          if (problem == 'different bytes') {
             await changed.writeAsString('unrelated same-name book');
+          }
           if (problem == 'missing file') await changed.delete();
           final selectedFilesBefore = await renamed.list().toList();
           await expectLater(
@@ -248,6 +249,106 @@ void main() {
       },
     );
   }
+  test(
+    'renamed library keeps index provenance after changed-byte member reimport',
+    () async {
+      final space = await TestSpace.create();
+      try {
+        const access = FileSystemLibraryAccess();
+        final library = LocalLibrary(space.store, access: access);
+        final old = await Directory(
+          p.join(space.directory.path, 'books'),
+        ).create();
+        await library.selectLocation(
+          _location(old),
+          transfer: LibraryTransfer(id: 'select-index-provenance'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        );
+        final versionA = '原来的正文，保持早期阅读锚点。\n' * 100;
+        final versionB = versionA + '追加正文，必须能读到最后一段。\n' * 300;
+        final source = await File(
+          p.join(space.directory.path, 'book.txt'),
+        ).writeAsString(versionA);
+        final first = (await library.importFiles(
+          [await access.source(source.path)],
+          transfer: LibraryTransfer(id: 'import-index-provenance'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        )).single;
+        LocalReader readerFor(LocalBook book) => LocalReader(
+          library: library,
+          book: book,
+          pageCodeUnits: 512,
+          engine: NativeReaderEngine(
+            acquireRead: () async =>
+                access.acquireRead((await library.statBook(book))!),
+          ),
+        );
+        final originalReader = readerFor(first);
+        await originalReader.open();
+        await originalReader.save();
+        expect(originalReader.error, isNull);
+        final indexedA = (await space.store.localFile(
+          first.rootId,
+          first.relativePath!,
+        ))!;
+        expect(indexedA.textLength, versionA.length);
+        final current = await File(first.path).writeAsString(versionB);
+        await current.setLastModified(
+          DateTime.fromMillisecondsSinceEpoch(indexedA.modifiedAt! + 60000),
+        );
+        final repeated = (await library.importFiles(
+          [await access.source(current.path)],
+          transfer: LibraryTransfer(id: 'reimport-edited-member'),
+          resolveConflict: (_) async =>
+              throw StateError('Same physical member must not copy'),
+        )).single;
+        expect(repeated.id, first.id);
+        final beforeRename = (await space.store.localFile(
+          first.rootId,
+          first.relativePath!,
+        ))!;
+        expect(
+          beforeRename.sha256,
+          (await access.fingerprint(await access.source(current.path))).sha256,
+        );
+        expect(beforeRename.modifiedAt, indexedA.modifiedAt);
+        final renamed = await old.rename(
+          p.join(space.directory.path, 'renamed'),
+        );
+        await library.selectLocation(
+          _location(renamed),
+          transfer: LibraryTransfer(id: 'relink-index-provenance'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        );
+        final reopened = readerFor(library.books.single);
+        await reopened.open();
+        expect(reopened.error, isNull);
+        expect(
+          reopened.position!.textLength,
+          versionB.length,
+          reason:
+              'The original index cannot be certified by a new file timestamp',
+        );
+        expect(
+          (await space.store.localFile(
+            first.rootId,
+            first.relativePath!,
+          ))!.textLength,
+          versionB.length,
+        );
+        var turns = 0;
+        while (reopened.hasNext && turns++ < 40) {
+          await reopened.next();
+        }
+        expect(reopened.hasNext, isFalse);
+        expect(reopened.text, contains('追加正文'));
+        expect(reopened.position!.textOffset, greaterThan(versionA.length));
+      } finally {
+        await space.delete();
+      }
+    },
+  );
+
   for (final problem in ['other owner', 'cancelled', 'database rollback']) {
     test(
       'reselecting an unavailable root refuses $problem without publication',
