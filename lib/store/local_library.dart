@@ -515,11 +515,18 @@ class LocalLibrary {
         (inspectedOld == null &&
             old?.identity != null &&
             oldLocation!.sameLocation(actual));
+    final reselectingFilesystem =
+        old != null &&
+        inspectedOld == null &&
+        !same &&
+        oldLocation?.kind == LibraryLocationKind.filesystem &&
+        actual.kind == LibraryLocationKind.filesystem;
     final id = old?.id ?? (await _matchingRoot(actual))?.id ?? mintId('root');
     final owned = <LibraryCopyReceipt>[];
     final previous = <LibraryPreviousFile>[];
     final pending = <_PreparedBook>[];
     final relinks = <(ShelfBook, bool)>[];
+    final reselected = <(ShelfBook, LibraryFileReference)>[];
     try {
       if (old == null || same) {
         final refreshed = LocalRoot(
@@ -549,7 +556,10 @@ class LocalLibrary {
           relinks.add((book, file == null || file.directory));
         }
       }
-      if (old != null && !same) {
+      if (reselectingFilesystem) {
+        reselected.addAll(await _reselectFilesystem(old, actual, transfer));
+      }
+      if (old != null && !same && !reselectingFilesystem) {
         final candidates = await _candidates(
           (await _matchingRoot(actual))?.id,
           actual,
@@ -600,6 +610,19 @@ class LocalLibrary {
       await store.transaction(() async {
         selected = await _saveRoot(id, actual);
         await _publish(id, pending, shelve: false);
+        for (final (book, file) in reselected) {
+          // The hash proved unchanged bytes. Keep charset, sparse index,
+          // original association and shelf membership; only access facts move.
+          await store.putLocalFile(
+            LocalFilesCompanion(
+              rootId: Value(id),
+              relativePath: Value(file.key),
+              locator: Value(file.locator),
+              name: Value(file.name),
+            ),
+          );
+          await _markRelink(book, false);
+        }
         for (final (book, missing) in relinks) {
           await _markRelink(book, missing);
         }
@@ -618,6 +641,82 @@ class LocalLibrary {
       return _cleanupAndRethrow(owned, error, stack);
     }
   });
+
+  /// Explicitly reselects an unavailable filesystem library. A relative key
+  /// only locates a candidate: recorded bytes and actual membership must match
+  /// before any of the old root/file facts can be published at the new path.
+  Future<List<(ShelfBook, LibraryFileReference)>> _reselectFilesystem(
+    LocalRoot old,
+    LibraryLocation selected,
+    LibraryTransfer transfer,
+  ) async {
+    final refreshed = old.copyWith(
+      displayName: selected.displayName,
+      kind: selected.kind.name,
+      locator: Value(selected.locator),
+      identity: Value(selected.identity),
+      authorization: Value(selected.authorization),
+    );
+    final verified = <(ShelfBook, LibraryFileReference)>[];
+    for (final book in await store.localBooks()) {
+      if (book.rootId != old.id) continue;
+      transfer.checkCancelled();
+      final key = book.relativePath!;
+      final stored = await store.localFile(old.id, key);
+      if (stored?.bookId != book.id || stored?.sha256 == null) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.verification,
+          'Restore the original library: book bytes were not recorded',
+        );
+      }
+      final reference = _reference(
+        refreshed,
+        key,
+        stored!.copyWith(
+          locator: Value(p.normalize(p.join(selected.locator, key))),
+        ),
+      );
+      final file = reference == null ? null : await access.stat(reference);
+      if (file == null || file.directory) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.missing,
+          'Selected library is missing a recorded book',
+        );
+      }
+      final member = await access.fileInRoot(selected, file);
+      if (member == null || member.key != key || !_sameFile(member, file)) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.verification,
+          'Selected book membership could not be verified',
+        );
+      }
+      if ((await access.fingerprint(member)).sha256 != stored.sha256) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.verification,
+          'Selected book differs from the recorded library file',
+        );
+      }
+      transfer.checkCancelled();
+      verified.add((book, member));
+    }
+    final owners = await _ownersOf(selected, [
+      for (final (_, file) in verified) file,
+    ]);
+    for (final (book, file) in verified) {
+      final owner = owners[file.key];
+      if (owner != null && owner.id != book.id) {
+        throw LibraryAccessFailure(
+          LibraryAccessError.collision,
+          'Selected library file belongs to another book',
+          details: {
+            'bookIds': [book.id, owner.id],
+            'locator': file.locator,
+          },
+        );
+      }
+    }
+    return verified;
+  }
 
   Future<void> deletePreviousCopies(LibraryMigrationResult migration) =>
       _serialize(() async {
@@ -1173,6 +1272,7 @@ class LocalLibrary {
         id: existing?.id ?? mintId('book'),
         existing: existing,
         unchanged: unchanged,
+        fingerprint: await access.fingerprint(member),
       );
     }
     final logicalMatches =
@@ -1201,6 +1301,7 @@ class LocalLibrary {
             id: candidate.book!.id,
             existing: candidate.book,
             unchanged: unchanged,
+            fingerprint: fingerprint,
           );
         }
       }
@@ -1221,12 +1322,11 @@ class LocalLibrary {
         existingBookId: collision.book?.id,
         incomingBookId: incoming?.id,
       );
-      if (!collision.file.directory &&
-          conflict.canUpdate &&
-          await _matchesFingerprint(
-            await access.fingerprint(source),
-            collision.file,
-          )) {
+      final fingerprint = !collision.file.directory && conflict.canUpdate
+          ? await access.fingerprint(source)
+          : null;
+      if (fingerprint != null &&
+          await _matchesFingerprint(fingerprint, collision.file)) {
         final reused = incoming ?? collision.book;
         final unchanged =
             incoming == null &&
@@ -1241,6 +1341,7 @@ class LocalLibrary {
           id: reused?.id ?? mintId('book'),
           existing: reused,
           unchanged: unchanged,
+          fingerprint: fingerprint,
         );
       }
       final choice = await resolver(conflict);
@@ -1390,6 +1491,7 @@ class LocalLibrary {
             locator: Value(book.file.locator),
             name: Value(book.file.name),
             importName: Value(stored?.importName ?? book.name),
+            sha256: Value(book.fingerprint?.sha256 ?? stored?.sha256),
             format: Value(
               old!.format ??
                   (book.name.toLowerCase().endsWith('.md')
