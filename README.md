@@ -128,7 +128,14 @@ on **Local library**. Imports copy and verify TXT/Markdown files into it and kee
 the external originals; files already in the library can be added directly.
 Same-name different content offers update, keep both or cancel. **Change library
 folder** automatically copies and verifies the managed books before switching;
-old-copy deletion asks separately. Existing external-reference books are shown
+old-copy deletion asks separately. If the old filesystem folder is unavailable,
+selecting its new location re-associates the recorded files only when every
+book's exact relative key, canonical membership and saved SHA-256 match. This
+updates access paths together while keeping IDs, shelf membership, indexes and
+progress. Files without a saved hash, missing files or different bytes keep the
+old association; restore the original location first. Direct member admissions
+also record their bytes without creating another copy.
+Existing external-reference books are shown
 for explicit selected-book adoption. See ADR 0006's #121 amendment for identity,
 progress and the recorded original-association collision limitation.
 
