@@ -25,6 +25,150 @@ void main() {
   tearDownAll(NativeLibrary.dispose);
 
   test(
+    'retained native copies keep independent reading and backup identities',
+    () async {
+      final space = await TestSpace.create();
+      try {
+        const access = FileSystemLibraryAccess();
+        final firstFolder = await Directory(
+          '${space.directory.path}/library',
+        ).create();
+        final secondFolder = await Directory(
+          '${space.directory.path}/moved',
+        ).create();
+        final download = await Directory(
+          '${space.directory.path}/download',
+        ).create();
+        final source = File('${download.path}/book.txt');
+        final oldText = novelText(chapters: 12, paragraphs: 8, repeats: 4);
+        final aText = 'A 新版前言\n' * 20 + oldText;
+        await source.writeAsString(oldText);
+        var library = LocalLibrary(space.store, access: access);
+        await library.load();
+        await library.selectLocation(
+          location(firstFolder),
+          transfer: LibraryTransfer(id: 'retained-root'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        );
+        final firstA = (await library.importFiles(
+          [await access.source(source.path)],
+          transfer: LibraryTransfer(id: 'retained-first-a'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        )).single;
+        final originalKey = firstA.relativePath!;
+        await source.writeAsString(aText);
+        final a = (await library.importFiles(
+          [await access.source(source.path)],
+          transfer: LibraryTransfer(id: 'retained-update-a'),
+          resolveConflict: (_) async => LibraryConflictChoice.update,
+        )).single;
+        expect(a.id, firstA.id);
+        expect(await File(firstA.path).readAsString(), oldText);
+        final b = (await library.importFiles(
+          [await access.source(firstA.path)],
+          transfer: LibraryTransfer(id: 'retained-keep-b'),
+          resolveConflict: (conflict) async {
+            expect(conflict.historicalAssociation, isTrue);
+            expect(conflict.existingBookId, a.id);
+            return LibraryConflictChoice.keepBoth;
+          },
+        )).single;
+        expect(b.id, isNot(a.id));
+        expect(b.path, isNot(firstA.path));
+        expect(b.path, isNot(a.path));
+        expect(await File(b.path).readAsString(), oldText);
+
+        LocalReader readerFor(LocalBook book) => LocalReader(
+          library: library,
+          book: book,
+          engine: NativeReaderEngine(
+            acquireRead: () async =>
+                access.acquireRead((await library.statBook(book))!),
+          ),
+        );
+        final aReader = readerFor(a);
+        await aReader.open();
+        await aReader.next();
+        expect(aReader.error, isNull);
+        final aProgress = await space.store.progressOf(a.id);
+        final bReader = readerFor(b);
+        await bReader.open();
+        await bReader.next();
+        await bReader.next();
+        expect(bReader.error, isNull);
+        final bProgress = (await space.store.progressOf(b.id))!;
+        expect(bProgress.textOffset, greaterThan(0));
+
+        // A differently named independent copy can be addressed by its actual
+        // filename, without changing A's logical source name or old alias.
+        final bDownload = File(
+          '${download.path}/${File(b.path).uri.pathSegments.last}',
+        );
+        final bPrefix = 'B 修订前言\n' * 30;
+        await bDownload.writeAsString(bPrefix + oldText);
+        final updatedB = (await library.importFiles(
+          [await access.source(bDownload.path)],
+          transfer: LibraryTransfer(id: 'retained-update-b'),
+          resolveConflict: (conflict) async {
+            expect(conflict.existingBookId, b.id);
+            return LibraryConflictChoice.update;
+          },
+        )).single;
+        expect(updatedB.id, b.id);
+        expect(await space.store.progressOf(a.id), aProgress);
+        expect(await space.store.progressOf(b.id), bProgress);
+        final bRestored = readerFor(updatedB);
+        await bRestored.open();
+        expect(bRestored.error, isNull);
+        expect(
+          bRestored.position!.textOffset,
+          bProgress.textOffset + bPrefix.length,
+        );
+        expect(bRestored.position!.textLength, oldText.length + bPrefix.length);
+
+        final migration = await library.selectLocation(
+          location(secondFolder),
+          transfer: LibraryTransfer(id: 'retained-move'),
+          resolveConflict: (_) async => LibraryConflictChoice.cancel,
+        );
+        expect(migration.previousFiles, hasLength(2));
+        await library.deletePreviousCopies(migration);
+        expect(await File(firstA.path).readAsString(), oldText);
+        expect(await File(b.path).readAsString(), oldText);
+        expect(await File(a.path).exists(), isFalse);
+        expect(await File(updatedB.path).exists(), isFalse);
+        expect(
+          (await space.store.localBookByOriginalKey(a.rootId, originalKey))!.id,
+          a.id,
+        );
+        await space.reopen();
+        library = LocalLibrary(space.store, access: access);
+        await library.load();
+        expect(library.books, hasLength(2));
+        final afterA = library.books.singleWhere((book) => book.id == a.id);
+        final afterB = library.books.singleWhere((book) => book.id == b.id);
+        final restartedB = readerFor(afterB);
+        await restartedB.open();
+        expect(restartedB.error, isNull);
+        expect(restartedB.position!.textOffset, bRestored.position!.textOffset);
+        expect(restartedB.text, bRestored.text);
+        expect(await space.store.progressOf(a.id), aProgress);
+        await library.deleteBookFile(b.id);
+        expect(await File(afterB.path).exists(), isFalse);
+        expect(await File(afterA.path).readAsString(), aText);
+        expect(await File(firstA.path).readAsString(), oldText);
+        expect(await bDownload.readAsString(), bPrefix + oldText);
+        expect(
+          (await space.store.localBookByOriginalKey(a.rootId, originalKey))!.id,
+          a.id,
+        );
+      } finally {
+        await space.delete();
+      }
+    },
+  );
+
+  test(
     'managed copy update and relocation restore the real reader after restart',
     () async {
       final space = await TestSpace.create();

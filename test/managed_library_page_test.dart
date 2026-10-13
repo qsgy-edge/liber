@@ -235,6 +235,147 @@ void main() {
     });
   });
 
+  for (final choice in ['Cancel', 'Keep both', 'Update this book (replace)']) {
+    testWidgets('historical file dialog handles $choice explicitly', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() async {
+        final io = MemoryLibraryAccess();
+        final access = PickerAccess(io)..selectedDirectory = io.addRoot('one');
+        final source = io.addFile('source-one', 'book.txt', 'first version');
+        access.selectedFiles = [source];
+        final store = await openPage(tester, scratch, access);
+        try {
+          await importCurrentSelection(tester);
+          final first = (await store.localBooks()).single;
+          final retained = (await store.localFile(
+            first.rootId!,
+            first.relativePath!,
+          ))!;
+          await store.putProgress(
+            ProgressCompanion(
+              bookId: Value(first.id),
+              textOffset: const Value(240),
+              updatedAt: const Value(99),
+            ),
+          );
+          final savedProgress = await store.progressOf(first.id);
+          final newer = io.addFile(
+            'source-two',
+            'book.txt',
+            'different content',
+          );
+          access.selectedFiles = [newer];
+          await tester.tap(importButton);
+          await tester.pump();
+          await waitFor(
+            tester,
+            () => find.byType(AlertDialog).evaluate().isNotEmpty,
+          );
+          expect(
+            find.text('Different content with the same name'),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.descendant(
+              of: find.byType(AlertDialog),
+              matching: find.text('Update this book (replace)'),
+            ),
+          );
+          await tester.pump();
+          await waitFor(tester, () => idle(tester));
+          final currentA = (await store.bookById(first.id))!;
+          final currentFile = (await store.localFile(
+            currentA.rootId!,
+            currentA.relativePath!,
+          ))!;
+          final copiesBefore = io.copyCount;
+
+          access.selectedFiles = [io.files[retained.locator]!];
+          await tester.tap(importButton);
+          await tester.pump();
+          await waitFor(
+            tester,
+            () => find.byType(AlertDialog).evaluate().isNotEmpty,
+          );
+          expect(
+            find.text('File from a previous book location'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('save a separate copy'), findsOneWidget);
+          expect(find.textContaining('old version'), findsNothing);
+          expect(
+            io.copyCount,
+            copiesBefore,
+            reason: 'History needs a choice before copying',
+          );
+          final dialog = find.byType(AlertDialog);
+          for (final label in [
+            'Cancel',
+            'Keep both',
+            'Update this book (replace)',
+          ]) {
+            expect(
+              find.descendant(of: dialog, matching: find.text(label)),
+              findsOneWidget,
+            );
+          }
+          await tester.tap(
+            find.descendant(of: dialog, matching: find.text(choice)),
+          );
+          await tester.pump();
+          await waitFor(tester, () => idle(tester));
+
+          final books = await store.localBooks();
+          final afterA = (await store.bookById(first.id))!;
+          if (choice == 'Keep both') {
+            expect(books, hasLength(2));
+            expect(afterA, currentA);
+            final b = books.singleWhere((book) => book.id != first.id);
+            final bFile = (await store.localFile(b.rootId!, b.relativePath!))!;
+            expect(bFile.locator, isNot(retained.locator));
+            expect(bFile.locator, isNot(currentFile.locator));
+            expect(io.bytes[bFile.locator], 'first version');
+          } else if (choice == 'Update this book (replace)') {
+            expect(books.single.id, first.id);
+            final updatedFile = (await store.localFile(
+              afterA.rootId!,
+              afterA.relativePath!,
+            ))!;
+            expect(updatedFile.locator, isNot(retained.locator));
+            expect(io.bytes[updatedFile.locator], 'first version');
+          } else {
+            expect(books.single, currentA);
+          }
+          expect(io.copyCount, copiesBefore + (choice == 'Cancel' ? 0 : 1));
+          expect(await store.progressOf(first.id), savedProgress);
+          expect(
+            (await store.localBookByOriginalKey(
+              first.rootId!,
+              first.relativePath!,
+            ))!.id,
+            first.id,
+          );
+          expect(io.bytes[retained.locator], 'first version');
+          expect(io.bytes[currentFile.locator], 'different content');
+          expect(io.bytes[source.locator], 'first version');
+          expect(io.bytes[newer.locator], 'different content');
+          expect(io.deleted, isEmpty);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          await store.close();
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+        }
+      });
+    });
+  }
+
   testWidgets(
     'update conflict preserves the existing book and reading progress',
     (tester) async {

@@ -88,6 +88,22 @@ readable file; the original pair matches earlier imported snapshots after an
 adoption, update or relocation and never grants file access. These keys can
 change while the minted book ID, groups, settings and progress stay attached to
 the same book (#121; ADR 0006 amendment).
+
+**Retained files (#127).** A positively verified previous file association offers
+update, keep both, or cancel before admitting an otherwise unowned file. That
+association does not establish which content is newer. Update preserves the
+existing book identity and reading state. Keep both creates a separate identity
+and a verified independent copy, including when the selected file is already
+inside the library; the selected file remains intact. A unique verified current
+owner or equal-content current book can still be reused.
+
+The original association stays with the first book, so an old path-only snapshot
+continues to identify it. An already-existing second book can update or move
+without taking that association: its absent original pair stays absent when the
+pair is occupied, and a later move may capture its then-current pair if unclaimed.
+No original association authorizes file access, and no history registry or
+startup rewrite is introduced.
+
 `sourceRef` is the space-local Book Source
 key (`bookSourceUrl`) — the frozen baseline's `Book.origin`, which overloads that field with
 `loc_book` for local books, hence an explicit `kind` instead. `originName` stays denormalized

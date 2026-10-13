@@ -1176,6 +1176,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get libraryNameConflict => 'Different content with the same name';
 
   @override
+  String get libraryHistoricalConflict => 'File from a previous book location';
+
+  @override
+  String libraryHistoricalConflictDescription(String name) {
+    return 'To import $name, update the existing book while keeping its reading progress, or keep both and save a separate copy.';
+  }
+
+  @override
   String libraryConflictDescription(String name) {
     return '$name already exists with different content. Update this book while keeping its shelf entry and reading progress, keep both versions, or cancel.';
   }

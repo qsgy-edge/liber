@@ -1139,6 +1139,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get libraryNameConflict => '同名文件内容不同';
 
   @override
+  String get libraryHistoricalConflict => '文件来自书籍的原位置';
+
+  @override
+  String libraryHistoricalConflictDescription(String name) {
+    return '导入 $name 时，可以更新已有书籍并保留其阅读进度，或保留两本并另存独立副本。';
+  }
+
+  @override
   String libraryConflictDescription(String name) {
     return '$name 已有不同内容。可以更新此书并保留书架记录和阅读进度，也可以保留两本或取消。';
   }
@@ -2368,6 +2376,14 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   String get libraryNameConflict => '同名檔案內容不同';
 
   @override
+  String get libraryHistoricalConflict => '文件來自書籍的原位置';
+
+  @override
+  String libraryHistoricalConflictDescription(String name) {
+    return '導入 $name 時，可以更新已有書籍並保留其閲讀進度，或保留兩本並另存獨立副本。';
+  }
+
+  @override
   String libraryConflictDescription(String name) {
     return '$name 已有不同內容。可以更新此書並保留書架記錄和閱讀進度，也可以保留兩本或取消。';
   }
@@ -3595,6 +3611,14 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get libraryNameConflict => '同名檔案內容不同';
+
+  @override
+  String get libraryHistoricalConflict => '檔案來自書籍的原位置';
+
+  @override
+  String libraryHistoricalConflictDescription(String name) {
+    return '匯入 $name 時，可以更新已有書籍並保留其閱讀進度，或保留兩本並另存獨立副本。';
+  }
 
   @override
   String libraryConflictDescription(String name) {

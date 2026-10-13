@@ -315,6 +315,8 @@
   "libraryChooseFolder": "Choose library folder",
   "libraryChangeFolder": "Change library folder",
   "libraryNameConflict": "Different content with the same name",
+  "libraryHistoricalConflict": "File from a previous book location",
+  "libraryHistoricalConflictDescription": "To import {name}, update the existing book while keeping its reading progress, or keep both and save a separate copy.",
   "libraryConflictDescription": "{name} already exists with different content. Update this book while keeping its shelf entry and reading progress, keep both versions, or cancel.",
   "libraryConflictOtherBook": "{name} belongs to another book. Keep both to preserve each book's identity and reading progress, or cancel.",
   "libraryKeepBoth": "Keep both",
@@ -341,6 +343,13 @@
   "libraryDeleteFile": "Delete library file",
   "libraryDeleteDescription": "Delete the library copy of {name}? The original import file and the reading record will be kept; reading will require relinking.",
   "libraryRead": "Read book",
+  "@libraryHistoricalConflictDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "@libraryConflictDescription": {
     "placeholders": {
       "name": {

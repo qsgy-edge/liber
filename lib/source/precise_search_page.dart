@@ -91,8 +91,10 @@ final RegExp _chapterNumberPattern = RegExp(r'^\[(\d+)]');
 ///   menu follows `ChangeBookSourceDialog.initLiveData` (`:260-265`), whose
 ///   `flowEnabledGroups` includes only enabled sources' groups. Membership
 ///   uses the store's split/trimmed `groupNames`, not SQL LIKE: whitespace and
-///   wildcard/case behavior can differ. Menu order is Dart string order, not
-///   the frozen `cnCompare`'s Chinese ICU collation (no equivalent is shipped).
+///   wildcard/case behavior can differ. String imports split on `[,;，；]`
+///   (#118); array entries keep punctuation within each group name. Menu order
+///   is Dart string order, not the frozen `cnCompare`'s Chinese ICU collation
+///   (no equivalent is shipped).
 ///   A populated group whose searches all succeed but return no hits asks
 ///   before searching all groups; request failures are shown, not treated as
 ///   proof that the group has no results. Cancel keeps the selected group.
