@@ -57,7 +57,8 @@ class SourceStageFormatError implements Exception {
   };
 
   @override
-  String toString() => '${stageWord(stage)}响应不是 JSON（可能是错误页）：$prefix（$address）';
+  String toString() =>
+      '${stageWord(stage)}响应不是 JSON（可能是错误页）：$prefix（$address）';
 }
 
 /// How much of a body [SourceStageFormatError] keeps: enough to recognize an
@@ -360,7 +361,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(stage.base, stage.address, _keyword);
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      _keyword,
+    );
     _stageRequest = (
       url: url,
       stage: stage.stage,
@@ -639,7 +644,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
       final result = host == null
           ? await render()
-          : await host.forExecution(_cancellation).withSourceRateLimit(render);
+          : await host
+                .forExecution(_cancellation)
+                .withSourceRateLimit(render);
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
       // A rendered document has no HTTP response of its own: the frozen
@@ -1028,10 +1035,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
             ),
           );
           final isVip = sourceIsTrue(
-            await _optional(entry, toc['isVip'] ?? '', label: 'ruleToc.isVip'),
+            await _optional(
+              entry,
+              toc['isVip'] ?? '',
+              label: 'ruleToc.isVip',
+            ),
           );
           final isPay = sourceIsTrue(
-            await _optional(entry, toc['isPay'] ?? '', label: 'ruleToc.isPay'),
+            await _optional(
+              entry,
+              toc['isPay'] ?? '',
+              label: 'ruleToc.isPay',
+            ),
           );
           var chapterUrl = catEye != null
               ? (JsonSourceRules.extract(
@@ -1228,11 +1243,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           : hit.author,
       intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: await _optional(
-        page,
-        info['kind'] ?? '',
-        label: 'ruleBookInfo.kind',
-      ),
+      kind: await _optional(page, info['kind'] ?? '', label: 'ruleBookInfo.kind'),
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );

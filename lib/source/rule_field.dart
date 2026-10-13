@@ -316,7 +316,9 @@ class RuleField {
   }
 
   /// Runs the script segments on the value the extraction produced, each one
-  /// substituted first and bound as the next one's `result`.
+  /// substituted first and bound as the next one's `result`. A scalar caller
+  /// sets [forValue] to return a literal interpolation before the scripts; an
+  /// element or list caller keeps the extraction value.
   Future<Object?> apply(Object? value, {bool forValue = false}) async {
     var result = value;
     final fields = _literalValueFields;

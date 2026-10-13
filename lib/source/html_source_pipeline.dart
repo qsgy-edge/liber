@@ -455,7 +455,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(stage.base, stage.address, _keyword);
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      _keyword,
+    );
     _stageRequest = (
       url: url,
       stage: stage.stage,
@@ -531,11 +535,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     required String content,
     String label = '',
   }) async {
-    return RuleField.resolve(
-      raw,
-      _ruleContext(label, content),
-      content: content,
-    );
+    return RuleField.resolve(raw, _ruleContext(label, content), content: content);
   }
 
   /// One `java.getString`/`getStringList`/`getElement`/`getElements` call from a
@@ -559,7 +559,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       throw SourceScriptError(
         'policy',
         '${read.member} 无法回答 HTML 内容的元素对象：本产品的 HTML 规则引擎只回答文本，'
-            '请用 java.getString/java.getStringList',
+        '请用 java.getString/java.getStringList',
       );
     }
     final field = await _field(
@@ -619,10 +619,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? step.value
             : [
                 for (final element in elements)
-                  <String, Object?>{
-                    '__dom': element.dom,
-                    '__rule': element.rule,
-                  },
+                  <String, Object?>{'__dom': element.dom, '__rule': element.rule},
               ];
         step = _ListStep.raw(
           await _evalJs(segment.text, _keyword, value, label: label),
@@ -678,10 +675,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   List<_ListItem> _itemsOfStep(_ListStep step) {
     final elements = step.elements;
     if (elements != null) {
-      return [
-        for (final element in elements)
-          _ListItem.element(element.dom, element.rule),
-      ];
+      return [for (final element in elements) _ListItem.element(element.dom, element.rule)];
     }
     final value = step.value;
     if (value == null) return const <_ListItem>[];
@@ -787,8 +781,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         )
       : value;
 
-  /// Declares the document job of one field, or none when the field is a script
-  /// only.
+  /// Declares the document job of one field, or none when the value comes from
+  /// scripts or literal interpolation.
   HtmlString? _declare(HtmlRuleBatch batch, String id, RuleField field) =>
       field.hasValueExtraction
       ? batch.documentText(id, field.extractionRule!)
@@ -895,7 +889,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 script,
                 keyword,
                 '${_resolve(base, split.path, keepFragment: true)}',
-              ))?.toString() ??
+              ))
+              ?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
@@ -1007,7 +1002,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
       final result = host == null
           ? await render()
-          : await host.forExecution(_cancellation).withSourceRateLimit(render);
+          : await host
+                .forExecution(_cancellation)
+                .withSourceRateLimit(render);
       _cancellation.throwIfCancelled();
       trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
       // A rendered document has no HTTP response of its own: the frozen
@@ -1157,9 +1154,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? batch.elementsText(entry.key, entry.value.extractionRule!, items!)
             : null,
     };
-    // A script-only per-element field needs each item's own element
-    // (`BookList.kt:208` `setContent(item)`): its outer html is the node a
-    // script's `result` answers.
+    // A field without value extraction needs each item's own element as its
+    // initial value (`BookList.kt:208` `setContent(item)`).
     final itemHtmls =
         scriptedItems == null &&
             searchFields.values.any((field) => !field.hasValueExtraction)

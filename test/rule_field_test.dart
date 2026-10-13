@@ -240,6 +240,76 @@ void main() {
       }
     }
 
+    for (final json in [false, true]) {
+      test(
+        'literal values reach host reads, TOC and content (json=$json)',
+        () async {
+          final format = json ? 'json' : 'html';
+          final literal =
+              cases.singleWhere(
+                    (row) => row['name'] == 'whole-non-selector',
+                  )['rule']
+                  as String;
+          final content =
+              cases.singleWhere(
+                    (row) => row['name'] == 'whole-js-sibling',
+                  )['rule']
+                  as String;
+          // Build the rule inside JS so outer script interpolation cannot consume
+          // it before java.getString reaches the actual nested value-read caller.
+          const name = '''@js:java.getString('{' + '{' + "'完结'" + '}' + '}')''';
+          final source = json
+              ? _jsonSource(name: name, chapterName: literal, content: content)
+              : _htmlSource(name: name, tocName: literal, content: content);
+          final BookSourcePipeline pipeline = json
+              ? JsonSourcePipeline(
+                  source,
+                  _JsonPages()..pages.addAll(_jsonPages),
+                )
+              : HtmlSourcePipeline(source, _HtmlPages());
+          final hit = (await pipeline.search('关键字')).single;
+          expect(
+            hit.title,
+            (golden['$format/whole-non-selector'] as Map)['value'],
+          );
+          final (_, chapters) = await pipeline.details(hit);
+          expect(chapters.single.name, hit.title);
+          expect(
+            (await pipeline.chapter(chapters.single)).text,
+            (golden['$format/whole-js-sibling'] as Map)['value'],
+          );
+        },
+      );
+    }
+
+    test('value application preserves expression count and failures', () async {
+      var evaluations = 0;
+      final failure = StateError('expression failure');
+      final context = RuleFieldContext(
+        evaluateScript: (script, result) async {
+          evaluations++;
+          if (script == 'fail') throw failure;
+          return '完结';
+        },
+        extract: (_, _) async => throw StateError('unexpected extraction'),
+        readVariable: (_) async => '',
+        writeVariable: (_, _) async {},
+      );
+      final field = await RuleField.resolve(
+        '{{value}}',
+        context,
+        content: 'page',
+      );
+      expect(evaluations, 1);
+      expect(await field.apply('page', forValue: true), '完结');
+      expect(evaluations, 1);
+      await expectLater(
+        RuleField.resolve('{{fail}}', context, content: 'page'),
+        throwsA(same(failure)),
+      );
+      expect(evaluations, 2);
+    });
+
     test(
       'an expression confined to replacement preserves selector extraction',
       () async {
@@ -385,7 +455,9 @@ void main() {
       // selects the items, and the script answers them unchanged.
       final source = _htmlSource(name: 'a.0@text');
       (source['ruleSearch'] as Map)['bookList'] = r'.result @js: result';
-      final hit = await HtmlSourcePipeline(source, _HtmlPages()).search('关键字');
+      final hit = await HtmlSourcePipeline(source, _HtmlPages()).search(
+        '关键字',
+      );
       expect(hit.single.title, '回音');
     });
 
@@ -402,28 +474,23 @@ void main() {
       );
     });
 
-    test(
-      'a search runs on its own keyword whatever checkKeyWord holds',
-      () async {
-        // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it
-        // are the source check and the debug page's search box, so the search
-        // stage must neither substitute it nor refuse a search because of it.
-        for (final declared in <Object>[
-          '校验词',
-          42,
-          <String>['not', 'a', 'string'],
-          <String, Object>{'nested': 1},
-        ]) {
-          final source = _htmlSource(name: 'a.0@text');
-          (source['ruleSearch'] as Map)['checkKeyWord'] = declared;
-          final hit = (await HtmlSourcePipeline(
-            source,
-            _HtmlPages(),
-          ).search('关键字')).single;
-          expect(hit.title, '回音', reason: '$declared');
-        }
-      },
-    );
+    test('a search runs on its own keyword whatever checkKeyWord holds', () async {
+      // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it
+      // are the source check and the debug page's search box, so the search
+      // stage must neither substitute it nor refuse a search because of it.
+      for (final declared in <Object>[
+        '校验词',
+        42,
+        <String>['not', 'a', 'string'],
+        <String, Object>{'nested': 1},
+      ]) {
+        final source = _htmlSource(name: 'a.0@text');
+        (source['ruleSearch'] as Map)['checkKeyWord'] = declared;
+        final hit =
+            (await HtmlSourcePipeline(source, _HtmlPages()).search('关键字')).single;
+        expect(hit.title, '回音', reason: '$declared');
+      }
+    });
   });
 
   group('JSON adapter entry point', () {
@@ -540,16 +607,16 @@ void main() {
       );
     });
 
-    test(
-      'JSON mode marker resolves, while an unreadable path is refused',
-      () async {
-        expect((await search(_jsonSource(name: r'@jSoN:$.name'))).title, '回音');
-        await expectLater(
-          search(_jsonSource(name: r'$.items[?(@.name=1)].name')),
-          throwsA(isA<UnsupportedError>()),
-        );
-      },
-    );
+    test('JSON mode marker resolves, while an unreadable path is refused', () async {
+      expect(
+        (await search(_jsonSource(name: r'@jSoN:$.name'))).title,
+        '回音',
+      );
+      await expectLater(
+        search(_jsonSource(name: r'$.items[?(@.name=1)].name')),
+        throwsA(isA<UnsupportedError>()),
+      );
+    });
   });
 
   // Frozen evidence: Legado baseline 14dd24945, BookList.kt:101-252
