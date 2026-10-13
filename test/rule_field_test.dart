@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
@@ -8,6 +9,7 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/rule_field.dart';
+import 'package:pointycastle/digests/sha256.dart';
 
 import 'native_library.dart';
 
@@ -36,6 +38,9 @@ const _pages = {
 };
 
 class _HtmlPages implements BookSourceTransport {
+  _HtmlPages([this.pages = _pages]);
+
+  final Map<String, String> pages;
   final requests = <String>[];
 
   @override
@@ -45,7 +50,7 @@ class _HtmlPages implements BookSourceTransport {
   }) async {
     final target = Uri.parse(path).path;
     requests.add(target);
-    return _pages[target] ?? (throw StateError('Unexpected URL: $target'));
+    return pages[target] ?? (throw StateError('Unexpected URL: $target'));
   }
 }
 
@@ -145,6 +150,115 @@ const _jsonPages = {
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  group('frozen literal value reads', () {
+    const oracle = 'tool/rule_field_oracle';
+    const evidence = '$oracle/evidence/jvm-host';
+    final cases =
+        (jsonDecode(File('$oracle/fixtures.json').readAsStringSync()) as List)
+            .cast<Map>();
+    final golden =
+        jsonDecode(File('$evidence/golden.json').readAsStringSync()) as Map;
+    final manifest =
+        jsonDecode(File('$evidence/manifest.json').readAsStringSync()) as Map;
+
+    String hash(String path) => SHA256Digest()
+        .process(File(path).readAsBytesSync())
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+
+    test('executed golden binds the corpus, harness, runner and baseline', () {
+      expect(manifest['baseline'], '14dd24945b2914ce2708b8abaa4ee67ceef892af');
+      expect(manifest['fixturesSha256'], hash('$oracle/fixtures.json'));
+      expect(manifest['goldenSha256'], hash('$evidence/golden.json'));
+      expect(manifest['harnessSha256'], hash('$oracle/RuleFieldOracle.kt'));
+      expect(manifest['runnerSha256'], hash('$oracle/run.py'));
+      expect(manifest['deviceRows'], 'not-run');
+      expect(golden.keys.toSet(), {
+        for (final format in ['html', 'xml', 'json'])
+          for (final row in cases) '$format/${row['name']}',
+      });
+      final hashes = manifest['frozenSourceSha256'] as Map;
+      expect(
+        hashes.keys,
+        containsAll([
+          'app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt',
+          'app/src/main/java/io/legado/app/model/analyzeRule/RuleAnalyzer.kt',
+        ]),
+      );
+    });
+
+    for (final format in ['html', 'xml', 'json']) {
+      for (final row in cases) {
+        final name = row['name'] as String;
+        final frozen = golden['$format/$name'] as Map;
+        if (frozen['error'] != null) continue;
+        test(
+          '$format/$name through search, detail and chapter value callers',
+          () async {
+            final rule = row['rule'] as String;
+            final source = format == 'json'
+                ? _jsonSource(name: r'$.name')
+                : _htmlSource(name: 'a.0@text');
+            (source['ruleSearch'] as Map)['kind'] = rule;
+            (source['ruleBookInfo'] as Map)['kind'] = rule;
+            (source['ruleContent'] as Map)['title'] = rule;
+            final BookSourcePipeline pipeline = format == 'json'
+                ? JsonSourcePipeline(
+                    source,
+                    _JsonPages()..pages.addAll(_jsonPages),
+                  )
+                : HtmlSourcePipeline(
+                    source,
+                    _HtmlPages(
+                      format == 'xml'
+                          ? {
+                              for (final entry in _pages.entries)
+                                entry.key: '<root>${entry.value}</root>',
+                            }
+                          : _pages,
+                    ),
+                  );
+            final hit = (await pipeline.search('关键字')).single;
+            expect(hit.kind, frozen['value']);
+            final (book, _) = await pipeline.details(hit);
+            expect(book.kind, frozen['value']);
+            final chapter = await pipeline.chapter(
+              SourceChapter(
+                '目录标题',
+                Uri.parse(
+                  '${format == 'json' ? _jsonUrl : _htmlUrl}/chapter/1',
+                ),
+              ),
+            );
+            expect(
+              chapter.title,
+              (frozen['value'] as String).isEmpty ? null : frozen['value'],
+            );
+          },
+        );
+      }
+    }
+
+    test(
+      'an expression confined to replacement preserves selector extraction',
+      () async {
+        final rule =
+            cases.singleWhere(
+                  (row) => row['name'] == 'replacement-then-expression',
+                )['rule']
+                as String;
+        final frozen = golden['html/replacement-then-expression'] as Map;
+        expect(frozen['mode'], 'Default');
+        expect(frozen['extraction'], 'a.0@text');
+        final hit = (await HtmlSourcePipeline(
+          _htmlSource(name: rule),
+          _HtmlPages(),
+        ).search('关键字')).single;
+        expect(hit.title, 'new');
+      },
+    );
+  });
 
   group('HTML adapter entry point', () {
     Future<HtmlBook> search(Map<String, dynamic> source) async {
@@ -271,9 +385,7 @@ void main() {
       // selects the items, and the script answers them unchanged.
       final source = _htmlSource(name: 'a.0@text');
       (source['ruleSearch'] as Map)['bookList'] = r'.result @js: result';
-      final hit = await HtmlSourcePipeline(source, _HtmlPages()).search(
-        '关键字',
-      );
+      final hit = await HtmlSourcePipeline(source, _HtmlPages()).search('关键字');
       expect(hit.single.title, '回音');
     });
 
@@ -290,23 +402,28 @@ void main() {
       );
     });
 
-    test('a search runs on its own keyword whatever checkKeyWord holds', () async {
-      // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it
-      // are the source check and the debug page's search box, so the search
-      // stage must neither substitute it nor refuse a search because of it.
-      for (final declared in <Object>[
-        '校验词',
-        42,
-        <String>['not', 'a', 'string'],
-        <String, Object>{'nested': 1},
-      ]) {
-        final source = _htmlSource(name: 'a.0@text');
-        (source['ruleSearch'] as Map)['checkKeyWord'] = declared;
-        final hit =
-            (await HtmlSourcePipeline(source, _HtmlPages()).search('关键字')).single;
-        expect(hit.title, '回音', reason: '$declared');
-      }
-    });
+    test(
+      'a search runs on its own keyword whatever checkKeyWord holds',
+      () async {
+        // `ruleSearch.checkKeyWord` is a check keyword: the frozen readers of it
+        // are the source check and the debug page's search box, so the search
+        // stage must neither substitute it nor refuse a search because of it.
+        for (final declared in <Object>[
+          '校验词',
+          42,
+          <String>['not', 'a', 'string'],
+          <String, Object>{'nested': 1},
+        ]) {
+          final source = _htmlSource(name: 'a.0@text');
+          (source['ruleSearch'] as Map)['checkKeyWord'] = declared;
+          final hit = (await HtmlSourcePipeline(
+            source,
+            _HtmlPages(),
+          ).search('关键字')).single;
+          expect(hit.title, '回音', reason: '$declared');
+        }
+      },
+    );
   });
 
   group('JSON adapter entry point', () {
@@ -423,16 +540,16 @@ void main() {
       );
     });
 
-    test('JSON mode marker resolves, while an unreadable path is refused', () async {
-      expect(
-        (await search(_jsonSource(name: r'@jSoN:$.name'))).title,
-        '回音',
-      );
-      await expectLater(
-        search(_jsonSource(name: r'$.items[?(@.name=1)].name')),
-        throwsA(isA<UnsupportedError>()),
-      );
-    });
+    test(
+      'JSON mode marker resolves, while an unreadable path is refused',
+      () async {
+        expect((await search(_jsonSource(name: r'@jSoN:$.name'))).title, '回音');
+        await expectLater(
+          search(_jsonSource(name: r'$.items[?(@.name=1)].name')),
+          throwsA(isA<UnsupportedError>()),
+        );
+      },
+    );
   });
 
   // Frozen evidence: Legado baseline 14dd24945, BookList.kt:101-252

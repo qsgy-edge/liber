@@ -455,11 +455,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(
-      stage.base,
-      stage.address,
-      _keyword,
-    );
+    final (url, options) = await _request(stage.base, stage.address, _keyword);
     _stageRequest = (
       url: url,
       stage: stage.stage,
@@ -535,7 +531,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     required String content,
     String label = '',
   }) async {
-    return RuleField.resolve(raw, _ruleContext(label, content), content: content);
+    return RuleField.resolve(
+      raw,
+      _ruleContext(label, content),
+      content: content,
+    );
   }
 
   /// One `java.getString`/`getStringList`/`getElement`/`getElements` call from a
@@ -559,7 +559,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       throw SourceScriptError(
         'policy',
         '${read.member} 无法回答 HTML 内容的元素对象：本产品的 HTML 规则引擎只回答文本，'
-        '请用 java.getString/java.getStringList',
+            '请用 java.getString/java.getStringList',
       );
     }
     final field = await _field(
@@ -579,10 +579,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await batch.run();
       return job.values;
     }
-    final extracted = field.isScriptOnly
-        ? read.content
-        : await _eagerExtract(read.content, field.extractionRule!);
-    return '${await field.apply(extracted) ?? ''}';
+    final extracted = field.hasValueExtraction
+        ? await _eagerExtract(read.content, field.extractionRule!)
+        : read.content;
+    return '${await field.apply(extracted, forValue: true) ?? ''}';
   }
 
   /// One per-element value rule of a stage. `{{...}}`/`@get:` substitution
@@ -619,7 +619,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? step.value
             : [
                 for (final element in elements)
-                  <String, Object?>{'__dom': element.dom, '__rule': element.rule},
+                  <String, Object?>{
+                    '__dom': element.dom,
+                    '__rule': element.rule,
+                  },
               ];
         step = _ListStep.raw(
           await _evalJs(segment.text, _keyword, value, label: label),
@@ -675,7 +678,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   List<_ListItem> _itemsOfStep(_ListStep step) {
     final elements = step.elements;
     if (elements != null) {
-      return [for (final element in elements) _ListItem.element(element.dom, element.rule)];
+      return [
+        for (final element in elements)
+          _ListItem.element(element.dom, element.rule),
+      ];
     }
     final value = step.value;
     if (value == null) return const <_ListItem>[];
@@ -718,7 +724,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           await _itemFieldValue(item, field, label, url: url),
       ];
     }
-    if (field.isScriptOnly) {
+    if (!field.hasValueExtraction) {
       return [
         for (final html in itemHtmls)
           await _itemFieldValue(
@@ -741,11 +747,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (item.isElement) {
       final dom = item.dom!;
       final rule = item.rule ?? ':root';
-      if (field.isScriptOnly) {
+      if (!field.hasValueExtraction) {
         final value = await field.apply(<String, Object?>{
           '__dom': dom,
           '__rule': rule,
-        });
+        }, forValue: true);
         return '${value ?? ''}';
       }
       final batch = HtmlRuleBatch(dom);
@@ -757,23 +763,23 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
       await batch.run();
       final extracted = values.values.isEmpty ? '' : values.values.first;
-      return '${await field.apply(_urlFallback(field, extracted, url)) ?? ''}';
+      return '${await field.apply(_urlFallback(field, extracted, url), forValue: true) ?? ''}';
     }
-    if (field.isScriptOnly) {
-      return '${await field.apply(item.value) ?? ''}';
+    if (!field.hasValueExtraction) {
+      return '${await field.apply(item.value, forValue: true) ?? ''}';
     }
     // The frozen `AnalyzeByJSoup(result)` parses a non-element item's text as a
     // document before its rule runs.
     final batch = HtmlRuleBatch('${item.value ?? ''}');
     final value = batch.documentText('value', field.extractionRule!);
     await batch.run();
-    return '${await field.apply(_urlFallback(field, value.value, url)) ?? ''}';
+    return '${await field.apply(_urlFallback(field, value.value, url), forValue: true) ?? ''}';
   }
 
   /// The URL mode's replacement when the extraction found nothing, as
   /// [_perElement] applies it.
   String _urlFallback(RuleField field, String value, bool url) =>
-      url && value.isEmpty && !field.isScriptOnly
+      url && value.isEmpty && field.hasValueExtraction
       ? applyRuleReplacement(
           '',
           splitRuleFields(field.extractionRule!),
@@ -784,7 +790,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// Declares the document job of one field, or none when the field is a script
   /// only.
   HtmlString? _declare(HtmlRuleBatch batch, String id, RuleField field) =>
-      field.isScriptOnly ? null : batch.documentText(id, field.extractionRule!);
+      field.hasValueExtraction
+      ? batch.documentText(id, field.extractionRule!)
+      : null;
 
   /// Declares the *list* read of one field (the frozen
   /// `AnalyzeRule.getStringList`), or none when the field is a script only. The
@@ -809,15 +817,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String content, {
     bool url = false,
   }) async {
-    final value = field.isScriptOnly ? content : job!.value;
-    final resolved = url && value.isEmpty && !field.isScriptOnly
+    final value = field.hasValueExtraction ? job!.value : content;
+    final resolved = url && value.isEmpty && field.hasValueExtraction
         ? applyRuleReplacement(
             '',
             splitRuleFields(field.extractionRule!),
             label: 'HTML',
           )
         : value;
-    return '${await field.apply(resolved) ?? ''}';
+    return '${await field.apply(resolved, forValue: true) ?? ''}';
   }
 
   /// One rule through the Rust adapter on its own, for the rule-field forms that
@@ -841,7 +849,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     bool url = false,
   }) async => [
     for (final value in values)
-      '${await field.apply(url && value.isEmpty ? applyRuleReplacement('', splitRuleFields(field.extractionRule!), label: 'HTML') : value) ?? ''}',
+      '${await field.apply(url && value.isEmpty ? applyRuleReplacement('', splitRuleFields(field.extractionRule!), label: 'HTML') : value, forValue: true) ?? ''}',
   ];
 
   /// The source fields a script can read, as the frozen `source` object exposes
@@ -887,8 +895,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 script,
                 keyword,
                 '${_resolve(base, split.path, keepFragment: true)}',
-              ))
-              ?.toString() ??
+              ))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
@@ -1000,9 +1007,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
       final result = host == null
           ? await render()
-          : await host
-                .forExecution(_cancellation)
-                .withSourceRateLimit(render);
+          : await host.forExecution(_cancellation).withSourceRateLimit(render);
       _cancellation.throwIfCancelled();
       trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
       // A rendered document has no HTTP response of its own: the frozen
@@ -1148,19 +1153,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     };
     final jobs = <String, HtmlStringList?>{
       for (final entry in searchFields.entries)
-        entry.key: (scriptedItems == null && !entry.value.isScriptOnly)
-            ? batch.elementsText(
-                entry.key,
-                entry.value.extractionRule!,
-                items!,
-              )
+        entry.key: (scriptedItems == null && entry.value.hasValueExtraction)
+            ? batch.elementsText(entry.key, entry.value.extractionRule!, items!)
             : null,
     };
     // A script-only per-element field needs each item's own element
     // (`BookList.kt:208` `setContent(item)`): its outer html is the node a
     // script's `result` answers.
-    final itemHtmls = scriptedItems == null &&
-            searchFields.values.any((field) => field.isScriptOnly)
+    final itemHtmls =
+        scriptedItems == null &&
+            searchFields.values.any((field) => !field.hasValueExtraction)
         ? batch.elementsText('item-html', '@html', items!)
         : null;
     await batch.run();
@@ -1363,7 +1365,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         };
         final jobs = <String, HtmlStringList?>{
           for (final entry in tocFields.entries)
-            entry.key: (scriptedItems == null && !entry.value.isScriptOnly)
+            entry.key: (scriptedItems == null && entry.value.hasValueExtraction)
                 ? batch.elementsText(
                     entry.key,
                     entry.value.extractionRule!,
@@ -1371,8 +1373,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                   )
                 : null,
         };
-        final itemHtmls = scriptedItems == null &&
-                tocFields.values.any((field) => field.isScriptOnly)
+        final itemHtmls =
+            scriptedItems == null &&
+                tocFields.values.any((field) => !field.hasValueExtraction)
             ? batch.elementsText('item-html', '@html', items!)
             : null;
         // The frozen reads a page's next-URL rule only on the pages it walks
@@ -1892,8 +1895,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       content: text,
       label: 'ruleContent.replaceRegex',
     );
-    final extraction = resolved.extractionRule;
-    if (extraction == null) return '${await resolved.apply(text) ?? ''}';
+    if (!resolved.hasValueExtraction) {
+      return '${await resolved.apply(text, forValue: true) ?? ''}';
+    }
+    final extraction = resolved.extractionRule!;
     final fields = splitRuleFields(extraction);
     if (fields.rule.isNotEmpty) {
       return '${await _eagerExtract(text, extraction) ?? ''}';

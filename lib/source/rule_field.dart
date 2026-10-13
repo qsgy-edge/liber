@@ -246,7 +246,12 @@ RuleFieldText parseRuleField(String field) {
 /// One rule field resolved for one adapter: the extraction text its engine must
 /// run, and the script segments that run on the engine's value afterwards.
 class RuleField {
-  RuleField._(this._context, this.extractionRule, this._scripts);
+  RuleField._(
+    this._context,
+    this.extractionRule,
+    this._scripts,
+    this._literalValueFields,
+  );
 
   final RuleFieldContext _context;
 
@@ -255,6 +260,15 @@ class RuleField {
   final String? extractionRule;
 
   final List<String> _scripts;
+  final RuleReplaceFields? _literalValueFields;
+
+  /// The frozen SourceRule changes to Mode.Regex when its first interpolation
+  /// is before `##` (AnalyzeRule.kt:566-572). In a text read that mode returns
+  /// the substituted rule itself (:288-303), including mixed text; element
+  /// reads keep their extraction semantics (:328-389).
+  bool get isLiteralValue => _literalValueFields != null;
+
+  bool get hasValueExtraction => !isScriptOnly && !isLiteralValue;
 
   /// The `@js:`/`<js>` script bodies, in order.
   List<String> get scripts => List.unmodifiable(_scripts);
@@ -282,13 +296,38 @@ class RuleField {
     final extraction = parts.extractionRule == null
         ? null
         : await _substitute(parts.extractionRule!, content, context, allowPut);
-    return RuleField._(context, extraction, parts.scripts);
+    RuleReplaceFields? literalValueFields;
+    final original = parts.extractionRule?.replaceAll(_putPattern, '');
+    final first = original == null ? null : _evalPattern.firstMatch(original);
+    if (first != null && !original!.substring(0, first.start).contains('##')) {
+      var literal = extraction!;
+      // SourceRule removes these mode markers before checking interpolation
+      // (:532-545); @CSS: is deliberately kept (:527-529).
+      if (literal.startsWith('@@')) {
+        literal = literal.substring(2);
+      } else if (literal.toLowerCase().startsWith('@json:')) {
+        literal = literal.substring(6);
+      } else if (literal.toLowerCase().startsWith('@xpath:')) {
+        literal = literal.substring(7);
+      }
+      literalValueFields = splitRuleFields(literal);
+    }
+    return RuleField._(context, extraction, parts.scripts, literalValueFields);
   }
 
   /// Runs the script segments on the value the extraction produced, each one
   /// substituted first and bound as the next one's `result`.
-  Future<Object?> apply(Object? value) async {
+  Future<Object?> apply(Object? value, {bool forValue = false}) async {
     var result = value;
+    final fields = _literalValueFields;
+    if (forValue && fields != null) {
+      // A blank rule with a replacement keeps the input (:288); without a
+      // replacement an empty expression remains empty, not the input document.
+      final text = fields.rule.isNotEmpty || !fields.hasReplacement
+          ? fields.rule
+          : _format(value);
+      result = applyRuleReplacement(text, fields);
+    }
     for (final script in _scripts) {
       final code = await _substitute(script, result, _context, true);
       if (code.trim().isEmpty) {
@@ -396,10 +435,13 @@ class RuleField {
         content: result,
         allowPut: false,
       );
-      final extracted = nested.extractionRule == null
-          ? result
-          : await context.extract(result, nested.extractionRule!);
-      await context.writeVariable(key, _format(await nested.apply(extracted)));
+      final extracted = nested.hasValueExtraction
+          ? await context.extract(result, nested.extractionRule!)
+          : result;
+      await context.writeVariable(
+        key,
+        _format(await nested.apply(extracted, forValue: true)),
+      );
     }
     return value;
   }

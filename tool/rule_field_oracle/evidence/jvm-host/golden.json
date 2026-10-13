@@ -1,0 +1,200 @@
+{
+  "html/whole-selector-text": {
+    "mode": "Regex",
+    "value": "h1@text",
+    "extraction": null,
+    "error": null
+  },
+  "html/whole-jsonpath-text": {
+    "mode": "Regex",
+    "value": "$.name",
+    "extraction": null,
+    "error": null
+  },
+  "html/mixed-selector-text": {
+    "mode": "Regex",
+    "value": "a.0@text",
+    "extraction": null,
+    "error": null
+  },
+  "html/replacement-then-expression": {
+    "mode": "Default",
+    "value": null,
+    "extraction": "a.0@text",
+    "error": "the corpus declares no extraction answer for rule `a.0@text`"
+  },
+  "html/whole-non-selector": {
+    "mode": "Regex",
+    "value": "完结",
+    "extraction": null,
+    "error": null
+  },
+  "html/whole-js-sibling": {
+    "mode": "Regex",
+    "value": "连载!",
+    "extraction": null,
+    "error": null
+  },
+  "html/mixed-text": {
+    "mode": "Regex",
+    "value": "prefix完结suffix",
+    "extraction": null,
+    "error": null
+  },
+  "html/replacement-only-expression": {
+    "mode": "Default",
+    "value": null,
+    "extraction": "h1@text",
+    "error": "the corpus declares no extraction answer for rule `h1@text`"
+  },
+  "html/whole-replacement": {
+    "mode": "Regex",
+    "value": "连载",
+    "extraction": null,
+    "error": null
+  },
+  "html/whole-empty": {
+    "mode": "Regex",
+    "value": "",
+    "extraction": null,
+    "error": null
+  },
+  "html/whole-number": {
+    "mode": "Regex",
+    "value": "42",
+    "extraction": null,
+    "error": null
+  },
+  "xml/whole-selector-text": {
+    "mode": "Regex",
+    "value": "h1@text",
+    "extraction": null,
+    "error": null
+  },
+  "xml/whole-jsonpath-text": {
+    "mode": "Regex",
+    "value": "$.name",
+    "extraction": null,
+    "error": null
+  },
+  "xml/mixed-selector-text": {
+    "mode": "Regex",
+    "value": "a.0@text",
+    "extraction": null,
+    "error": null
+  },
+  "xml/replacement-then-expression": {
+    "mode": "Default",
+    "value": null,
+    "extraction": "a.0@text",
+    "error": "the corpus declares no extraction answer for rule `a.0@text`"
+  },
+  "xml/whole-non-selector": {
+    "mode": "Regex",
+    "value": "完结",
+    "extraction": null,
+    "error": null
+  },
+  "xml/whole-js-sibling": {
+    "mode": "Regex",
+    "value": "连载!",
+    "extraction": null,
+    "error": null
+  },
+  "xml/mixed-text": {
+    "mode": "Regex",
+    "value": "prefix完结suffix",
+    "extraction": null,
+    "error": null
+  },
+  "xml/replacement-only-expression": {
+    "mode": "Default",
+    "value": null,
+    "extraction": "h1@text",
+    "error": "the corpus declares no extraction answer for rule `h1@text`"
+  },
+  "xml/whole-replacement": {
+    "mode": "Regex",
+    "value": "连载",
+    "extraction": null,
+    "error": null
+  },
+  "xml/whole-empty": {
+    "mode": "Regex",
+    "value": "",
+    "extraction": null,
+    "error": null
+  },
+  "xml/whole-number": {
+    "mode": "Regex",
+    "value": "42",
+    "extraction": null,
+    "error": null
+  },
+  "json/whole-selector-text": {
+    "mode": "Regex",
+    "value": "h1@text",
+    "extraction": null,
+    "error": null
+  },
+  "json/whole-jsonpath-text": {
+    "mode": "Regex",
+    "value": "$.name",
+    "extraction": null,
+    "error": null
+  },
+  "json/mixed-selector-text": {
+    "mode": "Regex",
+    "value": "a.0@text",
+    "extraction": null,
+    "error": null
+  },
+  "json/replacement-then-expression": {
+    "mode": "Json",
+    "value": null,
+    "extraction": "a.0@text",
+    "error": "the corpus declares no extraction answer for rule `a.0@text`"
+  },
+  "json/whole-non-selector": {
+    "mode": "Regex",
+    "value": "完结",
+    "extraction": null,
+    "error": null
+  },
+  "json/whole-js-sibling": {
+    "mode": "Regex",
+    "value": "连载!",
+    "extraction": null,
+    "error": null
+  },
+  "json/mixed-text": {
+    "mode": "Regex",
+    "value": "prefix完结suffix",
+    "extraction": null,
+    "error": null
+  },
+  "json/replacement-only-expression": {
+    "mode": "Json",
+    "value": null,
+    "extraction": "h1@text",
+    "error": "the corpus declares no extraction answer for rule `h1@text`"
+  },
+  "json/whole-replacement": {
+    "mode": "Regex",
+    "value": "连载",
+    "extraction": null,
+    "error": null
+  },
+  "json/whole-empty": {
+    "mode": "Regex",
+    "value": "",
+    "extraction": null,
+    "error": null
+  },
+  "json/whole-number": {
+    "mode": "Regex",
+    "value": "42",
+    "extraction": null,
+    "error": null
+  }
+}
