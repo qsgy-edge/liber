@@ -510,7 +510,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// adapter. `count` runs the selector and answers how many elements it
   /// matched; `extract` runs the selector and answers one value per matched
   /// element — jsoup `Element.text()`, `Element.outerHtml()` (`html`), or an
-  /// attribute name. The tree is parsed from [SourceDomRead.html], which is the
+  /// attribute name. Raw `all` serialization uses the existing list output to
+  /// retain script/style and serialized entities before a scalar's own tail.
+  /// The tree is parsed from [SourceDomRead.html], which is the
   /// document the node came from, so a node's own `select` scopes to its
   /// subtree exactly as jsoup's does.
   Future<Object?> _domOp(SourceDomRead read) async {
@@ -520,7 +522,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await batch.run();
       return selection.length;
     }
-    final values = batch.elementsText('value', '@${read.extract}', selection);
+    final values = read.extract == 'all'
+        ? batch.elementsTextList('value', '@all', selection)
+        : batch.elementsText('value', '@${read.extract}', selection);
     await batch.run();
     return values.values;
   }
@@ -612,11 +616,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
   }
 
-  /// One per-element value rule of a stage. `{{...}}`/`@get:` substitution
-  /// applies, and the rule's `@js:`/`<js>` scripts run on the value the rule
-  /// produced (the extraction text when it declares one, the element the
-  /// element-list rule matched when the field is script only — the frozen
-  /// `AnalyzeRule.setContent(item)` binding, `BookList.kt:208`).
+  /// One per-element value rule. Shapes needing substitution or scripts are
+  /// resolved by [_itemFieldValue] against each actual item, exactly once;
+  /// static extraction fields keep the page batch.
   Future<RuleField?> _elementField(
     String raw, {
     required String content,

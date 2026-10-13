@@ -51,3 +51,52 @@ and chapter value callers. A selector with an expression only in its replacement
 also runs through the native product adapter to guard against broad
 reclassification. Logs and additional native/source binding receipts are retained
 under `C:/Users/17945/AppData/Local/liber-evidence/batch26/93/`.
+
+## Review-repair corpus and shared serialization checkpoint
+
+`review-fixtures.json` and `ReviewOracle.kt` execute the actual pinned
+AnalyzeRule/JSoup/JSONPath/Rhino classes at String, selected node/collection,
+JSONPath Java-container and script-created NativeObject boundaries. The final
+review corpus has 85 fixtures, 252 full-table HTML4 checks and one separately
+retained repeat of the nondeterministic NativeArray scalar: 338 observations.
+This is not 338 extraction/parity passes. Real exceptions and the two actual
+JVM-identity strings remain in the golden. Kind records both the actual list and
+the executed Kotlin join, including null and order. The original 33-row
+classification corpus remains preserved separately.
+
+```sh
+python tool/rule_field_oracle/run_review.py --inputs <verified-105-input-dir> --jars <own-pinned-jars> --output <external-scratch> --export-dart lib/source/html4_entities.dart
+python tool/rule_field_oracle/export_serialization.py
+flutter test --no-pub test/rule_field_review_test.dart --reporter expanded --concurrency=1
+```
+
+The runner verifies the immutable Git-object sources against #105's preparation,
+checks every actual classpath hash, verifies reached helper transcriptions and
+uses one heap-bounded JVM at a time. Compilation/run receipts stay external;
+`evidence/review-host` contains copied executed output and minimal provenance.
+`html4_entities.dart` is automatically exported from the fixed commons-text
+1.13.0 public lookup data, never hand-edited. UTF-16 code-unit comparisons retain
+surrogates rather than allowing JSON/UTF-8 replacement to hide differences.
+The Dart helper preserves overflow references and propagates illegal-code-point
+failure; it performs a single, case-sensitive, semicolon-required decode.
+
+The controller's original 13-case probe is preserved in external evidence and
+integrated into `test/rule_field_review_test.dart` with executed expectations.
+The scalar corpus now targets author fields, while kind uses the actual
+string-list/join boundary. Known Java-container JS coercion and NativeArray
+scalar format differences are explicit guards, not successful compatibility
+rows. `LIBER_REQUIRE_RULE_FIELD_PARITY=1` enables strict comparison of those
+known gaps; the original strict 0-pass/4-fail receipt is retained. The two node
+entity rows became exact comparisons after the controller-approved shared
+node/collection toString repair; other DOM getters and Root Document behavior
+are outside that repair.
+
+The raw script/style checks exposed a native pretty-printing discrepancy.
+The fixed JAR's actual bytecode and reflection prove that the opening condition
+uses Tag.isBlock, while the closing condition uses Tag.formatAsBlock. Only the
+first predicate in `serialize.rs::should_indent` changes. The generated Rust
+fixture file comes from the real raw serialization golden and uses LF-pinned
+bytes. No tag-table, native API/ABI, generated binding or dependency changes are
+part of this patch. A matching DLL rebuild and affected serializer/adapter
+checks must bind the native source checkpoint before this result can be claimed;
+old-DLL passes cannot validate the new Rust condition.

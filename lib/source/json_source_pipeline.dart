@@ -970,11 +970,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final books = <HtmlBook>[];
     for (final entry in found) {
-      // A book URL is resolved against the search request's own URL, the way the
-      // frozen `AnalyzeUrl` chains its stages, and keeps the options it carried
-      // for the details fetch. The URL keeps the adapter's existing
-      // `template` + `expandSourceUrl` path: the request-time substitution and
-      // the `,{...}` options are that path's, not the rule-field path's.
+      // Read this scalar field before parsing the returned address's existing
+      // request options; interpolation and sibling JS keep AnalyzeRule order.
       final bookAddressValue = search['bookUrl']!.trim().isEmpty
           ? ''
           : '${await _field(entry, search['bookUrl']!, label: 'ruleSearch.bookUrl') ?? ''}';

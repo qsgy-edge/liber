@@ -90,7 +90,7 @@
     "tool\\html_content_oracle\\FrozenContentStubs.kt": "7339dbfb0359c104f888385dce9105822db63c9ab35caefabeed536bbe1c81a7",
     "tool\\rule_field_oracle\\FrozenValueUtils.kt": "f4d204009ff8fbb7f4537b7e13c6f144032d2c617e0e1a46396fb6d8404b9116",
     "tool\\rule_field_oracle\\UnreachedXPath.kt": "2f0661f7e0dc3ca11b3522d227d72fc0ab987412bb40747d4168977432dd148a",
-    "tool\\rule_field_oracle\\ReviewOracle.kt": "e45eaa7793c673185588417c039eb74f12c502753d2744c36b95f61d757e34dc"
+    "tool\\rule_field_oracle\\ReviewOracle.kt": "8b9ffb431d09006fabdde5c4c2d2bcd0152a763fef02516c5eb95f2e9a568bb2"
   },
   "toolchainSha256": {
     "C:\\Users\\17945\\AppData\\Local\\Programs\\Android Studio\\jbr\\bin\\java.exe": "f8583ffd59754ad92f3cac3445ff81ab6e69fa4c0abe292653c1f3d6bef2450d",
@@ -115,10 +115,10 @@
     "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\93\\review-repair\\jars\\jsoup-1.16.2.jar": "a73a1eb5d02b51490547c46485e30f4f14e68af3624840b57abe8c4580a00b83",
     "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\93\\review-repair\\jars\\JsoupXpath-2.5.3.jar": "1bcd0643910663a6eb0e506803011b9145b5192b8905b1522ab07d0702ce394a"
   },
-  "fixturesSha256": "25ea417fd77bbf2de62e74390fe0a32dc74460be45cbf1677cd8906def0f3444",
-  "harnessSha256": "e45eaa7793c673185588417c039eb74f12c502753d2744c36b95f61d757e34dc",
+  "fixturesSha256": "46f4c60db96a40709c254dc74f3cf1c16d40a2372aeae58f81fa5060186f474c",
+  "harnessSha256": "8b9ffb431d09006fabdde5c4c2d2bcd0152a763fef02516c5eb95f2e9a568bb2",
   "runnerSha256": "35157caa3024afb35b8d627a4858ed7e92fee19974421e48ee707c58d8d36840",
-  "goldenSha256": "1f5b4be19965481324d3bc87418b8d1f08fef73df63c314b7b33124641fef5c9",
+  "goldenSha256": "296c422100025253a20af1da1fadc6bcda61acc2af2b66e622ddfb17d6ca543f",
   "entityExportSha256": "aef541043f1da417ae2a02fdf7d9808c7368463f71e76cae5e62812066f46c92",
   "entityDartSha256": "62fbe4d5cb7e8b27ca7eab61acde548b00ba1f2bdbffc92d71bba16b3fb1db3e",
   "compileExit": 0,
@@ -131,5 +131,5 @@
     }
   ],
   "limitations": "Actual JSoup/JSONPath paths and typed content execute. XPath/network/device paths remain fail-closed or outside corpus. Entity/variable stubs supply bounded unused services; no platform parity claimed.",
-  "receiptSource": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\93\\review-repair\\oracle-v7\\manifest.json"
+  "receiptSource": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\93\\review-repair\\oracle-v8\\manifest.json"
 }

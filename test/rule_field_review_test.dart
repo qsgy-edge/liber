@@ -174,7 +174,9 @@ void main() {
       expect(manifest['deviceRows'], 'not-run');
       expect(manifest['compileExit'], 0);
       expect(manifest['runExit'], 0);
-      for (final row in _cases) expect(_golden, contains(row['name']));
+      for (final row in _cases) {
+        expect(_golden, contains(row['name']));
+      }
     });
 
     test(
@@ -267,6 +269,8 @@ void main() {
         expect(_value('native-array-scalar/repeat'), startsWith(prefix));
         final actual = (await detailField(_case('native-array-scalar'))).author;
         expect(actual, isNot(startsWith(prefix)));
+        // Keep the actual unmatched output in the differential receipt.
+        // ignore: avoid_print
         print(
           'NativeArray stable shape mismatch: frozen=$prefix..., product=$actual; exact JVM identity notCompared',
         );
@@ -293,10 +297,13 @@ void main() {
           actual = (await detailField(row)).author;
         }
         final expected = _value(name);
+        // Record both code-unit arrays even for known residuals.
+        // ignore: avoid_print
         print(
-          'DECLARED MISMATCH $name: frozenUnits=${expected.codeUnits}; productUnits=${actual.codeUnits}',
+          '${name.startsWith('node-') ? 'NODE COMPARISON' : 'DECLARED MISMATCH'} $name: frozenUnits=${expected.codeUnits}; productUnits=${actual.codeUnits}',
         );
-        if (Platform.environment['LIBER_REQUIRE_RULE_FIELD_PARITY'] == '1') {
+        if (name.startsWith('node-') ||
+            Platform.environment['LIBER_REQUIRE_RULE_FIELD_PARITY'] == '1') {
           expect(actual.codeUnits, expected.codeUnits);
         } else {
           // Guard the recorded upstream serialization gap without presenting it
@@ -305,6 +312,48 @@ void main() {
         }
       });
     }
+    for (final name in [
+      'node-raw-double',
+      'node-raw-script-style',
+      'collection-raw-double',
+      'collection-raw-script-style',
+      'collection-raw-empty',
+    ]) {
+      test(
+        '$name keeps raw outer serialization before any scalar tail',
+        () async {
+          final row = _case(name);
+          final chosen = row['type'] == 'node' ? 'nodes[0]' : 'nodes';
+          final code =
+              '@js: var nodes = Jsoup.parse(result).select("li"); '
+              'var text = String($chosen); var units = []; '
+              'for(var i=0;i<text.length;i++) units.push(text.charCodeAt(i)); '
+              'JSON.stringify(units);';
+          final actual = (await detailField(<String, Object?>{
+            'type': 'string',
+            'content': row['content'],
+            'rule': code,
+          })).author;
+          expect(
+            (jsonDecode(actual) as List).cast<int>(),
+            _value(name).codeUnits,
+          );
+        },
+      );
+    }
+    for (final property in ['number', 'boolean', 'null']) {
+      for (final form in ['scalar', 'list']) {
+        final name = 'native-$property-$form';
+        test('$name retains its actual primitive caller boundary', () async {
+          final book = await detailField(_case(name), kind: form == 'list');
+          expect(
+            form == 'list' ? book.kind : book.author,
+            form == 'list' ? _joined(name) : _value(name),
+          );
+        });
+      }
+    }
+
     test(
       'known raw-init NativeObject String(result) uses its key boundary',
       () async {
@@ -323,20 +372,22 @@ void main() {
           (source['ruleBookInfo'] as Map)['tocUrl'] = _case(name)['rule'];
           final target = Uri.parse(_value(name));
           final pages = _Pages({
-              '/book': jsonEncode({
-                'name': 'body',
-                'list': [
-                  {'name': 'chapter', 'href': '/chapter'},
-                ],
-              }),
-              '/ok': jsonEncode({
-                'list': [
-                  {'name': 'chapter', 'href': '/chapter'},
-                ],
-              }),
-            });
-          final (book, chapters) = await JsonSourcePipeline(source, pages)
-              .details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old'));
+            '/book': jsonEncode({
+              'name': 'body',
+              'list': [
+                {'name': 'chapter', 'href': '/chapter'},
+              ],
+            }),
+            '/ok': jsonEncode({
+              'list': [
+                {'name': 'chapter', 'href': '/chapter'},
+              ],
+            }),
+          });
+          final (book, chapters) = await JsonSourcePipeline(
+            source,
+            pages,
+          ).details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old'));
           expect(book.title, 'body');
           expect(chapters, hasLength(1));
           expect(pages.requests, ['/book', target.path]);

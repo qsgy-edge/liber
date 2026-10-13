@@ -479,5 +479,82 @@
     "content": "{\"name\":\"body\"}",
     "url": true,
     "base": "https://review-rules.test/book"
+  },
+  {
+    "name": "native-number-scalar",
+    "rule": "{{'number'}}",
+    "content": "{\"number\": 42}",
+    "type": "nativeObject",
+    "form": "scalar"
+  },
+  {
+    "name": "native-boolean-scalar",
+    "rule": "{{'boolean'}}",
+    "content": "{\"boolean\": true}",
+    "type": "nativeObject",
+    "form": "scalar"
+  },
+  {
+    "name": "native-null-scalar",
+    "rule": "{{'null'}}",
+    "content": "{\"null\": null}",
+    "type": "nativeObject",
+    "form": "scalar"
+  },
+  {
+    "name": "native-number-list",
+    "rule": "{{'number'}}",
+    "content": "{\"number\": 42}",
+    "type": "nativeObject",
+    "form": "list"
+  },
+  {
+    "name": "native-boolean-list",
+    "rule": "{{'boolean'}}",
+    "content": "{\"boolean\": true}",
+    "type": "nativeObject",
+    "form": "list"
+  },
+  {
+    "name": "native-null-list",
+    "rule": "{{'null'}}",
+    "content": "{\"null\": null}",
+    "type": "nativeObject",
+    "form": "list"
+  },
+  {
+    "name": "node-raw-double",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li><li><a href=\"/two\">B&amp;amp;</a></li></ul>",
+    "type": "node",
+    "unescape": false
+  },
+  {
+    "name": "node-raw-script-style",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">body</a><script>x=\"&amp;amp;\";</script><style>b{color:red}</style></li></ul>",
+    "type": "node",
+    "unescape": false
+  },
+  {
+    "name": "collection-raw-double",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li><li><a href=\"/two\">B&amp;amp;</a></li></ul>",
+    "type": "collection",
+    "unescape": false
+  },
+  {
+    "name": "collection-raw-script-style",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">body</a><script>x=\"&amp;amp;\";</script><style>b{color:red}</style></li></ul>",
+    "type": "collection",
+    "unescape": false
+  },
+  {
+    "name": "collection-raw-empty",
+    "rule": "{{String(result)}}",
+    "content": "<p>body</p>",
+    "type": "collection",
+    "unescape": false
   }
 ]

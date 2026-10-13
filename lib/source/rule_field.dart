@@ -327,10 +327,12 @@ class RuleField {
     var primary = (parts.extractionRule ?? parts.scripts.firstOrNull ?? '')
         .replaceAll(_putPattern, '');
     if (primary.startsWith('@@')) primary = primary.substring(2);
-    if (primary.toLowerCase().startsWith('@json:'))
+    if (primary.toLowerCase().startsWith('@json:')) {
       primary = primary.substring(6);
-    if (primary.toLowerCase().startsWith('@xpath:'))
+    }
+    if (primary.toLowerCase().startsWith('@xpath:')) {
       primary = primary.substring(7);
+    }
     var parameterCount = 0;
     var cursor = 0;
     for (final token in _evalPattern.allMatches(primary)) {
@@ -361,7 +363,7 @@ class RuleField {
             : await _substitute(_scripts.first, value, _context, true));
     final fields = _literalValueFields ?? splitRuleFields(text);
     final result = _parameterCount > 1 ? fields.rule : value[fields.rule];
-    if (result == null) return '';
+    if (result == null) return forStringList ? null : '';
     if (forStringList && result is List) {
       return fields.regex?.isNotEmpty == true
           ? [
@@ -375,7 +377,11 @@ class RuleField {
         result is! String) {
       return null;
     }
-    final textValue = result is Map ? '[object Object]' : _format(result);
+    final textValue = result is Map
+        ? '[object Object]'
+        : result is num
+        ? result.toDouble().toString()
+        : _format(result);
     // A NativeArray scalar's Java identity format remains an explicit mismatch;
     // do not fabricate a JVM identity suffix from a Dart array.
     return fields.regex?.isNotEmpty == true

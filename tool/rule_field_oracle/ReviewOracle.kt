@@ -46,6 +46,7 @@ fun main(args: Array<String>) {
             val content: Any = when (case.type) {
                 "string" -> case.content
                 "node" -> Jsoup.parse(case.content).select(case.selector).first()!!
+                "collection" -> Jsoup.parse(case.content).select(case.selector)
                 "map" -> AnalyzeByJSonPath(case.content).getObject("$.item")!!
                 "list" -> AnalyzeByJSonPath(case.content).getObject("$.list")!!
                 "nativeObject" -> rule.evalJS("(" + case.content + ")")!!

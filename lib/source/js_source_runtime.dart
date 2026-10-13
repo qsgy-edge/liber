@@ -2808,7 +2808,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     define('selectFirst', css => domFirstNode(html, domRule(rule, css)));
     define('attr', name => domFirst(domValues(html, rule, String(name))));
     define('text', () => domValues(html, rule, 'text').join(' '));
-    define('toString', () => domValues(html, rule, 'html').join('\n'));
+    define('toString', () => domValues(html, rule, 'all').join('\n'));
     return elements;
   }
   function domFirstNode(html, rule) {
@@ -2823,7 +2823,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     define('attr', name => domFirst(domValues(html, rule === null || rule === undefined ? ':root' : rule, String(name))));
     define('text', () => domValues(html, rule === null || rule === undefined ? ':root' : rule, 'text').join(' '));
     define('toString', () => (rule === null || rule === undefined)
-      ? String(html) : domFirst(domValues(html, rule, 'html')));
+      ? String(html) : domFirst(domValues(html, rule, 'all')));
     // A name outside the list refuses by name instead of arriving as a
     // `TypeError`; the JS internals a value needs (`toJSON`, `then`, the
     // prototype's own members) stay themselves. The prototype is the proxy, so
