@@ -1088,6 +1088,8 @@
   "libraryChooseFolder": "选择书库目录",
   "libraryChangeFolder": "更换书库目录",
   "libraryNameConflict": "同名文件内容不同",
+  "libraryHistoricalConflict": "文件来自书籍的原位置",
+  "libraryHistoricalConflictDescription": "导入 {name} 时，可以更新已有书籍并保留其阅读进度，或保留两本并另存独立副本。",
   "libraryConflictDescription": "{name} 已有不同内容。可以更新此书并保留书架记录和阅读进度，也可以保留两本或取消。",
   "libraryConflictOtherBook": "{name} 属于另一部书。请选择保留两本或取消，以保留各自的书籍记录和阅读进度。",
   "libraryKeepBoth": "保留两本",
@@ -1114,6 +1116,13 @@
   "libraryDeleteFile": "删除书库文件",
   "libraryDeleteDescription": "删除 {name} 的书库副本？原导入文件和阅读记录会保留，之后需重新关联才能阅读。",
   "libraryRead": "阅读此书",
+  "@libraryHistoricalConflictDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "@libraryConflictDescription": {
     "placeholders": {
       "name": {

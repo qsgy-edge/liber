@@ -1944,6 +1944,18 @@ abstract class AppLocalizations {
   /// **'同名文件内容不同'**
   String get libraryNameConflict;
 
+  /// No description provided for @libraryHistoricalConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件来自书籍的原位置'**
+  String get libraryHistoricalConflict;
+
+  /// No description provided for @libraryHistoricalConflictDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入 {name} 时，可以更新已有书籍并保留其阅读进度，或保留两本并另存独立副本。'**
+  String libraryHistoricalConflictDescription(String name);
+
   /// No description provided for @libraryConflictDescription.
   ///
   /// In zh, this message translates to:

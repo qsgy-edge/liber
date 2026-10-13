@@ -1265,11 +1265,17 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
           context: context,
           builder: (context) => AlertDialog(
             scrollable: true,
-            title: Text(l10n.libraryNameConflict),
+            title: Text(
+              conflict.historicalAssociation
+                  ? l10n.libraryHistoricalConflict
+                  : l10n.libraryNameConflict,
+            ),
             content: Text(
-              conflict.canUpdate
-                  ? l10n.libraryConflictDescription(conflict.name)
-                  : l10n.libraryConflictOtherBook(conflict.name),
+              !conflict.canUpdate
+                  ? l10n.libraryConflictOtherBook(conflict.name)
+                  : conflict.historicalAssociation
+                  ? l10n.libraryHistoricalConflictDescription(conflict.name)
+                  : l10n.libraryConflictDescription(conflict.name),
             ),
             actions: [
               TextButton(
