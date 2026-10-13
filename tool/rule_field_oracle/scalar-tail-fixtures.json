@@ -1,0 +1,72 @@
+[
+  {
+    "name": "search-node-literal",
+    "type": "node",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>"
+  },
+  {
+    "name": "search-node-before-script",
+    "type": "node",
+    "rule": "{{String(result)}} @js: result.indexOf('&amp;amp;') >= 0 ? 'raw-node' : 'decoded-node'",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>"
+  },
+  {
+    "name": "search-node-script-scalar",
+    "type": "node",
+    "rule": "@js:String(result)",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>"
+  },
+  {
+    "name": "search-node-script-list",
+    "type": "node",
+    "form": "list",
+    "rule": "@js:String(result)",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>"
+  },
+  {
+    "name": "literal-sibling-count",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); '&amp;amp;'}} @js: java.put('count', String(Number(java.get('count') || 0) + 1)); result + ':' + java.get('count')"
+  },
+  {
+    "name": "document-node-script-scalar",
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li')[0])",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "document-node-script-list",
+    "form": "list",
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li')[0])",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "document-node-script-content-false",
+    "unescape": false,
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li')[0]).replace(/<[^>]+>/g, '').replace(/\\n/g, '|')",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "document-collection-script-scalar",
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li'))",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "document-collection-script-list",
+    "form": "list",
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li'))",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "document-collection-script-content-false",
+    "unescape": false,
+    "rule": "@js:String(org.jsoup.Jsoup.parse(result).select('li')).replace(/<[^>]+>/g, '').replace(/\\n/g, '|')",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>"
+  },
+  {
+    "name": "collection-content-frozen-only",
+    "type": "collection",
+    "rule": "@js:String(result)",
+    "content": "<ul><li>A&amp;amp;</li><li>B&amp;amp;</li></ul>",
+    "product": "not-run"
+  }
+]

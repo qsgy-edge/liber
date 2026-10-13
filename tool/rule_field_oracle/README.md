@@ -100,3 +100,31 @@ bytes. No tag-table, native API/ABI, generated binding or dependency changes are
 part of this patch. A matching DLL rebuild and affected serializer/adapter
 checks must bind the native source checkpoint before this result can be claimed;
 old-DLL passes cannot validate the new Rust condition.
+
+## Post-native script-only scalar tail
+
+`scalar-tail-fixtures.json` and `ScalarTailOracle.kt` add 12 executed, repeated
+observations without rebuilding or rerunning the original frozen corpus. The
+runner verifies the existing review-host receipt, source Git objects, compiled
+inputs and classpath hashes, records the actual compiled class hashes, and
+compiles only the small new harness with a 256 MB heap into external scratch.
+`evidence/scalar-tail-host` preserves that run's unmodified golden and receipt;
+the original classification and review goldens remain unchanged.
+
+```sh
+python tool/rule_field_oracle/run_scalar_tail.py --compiled <existing-oracle-v8-dir> --output <external-scratch>
+flutter test --no-pub test/rule_field_scalar_tail_test.dart --reporter expanded --concurrency=1
+```
+
+Eleven rows compare reachable product callers: search item Element content,
+literal plus sibling script/count, and String page content whose script creates
+real Jsoup nodes or Elements. Ordinary scalar reads perform one HTML4 tail after
+scripts; kind uses the actual list/join boundary with no tail; chapter content
+keeps `unescape=false`. The content scripts remove tags and join lines before
+the caller so their entity-bearing values survive the existing formatter. Those
+rows isolate the disabled tail, not #104's entire chapter formatting order.
+One direct `setContent(Elements)` row is frozen-only: the product does not expose
+that init-content boundary, and it is not counted as parity. The focused product
+suite has 11 differential rows plus one provenance check, with no mismatch guards.
+The deciding frozen tail is `AnalyzeRule.kt:308-314`; list reads use `:166-239`.
+No new DOM getter, native ABI or explicit object/prototype input protocol is added.

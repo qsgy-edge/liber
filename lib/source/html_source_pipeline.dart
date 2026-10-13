@@ -863,7 +863,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   String _scalarTail(RuleField field, Object? value, {bool unescape = true}) {
     final text = '${value ?? ''}';
-    return field.isLiteralValue && unescape ? unescapeHtml4(text) : text;
+    return (field.isLiteralValue || field.isScriptOnly) && unescape
+        ? unescapeHtml4(text)
+        : text;
   }
 
   /// The URL mode's replacement when the extraction found nothing, as
