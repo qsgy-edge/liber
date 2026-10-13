@@ -94,10 +94,11 @@ class SpaceStore {
 
   /// Legado joins a source's groups into a `HashSet` and serializes that
   /// comma-joined, so the order is not meaningful and duplicates are not
-  /// either.
+  /// either. String imports accept its four group separators; array entries
+  /// already name individual groups and keep punctuation within each name.
   static List<String> _groupNames(Object? value) {
     final names = switch (value) {
-      String joined => joined.split(','),
+      String joined => joined.split(RegExp('[,;，；]')),
       List<Object?> list => list.map((entry) => '$entry'),
       _ => const <String>[],
     };
