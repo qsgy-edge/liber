@@ -1109,7 +1109,14 @@ class LocalLibrary {
                       _sameLocator(file.kind, file.locator, reference.locator),
                 )
                 .firstOrNull;
-      if (sameKey == null && sameLocator == null) continue;
+      final nativeKey = location.kind != LibraryLocationKind.android
+          ? null
+          : files
+                .where(
+                  (file) => _nativeRootHint(location, book.relativePath, file),
+                )
+                .firstOrNull;
+      if (sameKey == null && sameLocator == null && nativeKey == null) continue;
       final actualRoot = inspectedRoots[root.id] ??= await access.inspectRoot(
         location,
       );
@@ -1127,18 +1134,38 @@ class LocalLibrary {
       );
       // Legacy native book rows can lack file facts. Their exact opaque key
       // can name a listed member only after the directory itself is verified.
-      final known =
+      var known =
           refreshedReference ??
           (stored?.locator == null &&
                   actualRoot.kind != LibraryLocationKind.filesystem &&
                   actualRoot.sameLocation(destination)
               ? sameKey
               : null);
+      if (known == null && stored?.locator == null && nativeKey != null) {
+        final rooted = await access.fileInRoot(actualRoot, nativeKey);
+        if (rooted != null) {
+          if (rooted.directory ||
+              rooted.key != book.relativePath ||
+              !_sameFile(rooted, nativeKey)) {
+            throw const LibraryAccessFailure(
+              LibraryAccessError.verification,
+              'Current owner membership does not identify its recorded key',
+            );
+          }
+          known = rooted;
+        }
+      }
       if (known == null) continue;
       final current = await access.stat(known);
       if (current == null) continue;
       final actual = await access.fileInRoot(destination, current);
       if (actual == null) continue;
+      if (actual.directory || !_sameFile(actual, current)) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.verification,
+          'Current owner membership does not identify its current file',
+        );
+      }
       final listed = byKey[actual.key];
       if (listed == null || !_sameFile(actual, listed)) continue;
       final previous = owners[actual.key];
@@ -1295,11 +1322,22 @@ class LocalLibrary {
       for (final candidate in logicalMatches) {
         if (!candidate.file.directory &&
             await _matchesFingerprint(fingerprint, candidate.file)) {
+          final reusedFile = await _reuseMember(
+            destination,
+            candidate.file,
+            candidate.book,
+          );
+          if (reusedFile == null) {
+            throw const LibraryAccessFailure(
+              LibraryAccessError.verification,
+              'Equal library candidate is no longer a destination member',
+            );
+          }
           final unchanged =
               candidate.book!.rootId == rootId &&
-              candidate.book!.relativePath == candidate.file.key;
+              candidate.book!.relativePath == reusedFile.key;
           return _PreparedBook(
-            file: candidate.file,
+            file: reusedFile,
             name: logicalName,
             id: candidate.book!.id,
             existing: candidate.book,
@@ -1337,20 +1375,27 @@ class LocalLibrary {
       if (fingerprint != null &&
           await _matchesFingerprint(fingerprint, collision.file)) {
         final reused = incoming ?? collision.book;
-        final unchanged =
-            incoming == null &&
-            reused?.rootId == rootId &&
-            reused?.relativePath == collision.file.key;
-        return _PreparedBook(
-          file: collision.file,
-          name: incoming == null && reused != null
-              ? collision.name
-              : logicalName,
-          id: reused?.id ?? mintId('book'),
-          existing: reused,
-          unchanged: unchanged,
-          fingerprint: fingerprint,
-        );
+        final reusedFile =
+            await _reuseMember(destination, collision.file, reused) ??
+            (historical != null && member != null
+                ? await _reuseMember(destination, member, reused)
+                : null);
+        if (reusedFile != null) {
+          final unchanged =
+              incoming == null &&
+              reused?.rootId == rootId &&
+              reused?.relativePath == reusedFile.key;
+          return _PreparedBook(
+            file: reusedFile,
+            name: incoming == null && reused != null
+                ? collision.name
+                : logicalName,
+            id: reused?.id ?? mintId('book'),
+            existing: reused,
+            unchanged: unchanged,
+            fingerprint: fingerprint,
+          );
+        }
       }
       final choice = await resolver(conflict);
       transfer.checkCancelled();
@@ -1414,6 +1459,29 @@ class LocalLibrary {
     );
   }
 
+  Future<LibraryFileReference?> _reuseMember(
+    LibraryLocation destination,
+    LibraryFileReference file,
+    ShelfBook? book,
+  ) async {
+    final member = await access.fileInRoot(destination, file);
+    if (member == null) return null;
+    if (member.directory || !_sameFile(member, file)) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.verification,
+        'Reused candidate membership does not identify the same file',
+      );
+    }
+    final owner = (await _ownersOf(destination, [member]))[member.key];
+    if (owner != null && owner.id != book?.id) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.collision,
+        'Reused destination member belongs to another book',
+      );
+    }
+    return member;
+  }
+
   Future<bool> _matchesFingerprint(
     LibraryFingerprint source,
     LibraryFileReference candidate,
@@ -1426,27 +1494,85 @@ class LocalLibrary {
     }
   }
 
+  // Transport hints nominate a grant to verify; they never prove membership.
+  // Android document keys are provider-local. Apple keys change with the root,
+  // so only its declared file URL can nominate a containing bookmark here.
+  static bool _nativeRootHint(
+    LibraryLocation root,
+    String? key,
+    LibraryFileReference source,
+  ) {
+    final rootUri = Uri.tryParse(root.locator);
+    final sourceUri = Uri.tryParse(source.locator);
+    if (rootUri == null || sourceUri == null) return false;
+    if (root.kind == LibraryLocationKind.android) {
+      return rootUri.scheme == 'content' &&
+          sourceUri.scheme == 'content' &&
+          rootUri.authority.isNotEmpty &&
+          rootUri.authority == sourceUri.authority &&
+          key == source.key;
+    }
+    if (root.kind == LibraryLocationKind.apple) {
+      return rootUri.scheme == 'file' &&
+          sourceUri.scheme == 'file' &&
+          rootUri.hasAbsolutePath &&
+          sourceUri.hasAbsolutePath &&
+          !rootUri.hasQuery &&
+          !sourceUri.hasQuery &&
+          !rootUri.hasFragment &&
+          !sourceUri.hasFragment &&
+          rootUri.authority == sourceUri.authority &&
+          p.posix.isWithin(rootUri.path, sourceUri.path);
+    }
+    return false;
+  }
+
   /// An original pair is correlation only. Resolve the selected member through
   /// a stored root's inspected grant before treating that pair as history.
   Future<ShelfBook?> _historicalOwner(LibraryFileReference source) async {
     final roots = await _rootsById();
     final books = await store.localBooks();
+    if (!books.any((book) => book.originalRootId != null)) return null;
+    final selected = await access.stat(source);
+    if (selected == null || selected.directory) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.missing,
+        'Selected historical candidate is missing',
+      );
+    }
+    if (!_sameFile(source, selected)) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.verification,
+        'Selected historical candidate changed identity',
+      );
+    }
     ShelfBook? historical;
     for (final root in roots.values) {
-      if (!books.any((book) => book.originalRootId == root.id)) continue;
+      final associations = books.where(
+        (book) => book.originalRootId == root.id,
+      );
+      if (associations.isEmpty) continue;
       final location = _location(root);
-      if (location == null || location.kind != source.kind) continue;
+      if (location == null || location.kind != selected.kind) continue;
       final nearby =
-          source.root != null &&
-          _sameLocator(location.kind, location.locator, source.root!.locator);
+          selected.root != null &&
+          _sameLocator(location.kind, location.locator, selected.root!.locator);
       final inside =
           location.kind == LibraryLocationKind.filesystem &&
-          p.isWithin(location.locator, source.locator);
-      if (!nearby && !inside) continue;
+          p.isWithin(location.locator, selected.locator);
+      final native = associations.any(
+        (book) =>
+            _nativeRootHint(location, book.originalRelativePath, selected),
+      );
+      if (!nearby && !inside && !native) continue;
       final actual = await access.inspectRoot(location);
-      final member = await access.fileInRoot(actual, source);
-      if (member == null || member.directory || !_sameFile(member, source)) {
-        continue;
+      final member = await access.fileInRoot(actual, selected);
+      if (member == null) continue;
+      if (member.directory || !_sameFile(member, selected)) {
+        throw const LibraryAccessFailure(
+          LibraryAccessError.verification,
+          'Historical membership does not identify the selected file',
+        );
       }
       // A unique current owner still owns repeat admission. A past association
       // does not compete with that ownership or authorize a different file.
