@@ -405,5 +405,13 @@
         "type": "String"
       }
     }
-  }
+  },
+  "bookSourcesTitle": "Book Sources",
+  "findBookSources": "Find sources by name or URL",
+  "clearBookSourceFilter": "Clear search",
+  "bookSourcesLoadFailed": "Could not load Book Sources. Try again.",
+  "noMatchingBookSources": "No matching Book Sources",
+  "bookSourceEnabled": "Enabled",
+  "bookSourceDisabled": "Disabled",
+  "bookSourceToggleFailed": "Could not save the enabled state. Try again."
 }

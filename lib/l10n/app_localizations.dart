@@ -2111,6 +2111,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'阅读此书'**
   String get libraryRead;
+
+  /// No description provided for @bookSourcesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'书源'**
+  String get bookSourcesTitle;
+
+  /// No description provided for @findBookSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'查找书源名称或网址'**
+  String get findBookSources;
+
+  /// No description provided for @clearBookSourceFilter.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除查找'**
+  String get clearBookSourceFilter;
+
+  /// No description provided for @bookSourcesLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取书源，请重试。'**
+  String get bookSourcesLoadFailed;
+
+  /// No description provided for @noMatchingBookSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有匹配的书源'**
+  String get noMatchingBookSources;
+
+  /// No description provided for @bookSourceEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已启用'**
+  String get bookSourceEnabled;
+
+  /// No description provided for @bookSourceDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get bookSourceDisabled;
+
+  /// No description provided for @bookSourceToggleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未能保存启停状态，请重试。'**
+  String get bookSourceToggleFailed;
 }
 
 class _AppLocalizationsDelegate

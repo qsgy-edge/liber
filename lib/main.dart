@@ -19,6 +19,7 @@ import 'settings/interface_language.dart';
 import 'settings/interface_language_page.dart';
 import 'settings/reader_script_page.dart';
 import 'settings/system_proxy_page.dart';
+import 'source/book_source_management_page.dart';
 import 'source/book_source_service.dart';
 import 'source/content_processing.dart';
 import 'source/http_source_transport.dart';
@@ -624,6 +625,22 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // #28's own entry is `界面语言`, beside #27's `中文转换` and #69's
         // `自动换源`.
         actions: [
+          TextButton.icon(
+            key: const ValueKey('book-source-management'),
+            onPressed: shelf == null
+                ? null
+                : () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            BookSourceManagementPage(service: shelf),
+                      ),
+                    );
+                    await _refreshShelfViews();
+                  },
+            icon: const Icon(Icons.source_outlined),
+            label: Text(l10n.bookSourcesTitle),
+          ),
           IconButton(
             onPressed: shelf == null
                 ? null

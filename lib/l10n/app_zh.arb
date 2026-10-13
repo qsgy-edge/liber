@@ -1178,5 +1178,13 @@
         "type": "String"
       }
     }
-  }
+  },
+  "bookSourcesTitle": "书源",
+  "findBookSources": "查找书源名称或网址",
+  "clearBookSourceFilter": "清除查找",
+  "bookSourcesLoadFailed": "无法读取书源，请重试。",
+  "noMatchingBookSources": "没有匹配的书源",
+  "bookSourceEnabled": "已启用",
+  "bookSourceDisabled": "已停用",
+  "bookSourceToggleFailed": "未能保存启停状态，请重试。"
 }

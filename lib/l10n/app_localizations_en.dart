@@ -1282,4 +1282,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryRead => 'Read book';
+
+  @override
+  String get bookSourcesTitle => 'Book Sources';
+
+  @override
+  String get findBookSources => 'Find sources by name or URL';
+
+  @override
+  String get clearBookSourceFilter => 'Clear search';
+
+  @override
+  String get bookSourcesLoadFailed => 'Could not load Book Sources. Try again.';
+
+  @override
+  String get noMatchingBookSources => 'No matching Book Sources';
+
+  @override
+  String get bookSourceEnabled => 'Enabled';
+
+  @override
+  String get bookSourceDisabled => 'Disabled';
+
+  @override
+  String get bookSourceToggleFailed =>
+      'Could not save the enabled state. Try again.';
 }

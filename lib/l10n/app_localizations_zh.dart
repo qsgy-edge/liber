@@ -1239,6 +1239,30 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get libraryRead => '阅读此书';
+
+  @override
+  String get bookSourcesTitle => '书源';
+
+  @override
+  String get findBookSources => '查找书源名称或网址';
+
+  @override
+  String get clearBookSourceFilter => '清除查找';
+
+  @override
+  String get bookSourcesLoadFailed => '无法读取书源，请重试。';
+
+  @override
+  String get noMatchingBookSources => '没有匹配的书源';
+
+  @override
+  String get bookSourceEnabled => '已启用';
+
+  @override
+  String get bookSourceDisabled => '已停用';
+
+  @override
+  String get bookSourceToggleFailed => '未能保存启停状态，请重试。';
 }
 
 /// The translations for Chinese, as used in Hong Kong, using the Han script (`zh_Hant_HK`).
@@ -2476,6 +2500,30 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
 
   @override
   String get libraryRead => '閱讀此書';
+
+  @override
+  String get bookSourcesTitle => '書源';
+
+  @override
+  String get findBookSources => '查找書源名稱或網址';
+
+  @override
+  String get clearBookSourceFilter => '清除查找';
+
+  @override
+  String get bookSourcesLoadFailed => '無法讀取書源，請重試。';
+
+  @override
+  String get noMatchingBookSources => '沒有匹配的書源';
+
+  @override
+  String get bookSourceEnabled => '已啓用';
+
+  @override
+  String get bookSourceDisabled => '已停用';
+
+  @override
+  String get bookSourceToggleFailed => '未能保存啓停狀態，請重試。';
 }
 
 /// The translations for Chinese, as used in Taiwan, using the Han script (`zh_Hant_TW`).
@@ -3713,4 +3761,28 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
 
   @override
   String get libraryRead => '閱讀此書';
+
+  @override
+  String get bookSourcesTitle => '書源';
+
+  @override
+  String get findBookSources => '查詢書源名稱或網址';
+
+  @override
+  String get clearBookSourceFilter => '清除查詢';
+
+  @override
+  String get bookSourcesLoadFailed => '無法讀取書源，請重試。';
+
+  @override
+  String get noMatchingBookSources => '沒有匹配的書源';
+
+  @override
+  String get bookSourceEnabled => '已啟用';
+
+  @override
+  String get bookSourceDisabled => '已停用';
+
+  @override
+  String get bookSourceToggleFailed => '未能儲存啟停狀態，請重試。';
 }
