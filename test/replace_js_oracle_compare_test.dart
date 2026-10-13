@@ -25,8 +25,14 @@ void main() {
           'content': '　　body',
           'selection': {'title': <String>[], 'content': <String>[]},
           'rulesDisabledByRun': <String>[],
+          'notices': <String>[],
         },
     ];
+    for (final id in ['js-error', 'js-timeout']) {
+      product.singleWhere((row) => row['id'] == id)['notices'] = [
+        'synthetic notice for comparator mechanics',
+      ];
+    }
     synthetic = {
       for (final key in ['fixtureId', 'corpusVersion', 'baselineCommit'])
         key: fixture[key],
@@ -35,6 +41,7 @@ void main() {
       'cleanup': {'databaseClosed': true, 'scratchRemoved': true},
       'rows': jsonDecode(jsonEncode(product)),
     };
+    (synthetic['rows'] as List).last['timeoutObserved'] = true;
   });
   Map<String, Object?> compare(Map<String, dynamic>? golden) => compareRows(
     fixture,
@@ -46,6 +53,9 @@ void main() {
       (fixture['cases'] as List).indexWhere((row) => row['id'] == id);
 
   test('missing frozen evidence leaves every row not-run', () {
+    for (final id in ['js-error', 'js-timeout']) {
+      product[indexOf(id)].remove('notices');
+    }
     final result = compare(null);
     expect(result['counts'], {
       'pass': 0,
@@ -70,21 +80,24 @@ void main() {
     ]);
   });
 
-  test('rejects stale fixture hashes, missing, duplicate and reordered rows', () {
-    synthetic['fixtureSha256'] = 'stale';
-    expect(() => compare(synthetic), throwsFormatException);
-    synthetic['fixtureSha256'] = 'synthetic-test-hash';
-    final rows = synthetic['rows'] as List;
-    final first = rows.removeAt(0);
-    expect(() => compare(synthetic), throwsFormatException);
-    rows.insert(0, rows.first);
-    expect(() => compare(synthetic), throwsFormatException);
-    rows[0] = first;
-    final second = rows[1];
-    rows[1] = rows[0];
-    rows[0] = second;
-    expect(() => compare(synthetic), throwsFormatException);
-  });
+  test(
+    'rejects stale fixture hashes, missing, duplicate and reordered rows',
+    () {
+      synthetic['fixtureSha256'] = 'stale';
+      expect(() => compare(synthetic), throwsFormatException);
+      synthetic['fixtureSha256'] = 'synthetic-test-hash';
+      final rows = synthetic['rows'] as List;
+      final first = rows.removeAt(0);
+      expect(() => compare(synthetic), throwsFormatException);
+      rows.insert(0, rows.first);
+      expect(() => compare(synthetic), throwsFormatException);
+      rows[0] = first;
+      final second = rows[1];
+      rows[1] = rows[0];
+      rows[0] = second;
+      expect(() => compare(synthetic), throwsFormatException);
+    },
+  );
 
   test('rejects incomplete cleanup and a wrong boundary', () {
     synthetic['cleanup'] = {'databaseClosed': true, 'scratchRemoved': false};
@@ -94,16 +107,19 @@ void main() {
     expect(() => compare(synthetic), throwsFormatException);
   });
 
-  test('selection order, title and disabled rules stay strict observations', () {
-    product[indexOf('js-ordering-with-literal')]['selection'] = {
-      'title': <String>[],
-      'content': ['stable-tie', 'later'],
-    };
-    product[indexOf('js-title-scope')]['title'] = 'wrong';
-    product[indexOf('js-error')]['rulesDisabledByRun'] = ['js-error'];
-    final result = compare(synthetic);
-    expect((result['counts'] as Map)['fail'], 3);
-  });
+  test(
+    'selection order, title and disabled rules stay strict observations',
+    () {
+      product[indexOf('js-ordering-with-literal')]['selection'] = {
+        'title': <String>[],
+        'content': ['stable-tie', 'later'],
+      };
+      product[indexOf('js-title-scope')]['title'] = 'wrong';
+      product[indexOf('js-error')]['rulesDisabledByRun'] = ['js-error'];
+      final result = compare(synthetic);
+      expect((result['counts'] as Map)['fail'], 3);
+    },
+  );
 
   test('an exact match on a policy row is still notCompared, never pass', () {
     final result = compare(synthetic);
@@ -113,7 +129,9 @@ void main() {
     // rather than silently promoted.
     final declared = (result['acceptedDivergences'] as List).cast<Map>();
     expect(
-      declared.singleWhere((entry) => entry['id'] == 'js-binding-surface')['status'],
+      declared.singleWhere(
+        (entry) => entry['id'] == 'js-binding-surface',
+      )['status'],
       'pass',
     );
     final timeout = (result['rows'] as List)[indexOf('js-timeout')] as Map;
@@ -134,7 +152,9 @@ void main() {
     product[indexOf('js-timeout')]['content'] = 'product-keeps-text';
     product[indexOf('js-timeout')]['rulesDisabledByRun'] = ['js-timeout'];
     synthetic['rows'][indexOf('js-timeout')]['content'] = 'js-timeoutException';
-    synthetic['rows'][indexOf('js-timeout')]['rulesDisabledByRun'] = ['js-timeout'];
+    synthetic['rows'][indexOf('js-timeout')]['rulesDisabledByRun'] = [
+      'js-timeout',
+    ];
     synthetic['rows'][indexOf('js-timeout')]['timeoutObserved'] = true;
     final result = compare(synthetic);
     final row = (result['rows'] as List)[indexOf('js-timeout')] as Map;
@@ -167,6 +187,79 @@ void main() {
       },
     ]);
   });
+
+  for (final id in ['js-error', 'js-timeout']) {
+    for (final invalid in <Object?>[
+      null,
+      <String>[],
+      'not a list',
+      <Object?>[42],
+      <String>[''],
+      <String>[' \t\n'],
+      <String>['synthetic notice', ' '],
+    ]) {
+      test(
+        '$id rejects invalid product notice capture ${jsonEncode(invalid)}',
+        () {
+          product[indexOf(id)]['notices'] = invalid;
+          final row = (compare(synthetic)['rows'] as List)[indexOf(id)] as Map;
+          expect(row['status'], 'fail');
+          expect(row['noticeCaptureIntegrity']['status'], 'fail');
+          expect(row['noticeChannelComparison'], 'notCompared');
+        },
+      );
+    }
+    test('$id rejects a missing product notice capture', () {
+      product[indexOf(id)].remove('notices');
+      final row = (compare(synthetic)['rows'] as List)[indexOf(id)] as Map;
+      expect(row['status'], 'fail');
+    });
+  }
+
+  test(
+    'timeout capture requires an observed frozen deadline before policy',
+    () {
+      for (final value in <Object?>[null, false, 'true']) {
+        synthetic['rows'][indexOf('js-timeout')]['timeoutObserved'] = value;
+        final row =
+            (compare(synthetic)['rows'] as List)[indexOf('js-timeout')] as Map;
+        expect(row['status'], 'fail');
+        expect(row['noticeCaptureIntegrity']['status'], 'fail');
+      }
+    },
+  );
+
+  test('notice capture does not claim frozen channel or text equality', () {
+    synthetic['rows'][indexOf('js-error')].remove('notices');
+    final row =
+        (compare(synthetic)['rows'] as List)[indexOf('js-error')] as Map;
+    expect(row['status'], 'pass');
+    expect(row['noticeCaptureIntegrity']['status'], 'pass');
+    expect(row['noticeChannelComparison'], 'notCompared');
+  });
+
+  test('empty notices remain valid on ordinary and disabled rows', () {
+    final result = compare(synthetic);
+    for (final id in ['js-returned-text', 'js-disabled', 'backup-rule-1']) {
+      final row = (result['rows'] as List)[indexOf(id)] as Map;
+      expect(row['status'], 'pass');
+      expect(row['productNotices'], isEmpty);
+      expect(row['noticeCaptureIntegrity']['status'], 'notCompared');
+    }
+  });
+
+  test(
+    'unobserved frozen rows do not authorize a notice integrity verdict',
+    () {
+      for (final id in ['js-error', 'js-timeout']) {
+        synthetic['rows'][indexOf(id)]['status'] = 'not-run';
+        product[indexOf(id)].remove('notices');
+        final row = (compare(synthetic)['rows'] as List)[indexOf(id)] as Map;
+        expect(row['status'], 'not-run');
+        expect(row['noticeCaptureIntegrity']['status'], 'not-run');
+      }
+    },
+  );
 
   test('a product error cannot be promoted by equal fields', () {
     product.first['status'] = 'error';

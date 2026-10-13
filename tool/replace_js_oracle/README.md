@@ -133,7 +133,8 @@ dart run tool/replace_js_oracle/compare.dart build/windows/x64/runner/Debug/fjs.
   tool/replace_js_oracle/evidence/android-17-os4.0.0.31/comparison.json
 # A dash requests product-only capture; all frozen rows stay not-run.
 dart run tool/replace_js_oracle/compare.dart build/windows/x64/runner/Debug/fjs.dll - product-only.json
-flutter test test/replace_js_corpus_test.dart test/replace_js_oracle_compare_test.dart
+flutter test test/replace_js_corpus_test.dart test/replace_js_oracle_compare_test.dart `
+  test/replace_js_oracle_notice_test.dart
 ```
 
 Comparator exits: 0 = compared with no undeclared failures (declared policy rows
@@ -141,6 +142,43 @@ may remain); 1 = a mismatch/error; 2 = missing frozen evidence; 64 = usage error
 `complete` requires every row to pass, so the two policy rows keep it false.
 Invalid identities, row order/count, hashes, boundary or cleanup are rejected.
 Synthetic test values verify comparator mechanics only and never form a golden.
+
+## Product notice capture integrity (#91)
+
+The product snapshots notices after both title and content processing, including
+notices emitted before a later capture error. The `js-error` and `js-timeout`
+rows now retain their actual `replaceRuleFailed(...)` and
+`replaceRuleTimedOut(...)` notices. The re-recorded product comparison keeps
+**11 pass / 0 fail / 2 notCompared / 0 not-run**; timeout side effects and binding
+breadth retain their named policy differences.
+
+After fixture identities, hashes and frozen row order have been verified, an
+observed frozen row whose corpus declares `error-reporting` or
+`timeout-observation` requires a product notice list from this run. The list
+must be nonempty and every entry must be a nonblank string. A timeout row also
+requires the frozen `timeoutObserved` value to be `true`. Missing, empty,
+wrong-type or blank notice captures fail before the timeout policy branch.
+`noticeCaptureIntegrity` records that verdict and reason; ordinary/disabled rows
+may still have empty notices, and absent frozen observations remain `not-run`.
+
+The frozen golden has no notice field. `noticeChannelComparison` remains
+`notCompared` on every row: passing product capture integrity establishes
+neither frozen channel parity nor notice text equality. Negative controls cover
+both synthetic comparator values and the real `observeProduct` corpus against
+the existing executed golden; removing either required notice fails its row.
+The original content, title and error-path regression tests exercise real
+`ContentProcessing`, without a replacement evaluator.
+
+The comparison records the source hashes, native DLL hash, corpus/golden hashes,
+HEAD and working-tree status at capture. The committed recapture was made on the
+uncommitted #91 tree based on `7f192cea`; its source hashes identify the executed
+bytes, while a clean post-commit capture is retained in the lane evidence.
+Frozen golden, corpus and device manifest bytes are unchanged. Their four
+historical compile-source pins use CRLF: independently reading the frozen Git
+object yields LF bytes, and the deterministic LF-to-CRLF conversion matches every
+historical SHA-1/SHA-256 pin. Both byte forms and the explicit reuse approval are
+recorded in `C:/Users/17945/AppData/Local/liber-evidence/batch26/91/verified-pins.json`.
+This reuses the recorded Android execution; it is not a fresh device capture.
 
 ## Per-row evidence (executed)
 
@@ -183,7 +221,8 @@ disabled rule cannot hide in an unobserved field.
 3. **Error reporting channel** (`js-error`, compared fields equal, status
    `pass`). The frozen reader logs to `AppLog` and toasts; the product reports a
    notice. The harness cannot read `AppLog`, so the compared value is the content
-   and the rule state, which are equal.
+   and the rule state, which are equal. Product notice capture integrity is
+   checked separately; the frozen notice channel remains `notCompared`.
 
 ## Isolation and cleanup
 
