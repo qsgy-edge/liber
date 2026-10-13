@@ -836,6 +836,65 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('source group separators feed the enabled exact-membership menu and filter', (tester) async {
+    await store.putSourceJsons([
+      {
+        ...sourceA.source,
+        'bookSourceGroup': ' 常用; 精品，备用； 常用, ',
+        'bookSourceType': 1,
+      },
+      {
+        ...disabledUsedStyle(sourceB),
+        'bookSourceGroup': '精品；停用组',
+      },
+      {
+        ...sourceC.source,
+        'bookSourceGroup': ['精品扩展', '合,并'],
+      },
+    ]);
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceC.hits.add(candidate('https://c.test', '1', name, author));
+    await store.putSetting('searchGroup', '精品');
+    await pumpEntry(tester);
+
+    expect(await store.setting('searchGroup'), '精品');
+    expect(sourceA.searchCalls, 1, reason: '启用成员不受书源类型限制');
+    expect(sourceB.searchCalls, 0, reason: '停用成员不搜索');
+    expect(sourceC.searchCalls, 0, reason: '精品扩展不是精品的精确成员');
+    expect(
+      find.byKey(const ValueKey('precise-source-https://a.test')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('precise-source-https://b.test')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('precise-source-https://c.test')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const ValueKey('precise-source-group')));
+    await tester.pumpAndSettle();
+    final items = tester
+        .widgetList<CheckedPopupMenuItem<String>>(
+          find.byType(CheckedPopupMenuItem<String>),
+        )
+        .map((item) => item.value)
+        .toList();
+    expect(
+      items,
+      ['', '备用', '合,并', '常用', '精品', '精品扩展'],
+      reason: '确定的 Dart 字符序；仅启用成员；数组名称里的逗号保留',
+    );
+    await tester.tap(find.byKey(const ValueKey('precise-group-合,并')));
+    await tester.pumpAndSettle();
+    expect(await store.setting('searchGroup'), '合,并');
+    expect(sourceA.searchCalls, 1);
+    expect(sourceB.searchCalls, 0);
+    expect(sourceC.searchCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final missingGroup in ['不存在', '停用组', '精']) {
     testWidgets('分组 $missingGroup 无启用成员：可见重置为全部并持久化，不弹空结果确认', (tester) async {
       await groupedSources();

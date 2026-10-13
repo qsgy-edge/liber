@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
@@ -38,6 +39,88 @@ void main() {
     expect(book!.title, '斗破苍穹');
     expect(book.author, '天蚕土豆');
     await reopened.close();
+  });
+
+  test('source group strings normalize four separators on put and batch re-import', () async {
+    final workspace = await Workspace.open(root: root);
+    addTearDown(workspace.close);
+    final store = await workspace.openSpace();
+    final source = <String, dynamic>{
+      'bookSourceUrl': 'https://groups.test',
+      'bookSourceGroup': ' 常用, 精品 ;备用， 常用； ;，； 末组, ',
+      'enabled': false,
+      'enabledExplore': false,
+      'bookSourceType': 1,
+      'customOrder': 7,
+      'lastUpdateTime': 123,
+      'unknownField': {'kept': ['raw']},
+    };
+    final row = await store.putSourceJson(source);
+    expect(jsonDecode(row.groupNames), ['常用', '精品', '备用', '末组']);
+    expect(row.raw, jsonEncode(source));
+    expect(row.enabled, isFalse);
+    expect(row.enabledExplore, isFalse);
+    expect(row.type, 1);
+    expect(row.customOrder, 7);
+    expect(row.lastUpdateTime, 123);
+
+    final reimported = {
+      ...source,
+      'bookSourceGroup': ' 新组；精品， 新组; 路径/标签|甲、乙\n丙 , ',
+    };
+    await store.putSourceJsons([reimported]);
+    final updated = (await store.sourceByUrl(row.bookSourceUrl))!;
+    expect(jsonDecode(updated.groupNames), ['新组', '精品', '路径/标签|甲、乙\n丙']);
+    expect(updated.raw, jsonEncode(reimported));
+    expect(await store.allSources(), hasLength(1));
+  });
+
+  test('source group arrays preserve punctuation on batch put and re-import', () async {
+    final workspace = await Workspace.open(root: root);
+    addTearDown(workspace.close);
+    final store = await workspace.openSpace();
+    final source = <String, dynamic>{
+      'bookSourceUrl': 'https://array-groups.test',
+      'bookSourceGroup': [' 甲,乙 ', '丙;丁', ' 戊，己 ', '庚；辛', '', ' ', '甲,乙'],
+      'unknownField': ['retained'],
+    };
+    await store.putSourceJsons([source]);
+    final row = (await store.sourceByUrl('https://array-groups.test'))!;
+    expect(jsonDecode(row.groupNames), ['甲,乙', '丙;丁', '戊，己', '庚；辛']);
+    expect(row.raw, jsonEncode(source));
+
+    final updated = await store.putSourceJson(source);
+    expect(updated.groupNames, row.groupNames);
+    expect(updated.raw, row.raw);
+    expect(await store.allSources(), hasLength(1));
+  });
+
+  test('opening a space preserves existing source group membership until re-import', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final source = <String, dynamic>{
+      'bookSourceUrl': 'https://stored-groups.test',
+      'bookSourceGroup': '甲;乙，丙；丁',
+    };
+    await store.putSource(
+      SourcesCompanion.insert(
+        bookSourceUrl: 'https://stored-groups.test',
+        name: 'Stored groups',
+        groupNames: const Value('["甲;乙，丙；丁"]'),
+        raw: Value(jsonEncode(source)),
+      ),
+    );
+    await workspace.close();
+
+    final reopened = await Workspace.open(root: root);
+    addTearDown(reopened.close);
+    final reopenedStore = await reopened.openSpace();
+    final row = (await reopenedStore.sourceByUrl('https://stored-groups.test'))!;
+    expect(row.groupNames, '["甲;乙，丙；丁"]');
+    expect(row.raw, jsonEncode(source));
+    final reimported = await reopenedStore.putSourceJson(source);
+    expect(jsonDecode(reimported.groupNames), ['甲', '乙', '丙', '丁']);
+    expect(reimported.raw, row.raw);
   });
 
   test('书籍带分组、目录、进度和替换规则往返', () async {
