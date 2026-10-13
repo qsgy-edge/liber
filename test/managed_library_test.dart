@@ -1396,6 +1396,581 @@ void main() {
   );
 
   test(
+    'equal historical A outside destination publishes only a destination member',
+    () async {
+      final fixture = await retainedCopy();
+      final a = fixture.a;
+      final current = (await library.fileReferenceOf(a))!;
+      await store.removeLocalFile(a.rootId, current.key);
+      final externalCurrent = access.addFile(
+        'External:CURRENT',
+        'current.txt',
+        'old',
+        root: second,
+      );
+      await external(a.id, externalCurrent);
+      final admitted = await import(fixture.retained, resolve: update);
+      expect(admitted.id, a.id);
+      expect(admitted.textOffset, 19);
+      final reference = (await library.fileReferenceOf(admitted))!;
+      final member = await access.fileInRoot(first, reference);
+      expect(
+        member,
+        isNotNull,
+        reason: 'equal bytes do not authorize an external locator in this root',
+      );
+      expect(reference.locator, member!.locator);
+      expect(reference.key, member.key);
+      expect(reference.root!.locator, first.locator);
+      expect(reference.locator, isNot(externalCurrent.locator));
+      expect(await library.statBook(admitted), isNotNull);
+      expect(
+        (await store.localBookByOriginalKey(
+          a.rootId,
+          fixture.retained.key,
+        ))!.id,
+        a.id,
+      );
+      expect(access.bytes[externalCurrent.locator], 'old');
+      expect(access.bytes[fixture.retained.locator], 'old');
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  Future<({LocalBook a, LibraryFileReference retained})> nativeHistoricalGrant({
+    required bool nested,
+    LibraryLocationKind kind = LibraryLocationKind.android,
+  }) async {
+    first = access.addRoot(
+      'ManagedGrant',
+      kind: kind,
+      locator: kind == LibraryLocationKind.android
+          ? 'content://provider/tree/Managed'
+          : nested
+          ? 'file:///books/parent/managed'
+          : 'file:///books/destination',
+    );
+    await select(first);
+    final parent = access.addRoot(
+      'ParentGrant',
+      kind: kind,
+      locator: kind == LibraryLocationKind.android
+          ? 'content://provider/tree/Parent'
+          : 'file:///books/parent',
+    );
+    final retained = access.addFile(
+      kind == LibraryLocationKind.android
+          ? 'History:K1'
+          : 'managed/retained.txt',
+      'retained.txt',
+      'old',
+      root: parent,
+      identity: 'provider:History:K1',
+    );
+    final a = await external('grant-history-a', retained);
+    final current = access.addFile(
+      kind == LibraryLocationKind.android ? 'History:K2' : 'current.txt',
+      'current.txt',
+      'new',
+      root: first,
+      identity: 'provider:History:K2',
+    );
+    await store.removeLocalFile(a.rootId, retained.key);
+    await store.putBook(
+      BooksCompanion(
+        id: Value(a.id),
+        title: Value(a.title),
+        rootId: Value(library.managedRoot!.id),
+        relativePath: Value(current.key),
+        originalRootId: Value(a.rootId),
+        originalRelativePath: Value(retained.key),
+      ),
+    );
+    await store.putLocalFile(
+      LocalFilesCompanion.insert(
+        rootId: library.managedRoot!.id,
+        relativePath: current.key,
+        locator: Value(current.locator),
+        name: Value(current.name),
+        importName: const Value('book.txt'),
+        bookId: Value(a.id),
+        sha256: Value((await access.fingerprint(current)).sha256),
+      ),
+    );
+    if (nested) {
+      access.addMembership(
+        retained,
+        first,
+        key: kind == LibraryLocationKind.android
+            ? retained.key
+            : 'retained.txt',
+      );
+    }
+    await library.updateOffset(a.id, 23);
+    await library.load();
+    return (a: library.books.single, retained: retained);
+  }
+
+  for (final nested in [true, false]) {
+    test(
+      nested
+          ? 'native nested historical grant offers independent keep both'
+          : 'rootless native external history uses a persisted membership grant',
+      () async {
+        final fixture = await nativeHistoricalGrant(nested: nested);
+        final retained = fixture.retained;
+        final selected = nested
+            ? retained
+            : LibraryFileReference(
+                kind: retained.kind,
+                locator: retained.locator,
+                key: retained.key,
+                name: retained.name,
+                identity: retained.identity,
+              );
+        var decisions = 0;
+        final copies = access.copyCount;
+        final b = await import(
+          selected,
+          resolve: (conflict) async {
+            decisions++;
+            expect(conflict.historicalAssociation, isTrue);
+            expect(conflict.existingBookId, fixture.a.id);
+            expect(conflict.canUpdate, isTrue);
+            return LibraryConflictChoice.keepBoth;
+          },
+        );
+        expect(decisions, 1);
+        expect(b.id, isNot(fixture.a.id));
+        expect(access.copyCount, copies + 1);
+        final reference = (await library.fileReferenceOf(b))!;
+        expect(reference.key, isNot(retained.key));
+        expect(await access.fileInRoot(first, reference), isNotNull);
+        expect(
+          (await store.localBookByOriginalKey('ParentGrant', retained.key))!.id,
+          fixture.a.id,
+        );
+        expect((await store.progressOf(fixture.a.id))!.textOffset, 23);
+        expect(access.bytes[retained.locator], 'old');
+        expect(access.deleted, isEmpty);
+      },
+    );
+  }
+
+  for (final nested in [true, false]) {
+    test(
+      nested
+          ? 'Apple nested historical grant verifies differing relative keys'
+          : 'Apple rootless external history verifies its persisted grant',
+      () async {
+        final fixture = await nativeHistoricalGrant(
+          nested: nested,
+          kind: LibraryLocationKind.apple,
+        );
+        final retained = fixture.retained;
+        final selected = nested
+            ? retained
+            : LibraryFileReference(
+                kind: retained.kind,
+                locator: retained.locator,
+                key: 'retained.txt',
+                name: retained.name,
+                identity: retained.identity,
+              );
+        var decisions = 0;
+        final b = await import(
+          selected,
+          resolve: (conflict) async {
+            decisions++;
+            expect(conflict.existingBookId, fixture.a.id);
+            expect(conflict.historicalAssociation, isTrue);
+            return LibraryConflictChoice.keepBoth;
+          },
+        );
+        expect(decisions, 1);
+        expect(b.id, isNot(fixture.a.id));
+        expect(
+          (await library.fileReferenceOf(b))!.locator,
+          isNot(retained.locator),
+        );
+        expect(
+          (await store.localBookByOriginalKey('ParentGrant', retained.key))!.id,
+          fixture.a.id,
+        );
+        expect(access.bytes[retained.locator], 'old');
+        expect(access.deleted, isEmpty);
+      },
+    );
+  }
+
+  for (final kind in [LibraryLocationKind.android, LibraryLocationKind.apple]) {
+    test(
+      '${kind.name} overlapping grants preserve the unique current owner',
+      () async {
+        final fixture = await nativeHistoricalGrant(nested: true, kind: kind);
+        final b = await external('overlap-owner-b', fixture.retained);
+        await library.updateOffset(b.id, 47);
+        final copies = access.copyCount;
+        final admitted = await import(fixture.retained);
+        expect(admitted.id, b.id);
+        expect(admitted.textOffset, 47);
+        expect(admitted.rootId, library.managedRoot!.id);
+        expect(
+          await access.fileInRoot(
+            first,
+            (await library.fileReferenceOf(admitted))!,
+          ),
+          isNotNull,
+        );
+        expect(
+          (await store.localBookByOriginalKey(
+            'ParentGrant',
+            fixture.retained.key,
+          ))!.id,
+          fixture.a.id,
+        );
+        expect(access.copyCount, copies);
+        expect(access.deleted, isEmpty);
+      },
+    );
+
+    test(
+      '${kind.name} unrelated revoked historical grant is not probed',
+      () async {
+        final fixture = await nativeHistoricalGrant(nested: false, kind: kind);
+        final unrelated = access.addRoot(
+          'UnrelatedHistory',
+          kind: kind,
+          locator: kind == LibraryLocationKind.android
+              ? 'content://other-provider/tree/Old'
+              : 'file:///unrelated',
+        );
+        final unrelatedBook = await external(
+          'unrelated-owner',
+          access.addFile(
+            'unrelated-current',
+            'unrelated.txt',
+            'unrelated',
+            root: second,
+          ),
+        );
+        await store.putLocalRoot(
+          LocalRootsCompanion.insert(
+            id: unrelated.identity,
+            displayName: unrelated.displayName,
+            kind: Value(kind.name),
+            locator: Value(unrelated.locator),
+            identity: Value(unrelated.identity),
+          ),
+        );
+        await store.putBook(
+          BooksCompanion(
+            id: Value(unrelatedBook.id),
+            title: Value(unrelatedBook.title),
+            originalRootId: Value(unrelated.identity),
+            originalRelativePath: Value(fixture.retained.key),
+          ),
+        );
+        access.rootFailures[unrelated.locator] = LibraryAccessError.permission;
+        access.inspectedRoots.clear();
+        final selected = LibraryFileReference(
+          kind: kind,
+          locator: fixture.retained.locator,
+          key: kind == LibraryLocationKind.android
+              ? fixture.retained.key
+              : 'retained.txt',
+          name: fixture.retained.name,
+          identity: fixture.retained.identity,
+        );
+        final b = await import(selected, resolve: keepBoth);
+        expect(b.id, isNot(fixture.a.id));
+        expect(access.inspectedRoots, isNot(contains(unrelated.locator)));
+      },
+    );
+  }
+
+  for (final kind in [LibraryLocationKind.android, LibraryLocationKind.apple]) {
+    for (final code in [
+      LibraryAccessError.permission,
+      LibraryAccessError.missing,
+      LibraryAccessError.unsupported,
+      LibraryAccessError.verification,
+      LibraryAccessError.io,
+    ]) {
+      test(
+        '${kind.name} matching historical grant propagates ${code.name}',
+        () async {
+          final fixture = await nativeHistoricalGrant(nested: true, kind: kind);
+          final selected = (await access.fileInRoot(first, fixture.retained))!;
+          final books = await store.localBooks();
+          final copies = access.copyCount;
+          access.rootFailures[fixture.retained.root!.locator] = code;
+          await expectLater(
+            import(selected, resolve: keepBoth),
+            throwsA(accessError(code)),
+          );
+          expect(await store.localBooks(), books);
+          expect(access.copyCount, copies);
+          expect(access.deleted, isEmpty);
+        },
+      );
+    }
+    test(
+      '${kind.name} historical membership rejects a different returned identity',
+      () async {
+        final fixture = await nativeHistoricalGrant(nested: true, kind: kind);
+        final selected = (await access.fileInRoot(first, fixture.retained))!;
+        final wrong = access.addFile(
+          'wrong',
+          'wrong.txt',
+          'wrong',
+          root: fixture.retained.root,
+          identity: 'different-document',
+        );
+        access.memberships[(
+              fixture.retained.root!.locator,
+              fixture.retained.identity!,
+            )] =
+            wrong;
+        final books = await store.localBooks();
+        await expectLater(
+          import(selected, resolve: keepBoth),
+          throwsA(accessError(LibraryAccessError.verification)),
+        );
+        expect(await store.localBooks(), books);
+        expect(access.copyCount, 0);
+        expect(access.deleted, isEmpty);
+      },
+    );
+  }
+
+  test(
+    'overlapping native grants refuse contradictory historical owners',
+    () async {
+      final fixture = await nativeHistoricalGrant(nested: true);
+      final otherGrant = access.addRoot(
+        'OtherGrant',
+        locator: 'content://provider/tree/Other',
+      );
+      access.addMembership(fixture.retained, otherGrant);
+      await store.putLocalRoot(
+        LocalRootsCompanion.insert(
+          id: otherGrant.identity,
+          displayName: otherGrant.displayName,
+          kind: Value(otherGrant.kind.name),
+          locator: Value(otherGrant.locator),
+          identity: Value(otherGrant.identity),
+        ),
+      );
+      final other = await external(
+        'other-history-owner',
+        access.addFile('other', 'other.txt', 'other', root: second),
+      );
+      await store.putBook(
+        BooksCompanion(
+          id: Value(other.id),
+          title: Value(other.title),
+          originalRootId: Value(otherGrant.identity),
+          originalRelativePath: Value(fixture.retained.key),
+        ),
+      );
+      final books = await store.localBooks();
+      await expectLater(
+        import(fixture.retained),
+        throwsA(accessError(LibraryAccessError.collision)),
+      );
+      expect(await store.localBooks(), books);
+      expect(access.copyCount, 0);
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test('overlapping native grants refuse multiple current owners', () async {
+    final fixture = await nativeHistoricalGrant(nested: true);
+    await external('overlap-b', fixture.retained);
+    await external(
+      'overlap-c',
+      (await access.fileInRoot(first, fixture.retained))!,
+    );
+    final books = await store.localBooks();
+    await expectLater(
+      import(fixture.retained),
+      throwsA(accessError(LibraryAccessError.collision)),
+    );
+    expect(await store.localBooks(), books);
+    expect(access.copyCount, 0);
+    expect(access.deleted, isEmpty);
+  });
+
+  test(
+    'equal historical external publication rollback preserves its indexed file',
+    () async {
+      final fixture = await retainedCopy();
+      final current = (await library.fileReferenceOf(fixture.a))!;
+      await store.removeLocalFile(fixture.a.rootId, current.key);
+      final a = await external(
+        fixture.a.id,
+        access.addFile('indexed-external', 'current.txt', 'old', root: second),
+      );
+      await library.putFileIndex(
+        a,
+        encoding: 'UTF-8',
+        codeUnitLength: 3,
+        modifiedAt: 42,
+        anchors: [(byteOffset: 0, codeUnitOffset: 0, lineIndex: 0)],
+      );
+      final book = await store.bookById(a.id);
+      final file = await store.localFile(a.rootId, a.relativePath!);
+      await store.db.customStatement(
+        "CREATE TRIGGER fail_reused BEFORE INSERT ON local_files BEGIN SELECT RAISE(ABORT, 'reuse publication'); END",
+      );
+      await expectLater(
+        import(fixture.retained, resolve: update),
+        throwsA(anything),
+      );
+      expect(await store.bookById(a.id), book);
+      expect(await store.localFile(a.rootId, a.relativePath!), file);
+      final index = await library.fileIndex(a);
+      expect(index.encoding, 'UTF-8');
+      expect(index.modifiedAt, 42);
+      expect(index.anchors, hasLength(1));
+      expect(access.bytes[a.path], 'old');
+      expect(access.bytes[fixture.retained.locator], 'old');
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test('equal historical B reuse preserves its indexed timestamp', () async {
+    final fixture = await retainedCopy();
+    final b = await import(fixture.retained, resolve: keepBoth);
+    await library.putFileIndex(
+      b,
+      encoding: 'UTF-8',
+      codeUnitLength: 3,
+      modifiedAt: 42,
+      anchors: [(byteOffset: 0, codeUnitOffset: 0, lineIndex: 0)],
+    );
+    final copies = access.copyCount;
+    final reused = await import(fixture.retained);
+    final index = await library.fileIndex(reused);
+    expect(reused.id, b.id);
+    expect(index.encoding, 'UTF-8');
+    expect(index.modifiedAt, 42);
+    expect(index.anchors, hasLength(1));
+    expect(access.copyCount, copies);
+  });
+
+  test(
+    'rootless native history nominates the stat key rather than a picker hint',
+    () async {
+      final fixture = await nativeHistoricalGrant(nested: false);
+      final selected = LibraryFileReference(
+        kind: fixture.retained.kind,
+        locator: fixture.retained.locator,
+        key: 'stale-picker-key',
+        name: fixture.retained.name,
+        identity: fixture.retained.identity,
+      );
+      var decisions = 0;
+      await import(
+        selected,
+        resolve: (conflict) async {
+          decisions++;
+          expect(conflict.existingBookId, fixture.a.id);
+          return LibraryConflictChoice.keepBoth;
+        },
+      );
+      expect(decisions, 1);
+    },
+  );
+
+  test('same-provider unrelated document grants remain unprobed', () async {
+    final fixture = await nativeHistoricalGrant(nested: false);
+    final unrelated = access.addRoot(
+      'OtherDocument',
+      locator: 'content://provider/tree/OtherDocument',
+    );
+    final other = await external(
+      'other-document-owner',
+      access.addFile('other-current', 'other.txt', 'other', root: second),
+    );
+    await store.putLocalRoot(
+      LocalRootsCompanion.insert(
+        id: unrelated.identity,
+        displayName: unrelated.displayName,
+        kind: Value(unrelated.kind.name),
+        locator: Value(unrelated.locator),
+        identity: Value(unrelated.identity),
+      ),
+    );
+    await store.putBook(
+      BooksCompanion(
+        id: Value(other.id),
+        title: Value(other.title),
+        originalRootId: Value(unrelated.identity),
+        originalRelativePath: const Value('Different:KEY'),
+      ),
+    );
+    access.rootFailures[unrelated.locator] = LibraryAccessError.permission;
+    access.inspectedRoots.clear();
+    await import(fixture.retained, resolve: keepBoth);
+    expect(access.inspectedRoots, isNot(contains(unrelated.locator)));
+  });
+
+  test(
+    'overlapping native grants verify a current owner without file facts',
+    () async {
+      final fixture = await nativeHistoricalGrant(nested: true);
+      final b = await external('legacy-overlap-b', fixture.retained);
+      await store.removeLocalFile(b.rootId, fixture.retained.key);
+      await library.updateOffset(b.id, 47);
+      final admitted = await import(fixture.retained);
+      expect(admitted.id, b.id);
+      expect(admitted.textOffset, 47);
+      expect(
+        (await store.localFile(
+          admitted.rootId,
+          admitted.relativePath!,
+        ))!.bookId,
+        b.id,
+      );
+      expect(
+        (await store.localBookByOriginalKey(
+          'ParentGrant',
+          fixture.retained.key,
+        ))!.id,
+        fixture.a.id,
+      );
+      expect(access.copyCount, 0);
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test(
+    'overlapping current owner rejects membership for a different document',
+    () async {
+      final fixture = await nativeHistoricalGrant(nested: true);
+      await external('wrong-membership-owner', fixture.retained);
+      final wrong = access.addFile(
+        'Wrong:KEY',
+        'wrong.txt',
+        'unrelated',
+        root: first,
+        identity: 'provider:Wrong:KEY',
+      );
+      access.memberships[(first.locator, fixture.retained.identity!)] = wrong;
+      final books = await store.localBooks();
+      await expectLater(
+        import(fixture.retained),
+        throwsA(accessError(LibraryAccessError.verification)),
+      );
+      expect(await store.localBooks(), books);
+      expect(access.copyCount, 0);
+      expect(access.deleted, isEmpty);
+    },
+  );
+
+  test(
     'v6 same-root first selection retains original backup key across renamed moves',
     () async {
       await store.putSetting(LocalLibrary.managedRootKey, '');
@@ -2117,14 +2692,21 @@ class MemoryLibraryAccess implements LibraryAccess {
   final fingerprintFailures = <String, LibraryAccessError>{};
   final statFailures = <String, LibraryAccessError>{};
   final nestedFiles = <String>{};
+  // Explicit provider membership facts, independent of opaque grant locators.
+  final memberships = <(String, String), LibraryFileReference>{};
   LibraryAccessError? listFailure;
   LibraryAccessError? membershipFailure;
   Future<void> Function()? beforeCopyReturn;
 
-  LibraryLocation addRoot(String id, {String? authorization}) {
+  LibraryLocation addRoot(
+    String id, {
+    String? authorization,
+    LibraryLocationKind kind = LibraryLocationKind.android,
+    String? locator,
+  }) {
     final root = LibraryLocation(
-      kind: LibraryLocationKind.android,
-      locator: 'tree:$id',
+      kind: kind,
+      locator: locator ?? 'tree:$id',
       identity: id,
       displayName: 'Display $id',
       authorization: authorization ?? 'grant:$id',
@@ -2138,20 +2720,51 @@ class MemoryLibraryAccess implements LibraryAccess {
     String name,
     String content, {
     LibraryLocation? root,
+    String? identity,
   }) {
     final file = LibraryFileReference(
       kind: root?.kind ?? LibraryLocationKind.android,
       locator: root?.kind == LibraryLocationKind.filesystem
           ? p.join(root!.locator, key)
+          : root?.locator.startsWith('content://') == true
+          ? '${root!.locator}/document/${Uri.encodeComponent(key)}'
           : '${root?.locator ?? 'external'}/$key',
       key: key,
       name: name,
       root: root,
+      identity: identity,
       size: utf8.encode(content).length,
     );
     files[file.locator] = file;
     bytes[file.locator] = content;
+    if (root != null && identity != null) {
+      memberships[(root.locator, identity)] = file;
+    }
     return file;
+  }
+
+  LibraryFileReference addMembership(
+    LibraryFileReference file,
+    LibraryLocation root, {
+    String? key,
+  }) {
+    final memberKey = key ?? file.key;
+    final member = LibraryFileReference(
+      kind: file.kind,
+      locator: root.locator.startsWith('content://')
+          ? '${root.locator}/document/${Uri.encodeComponent(memberKey)}'
+          : '${root.locator}/$memberKey',
+      key: memberKey,
+      name: file.name,
+      identity: file.identity!,
+      root: root,
+      size: file.size,
+    );
+    memberships[(file.root!.locator, file.identity!)] = file;
+    memberships[(root.locator, file.identity!)] = member;
+    files[member.locator] = member;
+    bytes[member.locator] = bytes[file.locator]!;
+    return member;
   }
 
   Never fail(LibraryAccessError code) =>
@@ -2188,7 +2801,22 @@ class MemoryLibraryAccess implements LibraryAccess {
   Future<LibraryFileReference?> stat(LibraryFileReference file) async {
     if (statFailures[file.locator] case final failure?) fail(failure);
     if (file.root != null) await inspectRoot(file.root!);
-    return bytes.containsKey(file.locator) ? files[file.locator] : null;
+    if (!bytes.containsKey(file.locator)) return null;
+    final actual = files[file.locator];
+    if (actual?.identity == null) return actual;
+    if (file.root != null) {
+      return memberships[(file.root!.locator, actual!.identity!)] ?? actual;
+    }
+    return LibraryFileReference(
+      kind: actual!.kind,
+      locator: actual.locator,
+      key: actual.kind == LibraryLocationKind.apple ? actual.name : actual.key,
+      name: actual.name,
+      identity: actual.identity,
+      size: actual.size,
+      modifiedAt: actual.modifiedAt,
+      authorization: file.authorization,
+    );
   }
 
   @override
@@ -2199,7 +2827,9 @@ class MemoryLibraryAccess implements LibraryAccess {
     if (membershipFailure != null) fail(membershipFailure!);
     await inspectRoot(root);
     final actual = await stat(file);
-    return actual?.root?.locator == root.locator ? actual : null;
+    return actual?.root?.locator == root.locator
+        ? actual
+        : memberships[(root.locator, actual?.identity)];
   }
 
   @override
@@ -2227,7 +2857,11 @@ class MemoryLibraryAccess implements LibraryAccess {
       fail(LibraryAccessError.collision);
     }
     final file = addFile(
-      copyKeys.isEmpty ? 'Opaque:$copyCount' : copyKeys.removeAt(0),
+      copyKeys.isNotEmpty
+          ? copyKeys.removeAt(0)
+          : destination.kind == LibraryLocationKind.apple
+          ? actualName
+          : 'Opaque:$copyCount',
       actualName,
       content,
       root: destination,
