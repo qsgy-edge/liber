@@ -1171,8 +1171,9 @@ void main() {
           expect(await store.localFilesOf(fixture.a.rootId), beforeFiles);
           expect(library.managedRoot, beforeRoot);
           expect(await store.progressOf(fixture.a.id), beforeAProgress);
-          if (seeded != null)
+          if (seeded != null) {
             expect(await store.progressOf(seeded.b.id), beforeBProgress);
+          }
           for (final entry in beforeBytes.entries) {
             expect(access.bytes[entry.key], entry.value);
           }
