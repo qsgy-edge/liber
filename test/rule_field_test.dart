@@ -638,7 +638,19 @@ void main() {
             ? JsonSourcePipeline(source, _JsonPages()..pages.addAll(_jsonPages))
             : HtmlSourcePipeline(source, _HtmlPages());
         final hit = (await pipeline.search('query')).single;
-        expect(hit.intro, '　　　　A B\n　　CD\n　　&amp;');
+        final introGolden =
+            jsonDecode(
+                  File(
+                    'tool/rule_field_oracle/evidence/intro-tail-host/golden.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        final observed =
+            introGolden[json ? 'intro-json-map' : 'intro-html-node'] as Map;
+        expect(
+          hit.intro.codeUnits,
+          (observed['formattedUnits'] as List).cast<int>(),
+        );
         final (book, _) = await pipeline.details(hit);
         expect(book.intro, hit.intro);
       });

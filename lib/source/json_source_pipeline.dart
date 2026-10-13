@@ -411,7 +411,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         evaluateScript: (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
         extract: (value, rule) async =>
-            JsonSourceRules.extract(_extractionContent(value), rule),
+            rule.isEmpty ? '' : await _field(value, rule, label: label),
         readVariable: _readRuleVariable,
         writeVariable: _writeRuleVariable,
       );
@@ -456,9 +456,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     if (!raw && identical(value, _nativeObjectRoot) && value is Map) {
       final result = await field.applyNativeObject(value);
-      return unescape && field.isLiteralValue
-          ? unescapeHtml4('${result ?? ''}')
-          : result;
+      return unescape ? unescapeHtml4('${result ?? ''}') : result;
     }
     final extracted = field.isScriptOnly || (!raw && field.isLiteralValue)
         ? content
@@ -476,9 +474,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (raw && field.isScriptOnly && result is Map) {
       _nativeObjectRoot = result;
     }
-    return !raw && unescape && field.isLiteralValue
-        ? unescapeHtml4('${result ?? ''}')
-        : result;
+    return !raw && unescape ? unescapeHtml4('${result ?? ''}') : result;
   }
 
   Future<String> _kind(Object? value, String rule, {String label = ''}) async {
@@ -816,6 +812,29 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
   }
 
+  // Only these existing getters read the initialized book-info page. Their
+  // bare keys depend on whether script-only init actually yields NativeObject.
+  bool _deferBookInfoKey(Map raw, String field, String rule) {
+    if (!(switch (field) {
+      'name' ||
+      'author' ||
+      'kind' ||
+      'wordCount' ||
+      'lastChapter' ||
+      'intro' ||
+      'coverUrl' ||
+      'tocUrl' => true,
+      _ => false,
+    }))
+      return false;
+    final init = raw['init'];
+    if (init is! String) return false;
+    final parts = parseRuleField(init);
+    return parts.extractionRule == null &&
+        parts.scripts.any((script) => script.trim().isNotEmpty) &&
+        RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(rule);
+  }
+
   /// The rule map of one stage, refusing an unsupported rule by name.
   Map<String, String> _rules(String key, List<String> required) {
     final raw = source[key];
@@ -854,7 +873,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
         // result fields: malformed rules fail with their field context.
         final extraction = RuleField.extractionText(entry.value as String);
         try {
-          if (extraction != null) {
+          if (extraction != null &&
+              !(key == 'ruleBookInfo' &&
+                  _deferBookInfoKey(raw, '${entry.key}', extraction))) {
             JsonSourceRules.validate(
               extraction,
               forList:
@@ -970,6 +991,36 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final books = <HtmlBook>[];
     for (final entry in found) {
+      final name = await _text(
+        entry,
+        search['name']!,
+        label: 'ruleSearch.name',
+      );
+      final author = await _optional(
+        entry,
+        search['author'] ?? '',
+        label: 'ruleSearch.author',
+      );
+      final kind = await _kind(
+        entry,
+        search['kind'] ?? '',
+        label: 'ruleSearch.kind',
+      );
+      final wordCount = await _optional(
+        entry,
+        search['wordCount'] ?? '',
+        label: 'ruleSearch.wordCount',
+      );
+      final lastChapter = await _optional(
+        entry,
+        search['lastChapter'] ?? '',
+        label: 'ruleSearch.lastChapter',
+      );
+      final intro = await _optional(
+        entry,
+        search['intro'] ?? '',
+        label: 'ruleSearch.intro',
+      );
       // Read this scalar field before parsing the returned address's existing
       // request options; interpolation and sibling JS keep AnalyzeRule order.
       final bookAddressValue = search['bookUrl']!.trim().isEmpty
@@ -988,31 +1039,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
-      final name = await _text(
-        entry,
-        search['name']!,
-        label: 'ruleSearch.name',
-      );
-      final author = await _optional(
-        entry,
-        search['author'] ?? '',
-        label: 'ruleSearch.author',
-      );
-      final intro = await _optional(
-        entry,
-        search['intro'] ?? '',
-        label: 'ruleSearch.intro',
-      );
-      final lastChapter = await _optional(
-        entry,
-        search['lastChapter'] ?? '',
-        label: 'ruleSearch.lastChapter',
-      );
-      final wordCount = await _optional(
-        entry,
-        search['wordCount'] ?? '',
-        label: 'ruleSearch.wordCount',
-      );
       books.add(
         HtmlBook(
           url: bookUrl,
@@ -1024,11 +1050,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           intro: formatSourceIntro(intro),
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
-          kind: await _kind(
-            entry,
-            search['kind'] ?? '',
-            label: 'ruleSearch.kind',
-          ),
+          kind: kind,
         ),
       );
     }
@@ -1315,6 +1337,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
             raw: true,
           )
         : document;
+    if (!(identical(page, _nativeObjectRoot) && page is Map)) {
+      final raw = source['ruleBookInfo'] as Map;
+      for (final entry in info.entries) {
+        final extraction = RuleField.extractionText(entry.value);
+        if (extraction != null &&
+            _deferBookInfoKey(raw, entry.key, extraction)) {
+          try {
+            JsonSourceRules.validate(extraction);
+          } on UnsupportedError catch (error) {
+            throw UnsupportedError('ruleBookInfo.${entry.key}: $error');
+          }
+        }
+      }
+    }
     final cover = await _optional(
       page,
       info['coverUrl'] ?? '',

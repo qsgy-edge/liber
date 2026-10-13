@@ -15,6 +15,10 @@ import 'source_http_uri.dart';
 import 'source_page_results.dart';
 import 'source_url_rules.dart';
 
+// A declared scalar has one native Text job or one raw TextList job. Literal
+// and script-only fields need neither; the stage still runs one declared batch.
+typedef _HtmlScalarJob = ({HtmlString? text, HtmlStringList? raw});
+
 class HtmlBook {
   const HtmlBook({
     required this.url,
@@ -479,16 +483,31 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// field runs carries it into the failure it reports, so the interface and the
   /// source log name the field instead of the bare `js`.
   ///
-  /// [content] is the object the field is read against, bound as the frozen
-  /// `src` for the field's scripts. This adapter reads an element field's values
-  /// through one batch over the page, so a script inside an element field sees
-  /// the page where the JSON adapter sees the matched element — a recorded
-  /// divergence of the two-adapter split.
+  /// [content] is the actual content object for this read, bound as `src`.
+  /// Stateful item fields supply their own node or scripted value; document
+  /// fields supply the page String. Nested reads use the same complete scalar
+  /// path, including its caller tail, before writing or substituting the value.
   RuleFieldContext _ruleContext(String label, Object? content) =>
       RuleFieldContext(
         evaluateScript: (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: _eagerExtract,
+        extract: (value, rule) async => rule.isEmpty
+            ? ''
+            : await _readScriptRule(
+                SourceRuleRead(
+                  member: label,
+                  form: SourceRuleForm.string,
+                  rule: rule,
+                  content: value,
+                  evaluateScript: (script, result) => _evalJs(
+                    script,
+                    _keyword,
+                    result,
+                    label: label,
+                    content: value,
+                  ),
+                ),
+              ),
         readVariable: _readRuleVariable,
         writeVariable: _writeRuleVariable,
       );
@@ -604,7 +623,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       return _itemFieldValue(node, field, read.member);
     }
     final extracted = field.hasValueExtraction
-        ? await _eagerExtract(read.content, field.extractionRule!)
+        ? await _eagerExtract(
+            read.content,
+            field.extractionRule!,
+            deferTail: _deferScriptScalarTail(field),
+          )
         : read.content;
     return _scalarTail(
       field,
@@ -802,10 +825,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // object is not a proven Java container and cannot serialize descriptors.
       contentText = item.value is String ? item.value as String : '';
     }
+    final deferTail = !forStringList && _deferScriptScalarTail(field);
     Object? extracted = content;
     if (field.hasValueExtraction) {
       final batch = HtmlRuleBatch(item.isElement ? item.dom! : contentText);
-      if (item.isElement) {
+      if (deferTail) {
+        final rule = splitRuleFields(field.extractionRule!).rule;
+        final values = item.isElement
+            ? batch.elementsTextList(
+                'value',
+                rule,
+                batch.elements('item', item.rule ?? ':root'),
+              )
+            : batch.documentTextList('value', rule);
+        await batch.run();
+        extracted = _rawScalarValue(field, values.values, url: url);
+      } else if (item.isElement) {
         final selection = batch.elements('item', item.rule ?? ':root');
         if (forStringList) {
           final values = batch.elementsTextList(
@@ -834,7 +869,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         extracted = value.value;
       }
     }
-    if (!forStringList && extracted is String) {
+    if (!forStringList && !deferTail && extracted is String) {
       extracted = _urlFallback(field, extracted, url);
     }
     final applied = await field.apply(
@@ -861,9 +896,39 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       ? [for (final item in value) '$item']
       : const [];
 
+  bool _deferScriptScalarTail(RuleField field, {bool unescape = true}) =>
+      unescape &&
+      field.hasValueExtraction &&
+      field.scripts.isNotEmpty &&
+      splitRuleFields(field.extractionRule!).rule.isNotEmpty;
+
+  String? _rawScalarValue(
+    RuleField field,
+    List<String> values, {
+    bool url = false,
+  }) {
+    // AnalyzeByJSoup.getString joins; getString0 (URL) takes the first and
+    // keeps an empty String so JS may supply an address when nothing matched.
+    final text = url
+        ? values.firstOrNull ?? ''
+        : values.isEmpty
+        ? null
+        : values.join('\n');
+    return text == null
+        ? null
+        : applyRuleReplacement(
+            text,
+            splitRuleFields(field.extractionRule!),
+            label: 'HTML',
+          );
+  }
+
   String _scalarTail(RuleField field, Object? value, {bool unescape = true}) {
     final text = '${value ?? ''}';
-    return (field.isLiteralValue || field.isScriptOnly) && unescape
+    return (field.isLiteralValue ||
+                field.isScriptOnly ||
+                _deferScriptScalarTail(field, unescape: unescape)) &&
+            unescape
         ? unescapeHtml4(text)
         : text;
   }
@@ -879,12 +944,26 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         )
       : value;
 
-  /// Declares the document job of one field, or none when the value comes from
-  /// scripts or literal interpolation.
-  HtmlString? _declare(HtmlRuleBatch batch, String id, RuleField field) =>
-      field.hasValueExtraction
-      ? batch.documentText(id, field.extractionRule!)
-      : null;
+  /// Declares a finished native Text read or a raw match-list read for a
+  /// scripted scalar. Literal/script-only fields declare neither job.
+  _HtmlScalarJob _declare(
+    HtmlRuleBatch batch,
+    String id,
+    RuleField field, {
+    bool unescape = true,
+  }) {
+    if (!field.hasValueExtraction) return (text: null, raw: null);
+    if (_deferScriptScalarTail(field, unescape: unescape)) {
+      return (
+        text: null,
+        raw: batch.documentTextList(
+          id,
+          splitRuleFields(field.extractionRule!).rule,
+        ),
+      );
+    }
+    return (text: batch.documentText(id, field.extractionRule!), raw: null);
+  }
 
   /// Declares the *list* read of one field (the frozen
   /// `AnalyzeRule.getStringList`), or none when the field is a script only. The
@@ -900,18 +979,27 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       : batch.documentTextList(id, field.extractionRule!);
 
   /// Reads one declared document job with the field's scripts applied. A
-  /// script-only field is applied to the page's HTML text, where the frozen
-  /// reader passes the parsed tree a JavaScript boundary cannot carry — a
-  /// recorded divergence.
+  /// script-only field receives the page String; an extraction followed by
+  /// scripts receives the raw matches before its own final scalar tail.
   Future<String> _documentValue(
-    HtmlString? job,
+    _HtmlScalarJob? job,
     RuleField field,
     String content, {
     bool url = false,
     bool unescape = true,
   }) async {
-    final value = field.hasValueExtraction ? job!.value : content;
-    final resolved = url && value.isEmpty && field.hasValueExtraction
+    final raw = job?.raw;
+    final Object? value = !field.hasValueExtraction
+        ? content
+        : raw != null
+        ? _rawScalarValue(field, raw.values, url: url)
+        : job!.text!.value;
+    final resolved =
+        raw == null &&
+            url &&
+            value is String &&
+            value.isEmpty &&
+            field.hasValueExtraction
         ? applyRuleReplacement(
             '',
             splitRuleFields(field.extractionRule!),
@@ -930,7 +1018,38 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// `{{$.x}}` interpolation. A field without those never reaches this, so the
   /// one-bridge-call-per-stage shape is kept for every page that does not use
   /// them.
-  Future<Object?> _eagerExtract(Object? value, String rule) async {
+  Future<Object?> _eagerExtract(
+    Object? value,
+    String rule, {
+    bool deferTail = false,
+  }) async {
+    if (deferTail) {
+      final fields = splitRuleFields(rule);
+      final descriptor = value is Map && value['__dom'] is String
+          ? value
+          : null;
+      final batch = HtmlRuleBatch(
+        descriptor != null ? descriptor['__dom'] as String : '$value',
+      );
+      final values = descriptor != null
+          ? batch.elementsTextList(
+              'value',
+              fields.rule,
+              batch.elements(
+                'item',
+                descriptor['__rule'] as String? ?? ':root',
+              ),
+            )
+          : batch.documentTextList('value', fields.rule);
+      await batch.run();
+      return values.values.isEmpty
+          ? null
+          : applyRuleReplacement(
+              values.values.join('\n'),
+              fields,
+              label: 'HTML',
+            );
+    }
     if (value is Map && value['__dom'] is String) {
       final batch = HtmlRuleBatch(value['__dom'] as String);
       final selection = batch.elements(
@@ -1292,34 +1411,52 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       return _detailPageBooks(finalUrl, html);
     }
 
-    Future<List<String>> fieldValues(String key, {bool url = false}) =>
-        _listFieldValues(
+    Future<String> fieldValue(String key, int index, {bool url = false}) async {
+      if (key == 'kind' && _rule('ruleSearch', key, optional: true).isEmpty) {
+        return '';
+      }
+      final field = searchFields[key];
+      if (scriptedItems != null ||
+          field == null ||
+          !field.hasValueExtraction ||
+          key == 'kind') {
+        final item = scriptedItems != null
+            ? scriptedItems[index]
+            : _ListItem.element(
+                itemHtmls!.values[index],
+                'body > :first-child',
+              );
+        return _itemFieldValue(
+          item,
+          field,
+          'ruleSearch.$key',
           raw: _rule('ruleSearch', key, optional: true),
-          field: searchFields[key],
-          forStringList: key == 'kind',
-          count: count,
-          scriptedItems: scriptedItems,
-          job: jobs[key],
-          itemHtmls: itemHtmls?.values ?? const <String>[],
-          label: 'ruleSearch.$key',
           url: url,
+          forStringList: key == 'kind',
         );
-    final titles = await fieldValues('name');
-    final links = await fieldValues('bookUrl', url: true);
-    final authorValues = await fieldValues('author');
-    final introValues = await fieldValues('intro');
-    final lastChapterValues = await fieldValues('lastChapter');
-    final wordCountValues = await fieldValues('wordCount');
-    final kindValues = await fieldValues('kind');
+      }
+      return (await _perElement(field, [
+        jobs[key]!.values[index],
+      ], url: url)).single;
+    }
 
     final books = <HtmlBook>[];
     for (var index = 0; index < count; index++) {
+      // Stateful fields follow BookList's per-item getter order. The page's
+      // pure extraction fields were already obtained by the single batch.
+      final title = await fieldValue('name', index);
+      final authorValue = await fieldValue('author', index);
+      final kindValue = await fieldValue('kind', index);
+      final wordCountValue = await fieldValue('wordCount', index);
+      final lastChapterValue = await fieldValue('lastChapter', index);
+      final introValue = await fieldValue('intro', index);
+      final link = await fieldValue('bookUrl', index, url: true);
       // The address text the rule produced, option tail included: it is what
       // this book keeps ([HtmlBook.rawAddress]) and what the details request
       // parses, exactly as the frozen stores `book.bookUrl` (#97).
-      final bookAddress = links[index].trim().isEmpty
+      final bookAddress = link.trim().isEmpty
           ? '$finalUrl'
-          : _required(links, index, 'ruleSearch.bookUrl');
+          : _required([link], 0, 'ruleSearch.bookUrl');
       final (bookUrlTarget, bookOptions) = await _extracted(
         finalUrl,
         bookAddress,
@@ -1333,12 +1470,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         HtmlBook(
           url: bookUrlTarget,
           rawAddress: bookAddress,
-          title: _required(titles, index, 'ruleSearch.name'),
-          author: authorValues[index],
-          intro: formatSourceIntro(introValues[index]),
-          lastChapter: lastChapterValues[index],
-          wordCount: formatSourceWordCount(wordCountValues[index]),
-          kind: kindValues[index],
+          title: _required([title], 0, 'ruleSearch.name'),
+          author: authorValue,
+          intro: formatSourceIntro(introValue),
+          lastChapter: lastChapterValue,
+          wordCount: formatSourceWordCount(wordCountValue),
+          kind: kindValue,
         ),
       );
     }
@@ -1902,7 +2039,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               )
             : null;
         final batch = HtmlRuleBatch(html);
-        final contentValue = _declare(batch, 'content', content);
+        final contentValue = _declare(
+          batch,
+          'content',
+          content,
+          unescape: false,
+        );
         final nextValue = next == null
             ? null
             : _declareList(batch, 'next', next);

@@ -1,0 +1,2031 @@
+{
+  "tokens-two": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          60,
+          112,
+          62,
+          98,
+          111,
+          100,
+          121,
+          60,
+          47,
+          112,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                49
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "tokens-mixed-get": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          60,
+          112,
+          62,
+          98,
+          111,
+          100,
+          121,
+          60,
+          47,
+          112,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                124,
+                49,
+                124,
+                49
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "tokens-sibling": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          60,
+          112,
+          62,
+          98,
+          111,
+          100,
+          121,
+          60,
+          47,
+          112,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                45,
+                49,
+                58,
+                51
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "3",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "html-item-order": {
+    "items": [
+      {
+        "type": "org.jsoup.nodes.Element",
+        "contentUnits": [
+          60,
+          108,
+          105,
+          62,
+          60,
+          97,
+          32,
+          104,
+          114,
+          101,
+          102,
+          61,
+          34,
+          47,
+          111,
+          110,
+          101,
+          34,
+          62,
+          111,
+          110,
+          101,
+          60,
+          47,
+          97,
+          62,
+          60,
+          47,
+          108,
+          105,
+          62
+        ],
+        "reads": [
+          {
+            "field": "name",
+            "values": [
+              [
+                111,
+                110,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "author",
+            "values": [
+              [
+                111,
+                110,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "bookUrl",
+            "values": [
+              [
+                47,
+                111,
+                110,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      },
+      {
+        "type": "org.jsoup.nodes.Element",
+        "contentUnits": [
+          60,
+          108,
+          105,
+          62,
+          60,
+          97,
+          32,
+          104,
+          114,
+          101,
+          102,
+          61,
+          34,
+          47,
+          116,
+          119,
+          111,
+          34,
+          62,
+          116,
+          119,
+          111,
+          60,
+          47,
+          97,
+          62,
+          60,
+          47,
+          108,
+          105,
+          62
+        ],
+        "reads": [
+          {
+            "field": "name",
+            "values": [
+              [
+                116,
+                119,
+                111
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "author",
+            "values": [
+              [
+                116,
+                119,
+                111
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "bookUrl",
+            "values": [
+              [
+                47,
+                116,
+                119,
+                111
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "two",
+      "order": ""
+    }
+  },
+  "html-field-order": {
+    "items": [
+      {
+        "type": "org.jsoup.nodes.Element",
+        "contentUnits": [
+          60,
+          108,
+          105,
+          62,
+          60,
+          97,
+          32,
+          104,
+          114,
+          101,
+          102,
+          61,
+          34,
+          47,
+          111,
+          110,
+          101,
+          34,
+          62,
+          111,
+          110,
+          101,
+          60,
+          47,
+          97,
+          62,
+          60,
+          47,
+          108,
+          105,
+          62
+        ],
+        "reads": [
+          {
+            "field": "name",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "author",
+            "values": [
+              [
+                97,
+                117,
+                116,
+                104,
+                111,
+                114
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "kind",
+            "values": [
+              [
+                107,
+                105,
+                110,
+                100
+              ]
+            ],
+            "joinedUnits": [
+              107,
+              105,
+              110,
+              100
+            ]
+          },
+          {
+            "field": "wordCount",
+            "values": [
+              [
+                119,
+                99
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "lastChapter",
+            "values": [
+              [
+                108,
+                97,
+                116,
+                101,
+                115,
+                116
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "intro",
+            "values": [
+              [
+                105,
+                110,
+                116,
+                114,
+                111
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "bookUrl",
+            "values": [
+              [
+                47,
+                111,
+                107
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": "NAKWLI"
+    }
+  },
+  "json-field-order": {
+    "items": [
+      {
+        "type": "java.util.LinkedHashMap",
+        "contentUnits": [
+          123,
+          110,
+          97,
+          109,
+          101,
+          61,
+          98,
+          111,
+          100,
+          121,
+          125
+        ],
+        "reads": [
+          {
+            "field": "name",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "author",
+            "values": [
+              [
+                97,
+                117,
+                116,
+                104,
+                111,
+                114
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "kind",
+            "values": [
+              [
+                107,
+                105,
+                110,
+                100
+              ]
+            ],
+            "joinedUnits": [
+              107,
+              105,
+              110,
+              100
+            ]
+          },
+          {
+            "field": "wordCount",
+            "values": [
+              [
+                119,
+                99
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "lastChapter",
+            "values": [
+              [
+                108,
+                97,
+                116,
+                101,
+                115,
+                116
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "intro",
+            "values": [
+              [
+                105,
+                110,
+                116,
+                114,
+                111
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "bookUrl",
+            "values": [
+              [
+                47,
+                111,
+                107
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": "NAKWLI"
+    }
+  },
+  "json-url-after-name": {
+    "items": [
+      {
+        "type": "java.util.LinkedHashMap",
+        "contentUnits": [
+          123,
+          110,
+          97,
+          109,
+          101,
+          61,
+          98,
+          111,
+          100,
+          121,
+          125
+        ],
+        "reads": [
+          {
+            "field": "name",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          },
+          {
+            "field": "bookUrl",
+            "values": [
+              [
+                47,
+                111,
+                107
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "1",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "empty-regex-json-scalar": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "empty-regex-json-list": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": [
+              98,
+              111,
+              100,
+              121
+            ]
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "empty-regex-html-url": {
+    "items": [
+      {
+        "type": "org.jsoup.nodes.Element",
+        "contentUnits": [
+          60,
+          108,
+          105,
+          62,
+          60,
+          97,
+          32,
+          104,
+          114,
+          101,
+          102,
+          61,
+          34,
+          47,
+          111,
+          110,
+          101,
+          34,
+          62,
+          111,
+          110,
+          101,
+          60,
+          47,
+          97,
+          62,
+          60,
+          47,
+          108,
+          105,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                104,
+                116,
+                116,
+                112,
+                115,
+                58,
+                47,
+                47,
+                114,
+                101,
+                118,
+                105,
+                101,
+                119,
+                45,
+                114,
+                117,
+                108,
+                101,
+                115,
+                46,
+                116,
+                101,
+                115,
+                116,
+                47,
+                115,
+                101,
+                97,
+                114,
+                99,
+                104
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nonempty-zero-width": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                88,
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "replace-first": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                79
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-key-entity-scalar": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-key-entity-list": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38,
+                97,
+                109,
+                112,
+                59
+              ]
+            ],
+            "joinedUnits": [
+              65,
+              32,
+              38,
+              97,
+              109,
+              112,
+              59
+            ]
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-key-false-frozen-only": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38,
+                97,
+                109,
+                112,
+                59
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-json-path": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "\u0026amp;",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-json-content-false": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38,
+                97,
+                109,
+                112,
+                59
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "\u0026amp;",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-html-extraction": {
+    "items": [
+      {
+        "type": "org.jsoup.nodes.Element",
+        "contentUnits": [
+          60,
+          108,
+          105,
+          62,
+          60,
+          97,
+          32,
+          104,
+          114,
+          101,
+          102,
+          61,
+          34,
+          47,
+          111,
+          110,
+          101,
+          34,
+          62,
+          65,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          60,
+          47,
+          97,
+          62,
+          60,
+          47,
+          108,
+          105,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "A\u0026amp;",
+      "v": "",
+      "order": ""
+    }
+  },
+  "json-script-only-entity": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38,
+                32,
+                66
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-single-at": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-single-json": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-single-xpath": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                65,
+                32,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-repeated-mixed": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                64,
+                106,
+                115,
+                111,
+                110,
+                58,
+                110,
+                97,
+                109,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-repeated-at": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                64,
+                64,
+                110,
+                97,
+                109,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-head-generated-head": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                104,
+                101,
+                97,
+                100,
+                32,
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "map-head-repeated": {
+    "items": [
+      {
+        "type": "java.util.LinkedHashMap",
+        "contentUnits": [
+          123,
+          110,
+          97,
+          109,
+          101,
+          61,
+          65,
+          32,
+          38,
+          97,
+          109,
+          112,
+          59,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                64,
+                106,
+                115,
+                111,
+                110,
+                58,
+                110,
+                97,
+                109,
+                101
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "json-tokens-two": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                49
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "json-tokens-mixed-get": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                124,
+                49,
+                124,
+                49
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "json-tokens-sibling": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          110,
+          97,
+          109,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                50,
+                45,
+                49,
+                58,
+                51
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "3",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-html-literal": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          60,
+          112,
+          62,
+          98,
+          111,
+          100,
+          121,
+          60,
+          47,
+          112,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "1",
+      "saved": "\u0026amp;",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-html-literal-script": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          60,
+          112,
+          62,
+          98,
+          111,
+          100,
+          121,
+          60,
+          47,
+          112,
+          62
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38,
+                58,
+                50
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "\u0026amp;:2",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-json-literal": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "1",
+      "saved": "\u0026amp;",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-put-json-literal-script": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38,
+                58,
+                50
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "2",
+      "saved": "\u0026amp;:2",
+      "v": "",
+      "order": ""
+    }
+  },
+  "callback-rule-expression": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                38
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "native-toc-key": {
+    "items": [
+      {
+        "type": "org.mozilla.javascript.NativeObject",
+        "contentUnits": [
+          91,
+          111,
+          98,
+          106,
+          101,
+          99,
+          116,
+          32,
+          79,
+          98,
+          106,
+          101,
+          99,
+          116,
+          93
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                47,
+                116,
+                111,
+                99
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "",
+      "v": "",
+      "order": ""
+    }
+  },
+  "nested-getter-error": {
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      110,
+      101,
+      115,
+      116,
+      101,
+      100,
+      45,
+      103,
+      101,
+      116,
+      116,
+      101,
+      114,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "nested-put-policy-frozen-only": {
+    "items": [
+      {
+        "type": "java.lang.String",
+        "contentUnits": [
+          123,
+          34,
+          116,
+          105,
+          116,
+          108,
+          101,
+          34,
+          58,
+          34,
+          98,
+          111,
+          100,
+          121,
+          34,
+          125
+        ],
+        "reads": [
+          {
+            "field": "value",
+            "values": [
+              [
+                98,
+                111,
+                100,
+                121
+              ]
+            ],
+            "joinedUnits": null
+          }
+        ]
+      }
+    ],
+    "variables": {
+      "count": "",
+      "saved": "body",
+      "v": "",
+      "order": ""
+    }
+  }
+}

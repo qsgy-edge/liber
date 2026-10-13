@@ -128,3 +128,63 @@ that init-content boundary, and it is not counted as parity. The focused product
 suite has 11 differential rows plus one provenance check, with no mismatch guards.
 The deciding frozen tail is `AnalyzeRule.kt:308-314`; list reads use `:166-239`.
 No new DOM getter, native ABI or explicit object/prototype input protocol is added.
+
+## Five-finding review repair and scripted extraction tail
+
+`block-five-fixtures.json` and `BlockFiveOracle.kt` execute 37 repeated frozen
+observations using the preserved compiled AnalyzeRule/Jsoup/Rhino/JSONPath
+classes. Sequence rows invoke real getters in the pinned BookList field order;
+they do not execute the entire BookList class. The corpus distinguishes reverse
+parameter evaluation from source-order text assembly, per-item field order,
+JSON URL position, empty versus nonempty replacement, complete nested scalar
+reads, and single original mode-head normalization for known NativeObject.
+
+```sh
+python tool/rule_field_oracle/run_block_five.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+python tool/rule_field_oracle/run_intro_tail.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+```
+
+The second runner executes 18 repeated typed getter observations and the actual
+compiled frozen `HtmlFormatter.format`. It compiles exact Git-object formatter
+bytes, verifies the older content-oracle pin's sole CRLF difference, and records
+both identities. String, selected node and decoded Java map inputs are distinct.
+Scalar script inputs keep raw matched text; ordinary scalar matches join with a
+newline before replacement, URL scalar reads take the first, and replacement
+runs once on that scalar. No-match ordinary scalar reads skip the main script
+after its substitution; URL reads retain an empty String for a script to supply
+an address. Identity/double-entity, raw-before-script, multi-match/newline,
+replacement/replaceFirst, no-match/empty, list and disabled-tail rows protect
+those boundaries. TOC names and ordinary content titles exercise the same
+scalar read; the content body retains `unescape=false` and its existing order.
+The intro formatter remains unchanged. These are actual getter and formatter
+executions, not entire BookList/BookInfo/BookContent or device runs.
+
+The product reuses existing TextList jobs only for nonempty scalar extraction
+with scripts and `unescape=true`; pure static fields retain native Text jobs.
+The private document job record holds the existing finished/raw job alternatives
+inside the same stage batch. Item reads retain their actual node context. No
+native source, output kind, adapter interface, parser or engine is added.
+The existing RuleFieldContext extraction callback now returns a completed nested
+getString, on the same runtime/state and with one tail, before `@put` stores it.
+Known NativeObject bare keys defer validation only for script-only book-info init
+and the eight existing getters; other inputs and ignored fields keep their named
+refusals. Ordinary decoded maps are not reclassified as NativeObject.
+
+The focused block suite has 44 tests: 34 value comparisons, one actual nested
+error propagation control, one identity check, five input/preflight guards, one
+preserved nested-put rejection guard, and two tool getter comparisons. Its 37
+frozen observations include NativeObject `unescape=false` (frozen-only) and a
+nested put that frozen actually permits. The product's existing nested-put ban
+is preserved by explicit controller direction; that rejection is a recorded
+policy difference, not parity or a compatibility acceptance. The intro suite has
+21 tests: 18 caller comparisons, one identity check, one formatter check over all
+18 actual outputs and one comparison of the same tool scalar getter.
+
+`evidence/block-five-host` and `evidence/intro-tail-host` are unmodified copies of
+the respective final executed outputs and receipts. Every previous corpus,
+golden and receipt is retained. The old intro test now reads the executed typed
+formatter output rather than its earlier source-derived expected string.
+Java container/NativeArray differences, direct Elements init, broad type/DOM
+contracts and #104's chapter-wide ordering remain separate gaps. Blank selector
+plus nonempty replacement followed by scripts is outside this new raw-extraction
+branch; the bounded corpus does not establish all such rule shapes.
