@@ -1,0 +1,7871 @@
+{
+  "generated-@@h1@text": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        64,
+        64,
+        104,
+        49,
+        64,
+        116,
+        101,
+        120,
+        116
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "generated-@json": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        64,
+        106,
+        115,
+        111,
+        110,
+        58,
+        36,
+        46,
+        110,
+        97,
+        109,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "generated-@xpath": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        64,
+        120,
+        112,
+        97,
+        116,
+        104,
+        58,
+        47,
+        47,
+        112
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "empty-regex": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      44,
+      34,
+      116,
+      111,
+      99,
+      34,
+      58,
+      34,
+      47,
+      116,
+      111,
+      99,
+      34,
+      125
+    ],
+    "values": [
+      []
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "zero-width": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      44,
+      34,
+      116,
+      111,
+      99,
+      34,
+      58,
+      34,
+      47,
+      116,
+      111,
+      99,
+      34,
+      125
+    ],
+    "values": [
+      [
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "empty-nonempty-regex": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      44,
+      34,
+      116,
+      111,
+      99,
+      34,
+      58,
+      34,
+      47,
+      116,
+      111,
+      99,
+      34,
+      125
+    ],
+    "values": [
+      [
+        123,
+        34,
+        116,
+        105,
+        116,
+        108,
+        101,
+        34,
+        58,
+        34,
+        98,
+        111,
+        100,
+        121,
+        34,
+        44,
+        34,
+        116,
+        111,
+        99,
+        34,
+        58,
+        34,
+        47,
+        116,
+        111,
+        99,
+        34,
+        125
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "node-empty-replacement": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        60,
+        108,
+        105,
+        62,
+        60,
+        97,
+        32,
+        104,
+        114,
+        101,
+        102,
+        61,
+        34,
+        47,
+        98,
+        111,
+        111,
+        107,
+        34,
+        62,
+        116,
+        105,
+        116,
+        108,
+        101,
+        60,
+        47,
+        97,
+        62,
+        60,
+        47,
+        108,
+        105,
+        62
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "scalar-entity": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        65,
+        32,
+        38,
+        32,
+        66
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "item-completed": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      23436,
+      32467,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        23436,
+        32467
+      ]
+    ],
+    "error": null,
+    "count": "1",
+    "joinedUnits": null
+  },
+  "item-ongoing": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      36830,
+      36733,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        36830,
+        36733
+      ]
+    ],
+    "error": null,
+    "count": "1",
+    "joinedUnits": null
+  },
+  "url-sibling": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        104,
+        116,
+        116,
+        112,
+        115,
+        58,
+        47,
+        47,
+        114,
+        101,
+        118,
+        105,
+        101,
+        119,
+        45,
+        114,
+        117,
+        108,
+        101,
+        115,
+        46,
+        116,
+        101,
+        115,
+        116,
+        47,
+        111,
+        107
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "url-empty": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        104,
+        116,
+        116,
+        112,
+        115,
+        58,
+        47,
+        47,
+        114,
+        101,
+        118,
+        105,
+        101,
+        119,
+        45,
+        114,
+        117,
+        108,
+        101,
+        115,
+        46,
+        116,
+        101,
+        115,
+        116,
+        47,
+        115,
+        101,
+        97,
+        114,
+        99,
+        104
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "url-empty-after-script": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        104,
+        116,
+        116,
+        112,
+        115,
+        58,
+        47,
+        47,
+        114,
+        101,
+        118,
+        105,
+        101,
+        119,
+        45,
+        114,
+        117,
+        108,
+        101,
+        115,
+        46,
+        116,
+        101,
+        115,
+        116,
+        47,
+        115,
+        101,
+        97,
+        114,
+        99,
+        104
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "string-empty-replacement": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        123,
+        34,
+        116,
+        105,
+        116,
+        108,
+        101,
+        34,
+        58,
+        34,
+        98,
+        111,
+        100,
+        121,
+        34,
+        125
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "string-sole-expression": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "string-mixed-expression": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "map-empty-replacement": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        123,
+        116,
+        105,
+        116,
+        108,
+        101,
+        61,
+        98,
+        111,
+        100,
+        121,
+        125
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "map-sole-expression": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "map-mixed-expression": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "list-empty-replacement": {
+    "type": "net.minidev.json.JSONArray",
+    "contentUnits": [
+      91,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      44,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      93
+    ],
+    "values": [
+      [
+        91,
+        34,
+        116,
+        105,
+        116,
+        108,
+        101,
+        34,
+        44,
+        34,
+        98,
+        111,
+        100,
+        121,
+        34,
+        93
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "list-sole-expression": {
+    "type": "net.minidev.json.JSONArray",
+    "contentUnits": [
+      91,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      44,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      93
+    ],
+    "values": [
+      [
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "list-mixed-expression": {
+    "type": "net.minidev.json.JSONArray",
+    "contentUnits": [
+      91,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      44,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      93
+    ],
+    "values": [
+      [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "nativeObject-empty-replacement": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      []
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "nativeObject-sole-expression": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        110,
+        97,
+        116,
+        105,
+        118,
+        101,
+        45,
+        118,
+        97,
+        108,
+        117,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "nativeObject-mixed-expression": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        98,
+        111,
+        100,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "kind-string-named": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        30002
+      ],
+      [
+        20057,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      30002,
+      44,
+      20057,
+      32,
+      38,
+      97,
+      109,
+      112,
+      59
+    ]
+  },
+  "kind-map-named": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        30002
+      ],
+      [
+        20057,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      30002,
+      44,
+      20057,
+      32,
+      38,
+      97,
+      109,
+      112,
+      59
+    ]
+  },
+  "kind-string-blank": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        60,
+        112,
+        62,
+        98,
+        111,
+        100,
+        121,
+        60,
+        47,
+        112,
+        62
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ]
+  },
+  "kind-map-blank": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": null,
+    "error": null,
+    "count": "",
+    "joinedUnits": []
+  },
+  "kind-string-replacement": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        19993
+      ],
+      [
+        20057
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      19993,
+      44,
+      20057
+    ]
+  },
+  "kind-map-replacement": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        19993
+      ],
+      [
+        20057
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      19993,
+      44,
+      20057
+    ]
+  },
+  "kind-string-js-list": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        97,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ],
+      [
+        98
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      97,
+      32,
+      38,
+      97,
+      109,
+      112,
+      59,
+      44,
+      98
+    ]
+  },
+  "kind-map-js-list": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        97,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ],
+      [
+        98
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      97,
+      32,
+      38,
+      97,
+      109,
+      112,
+      59,
+      44,
+      98
+    ]
+  },
+  "original-@@": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        64,
+        64,
+        118,
+        97,
+        108,
+        117,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "original-@json:": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        64,
+        64,
+        118,
+        97,
+        108,
+        117,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "original-@xpath:": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        64,
+        64,
+        118,
+        97,
+        108,
+        117,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "post-script": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        65,
+        32,
+        38,
+        32,
+        60,
+        98,
+        62
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "single-pass": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "content-false": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        38,
+        97,
+        109,
+        112,
+        59,
+        97,
+        109,
+        112,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "encoded-put": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      []
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026amp;amp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      109,
+      112,
+      59,
+      97,
+      109,
+      112,
+      59
+    ],
+    "values": [
+      [
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026unknown;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      59
+    ],
+    "values": [
+      [
+        38,
+        117,
+        110,
+        107,
+        110,
+        111,
+        119,
+        110,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026apos;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      112,
+      111,
+      115,
+      59
+    ],
+    "values": [
+      [
+        38,
+        97,
+        112,
+        111,
+        115,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026AMP;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      77,
+      80,
+      59
+    ],
+    "values": [
+      [
+        38,
+        65,
+        77,
+        80,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026copy": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      111,
+      112,
+      121
+    ],
+    "values": [
+      [
+        38,
+        99,
+        111,
+        112,
+        121
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#65;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      54,
+      53,
+      59
+    ],
+    "values": [
+      [
+        65
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#x1F600;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      49,
+      70,
+      54,
+      48,
+      48,
+      59
+    ],
+    "values": [
+      [
+        55357,
+        56832
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#X41;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      88,
+      52,
+      49,
+      59
+    ],
+    "values": [
+      [
+        65
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#0;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      48,
+      59
+    ],
+    "values": [
+      [
+        0
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#xD800;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      68,
+      56,
+      48,
+      48,
+      59
+    ],
+    "values": [
+      [
+        55296
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#xDFFF;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      68,
+      70,
+      70,
+      70,
+      59
+    ],
+    "values": [
+      [
+        57343
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#x110000;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      49,
+      49,
+      48,
+      48,
+      48,
+      48,
+      59
+    ],
+    "values": null,
+    "error": "java.lang.IllegalArgumentException: Not a valid Unicode code point: 0x110000",
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#2147483648;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      50,
+      49,
+      52,
+      55,
+      52,
+      56,
+      51,
+      54,
+      52,
+      56,
+      59
+    ],
+    "values": [
+      [
+        38,
+        35,
+        50,
+        49,
+        52,
+        55,
+        52,
+        56,
+        51,
+        54,
+        52,
+        56,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#9999999999999999;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      57,
+      59
+    ],
+    "values": [
+      [
+        38,
+        35,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#-1;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      45,
+      49,
+      59
+    ],
+    "values": [
+      [
+        38,
+        35,
+        45,
+        49,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#xzz;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      122,
+      122,
+      59
+    ],
+    "values": [
+      [
+        38,
+        35,
+        120,
+        122,
+        122,
+        59
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#65": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      54,
+      53
+    ],
+    "values": [
+      [
+        38,
+        35,
+        54,
+        53
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "entity-\u0026#x80;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      35,
+      120,
+      56,
+      48,
+      59
+    ],
+    "values": [
+      [
+        128
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "multiple-siblings-count": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": [
+      [
+        108,
+        105,
+        116,
+        101,
+        114,
+        97,
+        108,
+        49,
+        50
+      ]
+    ],
+    "error": null,
+    "count": "3",
+    "joinedUnits": null
+  },
+  "cancelled-expression": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      60,
+      112,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      112,
+      62
+    ],
+    "values": null,
+    "error": "kotlinx.coroutines.JobCancellationException: Job was cancelled",
+    "count": "",
+    "joinedUnits": null
+  },
+  "kind-node-multiline": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      98,
+      111,
+      100,
+      121,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        30002
+      ],
+      [
+        20057
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      30002,
+      44,
+      20057
+    ]
+  },
+  "kind-map-multiline": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      44,
+      32,
+      112,
+      97,
+      116,
+      104,
+      61,
+      47,
+      98,
+      111,
+      111,
+      107,
+      125
+    ],
+    "values": [
+      [
+        30002
+      ],
+      [
+        20057
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      30002,
+      44,
+      20057
+    ]
+  },
+  "item-sequence": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      117,
+      108,
+      62,
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      111,
+      110,
+      101,
+      34,
+      62,
+      23436,
+      32467,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62,
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      116,
+      119,
+      111,
+      34,
+      62,
+      36830,
+      36733,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62,
+      60,
+      47,
+      117,
+      108,
+      62
+    ],
+    "values": [
+      [
+        23436,
+        32467
+      ],
+      [
+        36830,
+        36733
+      ]
+    ],
+    "error": null,
+    "count": "2",
+    "joinedUnits": null
+  },
+  "native-object-scalar": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        91,
+        111,
+        98,
+        106,
+        101,
+        99,
+        116,
+        32,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        93
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "native-object-list": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": null,
+    "error": null,
+    "count": "",
+    "joinedUnits": []
+  },
+  "native-array-scalar/repeat": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        111,
+        114,
+        103,
+        46,
+        109,
+        111,
+        122,
+        105,
+        108,
+        108,
+        97,
+        46,
+        106,
+        97,
+        118,
+        97,
+        115,
+        99,
+        114,
+        105,
+        112,
+        116,
+        46,
+        78,
+        97,
+        116,
+        105,
+        118,
+        101,
+        65,
+        114,
+        114,
+        97,
+        121,
+        64,
+        51,
+        53,
+        50,
+        99,
+        49,
+        98,
+        57,
+        56
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "native-array-scalar": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        111,
+        114,
+        103,
+        46,
+        109,
+        111,
+        122,
+        105,
+        108,
+        108,
+        97,
+        46,
+        106,
+        97,
+        118,
+        97,
+        115,
+        99,
+        114,
+        105,
+        112,
+        116,
+        46,
+        78,
+        97,
+        116,
+        105,
+        118,
+        101,
+        65,
+        114,
+        114,
+        97,
+        121,
+        64,
+        54,
+        56,
+        53,
+        51,
+        52,
+        50,
+        53,
+        102
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "native-array-list": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      [
+        97
+      ],
+      null,
+      [
+        98
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": [
+      97,
+      44,
+      110,
+      117,
+      108,
+      108,
+      44,
+      98
+    ]
+  },
+  "node-string-scalar-entity": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      65,
+      38,
+      97,
+      109,
+      112,
+      59,
+      97,
+      109,
+      112,
+      59,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        60,
+        108,
+        105,
+        62,
+        60,
+        97,
+        32,
+        104,
+        114,
+        101,
+        102,
+        61,
+        34,
+        47,
+        98,
+        111,
+        111,
+        107,
+        34,
+        62,
+        65,
+        38,
+        97,
+        109,
+        112,
+        59,
+        60,
+        47,
+        97,
+        62,
+        60,
+        47,
+        108,
+        105,
+        62
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "node-string-before-scalar": {
+    "type": "org.jsoup.nodes.Element",
+    "contentUnits": [
+      60,
+      108,
+      105,
+      62,
+      60,
+      97,
+      32,
+      104,
+      114,
+      101,
+      102,
+      61,
+      34,
+      47,
+      98,
+      111,
+      111,
+      107,
+      34,
+      62,
+      65,
+      38,
+      97,
+      109,
+      112,
+      59,
+      97,
+      109,
+      112,
+      59,
+      60,
+      47,
+      97,
+      62,
+      60,
+      47,
+      108,
+      105,
+      62
+    ],
+    "values": [
+      [
+        114,
+        97,
+        119,
+        45,
+        110,
+        111,
+        100,
+        101
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "map-script-string": {
+    "type": "java.util.LinkedHashMap",
+    "contentUnits": [
+      123,
+      110,
+      97,
+      109,
+      101,
+      61,
+      98,
+      111,
+      100,
+      121,
+      125
+    ],
+    "values": [
+      [
+        123,
+        110,
+        97,
+        109,
+        101,
+        61,
+        98,
+        111,
+        100,
+        121,
+        125
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "list-script-string": {
+    "type": "net.minidev.json.JSONArray",
+    "contentUnits": [
+      91,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      44,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      93
+    ],
+    "values": [
+      [
+        91,
+        34,
+        110,
+        97,
+        109,
+        101,
+        34,
+        44,
+        34,
+        98,
+        111,
+        100,
+        121,
+        34,
+        93
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "nativeObject-script-string": {
+    "type": "org.mozilla.javascript.NativeObject",
+    "contentUnits": [
+      91,
+      111,
+      98,
+      106,
+      101,
+      99,
+      116,
+      32,
+      79,
+      98,
+      106,
+      101,
+      99,
+      116,
+      93
+    ],
+    "values": [
+      []
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "url-toc-sibling": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        104,
+        116,
+        116,
+        112,
+        115,
+        58,
+        47,
+        47,
+        114,
+        101,
+        118,
+        105,
+        101,
+        119,
+        45,
+        114,
+        117,
+        108,
+        101,
+        115,
+        46,
+        116,
+        101,
+        115,
+        116,
+        47,
+        111,
+        107
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "url-toc-empty-script": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      123,
+      34,
+      110,
+      97,
+      109,
+      101,
+      34,
+      58,
+      34,
+      98,
+      111,
+      100,
+      121,
+      34,
+      125
+    ],
+    "values": [
+      [
+        104,
+        116,
+        116,
+        112,
+        115,
+        58,
+        47,
+        47,
+        114,
+        101,
+        118,
+        105,
+        101,
+        119,
+        45,
+        114,
+        117,
+        108,
+        101,
+        115,
+        46,
+        116,
+        101,
+        115,
+        116,
+        47,
+        98,
+        111,
+        111,
+        107
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026AElig;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      69,
+      108,
+      105,
+      103,
+      59
+    ],
+    "values": [
+      [
+        198
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Aacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        193
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Acirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        194
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Agrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        192
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Alpha;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      108,
+      112,
+      104,
+      97,
+      59
+    ],
+    "values": [
+      [
+        913
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Aring;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      114,
+      105,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        197
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Atilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        195
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Auml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      65,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        196
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Beta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      66,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        914
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ccedil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      67,
+      99,
+      101,
+      100,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        199
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Chi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      67,
+      104,
+      105,
+      59
+    ],
+    "values": [
+      [
+        935
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Dagger;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      68,
+      97,
+      103,
+      103,
+      101,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8225
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Delta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      68,
+      101,
+      108,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        916
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ETH;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      84,
+      72,
+      59
+    ],
+    "values": [
+      [
+        208
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Eacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        201
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ecirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        202
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Egrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        200
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Epsilon;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      112,
+      115,
+      105,
+      108,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        917
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Eta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        919
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Euml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      69,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        203
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Gamma;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      71,
+      97,
+      109,
+      109,
+      97,
+      59
+    ],
+    "values": [
+      [
+        915
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Iacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      73,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        205
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Icirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      73,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        206
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Igrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      73,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        204
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Iota;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      73,
+      111,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        921
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Iuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      73,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        207
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Kappa;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      75,
+      97,
+      112,
+      112,
+      97,
+      59
+    ],
+    "values": [
+      [
+        922
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Lambda;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      76,
+      97,
+      109,
+      98,
+      100,
+      97,
+      59
+    ],
+    "values": [
+      [
+        923
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Mu;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      77,
+      117,
+      59
+    ],
+    "values": [
+      [
+        924
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ntilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      78,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        209
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Nu;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      78,
+      117,
+      59
+    ],
+    "values": [
+      [
+        925
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026OElig;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      69,
+      108,
+      105,
+      103,
+      59
+    ],
+    "values": [
+      [
+        338
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Oacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        211
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ocirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        212
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ograve;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        210
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Omega;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      109,
+      101,
+      103,
+      97,
+      59
+    ],
+    "values": [
+      [
+        937
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Omicron;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      109,
+      105,
+      99,
+      114,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        927
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Oslash;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      115,
+      108,
+      97,
+      115,
+      104,
+      59
+    ],
+    "values": [
+      [
+        216
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Otilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        213
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ouml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      79,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        214
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Phi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      80,
+      104,
+      105,
+      59
+    ],
+    "values": [
+      [
+        934
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Pi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      80,
+      105,
+      59
+    ],
+    "values": [
+      [
+        928
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Prime;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      80,
+      114,
+      105,
+      109,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8243
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Psi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      80,
+      115,
+      105,
+      59
+    ],
+    "values": [
+      [
+        936
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Rho;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      82,
+      104,
+      111,
+      59
+    ],
+    "values": [
+      [
+        929
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Scaron;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      83,
+      99,
+      97,
+      114,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        352
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Sigma;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      83,
+      105,
+      103,
+      109,
+      97,
+      59
+    ],
+    "values": [
+      [
+        931
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026THORN;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      84,
+      72,
+      79,
+      82,
+      78,
+      59
+    ],
+    "values": [
+      [
+        222
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Tau;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      84,
+      97,
+      117,
+      59
+    ],
+    "values": [
+      [
+        932
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Theta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      84,
+      104,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        920
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Uacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      85,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        218
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ucirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      85,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        219
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Ugrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      85,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        217
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Upsilon;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      85,
+      112,
+      115,
+      105,
+      108,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        933
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Uuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      85,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        220
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Xi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      88,
+      105,
+      59
+    ],
+    "values": [
+      [
+        926
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Yacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      89,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        221
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Yuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      89,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        376
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026Zeta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      90,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        918
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026aacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        225
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026acirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        226
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026acute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        180
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026aelig;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      101,
+      108,
+      105,
+      103,
+      59
+    ],
+    "values": [
+      [
+        230
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026agrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        224
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026alefsym;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      108,
+      101,
+      102,
+      115,
+      121,
+      109,
+      59
+    ],
+    "values": [
+      [
+        8501
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026alpha;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      108,
+      112,
+      104,
+      97,
+      59
+    ],
+    "values": [
+      [
+        945
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026amp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      109,
+      112,
+      59
+    ],
+    "values": [
+      [
+        38
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026and;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      110,
+      100,
+      59
+    ],
+    "values": [
+      [
+        8743
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ang;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        8736
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026aring;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      114,
+      105,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        229
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026asymp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      115,
+      121,
+      109,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8776
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026atilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        227
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026auml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      97,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        228
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026bdquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      98,
+      100,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8222
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026beta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      98,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        946
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026brvbar;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      98,
+      114,
+      118,
+      98,
+      97,
+      114,
+      59
+    ],
+    "values": [
+      [
+        166
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026bull;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      98,
+      117,
+      108,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8226
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026cap;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      97,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8745
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ccedil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      99,
+      101,
+      100,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        231
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026cedil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      101,
+      100,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        184
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026cent;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      101,
+      110,
+      116,
+      59
+    ],
+    "values": [
+      [
+        162
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026chi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      104,
+      105,
+      59
+    ],
+    "values": [
+      [
+        967
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026circ;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        710
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026clubs;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      108,
+      117,
+      98,
+      115,
+      59
+    ],
+    "values": [
+      [
+        9827
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026cong;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      111,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        8773
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026copy;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      111,
+      112,
+      121,
+      59
+    ],
+    "values": [
+      [
+        169
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026crarr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      114,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8629
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026cup;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      117,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8746
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026curren;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      99,
+      117,
+      114,
+      114,
+      101,
+      110,
+      59
+    ],
+    "values": [
+      [
+        164
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026dArr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      65,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8659
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026dagger;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      97,
+      103,
+      103,
+      101,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8224
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026darr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8595
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026deg;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      101,
+      103,
+      59
+    ],
+    "values": [
+      [
+        176
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026delta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      101,
+      108,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        948
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026diams;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      105,
+      97,
+      109,
+      115,
+      59
+    ],
+    "values": [
+      [
+        9830
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026divide;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      100,
+      105,
+      118,
+      105,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        247
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026eacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        233
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ecirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        234
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026egrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        232
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026empty;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      109,
+      112,
+      116,
+      121,
+      59
+    ],
+    "values": [
+      [
+        8709
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026emsp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      109,
+      115,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8195
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ensp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      110,
+      115,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8194
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026epsilon;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      112,
+      115,
+      105,
+      108,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        949
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026equiv;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      113,
+      117,
+      105,
+      118,
+      59
+    ],
+    "values": [
+      [
+        8801
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026eta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        951
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026eth;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      116,
+      104,
+      59
+    ],
+    "values": [
+      [
+        240
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026euml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        235
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026euro;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      117,
+      114,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8364
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026exist;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      101,
+      120,
+      105,
+      115,
+      116,
+      59
+    ],
+    "values": [
+      [
+        8707
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026fnof;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      110,
+      111,
+      102,
+      59
+    ],
+    "values": [
+      [
+        402
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026forall;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      111,
+      114,
+      97,
+      108,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8704
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026frac12;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      114,
+      97,
+      99,
+      49,
+      50,
+      59
+    ],
+    "values": [
+      [
+        189
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026frac14;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      114,
+      97,
+      99,
+      49,
+      52,
+      59
+    ],
+    "values": [
+      [
+        188
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026frac34;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      114,
+      97,
+      99,
+      51,
+      52,
+      59
+    ],
+    "values": [
+      [
+        190
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026frasl;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      102,
+      114,
+      97,
+      115,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8260
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026gamma;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      103,
+      97,
+      109,
+      109,
+      97,
+      59
+    ],
+    "values": [
+      [
+        947
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ge;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      103,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8805
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026gt;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      103,
+      116,
+      59
+    ],
+    "values": [
+      [
+        62
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026hArr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      104,
+      65,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8660
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026harr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      104,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8596
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026hearts;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      104,
+      101,
+      97,
+      114,
+      116,
+      115,
+      59
+    ],
+    "values": [
+      [
+        9829
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026hellip;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      104,
+      101,
+      108,
+      108,
+      105,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8230
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026iacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        237
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026icirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        238
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026iexcl;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      101,
+      120,
+      99,
+      108,
+      59
+    ],
+    "values": [
+      [
+        161
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026igrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        236
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026image;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      109,
+      97,
+      103,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8465
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026infin;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      110,
+      102,
+      105,
+      110,
+      59
+    ],
+    "values": [
+      [
+        8734
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026int;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      110,
+      116,
+      59
+    ],
+    "values": [
+      [
+        8747
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026iota;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      111,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        953
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026iquest;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      113,
+      117,
+      101,
+      115,
+      116,
+      59
+    ],
+    "values": [
+      [
+        191
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026isin;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      115,
+      105,
+      110,
+      59
+    ],
+    "values": [
+      [
+        8712
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026iuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      105,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        239
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026kappa;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      107,
+      97,
+      112,
+      112,
+      97,
+      59
+    ],
+    "values": [
+      [
+        954
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lArr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      65,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8656
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lambda;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      97,
+      109,
+      98,
+      100,
+      97,
+      59
+    ],
+    "values": [
+      [
+        955
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lang;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      97,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        9001
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026laquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      97,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        171
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026larr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8592
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lceil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      99,
+      101,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8968
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ldquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      100,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8220
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026le;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8804
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lfloor;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      102,
+      108,
+      111,
+      111,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8970
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lowast;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      111,
+      119,
+      97,
+      115,
+      116,
+      59
+    ],
+    "values": [
+      [
+        8727
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026loz;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      111,
+      122,
+      59
+    ],
+    "values": [
+      [
+        9674
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lrm;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      114,
+      109,
+      59
+    ],
+    "values": [
+      [
+        8206
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lsaquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      115,
+      97,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8249
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lsquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      115,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8216
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026lt;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      108,
+      116,
+      59
+    ],
+    "values": [
+      [
+        60
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026macr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      97,
+      99,
+      114,
+      59
+    ],
+    "values": [
+      [
+        175
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026mdash;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      100,
+      97,
+      115,
+      104,
+      59
+    ],
+    "values": [
+      [
+        8212
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026micro;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      105,
+      99,
+      114,
+      111,
+      59
+    ],
+    "values": [
+      [
+        181
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026middot;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      105,
+      100,
+      100,
+      111,
+      116,
+      59
+    ],
+    "values": [
+      [
+        183
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026minus;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      105,
+      110,
+      117,
+      115,
+      59
+    ],
+    "values": [
+      [
+        8722
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026mu;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      109,
+      117,
+      59
+    ],
+    "values": [
+      [
+        956
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026nabla;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      97,
+      98,
+      108,
+      97,
+      59
+    ],
+    "values": [
+      [
+        8711
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026nbsp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      98,
+      115,
+      112,
+      59
+    ],
+    "values": [
+      [
+        160
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ndash;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      100,
+      97,
+      115,
+      104,
+      59
+    ],
+    "values": [
+      [
+        8211
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ne;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8800
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ni;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      105,
+      59
+    ],
+    "values": [
+      [
+        8715
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026not;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      111,
+      116,
+      59
+    ],
+    "values": [
+      [
+        172
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026notin;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      111,
+      116,
+      105,
+      110,
+      59
+    ],
+    "values": [
+      [
+        8713
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026nsub;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      115,
+      117,
+      98,
+      59
+    ],
+    "values": [
+      [
+        8836
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ntilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        241
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026nu;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      110,
+      117,
+      59
+    ],
+    "values": [
+      [
+        957
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026oacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        243
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ocirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        244
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026oelig;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      101,
+      108,
+      105,
+      103,
+      59
+    ],
+    "values": [
+      [
+        339
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ograve;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        242
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026oline;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      108,
+      105,
+      110,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8254
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026omega;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      109,
+      101,
+      103,
+      97,
+      59
+    ],
+    "values": [
+      [
+        969
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026omicron;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      109,
+      105,
+      99,
+      114,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        959
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026oplus;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      112,
+      108,
+      117,
+      115,
+      59
+    ],
+    "values": [
+      [
+        8853
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026or;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8744
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ordf;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      114,
+      100,
+      102,
+      59
+    ],
+    "values": [
+      [
+        170
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ordm;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      114,
+      100,
+      109,
+      59
+    ],
+    "values": [
+      [
+        186
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026oslash;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      115,
+      108,
+      97,
+      115,
+      104,
+      59
+    ],
+    "values": [
+      [
+        248
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026otilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        245
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026otimes;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      116,
+      105,
+      109,
+      101,
+      115,
+      59
+    ],
+    "values": [
+      [
+        8855
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ouml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      111,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        246
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026para;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      97,
+      114,
+      97,
+      59
+    ],
+    "values": [
+      [
+        182
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026part;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      97,
+      114,
+      116,
+      59
+    ],
+    "values": [
+      [
+        8706
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026permil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      101,
+      114,
+      109,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8240
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026perp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      101,
+      114,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8869
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026phi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      104,
+      105,
+      59
+    ],
+    "values": [
+      [
+        966
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026pi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      105,
+      59
+    ],
+    "values": [
+      [
+        960
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026piv;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      105,
+      118,
+      59
+    ],
+    "values": [
+      [
+        982
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026plusmn;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      108,
+      117,
+      115,
+      109,
+      110,
+      59
+    ],
+    "values": [
+      [
+        177
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026pound;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      111,
+      117,
+      110,
+      100,
+      59
+    ],
+    "values": [
+      [
+        163
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026prime;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      114,
+      105,
+      109,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8242
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026prod;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      114,
+      111,
+      100,
+      59
+    ],
+    "values": [
+      [
+        8719
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026prop;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      114,
+      111,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8733
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026psi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      112,
+      115,
+      105,
+      59
+    ],
+    "values": [
+      [
+        968
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026quot;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      113,
+      117,
+      111,
+      116,
+      59
+    ],
+    "values": [
+      [
+        34
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rArr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      65,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8658
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026radic;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      97,
+      100,
+      105,
+      99,
+      59
+    ],
+    "values": [
+      [
+        8730
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rang;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      97,
+      110,
+      103,
+      59
+    ],
+    "values": [
+      [
+        9002
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026raquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      97,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        187
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rarr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8594
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rceil;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      99,
+      101,
+      105,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8969
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rdquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      100,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8221
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026real;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      101,
+      97,
+      108,
+      59
+    ],
+    "values": [
+      [
+        8476
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026reg;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      101,
+      103,
+      59
+    ],
+    "values": [
+      [
+        174
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rfloor;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      102,
+      108,
+      111,
+      111,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8971
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rho;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      104,
+      111,
+      59
+    ],
+    "values": [
+      [
+        961
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rlm;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      108,
+      109,
+      59
+    ],
+    "values": [
+      [
+        8207
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rsaquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      115,
+      97,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8250
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026rsquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      114,
+      115,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8217
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sbquo;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      98,
+      113,
+      117,
+      111,
+      59
+    ],
+    "values": [
+      [
+        8218
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026scaron;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      99,
+      97,
+      114,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        353
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sdot;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      100,
+      111,
+      116,
+      59
+    ],
+    "values": [
+      [
+        8901
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sect;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      101,
+      99,
+      116,
+      59
+    ],
+    "values": [
+      [
+        167
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026shy;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      104,
+      121,
+      59
+    ],
+    "values": [
+      [
+        173
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sigma;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      105,
+      103,
+      109,
+      97,
+      59
+    ],
+    "values": [
+      [
+        963
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sigmaf;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      105,
+      103,
+      109,
+      97,
+      102,
+      59
+    ],
+    "values": [
+      [
+        962
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sim;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      105,
+      109,
+      59
+    ],
+    "values": [
+      [
+        8764
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026spades;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      112,
+      97,
+      100,
+      101,
+      115,
+      59
+    ],
+    "values": [
+      [
+        9824
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sub;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      98,
+      59
+    ],
+    "values": [
+      [
+        8834
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sube;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      98,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8838
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sum;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      109,
+      59
+    ],
+    "values": [
+      [
+        8721
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sup1;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      112,
+      49,
+      59
+    ],
+    "values": [
+      [
+        185
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sup2;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      112,
+      50,
+      59
+    ],
+    "values": [
+      [
+        178
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sup3;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      112,
+      51,
+      59
+    ],
+    "values": [
+      [
+        179
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026sup;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8835
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026supe;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      117,
+      112,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8839
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026szlig;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      115,
+      122,
+      108,
+      105,
+      103,
+      59
+    ],
+    "values": [
+      [
+        223
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026tau;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      97,
+      117,
+      59
+    ],
+    "values": [
+      [
+        964
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026there4;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      104,
+      101,
+      114,
+      101,
+      52,
+      59
+    ],
+    "values": [
+      [
+        8756
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026theta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      104,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        952
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026thetasym;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      104,
+      101,
+      116,
+      97,
+      115,
+      121,
+      109,
+      59
+    ],
+    "values": [
+      [
+        977
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026thinsp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      104,
+      105,
+      110,
+      115,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8201
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026thorn;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      104,
+      111,
+      114,
+      110,
+      59
+    ],
+    "values": [
+      [
+        254
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026tilde;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      105,
+      108,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        732
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026times;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      105,
+      109,
+      101,
+      115,
+      59
+    ],
+    "values": [
+      [
+        215
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026trade;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      116,
+      114,
+      97,
+      100,
+      101,
+      59
+    ],
+    "values": [
+      [
+        8482
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026uArr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      65,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8657
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026uacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        250
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026uarr;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      97,
+      114,
+      114,
+      59
+    ],
+    "values": [
+      [
+        8593
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ucirc;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      99,
+      105,
+      114,
+      99,
+      59
+    ],
+    "values": [
+      [
+        251
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026ugrave;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      103,
+      114,
+      97,
+      118,
+      101,
+      59
+    ],
+    "values": [
+      [
+        249
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026uml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        168
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026upsih;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      112,
+      115,
+      105,
+      104,
+      59
+    ],
+    "values": [
+      [
+        978
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026upsilon;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      112,
+      115,
+      105,
+      108,
+      111,
+      110,
+      59
+    ],
+    "values": [
+      [
+        965
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026uuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      117,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        252
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026weierp;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      119,
+      101,
+      105,
+      101,
+      114,
+      112,
+      59
+    ],
+    "values": [
+      [
+        8472
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026xi;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      120,
+      105,
+      59
+    ],
+    "values": [
+      [
+        958
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026yacute;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      121,
+      97,
+      99,
+      117,
+      116,
+      101,
+      59
+    ],
+    "values": [
+      [
+        253
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026yen;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      121,
+      101,
+      110,
+      59
+    ],
+    "values": [
+      [
+        165
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026yuml;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      121,
+      117,
+      109,
+      108,
+      59
+    ],
+    "values": [
+      [
+        255
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026zeta;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      122,
+      101,
+      116,
+      97,
+      59
+    ],
+    "values": [
+      [
+        950
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026zwj;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      122,
+      119,
+      106,
+      59
+    ],
+    "values": [
+      [
+        8205
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  },
+  "table:\u0026zwnj;": {
+    "type": "java.lang.String",
+    "contentUnits": [
+      38,
+      122,
+      119,
+      110,
+      106,
+      59
+    ],
+    "values": [
+      [
+        8204
+      ]
+    ],
+    "error": null,
+    "count": "",
+    "joinedUnits": null
+  }
+}

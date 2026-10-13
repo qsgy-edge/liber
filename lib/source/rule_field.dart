@@ -251,6 +251,7 @@ class RuleField {
     this.extractionRule,
     this._scripts,
     this._literalValueFields,
+    this._parameterCount,
   );
 
   final RuleFieldContext _context;
@@ -261,6 +262,7 @@ class RuleField {
 
   final List<String> _scripts;
   final RuleReplaceFields? _literalValueFields;
+  final int _parameterCount;
 
   /// The frozen SourceRule changes to Mode.Regex when its first interpolation
   /// is before `##` (AnalyzeRule.kt:566-572). In a text read that mode returns
@@ -269,6 +271,16 @@ class RuleField {
   bool get isLiteralValue => _literalValueFields != null;
 
   bool get hasValueExtraction => !isScriptOnly && !isLiteralValue;
+
+  /// Item fields with substitution or scripts need the actual item's content;
+  /// parsing this shape performs no expression evaluation.
+  static bool requiresItemResolution(String field) {
+    final parts = parseRuleField(field);
+    final extraction = parts.extractionRule ?? '';
+    return parts.scripts.isNotEmpty ||
+        _evalPattern.hasMatch(extraction) ||
+        _putPattern.hasMatch(extraction);
+  }
 
   /// The `@js:`/`<js>` script bodies, in order.
   List<String> get scripts => List.unmodifiable(_scripts);
@@ -300,35 +312,101 @@ class RuleField {
     final original = parts.extractionRule?.replaceAll(_putPattern, '');
     final first = original == null ? null : _evalPattern.firstMatch(original);
     if (first != null && !original!.substring(0, first.start).contains('##')) {
-      var literal = extraction!;
-      // SourceRule removes these mode markers before checking interpolation
-      // (:532-545); @CSS: is deliberately kept (:527-529).
-      if (literal.startsWith('@@')) {
-        literal = literal.substring(2);
-      } else if (literal.toLowerCase().startsWith('@json:')) {
-        literal = literal.substring(6);
-      } else if (literal.toLowerCase().startsWith('@xpath:')) {
-        literal = literal.substring(7);
-      }
-      literalValueFields = splitRuleFields(literal);
+      // Remove only mode heads present in the source. A head produced by the
+      // expression is literal text (SourceRule :532-545, then :638-695).
+      final sourceText = parts.extractionRule!;
+      final headLength = sourceText.startsWith('@@')
+          ? 2
+          : sourceText.toLowerCase().startsWith('@json:')
+          ? 6
+          : sourceText.toLowerCase().startsWith('@xpath:')
+          ? 7
+          : 0;
+      literalValueFields = splitRuleFields(extraction!.substring(headLength));
     }
-    return RuleField._(context, extraction, parts.scripts, literalValueFields);
+    var primary = (parts.extractionRule ?? parts.scripts.firstOrNull ?? '')
+        .replaceAll(_putPattern, '');
+    if (primary.startsWith('@@')) primary = primary.substring(2);
+    if (primary.toLowerCase().startsWith('@json:'))
+      primary = primary.substring(6);
+    if (primary.toLowerCase().startsWith('@xpath:'))
+      primary = primary.substring(7);
+    var parameterCount = 0;
+    var cursor = 0;
+    for (final token in _evalPattern.allMatches(primary)) {
+      if (token.start > cursor) parameterCount++;
+      parameterCount++;
+      cursor = token.end;
+    }
+    if (cursor < primary.length) parameterCount++;
+    return RuleField._(
+      context,
+      extraction,
+      parts.scripts,
+      literalValueFields,
+      parameterCount,
+    );
+  }
+
+  /// A known script-produced object follows the frozen NativeObject branch
+  /// (:269-280), rather than being treated as a JSONPath Java container.
+  Future<Object?> applyNativeObject(
+    Map value, {
+    bool forStringList = false,
+  }) async {
+    final text =
+        extractionRule ??
+        (_scripts.isEmpty
+            ? ''
+            : await _substitute(_scripts.first, value, _context, true));
+    final fields = _literalValueFields ?? splitRuleFields(text);
+    final result = _parameterCount > 1 ? fields.rule : value[fields.rule];
+    if (result == null) return '';
+    if (forStringList && result is List) {
+      return fields.regex?.isNotEmpty == true
+          ? [
+              for (final item in result)
+                applyRuleReplacement(item == null ? 'null' : '$item', fields),
+            ]
+          : result;
+    }
+    if (forStringList &&
+        fields.regex?.isNotEmpty != true &&
+        result is! String) {
+      return null;
+    }
+    final textValue = result is Map ? '[object Object]' : _format(result);
+    // A NativeArray scalar's Java identity format remains an explicit mismatch;
+    // do not fabricate a JVM identity suffix from a Dart array.
+    return fields.regex?.isNotEmpty == true
+        ? applyRuleReplacement(textValue, fields)
+        : textValue;
   }
 
   /// Runs the script segments on the value the extraction produced, each one
   /// substituted first and bound as the next one's `result`. A scalar caller
   /// sets [forValue] to return a literal interpolation before the scripts; an
   /// element or list caller keeps the extraction value.
-  Future<Object?> apply(Object? value, {bool forValue = false}) async {
+  Future<Object?> apply(
+    Object? value, {
+    bool forValue = false,
+    String? contentText,
+    bool forStringList = false,
+  }) async {
     var result = value;
     final fields = _literalValueFields;
     if (forValue && fields != null) {
-      // A blank rule with a replacement keeps the input (:288); without a
-      // replacement an empty expression remains empty, not the input document.
-      final text = fields.rule.isNotEmpty || !fields.hasReplacement
-          ? fields.rule
-          : _format(value);
-      result = applyRuleReplacement(text, fields);
+      final hasReplacement = fields.regex?.isNotEmpty == true;
+      // getString skips an empty rule only for an effective replacement;
+      // getStringList skips every empty rule (:201), retaining current content.
+      final keepContent =
+          fields.rule.isEmpty && (hasReplacement || forStringList);
+      final text = keepContent ? contentText ?? _format(value) : fields.rule;
+      result = hasReplacement ? applyRuleReplacement(text, fields) : text;
+      if (forStringList && keepContent && !hasReplacement && value is! String) {
+        // The frozen final cast cannot turn a Java map into List<String>.
+        result = value;
+      }
     }
     for (final script in _scripts) {
       final code = await _substitute(script, result, _context, true);

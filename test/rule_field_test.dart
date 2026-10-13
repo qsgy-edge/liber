@@ -200,8 +200,9 @@ void main() {
             final source = format == 'json'
                 ? _jsonSource(name: r'$.name')
                 : _htmlSource(name: 'a.0@text');
-            (source['ruleSearch'] as Map)['kind'] = rule;
-            (source['ruleBookInfo'] as Map)['kind'] = rule;
+            (source['ruleSearch'] as Map)['author'] = rule;
+            (source['ruleBookInfo'] as Map)['author'] = rule;
+            (source['ruleBookInfo'] as Map)['canReName'] = 'yes';
             (source['ruleContent'] as Map)['title'] = rule;
             final BookSourcePipeline pipeline = format == 'json'
                 ? JsonSourcePipeline(
@@ -220,9 +221,9 @@ void main() {
                     ),
                   );
             final hit = (await pipeline.search('关键字')).single;
-            expect(hit.kind, frozen['value']);
+            expect(hit.author, frozen['value']);
             final (book, _) = await pipeline.details(hit);
-            expect(book.kind, frozen['value']);
+            expect(book.author, frozen['value']);
             final chapter = await pipeline.chapter(
               SourceChapter(
                 '目录标题',

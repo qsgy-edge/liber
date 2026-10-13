@@ -129,6 +129,10 @@ class JsonSourceRules {
     }
   }
 
+  /// Text of an actual JSONPath Java-container result. Root response strings
+  /// and Rhino objects keep their caller-specific representation instead.
+  static String contentText(Object? value) => _matchedText(value);
+
   static Object? read(Object? value, String rule) =>
       values(value, rule).firstOrNull;
 

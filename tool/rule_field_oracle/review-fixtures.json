@@ -1,0 +1,483 @@
+[
+  {
+    "name": "generated-@@h1@text",
+    "rule": "{{'@@h1@text'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>"
+  },
+  {
+    "name": "generated-@json",
+    "rule": "{{'@json:$.name'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>"
+  },
+  {
+    "name": "generated-@xpath",
+    "rule": "{{'@xpath://p'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>"
+  },
+  {
+    "name": "empty-regex",
+    "rule": "{{null}}##",
+    "content": "{\"name\":\"body\",\"toc\":\"/toc\"}",
+    "unescape": false
+  },
+  {
+    "name": "zero-width",
+    "rule": "{{'body'}}####X",
+    "content": "{\"name\":\"body\",\"toc\":\"/toc\"}",
+    "unescape": false
+  },
+  {
+    "name": "empty-nonempty-regex",
+    "rule": "{{null}}##name##title",
+    "content": "{\"name\":\"body\",\"toc\":\"/toc\"}",
+    "unescape": false
+  },
+  {
+    "name": "node-empty-replacement",
+    "rule": "{{null}}##body##title",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>"
+  },
+  {
+    "name": "scalar-entity",
+    "rule": "{{'A &amp; B'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>"
+  },
+  {
+    "name": "item-completed",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); String(result).indexOf('完结') >= 0 ? '完结' : '连载'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">完结</a></li></ul>"
+  },
+  {
+    "name": "item-ongoing",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); String(result).indexOf('完结') >= 0 ? '完结' : '连载'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">连载</a></li></ul>"
+  },
+  {
+    "name": "url-sibling",
+    "rule": "{{'/book'}} @js: result.trim() == '/book' ? '/ok' : '/bad'",
+    "content": "{\"name\":\"body\"}",
+    "url": true
+  },
+  {
+    "name": "url-empty",
+    "rule": "{{null}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>",
+    "url": true
+  },
+  {
+    "name": "url-empty-after-script",
+    "rule": "{{'/book'}} @js:''",
+    "content": "{\"name\":\"body\"}",
+    "url": true
+  },
+  {
+    "name": "string-empty-replacement",
+    "rule": "{{null}}##name##title",
+    "type": "string",
+    "content": "{\"name\":\"body\"}",
+    "unescape": false
+  },
+  {
+    "name": "string-sole-expression",
+    "rule": "{{'body'}}",
+    "type": "string",
+    "content": "{\"name\":\"body\"}",
+    "unescape": false
+  },
+  {
+    "name": "string-mixed-expression",
+    "rule": "prefix{{'body'}}",
+    "type": "string",
+    "content": "{\"name\":\"body\"}",
+    "unescape": false
+  },
+  {
+    "name": "map-empty-replacement",
+    "rule": "{{null}}##name##title",
+    "type": "map",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "unescape": false
+  },
+  {
+    "name": "map-sole-expression",
+    "rule": "{{'body'}}",
+    "type": "map",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "unescape": false
+  },
+  {
+    "name": "map-mixed-expression",
+    "rule": "prefix{{'body'}}",
+    "type": "map",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "unescape": false
+  },
+  {
+    "name": "list-empty-replacement",
+    "rule": "{{null}}##name##title",
+    "type": "list",
+    "content": "{\"list\":[\"name\",\"body\"]}",
+    "unescape": false
+  },
+  {
+    "name": "list-sole-expression",
+    "rule": "{{'body'}}",
+    "type": "list",
+    "content": "{\"list\":[\"name\",\"body\"]}",
+    "unescape": false
+  },
+  {
+    "name": "list-mixed-expression",
+    "rule": "prefix{{'body'}}",
+    "type": "list",
+    "content": "{\"list\":[\"name\",\"body\"]}",
+    "unescape": false
+  },
+  {
+    "name": "nativeObject-empty-replacement",
+    "rule": "{{null}}##name##title",
+    "type": "nativeObject",
+    "content": "{\"name\":\"body\",\"body\":\"native-value\"}",
+    "unescape": false
+  },
+  {
+    "name": "nativeObject-sole-expression",
+    "rule": "{{'body'}}",
+    "type": "nativeObject",
+    "content": "{\"name\":\"body\",\"body\":\"native-value\"}",
+    "unescape": false
+  },
+  {
+    "name": "nativeObject-mixed-expression",
+    "rule": "prefix{{'body'}}",
+    "type": "nativeObject",
+    "content": "{\"name\":\"body\",\"body\":\"native-value\"}",
+    "unescape": false
+  },
+  {
+    "name": "kind-string-named",
+    "rule": "{{'甲\\n乙 &amp;'}}",
+    "content": "<p>body</p>",
+    "type": "string",
+    "form": "list"
+  },
+  {
+    "name": "kind-map-named",
+    "rule": "{{'甲\\n乙 &amp;'}}",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "type": "map",
+    "form": "list"
+  },
+  {
+    "name": "kind-string-blank",
+    "rule": "{{null}}",
+    "content": "<p>body</p>",
+    "type": "string",
+    "form": "list"
+  },
+  {
+    "name": "kind-map-blank",
+    "rule": "{{null}}",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "type": "map",
+    "form": "list"
+  },
+  {
+    "name": "kind-string-replacement",
+    "rule": "{{'甲\\n乙'}}##甲##丙",
+    "content": "<p>body</p>",
+    "type": "string",
+    "form": "list"
+  },
+  {
+    "name": "kind-map-replacement",
+    "rule": "{{'甲\\n乙'}}##甲##丙",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "type": "map",
+    "form": "list"
+  },
+  {
+    "name": "kind-string-js-list",
+    "rule": "{{'甲'}} @js: ['a &amp;', 'b']",
+    "content": "<p>body</p>",
+    "type": "string",
+    "form": "list"
+  },
+  {
+    "name": "kind-map-js-list",
+    "rule": "{{'甲'}} @js: ['a &amp;', 'b']",
+    "content": "{\"item\":{\"name\":\"body\"}}",
+    "type": "map",
+    "form": "list"
+  },
+  {
+    "name": "original-@@",
+    "rule": "@@{{'@@value'}}",
+    "unescape": false
+  },
+  {
+    "name": "original-@json:",
+    "rule": "@json:{{'@@value'}}",
+    "unescape": false
+  },
+  {
+    "name": "original-@xpath:",
+    "rule": "@xpath:{{'@@value'}}",
+    "unescape": false
+  },
+  {
+    "name": "post-script",
+    "rule": "{{'A &amp;'}} @js: result + ' &lt;b&gt;'",
+    "unescape": true
+  },
+  {
+    "name": "single-pass",
+    "rule": "{{'&amp;amp;'}}",
+    "unescape": true
+  },
+  {
+    "name": "content-false",
+    "rule": "{{'&amp;amp;'}}",
+    "unescape": false
+  },
+  {
+    "name": "encoded-put",
+    "rule": "@put:{\"saved\":\"@js: '&amp;amp;'\"}{{java.get('saved')}}",
+    "unescape": true
+  },
+  {
+    "name": "entity-&amp;amp;",
+    "rule": "",
+    "content": "&amp;amp;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&unknown;",
+    "rule": "",
+    "content": "&unknown;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&apos;",
+    "rule": "",
+    "content": "&apos;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&AMP;",
+    "rule": "",
+    "content": "&AMP;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&copy",
+    "rule": "",
+    "content": "&copy",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#65;",
+    "rule": "",
+    "content": "&#65;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#x1F600;",
+    "rule": "",
+    "content": "&#x1F600;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#X41;",
+    "rule": "",
+    "content": "&#X41;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#0;",
+    "rule": "",
+    "content": "&#0;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#xD800;",
+    "rule": "",
+    "content": "&#xD800;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#xDFFF;",
+    "rule": "",
+    "content": "&#xDFFF;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#x110000;",
+    "rule": "",
+    "content": "&#x110000;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#2147483648;",
+    "rule": "",
+    "content": "&#2147483648;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#9999999999999999;",
+    "rule": "",
+    "content": "&#9999999999999999;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#-1;",
+    "rule": "",
+    "content": "&#-1;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#xzz;",
+    "rule": "",
+    "content": "&#xzz;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#65",
+    "rule": "",
+    "content": "&#65",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "entity-&#x80;",
+    "rule": "",
+    "content": "&#x80;",
+    "type": "entity",
+    "form": "entity"
+  },
+  {
+    "name": "multiple-siblings-count",
+    "rule": "{{java.put('count','1'); 'literal'}}<js>java.put('count', String(Number(java.get('count'))+1)); result+'1'</js><js>java.put('count', String(Number(java.get('count'))+1)); result+'2'</js>"
+  },
+  {
+    "name": "cancelled-expression",
+    "rule": "{{'literal'}}",
+    "form": "cancelled"
+  },
+  {
+    "name": "kind-node-multiline",
+    "rule": "{{'甲\\n乙'}}",
+    "type": "node",
+    "content": "<ul><li><a href=\"/book\">body</a></li></ul>",
+    "form": "list"
+  },
+  {
+    "name": "kind-map-multiline",
+    "rule": "{{'甲\\n乙'}}",
+    "type": "map",
+    "content": "{\"item\":{\"name\":\"body\",\"path\":\"/book\"}}",
+    "form": "list"
+  },
+  {
+    "name": "item-sequence",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); String(result).indexOf('完结') >= 0 ? '完结' : '连载'}}",
+    "content": "<ul><li><a href=\"/one\">完结</a></li><li><a href=\"/two\">连载</a></li></ul>",
+    "form": "items"
+  },
+  {
+    "name": "native-object-scalar",
+    "rule": "{{'object'}}",
+    "content": "{\"object\":{\"name\":\"body\"}}",
+    "type": "nativeObject",
+    "form": "scalar"
+  },
+  {
+    "name": "native-object-list",
+    "rule": "{{'object'}}",
+    "content": "{\"object\":{\"name\":\"body\"}}",
+    "type": "nativeObject",
+    "form": "list"
+  },
+  {
+    "name": "native-array-scalar",
+    "rule": "{{'array'}}",
+    "content": "{\"array\":[\"a\",null,\"b\"]}",
+    "type": "nativeObject",
+    "form": "scalar"
+  },
+  {
+    "name": "native-array-list",
+    "rule": "{{'array'}}",
+    "content": "{\"array\":[\"a\",null,\"b\"]}",
+    "type": "nativeObject",
+    "form": "list"
+  },
+  {
+    "name": "node-string-scalar-entity",
+    "rule": "{{String(result)}}",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>",
+    "type": "node"
+  },
+  {
+    "name": "node-string-before-scalar",
+    "rule": "{{String(result)}} @js: result.indexOf('&amp;amp;') >= 0 ? 'raw-node' : 'decoded-node'",
+    "content": "<ul><li><a href=\"/book\">A&amp;amp;</a></li></ul>",
+    "type": "node"
+  },
+  {
+    "name": "map-script-string",
+    "rule": "{{String(result)}}",
+    "type": "map",
+    "content": "{\"item\":{\"name\":\"body\"}}"
+  },
+  {
+    "name": "list-script-string",
+    "rule": "{{String(result)}}",
+    "type": "list",
+    "content": "{\"list\":[\"name\",\"body\"]}"
+  },
+  {
+    "name": "nativeObject-script-string",
+    "rule": "{{String(result)}}",
+    "type": "nativeObject",
+    "content": "{\"name\":\"body\"}"
+  },
+  {
+    "name": "url-toc-sibling",
+    "rule": "{{'/toc'}} @js: result == '/toc' ? '/ok' : '/bad'",
+    "content": "{\"name\":\"body\"}",
+    "url": true,
+    "base": "https://review-rules.test/book"
+  },
+  {
+    "name": "url-toc-empty-script",
+    "rule": "{{'/toc'}} @js:''",
+    "content": "{\"name\":\"body\"}",
+    "url": true,
+    "base": "https://review-rules.test/book"
+  }
+]

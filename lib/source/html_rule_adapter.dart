@@ -45,6 +45,17 @@ class HtmlRuleBatch {
   HtmlStringList elementsText(String id, String rule, HtmlElementSet context) =>
       HtmlStringList._(this, _add(id, rule, context.id, HtmlJobOutput.text));
 
+  /// List extraction scoped to each context. The `@html` item snapshot uses
+  /// this output to preserve serialized entities before scalar evaluation.
+  HtmlStringList elementsTextList(
+    String id,
+    String rule,
+    HtmlElementSet context,
+  ) => HtmlStringList._(
+    this,
+    _add(id, rule, context.id, HtmlJobOutput.textList),
+  );
+
   String _add(String id, String rule, String? parent, HtmlJobOutput output) {
     if (_ran) throw StateError('该规则批次已经执行');
     _jobs.add(HtmlRuleJob(id: id, rule: rule, parent: parent, output: output));

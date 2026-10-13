@@ -7,6 +7,7 @@ import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'book_source_webview_adapter.dart';
 import 'java_regex.dart';
+import 'html4_unescape.dart';
 import 'json_source_rules.dart';
 import 'js_source_runtime.dart';
 import 'rule_field.dart';
@@ -383,11 +384,34 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// [label] is the rule field being read (`ruleBookInfo.kind`): a script this
   /// field runs carries it into the failure it reports, so the interface and the
   /// source log name the field instead of the bare `js`.
+  Object? _responseRoot;
+  String? _responseText;
+  Object? _nativeObjectRoot;
+
+  Object? _analysisContent(Object? value) =>
+      identical(value, _responseRoot) ? _responseText : value;
+
+  String _analysisText(Object? value) => identical(value, _responseRoot)
+      ? _responseText!
+      : JsonSourceRules.contentText(value);
+
+  Object? _extractionContent(Object? value) {
+    if (value is String) {
+      final text = value.trim();
+      if ((text.startsWith('{') && text.endsWith('}')) ||
+          (text.startsWith('[') && text.endsWith(']'))) {
+        return jsonDecode(value);
+      }
+    }
+    return value;
+  }
+
   RuleFieldContext _ruleContext(String label, Object? content) =>
       RuleFieldContext(
         evaluateScript: (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: (value, rule) async => JsonSourceRules.extract(value, rule),
+        extract: (value, rule) async =>
+            JsonSourceRules.extract(_extractionContent(value), rule),
         readVariable: _readRuleVariable,
         writeVariable: _writeRuleVariable,
       );
@@ -422,18 +446,82 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String rule, {
     String label = '',
     bool raw = false,
+    bool unescape = true,
   }) async {
+    final content = _analysisContent(value);
     final field = await RuleField.resolve(
       rule,
-      _ruleContext(label, value),
-      content: value,
+      _ruleContext(label, content),
+      content: content,
     );
+    if (!raw && identical(value, _nativeObjectRoot) && value is Map) {
+      final result = await field.applyNativeObject(value);
+      return unescape && field.isLiteralValue
+          ? unescapeHtml4('${result ?? ''}')
+          : result;
+    }
     final extracted = field.isScriptOnly || (!raw && field.isLiteralValue)
-        ? value
+        ? content
         : raw
-        ? JsonSourceRules.read(value, field.extractionRule!)
-        : JsonSourceRules.extract(value, field.extractionRule!);
-    return field.apply(extracted, forValue: !raw);
+        ? JsonSourceRules.read(_extractionContent(value), field.extractionRule!)
+        : JsonSourceRules.extract(
+            _extractionContent(value),
+            field.extractionRule!,
+          );
+    final result = await field.apply(
+      extracted,
+      forValue: !raw,
+      contentText: _analysisText(value),
+    );
+    if (raw && field.isScriptOnly && result is Map) {
+      _nativeObjectRoot = result;
+    }
+    return !raw && unescape && field.isLiteralValue
+        ? unescapeHtml4('${result ?? ''}')
+        : result;
+  }
+
+  Future<String> _kind(Object? value, String rule, {String label = ''}) async {
+    if (rule.isEmpty) return '';
+    final content = _analysisContent(value);
+    final field = await RuleField.resolve(
+      rule,
+      _ruleContext(label, content),
+      content: content,
+    );
+    Object? extracted = content;
+    if (identical(value, _nativeObjectRoot) && value is Map) {
+      final result = await field.applyNativeObject(value, forStringList: true);
+      return result is String
+          ? result.split('\n').join(',')
+          : result is List
+          ? [for (final item in result) '$item'].join(',')
+          : '';
+    }
+    if (field.hasValueExtraction) {
+      final fields = splitRuleFields(field.extractionRule!);
+      extracted = [
+        for (final item in JsonSourceRules.list(
+          _extractionContent(value),
+          fields.rule,
+        ))
+          fields.regex?.isNotEmpty == true
+              ? applyRuleReplacement(JsonSourceRules.contentText(item), fields)
+              : JsonSourceRules.contentText(item),
+      ];
+    }
+    final result = await field.apply(
+      extracted,
+      forValue: true,
+      forStringList: true,
+      contentText: _analysisText(value),
+    );
+    final texts = result is String
+        ? result.split('\n')
+        : result is List
+        ? [for (final item in result) '$item']
+        : const <String>[];
+    return texts.join(',');
   }
 
   /// One element-list rule (`ruleSearch.bookList`/`ruleToc.chapterList`): the
@@ -457,8 +545,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }
 
   /// One required value rule.
-  Future<String> _text(Object? value, String rule, {String label = ''}) async {
-    final result = await _field(value, rule, label: label);
+  Future<String> _text(
+    Object? value,
+    String rule, {
+    String label = '',
+    bool unescape = true,
+  }) async {
+    final result = await _field(value, rule, label: label, unescape: unescape);
     if (result == null || result.toString().isEmpty) {
       throw FormatException('Missing JSON value for $rule');
     }
@@ -506,21 +599,39 @@ class JsonSourcePipeline implements BookSourcePipeline {
     switch (read.form) {
       case SourceRuleForm.string:
         final extracted = field.hasValueExtraction
-            ? JsonSourceRules.extract(read.content, field.extractionRule!)
+            ? JsonSourceRules.extract(
+                _extractionContent(read.content),
+                field.extractionRule!,
+              )
             : read.content;
-        return '${await field.apply(extracted, forValue: true) ?? ''}';
+        final result = await field.apply(
+          extracted,
+          forValue: true,
+          contentText: '${read.content}',
+        );
+        // Explicit JS object arguments lost their Java/Rhino origin at the
+        // existing bridge; their container formatting is a declared gap.
+        return field.isLiteralValue
+            ? unescapeHtml4('${result ?? ''}')
+            : '${result ?? ''}';
       case SourceRuleForm.stringList:
         return [
           for (final value in JsonSourceRules.list(
-            read.content,
+            _extractionContent(read.content),
             field.extractionRule!,
           ))
             '$value',
         ];
       case SourceRuleForm.element:
-        return JsonSourceRules.read(read.content, field.extractionRule!);
+        return JsonSourceRules.read(
+          _extractionContent(read.content),
+          field.extractionRule!,
+        );
       case SourceRuleForm.elements:
-        return JsonSourceRules.list(read.content, field.extractionRule!);
+        return JsonSourceRules.list(
+          _extractionContent(read.content),
+          field.extractionRule!,
+        );
     }
   }
 
@@ -692,7 +803,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// the request that produced it (ticket #89).
   Object? _document(BookSourceStage stage, SourceStageResponse response) {
     try {
-      return jsonDecode(response.body);
+      final document = jsonDecode(response.body);
+      _responseRoot = document;
+      _responseText = response.body;
+      return document;
     } on FormatException {
       throw SourceStageFormatError(
         stage: stage,
@@ -861,7 +975,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // for the details fetch. The URL keeps the adapter's existing
       // `template` + `expandSourceUrl` path: the request-time substitution and
       // the `,{...}` options are that path's, not the rule-field path's.
-      final bookAddress = JsonSourceRules.template(entry, search['bookUrl']!);
+      final bookAddressValue = search['bookUrl']!.trim().isEmpty
+          ? ''
+          : '${await _field(entry, search['bookUrl']!, label: 'ruleSearch.bookUrl') ?? ''}';
+      final bookAddress = bookAddressValue.trim().isEmpty
+          ? '$finalUrl'
+          : bookAddressValue;
       final (bookUrl, bookOptions) = await _request(
         checked.url,
         bookAddress,
@@ -908,7 +1027,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           intro: formatSourceIntro(intro),
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
-          kind: await _optional(
+          kind: await _kind(
             entry,
             search['kind'] ?? '',
             label: 'ruleSearch.kind',
@@ -955,7 +1074,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, page) = await _readBookInfo(document, hit, info);
-    final tocAddress = JsonSourceRules.template(page, info['tocUrl'] ?? '');
+    final tocAddress = (info['tocUrl'] ?? '').trim().isEmpty
+        ? ''
+        : '${await _field(page, info['tocUrl']!, label: 'ruleBookInfo.tocUrl') ?? ''}';
     // An empty `tocUrl` resolves to the book's own address, which is the frozen
     // fallback (`BookInfo.kt:150-152`), whose options that request parses again.
     final (tocUrl, tocOptions) = tocAddress.isEmpty
@@ -1243,7 +1364,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           : hit.author,
       intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: await _optional(page, info['kind'] ?? '', label: 'ruleBookInfo.kind'),
+      kind: await _kind(page, info['kind'] ?? '', label: 'ruleBookInfo.kind'),
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
@@ -1344,6 +1465,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               document,
               content['content']!,
               label: 'ruleContent.content',
+              unescape: false,
             ),
           ),
         );
