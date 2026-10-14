@@ -1513,12 +1513,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
-    final (book, tocText) = await _readBookInfo(
-      html,
-      infoUrl,
-      hit,
-      withTocUrl: true,
-    );
+    final (book, tocText) = await _readBookInfo(html, infoUrl, hit);
     // The frozen falls back to the book's own address when the detail page
     // declares no TOC address — `BookInfo.kt:150-152` reads `infoRule.tocUrl`,
     // then `if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl`, where `baseUrl`
@@ -1685,12 +1680,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           final address = await fieldValue('chapterUrl', index, url: true);
           final tagValue = await fieldValue('updateTime', index);
           final volumeValue = await fieldValue('isVolume', index);
+          // URL/tag/volume complete even for a skipped item; VIP/pay belong
+          // inside the frozen nonempty-title condition (BookChapterList:244).
+          if (title.isEmpty) continue;
           final vipValue = await fieldValue('isVip', index);
           final payValue = await fieldValue('isPay', index);
-          // The frozen adds a chapter only when its title is non-empty
-          // (`BookChapterList.kt:244`), so an element the name rule matched
-          // nothing on is skipped instead of failing the whole TOC.
-          if (title.isEmpty) continue;
           final tag = tagValue.isEmpty ? null : tagValue;
           final isVolume = sourceIsTrue(volumeValue);
           final isVip = sourceIsTrue(vipValue);
@@ -1791,7 +1785,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       html,
       finalUrl,
       HtmlBook(url: finalUrl, title: ''),
-      withTocUrl: false,
     );
     return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
   }
@@ -1802,8 +1795,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// search stage calls this for a response whose final URL matched
   /// `bookUrlPattern` (`BookList.kt:53-70`) or for the empty-element-list
   /// fallback (`BookList.kt:91`), where the frozen `getInfoItem` runs the same
-  /// rules over the response it has and reads no TOC address — [withTocUrl] is
-  /// false there and the text it returns is empty.
+  /// getters over that response. The fallback ignores the completed TOC address
+  /// and issues no TOC request.
   ///
   /// [hit] is the book the rules start from. A search synthesizes an empty one,
   /// so the detail page's own name and author are taken, exactly as the frozen
@@ -1811,20 +1804,32 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, String)> _readBookInfo(
     String html,
     Uri infoUrl,
-    HtmlBook hit, {
-    required bool withTocUrl,
-  }) async {
+    HtmlBook hit,
+  ) async {
+    _book = hit;
     final batch = HtmlRuleBatch(html);
     final rawFields = <String, String>{
-      for (final key in ['name', 'author', 'kind', 'wordCount', 'lastChapter', 'intro', 'coverUrl'])
+      for (final key in [
+        'name',
+        'author',
+        'kind',
+        'wordCount',
+        'lastChapter',
+        'intro',
+        'coverUrl',
+      ])
         key: _rule('ruleBookInfo', key, optional: true),
-      if (withTocUrl) 'tocUrl': _rule('ruleBookInfo', 'tocUrl', optional: true),
+      'tocUrl': _rule('ruleBookInfo', 'tocUrl', optional: true),
     };
     final fields = <String, RuleField?>{};
     final jobs = <String, _HtmlScalarJob>{};
     HtmlStringList? kindJob;
     for (final entry in rawFields.entries) {
-      final field = await _elementField(entry.value, content: html, label: 'ruleBookInfo.${entry.key}');
+      final field = await _elementField(
+        entry.value,
+        content: html,
+        label: 'ruleBookInfo.${entry.key}',
+      );
       fields[entry.key] = field;
       if (field != null) {
         if (entry.key == 'kind') {
@@ -1884,15 +1889,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       title: mergedTitle,
       author: mergedAuthor,
       intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
-      cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
-      kind: detailsKind,
+      cover: coverText.isEmpty ? hit.cover : '${_resolve(infoUrl, coverText)}',
+      kind: detailsKind.isEmpty ? hit.kind : detailsKind,
       lastChapter: detailsLastChapter.isEmpty
           ? hit.lastChapter
           : detailsLastChapter,
       wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
     );
     _book = book;
-    final tocText = withTocUrl ? await read('tocUrl', url: true) : '';
+    final tocText = await read('tocUrl', url: true);
     return (book, tocText);
   }
 

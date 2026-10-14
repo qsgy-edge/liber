@@ -488,7 +488,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _ruleContext(label, content),
       content: content,
     );
-    Object? extracted = content;
     if (identical(value, _nativeObjectRoot) && value is Map) {
       final result = await field.applyNativeObject(value, forStringList: true);
       return result is String
@@ -497,6 +496,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
           ? [for (final item in result) '$item'].join(',')
           : '';
     }
+    return (await _resolvedStringList(value, field)).join(',');
+  }
+
+  /// The already-resolved ordinary JSON list boundary shared by kind and
+  /// java.getStringList. Each replacement is per item; no scalar tail here.
+  Future<List<String>> _resolvedStringList(
+    Object? value,
+    RuleField field,
+  ) async {
+    Object? extracted = _analysisContent(value);
     if (field.hasValueExtraction) {
       final fields = splitRuleFields(field.extractionRule!);
       extracted = [
@@ -520,7 +529,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         : result is List
         ? [for (final item in result) '$item']
         : const <String>[];
-    return texts.join(',');
+    return texts;
   }
 
   /// One element-list rule (`ruleSearch.bookList`/`ruleToc.chapterList`): the
@@ -601,15 +610,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     switch (read.form) {
       case SourceRuleForm.string:
-        return _field(read.content, read.rule, label: read.member, context: context);
+        return _field(
+          read.content,
+          read.rule,
+          label: read.member,
+          context: context,
+        );
       case SourceRuleForm.stringList:
-        return [
-          for (final value in JsonSourceRules.list(
-            _extractionContent(read.content),
-            field.extractionRule!,
-          ))
-            '$value',
-        ];
+        return _resolvedStringList(read.content, field);
       case SourceRuleForm.element:
         return JsonSourceRules.read(
           _extractionContent(read.content),
@@ -1084,10 +1092,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       ),
     );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
-    final (book, page) = await _readBookInfo(document, hit, info);
-    final tocAddress = (info['tocUrl'] ?? '').trim().isEmpty
-        ? ''
-        : '${await _field(page, info['tocUrl']!, label: 'ruleBookInfo.tocUrl') ?? ''}';
+    final (book, tocAddress) = await _readBookInfo(document, hit, info);
     // An empty `tocUrl` resolves to the book's own address, which is the frozen
     // fallback (`BookInfo.kt:150-152`), whose options that request parses again.
     final (tocUrl, tocOptions) = tocAddress.isEmpty
@@ -1153,33 +1158,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
             toc['chapterName']!,
             label: 'ruleToc.chapterName',
           );
-          if (name.isEmpty) continue;
-          final tag = await _optional(
-            entry,
-            toc['updateTime'] ?? '',
-            label: 'ruleToc.updateTime',
-          );
-          final isVolume = sourceIsTrue(
-            await _optional(
-              entry,
-              toc['isVolume'] ?? '',
-              label: 'ruleToc.isVolume',
-            ),
-          );
-          final isVip = sourceIsTrue(
-            await _optional(
-              entry,
-              toc['isVip'] ?? '',
-              label: 'ruleToc.isVip',
-            ),
-          );
-          final isPay = sourceIsTrue(
-            await _optional(
-              entry,
-              toc['isPay'] ?? '',
-              label: 'ruleToc.isPay',
-            ),
-          );
           var chapterUrl = catEye != null
               ? (JsonSourceRules.extract(
                       entry,
@@ -1198,6 +1176,25 @@ class JsonSourcePipeline implements BookSourcePipeline {
               catEye.iv,
             );
           }
+          final tag = await _optional(
+            entry,
+            toc['updateTime'] ?? '',
+            label: 'ruleToc.updateTime',
+          );
+          final isVolume = sourceIsTrue(
+            await _optional(
+              entry,
+              toc['isVolume'] ?? '',
+              label: 'ruleToc.isVolume',
+            ),
+          );
+          if (name.isEmpty) continue;
+          final isVip = sourceIsTrue(
+            await _optional(entry, toc['isVip'] ?? '', label: 'ruleToc.isVip'),
+          );
+          final isPay = sourceIsTrue(
+            await _optional(entry, toc['isPay'] ?? '', label: 'ruleToc.isPay'),
+          );
           final SourceChapter chapter;
           if (chapterUrl.isEmpty) {
             // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
@@ -1299,8 +1296,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   /// `ruleBookInfo` over one response document this pipeline already has.
   ///
-  /// [details] decodes its own response and reads the TOC address from the page
-  /// this returns; the search stage calls it for a response whose final URL
+  /// [details] decodes its response and consumes the completed TOC address;
+  /// the search fallback completes that getter too, without fetching it.
+  /// The search stage calls it for a response whose final URL
   /// matched `bookUrlPattern` (`BookList.kt:53-70`) or for the
   /// empty-element-list fallback (`BookList.kt:91`), where the frozen
   /// `getInfoItem` runs the same rules over the response it has.
@@ -1308,11 +1306,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// [hit] is the book the rules start from. A search synthesizes an empty one,
   /// so the detail page's own name and author are taken, exactly as the frozen
   /// empty `Book` takes them (`BookInfo.kt:60-73`).
-  Future<(HtmlBook, Object?)> _readBookInfo(
+  Future<(HtmlBook, String)> _readBookInfo(
     Object? document,
     HtmlBook hit,
     Map<String, String> info,
   ) async {
+    _book = hit;
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
     // read into a subtree of the response; it is a rule field too, so a `@js:`
     // or `{{...}}` in it is resolved the same way as every other value rule.
@@ -1386,13 +1385,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
       title: mergedTitle,
       author: mergedAuthor,
       intro: infoIntro.isEmpty ? hit.intro : infoIntro,
-      cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: infoKind,
+      cover: cover.isEmpty ? hit.cover : '${_url(hit.url, cover)}',
+      kind: infoKind.isEmpty ? hit.kind : infoKind,
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );
     _book = book;
-    return (book, page);
+    final tocAddress = await _optional(
+      page,
+      info['tocUrl'] ?? '',
+      label: 'ruleBookInfo.tocUrl',
+    );
+    return (book, tocAddress);
   }
 
   /// `ruleContent`: one chapter's text.

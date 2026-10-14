@@ -1,0 +1,264 @@
+[
+  {
+    "name": "n12-json-order",
+    "stage": "toc",
+    "pipeline": "json",
+    "content": "{\"list\":[{\"name\":\"keep\",\"href\":\"/keep\"}]}",
+    "listRule": "$.list",
+    "rules": {
+      "chapterName": "$.name",
+      "chapterUrl": "$.href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);java.put(\"v\",\"url\");result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "{{java.put('vipCount',String(Number(java.get('vipCount')||0)+1));'false'}}",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n12-json-empty-conditions",
+    "stage": "toc",
+    "pipeline": "json",
+    "content": "{\"list\":[{\"name\":\"\",\"href\":\"/blank\"},{\"name\":\"keep\",\"href\":\"/keep\"}]}",
+    "listRule": "$.list",
+    "rules": {
+      "chapterName": "$.name",
+      "chapterUrl": "$.href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "{{java.put('v','polluted');java.put('vipCount',String(Number(java.get('vipCount')||0)+1));'false'}}",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n12-json-empty-vip-error",
+    "stage": "toc",
+    "pipeline": "json",
+    "content": "{\"list\":[{\"name\":\"\",\"href\":\"/blank\"},{\"name\":\"keep\",\"href\":\"/keep\"}]}",
+    "listRule": "$.list",
+    "rules": {
+      "chapterName": "$.name",
+      "chapterUrl": "$.href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);java.put(\"v\",\"url\");result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "@js:if(java.getString(\"$.name\") == \"\") throw new Error(\"empty-vip\"); \"false\"",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n12-html-order",
+    "stage": "toc",
+    "pipeline": "html",
+    "content": "<li><a href=\"/keep\">keep</a></li>",
+    "listRule": "li",
+    "rules": {
+      "chapterName": "a@text",
+      "chapterUrl": "a@href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);java.put(\"v\",\"url\");result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "{{java.put('vipCount',String(Number(java.get('vipCount')||0)+1));'false'}}",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n12-html-empty-conditions",
+    "stage": "toc",
+    "pipeline": "html",
+    "content": "<ul><li><a href=\"/blank\"></a></li><li><a href=\"/keep\">keep</a></li></ul>",
+    "listRule": "li",
+    "rules": {
+      "chapterName": "a@text",
+      "chapterUrl": "a@href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "{{java.put('v','polluted');java.put('vipCount',String(Number(java.get('vipCount')||0)+1));'false'}}",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n12-html-empty-vip-error",
+    "stage": "toc",
+    "pipeline": "html",
+    "content": "<ul><li><a href=\"/blank\"></a></li><li><a href=\"/keep\">keep</a></li></ul>",
+    "listRule": "li",
+    "rules": {
+      "chapterName": "a@text",
+      "chapterUrl": "a@href @js:java.put(\"urlOrder\",java.get(\"urlOrder\")+result);java.put(\"v\",\"url\");result",
+      "updateTime": "{{java.get('v')}}",
+      "isVolume": "{{java.put('volumeCount',String(Number(java.get('volumeCount')||0)+1));'false'}}",
+      "isVip": "@js:if(java.getString(\"a@text\") == \"\") throw new Error(\"empty-vip\"); \"false\"",
+      "isPay": "{{java.put('payCount',String(Number(java.get('payCount')||0)+1));'false'}}"
+    },
+    "seed": {
+      "v": "clean"
+    }
+  },
+  {
+    "name": "n3-literal",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "{{'A &amp;amp;'}}",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(123,123,39,65,32,38,97,109,112,59,97,109,112,59,39,125,125)); xs[0]"
+  },
+  {
+    "name": "n3-mixed",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "prefix{{'A &amp;amp;'}}suffix",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(112,114,101,102,105,120,123,123,39,65,32,38,97,109,112,59,97,109,112,59,39,125,125,115,117,102,102,105,120)); xs[0]"
+  },
+  {
+    "name": "n3-replace",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "$.title##A##B",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(36,46,116,105,116,108,101,35,35,65,35,35,66)); xs[0]"
+  },
+  {
+    "name": "n3-replace-first",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "$.values[*]##a##x##",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(36,46,118,97,108,117,101,115,91,42,93,35,35,97,35,35,120,35,35)); xs[0]"
+  },
+  {
+    "name": "n3-empty-regex",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "$.title####X",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(36,46,116,105,116,108,101,35,35,35,35,88)); xs[0]"
+  },
+  {
+    "name": "n3-multi",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "$.values[*]##a##x",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(36,46,118,97,108,117,101,115,91,42,93,35,35,97,35,35,120)); xs[0]"
+  },
+  {
+    "name": "n3-literal-count",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "{{java.put('count',String(Number(java.get('count')||0)+1));'A &amp;amp;'}}",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(123,123,106,97,118,97,46,112,117,116,40,39,99,111,117,110,116,39,44,83,116,114,105,110,103,40,78,117,109,98,101,114,40,106,97,118,97,46,103,101,116,40,39,99,111,117,110,116,39,41,124,124,48,41,43,49,41,41,59,39,65,32,38,97,109,112,59,97,109,112,59,39,125,125)); xs[0]"
+  },
+  {
+    "name": "n3-missing",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "$.missing##$##append",
+    "rule": "@js:var xs=java.getStringList(String.fromCharCode(36,46,109,105,115,115,105,110,103,35,35,36,35,35,97,112,112,101,110,100)); xs===null ? \"NULL\" : \"NONNULL\""
+  },
+  {
+    "name": "n3-empty",
+    "stage": "hostList",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"values\":[\"aba\",\"aca\"]}",
+    "innerRule": "",
+    "rule": "@js:var xs=java.getStringList(''); xs===null ? \"NULL\" : \"NONNULL\""
+  },
+  {
+    "name": "n4-html-pattern",
+    "stage": "fallback",
+    "pipeline": "html",
+    "trigger": "pattern",
+    "content": "<h1>body</h1>",
+    "nameRule": "{{book==null?'MISSING':'PRESENT'}}",
+    "tocRule": "{{java.put('tocSeen','yes');java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/unused'}}"
+  },
+  {
+    "name": "n4-html-empty-list",
+    "stage": "fallback",
+    "pipeline": "html",
+    "trigger": "empty-list",
+    "content": "<h1>body</h1>",
+    "nameRule": "{{book==null?'MISSING':'PRESENT'}}",
+    "tocRule": "{{java.put('tocSeen','yes');java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/unused'}}"
+  },
+  {
+    "name": "n4-html-toc-error",
+    "stage": "fallback",
+    "pipeline": "html",
+    "trigger": "pattern",
+    "content": "<h1>body</h1>",
+    "nameRule": "{{'body'}}",
+    "tocRule": "@js:throw new Error(\"fallback-toc\")",
+    "error": true
+  },
+  {
+    "name": "n4-html-details-once",
+    "stage": "detailToc",
+    "pipeline": "html",
+    "content": "<h1>body</h1>",
+    "nameRule": "{{'body'}}",
+    "tocRule": "{{java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/toc'}}"
+  },
+  {
+    "name": "n4-json-pattern",
+    "stage": "fallback",
+    "pipeline": "json",
+    "trigger": "pattern",
+    "content": "{\"title\":\"body\",\"items\":[]}",
+    "nameRule": "{{book==null?'MISSING':'PRESENT'}}",
+    "tocRule": "{{java.put('tocSeen','yes');java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/unused'}}"
+  },
+  {
+    "name": "n4-json-empty-list",
+    "stage": "fallback",
+    "pipeline": "json",
+    "trigger": "empty-list",
+    "content": "{\"title\":\"body\",\"items\":[]}",
+    "nameRule": "{{book==null?'MISSING':'PRESENT'}}",
+    "tocRule": "{{java.put('tocSeen','yes');java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/unused'}}"
+  },
+  {
+    "name": "n4-json-toc-error",
+    "stage": "fallback",
+    "pipeline": "json",
+    "trigger": "pattern",
+    "content": "{\"title\":\"body\",\"items\":[]}",
+    "nameRule": "{{'body'}}",
+    "tocRule": "@js:throw new Error(\"fallback-toc\")",
+    "error": true
+  },
+  {
+    "name": "n4-json-details-once",
+    "stage": "detailToc",
+    "pipeline": "json",
+    "content": "{\"title\":\"body\",\"items\":[]}",
+    "nameRule": "{{'body'}}",
+    "tocRule": "{{java.put('tocCount',String(Number(java.get('tocCount')||0)+1));'/toc'}}"
+  },
+  {
+    "name": "n4-json-init-scope",
+    "stage": "fallback",
+    "pipeline": "json",
+    "trigger": "pattern",
+    "content": "{\"title\":\"body\"}",
+    "initRule": "@js:java.put(\"initBook\",book==null?\"MISSING\":\"PRESENT\");result",
+    "nameRule": "{{book==null?'MISSING':'PRESENT'}}",
+    "tocRule": "{{java.put('tocSeen','yes');'/unused'}}"
+  }
+]
