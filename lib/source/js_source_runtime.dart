@@ -177,8 +177,10 @@ class SourceStageResponse {
   /// The frozen `StrResponse(analyzeUrl.url, body)` a rendered document comes
   /// back as (`BackstageWebView`): status 200 and no headers, because the
   /// frozen WebView path has no HTTP response of its own to report.
-  factory SourceStageResponse.webView({required String body, required Uri url}) =>
-      SourceStageResponse(body: body, url: url);
+  factory SourceStageResponse.webView({
+    required String body,
+    required Uri url,
+  }) => SourceStageResponse(body: body, url: url);
 
   /// The response a `loginCheckJs` returned, as the script's payload crossed
   /// the boundary. A value that is not a response never reaches this — the
@@ -1120,16 +1122,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         if (!request.waits) return null;
         throw SourceScriptError('verification', '$member：$reason');
       case SourceHatchOutcome.presented:
-        _record(
-          SourceHostMessage('verification', '$member：已按用户确认在应用内显示页面'),
-        );
+        _record(SourceHostMessage('verification', '$member：已按用户确认在应用内显示页面'));
         return null;
       case SourceHatchOutcome.closed:
         // The frozen dialog close sets an empty result, which the frozen
         // `getVerificationResult` then reports as 验证结果为空.
-        _record(
-          SourceHostMessage('verification', '$member：用户关闭了页面或对话框，未给出结果'),
-        );
+        _record(SourceHostMessage('verification', '$member：用户关闭了页面或对话框，未给出结果'));
         if (!request.waits) return null;
         throw const SourceScriptError('verification', '验证结果为空');
       case SourceHatchOutcome.answered:
@@ -1287,11 +1285,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       return const SourceHatchImage.failed('没有书源会话，无法获取验证码图片');
     }
     try {
-      final response = await host.get(
-        url,
-        headers: headers,
-        readBytes: true,
-      );
+      final response = await host.get(url, headers: headers, readBytes: true);
       final bytes = response.bodyBytes;
       if (bytes == null || bytes.isEmpty) {
         return const SourceHatchImage.failed('验证码图片为空');
@@ -2693,6 +2687,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (args.length === 1) {
         const key = String(args[0]);
         if (key === 'bookName' && input.book != null) return book.name;
+        if (key === 'title' && input.chapter != null) return chapter.title;
         return call('state', {op:'get', key:key});
       }
       if (args.length === 2) return request('GET', args[0], null, args[1]);

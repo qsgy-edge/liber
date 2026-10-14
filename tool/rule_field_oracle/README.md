@@ -359,3 +359,74 @@ not a code/test failure. Fresh independent review, integrated verification,
 Windows scratch driven UI, other affected platforms and downstream release
 remain controller gates; all earlier type/policy/cancellation/coverage residuals
 remain unaccepted.
+
+## Current TOC chapter/title binding
+
+`TocChapterBindingOracle.kt` adds16 repeated actual auxiliary item observations
+against unchanged preserved classes/JARs. Each item binds an original Chapter,
+completes name, then URL/tag/volume and conditional VIP/pay. The original stub
+has title/url/index and is unchanged; tag/flags entity state and whole caller
+execution are not claimed. Ten rows cover title/URL/snapshot/live alias/options,
+two empty/skipped item controls, two errors/state and two plain controls.
+
+```sh
+python tool/rule_field_oracle/run_toc_chapter_binding.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+```
+
+Actualv1 compile0/run1 failed its strict JS comparison against wrapped JVM
+String properties. One explicitly approvedv2 changed only10 fixture predicate
+and snapshot/trace fields to explicit String text observations; harness/runner
+and original stub remained unchanged. Actualv2 compile0/run0 produced16
+repeated observations. Originalv1 inputs/classes/logs remain unpromoted.
+An upstream HTTP/2 stream failure then interrupted preparation; the same writer
+resumed with all recovery pins unchanged and reused successfulv2 output.
+
+Both pipelines now establish an empty current Chapter/title at each item turn,
+publish the completed name before URL/tag, and expose the exact completed raw
+address to later TOC getters. One private nullable address override separates
+this temporary scope from normal supplied-content snapshots, including an
+empty Uri. Item/page finally blocks clear temporary state on completion, skip
+and error; page list/next runs without a previous Chapter. Existing final URL,
+volume/options/flags/dedup construction and F1 next completion remain.
+No Chapter tag/flags member or public model/runtime protocol is added.
+
+The existing one-argument java.get(title) returns current chapter.title only
+when a Chapter exists; ordinary source.get, other keys, no-Chapter fallback and
+two-argument HTTP get remain. RuleField's title alias likewise uses its existing
+source-variable fallthrough without a Chapter. Scalar preflight recognizes an
+actual top-level get token in the first rule part as a literal value, matching
+existing RuleField/frozen behavior; list extraction, put-only, malformed/bare
+paths and replacement-only tokens retain their earlier boundaries.
+
+The focused suite is31 checks:16 auxiliary-linked rows,8 explicit source-derived
+page/repeat/content/empty-Uri controls,6 scalar preflight boundaries and1identity.
+Post-binding25 selected20pass/5fail:two independent live Java aliases,one scalar
+JSON preflight refusal andtwo new fixture transport-expectation corrections.
+The preflight before-run selected6 with5pass/1fail, then full31/31 passed.
+Original errors, setup failures and a complete reporter behind an MCP timeout
+remain distinct; no timeout is counted as a returned API pass.
+
+A necessary backup-variable regression exposed an older fixture mismatch:
+JSON.parse supplied the already supported NativeObject, while its getters used
+JSONPath $.title/$.toc. Actual imported-column/direct Book.getVariable/JS parse
+assertions passed before the same EmptyTOC. Only fixture getters were corrected
+to direct title/toc keys, retaining backup data/init/title expectation and adding
+chapter/raw/normalized URL plus three actual legacy stage/path assertions.
+The target and final7-variable suite passed. This was not G1 storage damage;
+this legacy fixture does not observe HTTP methods. Existing executed NativeObject
+key/toc cases were reused without a new entity golden or JVM run.
+
+Controller evidence contains460 unique successful product checks:31+153+100+85
++36 unchanged non-Book rows from the originald group+48+final Book-variable7.
+The originald42pass/1fail and attribution failures remain unchanged; duplicate
+probes are excluded. Fifteen completed teardowns include that original failed
+group. HTML45/45 and host106/106 passed; the old host snapshot expectation
+failed105/106 and was corrected to check live title and stored source separately.
+Final exact nine-file MCP analysis returned No errors after preserved timeout
+and concrete lint diagnostics. Single-statement blocks and removal of one unused
+private test helper are connected by an AST-selected structural proof, then
+strict final token/string equivalence; new lint fixes remain in the candidate.
+These checks include source/policy/error/identity controls and are not460 parity
+rows. Old378/45/106 and unchanged Rust34 including6/c619 DLL retain their actual
+historical scopes. Fresh review, integration, scratch driven UI, other platforms
+and downstream release remain controller gates; prior residuals remain explicit.

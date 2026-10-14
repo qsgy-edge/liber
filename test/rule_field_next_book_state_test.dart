@@ -37,10 +37,11 @@ class _Pages implements BookSourceTransport, SourceHttpTransport {
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
     requests.add(request);
     final body = pages[request.url.path];
-    if (body == null)
+    if (body == null) {
       throw StateError(
         'Unexpected full request ${request.method} ${request.url}',
       );
+    }
     return SourceHttpResponse(
       statusCode: 200,
       headers: const {},
@@ -305,10 +306,11 @@ void main() {
               update ? 'new-last' : hit.lastChapter,
             ]);
             expect(book.cover, update ? '$_origin/new.png' : hit.cover);
-            if (update)
+            if (update) {
               expect(book.intro, isNot(hit.intro));
-            else
+            } else {
               expect(book.intro, hit.intro);
+            }
             // Existing formatter/resolver behavior is retained. Later getters must
             // see the actual completed formatted/merged value, including retention.
             expect(

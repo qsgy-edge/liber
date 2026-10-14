@@ -289,9 +289,10 @@ Future<void> main(List<String> args) async {
       'Object.getOwnPropertyNames(Object.getPrototypeOf(Jsoup.parse("<div></div>")))'
       '.sort().join(",")',
     );
-    final expectedNodeMembers =
-        ([...sourceDomMembers.where((member) => member != 'parse'), 'toString']
-          ..sort()).join(',');
+    final expectedNodeMembers = ([
+      ...sourceDomMembers.where((member) => member != 'parse'),
+      'toString',
+    ]..sort()).join(',');
     checks['domMemberList'] = domMemberList == expectedNodeMembers;
     SourceScriptError? domRefusal;
     try {
@@ -339,7 +340,11 @@ Future<void> main(List<String> args) async {
       'JSON.stringify([set, source.getVariable()])',
     );
     checks['sourceVariableRoundTrip'] =
-        variableProbe == jsonEncode([jsonEncode({'token': 'T1'}), '']);
+        variableProbe ==
+        jsonEncode([
+          jsonEncode({'token': 'T1'}),
+          '',
+        ]);
     // The stage request surface belongs to a `loginCheckJs` hook (#59): a rule
     // script has no stage request, so each member refuses by name instead of
     // failing as a `TypeError`.
@@ -377,12 +382,15 @@ Future<void> main(List<String> args) async {
     checks['bookSnapshot'] =
         bookProbe == jsonEncode(['契约书', '$origin/book', '契约书', 'stored-book']);
     checks['absentBookStaysNull'] = await run('book === null') == true;
+    // The executed chapter-alias rows distinguish the live title from the
+    // source's stored value (toc-chapter-binding-host/golden.json).
     final chapterProbe = await run(
-      'java.put("title", "stored-title"); JSON.stringify([chapter.title, chapter.url, java.get("title")])',
+      'java.put("title", "stored-title"); JSON.stringify([chapter.title, chapter.url, java.get("title"), source.get("title")])',
       chapter: {'title': '第一章', 'url': '$origin/chapter'},
     );
     checks['chapterSnapshot'] =
-        chapterProbe == jsonEncode(['第一章', '$origin/chapter', 'stored-title']);
+        chapterProbe ==
+        jsonEncode(['第一章', '$origin/chapter', '第一章', 'stored-title']);
     // The frozen `Book`/`BookChapter` own variable members (#76): the row's own
     // keyed store (`Book.kt:115,137`, `BookChapter.kt:58,72`). A missing key is
     // the empty string, an empty value is stored as an empty string, a null
@@ -455,7 +463,10 @@ Future<void> main(List<String> args) async {
     );
     checks['bookVariableReadableByTheNextEvaluation'] =
         bookVariableReread ==
-        jsonEncode(['', variableText({'empty': ''})]);
+        jsonEncode([
+          '',
+          variableText({'empty': ''}),
+        ]);
     checks['absentChapterStaysNull'] = await run('chapter === null') == true;
     SourceScriptError? missingField;
     try {
@@ -783,7 +794,9 @@ Future<void> main(List<String> args) async {
       elementArity = error;
     }
     checks['elementMembersTakeOneArgument'] =
-        elementArity?.message.contains('java.getElement expects one argument') ==
+        elementArity?.message.contains(
+          'java.getElement expects one argument',
+        ) ==
         true;
 
     // 10. The emulated identity is the installation's, shared by two sources; the
@@ -888,7 +901,9 @@ Future<void> main(List<String> args) async {
       HttpSourceTransport(),
     );
     final ruleHits = await rulePipeline.search('甲');
-    final (ruleBook, ruleChapters) = await rulePipeline.details(ruleHits.single);
+    final (ruleBook, ruleChapters) = await rulePipeline.details(
+      ruleHits.single,
+    );
     final ruleBody = await rulePipeline.chapter(ruleChapters.single);
     // The per-element field's content object is the matched element (the frozen
     // `AnalyzeRule.setContent(item)`), the detail field's the page: both members

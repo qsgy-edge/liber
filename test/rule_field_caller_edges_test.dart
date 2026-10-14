@@ -24,8 +24,6 @@ final _rows =
         .cast<Map>();
 final _golden =
     jsonDecode(File('$_evidence/golden.json').readAsStringSync()) as Map;
-String _text(Object? units) =>
-    String.fromCharCodes((units as List).cast<int>());
 
 class _Pages implements BookSourceTransport, SourceHttpTransport {
   _Pages(this.pages);
@@ -179,8 +177,9 @@ void main() {
             info['tocUrl'] = row['tocRule'];
             if (row['initRule'] != null) info['init'] = row['initRule'];
             final fallback = stage == 'fallback';
-            if (fallback && row['trigger'] == 'pattern')
+            if (fallback && row['trigger'] == 'pattern') {
               source['bookUrlPattern'] = '.*search.*';
+            }
             final pages = _Pages({
               fallback ? '/search' : '/book': row['content'] as String,
               '/toc': _toc(json),
