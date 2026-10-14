@@ -213,11 +213,21 @@ void main() {
                 books.single.title.codeUnits,
                 (observed['fields'] as Map)['name'],
               );
-              expect(books.single.url.path, fallback ? '/search' : '/book');
+              expect(
+                '${books.single.url}',
+                fallback ? '$_origin/search' : '$_origin/book',
+              );
             }
             expect(
-              pages.requests.map((r) => r.url.path),
-              fallback ? ['/search'] : ['/book', '/toc'],
+              pages.requests.map((r) => [r.method, '${r.url}']).toList(),
+              fallback
+                  ? [
+                      ['GET', '$_origin/search'],
+                    ]
+                  : [
+                      ['GET', '$_origin/book'],
+                      ['GET', '$_origin/toc'],
+                    ],
             );
             pipeline.cancel();
           }

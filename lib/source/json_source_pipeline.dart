@@ -1148,6 +1148,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
           toc['chapterList']!,
           label: 'ruleToc.chapterList',
         );
+        // The declared-list walk skips this getter; otherwise it completes
+        // after list acquisition and before item reads (BookChapterList:187-207).
+        final nextRule = readNext ? toc['nextTocUrl'] : null;
+        final nextTexts = nextRule == null
+            ? const <String>[]
+            : await _pageTexts(document, nextRule, label: 'ruleToc.nextTocUrl');
         for (var index = 0; index < entries.length; index++) {
           final entry = entries[index];
           // The frozen adds a chapter only when its title is non-empty
@@ -1242,20 +1248,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           // at this point.
           chapters.add(chapter);
         }
-        // The frozen reads a page's next-URL rule only on the pages it walks
-        // through; the declared-list branch parses its pages with
-        // `getNextUrl = false` (`BookChapterList.kt:104-121`).
-        final nextRule = readNext ? toc['nextTocUrl'] : null;
-        return (
-          pageUrl: tocPage.url,
-          items: nextRule == null
-              ? const <String>[]
-              : await _pageTexts(
-                  document,
-                  nextRule,
-                  label: 'ruleToc.nextTocUrl',
-                ),
-        );
+        return (pageUrl: tocPage.url, items: nextTexts);
       },
     );
     if (chapters.isEmpty) throw StateError('Empty table of contents');
@@ -1343,18 +1336,59 @@ class JsonSourcePipeline implements BookSourcePipeline {
       }
     }
     final canReName = info['canReName']?.trim().isNotEmpty == true;
-    void publishNameAuthor(String title, String author) {
-      _book = HtmlBook(url: hit.url, rawAddress: hit.rawAddress, title: title, author: author,
-        intro: hit.intro, cover: hit.cover, kind: hit.kind,
-        lastChapter: hit.lastChapter, wordCount: hit.wordCount);
+    void publishBook({
+      String? title,
+      String? author,
+      String? kind,
+      String? wordCount,
+      String? lastChapter,
+      String? intro,
+      String? cover,
+    }) {
+      final current = _book!;
+      _book = HtmlBook(
+        url: hit.url,
+        // Refresh retains the original address and its request options (#97).
+        rawAddress: hit.rawAddress,
+        title: title ?? current.title,
+        author: author ?? current.author,
+        kind: kind != null && kind.isNotEmpty ? kind : current.kind,
+        wordCount: wordCount != null && wordCount.isNotEmpty
+            ? wordCount
+            : current.wordCount,
+        lastChapter: lastChapter != null && lastChapter.isNotEmpty
+            ? lastChapter
+            : current.lastChapter,
+        intro: intro != null && intro.isNotEmpty ? intro : current.intro,
+        cover: cover != null && cover.isNotEmpty ? cover : current.cover,
+      );
     }
-    final infoTitle = await _optional(page, info['name'] ?? '', label: 'ruleBookInfo.name');
-    final mergedTitle = infoTitle.isNotEmpty && (canReName || hit.title.isEmpty) ? infoTitle : hit.title;
-    publishNameAuthor(mergedTitle, hit.author);
-    final infoAuthor = await _optional(page, info['author'] ?? '', label: 'ruleBookInfo.author');
-    final mergedAuthor = infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty) ? infoAuthor : hit.author;
-    publishNameAuthor(mergedTitle, mergedAuthor);
-    final infoKind = await _kind(page, info['kind'] ?? '', label: 'ruleBookInfo.kind');
+
+    final infoTitle = await _optional(
+      page,
+      info['name'] ?? '',
+      label: 'ruleBookInfo.name',
+    );
+    final mergedTitle = infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+        ? infoTitle
+        : hit.title;
+    publishBook(title: mergedTitle);
+    final infoAuthor = await _optional(
+      page,
+      info['author'] ?? '',
+      label: 'ruleBookInfo.author',
+    );
+    final mergedAuthor =
+        infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+        ? infoAuthor
+        : hit.author;
+    publishBook(author: mergedAuthor);
+    final infoKind = await _kind(
+      page,
+      info['kind'] ?? '',
+      label: 'ruleBookInfo.kind',
+    );
+    publishBook(kind: infoKind);
     final infoWordCount = formatSourceWordCount(
       await _optional(
         page,
@@ -1362,35 +1396,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
         label: 'ruleBookInfo.wordCount',
       ),
     );
+    publishBook(wordCount: infoWordCount);
     final infoLastChapter = await _optional(
       page,
       info['lastChapter'] ?? '',
       label: 'ruleBookInfo.lastChapter',
     );
+    publishBook(lastChapter: infoLastChapter);
     final infoIntro = formatSourceIntro(
       await _optional(page, info['intro'] ?? '', label: 'ruleBookInfo.intro'),
     );
+    publishBook(intro: infoIntro);
     final cover = await _optional(
       page,
       info['coverUrl'] ?? '',
       label: 'ruleBookInfo.coverUrl',
     );
-    final book = HtmlBook(
-      url: hit.url,
-      // The address text the book was opened with survives this stage, so a
-      // refresh of the book this returns fetches the same address (#97).
-      rawAddress: hit.rawAddress,
-      // Legado only permits a detail page to replace the search title/author
-      // when `canReName` is declared (BookInfo.kt:65-70).
-      title: mergedTitle,
-      author: mergedAuthor,
-      intro: infoIntro.isEmpty ? hit.intro : infoIntro,
-      cover: cover.isEmpty ? hit.cover : '${_url(hit.url, cover)}',
-      kind: infoKind.isEmpty ? hit.kind : infoKind,
-      lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
-      wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
-    );
-    _book = book;
+    publishBook(cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}');
+    final book = _book!;
     final tocAddress = await _optional(
       page,
       info['tocUrl'] ?? '',
@@ -1579,6 +1602,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     if (field.isScriptOnly) {
       return sourceScriptTexts(await field.apply(document));
+    }
+    if (field.isLiteralValue) {
+      return sourceScriptTexts(
+        await field.apply(
+          document,
+          forValue: true,
+          forStringList: true,
+          contentText: _analysisText(document),
+        ),
+      );
     }
     final fields = splitRuleFields(field.extractionRule!);
     final extraction = fields.rule.trim();

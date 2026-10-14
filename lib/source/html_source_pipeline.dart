@@ -955,7 +955,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     HtmlRuleBatch batch,
     String id,
     RuleField field,
-  ) => field.isScriptOnly
+  ) => field.isScriptOnly || field.isLiteralValue
       ? null
       : batch.documentTextList(id, field.extractionRule!);
 
@@ -1635,7 +1635,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         // through; the declared-list branch parses its pages with
         // `getNextUrl = false` (`BookChapterList.kt:104-121`).
         final next = readNext
-            ? await _field(
+            ? await _elementField(
                 _rule('ruleToc', 'nextTocUrl', optional: true),
                 content: page,
                 label: 'ruleToc.nextTocUrl',
@@ -1645,6 +1645,25 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ? null
             : _declareList(batch, 'next', next);
         await batch.run();
+        // Complete next after list acquisition and before any item getter,
+        // including the empty-list policy (BookChapterList.kt:187-207).
+        var nextTexts = const <String>[];
+        if (readNext) {
+          final field =
+              next ??
+              await _field(
+                _rule('ruleToc', 'nextTocUrl', optional: true),
+                content: page,
+                label: 'ruleToc.nextTocUrl',
+              );
+          var job = nextValue;
+          if (next == null && !field.isScriptOnly && !field.isLiteralValue) {
+            final nextBatch = HtmlRuleBatch(page);
+            job = _declareList(nextBatch, 'next', field);
+            await nextBatch.run();
+          }
+          nextTexts = await _pageTexts(job, field, page);
+        }
         final count = scriptedItems?.length ?? items!.length;
         if (count == 0) throw StateError('目录页为空');
         Future<String> fieldValue(
@@ -1755,10 +1774,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           }
           chapters.add(chapter);
         }
-        return (
-          pageUrl: pageUrl,
-          items: await _pageTexts(nextValue, next, page),
-        );
+        return (pageUrl: pageUrl, items: nextTexts);
       },
     );
     if (chapters.isEmpty) throw StateError('目录为空');
@@ -1862,41 +1878,65 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await dynamicBatch.run();
       return _documentValue(job, field, html, url: url);
     }
-    final canReName = _rule('ruleBookInfo', 'canReName', optional: true).trim().isNotEmpty;
-    void publishNameAuthor(String title, String author) {
-      _book = HtmlBook(url: hit.url, rawAddress: hit.rawAddress, title: title, author: author,
-        intro: hit.intro, cover: hit.cover, kind: hit.kind,
-        lastChapter: hit.lastChapter, wordCount: hit.wordCount);
+
+    final canReName = _rule(
+      'ruleBookInfo',
+      'canReName',
+      optional: true,
+    ).trim().isNotEmpty;
+    void publishBook({
+      String? title,
+      String? author,
+      String? kind,
+      String? wordCount,
+      String? lastChapter,
+      String? intro,
+      String? cover,
+    }) {
+      final current = _book!;
+      _book = HtmlBook(
+        url: hit.url,
+        // Refresh retains the original address and its request options (#97).
+        rawAddress: hit.rawAddress,
+        title: title ?? current.title,
+        author: author ?? current.author,
+        kind: kind != null && kind.isNotEmpty ? kind : current.kind,
+        wordCount: wordCount != null && wordCount.isNotEmpty
+            ? wordCount
+            : current.wordCount,
+        lastChapter: lastChapter != null && lastChapter.isNotEmpty
+            ? lastChapter
+            : current.lastChapter,
+        intro: intro != null && intro.isNotEmpty ? intro : current.intro,
+        cover: cover != null && cover.isNotEmpty ? cover : current.cover,
+      );
     }
+
     final detailsTitle = await read('name');
-    final mergedTitle = detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty) ? detailsTitle : hit.title;
-    publishNameAuthor(mergedTitle, hit.author);
+    final mergedTitle =
+        detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
+        ? detailsTitle
+        : hit.title;
+    publishBook(title: mergedTitle);
     final detailsAuthor = await read('author');
-    final mergedAuthor = detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty) ? detailsAuthor : hit.author;
-    publishNameAuthor(mergedTitle, mergedAuthor);
+    final mergedAuthor =
+        detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
+        ? detailsAuthor
+        : hit.author;
+    publishBook(author: mergedAuthor);
     final detailsKind = await read('kind');
+    publishBook(kind: detailsKind);
     final detailsWordCount = formatSourceWordCount(await read('wordCount'));
+    publishBook(wordCount: detailsWordCount);
     final detailsLastChapter = await read('lastChapter');
+    publishBook(lastChapter: detailsLastChapter);
     final detailsIntro = formatSourceIntro(await read('intro'));
+    publishBook(intro: detailsIntro);
     final coverText = await read('coverUrl', url: true);
-    final book = HtmlBook(
-      url: hit.url,
-      // The address text the book was opened with survives this stage, so a
-      // refresh of the book this returns fetches the same address (#97).
-      rawAddress: hit.rawAddress,
-      // Legado only permits a detail page to replace the search title/author
-      // when `canReName` is declared (BookInfo.kt:65-70).
-      title: mergedTitle,
-      author: mergedAuthor,
-      intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
-      cover: coverText.isEmpty ? hit.cover : '${_resolve(infoUrl, coverText)}',
-      kind: detailsKind.isEmpty ? hit.kind : detailsKind,
-      lastChapter: detailsLastChapter.isEmpty
-          ? hit.lastChapter
-          : detailsLastChapter,
-      wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
+    publishBook(
+      cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
     );
-    _book = book;
+    final book = _book!;
     final tocText = await read('tocUrl', url: true);
     return (book, tocText);
   }
@@ -2116,6 +2156,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String page,
   ) async {
     if (field == null) return const <String>[];
+    if (field.isLiteralValue) {
+      return sourceScriptTexts(
+        await field.apply(
+          page,
+          forValue: true,
+          forStringList: true,
+          contentText: page,
+        ),
+      );
+    }
     if (job == null) return sourceScriptTexts(await field.apply(page));
     final values = job.values;
     if (values.isEmpty && field.scripts.isEmpty) return const <String>[];

@@ -1,0 +1,134 @@
+[
+  {
+    "name": "f1-html-script",
+    "pipeline": "html",
+    "shape": "script",
+    "content": "<a class=\"next\" href=\"/unused\">next</a><li><a href=\"/chapter\">chapter</a></li>",
+    "listRule": "li",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": false
+  },
+  {
+    "name": "f1-html-error",
+    "pipeline": "html",
+    "shape": "error",
+    "content": "<a class=\"next\" href=\"/unused\">next</a><li><a href=\"/chapter\">chapter</a></li>",
+    "listRule": "li",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));throw new Error(\"next-before-item\")",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": true
+  },
+  {
+    "name": "f1-html-extraction-script",
+    "pipeline": "html",
+    "shape": "extraction-script",
+    "content": "<a class=\"next\" href=\"/unused\">next</a><li><a href=\"/chapter\">chapter</a></li>",
+    "listRule": "li",
+    "nextRule": "a.next@href @js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');\"\"",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": false
+  },
+  {
+    "name": "f1-html-resolved-script",
+    "pipeline": "html",
+    "shape": "resolved-script",
+    "content": "<a class=\"next\" href=\"/unused\">next</a><li><a href=\"/chapter\">chapter</a></li>",
+    "listRule": "li",
+    "nextRule": "{{java.put('resolveCount',String(Number(java.get('resolveCount')||'0')+1));'ignored'}} @js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": false
+  },
+  {
+    "name": "f1-html-zero-error",
+    "pipeline": "html",
+    "shape": "zero-error",
+    "content": "<a class=\"next\" href=\"/unused\">next</a>",
+    "listRule": "li",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));throw new Error(\"next-before-item\")",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": true
+  },
+  {
+    "name": "f1-html-zero-ready",
+    "pipeline": "html",
+    "shape": "zero-ready",
+    "content": "<a class=\"next\" href=\"/unused\">next</a>",
+    "listRule": "li",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "a@href",
+    "error": false
+  },
+  {
+    "name": "f1-json-script",
+    "pipeline": "json",
+    "shape": "script",
+    "content": "{\"list\":[{\"href\":\"/chapter\"}],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": false
+  },
+  {
+    "name": "f1-json-error",
+    "pipeline": "json",
+    "shape": "error",
+    "content": "{\"list\":[{\"href\":\"/chapter\"}],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));throw new Error(\"next-before-item\")",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": true
+  },
+  {
+    "name": "f1-json-extraction-script",
+    "pipeline": "json",
+    "shape": "extraction-script",
+    "content": "{\"list\":[{\"href\":\"/chapter\"}],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "$.next[*] @js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');\"\"",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": false
+  },
+  {
+    "name": "f1-json-resolved-script",
+    "pipeline": "json",
+    "shape": "resolved-script",
+    "content": "{\"list\":[{\"href\":\"/chapter\"}],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "{{java.put('resolveCount',String(Number(java.get('resolveCount')||'0')+1));'ignored'}} @js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": false
+  },
+  {
+    "name": "f1-json-zero-error",
+    "pipeline": "json",
+    "shape": "zero-error",
+    "content": "{\"list\":[],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));throw new Error(\"next-before-item\")",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": true
+  },
+  {
+    "name": "f1-json-zero-ready",
+    "pipeline": "json",
+    "shape": "zero-ready",
+    "content": "{\"list\":[],\"next\":[\"/unused\"]}",
+    "listRule": "$.list",
+    "nextRule": "@js:java.put('nextCount',String(Number(java.get('nextCount')||'0')+1));java.put('seed','ready');[]",
+    "nameRule": "{{java.put('visited','yes');java.get('seed')||'MISSING'}}",
+    "urlRule": "$.href",
+    "error": false
+  }
+]
