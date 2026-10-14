@@ -110,6 +110,9 @@ class HtmlRuleJob {
   /// `None` means the document itself.
   final String? parent;
 
+  /// Zero-based index in the completed parent selection; None uses all matches.
+  final int? parentIndex;
+
   /// Whether the job returns element count, one joined string per context, or
   /// the matched values as a list.
   final HtmlJobOutput output;
@@ -118,12 +121,17 @@ class HtmlRuleJob {
     required this.id,
     required this.rule,
     this.parent,
+    this.parentIndex,
     required this.output,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^ rule.hashCode ^ parent.hashCode ^ output.hashCode;
+      id.hashCode ^
+      rule.hashCode ^
+      parent.hashCode ^
+      parentIndex.hashCode ^
+      output.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -133,5 +141,6 @@ class HtmlRuleJob {
           id == other.id &&
           rule == other.rule &&
           parent == other.parent &&
+          parentIndex == other.parentIndex &&
           output == other.output;
 }

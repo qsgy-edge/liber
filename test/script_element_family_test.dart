@@ -243,6 +243,31 @@ void main() {
       'text',
     ]);
   });
+  test('serialized reordered nodes keep relative select and source identity', () async {
+    final pipeline = openBookSourcePipeline(
+      source(bookList: '@CSS:.book @js:[result[1], result[0]]',
+        name: '@js:result.selectFirst(".name").text()',
+        bookUrl: '@js:src.select("a")[0].attr("href")'),
+      PipelinePages({'/search': '$bookPage$secondBookPage'}),
+    );
+    final hits = await pipeline.search('关键字');
+    expect(hits.map((book) => book.title), ['书名乙', '书名甲']);
+    expect(hits.map((book) => book.url.path), ['/book/2', '/book/1']);
+    pipeline.cancel();
+  });
+
+  test('relative node returned by list script remains serializable and focused', () async {
+    final pipeline = openBookSourcePipeline(
+      source(bookList: '@CSS:.book @js:result[1].selectFirst("a")',
+        name: '@js:result.text()', bookUrl: '@js:result.attr("href")', kind: ''),
+      PipelinePages({'/search': '$bookPage$secondBookPage'}),
+    );
+    final hits = await pipeline.search('关键字');
+    expect(hits.single.title, '乙');
+    expect(hits.single.url.path, '/book/2');
+    pipeline.cancel();
+  });
+
 }
 
 /// The pages one row's pipeline reads, keyed by path.

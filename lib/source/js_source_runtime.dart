@@ -82,22 +82,49 @@ typedef SourceRuleEvaluator = Future<Object?> Function(SourceRuleRead read);
 /// `extract` payload.
 enum SourceDomOp { count, extract }
 
-/// One node-façade call, as the pipeline that owns the running analysis reads
-/// it: `Jsoup.parse(html).select(css)`, `selectFirst`, `attr` and `text` are all
-/// this one read against the tree [html] parses to. [rule] is a frozen rule
-/// selector, or null for the document root (`:root`). [extract] is `text`,
-/// `html`, or the attribute name `attr` was given.
+/// A selection step uses the preceding Elements job's final vector.
+typedef SourceDomSelectionStep = ({String rule, int? parentIndex});
+
+/// Decodes the existing node descriptor at its untrusted input boundary.
+/// An empty path is the document façade; legacy __rule is one selection step.
+List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
+  if (!descriptor.containsKey('__selection')) {
+    final rule = descriptor['__rule'];
+    if (rule != null && rule is! String) {
+      throw const SourceScriptError('host-input', 'invalid HTML selection rule');
+    }
+    return rule == null ? const [] : [(rule: rule as String, parentIndex: null)];
+  }
+  final selection = descriptor['__selection'];
+  if (selection is! List) {
+    throw const SourceScriptError('host-input', 'invalid HTML selection path');
+  }
+  final steps = <SourceDomSelectionStep>[];
+  for (final step in selection) {
+    if (step is! Map || step['rule'] is! String) {
+      throw const SourceScriptError('host-input', 'invalid HTML selection step');
+    }
+    final index = step['parentIndex'];
+    if (index != null && (index is! int || index < 0 || index > 0x7fffffff || steps.isEmpty)) {
+      throw const SourceScriptError('host-input', 'invalid HTML parentIndex');
+    }
+    steps.add((rule: step['rule'] as String, parentIndex: index as int?));
+  }
+  return steps;
+}
+
+/// One node-façade call against its original document and ordered selection.
 class SourceDomRead {
   const SourceDomRead({
     required this.op,
     required this.html,
-    required this.rule,
+    required this.selection,
     required this.extract,
   });
 
   final SourceDomOp op;
   final String html;
-  final String? rule;
+  final List<SourceDomSelectionStep> selection;
   final String extract;
 }
 
@@ -1738,7 +1765,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       SourceDomRead(
         op: op,
         html: html,
-        rule: rule is String ? rule : null,
+        selection: sourceDomSelectionOf({
+          if (payload.containsKey('selection')) '__selection': payload['selection']
+          else '__rule': rule,
+        }),
         extract: extract is String ? extract : 'text',
       ),
     );
@@ -2800,45 +2830,53 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   const domPolicy =
     'the minimal node façade (#100): Jsoup.parse/select/selectFirst/attr/text';
   const domRefuse = member => () => call('refuse', {member: member, policy: domPolicy});
-  const domRule = (rule, css) =>
-    (rule === null || rule === undefined) ? String(css) : rule + '@' + String(css);
-  const domCount = (html, rule) => Number(call('dom', {op:'count', html:html, rule:rule, extract:null})) || 0;
-  const domValues = (html, rule, extract) =>
-    call('dom', {op:'extract', html:html, rule:rule, extract:String(extract)});
+  const domInvalid = message => call('refuse', {member:'Jsoup.parentIndex', policy:message});
+  function domSelection(value) {
+    if (!Object.prototype.hasOwnProperty.call(value, '__selection')) {
+      if (value.__rule === null || value.__rule === undefined) return [];
+      if (typeof value.__rule !== 'string') return domInvalid('invalid HTML selection rule');
+      return [{rule:value.__rule}];
+    }
+    if (!Array.isArray(value.__selection)) return domInvalid('invalid HTML selection path');
+    return value.__selection.map((step, position) => {
+      if (!step || typeof step !== 'object' || typeof step.rule !== 'string')
+        return domInvalid('invalid HTML selection step');
+      const index = step.parentIndex;
+      if (index !== null && index !== undefined &&
+          (!Number.isInteger(index) || index < 0 || index > 2147483647 || position === 0))
+        return domInvalid('invalid HTML parentIndex');
+      return index === null || index === undefined ? {rule:step.rule} : {rule:step.rule, parentIndex:index};
+    });
+  }
+  const domRule = (selection, css) => [...selection, {rule:'@CSS:' + String(css)}];
+  const domFocus = (selection, index) => [...selection, {rule:':root', parentIndex:index}];
+  const domCount = (html, selection) => Number(call('dom', {op:'count', html:html, selection:selection, extract:null})) || 0;
+  const domValues = (html, selection, extract) =>
+    call('dom', {op:'extract', html:html, selection:selection, extract:String(extract)});
   const domFirst = values => (values && values.length) ? String(values[0]) : '';
-  function domSelect(html, rule) {
-    const count = domCount(html, rule);
+  function domSelect(html, selection) {
+    const count = domCount(html, selection);
     const elements = [];
-    for (let index = 0; index < count; index++) elements.push(domNode(html, rule + '.' + index));
-    // jsoup `Elements` *is* the list, with the same read members; the element
-    // itself keeps its own `select`, so `lis[i].attr(...)` and
-    // `lis.text()` both answer as the frozen calls do.
+    for (let index = 0; index < count; index++) elements.push(domNode(html, domFocus(selection, index)));
     const define = (name, fn) => Object.defineProperty(elements, name, {value: fn, enumerable: false});
-    define('select', css => domSelect(html, domRule(rule, css)));
-    define('selectFirst', css => domFirstNode(html, domRule(rule, css)));
-    define('attr', name => domFirst(domValues(html, rule, String(name))));
-    define('text', () => domValues(html, rule, 'text').join(' '));
-    define('toString', () => domValues(html, rule, 'all').join('\n'));
+    define('select', css => domSelect(html, domRule(selection, css)));
+    define('selectFirst', css => domFirstNode(html, domRule(selection, css)));
+    define('attr', name => domFirst(domValues(html, selection, String(name))));
+    define('text', () => domValues(html, selection, 'text').join(' '));
+    define('toString', () => domValues(html, selection, 'all').join('\n'));
     return elements;
   }
-  function domFirstNode(html, rule) {
-    const first = rule + '.0';
-    return domCount(html, first) > 0 ? domNode(html, first) : null;
+  function domFirstNode(html, selection) {
+    return domCount(html, selection) > 0 ? domNode(html, domFocus(selection, 0)) : null;
   }
-  function domNode(html, rule) {
+  function domNode(html, selection) {
     const methods = Object.create(null);
     const define = (name, fn) => Object.defineProperty(methods, name, {value: fn, enumerable: false});
-    define('select', css => domSelect(html, domRule(rule, css)));
-    define('selectFirst', css => domFirstNode(html, domRule(rule, css)));
-    define('attr', name => domFirst(domValues(html, rule === null || rule === undefined ? ':root' : rule, String(name))));
-    define('text', () => domValues(html, rule === null || rule === undefined ? ':root' : rule, 'text').join(' '));
-    define('toString', () => (rule === null || rule === undefined)
-      ? String(html) : domFirst(domValues(html, rule, 'all')));
-    // A name outside the list refuses by name instead of arriving as a
-    // `TypeError`; the JS internals a value needs (`toJSON`, `then`, the
-    // prototype's own members) stay themselves. The prototype is the proxy, so
-    // the node's own enumerable properties are only its two data fields and a
-    // `props()` walk over the result stays serializable.
+    define('select', css => domSelect(html, domRule(selection, css)));
+    define('selectFirst', css => domFirstNode(html, domRule(selection, css)));
+    define('attr', name => domFirst(domValues(html, selection, String(name))));
+    define('text', () => domValues(html, selection, 'text').join(' '));
+    define('toString', () => selection.length === 0 ? String(html) : domFirst(domValues(html, selection, 'all')));
     const proto = new Proxy(methods, {
       get: (target, name) => {
         if (typeof name === 'symbol') return undefined;
@@ -2850,17 +2888,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     });
     const node = Object.create(proto);
     node.__dom = html;
-    node.__rule = (rule === undefined) ? null : rule;
+    node.__selection = selection;
     return node;
   }
-  // The frozen `@js:` field's `result` may be an element the element-list rule
-  // produced (`BookList.kt:208` `setContent(item)`); the pipeline passes it as
-  // this plain descriptor, which the façade turns back into a node.
-  const asDom = value => (value !== null && typeof value === 'object' &&
-      !Array.isArray(value) && typeof value.__dom === 'string')
-    ? domNode(value.__dom, value.__rule === undefined ? null : value.__rule) : value;
+  const asDom = value => Array.isArray(value) ? value.map(asDom) :
+    (value !== null && typeof value === 'object' && typeof value.__dom === 'string')
+    ? domNode(value.__dom, domSelection(value)) : value;
   const Jsoup = Object.freeze({
-    parse: (html, baseUri) => domNode(String(html), null)
+    parse: (html, baseUri) => domNode(String(html), [])
   });
 
   return {key:null, page:null, book:book, chapter:chapter, result:null, speakText:null, speakSpeed:null,
@@ -2873,6 +2908,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // The `loginCheckJs` hook sees the stage's response as `result` through the
     // response accessors; every other evaluation keeps the raw value the rule
     // field produced, with a node descriptor resolved to the façade's node.
+    src: asDom(input.src),
     result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result)) : asDom(input.result)};
 }
 ''';

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/html_rule_adapter.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/js_source_runtime.dart';
 
 import 'native_library.dart';
 
@@ -129,4 +130,47 @@ void main() {
     batch.documentText('js', 'div@js:result');
     await expectLater(batch.run(), throwsA(isA<UnsupportedError>()));
   });
+  test('indexed paths retain final CSS and reorder selection positions', () async {
+    const html = '<ul class="shelf"><li><a href="/one">one</a></li><li><a href="/two">two</a></li></ul>';
+    for (final (rule, expected) in [('@CSS:ul.shelf > li', ['', 'two']), ('li[1,0]', ['two', ''])]) {
+      final batch = HtmlRuleBatch(html);
+      final jobs = <HtmlStringList>[];
+      for (var index = 0; index < 2; index++) {
+        final focus = batch.selection('focus:$index', [(rule: rule, parentIndex: null), (rule: ':root', parentIndex: index)]);
+        jobs.add(batch.elementsText('value:$index', '@CSS:li:nth-child(2)@text', focus));
+      }
+      await batch.run();
+      expect([for (final job in jobs) job.values.single], expected);
+    }
+  });
+
+  test('parentIndex refuses absent negative and out-of-range parent', () async {
+    for (final index in [-1, 2147483648, 4294967297]) {
+      final batch = HtmlRuleBatch('<li>one</li><li>two</li>');
+      final parent = batch.elements('items', 'li');
+      expect(() => batch.elements('focus', ':root', parent: parent, parentIndex: index),
+        throwsA(isA<UnsupportedError>().having((error) => error.message, 'message', contains('parentIndex'))));
+    }
+    final beyond = HtmlRuleBatch('<li>one</li><li>two</li>');
+    final parent = beyond.elements('items', 'li');
+    beyond.elements('focus', ':root', parent: parent, parentIndex: 2);
+    await expectLater(beyond.run(), throwsA(isA<UnsupportedError>().having((error) => error.message, 'message', contains('parentIndex'))));
+    final batch = HtmlRuleBatch('<li>one</li>');
+    batch.elements('focus', ':root', parentIndex: 0);
+    await expectLater(batch.run(), throwsA(isA<UnsupportedError>().having((error) => error.message, 'message', contains('parentIndex'))));
+  });
+
+  test('node selection DTO rejects malformed paths and unsafe integer indices', () {
+    for (final index in [-1, 0.5, 2147483648, '0']) {
+      expect(() => sourceDomSelectionOf({'__selection': [{'rule': 'li'}, {'rule': ':root', 'parentIndex': index}]}),
+        throwsA(isA<SourceScriptError>().having((error) => error.message, 'message', contains('parentIndex'))));
+    }
+    expect(() => sourceDomSelectionOf({'__selection': [{'rule': ':root', 'parentIndex': 0}]}), throwsA(isA<SourceScriptError>()));
+    for (final selection in [null, 'li', [{'rule': 1}]]) {
+      expect(() => sourceDomSelectionOf({'__selection': selection}), throwsA(isA<SourceScriptError>()));
+    }
+    expect(sourceDomSelectionOf({'__rule': 'li.1'}), [(rule: 'li.1', parentIndex: null)]);
+    expect(sourceDomSelectionOf({'__rule': null}), isEmpty);
+  });
+
 }
