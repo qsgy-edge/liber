@@ -28,7 +28,13 @@ class HtmlRuleBatch {
     int? parentIndex,
   }) => HtmlElementSet._(
     this,
-    _add(id, rule, parent?.id, HtmlJobOutput.elements, parentIndex: parentIndex),
+    _add(
+      id,
+      rule,
+      parent?.id,
+      HtmlJobOutput.elements,
+      parentIndex: parentIndex,
+    ),
   );
 
   /// Replays a serializable node path against this batch's original document.
@@ -40,8 +46,10 @@ class HtmlRuleBatch {
     var index = 0;
     for (final step in steps) {
       parent = elements(
-        '$id:${index++}', step.rule,
-        parent: parent, parentIndex: step.parentIndex,
+        '$id:${index++}',
+        step.rule,
+        parent: parent,
+        parentIndex: step.parentIndex,
       );
     }
     return parent ?? elements(id, ':root');
@@ -80,17 +88,25 @@ class HtmlRuleBatch {
   );
 
   String _add(
-    String id, String rule, String? parent, HtmlJobOutput output, {
+    String id,
+    String rule,
+    String? parent,
+    HtmlJobOutput output, {
     int? parentIndex,
   }) {
     if (_ran) throw StateError('该规则批次已经执行');
     if (parentIndex != null && (parentIndex < 0 || parentIndex > 0x7fffffff)) {
       throw UnsupportedError('parentIndex 必须是非负 i32 索引');
     }
-    _jobs.add(HtmlRuleJob(
-      id: id, rule: rule, parent: parent,
-      parentIndex: parentIndex, output: output,
-    ));
+    _jobs.add(
+      HtmlRuleJob(
+        id: id,
+        rule: rule,
+        parent: parent,
+        parentIndex: parentIndex,
+        output: output,
+      ),
+    );
     return id;
   }
 

@@ -188,3 +188,66 @@ Java container/NativeArray differences, direct Elements init, broad type/DOM
 contracts and #104's chapter-wide ordering remain separate gaps. Blank selector
 plus nonempty replacement followed by scripts is outside this new raw-extraction
 branch; the bounded corpus does not establish all such rule shapes.
+
+
+## Read context, caller completion and original item selection
+
+`ReadContextOracle.kt` executes 37 repeated observations over the preserved
+actual compiled getters. Its 36 product-comparable rows include 34 value rows
+and two error/state controls; one detached-node negative is frozen-only.
+`BookVisibilityOracle.kt` adds eight observations with the preserved mutable
+Book name/author entity and source-verified conditional merge points.
+`BookAliasOracle.kt` adds two actual AnalyzeRule.get/BaseSource.get observations
+with and without a Book. No new entity stub, constant getter answer or Java
+container/type provenance protocol supplies these values. Caller order and
+merge sequences are transcribed from the pinned callers; the harnesses do not
+execute whole BookList/BookInfo/TOC classes or a device.
+
+```sh
+python tool/rule_field_oracle/run_read_context.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+python tool/rule_field_oracle/run_book_visibility.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+python tool/rule_field_oracle/run_book_alias.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+```
+
+Implicit nested scalar reads retain the original analysis content. Explicit
+read targets and intermediate JS result remain separate; nested getString
+completes its own replacement/scripts/HTML4 tail on the same evaluator/scope.
+Detail getters complete name, author, kind, wordCount, lastChapter, intro,
+cover and toc in order; TOC getters complete per item. Observed name/author
+merges become visible immediately. Single-argument java.get(bookName) reads the
+current Book name when that scope exists; source.get, ordinary state and the
+HTTP overload retain their paths, with no-Book fallback tested separately.
+
+HTML items retain the original document plus ordered selection/focus steps.
+The optional parentIndex addresses the completed parent selection's final
+merge/reorder vector, and None retains the existing all-context behavior.
+Relative selection, array indexing, src/result and returned node serialization
+use that path without a detached outerHTML reparse or rewritten index syntax.
+The field is officially generated through FRB 2.12.0. Its automatic content hash
+stayed unchanged, so matching native source/generated hashes and the actual DLL
+identity are required; the hash constant alone cannot distinguish the old DLL.
+Static search without kind uses one batch; nonempty static kind uses a second
+batch of explicitly grouped per-item TextList jobs. Dynamic reads have no fixed
+batch-count claim. Item content serialization is lazy, and kind keeps list/raw
+semantics without a scalar tail.
+
+The cancelled frozen observation cancels a Job before its getter begins.
+The product control cancels at the existing toast callback and asserts that it
+was reached. Ordinary log does not invoke that callback. Their timing differs:
+error/state and saved-value assertions are controls, not scalar-value or
+same-trigger-time parity. The current read-context suite is 39 tests: 34 value
+comparisons, two error/state controls, one identity and two retention controls.
+Book visibility/alias has ten value rows and two identity controls.
+
+Controller branch verification after the matching native build records Rust
+34/34 (including the six parentIndex cases), Dart MCP 324/324, the existing HTML
+Android-golden comparisons 45/45, host checks 106/106 and bounded MCP analysis
+No errors. The Dart total includes identity/error/policy/type guards and is not
+324 frozen parity rows. Frozen outputs/producers/manifests remain unmodified;
+final layout/comment changes are bound by exact analyzer-token and string
+lexeme equivalence. Detailed raw receipts and source/DLL bindings live under
+`C:/Users/17945/AppData/Local/liber-evidence/batch26/93/review-round3/`.
+Fresh independent review, integrated verification, Windows scratch driven run
+and other-platform affected rows remain subsequent gates. Prior Java/type,
+nested-put policy, direct Elements/explicit object and coverage residuals remain
+explicit; this branch result does not release downstream tickets.

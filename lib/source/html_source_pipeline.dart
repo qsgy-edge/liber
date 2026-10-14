@@ -158,12 +158,18 @@ class _ListItem {
   final Object? value;
   bool get isElement => dom != null;
 
-  Object? get content => !isElement ? value : <String, Object?>{
-    '__dom': dom,
-    '__selection': [for (final step in selection!) <String, Object?>{
-      'rule': step.rule, if (step.parentIndex != null) 'parentIndex': step.parentIndex,
-    }],
-  };
+  Object? get content => !isElement
+      ? value
+      : <String, Object?>{
+          '__dom': dom,
+          '__selection': [
+            for (final step in selection!)
+              <String, Object?>{
+                'rule': step.rule,
+                if (step.parentIndex != null) 'parentIndex': step.parentIndex,
+              },
+          ],
+        };
 }
 
 /// One step of the frozen element-list walk: the raw value a segment produced,
@@ -619,7 +625,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final batch = HtmlRuleBatch(node?.dom ?? '${read.content}');
       final job = node == null
           ? batch.documentTextList('rule', field.extractionRule!)
-          : batch.elementsTextList('rule', field.extractionRule!, batch.selection('item', node.selection!));
+          : batch.elementsTextList(
+              'rule',
+              field.extractionRule!,
+              batch.selection('item', node.selection!),
+            );
       await batch.run();
       return job.values;
     }
@@ -745,7 +755,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   _ListItem _listItemOf(Object? value) {
     if (value is Map && value['__dom'] is String) {
-      return _ListItem.element(value['__dom'] as String, sourceDomSelectionOf(value));
+      return _ListItem.element(
+        value['__dom'] as String,
+        sourceDomSelectionOf(value),
+      );
     }
     return _ListItem.value(value);
   }
@@ -771,11 +784,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // Match RuleField's removal of one original mode head. A head produced
       // by an interpolation stays literal, as in the retained mode controls.
       final original = RuleField.extractionText(raw) ?? '';
-      final headLength = original.startsWith('@@') ? 2
-          : original.toLowerCase().startsWith('@json:') ? 6
-          : original.toLowerCase().startsWith('@xpath:') ? 7 : 0;
-      final literal = splitRuleFields(field.extractionRule!.substring(headLength));
-      needsContentText = literal.rule.isEmpty &&
+      final headLength = original.startsWith('@@')
+          ? 2
+          : original.toLowerCase().startsWith('@json:')
+          ? 6
+          : original.toLowerCase().startsWith('@xpath:')
+          ? 7
+          : 0;
+      final literal = splitRuleFields(
+        field.extractionRule!.substring(headLength),
+      );
+      needsContentText =
+          literal.rule.isEmpty &&
           (forStringList || literal.regex?.isNotEmpty == true);
     }
     final String contentText;
@@ -1358,14 +1378,26 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     }
 
     final kindJobs = <HtmlStringList>[];
-    if (scriptedItems == null && kind?.hasValueExtraction == true &&
+    if (scriptedItems == null &&
+        kind?.hasValueExtraction == true &&
         _rule('ruleSearch', 'kind', optional: true).isNotEmpty) {
       // TextList flattens contexts. A second batch uses explicit per-item jobs.
       final kindBatch = HtmlRuleBatch(html);
       final root = kindBatch.elements('items', listRule.extractionRule!);
       for (var index = 0; index < count; index++) {
-        final focus = kindBatch.elements('kind-item:$index', ':root', parent: root, parentIndex: index);
-        kindJobs.add(kindBatch.elementsTextList('kind:$index', kind!.extractionRule!, focus));
+        final focus = kindBatch.elements(
+          'kind-item:$index',
+          ':root',
+          parent: root,
+          parentIndex: index,
+        );
+        kindJobs.add(
+          kindBatch.elementsTextList(
+            'kind:$index',
+            kind!.extractionRule!,
+            focus,
+          ),
+        );
       }
       await kindBatch.run();
     }
@@ -1376,7 +1408,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       }
       final field = searchFields[key];
       if (key == 'kind' && kindJobs.isNotEmpty) {
-        return _kindTexts(await field!.apply(kindJobs[index].values, forValue: true, forStringList: true)).join(',');
+        return _kindTexts(
+          await field!.apply(
+            kindJobs[index].values,
+            forValue: true,
+            forStringList: true,
+          ),
+        ).join(',');
       }
       if (scriptedItems != null ||
           field == null ||
@@ -1614,19 +1652,34 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         await batch.run();
         final count = scriptedItems?.length ?? items!.length;
         if (count == 0) throw StateError('目录页为空');
-        Future<String> fieldValue(String key, int index, {bool url = false}) async {
+        Future<String> fieldValue(
+          String key,
+          int index, {
+          bool url = false,
+        }) async {
           final field = tocFields[key];
-          if (scriptedItems != null || field == null || !field.hasValueExtraction) {
-            final item = scriptedItems != null ? scriptedItems[index]
+          if (scriptedItems != null ||
+              field == null ||
+              !field.hasValueExtraction) {
+            final item = scriptedItems != null
+                ? scriptedItems[index]
                 : _ListItem.element(page, [
                     (rule: listRule.extractionRule!, parentIndex: null),
                     (rule: ':root', parentIndex: index),
                   ]);
-            return _itemFieldValue(item, field, 'ruleToc.$key',
-              raw: _rule('ruleToc', key, optional: true), url: url);
+            return _itemFieldValue(
+              item,
+              field,
+              'ruleToc.$key',
+              raw: _rule('ruleToc', key, optional: true),
+              url: url,
+            );
           }
-          return (await _perElement(field, [jobs[key]!.values[index]], url: url)).single;
+          return (await _perElement(field, [
+            jobs[key]!.values[index],
+          ], url: url)).single;
         }
+
         for (var index = 0; index < count; index++) {
           final title = await fieldValue('chapterName', index);
           final address = await fieldValue('chapterUrl', index, url: true);

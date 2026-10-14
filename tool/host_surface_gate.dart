@@ -368,12 +368,14 @@ Future<void> main(List<String> args) async {
     checks['getStrResponseScriptFormRefusedByName'] =
         scriptForm?.category == 'policy' &&
         scriptForm!.message.contains('java.getStrResponse(jsStr, …)');
+    // The executed frozen book-alias rows distinguish the current Book name
+    // from BaseSource's stored variable (book-alias-host/golden.json).
     final bookProbe = await run(
-      'java.put("bookName", "stored-book"); JSON.stringify([book.name, book.bookUrl, java.get("bookName")])',
+      'java.put("bookName", "stored-book"); JSON.stringify([book.name, book.bookUrl, java.get("bookName"), source.get("bookName")])',
       book: {'name': '契约书', 'bookUrl': '$origin/book'},
     );
     checks['bookSnapshot'] =
-        bookProbe == jsonEncode(['契约书', '$origin/book', 'stored-book']);
+        bookProbe == jsonEncode(['契约书', '$origin/book', '契约书', 'stored-book']);
     checks['absentBookStaysNull'] = await run('book === null') == true;
     final chapterProbe = await run(
       'java.put("title", "stored-title"); JSON.stringify([chapter.title, chapter.url, java.get("title")])',

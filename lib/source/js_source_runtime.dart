@@ -91,9 +91,14 @@ List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
   if (!descriptor.containsKey('__selection')) {
     final rule = descriptor['__rule'];
     if (rule != null && rule is! String) {
-      throw const SourceScriptError('host-input', 'invalid HTML selection rule');
+      throw const SourceScriptError(
+        'host-input',
+        'invalid HTML selection rule',
+      );
     }
-    return rule == null ? const [] : [(rule: rule as String, parentIndex: null)];
+    return rule == null
+        ? const []
+        : [(rule: rule as String, parentIndex: null)];
   }
   final selection = descriptor['__selection'];
   if (selection is! List) {
@@ -102,10 +107,14 @@ List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
   final steps = <SourceDomSelectionStep>[];
   for (final step in selection) {
     if (step is! Map || step['rule'] is! String) {
-      throw const SourceScriptError('host-input', 'invalid HTML selection step');
+      throw const SourceScriptError(
+        'host-input',
+        'invalid HTML selection step',
+      );
     }
     final index = step['parentIndex'];
-    if (index != null && (index is! int || index < 0 || index > 0x7fffffff || steps.isEmpty)) {
+    if (index != null &&
+        (index is! int || index < 0 || index > 0x7fffffff || steps.isEmpty)) {
       throw const SourceScriptError('host-input', 'invalid HTML parentIndex');
     }
     steps.add((rule: step['rule'] as String, parentIndex: index as int?));
@@ -1766,8 +1775,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         op: op,
         html: html,
         selection: sourceDomSelectionOf({
-          if (payload.containsKey('selection')) '__selection': payload['selection']
-          else '__rule': rule,
+          if (payload.containsKey('selection'))
+            '__selection': payload['selection']
+          else
+            '__rule': rule,
         }),
         extract: extract is String ? extract : 'text',
       ),
