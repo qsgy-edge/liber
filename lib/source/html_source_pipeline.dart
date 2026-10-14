@@ -487,24 +487,25 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// Stateful item fields supply their own node or scripted value; document
   /// fields supply the page String. Nested reads use the same complete scalar
   /// path, including its caller tail, before writing or substituting the value.
-  RuleFieldContext _ruleContext(String label, Object? content) =>
+  RuleFieldContext _ruleContext(String label, Object? content, {RuleScriptEvaluator? evaluator}) =>
       RuleFieldContext(
-        evaluateScript: (script, result) =>
+        evaluateScript: evaluator ?? (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: (value, rule) async => rule.isEmpty
+        extract: (_, rule) async => rule.isEmpty
             ? ''
             : await _readScriptRule(
                 SourceRuleRead(
                   member: label,
                   form: SourceRuleForm.string,
                   rule: rule,
-                  content: value,
-                  evaluateScript: (script, result) => _evalJs(
+                  content: content,
+                  analysisContent: content,
+                  evaluateScript: evaluator ?? (script, result) => _evalJs(
                     script,
                     _keyword,
                     result,
                     label: label,
-                    content: value,
+                    content: content,
                   ),
                 ),
               ),
@@ -588,7 +589,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     }
     final field = await RuleField.resolve(
       read.rule,
-      _ruleContext(read.member, read.content),
+      _ruleContext(read.member, read.analysisContent, evaluator: read.evaluateScript),
       content: read.content,
     );
     final node = read.content is Map && (read.content as Map)['__dom'] is String
@@ -752,51 +753,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
     }
     return _ListItem.value(value);
-  }
-
-  /// One element-list field's values, over either the page batch or the items a
-  /// scripted list rule produced. A script-only field runs its script against
-  /// the item itself (an element node, or a plain value); an extraction field
-  /// keeps the batch read.
-  Future<List<String>> _listFieldValues({
-    required String raw,
-    required RuleField? field,
-    required List<_ListItem>? scriptedItems,
-    required HtmlStringList? job,
-    required List<String> itemHtmls,
-    required int count,
-    String label = '',
-    bool url = false,
-    bool forStringList = false,
-  }) async {
-    if (forStringList && raw.isEmpty) return List.filled(count, '');
-    if (scriptedItems != null) {
-      return [
-        for (final item in scriptedItems)
-          await _itemFieldValue(
-            item,
-            field,
-            label,
-            raw: raw,
-            url: url,
-            forStringList: forStringList,
-          ),
-      ];
-    }
-    if (field == null || !field.hasValueExtraction || forStringList) {
-      return [
-        for (final html in itemHtmls)
-          await _itemFieldValue(
-            _ListItem.element(html, 'body > :first-child'),
-            field,
-            label,
-            raw: raw,
-            url: url,
-            forStringList: forStringList,
-          ),
-      ];
-    }
-    return _perElement(field, job!.values, url: url);
   }
 
   Future<String> _itemFieldValue(
@@ -1659,35 +1615,33 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         await batch.run();
         final count = scriptedItems?.length ?? items!.length;
         if (count == 0) throw StateError('目录页为空');
-        Future<List<String>> fieldValues(String key, {bool url = false}) =>
-            _listFieldValues(
-              raw: _rule('ruleToc', key, optional: true),
-              field: tocFields[key],
-              count: count,
-              scriptedItems: scriptedItems,
-              job: jobs[key],
-              itemHtmls: itemHtmls?.values ?? const <String>[],
-              label: 'ruleToc.$key',
-              url: url,
-            );
-        final names2 = await fieldValues('chapterName');
-        final urls2 = await fieldValues('chapterUrl', url: true);
-        final tagValues = await fieldValues('updateTime');
-        final volumeValues = await fieldValues('isVolume');
-        final vipValues = await fieldValues('isVip');
-        final payValues = await fieldValues('isPay');
+        Future<String> fieldValue(String key, int index, {bool url = false}) async {
+          final field = tocFields[key];
+          if (scriptedItems != null || field == null || !field.hasValueExtraction) {
+            final item = scriptedItems != null ? scriptedItems[index]
+                : _ListItem.element(itemHtmls!.values[index], 'body > :first-child');
+            return _itemFieldValue(item, field, 'ruleToc.$key',
+              raw: _rule('ruleToc', key, optional: true), url: url);
+          }
+          return (await _perElement(field, [jobs[key]!.values[index]], url: url)).single;
+        }
         for (var index = 0; index < count; index++) {
+          final title = await fieldValue('chapterName', index);
+          final address = await fieldValue('chapterUrl', index, url: true);
+          final tagValue = await fieldValue('updateTime', index);
+          final volumeValue = await fieldValue('isVolume', index);
+          final vipValue = await fieldValue('isVip', index);
+          final payValue = await fieldValue('isPay', index);
           // The frozen adds a chapter only when its title is non-empty
           // (`BookChapterList.kt:244`), so an element the name rule matched
           // nothing on is skipped instead of failing the whole TOC.
-          final title = names2[index];
           if (title.isEmpty) continue;
-          final tag = tagValues[index].isEmpty ? null : tagValues[index];
-          final isVolume = sourceIsTrue(volumeValues[index]);
-          final isVip = sourceIsTrue(vipValues[index]);
-          final isPay = sourceIsTrue(payValues[index]);
+          final tag = tagValue.isEmpty ? null : tagValue;
+          final isVolume = sourceIsTrue(volumeValue);
+          final isVip = sourceIsTrue(vipValue);
+          final isPay = sourceIsTrue(payValue);
           final SourceChapter chapter;
-          if (urls2[index].isEmpty) {
+          if (address.isEmpty) {
             // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
             // volume takes the identity text `title + index`, every other chapter
             // takes the address of the TOC page being parsed, which resolves to
@@ -1713,7 +1667,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             // The address text the rule produced, option tail included: this is
             // what the chapter keeps, so the fetch parses the options the frozen
             // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
-            final rawAddress = urls2[index];
+            final rawAddress = address;
             final (chapterUrl, chapterOptions) = await _extracted(
               pageUrl,
               rawAddress,
@@ -1806,85 +1760,65 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     required bool withTocUrl,
   }) async {
     final batch = HtmlRuleBatch(html);
-    // An absent or empty `ruleBookInfo.name` is not an error in the frozen app:
-    // `analyzeRule.getString(infoRule.name)` answers "" and the book keeps the
-    // name it already had (`BookInfo.kt:64-70`: `if (it.isNotEmpty() && …)`),
-    // which is the search hit's title. Reading it as required refused a source
-    // whose detail page carries no name at all (found by the operator's real
-    // source run, batch 17).
-    final name = await _field(
-      _rule('ruleBookInfo', 'name', optional: true),
-      content: html,
-      label: 'ruleBookInfo.name',
-    );
-    final nameValue = _declare(batch, 'name', name);
-    final author = await _field(
-      _rule('ruleBookInfo', 'author', optional: true),
-      content: html,
-      label: 'ruleBookInfo.author',
-    );
-    final authorValue = _declare(batch, 'author', author);
-    final intro = await _field(
-      _rule('ruleBookInfo', 'intro', optional: true),
-      content: html,
-      label: 'ruleBookInfo.intro',
-    );
-    final introValue = _declare(batch, 'intro', intro);
-    final cover = await _field(
-      _rule('ruleBookInfo', 'coverUrl', optional: true),
-      content: html,
-      label: 'ruleBookInfo.coverUrl',
-    );
-    final coverValue = _declare(batch, 'cover', cover);
-    final kind = await _field(
-      _rule('ruleBookInfo', 'kind', optional: true),
-      content: html,
-      label: 'ruleBookInfo.kind',
-    );
-    final kindValue = kind.hasValueExtraction
-        ? batch.documentTextList('kind', kind.extractionRule!)
-        : null;
-    final lastChapter = await _field(
-      _rule('ruleBookInfo', 'lastChapter', optional: true),
-      content: html,
-      label: 'ruleBookInfo.lastChapter',
-    );
-    final lastChapterValue = _declare(batch, 'lastChapter', lastChapter);
-    final wordCount = await _field(
-      _rule('ruleBookInfo', 'wordCount', optional: true),
-      content: html,
-      label: 'ruleBookInfo.wordCount',
-    );
-    final wordCountValue = _declare(batch, 'wordCount', wordCount);
-    final canReName = _rule(
-      'ruleBookInfo',
-      'canReName',
-      optional: true,
-    ).trim().isNotEmpty;
-    final tocUrl = withTocUrl
-        ? await _field(
-            _rule('ruleBookInfo', 'tocUrl', optional: true),
-            content: html,
-            label: 'ruleBookInfo.tocUrl',
-          )
-        : null;
-    final tocValue = tocUrl == null ? null : _declare(batch, 'tocUrl', tocUrl);
+    final rawFields = <String, String>{
+      for (final key in ['name', 'author', 'kind', 'wordCount', 'lastChapter', 'intro', 'coverUrl'])
+        key: _rule('ruleBookInfo', key, optional: true),
+      if (withTocUrl) 'tocUrl': _rule('ruleBookInfo', 'tocUrl', optional: true),
+    };
+    final fields = <String, RuleField?>{};
+    final jobs = <String, _HtmlScalarJob>{};
+    HtmlStringList? kindJob;
+    for (final entry in rawFields.entries) {
+      final field = await _elementField(entry.value, content: html, label: 'ruleBookInfo.${entry.key}');
+      fields[entry.key] = field;
+      if (field != null) {
+        if (entry.key == 'kind') {
+          if (field.hasValueExtraction) kindJob = batch.documentTextList('kind', field.extractionRule!);
+        } else {
+          jobs[entry.key] = _declare(batch, entry.key, field);
+        }
+      }
+    }
     await batch.run();
-
-    final coverText = await _documentValue(coverValue, cover, html, url: true);
-    final detailsTitle = await _documentValue(nameValue, name, html);
-    final detailsAuthor = await _documentValue(authorValue, author, html);
-    final detailsLastChapter = await _documentValue(
-      lastChapterValue,
-      lastChapter,
-      html,
-    );
-    final detailsWordCount = formatSourceWordCount(
-      await _documentValue(wordCountValue, wordCount, html),
-    );
-    final detailsIntro = formatSourceIntro(
-      await _documentValue(introValue, intro, html),
-    );
+    Future<String> read(String key, {bool url = false}) async {
+      final prepared = fields[key];
+      final field = prepared ?? await _field(rawFields[key]!, content: html, label: 'ruleBookInfo.$key');
+      if (key == 'kind') {
+        Object? value = html;
+        if (field.hasValueExtraction) {
+          if (prepared != null) value = kindJob!.values;
+          else {
+            final dynamicBatch = HtmlRuleBatch(html);
+            final valueJob = dynamicBatch.documentTextList('kind', field.extractionRule!);
+            await dynamicBatch.run();
+            value = valueJob.values;
+          }
+        }
+        return _kindTexts(await field.apply(value, forValue: true, forStringList: true, contentText: html)).join(',');
+      }
+      if (prepared != null) return _documentValue(jobs[key], field, html, url: url);
+      final dynamicBatch = HtmlRuleBatch(html);
+      final job = _declare(dynamicBatch, key, field);
+      await dynamicBatch.run();
+      return _documentValue(job, field, html, url: url);
+    }
+    final canReName = _rule('ruleBookInfo', 'canReName', optional: true).trim().isNotEmpty;
+    void publishNameAuthor(String title, String author) {
+      _book = HtmlBook(url: hit.url, rawAddress: hit.rawAddress, title: title, author: author,
+        intro: hit.intro, cover: hit.cover, kind: hit.kind,
+        lastChapter: hit.lastChapter, wordCount: hit.wordCount);
+    }
+    final detailsTitle = await read('name');
+    final mergedTitle = detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty) ? detailsTitle : hit.title;
+    publishNameAuthor(mergedTitle, hit.author);
+    final detailsAuthor = await read('author');
+    final mergedAuthor = detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty) ? detailsAuthor : hit.author;
+    publishNameAuthor(mergedTitle, mergedAuthor);
+    final detailsKind = await read('kind');
+    final detailsWordCount = formatSourceWordCount(await read('wordCount'));
+    final detailsLastChapter = await read('lastChapter');
+    final detailsIntro = formatSourceIntro(await read('intro'));
+    final coverText = await read('coverUrl', url: true);
     final book = HtmlBook(
       url: hit.url,
       // The address text the book was opened with survives this stage, so a
@@ -1892,31 +1826,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       rawAddress: hit.rawAddress,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
-      title: detailsTitle.isNotEmpty && (canReName || hit.title.isEmpty)
-          ? detailsTitle
-          : hit.title,
-      author: detailsAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
-          ? detailsAuthor
-          : hit.author,
+      title: mergedTitle,
+      author: mergedAuthor,
       intro: detailsIntro.isEmpty ? hit.intro : detailsIntro,
       cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
-      kind: _kindTexts(
-        await kind.apply(
-          kind.hasValueExtraction ? kindValue!.values : html,
-          forValue: true,
-          forStringList: true,
-          contentText: html,
-        ),
-      ).join(','),
+      kind: detailsKind,
       lastChapter: detailsLastChapter.isEmpty
           ? hit.lastChapter
           : detailsLastChapter,
       wordCount: detailsWordCount.isEmpty ? hit.wordCount : detailsWordCount,
     );
     _book = book;
-    final tocText = tocUrl == null
-        ? ''
-        : await _documentValue(tocValue, tocUrl, html, url: true);
+    final tocText = withTocUrl ? await read('tocUrl', url: true) : '';
     return (book, tocText);
   }
 

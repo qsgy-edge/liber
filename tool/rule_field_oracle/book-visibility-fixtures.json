@@ -1,0 +1,114 @@
+[
+  {
+    "name": "book-html-rename",
+    "pipeline": "html",
+    "content": "<p>body</p>",
+    "canReName": true,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-html-retain",
+    "pipeline": "html",
+    "content": "<p>body</p>",
+    "canReName": false,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-html-empty",
+    "pipeline": "html",
+    "content": "<p>body</p>",
+    "canReName": true,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{null}}",
+      "author": "{{null}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-html-initial-empty",
+    "pipeline": "html",
+    "content": "<p>body</p>",
+    "canReName": false,
+    "initialName": "",
+    "initialAuthor": "",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-json-rename",
+    "pipeline": "json",
+    "content": "{\"title\":\"body\"}",
+    "canReName": true,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-json-retain",
+    "pipeline": "json",
+    "content": "{\"title\":\"body\"}",
+    "canReName": false,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-json-empty",
+    "pipeline": "json",
+    "content": "{\"title\":\"body\"}",
+    "canReName": true,
+    "initialName": "old",
+    "initialAuthor": "old-author",
+    "rules": {
+      "name": "{{null}}",
+      "author": "{{null}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  },
+  {
+    "name": "book-json-initial-empty",
+    "pipeline": "json",
+    "content": "{\"title\":\"body\"}",
+    "canReName": false,
+    "initialName": "",
+    "initialAuthor": "",
+    "rules": {
+      "name": "{{'new-name'}}",
+      "author": "{{book.name + ':' + java.get('bookName')}}",
+      "kind": "{{book.author}}",
+      "wordCount": "{{book.name}}"
+    }
+  }
+]

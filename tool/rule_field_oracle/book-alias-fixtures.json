@@ -1,0 +1,4 @@
+[
+  {"name":"book-alias-in-book","bookName":"live","script":"java.get('bookName')+'|'+source.get('bookName')+'|'+java.get('ordinary')+'|'+source.get('ordinary')"},
+  {"name":"book-alias-no-book","script":"java.get('bookName')+'|'+source.get('bookName')+'|'+java.get('ordinary')+'|'+source.get('ordinary')"}
+]

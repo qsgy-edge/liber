@@ -223,9 +223,27 @@ Future<String> htmlAdapterRuleFieldValue(
   const sourceRef = 'tool/html_adapter_gate';
   final state = SourceHostState();
   final runtime = InProcessSourceScriptRuntime(hostState: state);
-  late final RuleFieldContext context;
   Future<String> readScalar(Object? value, String valueRule) async {
     if (valueRule.isEmpty) return '';
+    final context = RuleFieldContext(
+      evaluateScript: (script, result) => runtime.evaluate(
+        source: script,
+        input: {
+          'sourceKey': sourceRef,
+          'baseUrl': baseUrl,
+          'src': value,
+          'result': result,
+          'title': null,
+        },
+        timeout: const Duration(seconds: 15),
+      ),
+      extract: (_, nestedRule) => readScalar(value, nestedRule),
+      readVariable: (key) async {
+        final stored = await state.entry(sourceRef, sourceRuleVariableKey(sourceRef, key));
+        return stored is String ? stored : '';
+      },
+      writeVariable: (key, stored) => state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), stored),
+    );
     final field = await RuleField.resolve(valueRule, context, content: value);
     final deferTail =
         field.hasValueExtraction &&
@@ -262,28 +280,6 @@ Future<String> htmlAdapterRuleFieldValue(
         : text;
   }
 
-  context = RuleFieldContext(
-    evaluateScript: (script, result) => runtime.evaluate(
-      source: script,
-      input: {
-        'sourceKey': sourceRef,
-        'baseUrl': baseUrl,
-        'result': result,
-        'title': null,
-      },
-      timeout: const Duration(seconds: 15),
-    ),
-    extract: readScalar,
-    readVariable: (key) async {
-      final value = await state.entry(
-        sourceRef,
-        sourceRuleVariableKey(sourceRef, key),
-      );
-      return value is String ? value : '';
-    },
-    writeVariable: (key, value) =>
-        state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), value),
-  );
   return readScalar(html, rule);
 }
 

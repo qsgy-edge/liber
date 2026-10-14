@@ -406,12 +406,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return value;
   }
 
-  RuleFieldContext _ruleContext(String label, Object? content) =>
+  RuleFieldContext _ruleContext(String label, Object? content, {RuleScriptEvaluator? evaluator}) =>
       RuleFieldContext(
-        evaluateScript: (script, result) =>
+        evaluateScript: evaluator ?? (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: (value, rule) async =>
-            rule.isEmpty ? '' : await _field(value, rule, label: label),
+        extract: (_, rule) async => rule.isEmpty ? '' : await _field(
+          content, rule, label: label,
+          context: _ruleContext(label, content, evaluator: evaluator),
+        ),
         readVariable: _readRuleVariable,
         writeVariable: _writeRuleVariable,
       );
@@ -447,11 +449,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String label = '',
     bool raw = false,
     bool unescape = true,
+    RuleFieldContext? context,
   }) async {
     final content = _analysisContent(value);
     final field = await RuleField.resolve(
       rule,
-      _ruleContext(label, content),
+      context ?? _ruleContext(label, content),
       content: content,
     );
     if (!raw && identical(value, _nativeObjectRoot) && value is Map) {
@@ -581,9 +584,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// do: the frozen answers such a rule with the script's value re-read as a
   /// document, which this reader does not do.
   Future<Object?> _readScriptRule(SourceRuleRead read) async {
+    final context = _ruleContext(read.member, read.analysisContent, evaluator: read.evaluateScript);
+    if (read.form == SourceRuleForm.string) {
+      return _field(read.content, read.rule, label: read.member, context: context);
+    }
     final field = await RuleField.resolve(
       read.rule,
-      _ruleContext(read.member, read.content),
+      context,
       content: read.content,
     );
     if (read.form != SourceRuleForm.string && field.scripts.isNotEmpty) {
@@ -594,22 +601,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     switch (read.form) {
       case SourceRuleForm.string:
-        final extracted = field.hasValueExtraction
-            ? JsonSourceRules.extract(
-                _extractionContent(read.content),
-                field.extractionRule!,
-              )
-            : read.content;
-        final result = await field.apply(
-          extracted,
-          forValue: true,
-          contentText: '${read.content}',
-        );
-        // Explicit JS object arguments lost their Java/Rhino origin at the
-        // existing bridge; their container formatting is a declared gap.
-        return field.isLiteralValue
-            ? unescapeHtml4('${result ?? ''}')
-            : '${result ?? ''}';
+        return _field(read.content, read.rule, label: read.member, context: context);
       case SourceRuleForm.stringList:
         return [
           for (final value in JsonSourceRules.list(
@@ -1351,27 +1343,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
         }
       }
     }
-    final cover = await _optional(
-      page,
-      info['coverUrl'] ?? '',
-      label: 'ruleBookInfo.coverUrl',
-    );
     final canReName = info['canReName']?.trim().isNotEmpty == true;
-    final infoTitle = await _optional(
-      page,
-      info['name'] ?? '',
-      label: 'ruleBookInfo.name',
-    );
-    final infoAuthor = await _optional(
-      page,
-      info['author'] ?? '',
-      label: 'ruleBookInfo.author',
-    );
-    final infoLastChapter = await _optional(
-      page,
-      info['lastChapter'] ?? '',
-      label: 'ruleBookInfo.lastChapter',
-    );
+    void publishNameAuthor(String title, String author) {
+      _book = HtmlBook(url: hit.url, rawAddress: hit.rawAddress, title: title, author: author,
+        intro: hit.intro, cover: hit.cover, kind: hit.kind,
+        lastChapter: hit.lastChapter, wordCount: hit.wordCount);
+    }
+    final infoTitle = await _optional(page, info['name'] ?? '', label: 'ruleBookInfo.name');
+    final mergedTitle = infoTitle.isNotEmpty && (canReName || hit.title.isEmpty) ? infoTitle : hit.title;
+    publishNameAuthor(mergedTitle, hit.author);
+    final infoAuthor = await _optional(page, info['author'] ?? '', label: 'ruleBookInfo.author');
+    final mergedAuthor = infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty) ? infoAuthor : hit.author;
+    publishNameAuthor(mergedTitle, mergedAuthor);
+    final infoKind = await _kind(page, info['kind'] ?? '', label: 'ruleBookInfo.kind');
     final infoWordCount = formatSourceWordCount(
       await _optional(
         page,
@@ -1379,8 +1363,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
         label: 'ruleBookInfo.wordCount',
       ),
     );
+    final infoLastChapter = await _optional(
+      page,
+      info['lastChapter'] ?? '',
+      label: 'ruleBookInfo.lastChapter',
+    );
     final infoIntro = formatSourceIntro(
       await _optional(page, info['intro'] ?? '', label: 'ruleBookInfo.intro'),
+    );
+    final cover = await _optional(
+      page,
+      info['coverUrl'] ?? '',
+      label: 'ruleBookInfo.coverUrl',
     );
     final book = HtmlBook(
       url: hit.url,
@@ -1389,15 +1383,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       rawAddress: hit.rawAddress,
       // Legado only permits a detail page to replace the search title/author
       // when `canReName` is declared (BookInfo.kt:65-70).
-      title: infoTitle.isNotEmpty && (canReName || hit.title.isEmpty)
-          ? infoTitle
-          : hit.title,
-      author: infoAuthor.isNotEmpty && (canReName || hit.author.isEmpty)
-          ? infoAuthor
-          : hit.author,
+      title: mergedTitle,
+      author: mergedAuthor,
       intro: infoIntro.isEmpty ? hit.intro : infoIntro,
       cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}',
-      kind: await _kind(page, info['kind'] ?? '', label: 'ruleBookInfo.kind'),
+      kind: infoKind,
       lastChapter: infoLastChapter.isEmpty ? hit.lastChapter : infoLastChapter,
       wordCount: infoWordCount.isEmpty ? hit.wordCount : infoWordCount,
     );

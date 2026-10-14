@@ -47,6 +47,7 @@ class SourceRuleRead {
     required this.form,
     required this.rule,
     required this.content,
+    required this.analysisContent,
     required this.evaluateScript,
   });
 
@@ -61,6 +62,10 @@ class SourceRuleRead {
   /// The content object the rule is evaluated against: the analysis's own
   /// content, or the argument the source passed.
   final Object? content;
+
+  /// The analysis instance's original `src`, distinct from an explicit read
+  /// target and any intermediate result. Null is preserved as actual null.
+  final Object? analysisContent;
 
   final SourceRuleScript evaluateScript;
 }
@@ -1798,6 +1803,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           form: form,
           rule: rule,
           content: content,
+          analysisContent: input['src'],
           evaluateScript: (script, result) =>
               _evaluateRuleScript(script, result, requestId, input, token),
         ),
@@ -2643,7 +2649,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       return call('rule', {member:'java.getElements', form:'elements', rule:text});
     },
     get: (...args) => {
-      if (args.length === 1) return call('state', {op:'get', key:String(args[0])});
+      if (args.length === 1) {
+        const key = String(args[0]);
+        if (key === 'bookName' && input.book != null) return book.name;
+        return call('state', {op:'get', key:key});
+      }
       if (args.length === 2) return request('GET', args[0], null, args[1]);
       throw new Error('java.get expects one or two arguments');
     },
