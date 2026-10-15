@@ -383,6 +383,11 @@ class ShelfService {
 
   // --- Sources -------------------------------------------------------------
 
+  /// Enables or disables a source for the next search page load. Existing
+  /// shelf books still resolve it: disabling is not deleting a source.
+  Future<void> setSourceEnabled(String sourceRef, bool enabled) =>
+      store.setSourceEnabled(sourceRef, enabled);
+
   /// Deletes a Book Source and every row this space keeps for it: its host
   /// surface — cache entries, variables, the cookies it wrote and the TLS
   /// exceptions the user confirmed for it (#36, #53) — and then the `sources`

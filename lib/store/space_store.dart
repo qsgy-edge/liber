@@ -124,6 +124,26 @@ class SpaceStore {
           ]))
           .get();
 
+  /// Changes the existing enabled flag and its imported JSON authority together.
+  /// Every other column and unknown JSON field stays with the same source row.
+  Future<void> setSourceEnabled(String bookSourceUrl, bool enabled) =>
+      transaction(() async {
+        final source = await sourceByUrl(bookSourceUrl);
+        if (source == null) throw StateError('书源不存在：$bookSourceUrl');
+        final raw = source.raw;
+        var updatedRaw = const Value<String?>.absent();
+        if (raw != null) {
+          final decoded = jsonDecode(raw);
+          if (decoded is Map<String, dynamic>) {
+            decoded['enabled'] = enabled;
+            updatedRaw = Value(jsonEncode(decoded));
+          }
+        }
+        await (db.update(db.sources)
+              ..where((s) => s.bookSourceUrl.equals(bookSourceUrl)))
+            .write(SourcesCompanion(enabled: Value(enabled), raw: updatedRaw));
+      });
+
   /// Removes one Book Source row, keyed by its `bookSourceUrl` — the row
   /// identity a book's `sourceRef` resolves against (D7). It leaves every other
   /// row alone: the host surface a source owns is `SourceHostState.deleteSource`'s
@@ -192,8 +212,8 @@ class SpaceStore {
                 b.sourceRef.equals(sourceRef) &
                 b.sourceBookUrl.equals(sourceBookUrl),
           ))
-              .write(BooksCompanion(variable: Value(variable))) >
-          0;
+          .write(BooksCompanion(variable: Value(variable))) >
+      0;
 
   /// The chapter row's own variable text (frozen `BookChapter.variable`,
   /// `BookChapter.kt:58`), or null when the space holds no such row or the row
@@ -210,8 +230,7 @@ class SpaceStore {
     if (book == null) return null;
     final row =
         await (db.select(db.chapters)..where(
-              (c) =>
-                  c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
+              (c) => c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
             ))
             .getSingleOrNull();
     return row?.variable;
@@ -229,8 +248,7 @@ class SpaceStore {
     final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
     if (book == null) return false;
     return await (db.update(db.chapters)..where(
-              (c) =>
-                  c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
+              (c) => c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
             ))
             .write(ChaptersCompanion(variable: Value(variable))) >
         0;

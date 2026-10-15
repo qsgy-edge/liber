@@ -157,6 +157,93 @@ void spaceStoreTest(Directory Function() root) {
 /// #69, #87): the space has to be open for them, so this drives the real app
 /// the way `spaceStoreTest` does.
 void settingsEntryTest(Directory Function() root) {
+  testWidgets('独立书源入口启停后重启持久化，下次精确搜索按新状态加载', (tester) async {
+    _pinShelfSurface(tester);
+    final workspaceRoot = root();
+    final toggle = find.byKey(
+      const ValueKey('book-source-enabled-https://example.test'),
+    );
+    final searchSource = find.byKey(
+      const ValueKey('precise-source-https://example.test'),
+    );
+    await tester.runAsync(() async {
+      // Background database work runs on real time in runAsync. Route
+      // animations need real frame intervals before another tap can hit.
+      Future<void> settleRoute() async {
+        for (var frame = 0; frame < 10; frame++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          await tester.pump();
+        }
+      }
+
+      Future<void> waitToggle(bool enabled) async {
+        for (var attempt = 0; attempt < 100; attempt++) {
+          if (tester.widget<SwitchListTile>(toggle).value == enabled) return;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          await tester.pump();
+        }
+        expect(tester.widget<SwitchListTile>(toggle).value, enabled);
+      }
+
+      Future<void> launch() async {
+        await tester.pumpWidget(
+          LiberApp(workspaceRoot: workspaceRoot, interfaceLanguage: testLocale),
+        );
+        await _waitFor(tester, find.text('在线书架'));
+      }
+
+      Future<void> openManagement() async {
+        await tester.tap(find.byKey(const ValueKey('book-source-management')));
+        await _waitFor(tester, toggle);
+        await settleRoute();
+        expect(toggle, findsOneWidget);
+      }
+
+      try {
+        await launch();
+        await openManagement();
+        expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+        await tester.tap(toggle);
+        await waitToggle(false);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await launch();
+        await openManagement();
+        expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+        await tester.tap(find.byType(BackButton));
+        await settleRoute();
+        await _waitFor(tester, find.text('在线书架'));
+        await tester.tap(find.text('精确搜索'));
+        await settleRoute();
+        await _waitFor(tester, find.byKey(const ValueKey('precise-status')));
+        await _waitForGone(tester, find.byType(LinearProgressIndicator));
+        expect(searchSource, findsNothing);
+        await tester.tap(find.byType(BackButton));
+        await settleRoute();
+        await _waitFor(tester, find.text('在线书架'));
+        await openManagement();
+        await tester.tap(toggle);
+        await waitToggle(true);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await launch();
+        await openManagement();
+        expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+        await tester.tap(find.byType(BackButton));
+        await settleRoute();
+        await _waitFor(tester, find.text('在线书架'));
+        await tester.tap(find.text('精确搜索'));
+        await settleRoute();
+        await _waitFor(tester, searchSource);
+        expect(searchSource, findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
+    });
+  });
+
   testWidgets('自动换源的入口打开设置页，开关读的是已存的行', (tester) async {
     final workspaceRoot = root();
     await tester.runAsync(() async {
@@ -221,7 +308,6 @@ void settingsEntryTest(Directory Function() root) {
     });
   });
 }
-
 
 /// The loss report under a non-Chinese interface (#72): the store's own report
 /// is codes with arguments, so the page renders it in the interface's language
@@ -560,9 +646,7 @@ void shelfFilterTest(Directory Function() root) {
       ..createSync();
     final localFile = File('${localRoot.path}${separator}note.txt')
       ..writeAsStringSync('本地文件的一行');
-    File(
-      '${workspaceRoot.path}${separator}local_books.json',
-    ).writeAsStringSync(
+    File('${workspaceRoot.path}${separator}local_books.json').writeAsStringSync(
       jsonEncode({
         'root': {
           'id': localRoot.absolute.path.toLowerCase(),

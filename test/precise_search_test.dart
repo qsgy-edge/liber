@@ -7,6 +7,7 @@ import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_management_page.dart';
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/settings/reader_script.dart';
@@ -419,8 +420,8 @@ void main() {
   });
 
   testWidgets('换源：停用的书源在库里被启用后，下一次打开页面就能被搜索', (tester) async {
-    // No product surface flips `enabled` yet (the source-management gap #114
-    // records); the store row is what the page reads on each load.
+    // The management page writes both authorities; the next search page reads
+    // eligibility again without reimporting the source or changing its groups.
     await store.putSourceJson(disabledUsedStyle(sourceB));
     sourceB.hits.add(candidate('https://b.test', '1', name, author));
 
@@ -428,7 +429,16 @@ void main() {
     expect(sourceB.searchCalls, 0);
 
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    await store.putSourceJson({...disabledUsedStyle(sourceB), 'enabled': true});
+    await tester.pumpWidget(
+      localizedApp(home: BookSourceManagementPage(service: shelf)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('book-source-enabled-https://b.test')),
+    );
+    await tester.pumpAndSettle();
+    expect((await store.sourceByUrl('https://b.test'))!.enabled, isTrue);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
 
     await pumpEntry(tester);
     expect(sourceB.searchCalls, 1, reason: '重新启用后下一次搜索就包括它');
