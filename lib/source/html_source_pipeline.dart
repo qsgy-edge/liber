@@ -1557,6 +1557,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
+    String tocFallbackAddress(SourcePageRequest request) {
+      if (request.address.isEmpty) {
+        return bookRequest?.address ?? hit.address;
+      }
+      final parts = splitSourceUrlOptions(request.address);
+      final address = Uri.parse(parts.path);
+      if (address.hasScheme) {
+        return request.address;
+      }
+      return '${request.base.resolveUri(address)}${parts.tail}';
+    }
+
     await walkSourcePages(
       first: (
         url: tocTarget,
@@ -1723,6 +1735,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ], url: url)).single;
           }
 
+          // Only ordinary empty URLs need this text; cache it lazily per page.
+          late final ordinaryFallbackAddress = tocFallbackAddress(request);
           for (var index = 0; index < count; index++) {
             publishTocChapter('', '');
             try {
@@ -1732,13 +1746,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               publishTocChapter(title, address);
               final tagValue = await fieldValue('updateTime', index);
               final volumeValue = await fieldValue('isVolume', index);
+              final isVolume = sourceIsTrue(volumeValue);
+              // Tag/volume observe the raw address; VIP/pay observe its fallback.
+              publishTocChapter(title, address.isEmpty
+                  ? (isVolume ? '$title$index' : ordinaryFallbackAddress)
+                  : address);
               // URL/tag/volume complete even for a skipped item; VIP/pay belong
               // inside the frozen nonempty-title condition (BookChapterList:244).
               if (title.isEmpty) continue;
               final vipValue = await fieldValue('isVip', index);
               final payValue = await fieldValue('isPay', index);
               final tag = tagValue.isEmpty ? null : tagValue;
-              final isVolume = sourceIsTrue(volumeValue);
               final isVip = sourceIsTrue(vipValue);
               final isPay = sourceIsTrue(payValue);
               final SourceChapter chapter;

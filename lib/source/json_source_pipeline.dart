@@ -1141,6 +1141,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
+    String tocFallbackAddress(SourcePageRequest request) {
+      if (request.address.isEmpty) {
+        return bookRequest?.address ?? hit.address;
+      }
+      final parts = splitSourceUrlOptions(request.address);
+      final address = Uri.parse(parts.path);
+      if (address.hasScheme) {
+        return request.address;
+      }
+      return '${request.base.resolveUri(address)}${parts.tail}';
+    }
+
     await walkSourcePages(
       first: (
         url: tocUrl,
@@ -1189,6 +1201,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   nextRule,
                   label: 'ruleToc.nextTocUrl',
                 );
+          // Only ordinary empty URLs need this text; cache it lazily per page.
+          late final ordinaryFallbackAddress = tocFallbackAddress(request);
           for (var index = 0; index < entries.length; index++) {
             publishTocChapter('', '');
             try {
@@ -1233,6 +1247,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.isVolume',
                 ),
               );
+              // Tag/volume observe the raw address; VIP/pay observe its fallback.
+              publishTocChapter(name, chapterUrl.isEmpty
+                  ? (isVolume ? '$name$index' : ordinaryFallbackAddress)
+                  : chapterUrl);
               if (name.isEmpty) continue;
               final isVip = sourceIsTrue(
                 await _optional(

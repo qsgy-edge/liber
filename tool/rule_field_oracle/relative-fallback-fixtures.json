@@ -1,0 +1,38 @@
+[
+  {
+    "name": "relative-initial-plain",
+    "stage": "initial",
+    "options": false,
+    "relative": "/toc?slot=1",
+    "rule": "@js:\"/toc?slot=1\"",
+    "inputBase": "https://fallback-get.test/book?book=1",
+    "responseUrl": "https://fallback-get.test/response/target?redirect=1"
+  },
+  {
+    "name": "relative-initial-options",
+    "stage": "initial",
+    "options": true,
+    "relative": "/toc?slot=1,{\"headers\":{\"X-Relative\":\"keep\"}}",
+    "rule": "@js:\"/toc?slot=1,{\\\"headers\\\":{\\\"X-Relative\\\":\\\"keep\\\"}}\"",
+    "inputBase": "https://fallback-get.test/book?book=1",
+    "responseUrl": "https://fallback-get.test/response/target?redirect=1"
+  },
+  {
+    "name": "relative-next-plain",
+    "stage": "next",
+    "options": false,
+    "relative": "next?slot=2",
+    "rule": "@js:[\"next?slot=2\"]",
+    "inputBase": "https://fallback-get.test/dir/start?first=1",
+    "responseUrl": "https://fallback-get.test/response/target?redirect=1"
+  },
+  {
+    "name": "relative-next-options",
+    "stage": "next",
+    "options": true,
+    "relative": "next?slot=2,{\"headers\":{\"X-Relative\":\"keep\"}}",
+    "rule": "@js:[\"next?slot=2,{\\\"headers\\\":{\\\"X-Relative\\\":\\\"keep\\\"}}\"]",
+    "inputBase": "https://fallback-get.test/dir/start?first=1",
+    "responseUrl": "https://fallback-get.test/response/target?redirect=1"
+  }
+]
