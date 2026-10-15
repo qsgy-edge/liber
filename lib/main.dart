@@ -625,7 +625,7 @@ class _LiberHomePageState extends State<LiberHomePage> {
         // #28's own entry is `界面语言`, beside #27's `中文转换` and #69's
         // `自动换源`.
         actions: [
-          TextButton.icon(
+          IconButton(
             key: const ValueKey('book-source-management'),
             onPressed: shelf == null
                 ? null
@@ -638,8 +638,8 @@ class _LiberHomePageState extends State<LiberHomePage> {
                     );
                     await _refreshShelfViews();
                   },
+            tooltip: l10n.bookSourcesTitle,
             icon: const Icon(Icons.source_outlined),
-            label: Text(l10n.bookSourcesTitle),
           ),
           IconButton(
             onPressed: shelf == null
