@@ -39,6 +39,9 @@ pub struct JobSpec {
     /// The id of an earlier `Elements` job whose matches are this job's contexts.
     /// `None` means the document itself, as the frozen `AnalyzeByJSoup(doc)`.
     pub parent: Option<String>,
+    /// Zero-based position in the completed parent's final selection vector.
+    /// None retains all contexts; Some requires an existing Elements parent.
+    pub parent_index: Option<i32>,
     pub output: JobOutput,
 }
 
@@ -72,7 +75,25 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
     let mut elements: HashMap<String, Vec<NodeId>> = HashMap::new();
     let mut outcomes = Vec::with_capacity(jobs.len());
     for job in jobs {
-        let context: Vec<NodeId> = match &job.parent {
+        let context: Vec<NodeId> = if let Some(index) = job.parent_index {
+            let selected = job.parent.as_ref().and_then(|parent| elements.get(parent))
+                .and_then(|found| usize::try_from(index).ok().and_then(|index| found.get(index)))
+                .copied();
+            match selected {
+                Some(node) => vec![node],
+                None => {
+                    outcomes.push(JobOutcome {
+                        id: job.id.clone(), count: 0, values: Vec::new(),
+                        failure: Some(JobFailure {
+                            kind: "unsupported".to_string(),
+                            message: format!("parentIndex 必须引用已完成的 Elements 父任务中的有效索引：{}", index),
+                        }),
+                    });
+                    continue;
+                }
+            }
+        } else {
+            match &job.parent {
             None => vec![0],
             Some(parent) => match elements.get(parent) {
                 Some(found) => found.clone(),
@@ -89,6 +110,7 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
                     continue;
                 }
             },
+            }
         };
         let outcome = match job.output {
             JobOutput::Elements => {
@@ -169,6 +191,7 @@ mod tests {
             id: "toc".to_string(),
             rule: "class.missing@href##$##/toc".to_string(),
             parent: None,
+            parent_index: None,
             output: JobOutput::Text,
         }]);
         assert_eq!(result.jobs[0].values, vec![""]);
@@ -191,24 +214,28 @@ mod tests {
                     id: "items".to_string(),
                     rule: ".list li".to_string(),
                     parent: None,
+                    parent_index: None,
                     output: JobOutput::Elements,
                 },
                 JobSpec {
                     id: "names".to_string(),
                     rule: "a@text".to_string(),
                     parent: Some("items".to_string()),
+                    parent_index: None,
                     output: JobOutput::Text,
                 },
                 JobSpec {
                     id: "urls".to_string(),
                     rule: "a@href".to_string(),
                     parent: Some("items".to_string()),
+                    parent_index: None,
                     output: JobOutput::Text,
                 },
                 JobSpec {
                     id: "body".to_string(),
                     rule: ".content@text".to_string(),
                     parent: None,
+                    parent_index: None,
                     output: JobOutput::Text,
                 },
             ],
@@ -228,6 +255,7 @@ mod tests {
                 id: "next".to_string(),
                 rule: "#pages a@href##^/p/##/page/".to_string(),
                 parent: None,
+                parent_index: None,
                 output: JobOutput::TextList,
             }],
         );
@@ -244,6 +272,7 @@ mod tests {
                 id: "x".to_string(),
                 rule: "div@js:result".to_string(),
                 parent: None,
+                parent_index: None,
                 output: JobOutput::Text,
             }],
         );

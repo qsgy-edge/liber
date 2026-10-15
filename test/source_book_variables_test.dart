@@ -196,155 +196,176 @@ void main() {
     );
   });
 
-  test('a write for a book the space has no row for stays in the process',
-      () async {
-    // The frozen entity a script holds exists before its row does. Nothing
-    // invents a book row here, so the value has no column to reach; it stays
-    // readable for this process, which is the recorded divergence (#76).
-    final runtime = InProcessSourceScriptRuntime(hostState: hostState());
-    expect(await run('book.putVariable("k", "v")', using: runtime), true);
-    expect(await run('book.getVariable("k")', using: runtime), 'v');
-    expect(await store.bookVariable(sourceRef, bookUrl), null);
-  });
-
   test(
-    'a backup-imported Book.variable is readable by a rule',
+    'a write for a book the space has no row for stays in the process',
     () async {
-      // The one existing writer of the column (`legado_full_backup.dart`): a
-      // `bookshelf.json` entry's own `variable`, which a `ruleBookInfo.init`
-      // script then reads.
-      const variable =
-          '{"doc":"{\\"title\\":\\"来自变量\\",\\"toc\\":\\"/toc\\"}"}';
-      await LegadoFullBackupImport(store).importArchive(
-        LegadoBackupArchive.decode(
-          zipOf({
-            'bookSource.json': [
-              {
-                'bookSourceUrl': sourceRef,
-                'bookSourceName': '契约源',
-                'bookSourceType': 0,
-              },
-            ],
-            'bookshelf.json': [
-              {
-                'bookUrl': bookUrl,
-                'name': '书',
-                'author': '作者',
-                'origin': sourceRef,
-                'originName': '契约源',
-                'type': 8,
-                'group': 0,
-                'canUpdate': true,
-                'order': 0,
-                'durChapterIndex': 0,
-                'durChapterPos': 0,
-                'durChapterTime': 0,
-                'variable': variable,
-              },
-            ],
-            'config.xml': '<map></map>',
-          }),
-        ),
-      );
-      final row = await store.bookByNaturalKey(sourceRef, bookUrl);
-      expect(row?.variable, variable, reason: 'the importer copied the column');
-
-      final pipeline = JsonSourcePipeline(
-        {
-          'bookSourceUrl': sourceRef,
-          'searchUrl': '/search?key={{key}}',
-          'ruleSearch': {
-            'bookList': r'$.items',
-            'name': r'$.name',
-            'bookUrl': r'$.url',
-          },
-          // The rule the one used source that reads a book variable declares
-          // (`ruleBookInfo.init`): it parses the variable's document and the
-          // stage's remaining rules read that page.
-          'ruleBookInfo': {
-            'init': '@js:JSON.parse(book.getVariable("doc"))',
-            'canReName': '1',
-            'name': r'$.title',
-            'tocUrl': r'$.toc',
-          },
-          'ruleToc': {
-            'chapterList': r'$.chapters',
-            'chapterName': r'$.name',
-            'chapterUrl': r'$.url',
-          },
-          'ruleContent': {'content': r'$.text'},
-        },
-        _Pages({
-          '/search': jsonEncode({
-            'items': [
-              {'name': '书', 'url': bookUrl},
-            ],
-          }),
-          bookUrl: jsonEncode({'name': '详情'}),
-          '/toc': jsonEncode({
-            'chapters': [
-              {'name': '第一章', 'url': '/chapter/1'},
-            ],
-          }),
-        }),
-        hostState: hostState(),
-      );
-
-      final hits = await pipeline.search('书');
-      final (book, _) = await pipeline.details(hits.single);
-
-      expect(book.title, '来自变量');
+      // The frozen entity a script holds exists before its row does. Nothing
+      // invents a book row here, so the value has no column to reach; it stays
+      // readable for this process, which is the recorded divergence (#76).
+      final runtime = InProcessSourceScriptRuntime(hostState: hostState());
+      expect(await run('book.putVariable("k", "v")', using: runtime), true);
+      expect(await run('book.getVariable("k")', using: runtime), 'v');
+      expect(await store.bookVariable(sourceRef, bookUrl), null);
     },
   );
 
-  test('a chapter row the shelf wrote is found through the url a script sees',
-      () async {
-    // #58's shape: a chapter address with an option tail is stored as the bare
-    // target in `chapter_key` and as the address text in `url`, and the reader
-    // rebuilds the chapter from the row, so the script sees the bare target as
-    // `chapter.url` — which is what the members key the row by.
-    const address = '$chapterUrl,{"webView":true}';
-    await ShelfService(store).add(
-      const {'bookSourceUrl': sourceRef, 'bookSourceName': '契约源'},
-      HtmlBook(url: Uri.parse(bookUrl), title: '书'),
-      [
-        SourceChapter.fromAddress(
-          '第一章',
-          address,
-          bookUrl: Uri.parse(bookUrl),
-        ),
-      ],
+  test('a backup-imported Book.variable is readable by a rule', () async {
+    // The one existing writer of the column (`legado_full_backup.dart`): a
+    // `bookshelf.json` entry's own `variable`, which a `ruleBookInfo.init`
+    // script then reads.
+    const variable = '{"doc":"{\\"title\\":\\"来自变量\\",\\"toc\\":\\"/toc\\"}"}';
+    await LegadoFullBackupImport(store).importArchive(
+      LegadoBackupArchive.decode(
+        zipOf({
+          'bookSource.json': [
+            {
+              'bookSourceUrl': sourceRef,
+              'bookSourceName': '契约源',
+              'bookSourceType': 0,
+            },
+          ],
+          'bookshelf.json': [
+            {
+              'bookUrl': bookUrl,
+              'name': '书',
+              'author': '作者',
+              'origin': sourceRef,
+              'originName': '契约源',
+              'type': 8,
+              'group': 0,
+              'canUpdate': true,
+              'order': 0,
+              'durChapterIndex': 0,
+              'durChapterPos': 0,
+              'durChapterTime': 0,
+              'variable': variable,
+            },
+          ],
+          'config.xml': '<map></map>',
+        }),
+      ),
     );
-    final row =
-        (await store.chaptersOf(
-          (await store.bookByNaturalKey(sourceRef, bookUrl))!.id,
-        )).single;
-    expect(row.chapterKey, chapterUrl);
-    expect(row.url, address);
-    final seen = SourceChapter.fromAddress(
-      row.name,
-      row.url ?? row.chapterKey,
-      bookUrl: Uri.parse(bookUrl),
-      chapterKey: row.chapterKey,
+    final row = await store.bookByNaturalKey(sourceRef, bookUrl);
+    expect(row?.variable, variable, reason: 'the importer copied the column');
+    expect(
+      await run('book.getVariable("doc")'),
+      (jsonDecode(variable) as Map)['doc'],
+    );
+    expect(await run('JSON.parse(book.getVariable("doc")).title'), '来自变量');
+
+    final pages = _Pages({
+      '/search': jsonEncode({
+        'items': [
+          {'name': '书', 'url': bookUrl},
+        ],
+      }),
+      bookUrl: jsonEncode({'name': '详情'}),
+      '/toc': jsonEncode({
+        'chapters': [
+          {'name': '第一章', 'url': '/chapter/1'},
+        ],
+      }),
+    });
+    final pipeline = JsonSourcePipeline(
+      {
+        'bookSourceUrl': sourceRef,
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': r'$.items',
+          'name': r'$.name',
+          'bookUrl': r'$.url',
+        },
+        // The rule the one used source that reads a book variable declares
+        // (`ruleBookInfo.init`): it parses the variable's document and the
+        // stage's remaining rules read that page.
+        // JSON.parse supplies the known NativeObject: direct keys follow
+        // frozen SourceRule and actual block-five-host native-key/toc rows.
+        'ruleBookInfo': {
+          'init': '@js:JSON.parse(book.getVariable("doc"))',
+          'canReName': '1',
+          'name': 'title',
+          'tocUrl': 'toc',
+        },
+        'ruleToc': {
+          'chapterList': r'$.chapters',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.url',
+        },
+        'ruleContent': {'content': r'$.text'},
+      },
+      pages,
+      hostState: hostState(),
     );
 
-    final runtime = InProcessSourceScriptRuntime(hostState: hostState());
-    expect(
-      await run(
-        'chapter.putVariable("c", "v")',
-        using: runtime,
-        chapter: {'title': row.name, 'url': '${seen.url}'},
+    final hits = await pipeline.search('书');
+    final (book, chapters) = await pipeline.details(hits.single);
+
+    expect(book.title, '来自变量');
+    expect(chapters, hasLength(1));
+    expect(chapters.single.name, '第一章');
+    expect(chapters.single.url, Uri.parse(chapterUrl));
+    expect(chapters.single.rawAddress, '/chapter/1');
+    // This fixture observes the existing legacy stage/path transport only.
+    expect(pages.requests, [
+      (
+        stage: BookSourceStage.search,
+        path: Uri.parse(
+          '$sourceRef/search',
+        ).replace(queryParameters: {'key': '书'}).toString(),
       ),
-      true,
-    );
-    expect(
-      await store.chapterVariable(sourceRef, bookUrl, chapterUrl),
-      variableText({'c': 'v'}),
-    );
+      (stage: BookSourceStage.bookInfo, path: bookUrl),
+      (stage: BookSourceStage.tableOfContents, path: '$sourceRef/toc'),
+    ]);
   });
 
-  test('a TOC rewrite replaces the chapter row and drops its variable',
-      () async {
+  test(
+    'a chapter row the shelf wrote is found through the url a script sees',
+    () async {
+      // #58's shape: a chapter address with an option tail is stored as the bare
+      // target in `chapter_key` and as the address text in `url`, and the reader
+      // rebuilds the chapter from the row, so the script sees the bare target as
+      // `chapter.url` — which is what the members key the row by.
+      const address = '$chapterUrl,{"webView":true}';
+      await ShelfService(store).add(
+        const {'bookSourceUrl': sourceRef, 'bookSourceName': '契约源'},
+        HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+        [
+          SourceChapter.fromAddress(
+            '第一章',
+            address,
+            bookUrl: Uri.parse(bookUrl),
+          ),
+        ],
+      );
+      final row = (await store.chaptersOf(
+        (await store.bookByNaturalKey(sourceRef, bookUrl))!.id,
+      )).single;
+      expect(row.chapterKey, chapterUrl);
+      expect(row.url, address);
+      final seen = SourceChapter.fromAddress(
+        row.name,
+        row.url ?? row.chapterKey,
+        bookUrl: Uri.parse(bookUrl),
+        chapterKey: row.chapterKey,
+      );
+
+      final runtime = InProcessSourceScriptRuntime(hostState: hostState());
+      expect(
+        await run(
+          'chapter.putVariable("c", "v")',
+          using: runtime,
+          chapter: {'title': row.name, 'url': '${seen.url}'},
+        ),
+        true,
+      );
+      expect(
+        await store.chapterVariable(sourceRef, bookUrl, chapterUrl),
+        variableText({'c': 'v'}),
+      );
+    },
+  );
+
+  test('a TOC rewrite replaces the chapter row and drops its variable', () async {
     await seedBook();
     await seedChapter();
     final runtime = InProcessSourceScriptRuntime(hostState: hostState());
@@ -387,12 +408,14 @@ class _Pages implements BookSourceTransport {
   _Pages(this.pages);
 
   final Map<String, String> pages;
+  final requests = <({BookSourceStage stage, String path})>[];
 
   @override
   Future<String> request({
     required BookSourceStage stage,
     required String path,
   }) async {
+    requests.add((stage: stage, path: path));
     final page = pages[Uri.parse(path).path] ?? pages[path];
     if (page == null) throw StateError('Unexpected URL: $path');
     return page;

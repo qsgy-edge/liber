@@ -5727,6 +5727,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  int dco_decode_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   JsBuiltinOptions dco_decode_box_autoadd_js_builtin_options(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_js_builtin_options(raw);
@@ -5919,13 +5925,14 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   HtmlRuleJob dco_decode_html_rule_job(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return HtmlRuleJob(
       id: dco_decode_String(arr[0]),
       rule: dco_decode_String(arr[1]),
       parent: dco_decode_opt_String(arr[2]),
-      output: dco_decode_html_job_output(arr[3]),
+      parentIndex: dco_decode_opt_box_autoadd_i_32(arr[3]),
+      output: dco_decode_html_job_output(arr[4]),
     );
   }
 
@@ -6391,6 +6398,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   HtmlJobFailure? dco_decode_opt_box_autoadd_html_job_failure(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_html_job_failure(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_32(raw);
   }
 
   @protected
@@ -6929,6 +6942,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  int sse_decode_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_i_32(deserializer));
+  }
+
+  @protected
   JsBuiltinOptions sse_decode_box_autoadd_js_builtin_options(
       SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -7122,9 +7141,14 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     var var_id = sse_decode_String(deserializer);
     var var_rule = sse_decode_String(deserializer);
     var var_parent = sse_decode_opt_String(deserializer);
+    var var_parentIndex = sse_decode_opt_box_autoadd_i_32(deserializer);
     var var_output = sse_decode_html_job_output(deserializer);
     return HtmlRuleJob(
-        id: var_id, rule: var_rule, parent: var_parent, output: var_output);
+        id: var_id,
+        rule: var_rule,
+        parent: var_parent,
+        parentIndex: var_parentIndex,
+        output: var_output);
   }
 
   @protected
@@ -7656,6 +7680,17 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_html_job_failure(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_i_32(deserializer));
     } else {
       return null;
     }
@@ -8300,6 +8335,12 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_js_builtin_options(
       JsBuiltinOptions self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -8491,6 +8532,7 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     sse_encode_String(self.id, serializer);
     sse_encode_String(self.rule, serializer);
     sse_encode_opt_String(self.parent, serializer);
+    sse_encode_opt_box_autoadd_i_32(self.parentIndex, serializer);
     sse_encode_html_job_output(self.output, serializer);
   }
 
@@ -8939,6 +8981,16 @@ class LibFjsApiImpl extends LibFjsApiImplPlatform implements LibFjsApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_html_job_failure(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_32(self, serializer);
     }
   }
 

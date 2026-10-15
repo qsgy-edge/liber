@@ -1,0 +1,538 @@
+{
+  "f1-html-script": {
+    "types": [
+      "org.jsoup.nodes.Element"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-html-error": {
+    "types": [
+      "org.jsoup.nodes.Element"
+    ],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      110,
+      101,
+      120,
+      116,
+      45,
+      98,
+      101,
+      102,
+      111,
+      114,
+      101,
+      45,
+      105,
+      116,
+      101,
+      109,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "f1-html-extraction-script": {
+    "types": [
+      "org.jsoup.nodes.Element"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-html-resolved-script": {
+    "types": [
+      "org.jsoup.nodes.Element"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-html-zero-error": {
+    "types": [],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      110,
+      101,
+      120,
+      116,
+      45,
+      98,
+      101,
+      102,
+      111,
+      114,
+      101,
+      45,
+      105,
+      116,
+      101,
+      109,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "f1-html-zero-ready": {
+    "types": [],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "ready",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-json-script": {
+    "types": [
+      "java.util.LinkedHashMap"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-json-error": {
+    "types": [
+      "java.util.LinkedHashMap"
+    ],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      110,
+      101,
+      120,
+      116,
+      45,
+      98,
+      101,
+      102,
+      111,
+      114,
+      101,
+      45,
+      105,
+      116,
+      101,
+      109,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "f1-json-extraction-script": {
+    "types": [
+      "java.util.LinkedHashMap"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-json-resolved-script": {
+    "types": [
+      "java.util.LinkedHashMap"
+    ],
+    "next": [],
+    "chapters": [
+      {
+        "name": [
+          114,
+          101,
+          97,
+          100,
+          121
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "variables": {
+      "seed": "ready",
+      "visited": "yes",
+      "nextCount": "1",
+      "resolveCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "f1-json-zero-error": {
+    "types": [],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      110,
+      101,
+      120,
+      116,
+      45,
+      98,
+      101,
+      102,
+      111,
+      114,
+      101,
+      45,
+      105,
+      116,
+      101,
+      109,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "f1-json-zero-ready": {
+    "types": [],
+    "next": [],
+    "chapters": [],
+    "variables": {
+      "seed": "ready",
+      "visited": "",
+      "nextCount": "1",
+      "resolveCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  }
+}

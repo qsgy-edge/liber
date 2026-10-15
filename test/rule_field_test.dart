@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
@@ -8,6 +9,7 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/rule_field.dart';
+import 'package:pointycastle/digests/sha256.dart';
 
 import 'native_library.dart';
 
@@ -36,6 +38,9 @@ const _pages = {
 };
 
 class _HtmlPages implements BookSourceTransport {
+  _HtmlPages([this.pages = _pages]);
+
+  final Map<String, String> pages;
   final requests = <String>[];
 
   @override
@@ -45,7 +50,7 @@ class _HtmlPages implements BookSourceTransport {
   }) async {
     final target = Uri.parse(path).path;
     requests.add(target);
-    return _pages[target] ?? (throw StateError('Unexpected URL: $target'));
+    return pages[target] ?? (throw StateError('Unexpected URL: $target'));
   }
 }
 
@@ -145,6 +150,186 @@ const _jsonPages = {
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  group('frozen literal value reads', () {
+    const oracle = 'tool/rule_field_oracle';
+    const evidence = '$oracle/evidence/jvm-host';
+    final cases =
+        (jsonDecode(File('$oracle/fixtures.json').readAsStringSync()) as List)
+            .cast<Map>();
+    final golden =
+        jsonDecode(File('$evidence/golden.json').readAsStringSync()) as Map;
+    final manifest =
+        jsonDecode(File('$evidence/manifest.json').readAsStringSync()) as Map;
+
+    String hash(String path) => SHA256Digest()
+        .process(File(path).readAsBytesSync())
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+
+    test('executed golden binds the corpus, harness, runner and baseline', () {
+      expect(manifest['baseline'], '14dd24945b2914ce2708b8abaa4ee67ceef892af');
+      expect(manifest['fixturesSha256'], hash('$oracle/fixtures.json'));
+      expect(manifest['goldenSha256'], hash('$evidence/golden.json'));
+      expect(manifest['harnessSha256'], hash('$oracle/RuleFieldOracle.kt'));
+      expect(manifest['runnerSha256'], hash('$oracle/run.py'));
+      expect(manifest['deviceRows'], 'not-run');
+      expect(golden.keys.toSet(), {
+        for (final format in ['html', 'xml', 'json'])
+          for (final row in cases) '$format/${row['name']}',
+      });
+      final hashes = manifest['frozenSourceSha256'] as Map;
+      expect(
+        hashes.keys,
+        containsAll([
+          'app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt',
+          'app/src/main/java/io/legado/app/model/analyzeRule/RuleAnalyzer.kt',
+        ]),
+      );
+    });
+
+    for (final format in ['html', 'xml', 'json']) {
+      for (final row in cases) {
+        final name = row['name'] as String;
+        final frozen = golden['$format/$name'] as Map;
+        if (frozen['error'] != null) continue;
+        test(
+          '$format/$name through search, detail and chapter value callers',
+          () async {
+            final rule = row['rule'] as String;
+            final source = format == 'json'
+                ? _jsonSource(name: r'$.name')
+                : _htmlSource(name: 'a.0@text');
+            (source['ruleSearch'] as Map)['author'] = rule;
+            (source['ruleBookInfo'] as Map)['author'] = rule;
+            (source['ruleBookInfo'] as Map)['canReName'] = 'yes';
+            (source['ruleContent'] as Map)['title'] = rule;
+            final BookSourcePipeline pipeline = format == 'json'
+                ? JsonSourcePipeline(
+                    source,
+                    _JsonPages()..pages.addAll(_jsonPages),
+                  )
+                : HtmlSourcePipeline(
+                    source,
+                    _HtmlPages(
+                      format == 'xml'
+                          ? {
+                              for (final entry in _pages.entries)
+                                entry.key: '<root>${entry.value}</root>',
+                            }
+                          : _pages,
+                    ),
+                  );
+            final hit = (await pipeline.search('关键字')).single;
+            expect(hit.author, frozen['value']);
+            final (book, _) = await pipeline.details(hit);
+            expect(book.author, frozen['value']);
+            final chapter = await pipeline.chapter(
+              SourceChapter(
+                '目录标题',
+                Uri.parse(
+                  '${format == 'json' ? _jsonUrl : _htmlUrl}/chapter/1',
+                ),
+              ),
+            );
+            expect(
+              chapter.title,
+              (frozen['value'] as String).isEmpty ? null : frozen['value'],
+            );
+          },
+        );
+      }
+    }
+
+    for (final json in [false, true]) {
+      test(
+        'literal values reach host reads, TOC and content (json=$json)',
+        () async {
+          final format = json ? 'json' : 'html';
+          final literal =
+              cases.singleWhere(
+                    (row) => row['name'] == 'whole-non-selector',
+                  )['rule']
+                  as String;
+          final content =
+              cases.singleWhere(
+                    (row) => row['name'] == 'whole-js-sibling',
+                  )['rule']
+                  as String;
+          // Build the rule inside JS so outer script interpolation cannot consume
+          // it before java.getString reaches the actual nested value-read caller.
+          const name = '''@js:java.getString('{' + '{' + "'完结'" + '}' + '}')''';
+          final source = json
+              ? _jsonSource(name: name, chapterName: literal, content: content)
+              : _htmlSource(name: name, tocName: literal, content: content);
+          final BookSourcePipeline pipeline = json
+              ? JsonSourcePipeline(
+                  source,
+                  _JsonPages()..pages.addAll(_jsonPages),
+                )
+              : HtmlSourcePipeline(source, _HtmlPages());
+          final hit = (await pipeline.search('关键字')).single;
+          expect(
+            hit.title,
+            (golden['$format/whole-non-selector'] as Map)['value'],
+          );
+          final (_, chapters) = await pipeline.details(hit);
+          expect(chapters.single.name, hit.title);
+          expect(
+            (await pipeline.chapter(chapters.single)).text,
+            (golden['$format/whole-js-sibling'] as Map)['value'],
+          );
+        },
+      );
+    }
+
+    test('value application preserves expression count and failures', () async {
+      var evaluations = 0;
+      final failure = StateError('expression failure');
+      final context = RuleFieldContext(
+        evaluateScript: (script, result) async {
+          evaluations++;
+          if (script == 'fail') throw failure;
+          return '完结';
+        },
+        extract: (_, _) async => throw StateError('unexpected extraction'),
+        readVariable: (_) async => '',
+        writeVariable: (_, _) async {},
+      );
+      final field = await RuleField.resolve(
+        '{{value}}',
+        context,
+        content: 'page',
+      );
+      expect(evaluations, 1);
+      expect(await field.apply('page', forValue: true), '完结');
+      expect(evaluations, 1);
+      await expectLater(
+        RuleField.resolve('{{fail}}', context, content: 'page'),
+        throwsA(same(failure)),
+      );
+      expect(evaluations, 2);
+    });
+
+    test(
+      'an expression confined to replacement preserves selector extraction',
+      () async {
+        final rule =
+            cases.singleWhere(
+                  (row) => row['name'] == 'replacement-then-expression',
+                )['rule']
+                as String;
+        final frozen = golden['html/replacement-then-expression'] as Map;
+        expect(frozen['mode'], 'Default');
+        expect(frozen['extraction'], 'a.0@text');
+        final hit = (await HtmlSourcePipeline(
+          _htmlSource(name: rule),
+          _HtmlPages(),
+        ).search('关键字')).single;
+        expect(hit.title, 'new');
+      },
+    );
+  });
 
   group('HTML adapter entry point', () {
     Future<HtmlBook> search(Map<String, dynamic> source) async {
@@ -453,7 +638,19 @@ void main() {
             ? JsonSourcePipeline(source, _JsonPages()..pages.addAll(_jsonPages))
             : HtmlSourcePipeline(source, _HtmlPages());
         final hit = (await pipeline.search('query')).single;
-        expect(hit.intro, '　　　　A B\n　　CD\n　　&amp;');
+        final introGolden =
+            jsonDecode(
+                  File(
+                    'tool/rule_field_oracle/evidence/intro-tail-host/golden.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        final observed =
+            introGolden[json ? 'intro-json-map' : 'intro-html-node'] as Map;
+        expect(
+          hit.intro.codeUnits,
+          (observed['formattedUnits'] as List).cast<int>(),
+        );
         final (book, _) = await pipeline.details(hit);
         expect(book.intro, hit.intro);
       });

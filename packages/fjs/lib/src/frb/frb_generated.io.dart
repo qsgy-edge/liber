@@ -210,6 +210,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   HtmlJobFailure dco_decode_box_autoadd_html_job_failure(dynamic raw);
 
   @protected
+  int dco_decode_box_autoadd_i_32(dynamic raw);
+
+  @protected
   JsBuiltinOptions dco_decode_box_autoadd_js_builtin_options(dynamic raw);
 
   @protected
@@ -397,6 +400,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
 
   @protected
   HtmlJobFailure? dco_decode_opt_box_autoadd_html_job_failure(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_i_32(dynamic raw);
 
   @protected
   JsBuiltinOptions? dco_decode_opt_box_autoadd_js_builtin_options(dynamic raw);
@@ -626,6 +632,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       SseDeserializer deserializer);
 
   @protected
+  int sse_decode_box_autoadd_i_32(SseDeserializer deserializer);
+
+  @protected
   JsBuiltinOptions sse_decode_box_autoadd_js_builtin_options(
       SseDeserializer deserializer);
 
@@ -830,6 +839,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   HtmlJobFailure? sse_decode_opt_box_autoadd_html_job_failure(
       SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_box_autoadd_i_32(SseDeserializer deserializer);
 
   @protected
   JsBuiltinOptions? sse_decode_opt_box_autoadd_js_builtin_options(
@@ -1084,6 +1096,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
       HtmlJobFailure self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_i_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_js_builtin_options(
       JsBuiltinOptions self, SseSerializer serializer);
 
@@ -1300,6 +1315,9 @@ abstract class LibFjsApiImplPlatform extends BaseApiImpl<LibFjsWire> {
   @protected
   void sse_encode_opt_box_autoadd_html_job_failure(
       HtmlJobFailure? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_32(int? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_js_builtin_options(

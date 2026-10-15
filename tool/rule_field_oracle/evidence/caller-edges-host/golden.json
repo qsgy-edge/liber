@@ -1,0 +1,1080 @@
+{
+  "n12-json-order": {
+    "types": [
+      "java.util.LinkedHashMap"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          117,
+          114,
+          108
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "url",
+      "urlOrder": "/keep",
+      "volumeCount": "1",
+      "vipCount": "1",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n12-json-empty-conditions": {
+    "types": [
+      "java.util.LinkedHashMap",
+      "java.util.LinkedHashMap"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          99,
+          108,
+          101,
+          97,
+          110
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "polluted",
+      "urlOrder": "/blank/keep",
+      "volumeCount": "2",
+      "vipCount": "1",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n12-json-empty-vip-error": {
+    "types": [
+      "java.util.LinkedHashMap",
+      "java.util.LinkedHashMap"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          117,
+          114,
+          108
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "url",
+      "urlOrder": "/blank/keep",
+      "volumeCount": "2",
+      "vipCount": "",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n12-html-order": {
+    "types": [
+      "org.jsoup.nodes.Element"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          117,
+          114,
+          108
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "url",
+      "urlOrder": "/keep",
+      "volumeCount": "1",
+      "vipCount": "1",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n12-html-empty-conditions": {
+    "types": [
+      "org.jsoup.nodes.Element",
+      "org.jsoup.nodes.Element"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          99,
+          108,
+          101,
+          97,
+          110
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "polluted",
+      "urlOrder": "/blank/keep",
+      "volumeCount": "2",
+      "vipCount": "1",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n12-html-empty-vip-error": {
+    "types": [
+      "org.jsoup.nodes.Element",
+      "org.jsoup.nodes.Element"
+    ],
+    "fields": {},
+    "chapters": [
+      {
+        "chapterName": [
+          107,
+          101,
+          101,
+          112
+        ],
+        "chapterUrl": [
+          47,
+          107,
+          101,
+          101,
+          112
+        ],
+        "updateTime": [
+          117,
+          114,
+          108
+        ],
+        "isVolume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isVip": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "isPay": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ]
+      }
+    ],
+    "variables": {
+      "v": "url",
+      "urlOrder": "/blank/keep",
+      "volumeCount": "2",
+      "vipCount": "",
+      "payCount": "1",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-literal": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        65,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-mixed": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        112,
+        114,
+        101,
+        102,
+        105,
+        120,
+        65,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59,
+        115,
+        117,
+        102,
+        102,
+        105,
+        120
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-replace": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        66,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-replace-first": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        120
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-empty-regex": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        65,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-multi": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        120,
+        98,
+        120
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-literal-count": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        65,
+        32,
+        38,
+        97,
+        109,
+        112,
+        59
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "1",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-missing": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        78,
+        79,
+        78,
+        78,
+        85,
+        76,
+        76
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n3-empty": {
+    "types": [
+      "java.lang.String"
+    ],
+    "fields": {
+      "value": [
+        78,
+        85,
+        76,
+        76
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-html-pattern": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        80,
+        82,
+        69,
+        83,
+        69,
+        78,
+        84
+      ],
+      "toc": [
+        47,
+        117,
+        110,
+        117,
+        115,
+        101,
+        100
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "yes",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-html-empty-list": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        80,
+        82,
+        69,
+        83,
+        69,
+        78,
+        84
+      ],
+      "toc": [
+        47,
+        117,
+        110,
+        117,
+        115,
+        101,
+        100
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "yes",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-html-toc-error": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        98,
+        111,
+        100,
+        121
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      102,
+      97,
+      108,
+      108,
+      98,
+      97,
+      99,
+      107,
+      45,
+      116,
+      111,
+      99,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "n4-html-details-once": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        98,
+        111,
+        100,
+        121
+      ],
+      "toc": [
+        47,
+        116,
+        111,
+        99
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-json-pattern": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        80,
+        82,
+        69,
+        83,
+        69,
+        78,
+        84
+      ],
+      "toc": [
+        47,
+        117,
+        110,
+        117,
+        115,
+        101,
+        100
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "yes",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-json-empty-list": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        80,
+        82,
+        69,
+        83,
+        69,
+        78,
+        84
+      ],
+      "toc": [
+        47,
+        117,
+        110,
+        117,
+        115,
+        101,
+        100
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "yes",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-json-toc-error": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        98,
+        111,
+        100,
+        121
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "",
+      "initBook": ""
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      102,
+      97,
+      108,
+      108,
+      98,
+      97,
+      99,
+      107,
+      45,
+      116,
+      111,
+      99,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "n4-json-details-once": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        98,
+        111,
+        100,
+        121
+      ],
+      "toc": [
+        47,
+        116,
+        111,
+        99
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "",
+      "tocCount": "1",
+      "initBook": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "n4-json-init-scope": {
+    "types": [
+      "io.legado.app.data.entities.Book"
+    ],
+    "fields": {
+      "name": [
+        80,
+        82,
+        69,
+        83,
+        69,
+        78,
+        84
+      ],
+      "toc": [
+        47,
+        117,
+        110,
+        117,
+        115,
+        101,
+        100
+      ]
+    },
+    "chapters": [],
+    "variables": {
+      "v": "",
+      "urlOrder": "",
+      "volumeCount": "",
+      "vipCount": "",
+      "payCount": "",
+      "count": "",
+      "tocSeen": "yes",
+      "tocCount": "",
+      "initBook": "PRESENT"
+    },
+    "errorType": null,
+    "errorUnits": null
+  }
+}

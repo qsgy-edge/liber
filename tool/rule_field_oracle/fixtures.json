@@ -1,0 +1,13 @@
+[
+  {"name":"whole-selector-text","rule":"{{'h1@text'}}"},
+  {"name":"whole-jsonpath-text","rule":"{{'$.name'}}"},
+  {"name":"mixed-selector-text","rule":"a.{{0}}@text"},
+  {"name":"replacement-then-expression","rule":"a.0@text##回音##{{'new'}}"},
+  {"name":"whole-non-selector","rule":"{{'完结'}}"},
+  {"name":"whole-js-sibling","rule":"{{'连载'}} @js: result + '!'"},
+  {"name":"mixed-text","rule":"prefix{{'完结'}}suffix"},
+  {"name":"replacement-only-expression","rule":"h1@text##old##{{'new'}}"},
+  {"name":"whole-replacement","rule":"{{'完结'}}##完结##连载"},
+  {"name":"whole-empty","rule":"{{null}}"},
+  {"name":"whole-number","rule":"{{42}}"}
+]

@@ -105,8 +105,17 @@ class JsonSourceRules {
   /// document that is a map, say) is a rule this reader can run, and the shape
   /// refusal belongs to the document it meets.
   static void validate(String rule, {bool forList = false}) {
+    final firstPart = splitRuleFields(rule).rule;
+    // Scalar @get substitutions in the rule part are literal values, just
+    // like interpolation; element-list reads retain their extraction gate.
+    if (!forList &&
+        _ruleFieldToken
+            .allMatches(firstPart)
+            .any((match) => match[0]!.toLowerCase().startsWith('@get:'))) {
+      return;
+    }
     final text = _withoutJsonMode(
-      splitRuleFields(rule).rule.replaceAll(_ruleFieldToken, '').trim(),
+      firstPart.replaceAll(_ruleFieldToken, '').trim(),
     );
     // A field whose text has nothing left to parse is read by this tree's own
     // runtime, not an unreadable rule: a `##…`-only field carries only a
@@ -128,6 +137,10 @@ class JsonSourceRules {
       }
     }
   }
+
+  /// Text of an actual JSONPath Java-container result. Root response strings
+  /// and Rhino objects keep their caller-specific representation instead.
+  static String contentText(Object? value) => _matchedText(value);
 
   static Object? read(Object? value, String rule) =>
       values(value, rule).firstOrNull;

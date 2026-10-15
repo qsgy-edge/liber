@@ -8274,11 +8274,13 @@ impl SseDecode for crate::api::html::HtmlRuleJob {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_rule = <String>::sse_decode(deserializer);
         let mut var_parent = <Option<String>>::sse_decode(deserializer);
+        let mut var_parentIndex = <Option<i32>>::sse_decode(deserializer);
         let mut var_output = <crate::api::html::HtmlJobOutput>::sse_decode(deserializer);
         return crate::api::html::HtmlRuleJob {
             id: var_id,
             rule: var_rule,
             parent: var_parent,
+            parent_index: var_parentIndex,
             output: var_output,
         };
     }
@@ -8902,6 +8904,17 @@ impl SseDecode for Option<crate::api::html::HtmlJobFailure> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::api::html::HtmlJobFailure>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<i32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<i32>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -10108,6 +10121,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::html::HtmlRuleJob {
             self.id.into_into_dart().into_dart(),
             self.rule.into_into_dart().into_dart(),
             self.parent.into_into_dart().into_dart(),
+            self.parent_index.into_into_dart().into_dart(),
             self.output.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -11115,6 +11129,7 @@ impl SseEncode for crate::api::html::HtmlRuleJob {
         <String>::sse_encode(self.id, serializer);
         <String>::sse_encode(self.rule, serializer);
         <Option<String>>::sse_encode(self.parent, serializer);
+        <Option<i32>>::sse_encode(self.parent_index, serializer);
         <crate::api::html::HtmlJobOutput>::sse_encode(self.output, serializer);
     }
 }
@@ -11627,6 +11642,16 @@ impl SseEncode for Option<crate::api::html::HtmlJobFailure> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::api::html::HtmlJobFailure>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<i32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <i32>::sse_encode(value, serializer);
         }
     }
 }

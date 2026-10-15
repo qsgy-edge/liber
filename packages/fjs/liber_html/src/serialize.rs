@@ -152,7 +152,9 @@ fn attributes_html(dom: &Dom, id: NodeId, accum: &mut String) {
 fn should_indent(dom: &Dom, id: NodeId) -> bool {
     let Some(name) = dom.element_name(id) else { return false };
     let parent = dom.parent(id);
-    let format_as_block_here = format_as_block(name)
+    // Jsoup 1.16.2 Element.isFormatAsBlock uses tag.isBlock for the head;
+    // tag.formatAsBlock remains the independent closing-tag condition.
+    let format_as_block_here = is_block(name)
         || parent
             .map(|parent_id| format_as_block(dom.element_name(parent_id).unwrap_or("")))
             .unwrap_or(false);
@@ -279,6 +281,16 @@ mod tests {
         let dom = Dom::parse(source);
         let ids = crate::selector::select(&dom, 0, selector).expect("selector parses");
         elements_outer_html(&dom, &ids, false)
+    }
+
+    // Generated from the executed fixed-JAR raw node/collection observations.
+    include!("../tests/data/rule_field_serialization.rs");
+
+    #[test]
+    fn rule_field_raw_serialization_matches_frozen_jsoup() {
+        for (name, source, selector, expected) in SERIALIZATION_ROWS {
+            assert_eq!(html_of(source, selector), *expected, "{name}");
+        }
     }
 
     /// Traced from jsoup 1.16.2: `Element.outerHtmlHead`/`Tail` plus

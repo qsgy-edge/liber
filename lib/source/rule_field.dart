@@ -1,7 +1,7 @@
 /// The frozen `AnalyzeRule` rule-field grammar, in one place and without an
 /// engine of its own: the `@js:`/`<js>` split and `{{...}}`/`@get:`/`@put:`
 /// substitution of `AnalyzeRule.splitSourceRule` (`AnalyzeRule.kt:471-520`) and
-/// `SourceRule.makeUpRule` (`:575-620`), plus the `##`/`###` field split
+/// `SourceRule.makeUpRule` (`:638-695`), plus the `##`/`###` field split
 /// (`:686-695`).
 ///
 /// The product has two rule engines — the Rust HTML adapter and the bounded
@@ -31,11 +31,10 @@ import 'java_regex.dart';
 typedef RuleScriptEvaluator =
     Future<Object?> Function(String script, Object? result);
 
-/// One rule evaluated immediately against [value] by the adapter's extraction
-/// engine. The frozen `makeUpRule` reaches it for a `{{$.x}}` expression and
-/// for every `@put:` value, both *before* the field's own rule runs; an adapter
-/// whose engine declares a whole page's rules up front (the HTML batch) owes a
-/// one-rule call here.
+/// One completed nested scalar getString against [value], including its own
+/// substitution, replacement, scripts and caller tail. Both nested expressions
+/// and @put values use this edge; it must not add a second tail to native HTML
+/// extraction that already finished its scalar read.
 typedef RuleExtraction = Future<Object?> Function(Object? value, String rule);
 
 /// Reads one rule variable: the frozen `AnalyzeRule.get` (`AnalyzeRule.kt:697`)
@@ -45,8 +44,8 @@ typedef RuleVariableReader = Future<String> Function(String key);
 /// Writes one rule variable: the frozen `AnalyzeRule.put` (`AnalyzeRule.kt:686`).
 typedef RuleVariableWriter = Future<void> Function(String key, String value);
 
-/// The adapter's edges of [RuleField]: how a script runs, how a value rule is
-/// extracted, and where `@get:`/`@put:` read and write.
+/// The adapter's edges of [RuleField]: how a script runs, how a nested scalar
+/// read completes, and where `@get:`/`@put:` read and write.
 class RuleFieldContext {
   const RuleFieldContext({
     required this.evaluateScript,
@@ -112,7 +111,7 @@ String applyRuleReplacement(
   String label = 'JSON',
 }) {
   final regex = fields.regex;
-  if (regex == null) return value;
+  if (regex == null || regex.isEmpty) return value;
   final translated = translateJavaPattern(regex);
   if (!translated.isRunnable) {
     throw UnsupportedError('$label 规则字段的 ## 替换不可用：${translated.refusal}');
@@ -246,7 +245,13 @@ RuleFieldText parseRuleField(String field) {
 /// One rule field resolved for one adapter: the extraction text its engine must
 /// run, and the script segments that run on the engine's value afterwards.
 class RuleField {
-  RuleField._(this._context, this.extractionRule, this._scripts);
+  RuleField._(
+    this._context,
+    this.extractionRule,
+    this._scripts,
+    this._literalValueFields,
+    this._parameterCount,
+  );
 
   final RuleFieldContext _context;
 
@@ -255,6 +260,26 @@ class RuleField {
   final String? extractionRule;
 
   final List<String> _scripts;
+  final RuleReplaceFields? _literalValueFields;
+  final int _parameterCount;
+
+  /// The frozen SourceRule changes to Mode.Regex when its first interpolation
+  /// is before `##` (AnalyzeRule.kt:566-572). In a text read that mode returns
+  /// the substituted rule itself (:288-303), including mixed text; element
+  /// reads keep their extraction semantics (:328-389).
+  bool get isLiteralValue => _literalValueFields != null;
+
+  bool get hasValueExtraction => !isScriptOnly && !isLiteralValue;
+
+  /// Item fields with substitution or scripts need the actual item's content;
+  /// parsing this shape performs no expression evaluation.
+  static bool requiresItemResolution(String field) {
+    final parts = parseRuleField(field);
+    final extraction = parts.extractionRule ?? '';
+    return parts.scripts.isNotEmpty ||
+        _evalPattern.hasMatch(extraction) ||
+        _putPattern.hasMatch(extraction);
+  }
 
   /// The `@js:`/`<js>` script bodies, in order.
   List<String> get scripts => List.unmodifiable(_scripts);
@@ -268,10 +293,9 @@ class RuleField {
 
   /// Splits [field] and resolves everything that runs **before** the adapter's
   /// extraction: the `@put:{...}` values and the `@get:`/`{{...}}`
-  /// substitution. The `##`/`###` fields stay in [extractionRule]: the HTML
-  /// engine's Rust adapter implements the frozen split, replacement and entity
-  /// unescape in the frozen order, and the JSON adapter splits the same text
-  /// with [splitRuleFields].
+  /// substitution. The `##`/`###` fields stay in [extractionRule]. Static HTML
+  /// reads keep the native scalar result; a scripted scalar uses raw matches,
+  /// joined replacement, scripts and its caller tail. JSON uses the same split.
   static Future<RuleField> resolve(
     String field,
     RuleFieldContext context, {
@@ -282,15 +306,116 @@ class RuleField {
     final extraction = parts.extractionRule == null
         ? null
         : await _substitute(parts.extractionRule!, content, context, allowPut);
-    return RuleField._(context, extraction, parts.scripts);
+    RuleReplaceFields? literalValueFields;
+    final original = parts.extractionRule?.replaceAll(_putPattern, '');
+    final first = original == null ? null : _evalPattern.firstMatch(original);
+    if (first != null && !original!.substring(0, first.start).contains('##')) {
+      // Remove only mode heads present in the source. A head produced by the
+      // expression is literal text (SourceRule :532-545, then :638-695).
+      final sourceText = parts.extractionRule!;
+      final headLength = _originalModeHeadLength(sourceText);
+      literalValueFields = splitRuleFields(extraction!.substring(headLength));
+    }
+    final primaryText = parts.extractionRule ?? parts.scripts.firstOrNull ?? '';
+    final primary = primaryText
+        .substring(_originalModeHeadLength(primaryText))
+        .replaceAll(_putPattern, '');
+    var parameterCount = 0;
+    var cursor = 0;
+    for (final token in _evalPattern.allMatches(primary)) {
+      if (token.start > cursor) parameterCount++;
+      parameterCount++;
+      cursor = token.end;
+    }
+    if (cursor < primary.length) parameterCount++;
+    return RuleField._(
+      context,
+      extraction,
+      parts.scripts,
+      literalValueFields,
+      parameterCount,
+    );
+  }
+
+  static int _originalModeHeadLength(String text) => text.startsWith('@@')
+      ? 2
+      : text.toLowerCase().startsWith('@json:')
+      ? 6
+      : text.toLowerCase().startsWith('@xpath:')
+      ? 7
+      : 0;
+
+  /// A known script-produced object follows the frozen NativeObject branch
+  /// (:269-280), rather than being treated as a JSONPath Java container.
+  Future<Object?> applyNativeObject(
+    Map value, {
+    bool forStringList = false,
+  }) async {
+    final text =
+        extractionRule ??
+        (_scripts.isEmpty
+            ? ''
+            : await _substitute(_scripts.first, value, _context, true));
+    final fields = _literalValueFields ?? splitRuleFields(text);
+    final result = _parameterCount > 1 ? fields.rule : value[fields.rule];
+    if (result == null) return forStringList ? null : '';
+    if (forStringList && result is List) {
+      return fields.regex?.isNotEmpty == true
+          ? [
+              for (final item in result)
+                applyRuleReplacement(item == null ? 'null' : '$item', fields),
+            ]
+          : result;
+    }
+    if (forStringList &&
+        fields.regex?.isNotEmpty != true &&
+        result is! String) {
+      return null;
+    }
+    final textValue = result is Map
+        ? '[object Object]'
+        : result is num
+        ? result.toDouble().toString()
+        : _format(result);
+    // A NativeArray scalar's Java identity format remains an explicit mismatch;
+    // do not fabricate a JVM identity suffix from a Dart array.
+    return fields.regex?.isNotEmpty == true
+        ? applyRuleReplacement(textValue, fields)
+        : textValue;
   }
 
   /// Runs the script segments on the value the extraction produced, each one
-  /// substituted first and bound as the next one's `result`.
-  Future<Object?> apply(Object? value) async {
+  /// substituted first and bound as the next one's `result`. A scalar caller
+  /// sets [forValue] to return a literal interpolation before the scripts; an
+  /// element or list caller keeps the extraction value.
+  Future<Object?> apply(
+    Object? value, {
+    bool forValue = false,
+    String? contentText,
+    bool forStringList = false,
+  }) async {
     var result = value;
+    final fields = _literalValueFields;
+    if (forValue && fields != null) {
+      final hasReplacement = fields.regex?.isNotEmpty == true;
+      // getString skips an empty rule only for an effective replacement;
+      // getStringList skips every empty rule (:201), retaining current content.
+      final keepContent =
+          fields.rule.isEmpty && (hasReplacement || forStringList);
+      final text = keepContent ? contentText ?? _format(value) : fields.rule;
+      result = hasReplacement ? applyRuleReplacement(text, fields) : text;
+      if (forStringList && keepContent && !hasReplacement && value is! String) {
+        // The frozen final cast cannot turn a Java map into List<String>.
+        result = value;
+      }
+    }
     for (final script in _scripts) {
       final code = await _substitute(script, result, _context, true);
+      if (forValue && !forStringList && hasValueExtraction && result == null) {
+        // Frozen makeUpRule still runs, but a missing ordinary scalar result
+        // skips the main JS segment; URL extraction supplies a nonnull "".
+        continue;
+      }
       if (code.trim().isEmpty) {
         // The frozen `evalJS("")` is `undefined`; skipping the call keeps an
         // empty trailing `@js:` from costing a bridge round trip.
@@ -318,26 +443,35 @@ class RuleField {
       value = await _applyPuts(value, result, context);
     }
     if (!_evalPattern.hasMatch(value)) return value;
-    final output = StringBuffer();
-    var cursor = 0;
-    for (final match in _evalPattern.allMatches(value)) {
-      output.write(value.substring(cursor, match.start));
-      final token = match[0]!;
+    final matches = _evalPattern.allMatches(value).toList();
+    final resolved = List<String>.filled(matches.length, '');
+    // Frozen makeUpRule evaluates parameters backwards, then inserts their
+    // values at the original positions (AnalyzeRule.kt:638-695).
+    for (var index = matches.length - 1; index >= 0; index--) {
+      final token = matches[index][0]!;
       if (token.toLowerCase().startsWith('@get:')) {
         // The frozen `evalPattern` matches `@get:{key}`; the bare `@get:key`
         // the ticket names is accepted too and reads the same variable (the
         // frozen reader leaves that spelling in the rule as literal text, so
         // this is a deliberate, recorded extension).
-        final key = token.startsWith('@get:{')
+        // Normalize only the marker; slice the original token to keep key case.
+        final key = token.toLowerCase().startsWith('@get:{')
             ? token.substring(6, token.length - 1)
             : token.substring(5);
-        output.write(await context.readVariable(key));
+        resolved[index] = await context.readVariable(key);
       } else {
         final expression = token.substring(2, token.length - 2);
-        output.write(
-          _format(await _evalExpression(expression, result, context)),
+        resolved[index] = _format(
+          await _evalExpression(expression, result, context),
         );
       }
+    }
+    final output = StringBuffer();
+    var cursor = 0;
+    for (var index = 0; index < matches.length; index++) {
+      final match = matches[index];
+      output.write(value.substring(cursor, match.start));
+      output.write(resolved[index]);
       cursor = match.end;
     }
     output.write(value.substring(cursor));
@@ -390,16 +524,17 @@ class RuleField {
       }
     }
     for (final (key, rule) in puts) {
-      final nested = await resolve(
-        rule,
-        context,
-        content: result,
-        allowPut: false,
+      // Preserve the existing ban on a nested put in the extraction segment,
+      // without resolving/evaluating that rule twice. Script segments retain
+      // their own existing substitution boundary.
+      final extraction = parseRuleField(rule).extractionRule;
+      if (extraction != null && _putPattern.hasMatch(extraction)) {
+        throw UnsupportedError('@put: 不能嵌套在另一个 @put: 里：$extraction');
+      }
+      await context.writeVariable(
+        key,
+        _format(await context.extract(result, rule)),
       );
-      final extracted = nested.extractionRule == null
-          ? result
-          : await context.extract(result, nested.extractionRule!);
-      await context.writeVariable(key, _format(await nested.apply(extracted)));
     }
     return value;
   }

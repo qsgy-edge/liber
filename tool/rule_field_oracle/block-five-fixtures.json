@@ -1,0 +1,322 @@
+[
+  {
+    "name": "tokens-two",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}",
+    "pipeline": "html"
+  },
+  {
+    "name": "tokens-mixed-get",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}|@get:{count}|{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}",
+    "pipeline": "html"
+  },
+  {
+    "name": "tokens-sibling",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}-{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}} @js: java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); result + ':' + java.get('count')",
+    "pipeline": "html"
+  },
+  {
+    "name": "html-item-order",
+    "content": "<ul><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{java.put('v', String(result).indexOf('one') >= 0 ? 'one' : 'two'); java.get('v')}}"
+      },
+      {
+        "field": "author",
+        "rule": "{{java.get('v')}}"
+      },
+      {
+        "field": "bookUrl",
+        "rule": "a@href",
+        "url": true
+      }
+    ]
+  },
+  {
+    "name": "html-field-order",
+    "content": "<ul><li><a href=\"/one\">one</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "reads": [
+      {
+        "field": "name",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'N'); 'body'}}"
+      },
+      {
+        "field": "author",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'A'); 'author'}}"
+      },
+      {
+        "field": "kind",
+        "form": "list",
+        "rule": "{{java.put('order', java.get('order') + 'K'); 'kind'}}"
+      },
+      {
+        "field": "wordCount",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'W'); 'wc'}}"
+      },
+      {
+        "field": "lastChapter",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'L'); 'latest'}}"
+      },
+      {
+        "field": "intro",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'I'); 'intro'}}"
+      },
+      {
+        "field": "bookUrl",
+        "url": true,
+        "rule": "{{java.get('order') == 'NAKWLI' ? '/ok' : '/bad'}}"
+      }
+    ]
+  },
+  {
+    "name": "json-field-order",
+    "content": "{\"items\":[{\"name\":\"body\"}]}",
+    "type": "map",
+    "selector": "$.items[0]",
+    "reads": [
+      {
+        "field": "name",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'N'); 'body'}}"
+      },
+      {
+        "field": "author",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'A'); 'author'}}"
+      },
+      {
+        "field": "kind",
+        "form": "list",
+        "rule": "{{java.put('order', java.get('order') + 'K'); 'kind'}}"
+      },
+      {
+        "field": "wordCount",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'W'); 'wc'}}"
+      },
+      {
+        "field": "lastChapter",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'L'); 'latest'}}"
+      },
+      {
+        "field": "intro",
+        "form": "scalar",
+        "rule": "{{java.put('order', java.get('order') + 'I'); 'intro'}}"
+      },
+      {
+        "field": "bookUrl",
+        "url": true,
+        "rule": "{{java.get('order') == 'NAKWLI' ? '/ok' : '/bad'}}"
+      }
+    ]
+  },
+  {
+    "name": "json-url-after-name",
+    "content": "{\"items\":[{\"name\":\"body\"}]}",
+    "type": "map",
+    "selector": "$.items[0]",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{java.put('count','1');'body'}}"
+      },
+      {
+        "field": "bookUrl",
+        "rule": "{{java.get('count')=='1'?'/ok':'/bad'}}",
+        "url": true
+      }
+    ]
+  },
+  {
+    "name": "empty-regex-json-scalar",
+    "content": "{\"name\":\"body\"}",
+    "rule": "$.name####{{'X'}}",
+    "form": "scalar"
+  },
+  {
+    "name": "empty-regex-json-list",
+    "content": "{\"name\":\"body\"}",
+    "rule": "$.name####{{'X'}}",
+    "form": "list"
+  },
+  {
+    "name": "empty-regex-html-url",
+    "content": "<ul><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "rule": "nosuch@href####{{'/wrong'}}",
+    "url": true
+  },
+  {
+    "name": "nonempty-zero-width",
+    "content": "{\"name\":\"body\"}",
+    "rule": "$.name##^##X"
+  },
+  {
+    "name": "replace-first",
+    "content": "{\"name\":\"body\"}",
+    "rule": "$.name##o##O###"
+  },
+  {
+    "name": "native-key-entity-scalar",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "name",
+    "form": "scalar"
+  },
+  {
+    "name": "native-key-entity-list",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "name",
+    "form": "list"
+  },
+  {
+    "name": "native-key-false-frozen-only",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "name",
+    "unescape": false,
+    "product": "not-run"
+  },
+  {
+    "name": "nested-put-json-path",
+    "content": "{\"title\":\"&amp;amp;\"}",
+    "rule": "@put:{\"saved\":\"$.title\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "nested-put-json-content-false",
+    "content": "{\"title\":\"&amp;amp;\"}",
+    "rule": "@put:{\"saved\":\"$.title\"}{{java.get(\"saved\")}}",
+    "unescape": false
+  },
+  {
+    "name": "nested-put-html-extraction",
+    "content": "<ul><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "type": "node",
+    "rule": "@put:{\"saved\":\"a@text\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "json-script-only-entity",
+    "content": "{\"name\":\"body\"}",
+    "rule": "@js:'A &amp; B'"
+  },
+  {
+    "name": "native-head-single-at",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "@@{{'name'}}"
+  },
+  {
+    "name": "native-head-single-json",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "@json:{{'name'}}"
+  },
+  {
+    "name": "native-head-single-xpath",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "@xpath:{{'name'}}"
+  },
+  {
+    "name": "native-head-repeated-mixed",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "@@@json:{{'name'}}"
+  },
+  {
+    "name": "native-head-repeated-at",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "@@@@{{'name'}}"
+  },
+  {
+    "name": "native-head-generated-head",
+    "content": "{name:'A &amp;', '@json:name':'head &amp;'}",
+    "type": "nativeObject",
+    "rule": "{{'@json:name'}}"
+  },
+  {
+    "name": "map-head-repeated",
+    "content": "{\"item\":{\"name\":\"A &amp;\"}}",
+    "type": "map",
+    "selector": "$.item",
+    "rule": "@@@json:{{'name'}}"
+  },
+  {
+    "name": "json-tokens-two",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}",
+    "pipeline": "json",
+    "content": "{\"name\":\"body\"}"
+  },
+  {
+    "name": "json-tokens-mixed-get",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}|@get:{count}|{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}",
+    "pipeline": "json",
+    "content": "{\"name\":\"body\"}"
+  },
+  {
+    "name": "json-tokens-sibling",
+    "rule": "{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}}-{{java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count')}} @js: java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); result + ':' + java.get('count')",
+    "pipeline": "json",
+    "content": "{\"name\":\"body\"}"
+  },
+  {
+    "name": "nested-put-html-literal",
+    "content": "<p>body</p>",
+    "pipeline": "html",
+    "rule": "@put:{\"saved\":\"\\u007b\\u007bjava.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); '&amp;amp;'\\u007d\\u007d\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "nested-put-html-literal-script",
+    "content": "<p>body</p>",
+    "pipeline": "html",
+    "rule": "@put:{\"saved\":\"\\u007b\\u007bjava.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); '&amp;amp;'\\u007d\\u007d \\u0040js: java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); result + ':' + java.get('count')\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "nested-put-json-literal",
+    "content": "{\"title\":\"&amp;amp;\"}",
+    "pipeline": "json",
+    "rule": "@put:{\"saved\":\"\\u007b\\u007bjava.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); '&amp;amp;'\\u007d\\u007d\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "nested-put-json-literal-script",
+    "content": "{\"title\":\"&amp;amp;\"}",
+    "pipeline": "json",
+    "rule": "@put:{\"saved\":\"\\u007b\\u007bjava.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); '&amp;amp;'\\u007d\\u007d \\u0040js: java.put('count', String(Number(java.get('count') || 0) + 1)); java.get('count'); result + ':' + java.get('count')\"}{{java.get(\"saved\")}}"
+  },
+  {
+    "name": "callback-rule-expression",
+    "content": "{\"title\":\"&amp;amp;\"}",
+    "rule": "{{$.title}}"
+  },
+  {
+    "name": "native-toc-key",
+    "type": "nativeObject",
+    "content": "{tocUrl:'/toc'}",
+    "rule": "tocUrl"
+  },
+  {
+    "name": "nested-getter-error",
+    "content": "{\"title\":\"body\"}",
+    "rule": "@put:{\"saved\":\"\\u007b\\u007bthrow new Error('nested-getter')\\u007d\\u007d\"}{{java.get(\"saved\")}}",
+    "error": true
+  },
+  {
+    "name": "nested-put-policy-frozen-only",
+    "content": "{\"title\":\"body\"}",
+    "rule": "@put:{\"saved\":\"\\u0040put:\\u007b\\\"inner\\\":\\\"$.title\\\"\\u007d\\u007b\\u007bjava.get(\\\"inner\\\")\\u007d\\u007d\"}{{java.get(\"saved\")}}",
+    "product": "not-run"
+  }
+]

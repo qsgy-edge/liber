@@ -1,0 +1,406 @@
+[
+  {
+    "name": "p1-json-script-put",
+    "rule": "$.title @js:@put:{\"saved\":\"$.title\"} java.get(\"saved\")",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p1-json-script-expression",
+    "rule": "$.title @js:'{{$.title}}'",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p1-json-result-and-original",
+    "rule": "$.title @js:@put:{\"saved\":\"$.title\"} result+\"|\"+java.get(\"saved\")",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p1-json-sibling-result",
+    "rule": "$.title<js>result+\":next\"</js>@js:@put:{\"saved\":\"$.title\"} result+\"|\"+java.get(\"saved\")",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p1-html-node-put",
+    "rule": "a@text @js:@put:{\"saved\":\"a@text\"} java.get(\"saved\")",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "type": "node",
+    "selector": "li"
+  },
+  {
+    "name": "p1-html-string-put",
+    "rule": "a@text @js:@put:{\"saved\":\"a@text\"} java.get(\"saved\")",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "type": "string",
+    "selector": "li"
+  },
+  {
+    "name": "p1-html-host-original-control",
+    "rule": "a@text @js:java.getString(\"a@text\")",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "type": "node",
+    "selector": "li"
+  },
+  {
+    "name": "p2-json-host-path",
+    "rule": "@js:java.getString('$.title')",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p2-json-host-script",
+    "rule": "@js:java.getString('@js:\"A &amp;amp;\"')",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p2-json-host-explicit-string",
+    "rule": "@js:java.getString('$.title',\"{\\\"title\\\":\\\"EXPLICIT &amp;amp;\\\"}\")",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p2-json-host-list-control",
+    "rule": "@js:java.getStringList('$.title')[0]",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}"
+  },
+  {
+    "name": "p2-json-host-list-false",
+    "rule": "@js:java.getStringList('$.title')[0]",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "unescape": false
+  },
+  {
+    "name": "p2-json-host-element-false",
+    "rule": "@js:java.getElement('$.title')",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "unescape": false
+  },
+  {
+    "name": "p2-json-host-scalar-false",
+    "rule": "@js:java.getString('$.title')",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "unescape": false
+  },
+  {
+    "name": "p1-nested-error",
+    "rule": "$.title @js:{{throw new Error('read-context')}}",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "error": true
+  },
+  {
+    "name": "p1-cancelled-nested",
+    "rule": "$.title @js:@put:{\"saved\":\"$.title\"} java.toast(\"cancel\");java.get(\"saved\")",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "cancelled": true,
+    "error": true
+  },
+  {
+    "name": "p3-html-info-completion",
+    "pipeline": "html",
+    "stage": "info",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{'body'}} @js:java.put('v','ready');result"
+      },
+      {
+        "field": "author",
+        "rule": "{{java.get('v')}}"
+      }
+    ]
+  },
+  {
+    "name": "p3-html-info-kind-word",
+    "pipeline": "html",
+    "stage": "info",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{'body'}}"
+      },
+      {
+        "field": "author",
+        "rule": "{{'author'}}"
+      },
+      {
+        "field": "kind",
+        "rule": "{{'kind'}} @js:java.put('v','ready');result",
+        "form": "list"
+      },
+      {
+        "field": "wordCount",
+        "rule": "{{java.get('v')}}"
+      }
+    ]
+  },
+  {
+    "name": "p3-json-info-kind-word",
+    "pipeline": "json",
+    "stage": "info",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{'body'}}"
+      },
+      {
+        "field": "author",
+        "rule": "{{'author'}}"
+      },
+      {
+        "field": "kind",
+        "rule": "{{'kind'}} @js:java.put('v','ready');result",
+        "form": "list"
+      },
+      {
+        "field": "wordCount",
+        "rule": "{{java.get('v')}}"
+      }
+    ]
+  },
+  {
+    "name": "p3-html-info-cover",
+    "pipeline": "html",
+    "stage": "info",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">A&amp;amp;amp;</a></li></ul>",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{'body'}} @js:java.put('v','after-name');result"
+      },
+      {
+        "field": "author",
+        "rule": "{{java.put('v','after-author');'author'}}"
+      },
+      {
+        "field": "coverUrl",
+        "rule": "{{'/' + java.get('v') + '.png'}}"
+      },
+      {
+        "field": "tocUrl",
+        "rule": "{{java.get('v')=='after-author'?'/toc':'/bad'}}"
+      }
+    ]
+  },
+  {
+    "name": "p3-json-info-cover",
+    "pipeline": "json",
+    "stage": "info",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "reads": [
+      {
+        "field": "name",
+        "rule": "{{'body'}} @js:java.put('v','after-name');result"
+      },
+      {
+        "field": "author",
+        "rule": "{{java.put('v','after-author');'author'}}"
+      },
+      {
+        "field": "coverUrl",
+        "rule": "{{'/' + java.get('v') + '.png'}}"
+      },
+      {
+        "field": "tocUrl",
+        "rule": "{{java.get('v')=='after-author'?'/toc':'/bad'}}"
+      }
+    ]
+  },
+  {
+    "name": "p3-html-toc-item-order",
+    "pipeline": "html",
+    "stage": "toc",
+    "type": "node",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "listRule": "li",
+    "items": true,
+    "reads": [
+      {
+        "field": "chapterName",
+        "rule": "{{java.put('v',String(result).indexOf('one')>=0?'one':'two');java.put('order','N');java.get('v')}}"
+      },
+      {
+        "field": "chapterUrl",
+        "url": true,
+        "rule": "{{java.put('order',java.get('order')+'U');'/' + java.get('v')}}"
+      },
+      {
+        "field": "updateTime",
+        "rule": "{{java.put('order',java.get('order')+'T');java.get('v')}}"
+      },
+      {
+        "field": "isVolume",
+        "rule": "{{java.put('order',java.get('order')+'V');'false'}}"
+      },
+      {
+        "field": "isVip",
+        "rule": "{{java.put('order',java.get('order')+'I');'false'}}"
+      },
+      {
+        "field": "isPay",
+        "rule": "{{java.put('order',java.get('order')+'P');'false'}}"
+      }
+    ]
+  },
+  {
+    "name": "p4-search-static",
+    "rule": "@CSS:li:nth-child(2)@text",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "search",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-search-script",
+    "rule": "@CSS:li:nth-child(2)@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "search",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-search-parent",
+    "rule": "@CSS:ul.shelf > li@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "search",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-toc-static",
+    "rule": "@CSS:li:nth-child(2)@text",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "toc",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-toc-script",
+    "rule": "@CSS:li:nth-child(2)@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "toc",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-toc-parent",
+    "rule": "@CSS:ul.shelf > li@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "stage": "toc",
+    "items": true,
+    "listRule": "li",
+    "selector": "li"
+  },
+  {
+    "name": "p4-css-list-index",
+    "rule": "@CSS:li:nth-child(2)@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "stage": "search",
+    "listRule": "@CSS:ul.shelf > li"
+  },
+  {
+    "name": "p4-reordered-list-index",
+    "rule": "@CSS:li:nth-child(2)@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "stage": "search",
+    "listRule": "li[1,0]"
+  },
+  {
+    "name": "p4-combined-list-context",
+    "rule": "@CSS:ul.shelf > li@text @js:result",
+    "pipeline": "html",
+    "content": "<div id=\"one\"><ul class=\"shelf\"><li><a href=\"/one\">one</a></li></ul></div><div id=\"two\"><ul class=\"shelf\"><li><a href=\"/two\">two</a></li></ul></div>",
+    "type": "node",
+    "items": true,
+    "stage": "search",
+    "listRule": "#one li&&#two li"
+  },
+  {
+    "name": "p4-table-src-identity",
+    "rule": "@js:String(src).indexOf(\"<tr\") == 0 && String(result).indexOf(\"<tr\") == 0 ? \"row\" : \"detached\"",
+    "pipeline": "html",
+    "content": "<table><tbody><tr><td><a href=\"/one\">one</a></td></tr><tr><td><a href=\"/two\">two</a></td></tr></tbody></table>",
+    "type": "node",
+    "items": true,
+    "stage": "search",
+    "listRule": "tr"
+  },
+  {
+    "name": "p4-detached-frozen-only",
+    "rule": "@CSS:li:nth-child(2)@text @js:result",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "listRule": "li",
+    "detached": true,
+    "product": "not-run"
+  },
+  {
+    "name": "minor-static-kind-list",
+    "rule": "@CSS:li:nth-child(2)@text",
+    "pipeline": "html",
+    "content": "<ul class=\"shelf\"><li><a href=\"/one\">one</a></li><li><a href=\"/two\">two</a></li></ul>",
+    "type": "node",
+    "items": true,
+    "listRule": "li",
+    "stage": "search",
+    "form": "list"
+  },
+  {
+    "name": "p2-explicit-nested-original",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "rule": "@js:java.getString(String.fromCharCode(36,46,116,105,116,108,101,32,64,106,115,58,39,123,123,36,46,116,105,116,108,101,125,125,39),\"{\\\"title\\\":\\\"EXPLICIT &amp;amp;\\\"}\")"
+  },
+  {
+    "name": "p2-explicit-script-src",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "rule": "@js:java.getString('@js:String(src)',\"{\\\"title\\\":\\\"EXPLICIT &amp;amp;\\\"}\")"
+  },
+  {
+    "name": "p1-script-put-count",
+    "pipeline": "json",
+    "content": "{\"title\":\"A &amp;amp;\",\"other\":\"ORIGINAL\"}",
+    "rule": "$.title @js:@put:{\"saved\":\"$.title \\u0040js:java.put('count',String(Number(java.get('count')||0)+1));result\"} java.get(\"saved\")"
+  }
+]

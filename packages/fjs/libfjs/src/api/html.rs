@@ -36,6 +36,8 @@ pub struct HtmlRuleJob {
     /// An earlier `Elements` job id whose matches are this job's contexts.
     /// `None` means the document itself.
     pub parent: Option<String>,
+    /// Zero-based index in the completed parent selection; None uses all matches.
+    pub parent_index: Option<i32>,
     /// Whether the job returns element count, one joined string per context, or
     /// the matched values as a list.
     pub output: HtmlJobOutput,
@@ -80,6 +82,7 @@ pub fn html_analyze(html: String, jobs: Vec<HtmlRuleJob>) -> Vec<HtmlJobOutcome>
             id: job.id,
             rule: job.rule,
             parent: job.parent,
+            parent_index: job.parent_index,
             output: match job.output {
                 HtmlJobOutput::Elements => JobOutput::Elements,
                 HtmlJobOutput::Text => JobOutput::Text,

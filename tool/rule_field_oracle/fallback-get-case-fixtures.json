@@ -1,0 +1,538 @@
+[
+  {
+    "name": "h1-html-ordinary-empty",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "ordinary-empty",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<li><a href=''>chapter</a><span class=\"volume\">false</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-html-volume-empty",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "volume-empty",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<li><a href=''>chapter</a><span class=\"volume\">true</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-html-skipped-volume-index",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "skipped-volume-index",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<li><a href=''></a><span class=\"volume\">false</span></li><li><a href=''>chapter</a><span class=\"volume\">true</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-html-raw-options",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "raw-options",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<li><a href='/chapter?slot=1,{\"headers\":{\"X-Chapter\":\"raw\"}}'>chapter</a><span class=\"volume\">false</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-html-pay-error",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "pay-error",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<li><a href=''>chapter</a><span class=\"volume\">false</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));throw new Error('fallback-pay')",
+    "error": true
+  },
+  {
+    "name": "h1-html-redirect-options",
+    "stage": "h1",
+    "pipeline": "html",
+    "shape": "redirect-options",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc?slot=1,{\"headers\":{\"X-Toc\":\"original\"}}",
+    "redirectUrl": "https://fallback-get.test/redirected?target=2",
+    "content": "<li><a href=''>chapter</a><span class=\"volume\">false</span></li>",
+    "listRule": "li",
+    "nameRule": "a@text",
+    "urlRule": "a@href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('span.volume@text')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h2-html-upper-tag",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "upper-tag",
+    "form": "scalar",
+    "rule": "@GET:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-mixed-url",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "mixed-url",
+    "form": "scalar",
+    "rule": "/@GeT:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-key-case",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "key-case",
+    "form": "scalar",
+    "rule": "@GET:{MiXeD}|@gEt:{mixed}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-reverse-once",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "reverse-once",
+    "form": "scalar",
+    "rule": "{{source.put('count',String(Number(source.get('count')||'0')+1));source.get('count')}}|@GET:{MiXeD}|{{source.put('count',String(Number(source.get('count')||'0')+1));source.get('count')}}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-lower-control",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "lower-control",
+    "form": "scalar",
+    "rule": "@get:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-regex-marker",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "regex-marker",
+    "form": "scalar",
+    "rule": "a@text##@GET:{MiXeD}##x",
+    "seed": {
+      "MiXeD": "chapter",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-put-marker",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "put-marker",
+    "form": "scalar",
+    "rule": "@put:{\"stored\": \"\\u0040GET:\\u007bMiXeD\\u007d\"}@get:{stored}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h2-html-list-raw",
+    "stage": "h2",
+    "pipeline": "html",
+    "shape": "list-raw",
+    "form": "list",
+    "rule": "@GET:{MiXeD}",
+    "seed": {
+      "MiXeD": "A &amp;amp;",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "<a>chapter</a>",
+    "error": false
+  },
+  {
+    "name": "h1-json-ordinary-empty",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "ordinary-empty",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"list\":[{\"name\":\"chapter\",\"href\":\"\",\"volume\":\"false\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-json-volume-empty",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "volume-empty",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"list\":[{\"name\":\"chapter\",\"href\":\"\",\"volume\":\"true\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-json-skipped-volume-index",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "skipped-volume-index",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"list\":[{\"name\":\"\",\"href\":\"\",\"volume\":\"false\"},{\"name\":\"chapter\",\"href\":\"\",\"volume\":\"true\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-json-raw-options",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "raw-options",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"list\":[{\"name\":\"chapter\",\"href\":\"/chapter?slot=1,{\\\"headers\\\":{\\\"X-Chapter\\\":\\\"raw\\\"}}\",\"volume\":\"false\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h1-json-pay-error",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "pay-error",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"list\":[{\"name\":\"chapter\",\"href\":\"\",\"volume\":\"false\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));throw new Error('fallback-pay')",
+    "error": true
+  },
+  {
+    "name": "h1-json-redirect-options",
+    "stage": "h1",
+    "pipeline": "json",
+    "shape": "redirect-options",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc?slot=1,{\"headers\":{\"X-Toc\":\"original\"}}",
+    "redirectUrl": "https://fallback-get.test/redirected?target=2",
+    "content": "{\"list\":[{\"name\":\"chapter\",\"href\":\"\",\"volume\":\"false\"}]}",
+    "listRule": "$.list",
+    "nameRule": "$.name",
+    "urlRule": "$.href",
+    "tagRule": "@js:source.put('trace',source.get('trace')+'tag:'+String(chapter.url)+';');'tag'",
+    "volumeRule": "@js:source.put('trace',source.get('trace')+'volume:'+String(chapter.url)+';');java.getString('$.volume')",
+    "vipRule": "@js:source.put('trace',source.get('trace')+'vip:'+String(chapter.url)+';');source.put('vipCount',String(Number(source.get('vipCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "payRule": "@js:source.put('trace',source.get('trace')+'pay:'+String(chapter.url)+';');source.put('payCount',String(Number(source.get('payCount')||'0')+1));String(chapter.url)===''?'false':'true'",
+    "error": false
+  },
+  {
+    "name": "h2-json-upper-tag",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "upper-tag",
+    "form": "scalar",
+    "rule": "@GET:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-mixed-url",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "mixed-url",
+    "form": "scalar",
+    "rule": "/@GeT:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-key-case",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "key-case",
+    "form": "scalar",
+    "rule": "@GET:{MiXeD}|@gEt:{mixed}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-reverse-once",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "reverse-once",
+    "form": "scalar",
+    "rule": "{{source.put('count',String(Number(source.get('count')||'0')+1));source.get('count')}}|@GET:{MiXeD}|{{source.put('count',String(Number(source.get('count')||'0')+1));source.get('count')}}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-lower-control",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "lower-control",
+    "form": "scalar",
+    "rule": "@get:{title}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-regex-marker",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "regex-marker",
+    "form": "scalar",
+    "rule": "$.name##@GET:{MiXeD}##x",
+    "seed": {
+      "MiXeD": "chapter",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-put-marker",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "put-marker",
+    "form": "scalar",
+    "rule": "@put:{\"stored\": \"\\u0040GET:\\u007bMiXeD\\u007d\"}@get:{stored}",
+    "seed": {
+      "MiXeD": "UP",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  },
+  {
+    "name": "h2-json-list-raw",
+    "stage": "h2",
+    "pipeline": "json",
+    "shape": "list-raw",
+    "form": "list",
+    "rule": "@GET:{MiXeD}",
+    "seed": {
+      "MiXeD": "A &amp;amp;",
+      "mixed": "lower",
+      "count": "0"
+    },
+    "baseAddress": "https://fallback-get.test/toc",
+    "redirectUrl": "https://fallback-get.test/toc",
+    "content": "{\"name\":\"chapter\"}",
+    "error": false
+  }
+]

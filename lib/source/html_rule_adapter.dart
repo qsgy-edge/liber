@@ -6,8 +6,8 @@ import 'native_library.dart';
 ///
 /// The frozen reader parses a page once and evaluates each rule against that
 /// tree. [HtmlRuleBatch] keeps that shape across the bridge: jobs are declared
-/// first and run in a single call, so a document is marshalled once per page
-/// instead of once per selector.
+/// first and run in a single call. A stage may declare a second batch when
+/// per-item list grouping needs the first batch's count.
 ///
 /// A batch fails as a whole: the first rule the adapter cannot evaluate throws
 /// here, which is how the frozen reader behaves too (its analysis aborts on the
@@ -20,9 +20,40 @@ class HtmlRuleBatch {
   final _outcomes = <String, HtmlJobOutcome>{};
   bool _ran = false;
 
-  /// Elements matching [rule] in the whole document.
-  HtmlElementSet elements(String id, String rule) =>
-      HtmlElementSet._(this, _add(id, rule, null, HtmlJobOutput.elements));
+  /// Elements matching [rule], optionally scoped to one earlier selection.
+  HtmlElementSet elements(
+    String id,
+    String rule, {
+    HtmlElementSet? parent,
+    int? parentIndex,
+  }) => HtmlElementSet._(
+    this,
+    _add(
+      id,
+      rule,
+      parent?.id,
+      HtmlJobOutput.elements,
+      parentIndex: parentIndex,
+    ),
+  );
+
+  /// Replays a serializable node path against this batch's original document.
+  HtmlElementSet selection(
+    String id,
+    Iterable<({String rule, int? parentIndex})> steps,
+  ) {
+    HtmlElementSet? parent;
+    var index = 0;
+    for (final step in steps) {
+      parent = elements(
+        '$id:${index++}',
+        step.rule,
+        parent: parent,
+        parentIndex: step.parentIndex,
+      );
+    }
+    return parent ?? elements(id, ':root');
+  }
 
   /// The value [rule] yields for the document itself, in the frozen
   /// `AnalyzeByJSoup.getString` shape: a document rule's matches are joined with
@@ -45,9 +76,37 @@ class HtmlRuleBatch {
   HtmlStringList elementsText(String id, String rule, HtmlElementSet context) =>
       HtmlStringList._(this, _add(id, rule, context.id, HtmlJobOutput.text));
 
-  String _add(String id, String rule, String? parent, HtmlJobOutput output) {
+  /// List extraction scoped to each context. The `@html` item snapshot uses
+  /// this output to preserve serialized entities before scalar evaluation.
+  HtmlStringList elementsTextList(
+    String id,
+    String rule,
+    HtmlElementSet context,
+  ) => HtmlStringList._(
+    this,
+    _add(id, rule, context.id, HtmlJobOutput.textList),
+  );
+
+  String _add(
+    String id,
+    String rule,
+    String? parent,
+    HtmlJobOutput output, {
+    int? parentIndex,
+  }) {
     if (_ran) throw StateError('该规则批次已经执行');
-    _jobs.add(HtmlRuleJob(id: id, rule: rule, parent: parent, output: output));
+    if (parentIndex != null && (parentIndex < 0 || parentIndex > 0x7fffffff)) {
+      throw UnsupportedError('parentIndex 必须是非负 i32 索引');
+    }
+    _jobs.add(
+      HtmlRuleJob(
+        id: id,
+        rule: rule,
+        parent: parent,
+        parentIndex: parentIndex,
+        output: output,
+      ),
+    );
     return id;
   }
 

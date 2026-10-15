@@ -1,0 +1,135 @@
+[
+  {
+    "name": "intro-json-string",
+    "pipeline": "json",
+    "type": "string",
+    "content": "{\"items\":[{\"name\":\"回音\",\"path\":\"/book/1\",\"kind\":\"玄幻\",\"id\":\"7\",\"intro\":\"搜索简介\",\"lastChapter\":\"搜索最新章\",\"wordCount\":\"12001\"}]}",
+    "rule": "$.intro @js:\"<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;\""
+  },
+  {
+    "name": "intro-json-map",
+    "pipeline": "json",
+    "type": "map",
+    "content": "{\"items\":[{\"name\":\"回音\",\"path\":\"/book/1\",\"kind\":\"玄幻\",\"id\":\"7\",\"intro\":\"搜索简介\",\"lastChapter\":\"搜索最新章\",\"wordCount\":\"12001\"}]}",
+    "selector": "$.items[0]",
+    "rule": "$.intro @js:\"<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;\""
+  },
+  {
+    "name": "intro-html-node",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">回音</a><span class=\"sr-intro\">搜索简介</span><span class=\"sr-last\">搜索最新章</span><span class=\"sr-count\">12001</span></div>",
+    "rule": ".sr-intro@text @js:\"<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;\""
+  },
+  {
+    "name": "intro-html-string",
+    "pipeline": "html",
+    "type": "string",
+    "content": "<div class=\"result\"><a href=\"/book/1\">回音</a><span class=\"sr-intro\">搜索简介</span><span class=\"sr-last\">搜索最新章</span><span class=\"sr-count\">12001</span></div>",
+    "rule": ".sr-intro@text @js:\"<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;\""
+  },
+  {
+    "name": "intro-html-script-identity",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><span class=\"sr-intro\">A&amp;amp;amp;</span></div>",
+    "rule": ".sr-intro@text @js:result"
+  },
+  {
+    "name": "intro-html-before-script",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><span class=\"sr-intro\">A&amp;amp;amp;</span></div>",
+    "rule": ".sr-intro@text @js:result.indexOf('&amp;amp;') >= 0 ? 'raw-before-script' : 'decoded-before-script'"
+  },
+  {
+    "name": "intro-html-no-script",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><span class=\"sr-intro\">A&amp;amp;amp;</span></div>",
+    "rule": ".sr-intro@text"
+  },
+  {
+    "name": "intro-html-multiple-newline",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".sr-intro@text @js:var u=[];for(var i=0;i<result.length;i++)u.push(result.charCodeAt(i));JSON.stringify(u)"
+  },
+  {
+    "name": "intro-html-joined-replacement",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".sr-intro@text##^A##X @js:var u=[];for(var i=0;i<result.length;i++)u.push(result.charCodeAt(i));JSON.stringify(u)"
+  },
+  {
+    "name": "intro-html-joined-replace-first",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".sr-intro@text##A.*\\nA##X### @js:var u=[];for(var i=0;i<result.length;i++)u.push(result.charCodeAt(i));JSON.stringify(u)"
+  },
+  {
+    "name": "intro-html-no-match",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".missing@text @js:java.put(\"count\",\"ran\");\"should-not-run\""
+  },
+  {
+    "name": "intro-html-empty-value",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><span class=\"sr-intro\"></span></div>",
+    "rule": ".sr-intro@text @js:java.put(\"count\",\"ran\");\"should-not-run\""
+  },
+  {
+    "name": "intro-html-url-first",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": "a@href @js:result",
+    "url": true
+  },
+  {
+    "name": "intro-html-url-empty",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".missing@href @js:\"/from-script\"",
+    "url": true
+  },
+  {
+    "name": "intro-html-list-no-tail",
+    "pipeline": "html",
+    "type": "node",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": ".sr-intro@text @js:\"&amp;amp;\"",
+    "form": "list"
+  },
+  {
+    "name": "intro-html-content-false",
+    "pipeline": "html",
+    "type": "string",
+    "content": "<div class=\"result\"><a href=\"/book/1\">body</a><a href=\"/two\">two</a><span class=\"sr-intro\">A&amp;amp;</span><span class=\"sr-intro\">A&amp;amp;</span></div>",
+    "rule": "@js:\"&amp;amp;\"",
+    "unescape": false
+  },
+  {
+    "name": "html-toc-scalar-script",
+    "pipeline": "html",
+    "type": "node",
+    "stage": "toc",
+    "content": "<div class=\"result\"><a href=\"/chapter\">body</a><span class=\"sr-intro\">body</span></div>",
+    "rule": ".sr-intro@text @js:\"A &amp;\""
+  },
+  {
+    "name": "html-content-title-scalar-script",
+    "pipeline": "html",
+    "type": "string",
+    "stage": "title",
+    "content": "<div class=\"result\"><a href=\"/chapter\">body</a><span class=\"sr-intro\">body</span></div>",
+    "rule": ".sr-intro@text @js:\"A &amp;\""
+  }
+]

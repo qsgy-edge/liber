@@ -68,3 +68,7 @@ tool/jsonpath_oracle/** text eol=lf
 tool/tonum_chapter_oracle/** text eol=lf
 tool/jsonpath_oracle/** text eol=lf
 tool/html_content_oracle/** text eol=lf
+# Rule-field classification inputs and generated golden are pinned by byte hash.
+tool/rule_field_oracle/** text eol=lf
+lib/source/html4_entities.dart text eol=lf
+packages/fjs/liber_html/tests/data/** text eol=lf

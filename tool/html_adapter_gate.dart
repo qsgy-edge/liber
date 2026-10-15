@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fjs/fjs.dart';
+import 'package:liber/source/html4_unescape.dart';
 import 'package:liber/source/html_rule_adapter.dart';
 import 'package:liber/source/json_source_rules.dart';
 import 'package:liber/source/js_source_runtime.dart';
@@ -67,7 +68,7 @@ Future<void> main(List<String> args) async {
     final observation = <String, Object?>{'id': id, 'rule': rule};
     try {
       if (entry['path'] == 'rule') {
-        observation['value'] = await _ruleFieldValue(
+        observation['value'] = await htmlAdapterRuleFieldValue(
           html,
           rule,
           baseUrl: baseUrl,
@@ -212,8 +213,9 @@ Future<void> main(List<String> args) async {
 /// `@js:`/`<js>`/`{{...}}`/`@get:`/`@put:` layer in front of the Rust adapter,
 /// which is what a pipeline stage runs and what the frozen `AnalyzeRule.getString`
 /// answers. `@get:`/`@put:` read and write an empty source key's variables, the
-/// way one analysis owns them.
-Future<String> _ruleFieldValue(
+/// way one analysis owns them. Focused regressions call this same tool entry
+/// to check that nested reads retain its runtime, state and scalar tail.
+Future<String> htmlAdapterRuleFieldValue(
   String html,
   String rule, {
   required String baseUrl,
@@ -221,45 +223,64 @@ Future<String> _ruleFieldValue(
   const sourceRef = 'tool/html_adapter_gate';
   final state = SourceHostState();
   final runtime = InProcessSourceScriptRuntime(hostState: state);
-  final context = RuleFieldContext(
-    evaluateScript: (script, result) => runtime.evaluate(
-      source: script,
-      input: {
-        'sourceKey': sourceRef,
-        'baseUrl': baseUrl,
-        'result': result,
-        'title': null,
+  Future<String> readScalar(Object? value, String valueRule) async {
+    if (valueRule.isEmpty) return '';
+    final context = RuleFieldContext(
+      evaluateScript: (script, result) => runtime.evaluate(
+        source: script,
+        input: {
+          'sourceKey': sourceRef,
+          'baseUrl': baseUrl,
+          'src': value,
+          'result': result,
+          'title': null,
+        },
+        timeout: const Duration(seconds: 15),
+      ),
+      extract: (_, nestedRule) => readScalar(value, nestedRule),
+      readVariable: (key) async {
+        final stored = await state.entry(sourceRef, sourceRuleVariableKey(sourceRef, key));
+        return stored is String ? stored : '';
       },
-      timeout: const Duration(seconds: 15),
-    ),
-    extract: (value, valueRule) async {
+      writeVariable: (key, stored) => state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), stored),
+    );
+    final field = await RuleField.resolve(valueRule, context, content: value);
+    final deferTail =
+        field.hasValueExtraction &&
+        field.scripts.isNotEmpty &&
+        splitRuleFields(field.extractionRule!).rule.isNotEmpty;
+    Object? extracted = value;
+    if (field.hasValueExtraction) {
       final batch = HtmlRuleBatch('$value');
-      final job = batch.documentText('value', valueRule);
-      await batch.run();
-      final extracted = job.value;
-      return extracted.isEmpty ? null : extracted;
-    },
-    readVariable: (key) async {
-      final value = await state.entry(
-        sourceRef,
-        sourceRuleVariableKey(sourceRef, key),
-      );
-      return value is String ? value : '';
-    },
-    writeVariable: (key, value) =>
-        state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), value),
-  );
-  final field = await RuleField.resolve(rule, context, content: html);
-  final Object? extracted;
-  if (field.isScriptOnly) {
-    extracted = html;
-  } else {
-    final batch = HtmlRuleBatch(html);
-    final job = batch.documentText('value', field.extractionRule!);
-    await batch.run();
-    extracted = job.value;
+      if (deferTail) {
+        final fields = splitRuleFields(field.extractionRule!);
+        final job = batch.documentTextList('value', fields.rule);
+        await batch.run();
+        extracted = job.values.isEmpty
+            ? null
+            : applyRuleReplacement(
+                job.values.join('\n'),
+                fields,
+                label: 'HTML',
+              );
+      } else {
+        final job = batch.documentText('value', field.extractionRule!);
+        await batch.run();
+        extracted = job.value;
+      }
+    }
+    final result = await field.apply(
+      extracted,
+      forValue: true,
+      contentText: '$value',
+    );
+    final text = '${result ?? ''}';
+    return field.isLiteralValue || field.isScriptOnly || deferTail
+        ? unescapeHtml4(text)
+        : text;
   }
-  return '${await field.apply(extracted) ?? ''}';
+
+  return readScalar(html, rule);
 }
 
 String _sha256(List<int> bytes) {

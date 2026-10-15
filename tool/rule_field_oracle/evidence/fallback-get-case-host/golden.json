@@ -1,0 +1,1302 @@
+{
+  "h1-html-ordinary-empty": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          104,
+          116,
+          116,
+          112,
+          115,
+          58,
+          47,
+          47,
+          102,
+          97,
+          108,
+          108,
+          98,
+          97,
+          99,
+          107,
+          45,
+          103,
+          101,
+          116,
+          46,
+          116,
+          101,
+          115,
+          116,
+          47,
+          116,
+          111,
+          99
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc;pay:https://fallback-get.test/toc;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-html-volume-empty": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          48
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:chapter0;pay:chapter0;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-html-skipped-volume-index": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          49
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;tag:;volume:;vip:chapter1;pay:chapter1;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-html-raw-options": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          63,
+          115,
+          108,
+          111,
+          116,
+          61,
+          49,
+          44,
+          123,
+          34,
+          104,
+          101,
+          97,
+          100,
+          101,
+          114,
+          115,
+          34,
+          58,
+          123,
+          34,
+          88,
+          45,
+          67,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          34,
+          58,
+          34,
+          114,
+          97,
+          119,
+          34,
+          125,
+          125
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};volume:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};vip:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};pay:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-html-pay-error": {
+    "items": [],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc;pay:https://fallback-get.test/toc;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      102,
+      97,
+      108,
+      108,
+      98,
+      97,
+      99,
+      107,
+      45,
+      112,
+      97,
+      121,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "h1-html-redirect-options": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          104,
+          116,
+          116,
+          112,
+          115,
+          58,
+          47,
+          47,
+          102,
+          97,
+          108,
+          108,
+          98,
+          97,
+          99,
+          107,
+          45,
+          103,
+          101,
+          116,
+          46,
+          116,
+          101,
+          115,
+          116,
+          47,
+          116,
+          111,
+          99,
+          63,
+          115,
+          108,
+          111,
+          116,
+          61,
+          49,
+          44,
+          123,
+          34,
+          104,
+          101,
+          97,
+          100,
+          101,
+          114,
+          115,
+          34,
+          58,
+          123,
+          34,
+          88,
+          45,
+          84,
+          111,
+          99,
+          34,
+          58,
+          34,
+          111,
+          114,
+          105,
+          103,
+          105,
+          110,
+          97,
+          108,
+          34,
+          125,
+          125
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc?slot\u003d1,{\"headers\":{\"X-Toc\":\"original\"}};pay:https://fallback-get.test/toc?slot\u003d1,{\"headers\":{\"X-Toc\":\"original\"}};",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-upper-tag": {
+    "items": [
+      {
+        "value": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-mixed-url": {
+    "items": [
+      {
+        "value": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-key-case": {
+    "items": [
+      {
+        "value": [
+          85,
+          80,
+          124,
+          108,
+          111,
+          119,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-reverse-once": {
+    "items": [
+      {
+        "value": [
+          50,
+          124,
+          85,
+          80,
+          124,
+          49
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "2",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-lower-control": {
+    "items": [
+      {
+        "value": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-regex-marker": {
+    "items": [
+      {
+        "value": [
+          120
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-put-marker": {
+    "items": [
+      {
+        "value": [
+          85,
+          80
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-html-list-raw": {
+    "items": [
+      {
+        "value": [
+          65,
+          32,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-json-ordinary-empty": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          104,
+          116,
+          116,
+          112,
+          115,
+          58,
+          47,
+          47,
+          102,
+          97,
+          108,
+          108,
+          98,
+          97,
+          99,
+          107,
+          45,
+          103,
+          101,
+          116,
+          46,
+          116,
+          101,
+          115,
+          116,
+          47,
+          116,
+          111,
+          99
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc;pay:https://fallback-get.test/toc;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-json-volume-empty": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          48
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:chapter0;pay:chapter0;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-json-skipped-volume-index": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          49
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;tag:;volume:;vip:chapter1;pay:chapter1;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-json-raw-options": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          63,
+          115,
+          108,
+          111,
+          116,
+          61,
+          49,
+          44,
+          123,
+          34,
+          104,
+          101,
+          97,
+          100,
+          101,
+          114,
+          115,
+          34,
+          58,
+          123,
+          34,
+          88,
+          45,
+          67,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114,
+          34,
+          58,
+          34,
+          114,
+          97,
+          119,
+          34,
+          125,
+          125
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};volume:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};vip:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};pay:/chapter?slot\u003d1,{\"headers\":{\"X-Chapter\":\"raw\"}};",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h1-json-pay-error": {
+    "items": [],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc;pay:https://fallback-get.test/toc;",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": "com.script.ScriptException",
+    "errorUnits": [
+      69,
+      114,
+      114,
+      111,
+      114,
+      58,
+      32,
+      102,
+      97,
+      108,
+      108,
+      98,
+      97,
+      99,
+      107,
+      45,
+      112,
+      97,
+      121,
+      32,
+      105,
+      110,
+      32,
+      60,
+      85,
+      110,
+      107,
+      110,
+      111,
+      119,
+      110,
+      32,
+      83,
+      111,
+      117,
+      114,
+      99,
+      101,
+      62,
+      32,
+      97,
+      116,
+      32,
+      108,
+      105,
+      110,
+      101,
+      32,
+      110,
+      117,
+      109,
+      98,
+      101,
+      114,
+      32,
+      49
+    ]
+  },
+  "h1-json-redirect-options": {
+    "items": [
+      {
+        "name": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ],
+        "address": [
+          104,
+          116,
+          116,
+          112,
+          115,
+          58,
+          47,
+          47,
+          102,
+          97,
+          108,
+          108,
+          98,
+          97,
+          99,
+          107,
+          45,
+          103,
+          101,
+          116,
+          46,
+          116,
+          101,
+          115,
+          116,
+          47,
+          116,
+          111,
+          99,
+          63,
+          115,
+          108,
+          111,
+          116,
+          61,
+          49,
+          44,
+          123,
+          34,
+          104,
+          101,
+          97,
+          100,
+          101,
+          114,
+          115,
+          34,
+          58,
+          123,
+          34,
+          88,
+          45,
+          84,
+          111,
+          99,
+          34,
+          58,
+          34,
+          111,
+          114,
+          105,
+          103,
+          105,
+          110,
+          97,
+          108,
+          34,
+          125,
+          125
+        ],
+        "tag": [
+          116,
+          97,
+          103
+        ],
+        "volume": [
+          102,
+          97,
+          108,
+          115,
+          101
+        ],
+        "vip": [
+          116,
+          114,
+          117,
+          101
+        ],
+        "pay": [
+          116,
+          114,
+          117,
+          101
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "tag:;volume:;vip:https://fallback-get.test/toc?slot\u003d1,{\"headers\":{\"X-Toc\":\"original\"}};pay:https://fallback-get.test/toc?slot\u003d1,{\"headers\":{\"X-Toc\":\"original\"}};",
+      "count": "0",
+      "vipCount": "1",
+      "payCount": "1"
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-upper-tag": {
+    "items": [
+      {
+        "value": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-mixed-url": {
+    "items": [
+      {
+        "value": [
+          47,
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-key-case": {
+    "items": [
+      {
+        "value": [
+          85,
+          80,
+          124,
+          108,
+          111,
+          119,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-reverse-once": {
+    "items": [
+      {
+        "value": [
+          50,
+          124,
+          85,
+          80,
+          124,
+          49
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "2",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-lower-control": {
+    "items": [
+      {
+        "value": [
+          99,
+          104,
+          97,
+          112,
+          116,
+          101,
+          114
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-regex-marker": {
+    "items": [
+      {
+        "value": [
+          120
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-put-marker": {
+    "items": [
+      {
+        "value": [
+          85,
+          80
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  },
+  "h2-json-list-raw": {
+    "items": [
+      {
+        "value": [
+          65,
+          32,
+          38,
+          97,
+          109,
+          112,
+          59,
+          97,
+          109,
+          112,
+          59
+        ]
+      }
+    ],
+    "sourceVariables": {
+      "trace": "",
+      "count": "0",
+      "vipCount": "",
+      "payCount": ""
+    },
+    "errorType": null,
+    "errorUnits": null
+  }
+}
