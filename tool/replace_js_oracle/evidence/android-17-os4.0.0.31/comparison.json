@@ -15,7 +15,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-title-scope",
@@ -29,7 +34,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-match-and-capture",
@@ -43,7 +53,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-binding-surface",
@@ -64,7 +79,12 @@
         }
       ],
       "policy": "Approved boundary (#49): frozen binds only the complete match as `result`; the product evaluates through the approved source script facade, whose documented globals are broader.",
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-ordering-with-literal",
@@ -78,7 +98,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-literal-branch-prefix",
@@ -92,7 +117,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-disabled",
@@ -106,7 +136,12 @@
         "rulesDisabledByRun": "pass"
       },
       "differences": [],
-      "productNotices": []
+      "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "js-error",
@@ -121,8 +156,13 @@
       },
       "differences": [],
       "productNotices": [
-        "替换规则「js-error」出错：js"
-      ]
+        "replaceRuleFailed(js-error, js: Error: boom\n    at <eval> (<input>:1:10)\n    at <anonymous> (eval_script:9:35)\n    at call (native)\n    at <anonymous> (eval_script:10:73)\n    at <eval> (eval_script:684:1))"
+      ],
+      "noticeCaptureIntegrity": {
+        "status": "pass",
+        "reason": "The product run captured the corpus-required notice."
+      },
+      "noticeChannelComparison": "notCompared"
     },
     {
       "id": "backup-rule-1",
@@ -137,6 +177,11 @@
       },
       "differences": [],
       "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared",
       "backupRule": {
         "id": 1,
         "name": "#01 数字标题#JS",
@@ -159,6 +204,11 @@
       },
       "differences": [],
       "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared",
       "backupRule": {
         "id": 2,
         "name": "#02 全角字符#JS",
@@ -181,6 +231,11 @@
       },
       "differences": [],
       "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared",
       "backupRule": {
         "id": 3,
         "name": "#03 其他字符#JS",
@@ -203,6 +258,11 @@
       },
       "differences": [],
       "productNotices": [],
+      "noticeCaptureIntegrity": {
+        "status": "notCompared",
+        "reason": "The corpus does not require a product notice on this row."
+      },
+      "noticeChannelComparison": "notCompared",
       "backupRule": {
         "id": 4,
         "name": "#04 星号修复#JS",
@@ -232,8 +292,13 @@
       ],
       "policy": "ADR 0011 / #17: the frozen reader disables the timed-out rule, replaces the content with the rule name plus the timeout exception text and schedules appCtx.restart(); the product reports the rule, disables it for the caller and keeps the original text.",
       "productNotices": [
-        "替换规则「js-timeout」超时（200 毫秒），已停用"
+        "replaceRuleTimedOut(js-timeout, 200)"
       ],
+      "noticeCaptureIntegrity": {
+        "status": "pass",
+        "reason": "The product run captured the corpus-required notice."
+      },
+      "noticeChannelComparison": "notCompared",
       "timeoutObserved": true,
       "restartObservation": "not-demonstrated: a completed call cannot show the 3 s appCtx.restart() that the frozen handler only schedules while its worker is still active; no input was amplified",
       "timeoutCoverage": "observed: the frozen run disabled the timed-out rule and injected the rule name plus the exception text"
@@ -293,11 +358,11 @@
           "js-returned-text"
         ]
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　正文【已净化】开始【已净化】结束。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-title-scope",
@@ -307,11 +372,11 @@
         ],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第[1章] 开端",
       "content": "　　正文内容。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-match-and-capture",
@@ -321,11 +386,11 @@
           "js-match-and-capture"
         ]
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　共[20字|20|$1|${name}|\\1]，另有[300字|300|$1|${name}|\\1]。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-binding-surface",
@@ -335,11 +400,11 @@
           "js-binding-surface"
         ]
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　result=string $1=undefined $name=undefined book=object source=object java=object sourceKey=string",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-ordering-with-literal",
@@ -351,11 +416,11 @@
           "literal-third"
         ]
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　乙丁。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-literal-branch-prefix",
@@ -365,11 +430,11 @@
           "literal-branch-prefix"
         ]
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　这里有@js:\"X\"。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-disabled",
@@ -377,11 +442,11 @@
         "title": [],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　正文广告。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-error",
@@ -391,13 +456,13 @@
           "js-error"
         ]
       },
-      "notices": [
-        "替换规则「js-error」出错：js"
-      ],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　正文广告。",
-      "status": "observed"
+      "status": "observed",
+      "notices": [
+        "replaceRuleFailed(js-error, js: Error: boom\n    at <eval> (<input>:1:10)\n    at <anonymous> (eval_script:9:35)\n    at call (native)\n    at <anonymous> (eval_script:10:73)\n    at <eval> (eval_script:684:1))"
+      ]
     },
     {
       "id": "backup-rule-1",
@@ -405,11 +470,11 @@
         "title": [],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第十二章",
       "content": "　　正文内容。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "backup-rule-2",
@@ -417,11 +482,11 @@
         "title": [],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　ＡＢＣ１２３．",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "backup-rule-3",
@@ -429,11 +494,11 @@
         "title": [],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　他说：“你好”…",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "backup-rule-4",
@@ -441,11 +506,11 @@
         "title": [],
         "content": []
       },
-      "notices": [],
       "rulesDisabledByRun": [],
       "title": "第一章",
       "content": "　　他想说些ꁘꁘ的话。",
-      "status": "observed"
+      "status": "observed",
+      "notices": []
     },
     {
       "id": "js-timeout",
@@ -455,25 +520,26 @@
           "js-timeout"
         ]
       },
-      "notices": [
-        "替换规则「js-timeout」超时（200 毫秒），已停用"
-      ],
       "rulesDisabledByRun": [
         "js-timeout"
       ],
       "title": "第一章",
       "content": "　　正文广告。",
-      "status": "observed"
+      "status": "observed",
+      "notices": [
+        "replaceRuleTimedOut(js-timeout, 200)"
+      ]
     }
   ],
-  "librarySha256": "b7d5a70874f6e3c8fa067fbf442fa158d6d2b264309c40cf4c9b995250bb31f1",
+  "librarySha256": "c708fc369cac775a7109374099932208fd6a309b3c3cc9532e201551d3731a2c",
   "goldenSha256": "3cb818c8164aa2d044d0fb02bf951167eedfa67dc7cafaf66f36c2f46fbb89e8",
-  "productCommit": "3bd4c85c90b70bd282cd14e908fb8288e3eee1ef",
-  "recordedAt": "2026-09-21T11:18:10.941530Z",
+  "productCommit": "7f192cea8441190b24b2361ebd3b85b636ddcd98",
+  "productWorkingTreeStatus": "M test/replace_js_oracle_compare_test.dart\n M tool/replace_js_oracle/README.md\n M tool/replace_js_oracle/compare.dart\n M tool/replace_js_oracle/evidence/android-17-os4.0.0.31/comparison.json\n?? test/replace_js_oracle_notice_test.dart",
+  "recordedAt": "2026-10-13T15:36:11.535693Z",
   "sourceHashes": {
-    "lib/source/content_processing.dart": "43e2f638037edc95c431ab8d88bf95ab78f55aa4de063744cb49e3df280c633b",
-    "lib/source/java_regex.dart": "e91e43f9f594e8cd190193c8af40f79c429c1820d0a5f41ed9e28d9dc614e037",
-    "lib/source/js_source_runtime.dart": "bc77e0c324f7989b4049182cbaf8d7d239dec34fdffcadc1b6c54ab33fad8bee",
-    "tool/replace_js_oracle/compare.dart": "5cb6628b0a79831a641de13e3553d94b0d45211bb53e9ceee89fcb0261e0ad8b"
+    "lib/source/content_processing.dart": "4099ecda3cdedafb378bfb84cb208047cd4a9d02c2f628035aa4ef8922427918",
+    "lib/source/java_regex.dart": "e8e91106a4a42c5aa93cabd890a24c3fcd2f123cfe75ccf9bd4a6d95929428a1",
+    "lib/source/js_source_runtime.dart": "c65ff46d5938a46e726d70aa4ef960159b465fc16adfae269d288aad5b75e9a2",
+    "tool/replace_js_oracle/compare.dart": "1233b6242aa6e550b2837607c9149df2aa43dbc9aef03bc97d69bfaf185396b1"
   }
 }

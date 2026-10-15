@@ -25,13 +25,13 @@ String sha256File(File file) => SHA256Digest()
 const _policyRows = {
   'js-timeout':
       'ADR 0011 / #17: the frozen reader disables the timed-out rule, replaces '
-          'the content with the rule name plus the timeout exception text and '
-          'schedules appCtx.restart(); the product reports the rule, disables it '
-          'for the caller and keeps the original text.',
+      'the content with the rule name plus the timeout exception text and '
+      'schedules appCtx.restart(); the product reports the rule, disables it '
+      'for the caller and keeps the original text.',
   'js-binding-surface':
       'Approved boundary (#49): frozen binds only the complete match as `result`; '
-          'the product evaluates through the approved source script facade, whose '
-          'documented globals are broader.',
+      'the product evaluates through the approved source script facade, whose '
+      'documented globals are broader.',
 };
 
 /// Only absent evidence becomes not-run. Invalid evidence fails closed. Policy
@@ -82,10 +82,39 @@ Map<String, Object?> compareRows(
     final differences = <Map<String, Object?>>[];
     final observations = <String, Object?>{};
     final policy = _policyRows[input['id']];
+    final frozenObserved = expected?['status'] == 'observed';
+    final declaredObservations = input['observations'] as List;
+    final requiresErrorNotice = declaredObservations.contains(
+      'error-reporting',
+    );
+    final requiresTimeoutNotice = declaredObservations.contains(
+      'timeout-observation',
+    );
+    final requiresNotice = requiresErrorNotice || requiresTimeoutNotice;
+    final notices = actual['notices'];
+    final validNotices =
+        notices is List &&
+        notices.isNotEmpty &&
+        notices.every((notice) => notice is String && notice.trim().isNotEmpty);
+    // This checks the product capture only. The frozen harness cannot observe
+    // its notice channel, so neither notice text nor channel equality is proved.
+    final noticeCaptureStatus = !frozenObserved
+        ? 'not-run'
+        : !requiresNotice
+        ? 'notCompared'
+        : !validNotices ||
+              (requiresTimeoutNotice && expected?['timeoutObserved'] != true)
+        ? 'fail'
+        : 'pass';
     // Every call records title, content, selection and the rules the run itself
     // disabled, so a cross-scope replacement or a disabled rule cannot hide in
     // an unobserved field.
-    for (final field in ['title', 'content', 'selection', 'rulesDisabledByRun']) {
+    for (final field in [
+      'title',
+      'content',
+      'selection',
+      'rulesDisabledByRun',
+    ]) {
       if (expected == null || expected['status'] != 'observed') {
         observations[field] = 'not-run';
         continue;
@@ -107,6 +136,8 @@ Map<String, Object?> compareRows(
         ? 'fail'
         : expected == null || expected['status'] != 'observed'
         ? 'not-run'
+        : noticeCaptureStatus == 'fail'
+        ? 'fail'
         : input['id'] == 'js-timeout'
         ? 'notCompared'
         : differences.isEmpty
@@ -124,6 +155,19 @@ Map<String, Object?> compareRows(
       'differences': differences,
       'policy': ?policy,
       'productNotices': actual['notices'] ?? const <String>[],
+      'noticeCaptureIntegrity': {
+        'status': noticeCaptureStatus,
+        'reason': !frozenObserved
+            ? 'No observed frozen row authorizes the product integrity check.'
+            : !requiresNotice
+            ? 'The corpus does not require a product notice on this row.'
+            : !validNotices
+            ? 'The product run must capture a nonempty list of nonblank notices.'
+            : requiresTimeoutNotice && expected?['timeoutObserved'] != true
+            ? 'The frozen row must have timeoutObserved == true.'
+            : 'The product run captured the corpus-required notice.',
+      },
+      'noticeChannelComparison': 'notCompared',
       if (input['id'] == 'js-timeout') ...{
         'timeoutObserved': expected?['timeoutObserved'],
         'restartObservation': expected?['restartObservation'] ?? 'not-run',
@@ -226,9 +270,6 @@ Future<List<Map<String, Object?>>> observeProduct(
         'title': selected.titleRules.map((rule) => rule.name).toList(),
         'content': selected.contentRules.map((rule) => rule.name).toList(),
       },
-      // The code and its arguments (#72), not the words of one interface:
-      // this artifact is evidence, and it must not depend on a locale.
-      'notices': [for (final notice in notices) notice.toString()],
       'rulesDisabledByRun': disabled,
     };
     rows.add(row);
@@ -245,6 +286,10 @@ Future<List<Map<String, Object?>>> observeProduct(
     } catch (error) {
       row['status'] = 'error';
       row['error'] = '$error';
+    } finally {
+      // Capture after both processors, including notices emitted before a
+      // later error. The code and arguments (#72) remain locale independent.
+      row['notices'] = [for (final notice in notices) notice.toString()];
     }
   }
   return rows;
@@ -281,6 +326,10 @@ Future<void> main(List<String> args) async {
       'productCommit': (await Process.run('git', [
         'rev-parse',
         'HEAD',
+      ])).stdout.toString().trim(),
+      'productWorkingTreeStatus': (await Process.run('git', [
+        'status',
+        '--porcelain=v1',
       ])).stdout.toString().trim(),
       'recordedAt': DateTime.now().toUtc().toIso8601String(),
       'sourceHashes': {
