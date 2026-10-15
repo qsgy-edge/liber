@@ -485,61 +485,53 @@ void main() {
     },
   );
 
-  test(
-    'unknown snapshot fields and mutations refuse by full member name',
-    () async {
-      for (final member in ['book.missing', 'chapter.missing']) {
-        await expectLater(
-          run(
-            member,
-            input: {
-              'book': {'name': 'Book'},
-              'chapter': {'title': 'Chapter'},
-            },
-          ),
-          throwsA(
-            isA<SourceScriptError>()
-                .having((e) => e.category, 'category', 'policy')
-                .having((e) => e.message, 'member', contains(member)),
-          ),
-        );
-      }
-      // The frozen `variable` property has a setter, but its `variableMap` is
-      // parsed lazily, so the frozen itself does not see a directly assigned
-      // text; writes go through `putVariable`, and an assignment refuses by name.
-      for (final member in ['book.variable', 'chapter.variable']) {
-        await expectLater(
-          run(
-            '$member = \'{"k":"v"}\'',
-            input: {
-              'book': {'name': 'Book'},
-              'chapter': {'title': 'Chapter'},
-            },
-          ),
-          throwsA(
-            isA<SourceScriptError>()
-                .having((e) => e.category, 'category', 'policy')
-                .having((e) => e.message, 'member', contains(member)),
-          ),
-        );
-      }
+  test('unknown snapshot fields and mutations refuse by full member name', () async {
+    for (final member in ['book.missing', 'chapter.missing']) {
       await expectLater(
         run(
-          'book.name = "changed"',
+          member,
           input: {
             'book': {'name': 'Book'},
+            'chapter': {'title': 'Chapter'},
           },
         ),
         throwsA(
-          isA<SourceScriptError>().having(
-            (e) => e.message,
-            'member',
-            contains('book.name'),
-          ),
+          isA<SourceScriptError>()
+              .having((e) => e.category, 'category', 'policy')
+              .having((e) => e.message, 'member', contains(member)),
         ),
       );
-    },
-  );
+    }
+    // The frozen `variable` property has a setter, but its `variableMap` is
+    // parsed lazily, so the frozen itself does not see a directly assigned
+    // text; writes go through `putVariable`, and an assignment refuses by name.
+    for (final member in ['book.variable', 'chapter.variable']) {
+      await expectLater(
+        run(
+          '$member = \'{"k":"v"}\'',
+          input: {
+            'book': {'name': 'Book'},
+            'chapter': {'title': 'Chapter'},
+          },
+        ),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((e) => e.category, 'category', 'policy')
+              .having((e) => e.message, 'member', contains(member)),
+        ),
+      );
+    }
+    await expectLater(
+      run('book.name = "changed"', input: {'book': {'name': 'Book'}}),
+      throwsA(
+        isA<SourceScriptError>().having(
+          (e) => e.message,
+          'member',
+          contains('book.name'),
+        ),
+      ),
+    );
+  });
 
   for (final json in [true, false]) {
     test(
@@ -644,11 +636,7 @@ void main() {
         throwsA(
           isA<SourceScriptError>()
               .having((error) => error.category, 'category', 'policy')
-              .having(
-                (error) => error.message,
-                'member',
-                contains('java.getString'),
-              ),
+              .having((error) => error.message, 'member', contains('java.getString')),
         ),
       );
       // The two forms this slice leaves out refuse by name, in the frozen's own
@@ -659,11 +647,7 @@ void main() {
         throwsA(
           isA<SourceScriptError>()
               .having((error) => error.category, 'category', 'policy')
-              .having(
-                (error) => error.message,
-                'form',
-                contains('unescape=false'),
-              ),
+              .having((error) => error.message, 'form', contains('unescape=false')),
         ),
       );
       for (final member in ['java.getString', 'java.getStringList']) {
@@ -697,16 +681,8 @@ void main() {
         throwsA(
           isA<SourceScriptError>()
               .having((error) => error.category, 'category', 'policy')
-              .having(
-                (error) => error.message,
-                'member',
-                contains('java.readFile'),
-              )
-              .having(
-                (error) => error.message,
-                'deferred',
-                contains('deferred'),
-              ),
+              .having((error) => error.message, 'member', contains('java.readFile'))
+              .having((error) => error.message, 'deferred', contains('deferred')),
         ),
       );
     },
@@ -820,7 +796,10 @@ void main() {
       );
       expect(htmlBook.title, '书名');
       expect(htmlBook.kind, '完结');
-      expect((await htmlPipeline.chapter(htmlChapters.single)).text, '正文');
+      expect(
+        (await htmlPipeline.chapter(htmlChapters.single)).text,
+        '正文',
+      );
       htmlPipeline.cancel();
       final refusalPipeline = openBookSourcePipeline(
         <String, dynamic>{...htmlSource}
