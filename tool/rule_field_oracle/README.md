@@ -430,3 +430,72 @@ These checks include source/policy/error/identity controls and are not460 parity
 rows. Old378/45/106 and unchanged Rust34 including6/c619 DLL retain their actual
 historical scopes. Fresh review, integration, scratch driven UI, other platforms
 and downstream release remain controller gates; prior residuals remain explicit.
+
+## Empty-address fallback turn and GET marker case
+
+`FallbackGetCaseOracle.kt` adds 28 repeated actual auxiliary observations:
+12 fallback rows and 16 braced-marker rows over the unchanged preserved
+classes/JARs. Chapter title/url members suffice; flags are getter strings and
+source-transcribed caller decisions, not an expanded Chapter entity. Tag and
+volume see the original empty/raw URL; VIP/pay see the fallback published after
+volume. Volume fallback uses title plus the original item index, including a
+preceding skipped item. Nonempty raw URLs and their option tails stay raw.
+Error traces retain the state up to the failing getter.
+
+```sh
+python tool/rule_field_oracle/run_fallback_get_case.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+python tool/rule_field_oracle/run_relative_fallback.py --compiled <preserved-oracle-v8-dir> --output <external-scratch>
+```
+
+The marker comparison ignores case while key bytes retain their original case:
+`@GET:{MiXeD}` reads MiXeD, not mixed. Actual upper/mixed braced rows cover title,
+URL, stored keys, reverse evaluation/once counts, regex replacement, nested put
+and raw kind lists. Four bare-marker rows are deliberate product-extension
+controls, not frozen parity. Existing scalar/list/preflight/put boundaries stay.
+The initial full focused MCP run selected 34 with 10 pass/24 fail; the minimal
+H1/H2 changes then passed 34/34. Two separate empty-TOC controls passed after a
+preserved missing-import loading failure with zero behavior rows.
+
+The first ordinary fallback uses the original Book address if TOC text is empty;
+subsequent pages use their own address text. Response redirects do not replace
+this getter text. Final normalized URLs, returned/stored rawAddress, options,
+volume/flags/dedup, pagination and cleanup retain their existing boundaries.
+
+`RelativeFallbackOracle.kt` adds four repeated actual observations: initial and
+next-page relative addresses, each with and without header options. Actual
+isUrl getters use the preserved NetworkUtils transcription and java.net.URL
+algorithm to produce absolute original address text with the option tail.
+Then the source-transcribed empty-URL fallback is read by a real getter. This
+is not whole BookChapterList, final URI or all URL-DSL/Unicode parity.
+
+The first relative harness compile failed by chaining setRedirectUrl, whose
+return is URL?, not AnalyzeRule. Its exact failed inputs/logs remain; the initial
+Unit-return inference was corrected. One approved retry split only two
+assignments, then compile0/run0 produced the four observations. Original 28-row
+inputs/output and original classes/stubs/JARs were not changed or rerun.
+The first relative product invocation had an outer MCP timeout but a complete
+reporter with one identity pass/eight real pipeline failures and normal teardown;
+that is reporter evidence, not a returned API pass. A later source checkpoint
+was delivered normally before external verification.
+
+Each pipeline now resolves only temporary ordinary fallback text against the
+request's pre-request base and appends the exact original option tail. Already
+absolute and empty-Book branches preserve their text; volume uses title+index.
+A per-page late-final value is evaluated only when an ordinary empty chapter URL
+needs it. No request or script is repeated; final address carriers are untouched.
+The separate relative suite passed 9/9 with a returned MCP result.
+
+Controller verification on checkpoint3dc9a2bd and proved-equivalent formatting
+passed 505 unique product tests: relative9 + H1/H2/empty36 + old153/100/85/43/48/31.
+All eight reporters completed with success, 17 normal teardowns and no errors.
+HTML45 and host106 gates exited0, with no host expectation change this round.
+Exact six-file MCP analysis returned No errors after two preserved no-result
+60-second timeouts and a successful single-file recovery probe. One initial
+summary checker compared three formatted tests against pre-format hashes;
+that single checker failure is separate from product results. The corrected
+mapping proves 19 retained inputs byte-identical and three tests format-equivalent.
+Final tokens/quoted strings connect verified bytes to the candidate; no old
+receipt is rewritten as a final-HEAD execution.505 includes controls, extensions,
+identity and errors, not505 parity rows. Matching c619 DLL/native/generated and
+old Rust34 including6 remain unchanged at their original scope. Fresh review,
+integration, scratch driven UI, platforms and downstream release remain pending.

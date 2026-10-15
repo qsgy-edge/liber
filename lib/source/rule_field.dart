@@ -454,6 +454,7 @@ class RuleField {
         // the ticket names is accepted too and reads the same variable (the
         // frozen reader leaves that spelling in the rule as literal text, so
         // this is a deliberate, recorded extension).
+        // Normalize only the marker; slice the original token to keep key case.
         final key = token.toLowerCase().startsWith('@get:{')
             ? token.substring(6, token.length - 1)
             : token.substring(5);

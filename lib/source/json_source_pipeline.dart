@@ -1248,9 +1248,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 ),
               );
               // Tag/volume observe the raw address; VIP/pay observe its fallback.
-              publishTocChapter(name, chapterUrl.isEmpty
-                  ? (isVolume ? '$name$index' : ordinaryFallbackAddress)
-                  : chapterUrl);
+              publishTocChapter(
+                name,
+                chapterUrl.isEmpty
+                    ? (isVolume ? '$name$index' : ordinaryFallbackAddress)
+                    : chapterUrl,
+              );
               if (name.isEmpty) continue;
               final isVip = sourceIsTrue(
                 await _optional(

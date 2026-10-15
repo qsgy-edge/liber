@@ -1748,9 +1748,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               final volumeValue = await fieldValue('isVolume', index);
               final isVolume = sourceIsTrue(volumeValue);
               // Tag/volume observe the raw address; VIP/pay observe its fallback.
-              publishTocChapter(title, address.isEmpty
-                  ? (isVolume ? '$title$index' : ordinaryFallbackAddress)
-                  : address);
+              publishTocChapter(
+                title,
+                address.isEmpty
+                    ? (isVolume ? '$title$index' : ordinaryFallbackAddress)
+                    : address,
+              );
               // URL/tag/volume complete even for a skipped item; VIP/pay belong
               // inside the frozen nonempty-title condition (BookChapterList:244).
               if (title.isEmpty) continue;
