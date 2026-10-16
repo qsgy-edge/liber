@@ -1,4 +1,4 @@
-# Raw attribute evidence retained for product red preparation
+# Raw attribute evidence
 
 Five files are exact byte copies of the separate authorized
 `source-checkpoint/collection-attribute-probe-v1/` execution. `pins.json` binds
@@ -22,7 +22,8 @@ to existing Jsoup.parse(src).select(css), retaining code-unit outputs to isolate
 existing DOM bridge attribute/text/serialization collisions. Those two controls
 are equivalent-source product controls, not extra frozen runs.
 
-All tests compile against the current old API; no future enum or generated
-binding is referenced. Product execution, new native/FRB implementation and
-matching-DLL verification remain with controller. No whole-entity/device/platform
-or mutable-Java-Elements compatibility claim is made.
+The candidate's matching Windows library passed these cases within its 47-case
+element suite and 11-case adapter suite. Raw attributes use a separate native read
+from text/serialization. Independent review, integration, a new Windows
+app/scratch driven run and platform acceptance remain pending. No whole-entity,
+new-device or mutable-Java-Elements compatibility claim is made.

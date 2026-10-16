@@ -22,8 +22,9 @@ new size/Java mutation method is introduced. A separate identity test binds the
 copied raw bytes; existing 42 test definitions and all observed outputs remain
 unchanged.
 
-This is an unverified source checkpoint. Isolated native adapter units and
-FRB 2.12.0 generation are recorded externally; Dart/runtime verification needs
-a new matching FJS DLL. The previous bundle must not be used with the appended
-output enum. Controller owns matching build, actual MCP green, adjacent
-regressions, independent review, integrated Windows scratch and platform gates.
+The candidate's matching Windows library passed the 47-case element suite and
+11-case adapter suite, including these adapted controls. Native HTML/runtime
+checks passed 38/643, with official FRB 2.12.0 generation retained separately.
+Independent review, integration, a new Windows app/scratch driven run and
+remaining platform acceptance are pending. These checks do not establish new
+device execution or Java collection/mutator parity.

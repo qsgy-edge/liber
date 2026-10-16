@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "C:\\Users\\17945\\AppData\\Local\\Programs\\Android Studio\\jbr\\bin\\java.exe",
+    "-Xms16m",
+    "-Xmx256m",
+    "-Dfile.encoding=UTF-8",
+    "-cp",
+    "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\classes;C:\\Users\\17945\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlin\\kotlin-stdlib\\2.2.20\\5380b19fa1924399b62ce3a1faffebb2b4f82272\\kotlin-stdlib-2.2.20.jar;C:\\Users\\17945\\.gradle\\caches\\modules-2\\files-2.1\\org.jetbrains.kotlinx\\kotlinx-coroutines-core-jvm\\1.9.0\\9beade4c1c1569e4f36cbd2c37e02e3e41502601\\kotlinx-coroutines-core-jvm-1.9.0.jar;C:\\Users\\17945\\.gradle\\caches\\modules-2\\files-2.1\\com.google.code.gson\\gson\\2.11.0\\527175ca6d81050b53bdd4c457a6d6e017626b0e\\gson-2.11.0.jar;C:\\Users\\17945\\.gradle\\caches\\modules-2\\files-2.1\\com.squareup.okio\\okio-jvm\\3.4.0\\4e8bd78a52ab935ce383d0092646922154295e54\\okio-jvm-3.4.0.jar;C:\\Users\\17945\\.gradle\\caches\\modules-2\\files-2.1\\androidx.annotation\\annotation-jvm\\1.9.1\\b17951747e38bf3986a24431b9ba0d039958aa5f\\annotation-jvm-1.9.1.jar;C:\\Users\\17945\\AppData\\Local\\Android\\sdk\\platforms\\android-35\\android.jar;C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\jars\\commons-lang3-3.17.0.jar;C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\jars\\commons-text-1.13.0.jar;C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\jars\\jsoup-1.16.2.jar;C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\jars\\JsoupXpath-2.5.3.jar;C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\jars\\rhino-1.8.0.jar",
+    "tool.htmlelements.GetElementsOracleKt",
+    "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\controller-native-collection\\node-css-scope-probe-v1\\fixtures.json",
+    "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\controller-native-collection\\node-css-scope-probe-v1\\observed.json"
+  ],
+  "cwd": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\batch26\\105\\controller-native-collection\\node-css-scope-probe-v1",
+  "shell": false,
+  "compilation": "not-run",
+  "oldRowsRerun": false,
+  "selectedRows": 1
+}

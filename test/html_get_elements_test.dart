@@ -42,6 +42,9 @@ final _attributeRows = (_attributeFixtures['rows'] as List).cast<Map>();
 const _chainOracle = '$_oracle/collection-result-chain-probe-v1';
 final _chainFixtures = jsonDecode(File('$_chainOracle/fixtures.json').readAsStringSync()) as Map;
 final _chainObserved = jsonDecode(File('$_chainOracle/observed.json').readAsStringSync()) as Map;
+const _nodeScopeOracle = '$_oracle/node-css-scope-probe-v1';
+final _nodeScopeFixtures = jsonDecode(File('$_nodeScopeOracle/fixtures.json').readAsStringSync()) as Map;
+final _nodeScopeObserved = jsonDecode(File('$_nodeScopeOracle/observed.json').readAsStringSync()) as Map;
 
 Object? _collectionValue(String id) => (_collectionGolden['rows'] as List)
     .cast<Map>().singleWhere((row) => row['id'] == id)['value'];
@@ -276,19 +279,22 @@ void main() {
       )), [3, 'A', 'A one B two C three', '/a', 'one', null]);
     });
 
-    test('reordered merged nodes retain original ancestor identity', () async {
+    test('reordered merged nodes retain CSS scope and original sibling positions', () async {
       final books = await _search(
         list: '@js:var es=java.getElements("#second .book&&#first .book"); '
             '[es[2],es[0],es[1]]',
-        author: '@js:JSON.stringify([src.attr("data-name"),'
+        author: '@js:JSON.stringify([String(src.attr("data-name")),'
             'src.select("#first .book").length,'
-            'src.select("#second .book").length])',
+            'src.select("#second .book").length,'
+            'src.select(":nth-child(2)").length,'
+            'src.select(":nth-child(1)").length])',
       );
       expect(books.map((book) => book.title), ['B', 'C', 'A']);
       expect(books.map((book) => book.url.path), ['/b', '/c', '/a']);
-      expect(books.map((book) => jsonDecode(book.author)).toList(), [
-        ['B', 1, 0], ['C', 0, 1], ['A', 1, 0],
-      ]);
+      // Equivalent item-boundary control over the actual frozen node counts;
+      // size() is adapted to length, including matching descendant counts.
+      expect(books.map((book) => jsonDecode(book.author)).toList(),
+          (_nodeScopeObserved['rows'] as List).single['value']);
     });
 
     test('list scripts bind the body as src and keep prior nodes as result', () async {
@@ -354,6 +360,7 @@ void main() {
       for (final (path, fixtures, observed, count) in [
         (_collectionOracle, _collectionFixtures, _collectionGolden, 8),
         (_attributeOracle, _attributeFixtures, _attributeGolden, 2),
+        (_nodeScopeOracle, _nodeScopeFixtures, _nodeScopeObserved, 1),
       ]) {
         final pins = jsonDecode(File('$path/pins.json').readAsStringSync()) as Map;
         for (final entry in (pins['files'] as Map).entries) {

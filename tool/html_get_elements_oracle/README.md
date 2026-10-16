@@ -1,9 +1,8 @@
 # HTML getElements retained host evidence (#105)
 
-These are byte-for-byte copies of the successful, already executed v2 artifacts
-from `C:/Users/17945/AppData/Local/liber-evidence/batch26/105/`. They were copied
-for repeatable product comparisons; this preparation did not execute a JVM,
-compile, download, build, or run product tests.
+These files retain the actual successful v2 host-JVM execution for repeatable
+product comparisons. Inputs, output and receipts preserve their original bytes;
+product results do not define or rewrite the golden.
 
 - `legal-string-v2-fixtures.json`: synthetic input and the 12 actual scripts.
 - `legal-string-v2-golden.json`: actual frozen host-JVM results, never generated
@@ -43,5 +42,15 @@ author field after the same selectFirst context binding as the harness. JSON
 outputs are decoded and compared directly with the retained golden values.
 Separate controls describe product guards, refusal boundaries, collection
 usability and original-document identity; they are not new frozen observations.
-Product execution and the controller's actual red/green remain **not-run** in
-this preparation. Frozen Android/device execution remains **not-run**.
+The Windows candidate was checked with a matching native library: 47 element
+cases and 11 adapter cases passed within 629 distinct Dart regression cases;
+all 25 teardowns succeeded. Native HTML/runtime checks passed 38/643 and all 17
+runtime gates passed, including 106 host-surface checks. Six changed Dart files
+were analyzed without errors. Final layout-only edits retain the verified token
+and string-literal lexemes, excluding comments and optional trailing commas.
+
+The CI HTML row checks 45 fixture expectations and records frozen comparison as
+not-run. A separate comparison against the retained Android device golden passed
+45/45; it is not a new device execution or whole-feature/platform parity claim.
+Independent review, integration, a new Windows app/scratch driven run and the
+remaining platform acceptance are pending.

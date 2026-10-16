@@ -1,4 +1,4 @@
-# Collection getter evidence retained for product red preparation
+# Collection getter evidence
 
 Five files in this directory are exact byte copies of the existing successful
 `source-checkpoint/collection-probe-v1/` execution: input, actual observed output,
@@ -17,12 +17,10 @@ selection identity deduplication.
 `HTML getElements collection source controls` has two equivalent-producer tests:
 the missing/empty attribute cases use Jsoup.parse(src).select(css), and the
 overlap case removes the getter's @CSS: mode prefix when passing the same raw CSS
-to Jsoup.select. These controls isolate existing façade/native reads while getter
-collection wrapping is unfinished. Their adapted scripts are not additional
-frozen executions. No new native enum/API is referenced by the prepared tests.
+to Jsoup.select. These controls isolate façade/native reads from getter
+collection wrapping. Their adapted scripts are not additional frozen executions.
 
-Product comparison, actual MCP selected/pass/fail counts, new native/FRB source,
-matching-library builds and independent review remain not-run/pending controller.
-The original full-file 26-row product result remains 9 pass / 17 fail, separately
-from the controller's corrected JSON-key and host controls. Host-JVM rows do not
-establish Android/device, entity, mutation or platform parity.
+The candidate's matching Windows library passed these cases within the 47-case
+element suite and 11-case adapter suite. Independent review, integration, a new
+Windows app/scratch driven run and platform acceptance remain pending. Host-JVM
+rows do not establish Android-device, whole-entity or Java-mutator parity.

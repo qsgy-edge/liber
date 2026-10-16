@@ -55,8 +55,8 @@ class SourceRuleRead {
   final String member;
   final SourceRuleForm form;
 
-  /// The rule text. Never empty: the frozen `TextUtils.isEmpty` branch answers
-  /// before any content is read, and the facade short-circuits it there.
+  /// The nonempty rule text; the façade handles empty rules before this read.
+  /// Its retained null/omitted getElements guard is a documented frozen mismatch.
   final String rule;
 
   /// The content object the rule is evaluated against: the analysis's own
