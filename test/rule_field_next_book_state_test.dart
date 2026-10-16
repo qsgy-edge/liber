@@ -174,7 +174,32 @@ void main() {
         } else if ('${row['shape']}'.startsWith('zero-')) {
           expect(
             failure,
-            isA<StateError>(),
+            isA<SourceStageDiagnostic>()
+                .having(
+                  (error) => error.stage,
+                  'stage',
+                  BookSourceStage.tableOfContents,
+                )
+                .having(
+                  (error) => error.kind,
+                  'failure kind',
+                  SourceStageFailureKind.extractionFailed,
+                )
+                .having(
+                  (error) => error.address,
+                  'safe address',
+                  '$_origin/toc',
+                )
+                .having(
+                  (error) => error.httpResponse?.statusCode,
+                  'HTTP status',
+                  200,
+                )
+                .having(
+                  (error) => error.httpResponse?.bodyByteLength,
+                  'unknown byte count',
+                  isNull,
+                ),
             reason:
                 'Existing empty-TOC policy remains; next/state must complete first',
           );

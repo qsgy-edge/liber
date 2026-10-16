@@ -368,6 +368,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       headers: Map<String, List<String>>.unmodifiable(headers),
       body: await decodeSourceResponseBody(raw, headers),
       url: url,
+      bodyByteLength: raw.length,
       // Only a caller that asked for bytes keeps them: the decoded body above
       // cannot carry binary data back (the verification-code image).
       bodyBytes: readBytes ? raw : null,

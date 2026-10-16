@@ -176,7 +176,7 @@ void main() {
           final value = await _run(
             runtime,
             'JSON.stringify([collectionToken,repairOwnedProbe()])',
-            input: {if (inputName != null) 'collectionToken': inputName},
+            input: {'collectionToken': ?inputName},
           );
           expect(jsonDecode(value as String), [
             inputName ?? 'library-owned',
