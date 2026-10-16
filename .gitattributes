@@ -72,3 +72,8 @@ tool/html_content_oracle/** text eol=lf
 tool/rule_field_oracle/** text eol=lf
 lib/source/html4_entities.dart text eol=lf
 packages/fjs/liber_html/tests/data/** text eol=lf
+
+# Preserve this oracle subtree's observed mixed LF/CRLF raw bytes.
+tool/html_get_elements_oracle/**/*.json -text
+tool/html_get_elements_oracle/**/*.log -text
+tool/html_get_elements_oracle/**/*.kt -text

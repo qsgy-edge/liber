@@ -1,0 +1,9 @@
+{
+  "files": {
+    "fixtures.json": "bc8b4e9799af5b6b709d22c7645e39ba6d1139c0996ef876f605f507da1fd127",
+    "observed.json": "6d37b35c087b1857b5005feb633c8ac145b4168d949f9925e8d771b3e5627380",
+    "manifest.json": "c87ba073b7054b35f9e36d2faf0bb8fb9663030291ea0d4fc5c01b995e9f19b8",
+    "stdout.log": "c04ea6a9e255580c2bb59b386fcc3afeff62f9561c722e40fedee2e6e599670c",
+    "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

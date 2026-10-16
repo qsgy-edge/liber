@@ -1,0 +1,38 @@
+{
+  "corpus": "HTML-COLLECTION-DECISION-01",
+  "html": "<div id=attrs-missing><i id=m0>missing</i><i id=m1 data-v=later>later</i></div><div id=attrs-empty><i id=e0 data-v=\"\">empty</i><i id=e1 data-v=later>later</i></div><section id=overlap><div id=inside><b id=leaf>leaf</b></div></section><div id=last><b id=tail>tail</b></div>",
+  "rows": [
+    {
+      "id": "attr-missing-first",
+      "script": "var es=java.getElements('#attrs-missing i'); JSON.stringify([es.length,es.attr('data-v'),es[0].attr('data-v'),es[1].attr('data-v'),es.text()])"
+    },
+    {
+      "id": "attr-empty-first",
+      "script": "var es=java.getElements('#attrs-empty i'); JSON.stringify([es.length,es.attr('data-v'),es[0].attr('data-v'),es[1].attr('data-v'),es.text()])"
+    },
+    {
+      "id": "overlapping-roots-select",
+      "script": "var es=java.getElements('@CSS:#overlap, #inside'); var roots=[]; for(var i=0;i<es.length;i++) roots.push(es[i].attr('id')); var bs=es.select('b'); var ids=[]; for(var i=0;i<bs.length;i++) ids.push(bs[i].attr('id')); JSON.stringify([es.length,roots,es.text(),bs.length,ids,bs.text()])"
+    },
+    {
+      "id": "duplicate-merged-roots-select",
+      "script": "var es=java.getElements('#inside&&#inside'); var roots=[]; for(var i=0;i<es.length;i++) roots.push(es[i].attr('id')); var bs=es.select('b'); var ids=[]; for(var i=0;i<bs.length;i++) ids.push(bs[i].attr('id')); JSON.stringify([es.length,roots,es.text(),bs.length,ids,bs.text()])"
+    },
+    {
+      "id": "reversed-merged-roots-select-order",
+      "script": "var es=java.getElements('#last&&#inside'); var roots=[]; for(var i=0;i<es.length;i++) roots.push(es[i].attr('id')); var bs=es.select('b'); var ids=[]; for(var i=0;i<bs.length;i++) ids.push(bs[i].attr('id')); JSON.stringify([roots,es.text(),bs.length,ids,bs.text()])"
+    },
+    {
+      "id": "empty-elements-methods",
+      "script": "var es=java.getElements('.missing'); JSON.stringify([es.length,es.attr('data-v'),es.text(),es.select('b').length,typeof es.attr,typeof es.text,typeof es.select])"
+    },
+    {
+      "id": "terminal-js-empty-array",
+      "script": "var es=java.getElements('<js>[]</js>'); JSON.stringify([es.length,typeof es.attr,typeof es.text,typeof es.select])"
+    },
+    {
+      "id": "terminal-js-reordered-node-array",
+      "script": "var es=java.getElements('#inside&&#last<js>[result[1],result[0]]</js>'); var ids=[]; for(var i=0;i<es.length;i++) ids.push(es[i].attr('id')); JSON.stringify([es.length,ids,typeof es.attr,typeof es.text,typeof es.select])"
+    }
+  ]
+}

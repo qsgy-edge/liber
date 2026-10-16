@@ -76,14 +76,12 @@ class SourceRuleRead {
 /// engine (ADR 0012's "three edits" seam).
 typedef SourceRuleEvaluator = Future<Object?> Function(SourceRuleRead read);
 
-/// The two read-only operations the minimal node façade (#100) performs over
-/// the product's own parsed HTML tree: the number of elements a rule selector
-/// matches, and one extracted value per match of the `dom` bridge member's
-/// `extract` payload.
-enum SourceDomOp { count, extract }
+/// Read-only operations over the product's HTML tree: selection count,
+/// text/serialization extraction and a distinct raw attribute read.
+enum SourceDomOp { count, extract, attribute }
 
 /// A selection step uses the preceding Elements job's final vector.
-typedef SourceDomSelectionStep = ({String rule, int? parentIndex});
+typedef SourceDomSelectionStep = ({String rule, int? parentIndex, bool cssSelect});
 
 /// Decodes the existing node descriptor at its untrusted input boundary.
 /// An empty path is the document façade; legacy __rule is one selection step.
@@ -98,7 +96,7 @@ List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
     }
     return rule == null
         ? const []
-        : [(rule: rule as String, parentIndex: null)];
+        : [(rule: rule as String, parentIndex: null, cssSelect: false)];
   }
   final selection = descriptor['__selection'];
   if (selection is! List) {
@@ -117,7 +115,11 @@ List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
         (index is! int || index < 0 || index > 0x7fffffff || steps.isEmpty)) {
       throw const SourceScriptError('host-input', 'invalid HTML parentIndex');
     }
-    steps.add((rule: step['rule'] as String, parentIndex: index as int?));
+    final cssSelect = step.containsKey('cssSelect') ? step['cssSelect'] : false;
+    if (cssSelect is! bool) {
+      throw const SourceScriptError('host-input', 'invalid HTML cssSelect');
+    }
+    steps.add((rule: step['rule'] as String, parentIndex: index as int?, cssSelect: cssSelect));
   }
   return steps;
 }
@@ -621,6 +623,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     bool checkResponse = false,
     SourceStageRequest? stage,
   }) async {
+    // Stage-only transport mode is consumed before any source-visible binding.
+    input = {...input};
+    final elementsResult = input.remove('__elementsResult') == true;
     final sourceRef = input['sourceKey'] is String
         ? input['sourceKey'] as String
         : '';
@@ -840,7 +845,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         await pending[id];
       };
       token.throwIfCancelled();
-      final wrapped = _wrap(source, input, checkResponse: checkResponse);
+      final wrapped = _wrap(source, input, checkResponse: checkResponse, elementsResult: elementsResult);
       final result = (await engine.evalScoped(
         id: executionId,
         source: wrapped,
@@ -1673,14 +1678,16 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     _ => null,
   };
 
-  static String _wrap(
+  String _wrap(
     String source,
     Map<String, Object?> input, {
     bool checkResponse = false,
-  }) => checkResponse
-      ? '__liberCheckResponse(__liberRun('
-            '($_facade)(${jsonEncode(input)}, true), ${jsonEncode(source)}))'
-      : '__liberRun(($_facade)(${jsonEncode(input)}), ${jsonEncode(source)})';
+    bool elementsResult = false,
+  }) {
+    final run = '__liberRun(($_facade), ${jsonEncode(input)}, ${jsonEncode(source)}, '
+        '$checkResponse, ${elementsResult && !checkResponse}, ${domEvaluator != null})';
+    return checkResponse ? '__liberCheckResponse($run)' : run;
+  }
 
   Future<String> _expandHostUrl(
     String rawUrl,
@@ -1748,6 +1755,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final op = switch ('${payload['op']}') {
       'count' => SourceDomOp.count,
       'extract' => SourceDomOp.extract,
+      'attribute' => SourceDomOp.attribute,
       _ => throw const SourceScriptError('host-method', 'dom op refused'),
     };
     final html = payload['html'];
@@ -1839,8 +1847,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           rule: rule,
           content: content,
           analysisContent: input['src'],
-          evaluateScript: (script, result) =>
-              _evaluateRuleScript(script, result, requestId, input, token),
+          evaluateScript: (script, result) => _evaluateRuleScript(
+            script, result, requestId, input, token,
+            elementsResult: form == SourceRuleForm.elements,
+          ),
         ),
       );
     } on SourceScriptError {
@@ -1868,12 +1878,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Object? result,
     BigInt requestId,
     Map<String, Object?> outerInput,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    bool elementsResult = false,
+  }) async {
     token.throwIfCancelled();
     final value = await evalBridgeRequestGlobal(
       id: requestId,
-      source: _wrap(script, {...outerInput, 'result': result}),
+      source: _wrap(script, {...outerInput, 'result': result}, elementsResult: elementsResult),
     );
     token.throwIfCancelled();
     final decoded = value.value;
@@ -2223,7 +2234,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// (`AnalyzeUrl.buildScriptBindings` plus `JsExtensions`), with the host
   /// half bridged into Dart.
   static const _facade = r'''
-(input, checkResponse) => {
+(input, checkResponse, collectionToken, htmlDom) => {
   const bridge = fjs.bridge_call;
   const call = (method, payload) =>
     JSON.parse(bridge(JSON.stringify({method: method, payload: payload}))).value;
@@ -2681,7 +2692,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (arguments.length > 1) throw new Error('java.getElements expects one argument');
       const text = ruleText(rule);
       if (text === '') return [];
-      return call('rule', {member:'java.getElements', form:'elements', rule:text});
+      return asDom(call('rule', {member:'java.getElements', form:'elements', rule:text}));
     },
     get: (...args) => {
       if (args.length === 1) {
@@ -2851,23 +2862,58 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (index !== null && index !== undefined &&
           (!Number.isInteger(index) || index < 0 || index > 2147483647 || position === 0))
         return domInvalid('invalid HTML parentIndex');
-      return index === null || index === undefined ? {rule:step.rule} : {rule:step.rule, parentIndex:index};
+      const cssSelect = Object.prototype.hasOwnProperty.call(step, 'cssSelect') ? step.cssSelect : false;
+      if (typeof cssSelect !== 'boolean') return domInvalid('invalid HTML cssSelect');
+      return {rule:step.rule, cssSelect:cssSelect,
+        ...(index === null || index === undefined ? {} : {parentIndex:index})};
     });
   }
-  const domRule = (selection, css) => [...selection, {rule:'@CSS:' + String(css)}];
+  const domRule = (selection, css) => [...selection, {rule:String(css), cssSelect:true}];
   const domFocus = (selection, index) => [...selection, {rule:':root', parentIndex:index}];
   const domCount = (html, selection) => Number(call('dom', {op:'count', html:html, selection:selection, extract:null})) || 0;
   const domValues = (html, selection, extract) =>
     call('dom', {op:'extract', html:html, selection:selection, extract:String(extract)});
+  const domAttribute = (html, selection, name) =>
+    domFirst(call('dom', {op:'attribute', html:html, selection:selection, extract:String(name)}));
   const domFirst = values => (values && values.length) ? String(values[0]) : '';
+  // Inspect only exposed descriptor fields of a known producer-owned node.
+  // Changed/accessor slots retain the existing ordinary Array conversion.
+  function domUnchanged(node, expected, html, selection) {
+    if (node !== expected || Object.keys(node).length !== 2) return false;
+    const source = Object.getOwnPropertyDescriptor(node, '__dom');
+    const path = Object.getOwnPropertyDescriptor(node, '__selection');
+    if (!source || source.value !== html || !path || !Array.isArray(path.value) || path.value.length !== selection.length) return false;
+    for (let index = 0; index < selection.length; index++) {
+      const slot = Object.getOwnPropertyDescriptor(path.value, String(index));
+      if (!slot || !slot.value || typeof slot.value !== 'object') return false;
+      const rule = Object.getOwnPropertyDescriptor(slot.value, 'rule');
+      const parent = Object.getOwnPropertyDescriptor(slot.value, 'parentIndex');
+      const css = Object.getOwnPropertyDescriptor(slot.value, 'cssSelect');
+      const original = selection[index];
+      if (!rule || rule.value !== original.rule ||
+          (parent ? parent.value : undefined) !== original.parentIndex ||
+          (css ? css.value : false) !== (original.cssSelect === true)) return false;
+    }
+    return true;
+  }
   function domSelect(html, selection) {
     const count = domCount(html, selection);
     const elements = [];
     for (let index = 0; index < count; index++) elements.push(domNode(html, domFocus(selection, index)));
+    const snapshots = elements.map(node => ({node:node, selection:node.__selection.map(step => ({...step}))}));
+    Object.defineProperty(elements, collectionToken, {value: () => {
+      if (elements.length !== snapshots.length) return null;
+      for (let index = 0; index < snapshots.length; index++) {
+        const slot = Object.getOwnPropertyDescriptor(elements, String(index));
+        const snapshot = snapshots[index];
+        if (!slot || !domUnchanged(slot.value, snapshot.node, html, snapshot.selection)) return null;
+      }
+      return {__dom:html, __selection:selection, __elements:true};
+    }});
     const define = (name, fn) => Object.defineProperty(elements, name, {value: fn, enumerable: false});
     define('select', css => domSelect(html, domRule(selection, css)));
     define('selectFirst', css => domFirstNode(html, domRule(selection, css)));
-    define('attr', name => domFirst(domValues(html, selection, String(name))));
+    define('attr', name => domAttribute(html, selection, name));
     define('text', () => domValues(html, selection, 'text').join(' '));
     define('toString', () => domValues(html, selection, 'all').join('\n'));
     return elements;
@@ -2880,7 +2926,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     const define = (name, fn) => Object.defineProperty(methods, name, {value: fn, enumerable: false});
     define('select', css => domSelect(html, domRule(selection, css)));
     define('selectFirst', css => domFirstNode(html, domRule(selection, css)));
-    define('attr', name => domFirst(domValues(html, selection, String(name))));
+    define('attr', name => domAttribute(html, selection, name));
     define('text', () => domValues(html, selection, 'text').join(' '));
     define('toString', () => selection.length === 0 ? String(html) : domFirst(domValues(html, selection, 'all')));
     const proto = new Proxy(methods, {
@@ -2899,7 +2945,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   }
   const asDom = value => Array.isArray(value) ? value.map(asDom) :
     (value !== null && typeof value === 'object' && typeof value.__dom === 'string')
-    ? domNode(value.__dom, domSelection(value)) : value;
+    ? (htmlDom && value.__elements === true
+        ? domSelect(value.__dom, domSelection(value))
+        : domNode(value.__dom, domSelection(value))) : value;
   const Jsoup = Object.freeze({
     parse: (html, baseUri) => domNode(String(html), [])
   });
@@ -2961,7 +3009,7 @@ class _ScriptSession {
       await engine.eval(
         options: JsEvalOptions(strict: false),
         source: JsCode.code(
-          'globalThis.__liberRun = (function(){ let run; const create = function(){\n$library\n'
+          'globalThis.__liberRun = (function(){ let run; const collectionToken = Symbol(); const create = function(){\n$library\n'
           'const __read = __liberLookupName => eval(__liberLookupName);\n'
           'return function(__scope, __code){\n'
           'const __bindings = new Proxy(__scope, {\n'
@@ -2970,7 +3018,12 @@ class _ScriptSession {
           'get: (target,name) => typeof name === "symbol" ? undefined : Reflect.has(target,name) ? target[name] : __read(name),\n'
           'set: (target,name,value) => Reflect.set(target,name,value)\n'
           '}); with(__bindings){ return eval(__code); } };\n}; '
-          'return function(scope,code){ if (!run) run=create(); return run.call(scope,scope,code); }; })(); '
+          'return function(factory,input,code,checkResponse,elementsResult,htmlDom){ '
+          'if (!run) run=create(); const scope=factory(input,checkResponse,collectionToken,htmlDom); '
+          'const value=run.call(scope,scope,code); '
+          'const known=elementsResult && htmlDom && !checkResponse && Array.isArray(value) '
+          '? Object.getOwnPropertyDescriptor(value,collectionToken) : null; '
+          'return known && typeof known.value === "function" ? (known.value() || value) : value; }; })(); '
           // The `loginCheckJs` boundary: the script's value must be a response
           // object, the way the frozen `as StrResponse` cast requires one; a
           // response crosses back as its plain payload.

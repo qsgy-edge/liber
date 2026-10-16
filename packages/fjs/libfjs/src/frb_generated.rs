@@ -8263,6 +8263,8 @@ impl SseDecode for crate::api::html::HtmlJobOutput {
             0 => crate::api::html::HtmlJobOutput::Elements,
             1 => crate::api::html::HtmlJobOutput::Text,
             2 => crate::api::html::HtmlJobOutput::TextList,
+            3 => crate::api::html::HtmlJobOutput::CollectionCssSelect,
+            4 => crate::api::html::HtmlJobOutput::RawAttribute,
             _ => unreachable!("Invalid variant for HtmlJobOutput: {}", inner),
         };
     }
@@ -10099,6 +10101,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::html::HtmlJobOutput {
             Self::Elements => 0.into_dart(),
             Self::Text => 1.into_dart(),
             Self::TextList => 2.into_dart(),
+            Self::CollectionCssSelect => 3.into_dart(),
+            Self::RawAttribute => 4.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -11114,6 +11118,8 @@ impl SseEncode for crate::api::html::HtmlJobOutput {
                 crate::api::html::HtmlJobOutput::Elements => 0,
                 crate::api::html::HtmlJobOutput::Text => 1,
                 crate::api::html::HtmlJobOutput::TextList => 2,
+                crate::api::html::HtmlJobOutput::CollectionCssSelect => 3,
+                crate::api::html::HtmlJobOutput::RawAttribute => 4,
                 _ => {
                     unimplemented!("");
                 }

@@ -167,6 +167,7 @@ class _ListItem {
               <String, Object?>{
                 'rule': step.rule,
                 if (step.parentIndex != null) 'parentIndex': step.parentIndex,
+                if (step.cssSelect) 'cssSelect': true,
               },
           ],
         };
@@ -176,11 +177,18 @@ class _ListItem {
 /// or the elements an extraction segment selected (each with the rule that
 /// addresses it in the step's document).
 class _ListStep {
-  const _ListStep.raw(this.value) : elements = null;
-  const _ListStep.elements(this.elements) : value = null;
+  const _ListStep.raw(this.value) : elements = null, dom = null, selection = null;
+  const _ListStep.elements(this.dom, this.selection, this.elements) : value = null;
 
   final Object? value;
   final List<_ListItem>? elements;
+  final String? dom;
+  final List<SourceDomSelectionStep>? selection;
+
+  Object? get content => elements == null ? value : <String, Object?>{
+    ...(_ListItem.element(dom, selection).content as Map<String, Object?>),
+    '__elements': true,
+  };
 }
 
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
@@ -418,11 +426,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Object? result, {
     String label = '',
     Object? content,
+    bool elementsResult = false,
   }) async {
     try {
       return await _runtime.evaluate(
         source: script,
-        input: _scriptInput(keyword, result, content: content),
+        input: {
+          ..._scriptInput(keyword, result, content: content),
+          if (elementsResult) '__elementsResult': true,
+        },
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );
@@ -555,6 +567,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await batch.run();
       return selection.length;
     }
+    if (read.op == SourceDomOp.attribute) {
+      final value = batch.rawAttribute('attribute', read.extract, selection);
+      await batch.run();
+      return value.values;
+    }
     final values = read.extract == 'all'
         ? batch.elementsTextList('value', '@all', selection)
         : batch.elementsText('value', '@${read.extract}', selection);
@@ -587,17 +604,27 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// [RuleField] path and Rust extraction this stage reads its own fields with,
   /// not a second engine (ADR 0012).
   ///
-  /// The frozen's element forms answer the matched jsoup elements, which no
-  /// boundary here carries — this adapter's engine answers text — so over HTML
-  /// content they refuse by name (the JSON adapter's element forms answer the
-  /// matched value) and a source reads the same text with
-  /// `java.getString`/`java.getStringList`. The list form is the adapter's
-  /// `AnalyzeRule.getStringList` read ([_declareList]); a rule whose script
-  /// segment cannot be re-parsed as a document refuses, as this adapter's
-  /// element-list fields do.
+  /// HTML `getElements` shares the ordered element-list walk and existing node
+  /// descriptors. `getElement` remains a named refusal. The string-list form
+  /// retains this adapter's `AnalyzeRule.getStringList` path ([_declareList]).
   Future<Object?> _readScriptRule(SourceRuleRead read) async {
-    if (read.form == SourceRuleForm.element ||
-        read.form == SourceRuleForm.elements) {
+    if (read.form == SourceRuleForm.elements) {
+      final step = await _walkElements(
+        read.rule,
+        read.content,
+        read.member,
+        read.evaluateScript,
+      );
+      final elements = step.elements;
+      if (elements != null) return step.content;
+      final value = step.value;
+      if (value == null) return const <Object?>[];
+      if (value is List) return value;
+      // Unlike the stage's item conversion, the frozen final List cast does
+      // not turn a scalar into one item or split a string on newlines.
+      throw UnsupportedError('${read.member} 的脚本结果不是列表：${read.rule}');
+    }
+    if (read.form == SourceRuleForm.element) {
       throw SourceScriptError(
         'policy',
         '${read.member} 无法回答 HTML 内容的元素对象：本产品的 HTML 规则引擎只回答文本，'
@@ -688,26 +715,44 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String raw,
     String body,
     String label,
+  ) async => _itemsOfStep(
+    await _walkElements(
+      raw,
+      body,
+      label,
+      (script, result) => _evalJs(
+        script,
+        _keyword,
+        result,
+        label: label,
+        content: body,
+        elementsResult: true,
+      ),
+    ),
+  );
+
+  /// `AnalyzeRule.getElements` (363–390) changes `result` each segment while
+  /// the callback retains the analysis's original `src`. Unlike its scalar
+  /// siblings, this walk does not call `SourceRule.makeUpRule(result)`.
+  Future<_ListStep> _walkElements(
+    String raw,
+    Object? content,
+    String label,
+    SourceRuleScript evaluateScript,
   ) async {
-    var step = _ListStep.raw(body);
+    var step = _ListStep.raw(content);
     for (final segment in parseRuleFieldSegments(raw)) {
+      if (step.elements == null && step.value == null) continue;
       if (segment.isScript) {
-        // The frozen loop binds the previous segment's value as `result`
-        // (`AnalyzeRule.kt:363-390`): after an extraction that value is the
-        // matched element list, which the façade answers as node descriptors so
-        // a script can index, iterate or stringify it.
-        final elements = step.elements;
-        final value = elements == null
-            ? step.value
-            : [for (final element in elements) element.content];
-        step = _ListStep.raw(
-          await _evalJs(segment.text, _keyword, value, label: label),
-        );
+        final value = await evaluateScript(segment.text, step.content);
+        step = value is Map && value['__elements'] == true && value['__dom'] is String
+            ? await _selectList(value['__dom'] as String, sourceDomSelectionOf(value))
+            : _ListStep.raw(value);
       } else {
         step = await _listExtract(step, segment.text, label);
       }
     }
-    return _itemsOfStep(step);
+    return step;
   }
 
   /// One extraction segment of a scripted element-list rule: the frozen
@@ -720,7 +765,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String label,
   ) async {
     if (step.elements != null) {
-      throw UnsupportedError('$label 的提取片段不能跟在另一个提取片段之后：$rule');
+      // AnalyzeByJSoup(Elements) parses Elements.toString(), unlike Element's
+      // original-node path. Keep physically repeated markup through this edge.
+      final batch = HtmlRuleBatch(step.dom!);
+      final html = batch.elementsTextList('html', '@all', batch.selection('items', step.selection!));
+      await batch.run();
+      step = _ListStep.raw(html.values.join('\n'));
     }
     final String dom;
     final List<SourceDomSelectionStep> path;
@@ -731,19 +781,23 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         throw UnsupportedError('$label 的脚本结果不是可提取的文档：$rule');
       }
       dom = source;
-      path = [...sourceDomSelectionOf(value), (rule: rule, parentIndex: null)];
+      path = [...sourceDomSelectionOf(value), (rule: rule, parentIndex: null, cssSelect: false)];
     } else if (value is String) {
       dom = value;
-      path = [(rule: rule, parentIndex: null)];
+      path = [(rule: rule, parentIndex: null, cssSelect: false)];
     } else {
       throw UnsupportedError('$label 的脚本结果不是文本或元素，无法继续提取：$rule');
     }
+    return _selectList(dom, path);
+  }
+
+  Future<_ListStep> _selectList(String dom, List<SourceDomSelectionStep> path) async {
     final batch = HtmlRuleBatch(dom);
     final selection = batch.selection('items', path);
     await batch.run();
-    return _ListStep.elements([
+    return _ListStep.elements(dom, path, [
       for (var index = 0; index < selection.length; index++)
-        _ListItem.element(dom, [...path, (rule: ':root', parentIndex: index)]),
+        _ListItem.element(dom, [...path, (rule: ':root', parentIndex: index, cssSelect: false)]),
     ]);
   }
 
@@ -1437,8 +1491,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         final item = scriptedItems != null
             ? scriptedItems[index]
             : _ListItem.element(html, [
-                (rule: listRule.extractionRule!, parentIndex: null),
-                (rule: ':root', parentIndex: index),
+                (rule: listRule.extractionRule!, parentIndex: null, cssSelect: false),
+                (rule: ':root', parentIndex: index, cssSelect: false),
               ]);
         return _itemFieldValue(
           item,
@@ -1719,8 +1773,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               final item = scriptedItems != null
                   ? scriptedItems[index]
                   : _ListItem.element(page, [
-                      (rule: listRule.extractionRule!, parentIndex: null),
-                      (rule: ':root', parentIndex: index),
+                      (rule: listRule.extractionRule!, parentIndex: null, cssSelect: false),
+                      (rule: ':root', parentIndex: index, cssSelect: false),
                     ]);
               return _itemFieldValue(
                 item,

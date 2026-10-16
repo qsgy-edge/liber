@@ -1,0 +1,11 @@
+{
+  "frozenCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "execution": "retained actual host-jvm",
+  "files": {
+    "fixtures.json": "5fc5e812d010cf945c1df449b833e031bc50f7abb3faad3404e307eb33f369eb",
+    "observed.json": "2ce96286345b555e415eeca5309f1ab58a59a7bba282c476f2e628bafb35878f",
+    "manifest.json": "5f5932097e45a6955e211ff9a22b7407feb2438d6a71cdb33813e5fac83b9a8c",
+    "stdout.log": "b8e2e3d4c397852ffeca21e7ae4d94f59d86106b8d5dbb52ba479b6208c75642",
+    "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

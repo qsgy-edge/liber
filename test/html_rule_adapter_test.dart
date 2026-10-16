@@ -144,8 +144,8 @@ void main() {
         final jobs = <HtmlStringList>[];
         for (var index = 0; index < 2; index++) {
           final focus = batch.selection('focus:$index', [
-            (rule: rule, parentIndex: null),
-            (rule: ':root', parentIndex: index),
+            (rule: rule, parentIndex: null, cssSelect: false),
+            (rule: ':root', parentIndex: index, cssSelect: false),
           ]);
           jobs.add(
             batch.elementsText(
@@ -208,6 +208,38 @@ void main() {
     );
   });
 
+  test('collection CSS replay focuses the distinct vector before raw attribute', () async {
+    final batch = HtmlRuleBatch(
+      '<section id="outer"><div id="inner"><b id="leaf">leaf</b></div></section>'
+      '<div id="last"><b id="tail">tail</b></div>',
+    );
+    final focus = batch.selection('focus', [
+      (rule: '#last&&#outer&&#inner', parentIndex: null, cssSelect: false),
+      (rule: 'b', parentIndex: null, cssSelect: true),
+      (rule: ':root', parentIndex: 1, cssSelect: false),
+    ]);
+    final attribute = batch.rawAttribute('id', 'id', focus);
+    await batch.run();
+    expect(focus.length, 1);
+    expect(attribute.values, ['leaf']);
+  });
+
+  test('cssSelect flags reject non-booleans and preserve legacy missing meaning', () {
+    for (final flag in [null, 0, 'true']) {
+      expect(() => sourceDomSelectionOf({
+        '__selection': [{'rule': 'b', 'cssSelect': flag}],
+      }), throwsA(isA<SourceScriptError>().having(
+        (error) => error.message, 'flag', contains('cssSelect'),
+      )));
+    }
+    expect(sourceDomSelectionOf({'__selection': [{'rule': 'b'}]}), [
+      (rule: 'b', parentIndex: null, cssSelect: false),
+    ]);
+    expect(sourceDomSelectionOf({'__selection': [{'rule': 'b', 'cssSelect': true}]}), [
+      (rule: 'b', parentIndex: null, cssSelect: true),
+    ]);
+  });
+
   test(
     'node selection DTO rejects malformed paths and unsafe integer indices',
     () {
@@ -249,7 +281,7 @@ void main() {
         );
       }
       expect(sourceDomSelectionOf({'__rule': 'li.1'}), [
-        (rule: 'li.1', parentIndex: null),
+        (rule: 'li.1', parentIndex: null, cssSelect: false),
       ]);
       expect(sourceDomSelectionOf({'__rule': null}), isEmpty);
     },

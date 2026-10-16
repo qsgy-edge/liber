@@ -764,10 +764,9 @@ void main() {
       expect(book.author, '7');
       expect(chapters.single.name, '第一章');
       pipeline.cancel();
-      // The same members over HTML content read through the Rust adapter, which
-      // is this source's own rule path. The list and element forms refuse by
-      // name there: the frozen's jsoup element objects cannot cross this
-      // boundary, so a source reads the same text with `java.getString`.
+      // HTML scalar reads still use the Rust adapter. HTML getElement stays a
+      // named refusal; getElements has its bounded observed tests in
+      // html_get_elements_test.dart.
       final htmlSource = <String, dynamic>{
         'bookSourceUrl': 'http://a.test',
         'searchUrl': '/html-search',
@@ -805,7 +804,7 @@ void main() {
         <String, dynamic>{...htmlSource}
           ..['ruleBookInfo'] = {
             'name': 'h1@text',
-            'kind': "{{java.getElements('p')}}",
+            'kind': "{{java.getElement('p')}}",
           },
         transport,
       );
@@ -819,7 +818,7 @@ void main() {
               .having(
                 (error) => error.message,
                 'member',
-                contains('java.getElements'),
+                contains('java.getElement'),
               ),
         ),
       );
