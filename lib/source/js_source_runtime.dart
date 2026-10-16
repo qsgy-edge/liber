@@ -2901,7 +2901,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     const elements = [];
     for (let index = 0; index < count; index++) elements.push(domNode(html, domFocus(selection, index)));
     const snapshots = elements.map(node => ({node:node, selection:node.__selection.map(step => ({...step}))}));
-    Object.defineProperty(elements, collectionToken, {value: () => {
+    Object.defineProperty(elements, collectionToken, {value: candidate => {
+      if (candidate !== elements) return null;
       if (elements.length !== snapshots.length) return null;
       for (let index = 0; index < snapshots.length; index++) {
         const slot = Object.getOwnPropertyDescriptor(elements, String(index));
@@ -3009,7 +3010,7 @@ class _ScriptSession {
       await engine.eval(
         options: JsEvalOptions(strict: false),
         source: JsCode.code(
-          'globalThis.__liberRun = (function(){ let run; const collectionToken = Symbol(); const create = function(){\n$library\n'
+          'globalThis.__liberRun = (function(){ let run; const create = function(){\n$library\n'
           'const __read = __liberLookupName => eval(__liberLookupName);\n'
           'return function(__scope, __code){\n'
           'const __bindings = new Proxy(__scope, {\n'
@@ -3018,12 +3019,14 @@ class _ScriptSession {
           'get: (target,name) => typeof name === "symbol" ? undefined : Reflect.has(target,name) ? target[name] : __read(name),\n'
           'set: (target,name,value) => Reflect.set(target,name,value)\n'
           '}); with(__bindings){ return eval(__code); } };\n}; '
+          // Keep the transport token outside create/library/__read's ancestors.
+          'return (function(){ const collectionToken = Symbol(); '
           'return function(factory,input,code,checkResponse,elementsResult,htmlDom){ '
           'if (!run) run=create(); const scope=factory(input,checkResponse,collectionToken,htmlDom); '
           'const value=run.call(scope,scope,code); '
           'const known=elementsResult && htmlDom && !checkResponse && Array.isArray(value) '
           '? Object.getOwnPropertyDescriptor(value,collectionToken) : null; '
-          'return known && typeof known.value === "function" ? (known.value() || value) : value; }; })(); '
+          'return known && typeof known.value === "function" ? (known.value(value) || value) : value; }; })(); })(); '
           // The `loginCheckJs` boundary: the script's value must be a response
           // object, the way the frozen `as StrResponse` cast requires one; a
           // response crosses back as its plain payload.

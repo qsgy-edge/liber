@@ -42,15 +42,22 @@ author field after the same selectFirst context binding as the harness. JSON
 outputs are decoded and compared directly with the retained golden values.
 Separate controls describe product guards, refusal boundaries, collection
 usability and original-document identity; they are not new frozen observations.
-The Windows candidate was checked with a matching native library: 47 element
-cases and 11 adapter cases passed within 629 distinct Dart regression cases;
-all 25 teardowns succeeded. Native HTML/runtime checks passed 38/643 and all 17
-runtime gates passed, including 106 host-surface checks. Six changed Dart files
-were analyzed without errors. Final layout-only edits retain the verified token
-and string-literal lexemes, excluding comments and optional trailing commas.
+The earlier `955f33c` candidate passed 47 element and 11 adapter cases within
+629 distinct Dart cases, with 25 successful teardowns and six-file analysis
+without errors. Its later array-identity and lexical-token repair adds 12 real
+pipeline/runtime controls: the controller observed six target failures before
+the fix, then reran all 641 cases successfully with 27 normal teardowns. The new
+controls cover ordinary JavaScript extensions, not new frozen Java observations.
+All 17 runtime gates, including 106 host checks, and three-file analysis passed
+on the repaired source. Prior native 38/643 results retain their earlier scope;
+142 package pins and the matching DLL stayed unchanged, without a rebuild.
+Final layout-only edits preserve verified token and string-literal lexemes,
+excluding comments and optional trailing commas.
 
 The CI HTML row checks 45 fixture expectations and records frozen comparison as
-not-run. A separate comparison against the retained Android device golden passed
-45/45; it is not a new device execution or whole-feature/platform parity claim.
+not-run. This repair round also compares those already executed observations
+offline with the retained Android device golden: 45/45 match, without an extra
+product invocation or device execution. The earlier separate comparison remains
+historical evidence. Neither establishes whole-feature/platform parity.
 Independent review, integration, a new Windows app/scratch driven run and the
 remaining platform acceptance are pending.
