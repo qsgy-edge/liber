@@ -2891,6 +2891,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       const css = Object.getOwnPropertyDescriptor(slot.value, 'cssSelect');
       const original = selection[index];
       if (!rule || rule.value !== original.rule ||
+          (parent && !Object.prototype.hasOwnProperty.call(parent, 'value')) ||
+          (css && !Object.prototype.hasOwnProperty.call(css, 'value')) ||
           (parent ? parent.value : undefined) !== original.parentIndex ||
           (css ? css.value : false) !== (original.cssSelect === true)) return false;
     }

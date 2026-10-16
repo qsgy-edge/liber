@@ -109,6 +109,34 @@ void main() {
       },
     );
 
+    for (final testCase in [
+      (
+        label: 'owner accessor',
+        descriptor: '{enumerable:true,get:function(){return 1;}}',
+        returned: 'es',
+      ),
+      (
+        label: 'ordinary-array accessor',
+        descriptor: '{enumerable:true,get:function(){return 1;}}',
+        returned: 'es.slice()',
+      ),
+      (
+        label: 'owner data property',
+        descriptor: '{enumerable:true,value:1}',
+        returned: 'es',
+      ),
+    ]) {
+      test('same-length ${testCase.label} keeps focused node paths', () async {
+        final books = await _search(
+          '@js:var es=Jsoup.parse(result).select("section").select(".book"); '
+          'var step=Object.assign({},es[0].__selection[1]); '
+          'Object.defineProperty(step,"parentIndex",${testCase.descriptor}); '
+          'es[0].__selection[1]=step; ${testCase.returned}',
+        );
+        _expectBooks(books, ['C', 'B', 'C']);
+      });
+    }
+
     test('mutated producer array keeps its actual order', () async {
       _expectBooks(await _script('es.reverse(); es'), ['C', 'B', 'A']);
     });
