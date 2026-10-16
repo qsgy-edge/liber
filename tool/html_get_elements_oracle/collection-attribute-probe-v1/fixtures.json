@@ -1,0 +1,14 @@
+{
+  "corpus": "HTML-COLLECTION-RAW-ATTRIBUTE-01",
+  "html": "<div id=space><i data-v=\" &#9;&#10;&#13; \">space</i><i data-v=later>later</i></div><div id=empty><i data-v=\"\">empty</i><i data-v=later>later</i></div><div id=collision text=\"T&amp;amp;\" all=\"A&amp;amp;\" data-v=\" &amp;amp; \">body</div>",
+  "rows": [
+    {
+      "id": "raw-whitespace-and-empty-attribute-units",
+      "script": "function units(v){var s=String(v);var out=[];for(var i=0;i<s.length;i++)out.push(s.charCodeAt(i));return out;} var es=java.getElements('#space i'); var empty=java.getElements('#empty i'); JSON.stringify([units(es.attr('data-v')),units(es[0].attr('data-v')),units(es[1].attr('data-v')),units(empty.attr('data-v')),units(empty[0].attr('data-v')),units(empty[1].attr('data-v'))])"
+    },
+    {
+      "id": "raw-text-all-key-collision-units",
+      "script": "function units(v){var s=String(v);var out=[];for(var i=0;i<s.length;i++)out.push(s.charCodeAt(i));return out;} var es=java.getElements('#collision'); JSON.stringify([units(es.attr('text')),units(es.attr('all')),units(es.attr('data-v')),units(es[0].attr('text')),units(es[0].attr('all')),units(es[0].text())])"
+    }
+  ]
+}

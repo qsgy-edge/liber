@@ -94,6 +94,12 @@ enum HtmlJobOutput {
   /// The frozen `AnalyzeRule.getStringList` answer: one value per match, with
   /// the `##` field applied to each value and no entity unescape.
   textList,
+
+  /// Raw CSS over the parent vector, with stable NodeId deduplication.
+  collectionCssSelect,
+
+  /// First present raw attribute; empty is one value, missing is no value.
+  rawAttribute,
   ;
 }
 

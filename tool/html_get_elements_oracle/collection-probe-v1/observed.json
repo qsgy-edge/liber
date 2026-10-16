@@ -1,0 +1,108 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-01",
+  "execution": "host-jvm",
+  "rows": [
+    {
+      "id": "attr-missing-first",
+      "value": [
+        2,
+        "later",
+        "",
+        "later",
+        "missing later"
+      ]
+    },
+    {
+      "id": "attr-empty-first",
+      "value": [
+        2,
+        "",
+        "",
+        "later",
+        "empty later"
+      ]
+    },
+    {
+      "id": "overlapping-roots-select",
+      "value": [
+        2,
+        [
+          "overlap",
+          "inside"
+        ],
+        "leaf leaf",
+        1,
+        [
+          "leaf"
+        ],
+        "leaf"
+      ]
+    },
+    {
+      "id": "duplicate-merged-roots-select",
+      "value": [
+        2,
+        [
+          "inside",
+          "inside"
+        ],
+        "leaf leaf",
+        1,
+        [
+          "leaf"
+        ],
+        "leaf"
+      ]
+    },
+    {
+      "id": "reversed-merged-roots-select-order",
+      "value": [
+        [
+          "last",
+          "inside"
+        ],
+        "tail leaf",
+        2,
+        [
+          "tail",
+          "leaf"
+        ],
+        "tail leaf"
+      ]
+    },
+    {
+      "id": "empty-elements-methods",
+      "value": [
+        0,
+        "",
+        "",
+        0,
+        "function",
+        "function",
+        "function"
+      ]
+    },
+    {
+      "id": "terminal-js-empty-array",
+      "value": [
+        0,
+        "undefined",
+        "undefined",
+        "undefined"
+      ]
+    },
+    {
+      "id": "terminal-js-reordered-node-array",
+      "value": [
+        2,
+        [
+          "last",
+          "inside"
+        ],
+        "undefined",
+        "undefined",
+        "undefined"
+      ]
+    }
+  ]
+}

@@ -37,20 +37,29 @@ class HtmlRuleBatch {
     ),
   );
 
+  /// CSS selection over all parent contexts, deduplicated by native identity.
+  HtmlElementSet collectionCssSelect(
+    String id,
+    String css, {
+    HtmlElementSet? parent,
+    int? parentIndex,
+  }) => HtmlElementSet._(
+    this,
+    _add(id, css, parent?.id, HtmlJobOutput.collectionCssSelect, parentIndex: parentIndex),
+  );
+
   /// Replays a serializable node path against this batch's original document.
   HtmlElementSet selection(
     String id,
-    Iterable<({String rule, int? parentIndex})> steps,
+    Iterable<({String rule, int? parentIndex, bool cssSelect})> steps,
   ) {
     HtmlElementSet? parent;
     var index = 0;
     for (final step in steps) {
-      parent = elements(
-        '$id:${index++}',
-        step.rule,
-        parent: parent,
-        parentIndex: step.parentIndex,
-      );
+      final stepId = '$id:${index++}';
+      parent = step.cssSelect
+          ? collectionCssSelect(stepId, step.rule, parent: parent, parentIndex: step.parentIndex)
+          : elements(stepId, step.rule, parent: parent, parentIndex: step.parentIndex);
     }
     return parent ?? elements(id, ':root');
   }
@@ -86,6 +95,10 @@ class HtmlRuleBatch {
     this,
     _add(id, rule, context.id, HtmlJobOutput.textList),
   );
+
+  /// First present raw attribute; empty and whitespace remain actual values.
+  HtmlStringList rawAttribute(String id, String name, HtmlElementSet context) =>
+      HtmlStringList._(this, _add(id, name, context.id, HtmlJobOutput.rawAttribute));
 
   String _add(
     String id,

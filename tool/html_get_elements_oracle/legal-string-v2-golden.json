@@ -1,0 +1,102 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-01",
+  "execution": "host-jvm",
+  "rows": [
+    {
+      "id": "ordered-nodes",
+      "value": [
+        [
+          "A",
+          "A one",
+          "/a"
+        ],
+        [
+          "B",
+          "B two",
+          "/b"
+        ],
+        [
+          "C",
+          "C three",
+          "/c"
+        ]
+      ]
+    },
+    {
+      "id": "context-node",
+      "value": [
+        1,
+        "C",
+        "C three"
+      ]
+    },
+    {
+      "id": "context-self",
+      "value": [
+        1,
+        "A"
+      ]
+    },
+    {
+      "id": "empty-rule",
+      "value": 0
+    },
+    {
+      "id": "no-matches",
+      "value": 0
+    },
+    {
+      "id": "legado-index",
+      "value": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "id": "merged-order",
+      "value": [
+        "C",
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "collection-members",
+      "value": [
+        "A",
+        "A one B two C three",
+        "/a",
+        "one"
+      ]
+    },
+    {
+      "id": "selector-js-chain",
+      "value": [
+        3,
+        "B"
+      ]
+    },
+    {
+      "id": "js-selector-chain",
+      "value": [
+        3,
+        "/c"
+      ]
+    },
+    {
+      "id": "script-selected-node",
+      "value": [
+        1,
+        "/b",
+        "B two"
+      ]
+    },
+    {
+      "id": "analysis-context-after-js",
+      "value": [
+        1,
+        "C"
+      ]
+    }
+  ]
+}

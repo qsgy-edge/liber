@@ -1,0 +1,21 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-COLLECTION-CHAIN-01",
+  "html": "<section id=first><div class=book data-name=A><a href=/a>A <b>one</b></a></div><div class=book data-name=B><a href=/b>B two</a></div></section><section id=second><div class=book data-name=C><a href=/c>C three</a></div></section>",
+  "rows": [
+    {
+      "id": "whole-elements-reparse-discards-outer-ancestors",
+      "rule": ".book<js>result</js>#first a",
+      "script": "var es=java.getElements(\".book<js>result</js>#first a\");JSON.stringify([es.size(),String(es.text())])"
+    },
+    {
+      "id": "single-element-preserves-outer-ancestors",
+      "rule": ".book<js>result[1]</js>#first a",
+      "script": "var es=java.getElements(\".book<js>result[1]</js>#first a\");JSON.stringify([es.size(),String(es.text())])"
+    },
+    {
+      "id": "whole-elements-reparse-preserves-duplicate-markup",
+      "rule": ".book&&.book<js>result</js>a",
+      "script": "var es=java.getElements(\".book&&.book<js>result</js>a\");JSON.stringify([es.size(),String(es.text())])"
+    }
+  ]
+}

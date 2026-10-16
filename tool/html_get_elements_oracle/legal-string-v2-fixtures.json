@@ -1,0 +1,56 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-01",
+  "html": "<section id=first><div class=book data-name=A><a href=/a>A <b>one</b></a></div><div class=book data-name=B><a href=/b>B two</a></div></section><section id=second><div class=book data-name=C><a href=/c>C three</a></div></section>",
+  "rows": [
+    {
+      "id": "ordered-nodes",
+      "script": "var es=java.getElements('.book'); var out=[]; for(var i=0;i<es.length;i++) out.push([es[i].attr('data-name'),es[i].text(),es[i].selectFirst('a').attr('href')]); JSON.stringify(out)"
+    },
+    {
+      "id": "context-node",
+      "contextSelector": "#second",
+      "script": "var es=java.getElements('.book'); JSON.stringify([es.length,es[0].attr('data-name'),es[0].select('a').text()])"
+    },
+    {
+      "id": "context-self",
+      "contextSelector": ".book",
+      "script": "var es=java.getElements('.book'); JSON.stringify([es.length,es[0].attr('data-name')])"
+    },
+    {
+      "id": "empty-rule",
+      "script": "JSON.stringify(java.getElements('').length)"
+    },
+    {
+      "id": "no-matches",
+      "script": "JSON.stringify(java.getElements('.missing').length)"
+    },
+    {
+      "id": "legado-index",
+      "script": "var es=java.getElements('class.book[2,0]'); JSON.stringify([es[0].attr('data-name'),es[1].attr('data-name')])"
+    },
+    {
+      "id": "merged-order",
+      "script": "var es=java.getElements('#second .book&&#first .book'); var out=[]; for(var i=0;i<es.length;i++) out.push(es[i].attr('data-name')); JSON.stringify(out)"
+    },
+    {
+      "id": "collection-members",
+      "script": "var es=java.getElements('.book'); JSON.stringify([es.attr('data-name'),es.text(),es.select('a').attr('href'),es.select('b')[0].text()])"
+    },
+    {
+      "id": "selector-js-chain",
+      "script": "var es=java.getElements('.book<js>result</js>'); JSON.stringify([es.length,es[1].attr('data-name')])"
+    },
+    {
+      "id": "js-selector-chain",
+      "script": "var es=java.getElements('<js>src</js>.book'); JSON.stringify([es.length,es[2].selectFirst('a').attr('href')])"
+    },
+    {
+      "id": "script-selected-node",
+      "script": "var es=java.getElements('.book<js>result[1]</js>a'); JSON.stringify([es.length,es[0].attr('href'),es[0].text()])"
+    },
+    {
+      "id": "analysis-context-after-js",
+      "script": "var es=java.getElements('.book<js>java.getElements(\"#second .book\")</js>'); JSON.stringify([es.length,es[0].attr('data-name')])"
+    }
+  ]
+}

@@ -23,6 +23,10 @@ pub enum HtmlJobOutput {
     /// The frozen `AnalyzeRule.getStringList` answer: one value per match, with
     /// the `##` field applied to each value and no entity unescape.
     TextList,
+    /// Raw CSS over the parent vector, with stable NodeId deduplication.
+    CollectionCssSelect,
+    /// First present raw attribute; empty is one value, missing is no value.
+    RawAttribute,
 }
 
 /// One rule to evaluate against the document.
@@ -87,6 +91,8 @@ pub fn html_analyze(html: String, jobs: Vec<HtmlRuleJob>) -> Vec<HtmlJobOutcome>
                 HtmlJobOutput::Elements => JobOutput::Elements,
                 HtmlJobOutput::Text => JobOutput::Text,
                 HtmlJobOutput::TextList => JobOutput::TextList,
+                HtmlJobOutput::CollectionCssSelect => JobOutput::CollectionCssSelect,
+                HtmlJobOutput::RawAttribute => JobOutput::RawAttribute,
             },
         })
         .collect();

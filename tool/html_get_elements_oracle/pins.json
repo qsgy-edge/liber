@@ -1,0 +1,12 @@
+{
+  "frozenCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "execution": "retained host-jvm evidence; no execution in preparation",
+  "files": {
+    "legal-string-v2-fixtures.json": "90f0c624c2da175223efeec33d2235f94957de2822fc6a2ef502dc65ffe41d16",
+    "legal-string-v2-golden.json": "7725111c0626d7a9702e45c24a96ccf959ad1ccead582a21e2f0f926ab70db70",
+    "legal-string-v2-manifest.json": "d0d337123a8deb83a0d6b07c58980a7cd34dfd4e0a99625fd275c71befb0eaa7",
+    "legal-string-v2-run.log": "6a70fe671c7c481fcd36e1bf860e27fc5f7ddbdb1d450a5ff73a079c799b2ce5",
+    "manifest.json": "c4e43594e15001194eb0b496763b422d5c917e3b93e79456b5720fc331d635eb",
+    "GetElementsOracle.kt": "db8023f1e1d5aac42e885d9e3426f4a1992361412500135d0e613bb076d167fa"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-NODE-CSS-SCOPE-01",
+  "html": "<section id=first><div class=book data-name=A><a href=/a>A <b>one</b></a></div><div class=book data-name=B><a href=/b>B two</a></div></section><section id=second><div class=book data-name=C><a href=/c>C three</a></div></section>",
+  "rows": [
+    {
+      "id": "reordered-node-css-scope-and-original-sibling-position",
+      "script": "var es=java.getElements('#second .book&&#first .book'); var nodes=[es[2],es[0],es[1]]; var out=[]; for(var i=0;i<nodes.length;i++){var e=nodes[i];out.push([String(e.attr('data-name')),e.select('#first .book').size(),e.select('#second .book').size(),e.select(':nth-child(2)').size(),e.select(':nth-child(1)').size()]);} JSON.stringify(out)"
+    }
+  ]
+}

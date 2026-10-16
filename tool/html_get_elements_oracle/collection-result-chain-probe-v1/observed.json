@@ -1,0 +1,27 @@
+{
+  "corpus": "HTML-GET-ELEMENTS-01",
+  "execution": "host-jvm",
+  "rows": [
+    {
+      "id": "whole-elements-reparse-discards-outer-ancestors",
+      "value": [
+        0,
+        ""
+      ]
+    },
+    {
+      "id": "single-element-preserves-outer-ancestors",
+      "value": [
+        0,
+        ""
+      ]
+    },
+    {
+      "id": "whole-elements-reparse-preserves-duplicate-markup",
+      "value": [
+        6,
+        "A one B two C three A one B two C three"
+      ]
+    }
+  ]
+}

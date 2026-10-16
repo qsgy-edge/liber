@@ -19,7 +19,7 @@ pub mod serialize;
 
 pub use dom::{Dom, NodeId};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// What a job returns: matched elements (only their count leaves the adapter),
 /// one extracted string per context element, or the extracted values as a list.
@@ -30,6 +30,10 @@ pub enum JobOutput {
     /// The frozen `AnalyzeRule.getStringList` answer: the rule's matches, one
     /// value each, with the `##` field applied per value and no entity unescape.
     TextList,
+    /// Elements.select(raw CSS): stable identity dedup across the parent vector.
+    CollectionCssSelect,
+    /// First present attribute, including empty/blank values, without shaping.
+    RawAttribute,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +139,41 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
                     failure,
                 }
             }
+            JobOutput::CollectionCssSelect => {
+                // Parse even when there are no roots: Elements.select validates
+                // CSS before traversing its iterable of contexts.
+                match selector::parse(&job.rule) {
+                    Ok(evaluator) => {
+                        let mut seen = HashSet::new();
+                        let mut matched = Vec::new();
+                        for node in &context {
+                            for found in selector::collect(&dom, *node, &evaluator) {
+                                if seen.insert(found) {
+                                    matched.push(found);
+                                }
+                            }
+                        }
+                        let count = matched.len();
+                        elements.insert(job.id.clone(), matched);
+                        JobOutcome {
+                            id: job.id.clone(), count, values: Vec::new(), failure: None,
+                        }
+                    }
+                    Err(error) => JobOutcome {
+                        id: job.id.clone(), count: 0, values: Vec::new(),
+                        failure: Some(JobFailure {
+                            kind: "parse".to_string(), message: error.message,
+                        }),
+                    },
+                }
+            }
+            JobOutput::RawAttribute => {
+                let value = context.iter().find_map(|node| dom.attr(*node, &job.rule));
+                JobOutcome {
+                    id: job.id.clone(), count: usize::from(value.is_some()),
+                    values: value.into_iter().map(str::to_owned).collect(), failure: None,
+                }
+            }
             JobOutput::Text | JobOutput::TextList => {
                 let mut values = Vec::new();
                 let mut count = 0;
@@ -184,6 +223,84 @@ fn failure_of(error: rule::RuleError) -> JobFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn job(id: &str, rule: &str, parent: Option<&str>, output: JobOutput) -> JobSpec {
+        JobSpec {
+            id: id.to_string(), rule: rule.to_string(), parent: parent.map(str::to_owned),
+            parent_index: None, output,
+        }
+    }
+
+    #[test]
+    fn collection_css_select_deduplicates_identity_in_first_seen_order() {
+        let result = analyze(
+            "<section id=outer><div id=inner><b id=leaf>leaf</b></div></section><div id=last><b id=tail>tail</b></div>",
+            &[
+                job("roots", "#last&&#outer&&#inner&&#inner", None, JobOutput::Elements),
+                job("legacy", "b", Some("roots"), JobOutput::Elements),
+                job("selected", "b", Some("roots"), JobOutput::CollectionCssSelect),
+                job("ids", "id", Some("selected"), JobOutput::RawAttribute),
+                job("text", "@text", Some("selected"), JobOutput::Text),
+                JobSpec { parent_index: Some(1), ..job("focus", ":root", Some("selected"), JobOutput::Elements) },
+                job("focused_id", "id", Some("focus"), JobOutput::RawAttribute),
+            ],
+        );
+        assert!(result.jobs.iter().all(|job| job.failure.is_none()));
+        assert_eq!(result.jobs[0].count, 4); // Ordinary merge keeps duplicate roots.
+        assert_eq!(result.jobs[1].count, 4); // Ordinary extraction keeps overlap.
+        assert_eq!(result.jobs[2].count, 2);
+        assert_eq!(result.jobs[3].values, vec!["tail"]);
+        assert_eq!(result.jobs[4].values, vec!["tail", "leaf"]);
+        assert_eq!(result.jobs[6].values, vec!["leaf"]);
+    }
+
+    #[test]
+    fn collection_css_select_validates_css_even_with_empty_roots() {
+        let result = analyze("<p>body</p>", &[
+            job("roots", ".missing", None, JobOutput::Elements),
+            job("empty", "b", Some("roots"), JobOutput::CollectionCssSelect),
+            job("invalid", "[", Some("roots"), JobOutput::CollectionCssSelect),
+        ]);
+        assert_eq!(result.jobs[1].count, 0);
+        assert!(result.jobs[1].failure.is_none());
+        assert_eq!(result.jobs[2].failure.as_ref().unwrap().kind, "parse");
+    }
+
+    #[test]
+    fn raw_attribute_distinguishes_missing_from_present_empty() {
+        let html = "<div id=missing><i></i><i data-v=later></i></div><div id=empty><i data-v=\"\"></i><i data-v=later></i></div>";
+        for (rule, expected) in [("#missing i", vec!["later"]), ("#empty i", vec![""]), (".absent", vec![])] {
+            let result = analyze(html, &[
+                job("roots", rule, None, JobOutput::Elements),
+                job("attr", "data-v", Some("roots"), JobOutput::RawAttribute),
+            ]);
+            assert!(result.jobs[1].failure.is_none());
+            assert_eq!(result.jobs[1].count, expected.len());
+            assert_eq!(result.jobs[1].values, expected);
+        }
+    }
+
+    #[test]
+    fn raw_attribute_keeps_observed_units_and_text_all_keys() {
+        // Actual collection-attribute-probe-v1 charCodeAt observations: raw
+        // whitespace includes CR, and parsed entity text is not unescaped twice.
+        let result = analyze(
+            "<div id=space data-v=\" &#9;&#10;&#13; \"></div><div id=collision text=\"T&amp;amp;\" all=\"A&amp;amp;\">body</div>",
+            &[
+                job("space", "#space", None, JobOutput::Elements),
+                job("raw", "data-v", Some("space"), JobOutput::RawAttribute),
+                job("collision", "#collision", None, JobOutput::Elements),
+                job("text_attr", "text", Some("collision"), JobOutput::RawAttribute),
+                job("all_attr", "all", Some("collision"), JobOutput::RawAttribute),
+                job("text", "@text", Some("collision"), JobOutput::Text),
+            ],
+        );
+        assert!(result.jobs.iter().all(|job| job.failure.is_none()));
+        assert_eq!(result.jobs[1].values, vec![" \t\n\r "]);
+        assert_eq!(result.jobs[3].values, vec!["T&amp;"]);
+        assert_eq!(result.jobs[4].values, vec!["A&amp;"]);
+        assert_eq!(result.jobs[5].values, vec!["body"]);
+    }
 
     #[test]
     fn text_job_skips_replacement_when_nothing_matched() {
