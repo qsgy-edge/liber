@@ -2,9 +2,30 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../source/source_url_rules.dart' show sourceUrlOptionBoundaryOf;
 import 'database.dart';
 import 'ids.dart';
 import 'progress.dart';
+
+/// The stored forms earlier book writers produced, in lookup precedence order.
+/// New writes keep the resolved address and its raw tail; older writes used
+/// either Uri text or the bare request target. Nothing decodes stored values.
+Iterable<String> _bookAddressCandidates(String identity) sync* {
+  yield identity;
+  final encoded = Uri.tryParse(identity)?.toString();
+  if (encoded != null && encoded != identity) yield encoded;
+  final boundary = sourceUrlOptionBoundaryOf(identity);
+  if (boundary != null) {
+    final target = identity.substring(0, boundary).trim();
+    if (target != identity && target != encoded) yield target;
+  }
+}
+
+/// Compares the forms the store's book lookup accepts, for callers that already
+/// hold a row (the precise-search marker). [identity] is the resolved raw book
+/// address, never a reverse-decoded Uri string.
+bool matchesBookIdentity(String? stored, String identity) =>
+    stored != null && _bookAddressCandidates(identity).contains(stored);
 
 /// One line-start anchor the text engine produced: the byte offset, the UTF-16
 /// code-unit offset and the line index of the same position. Named here rather
@@ -170,23 +191,34 @@ class SpaceStore {
       (db.select(db.books)..where((b) => b.id.equals(id))).getSingleOrNull();
 
   /// The natural key import and re-search match on: `(sourceRef,
-  /// sourceBookUrl)`. `(name, author)` is only ever a hint.
+  /// sourceBookUrl)`. Callers supply the resolved raw address text. Exact text
+  /// wins before the legacy Uri and bare-target forms are tried. Stored values
+  /// are never parsed or rewritten (#99).
   Future<ShelfBook?> bookByNaturalKey(String sourceRef, String sourceBookUrl) =>
-      (db.select(db.books)..where(
-            (b) =>
-                b.sourceRef.equals(sourceRef) &
-                b.sourceBookUrl.equals(sourceBookUrl),
-          ))
-          .getSingleOrNull();
+      _bookByAddress(sourceRef, sourceBookUrl);
 
   /// A network book whose source reference is absent. SQLite NULLs are not
   /// equal in a unique key, so the migration's empty-origin identity uses the
-  /// URL explicitly to remain idempotent.
+  /// raw address explicitly to remain idempotent.
   Future<ShelfBook?> bookWithoutSource(String sourceBookUrl) =>
-      (db.select(db.books)..where(
-            (b) => b.sourceRef.isNull() & b.sourceBookUrl.equals(sourceBookUrl),
-          ))
-          .getSingleOrNull();
+      _bookByAddress(null, sourceBookUrl);
+
+  Future<ShelfBook?> _bookByAddress(String? sourceRef, String address) async {
+    Future<ShelfBook?> find(String candidate) =>
+        (db.select(db.books)..where(
+              (b) =>
+                  (sourceRef == null
+                      ? b.sourceRef.isNull()
+                      : b.sourceRef.equals(sourceRef)) &
+                  b.sourceBookUrl.equals(candidate),
+            ))
+            .getSingleOrNull();
+    for (final candidate in _bookAddressCandidates(address)) {
+      final book = await find(candidate);
+      if (book != null) return book;
+    }
+    return null;
+  }
 
   /// The book row's own variable text (frozen `Book.variable`, `Book.kt:115`),
   /// or null when the space holds no such row or the row carries none.
@@ -206,14 +238,13 @@ class SpaceStore {
     String sourceRef,
     String sourceBookUrl,
     String? variable,
-  ) async =>
-      await (db.update(db.books)..where(
-            (b) =>
-                b.sourceRef.equals(sourceRef) &
-                b.sourceBookUrl.equals(sourceBookUrl),
-          ))
-          .write(BooksCompanion(variable: Value(variable))) >
-      0;
+  ) async {
+    final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
+    if (book == null) return false;
+    return await (db.update(db.books)..where((b) => b.id.equals(book.id)))
+            .write(BooksCompanion(variable: Value(variable))) >
+        0;
+  }
 
   /// The chapter row's own variable text (frozen `BookChapter.variable`,
   /// `BookChapter.kt:58`), or null when the space holds no such row or the row

@@ -249,15 +249,35 @@ class LegacyImport {
       final book = HtmlBook.fromJson(
         Map<String, dynamic>.from(record['book'] as Map),
       );
-      final bookUrl = '${book.url}';
-      final existing = await store.bookByNaturalKey(sourceRef, bookUrl);
+      final bookUrl = book.identityAddress;
+      var existing = await store.bookByNaturalKey(sourceRef, bookUrl);
+      var storedBookUrl = bookUrl;
+      if (existing == null && Uri.tryParse(bookUrl)?.toString() == bookUrl) {
+        // Retired JSON can hold only Uri text. Keep an existing raw identity
+        // when that text names it, without decoding the incoming address (#99).
+        // This mirror probe is import-only and bounded to this source's rows.
+        final candidates = await (store.db.select(
+          store.db.books,
+        )..where((b) => b.sourceRef.equals(sourceRef))).get();
+        for (final candidate in candidates) {
+          final address = candidate.sourceBookUrl;
+          if (address == null || Uri.tryParse(address)?.toString() != bookUrl) {
+            continue;
+          }
+          if (existing != null) {
+            throw StateError('在线阅读导入地址匹配多本书籍');
+          }
+          existing = candidate;
+          storedBookUrl = address;
+        }
+      }
       final id = existing?.id ?? mintId('book');
       final shelved = record['shelved'] == true;
       await store.putBook(
         BooksCompanion(
           id: Value(id),
           sourceRef: Value(sourceRef),
-          sourceBookUrl: Value(bookUrl),
+          sourceBookUrl: Value(storedBookUrl),
           title: Value(book.title),
           author: Value(book.author),
           intro: Value(book.intro),

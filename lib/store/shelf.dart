@@ -231,7 +231,10 @@ class ShelfService {
     HtmlBook book,
     List<SourceChapter> chapters,
   ) async {
-    final existing = await store.bookByNaturalKey(bookSourceUrl, '${book.url}');
+    final existing = await store.bookByNaturalKey(
+      bookSourceUrl,
+      book.identityAddress,
+    );
     if (existing == null) return;
     await store.putBook(
       BooksCompanion(
@@ -296,7 +299,7 @@ class ShelfService {
     final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
     if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
     if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
-    final bookUrl = '${book.url}';
+    final bookUrl = book.identityAddress;
     final oldChapters = await store.chaptersOf(bookId);
     final progress = await store.progressOf(bookId);
     final oldIndex = progress?.chapterIndex ?? 0;
@@ -471,7 +474,7 @@ class ShelfService {
         ? null
         : await store.sourceByUrl(sourceUrl);
     final sourceRow = existingSource ?? await store.putSourceJson(source);
-    final bookUrl = '${book.url}';
+    final bookUrl = book.identityAddress;
     final existing = await store.bookByNaturalKey(
       sourceRow.bookSourceUrl,
       bookUrl,

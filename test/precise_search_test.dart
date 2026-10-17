@@ -1353,6 +1353,7 @@ void main() {
     sourceA.hits.add(
       HtmlBook(
         url: Uri.parse('https://a.test/book/1'),
+        preOptionUrl: Uri.parse('https://a.test/book/1'),
         rawAddress: 'book/1',
         title: name,
         author: author,
@@ -1401,6 +1402,42 @@ void main() {
           ),
         ),
         findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final (label, stored, marked) in <(String, String, bool)>[
+    ('resolved raw', 'https://a.test/book/1,{"js":"result"}', true),
+    (
+      'encoded',
+      Uri.parse('https://a.test/book/1,{"js":"result"}').toString(),
+      true,
+    ),
+    ('legacy bare target', 'https://a.test/book/1', true),
+    ('different book', 'https://a.test/book/2', false),
+  ]) {
+    testWidgets('current-source marker uses store identity for $label', (
+      tester,
+    ) async {
+      final entry = withSourceBookUrl(await shelvedBook(), stored);
+      sourceA.hits.add(
+        HtmlBook(
+          url: Uri.parse('https://a.test/book/1'),
+          preOptionUrl: Uri.parse('https://a.test/book/1'),
+          rawAddress: '/book/1,{"js":"result"}',
+          title: name,
+          author: author,
+        ),
+      );
+      await pumpSwitchEntry(tester, entry);
+      expect(
+        find.byKey(
+          const ValueKey(
+            'precise-current-source-https://a.test-https://a.test/book/1',
+          ),
+        ),
+        marked ? findsOneWidget : findsNothing,
       );
       expect(tester.takeException(), isNull);
     });

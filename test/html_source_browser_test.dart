@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,6 +132,52 @@ void main() {
   });
 
   tearDown(() => store.close());
+
+  testWidgets(
+    'raw book address refreshes and reads the existing shelf identity',
+    (tester) async {
+      const address = '$bookUrl?isSearch=1,{"js":"result"}';
+      final book = HtmlBook(
+        url: Uri.parse(address),
+        rawAddress: address,
+        title: 'Raw book',
+      );
+      await shelf.add(source, book);
+      // Seed the contractual imported shape independently of the add writer so
+      // this also catches an encoded-input caller against an existing raw row.
+      final id = (await shelf.onlineShelf()).single.id;
+      await store.putBook(
+        BooksCompanion(
+          id: Value(id),
+          title: Value(book.title),
+          sourceBookUrl: const Value(address),
+        ),
+      );
+      await shelf.saveProgress(id, textOffset: 37);
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            directBook: book,
+            pipeline: ScriptedPipeline(),
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已在书架'), findsOneWidget);
+      expect((await store.chaptersOf(id)).single.name, 'Raw book章');
+      await tester.tap(find.text('Raw book章'));
+      await tester.pumpAndSettle();
+      final reader = tester.widget<OnlineReaderPage>(
+        find.byType(OnlineReaderPage),
+      );
+      expect(reader.bookId, id);
+      expect(await store.shelf(), hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'direct book starts details without search; failure leaves no selection or shelf row',

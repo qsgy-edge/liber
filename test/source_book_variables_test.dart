@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart' show BookSourcePipeline;
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
@@ -96,6 +97,87 @@ void main() {
         'chapter': ?chapter,
       },
       timeout: const Duration(seconds: 5),
+    );
+  }
+
+  for (final html in [true, false]) {
+    test(
+      '${html ? 'HTML' : 'JSON'} snapshots retain raw book identity for variable reads',
+      () async {
+        const address = '$bookUrl?isSearch=1,{"js":"result"}';
+        const source = {
+          'bookSourceUrl': sourceRef,
+          'bookSourceName': 'Identity',
+        };
+        final shelf = ShelfService(store);
+        final book = HtmlBook(
+          url: Uri.parse('$bookUrl?isSearch=1'),
+          preOptionUrl: Uri.parse('$bookUrl?isSearch=1'),
+          rawAddress: '/book?isSearch=1,{"js":"result"}',
+          title: 'Book',
+        );
+        await shelf.add(source, book);
+        // Isolate the lookup caller from the writer: imported rows already hold
+        // the raw address even on the pre-fix tree.
+        final id = (await shelf.onlineShelf()).single.id;
+        await store.putBook(
+          BooksCompanion(
+            id: Value(id),
+            title: Value(book.title),
+            sourceBookUrl: const Value(address),
+            variable: const Value('{"seed":"stored-book"}'),
+          ),
+        );
+        await store.putChapters(id, [
+          BookChapter(
+            bookId: id,
+            chapterKey: chapterUrl,
+            name: 'Chapter',
+            url: chapterUrl,
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: '{"seed":"stored-chapter"}',
+          ),
+        ]);
+        final pages = _Pages({
+          '/book': html ? '<h2>Book</h2>' : '{"name":"Book"}',
+          '/toc': html
+              ? '<a href="/chapter/1">Chapter</a>'
+              : '{"list":[{"name":"Chapter","url":"/chapter/1"}]}',
+          '/chapter/1': html ? '<p>Text</p>' : '{"text":"Text"}',
+        });
+        final data = <String, dynamic>{
+          ...source,
+          'ruleBookInfo': {
+            'name': html ? '@CSS:h2@text' : r'$.name',
+            'intro': '@js:book.bookUrl + "|" + book.getVariable("seed")',
+            'tocUrl': '@js:"/toc"',
+          },
+          'ruleToc': {
+            'chapterList': html ? '@CSS:a' : r'$.list',
+            'chapterName': html ? '@CSS:a@text' : r'$.name',
+            'chapterUrl': html ? '@CSS:a@href' : r'$.url',
+          },
+          'ruleContent': {
+            'content':
+                '@js:book.bookUrl + "|" + book.getVariable("seed") + "|" + chapter.getVariable("seed")',
+          },
+        };
+        final BookSourcePipeline pipeline = html
+            ? HtmlSourcePipeline(data, pages, hostState: hostState())
+            : JsonSourcePipeline(data, pages, hostState: hostState());
+        final (details, chapters) = await pipeline.details(book);
+        expect(details.intro, '$address|stored-book');
+        final body = await pipeline.chapter(chapters.single, book: details);
+        expect(body.text, contains('$address|stored-book|stored-chapter'));
+        expect(pages.requests.map((r) => Uri.parse(r.path).path), [
+          '/book',
+          '/toc',
+          '/chapter/1',
+        ]);
+      },
     );
   }
 
