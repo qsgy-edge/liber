@@ -2156,6 +2156,11 @@ fn new_broker_bridge_call<'js>(
                     let _ = complete_bridge_request_global(id, JsResult::Err(JsError::bridge("Host start callback failed")));
                 }
             }, registration));
+            // A nested eval can throw a source value while this host call is
+            // parked. Keep it on this JS stack until Dart returns that exact
+            // diagnostic, so rethrowing does not turn it into a conversion
+            // TypeError. A different host failure keeps its existing path.
+            let mut nested_failure: Option<(JsError, rquickjs::Value<'js>)> = None;
             loop {
                 if scope.as_ref().is_some_and(|s| s.cancelled.load(Ordering::Acquire)) {
                     if let Some(entry) = broker_pending().lock().unwrap().remove(&id) { entry.starter.abort(); }
@@ -2189,11 +2194,17 @@ fn new_broker_bridge_call<'js>(
                     }
                     result = &mut receiver => return match result {
                         Ok(JsResult::Ok(value)) => Ok(value),
-                        Ok(JsResult::Err(error)) => Err(rquickjs::Error::new_from_js_message("bridge", "JsValue", error.to_string())),
+                        Ok(JsResult::Err(error)) => {
+                            if let Some((diagnostic, value)) = nested_failure.take() {
+                                if diagnostic == error { return Err(call_ctx.throw(value)); }
+                            }
+                            Err(rquickjs::Error::new_from_js_message("bridge", "JsValue", error.to_string()))
+                        },
                         Err(_) => Err(rquickjs::Error::new_from_js_message("bridge", "JsValue", "bridge request closed")),
                     },
                     Some(command) = commands.recv() => {
                         // Run on the suspended JS stack, never reacquire AsyncContext.
+                        nested_failure = None;
                         let result = call_ctx.eval::<rquickjs::Value, _>(command.source)
                             .and_then(|value| {
                                 if value.is_promise() {
@@ -2202,7 +2213,22 @@ fn new_broker_bridge_call<'js>(
                                 JsValue::from_js(&call_ctx, value)
                             })
                             .catch(&call_ctx)
-                            .map_err(|error| JsError::from_caught(&call_ctx, error));
+                            .map_err(|error| {
+                                let thrown = match &error {
+                                    rquickjs::CaughtError::Exception(exception) => Some(exception.as_object().as_value().clone()),
+                                    // Allocator report loss can throw null; retaining it would
+                                    // discard even the legacy conversion's diagnostic context.
+                                    rquickjs::CaughtError::Value(value) if !value.is_null() && !value.is_undefined() => Some(value.clone()),
+                                    rquickjs::CaughtError::Value(_) | rquickjs::CaughtError::Error(_) => None,
+                                };
+                                let diagnostic = JsError::from_caught(&call_ctx, error);
+                                // These variants carry no origin flag: regexp compiler
+                                // exhaustion also arrives as Syntax and keeps its engine text.
+                                if matches!(diagnostic, JsError::Runtime(_) | JsError::Type(_) | JsError::Reference(_) | JsError::Syntax { .. }) {
+                                    nested_failure = thrown.map(|value| (diagnostic.clone(), value));
+                                }
+                                diagnostic
+                            });
                         let result = if shutdown.requested() { Err(shutdown.error()) } else { result };
                         let _ = command.reply.send(result);
                     }

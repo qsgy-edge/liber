@@ -2095,3 +2095,296 @@ async fn nested_parks_hold_the_deadline_until_the_outermost_resume() {
         other => panic!("a nested park must hold the deadline, got {other:?}"),
     }
 }
+
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_rethrows_the_original_nested_script_value() {
+    use crate::api::engine::{complete_bridge_request_global, eval_bridge_request_global};
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init_broker(
+            |request| {
+                Box::pin(async move {
+                    let failure = eval_bridge_request_global(
+                        request.id,
+                        "throw globalThis.original".to_string(),
+                    )
+                    .await
+                    .unwrap_err();
+                    complete_bridge_request_global(request.id, JsResult::Err(failure)).unwrap();
+                })
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+
+    // Object identity also proves that custom properties, names and primitive
+    // thrown values survive without reconstructing an error from its text.
+    for original in [
+        "new TypeError('hook')",
+        "new ReferenceError('hook')",
+        "new SyntaxError('hook')",
+        "Object.assign(new Error('hook'), {name:'CustomError', marker:73})",
+        "({marker:73})",
+        "'hook text'",
+        "42",
+    ] {
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        let result = engine.eval_scoped(id, format!(
+            "globalThis.original = {original}; (() => {{ try {{ fjs.bridge_call('hook'); }} catch(e) {{ return e === globalThis.original; }} return false; }})()"
+        )).await.unwrap();
+        assert!(
+            matches!(result, JsValue::Boolean(true)),
+            "original {original}: {result:?}"
+        );
+    }
+    engine.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_nested_failure_does_not_replace_host_completion() {
+    use crate::api::engine::{complete_bridge_request_global, eval_bridge_request_global};
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init_broker(
+            |request| {
+                Box::pin(async move {
+                    let failure = eval_bridge_request_global(
+                        request.id,
+                        "throw new ReferenceError('swallowed')".to_string(),
+                    )
+                    .await
+                    .unwrap_err();
+                    let result = match request.value {
+                        JsValue::String(ref mode) if mode == "success" => {
+                            JsResult::Ok(JsValue::string("ok"))
+                        }
+                        JsValue::String(ref mode) if mode == "changed" => {
+                            JsResult::Err(JsError::bridge("replacement"))
+                        }
+                        _ => {
+                            // A later nested success releases the saved exception; a
+                            // host deliberately returning an older diagnostic still
+                            // uses the ordinary conversion path.
+                            eval_bridge_request_global(request.id, "73".to_string())
+                                .await
+                                .unwrap();
+                            JsResult::Err(failure)
+                        }
+                    };
+                    complete_bridge_request_global(request.id, result).unwrap();
+                })
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+
+    for (mode, expected) in [
+        ("success", "fjs.bridge_call('success') === 'ok'"),
+        ("changed", "(() => { try { fjs.bridge_call('changed'); } catch(e) { return e instanceof TypeError && e.message.includes('replacement') && !e.message.includes('swallowed'); } })()"),
+        ("stale", "(() => { try { fjs.bridge_call('stale'); } catch(e) { return e instanceof TypeError && e.message.includes('bridge') && e.message.includes('swallowed'); } })()"),
+    ] {
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        let result = engine.eval_scoped(id, expected.to_string()).await.unwrap();
+        assert!(matches!(result, JsValue::Boolean(true)), "mode {mode}: {result:?}");
+    }
+    engine.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_classified_memory_and_recursion_failures_keep_the_conversion_path() {
+    use crate::api::engine::{complete_bridge_request_global, eval_bridge_request_global};
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init_broker(
+            |request| {
+                Box::pin(async move {
+                    let JsValue::String(script) = request.value else {
+                        panic!("script expected")
+                    };
+                    let failure = eval_bridge_request_global(request.id, script)
+                        .await
+                        .unwrap_err();
+                    assert!(
+                        matches!(failure, JsError::MemoryLimit(_) | JsError::StackOverflow(_)),
+                        "{failure:?}"
+                    );
+                    complete_bridge_request_global(request.id, JsResult::Err(failure)).unwrap();
+                })
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+
+    // The memory row is a classifier control; allocator enforcement has its
+    // own memory tests. The recursive row reaches the engine's real stack cap.
+    for script in [
+        "throw Object.assign(new Error('out of memory'), {name:'InternalError'})",
+        "function recurse(){ return recurse(); } recurse()",
+    ] {
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        let marker = if script.contains("memory") {
+            "out of memory"
+        } else {
+            "stack"
+        };
+        let result = engine.eval_scoped(id, format!(
+            "(() => {{ try {{ fjs.bridge_call(\"{script}\"); }} catch(e) {{ return e instanceof TypeError && e.message.includes('bridge') && e.message.includes('{marker}'); }} return false; }})()"
+        )).await.unwrap();
+        assert!(matches!(result, JsValue::Boolean(true)), "{result:?}");
+    }
+    engine.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_null_and_undefined_keep_the_conversion_diagnostic() {
+    use crate::api::engine::{complete_bridge_request_global, eval_bridge_request_global};
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init_broker(
+            |request| {
+                Box::pin(async move {
+                    let JsValue::String(value) = request.value else {
+                        panic!("value expected")
+                    };
+                    let failure = eval_bridge_request_global(request.id, format!("throw {value}"))
+                        .await
+                        .unwrap_err();
+                    complete_bridge_request_global(request.id, JsResult::Err(failure)).unwrap();
+                })
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+    for value in ["null", "undefined"] {
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        let observed = engine.eval_scoped(id, format!(
+            "(() => {{ try {{ fjs.bridge_call('{value}'); }} catch(e) {{ return JSON.stringify([e instanceof TypeError, String(e), e && e.message]); }} }})()"
+        )).await.unwrap();
+        eprintln!("broker diagnostic-free throw {value}: {observed:?}");
+        let JsValue::String(text) = observed else {
+            panic!("diagnostic expected")
+        };
+        assert!(text.starts_with("[true,"), "{text}");
+        assert!(text.contains(&format!("Runtime error: {value}")), "{text}");
+    }
+    engine.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_regexp_compiler_stack_exhaustion_keeps_the_engine_diagnostic() {
+    use crate::api::engine::{complete_bridge_request_global, eval_bridge_request_global};
+
+    let engine = JsEngine::create(None, None, None).await.unwrap();
+    engine
+        .init_broker(
+            |request| {
+                Box::pin(async move {
+                    // Noncapturing groups avoid the capture-count limit. This reaches
+                    // libregexp's native parser stack check, not JS recursion.
+                    let failure = eval_bridge_request_global(
+                        request.id,
+                        "new RegExp('(?:'.repeat(20000) + 'a' + ')'.repeat(20000))".to_string(),
+                    )
+                    .await
+                    .unwrap_err();
+                    eprintln!("broker regexp compiler nested diagnostic: {failure:?}");
+                    complete_bridge_request_global(request.id, JsResult::Err(failure)).unwrap();
+                })
+            },
+            |_| Box::pin(async {}),
+        )
+        .await
+        .unwrap();
+    let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+    let observed = engine.eval_scoped(id,
+        "(() => { try { fjs.bridge_call('regexp'); } catch(e) { return JSON.stringify([e.name, e.message, e instanceof SyntaxError]); } })()".to_string()
+    ).await.unwrap();
+    eprintln!("broker regexp compiler source observes: {observed:?}");
+    assert!(
+        matches!(observed, JsValue::String(ref text) if text == r#"["SyntaxError","stack overflow",true]"#),
+        "{observed:?}"
+    );
+    engine.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broker_single_allocation_records_whether_the_null_loss_route_is_reached() {
+    use crate::api::engine::{
+        complete_bridge_request_global, eval_bridge_request_global, JsEngineRuntimeOptions,
+    };
+
+    let mut null_losses = 0;
+    for iteration in 0..10 {
+        let failures = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let engine = JsEngine::create(
+            Some(JsBuiltinOptions::none()),
+            None,
+            Some(JsEngineRuntimeOptions {
+                memory_limit: Some(16 * 1024 * 1024),
+                gc_threshold: Some(1),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap();
+        engine.init_broker({
+            let failures = failures.clone();
+            move |request| {
+                let failures = failures.clone();
+                Box::pin(async move {
+                    let failure = eval_bridge_request_global(request.id, "(()=>{const blocks=[]; while(true) { blocks.push(new Array(4000000).fill(123)); }})()".to_string())
+                        .await.unwrap_err();
+                    failures.lock().unwrap().push(failure.clone());
+                    complete_bridge_request_global(request.id, JsResult::Err(failure)).unwrap();
+                })
+            }
+        }, |_| Box::pin(async {})).await.unwrap();
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        let observed = engine.eval_scoped(id,
+            "(() => { try { fjs.bridge_call('allocation'); } catch(e) { return JSON.stringify([e.name, e.message, e instanceof TypeError]); } })()".to_string()
+        ).await.unwrap();
+        let failures = failures.lock().unwrap();
+        assert_eq!(failures.len(), 1);
+        let failure = &failures[0];
+        let null_loss = matches!(failure, JsError::Runtime(text) if text == "null");
+        null_losses += usize::from(null_loss);
+        eprintln!("broker allocator attempt {iteration}: diagnostic={failure:?}, null_loss={null_loss}, source_observes={observed:?}");
+        assert!(
+            null_loss || matches!(failure, JsError::MemoryLimit(_)),
+            "{failure:?}"
+        );
+        let JsValue::String(text) = observed else {
+            panic!("diagnostic expected")
+        };
+        assert!(
+            text.starts_with(r#"["TypeError","#) && text.ends_with(",true]"),
+            "{text}"
+        );
+        assert!(
+            text.contains(if null_loss {
+                "Runtime error: null"
+            } else {
+                "out of memory"
+            }),
+            "{text}"
+        );
+        drop(failures);
+        engine.run_gc().await.unwrap();
+        let id = engine.create_scoped_execution(Some(5_000)).unwrap();
+        assert!(matches!(
+            engine.eval_scoped(id, "21*2".to_string()).await.unwrap(),
+            JsValue::Integer(42)
+        ));
+        engine.close().await.unwrap();
+    }
+    eprintln!("broker allocator null-loss route: {null_losses}/10 attempts reached it; zero means actual null-loss coverage is not-run on this host, not a substituted literal-null result");
+}

@@ -718,6 +718,101 @@ void main() {
         });
       }
 
+      for (final member in ['ajax', 'connect', 'ajaxAll']) {
+        test('hook-internal $member script keeps its type and message', () async {
+          final site = await _Site.start(json);
+          addTearDown(site.close);
+          final source = _source(json, site.origin);
+          final url =
+              '${site.origin}/unused,${jsonEncode({'js': 'throw new TypeError("SYNTHETIC-HOOK-FAILURE")'})}';
+          final argument = jsonEncode(url);
+          source['loginCheckJs'] = member == 'ajaxAll'
+              ? 'java.ajaxAll([$argument]); result;'
+              : 'java.$member($argument); result;';
+          final notices = <SourceHostMessage>[];
+          final transport = _ObservedTransport();
+          final BookSourcePipeline pipeline = json
+              ? JsonSourcePipeline(
+                  source,
+                  transport,
+                  onHostMessage: notices.add,
+                )
+              : HtmlSourcePipeline(
+                  source,
+                  transport,
+                  onHostMessage: notices.add,
+                );
+          final result = await _outcome(pipeline.search('Book'));
+          expect(result.error, isA<SourceScriptError>());
+          final error = result.error as SourceScriptError;
+          expect(error.category, 'js');
+          expect(
+            error.message,
+            startsWith('TypeError: SYNTHETIC-HOOK-FAILURE'),
+          );
+          expect(error.message, isNot(contains("converting from js 'bridge'")));
+          expect(notices.single.kind, 'loginCheckJs');
+          expect(notices.single.message, '$error');
+          _requestSequence(site, ['/search']);
+        });
+      }
+
+      test('hook-internal nested ReferenceError keeps its diagnostic', () async {
+        final site = await _Site.start(json);
+        addTearDown(site.close);
+        final source = _source(json, site.origin);
+        final inner =
+            '${site.origin}/unused,${jsonEncode({'js': 'throw new ReferenceError("SYNTHETIC-NESTED-FAILURE")'})}';
+        final outer =
+            '${site.origin}/unused,${jsonEncode({'js': 'java.ajax(${jsonEncode(inner)})'})}';
+        source['loginCheckJs'] = 'java.ajax(${jsonEncode(outer)}); result;';
+        final result = await _outcome(
+          openBookSourcePipeline(source, _ObservedTransport()).search('Book'),
+        );
+        expect(result.error, isA<SourceScriptError>());
+        final error = result.error as SourceScriptError;
+        expect(error.category, 'js');
+        expect(
+          error.message,
+          startsWith('ReferenceError: SYNTHETIC-NESTED-FAILURE'),
+        );
+        expect(error.message, isNot(contains("converting from js 'bridge'")));
+        _requestSequence(site, ['/search']);
+      });
+
+      for (final typed in [false, true]) {
+        test(
+          'hook-internal error stays catchable with typed check $typed',
+          () async {
+            final site = await _Site.start(json);
+            addTearDown(site.close);
+            final source = _source(json, site.origin);
+            final url =
+                '${site.origin}/unused,${jsonEncode({'js': 'throw new ReferenceError("SYNTHETIC-CAUGHT-FAILURE")'})}';
+            source['loginCheckJs'] =
+                '''
+var caught = false;
+try { java.ajax(${jsonEncode(url)}); }
+catch (e) {
+  caught = true;
+  ${typed ? 'if (!(e instanceof ReferenceError) || e.name !== "ReferenceError" || e.message !== "SYNTHETIC-CAUGHT-FAILURE") throw new Error("SYNTHETIC-WRONG-CAUGHT-TYPE: " + e);' : ''}
+}
+if (!caught) throw new Error('SYNTHETIC-NOT-CATCHABLE');
+result;
+''';
+            final result = await _outcome(
+              openBookSourcePipeline(
+                source,
+                _ObservedTransport(),
+              ).search('Book'),
+            );
+            expect(result.error, isNull);
+            expect(result.value as List<HtmlBook>, hasLength(1));
+            _requestSequence(site, ['/search']);
+          },
+        );
+      }
+
       test('cancellation during HTTP keeps the cancellation type', () async {
         final site = await _Site.start(json);
         addTearDown(site.close);
