@@ -177,26 +177,54 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     final space = store;
     final useSystemProxy =
         space != null && await SystemProxySetting.resolve(space);
-    final client = clientFactory(useSystemProxy: useSystemProxy);
-    if (sourceRequest.allowInvalidCertificate) {
-      // ADR 0011 §5: the user's per-source, per-host exception. This client
-      // serves one `send`, so the callback cannot lower validation for another
-      // source or another host.
-      client.badCertificateCallback = (_, _, _) => true;
-    }
-    // Dart fills its default User-Agent before the headers are copied, so
-    // configure the client too: an explicit value must survive every hop.
     final headers = withSourceRequestDefaults(sourceRequest.headers);
-    for (final header in headers.entries) {
-      if (header.key.toLowerCase() == 'user-agent') {
-        client.userAgent = header.value;
+    // #131: one client per hop. A redirect hop and a source-declared status
+    // retry attempt each start on a connection of their own, so a hop never
+    // rides a pooled connection the peer has already closed. [inFlight] is the
+    // client whose I/O a cancellation or the whole-send timeout must close;
+    // [stopped] keeps a hop the failing send has abandoned from building one
+    // more client.
+    HttpClient? inFlight;
+    var stopped = false;
+    HttpClient openClient() {
+      if (stopped) throw const _SourceSendStopped();
+      final client = clientFactory(useSystemProxy: useSystemProxy);
+      if (sourceRequest.allowInvalidCertificate) {
+        // ADR 0011 §5: the user's per-source, per-host exception. This client
+        // serves one hop, so the callback cannot lower validation for another
+        // source or another host.
+        client.badCertificateCallback = (_, _, _) => true;
       }
+      // Dart fills its default User-Agent before the headers are copied, so
+      // configure the client too: an explicit value must survive every hop.
+      for (final header in headers.entries) {
+        if (header.key.toLowerCase() == 'user-agent') {
+          client.userAgent = header.value;
+        }
+      }
+      return inFlight = client;
     }
+
+    // The hop this client served has been read or has failed: close it once, so
+    // the next hop starts on a connection of its own. A client this send's
+    // cancellation or timeout already closed is left alone.
+    void closeClient(HttpClient client) {
+      if (!identical(inFlight, client)) return;
+      inFlight = null;
+      client.close(force: true);
+    }
+
     Future<SourceHttpResponse> read() async {
       SourceHttpResponse? response;
       for (var attempt = 0; attempt <= sourceRequest.retry; attempt++) {
         sourceRequest.cancellation?.throwIfCancelled();
-        response = await _readOnce(client, uri, sourceRequest, headers);
+        response = await _readOnce(
+          uri,
+          sourceRequest,
+          headers,
+          openClient,
+          closeClient,
+        );
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return response;
         }
@@ -207,10 +235,11 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     final cancelled = Completer<SourceHttpResponse>();
     final result = Future.any([read(), cancelled.future]);
     final unsubscribe = sourceRequest.cancellation?.listen(() {
-      if (!cancelled.isCompleted) {
-        cancelled.completeError(const SourceRequestCancelled());
-        client.close(force: true);
-      }
+      if (cancelled.isCompleted) return;
+      stopped = true;
+      cancelled.completeError(const SourceRequestCancelled());
+      final client = inFlight;
+      if (client != null) closeClient(client);
     });
     try {
       return await result.timeout(timeout);
@@ -227,12 +256,16 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       rethrow;
     } finally {
       unsubscribe?.call();
-      // Future.timeout alone does not stop I/O; close this request's client.
-      client.close(force: true);
+      // Future.timeout alone does not stop I/O; close this send's last client
+      // and keep a hop still in flight from building another one.
+      stopped = true;
+      final client = inFlight;
+      if (client != null) closeClient(client);
     }
   }
 
-  /// One attempt: request, manual redirect chain, and body read.
+  /// One attempt: a fresh client for every hop, the manual redirect chain, and
+  /// body read.
   ///
   /// The redirect rules are OkHttp's `RetryAndFollowUpInterceptor`: 300, 301,
   /// 302 and 303 turn a request that carries a body into a GET without one and
@@ -240,17 +273,25 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
   /// another scheme, host or port drops `Authorization`, and the 21st redirect
   /// fails the call. Dart's own `HttpClientResponse.redirect` keeps the method
   /// and drops the body, so the chain is walked here.
+  ///
+  /// [openClient] builds the client a hop runs on and records it as the send's
+  /// in-flight client; [closeClient] closes it once that hop's response has
+  /// been consumed, so no hop starts on a connection an earlier hop left
+  /// behind. A hop whose request fails before its response arrives is closed by
+  /// the caller's own client teardown.
   Future<SourceHttpResponse> _readOnce(
-    HttpClient client,
     Uri uri,
     SourceHttpRequest sourceRequest,
     Map<String, String> headers,
+    HttpClient Function() openClient,
+    void Function(HttpClient) closeClient,
   ) async {
     var method = sourceRequest.method;
     var target = uri.hasFragment ? uri.removeFragment() : uri;
     var body = sourceRequest.body;
     var hop = 0;
     while (true) {
+      final client = openClient();
       final request = await client.openUrl(method, target);
       request.followRedirects = false;
       final requestHeaders = body == null
@@ -282,23 +323,35 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       final response = await request.close();
       if (!sourceRequest.followRedirects ||
           !_sourceRedirectStatuses.contains(response.statusCode)) {
-        return _readResponse(
-          response,
-          target,
-          sourceRequest.maxResponseBytes,
-          readBytes: sourceRequest.readBytes,
-        );
+        try {
+          return await _readResponse(
+            response,
+            target,
+            sourceRequest.maxResponseBytes,
+            readBytes: sourceRequest.readBytes,
+          );
+        } finally {
+          closeClient(client);
+        }
       }
       final location = response.headers.value(HttpHeaders.locationHeader);
       if (location == null) {
-        return _readResponse(
-          response,
-          target,
-          sourceRequest.maxResponseBytes,
-          readBytes: sourceRequest.readBytes,
-        );
+        try {
+          return await _readResponse(
+            response,
+            target,
+            sourceRequest.maxResponseBytes,
+            readBytes: sourceRequest.readBytes,
+          );
+        } finally {
+          closeClient(client);
+        }
       }
-      await response.drain<void>();
+      try {
+        await response.drain<void>();
+      } finally {
+        closeClient(client);
+      }
       if (++hop > _maxSourceFollowUps) {
         throw SourceRedirectLimitExceeded(hop, target);
       }
@@ -398,6 +451,14 @@ class SourceRedirectLimitExceeded implements Exception {
 
   @override
   String toString() => 'Too many follow-up requests: $followUps ($url)';
+}
+
+/// Raised inside [HttpSourceTransport.send]'s hop loop when the whole send has
+/// already failed — its cancellation or its timeout — and no later hop or retry
+/// attempt may build a client. The send's own future has settled by then, so
+/// this never reaches a caller.
+class _SourceSendStopped implements Exception {
+  const _SourceSendStopped();
 }
 
 /// Names [error] as ADR 0011 §5's certificate failure, or returns null when it
