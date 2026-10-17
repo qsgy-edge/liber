@@ -38,32 +38,44 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 
 <!-- agents-md-author:begin lane-dispatch -->
 
-## Lane dispatch and the batch loop
+## Spec implementation and dispatch
 
-- Frontier work is dispatched as lanes: one async `subagent` workflow, one child per ticket, each with its own
-  briefing file beside the handoff. Follow the `subagent-delegation` and `pi-subagents` skills for the mechanics;
-  this section is the project's binding layer on top of them.
-- Each briefing names the skills its lane should follow — `diagnosing-bugs` to attribute a failure it meets,
-  `flutter-dart-mcp` for a driven run, `anti-overengineering-review` before adding an abstraction.
-- Give every child an explicit `timeoutMs` (three hours for an implementation lane) and
-  `checkpointBeforeDeadlineMs`; the default 30-minute child deadline kills lanes with uncommitted work.
-- One writer per worktree (see Branch and worktree lifecycle). The main checkout belongs to the controller, and a
-  lane never edits it.
-- A lane commits locally and leaves one evidence comment on its ticket: what changed, the commands it ran with
-  their actual results, the acceptance list checked off, and every divergence and residual risk. It never merges,
-  pushes, or closes the ticket, and it asks the controller through `contact_supervisor` at a boundary instead of
-  improvising.
-- The controller verifies from the raw diff and re-runs the headline numbers itself; a lane's numbers are claims
-  until reproduced.
-- Close a batch in this order: merge `--no-ff` locally with the ticket number in the message, run the
-  verification matrix on the integrated tree plus the gate the batch's claim needs
-  (`docs/compatibility/delivery-phases.md` is the phase/claim ladder), push once, wait for every platform row,
-  then close each ticket with a resolution comment, update the map, open and link the follow-up tickets the
-  lanes proposed, and write the next handoff with the `handoff` skill.
-- A decision ticket gets its own interactive session with a briefing and the `grilling` skill; it never runs as a
-  lane. Open that session in a Herdr pane beside the controller, so the operator answers it directly and the
-  controller reads the result from the artifact instead of relaying the questions.
-- Handoffs, briefings, and resolution comments reference the artifact (ticket, ADR, document, commit) instead of
-  restating it.
+- For an approved spec and its GitHub ticket graph, follow `implement-spec`; use `subagent-delegation` and
+  `pi-subagents` for Pi execution. The controller fixes the scope, starting SHA, acceptance criteria and agreed
+  test interfaces before dispatch. The migration map remains the route; decision tickets use the interactive
+  path below.
+- Implementation and repair workers use `cline/cline-pass/deepseek-v4.1-flash:max`. The controller uses the
+  operator-selected main-session model. Fresh Standards and Spec reviewers use that session's selected
+  provider/model and thinking level, explicitly pinned at dispatch. An unavailable requested model is a
+  dispatch blocker.
+- Create a short-lived `integration/<spec-ticket>` branch in a separate worktree. Run one async workflow:
+  implementers have isolated ticket worktrees based on its current tip; the controller owns both the main
+  checkout and serial merges in the integration worktree. Incorporate the integration tip into an implementer's
+  own branch before reporting ready; preserve existing work when the starting ref is wrong.
+- Dispatch the open, unblocked, unassigned implementation frontier; refill it as accepted merges unblock
+  tickets. An integrated runnable slice must pass its automated checks and the existing Windows driven-run
+  requirement before starting the next slice. Merging onto the integration branch does not close a ticket.
+- Each brief points to the spec, ticket, relevant contracts, agreed test interfaces and validation. Implementers
+  use `tdd` for behavioral changes, `diagnosing-bugs` for failures and `flutter-dart-mcp` for Dart/Flutter checks.
+  Use `anti-overengineering-review` when an abstraction's value is unresolved. Give every child an explicit
+  `timeoutMs` and `checkpointBeforeDeadlineMs`; implementation lanes receive three hours.
+- An implementer commits locally and leaves one evidence comment with actual checks, acceptance and residuals.
+  Children use `contact_supervisor` for unresolved boundaries. Integration merges, final acceptance,
+  publication, ticket closure and map changes belong to the controller. Evidence stays branch-scoped until
+  accepted and integrated into `master`.
+- Once the graph is complete, freeze the integration head and run one `code-review` over the whole change from
+  the starting SHA: fresh, independent Standards and Spec reviewers. Independent review occurs at graph
+  completion. Send accepted findings to one isolated repair writer, then re-review the affected changes.
+  The controller checks each ticket's raw diff before an integration merge and independently reproduces the
+  headline results before final acceptance.
+- After acceptance, the controller merges `--no-ff` into `master`, verifies the final integrated tree with the
+  verification matrix and claim gate in `docs/compatibility/delivery-phases.md`, pushes once and waits for every
+  platform row. Then close the tickets with resolution comments, update the map, open and link follow-ups,
+  archive retired commits and remove completed ticket and integration worktrees/branches.
+- A decision ticket gets its own interactive session with a briefing and `grilling`; it never runs as an
+  implementation lane. Open that session in a Herdr pane beside the controller so the operator answers directly.
+- Briefings, evidence and resolution comments reference artifacts rather than repeat them. Continue in the
+  current session while its context is useful; use `handoff` for a new harness, directory, colleague or a
+  mid-phase side task.
 
 <!-- agents-md-author:end lane-dispatch -->
