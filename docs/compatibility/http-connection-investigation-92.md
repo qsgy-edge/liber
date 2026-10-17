@@ -3,9 +3,39 @@
 Branch-scoped investigation on base `8e0cca4bfa3ffe32b62822258e14fcae1ad66069`.
 The five tests in the evidence directory's
 `attribution-tests/source_http_connection_test.dart` are product-side
-attribution fixtures, not frozen goldens or a compatibility claim. They are
-not committed as product guards because they assert a known recovery gap.
-Follow-up [#131](https://github.com/qsgy-edge/liber/issues/131) owns that gap.
+attribution fixtures, not frozen goldens or a compatibility claim. They assert
+the per-send client lifetime this investigation measured and are not committed
+as product guards. Follow-up [#131](https://github.com/qsgy-edge/liber/issues/131)
+selected the connection policy below, and `test/source_http_connection_test.dart`
+is that policy's product guard.
+
+## Selected connection policy (#131)
+
+The within-send pooled-connection failure the controlled fixture reproduces is
+closed by the connection policy implemented for
+[#131](https://github.com/qsgy-edge/liber/issues/131): `HttpSourceTransport.send`
+builds a distinct `HttpClient` for every redirect hop and every source-declared
+HTTP-status retry attempt, consumes or drains that hop's response, and closes
+the client before the next hop starts. A follow-up therefore cannot ride a
+pooled connection the peer has already closed.
+
+The costs are explicit and accepted: one `send` no longer reuses a connection
+between its hops, so each hop pays a TCP connect and, on HTTPS, a TLS
+handshake. The wire contract is unchanged — the source's declared headers, the
+injected `Connection: Keep-Alive`, the redirect method/body/header rules,
+cross-origin credential stripping and the 20-follow-up limit all stand; only
+the client lifetime changed.
+
+No automatic transport-error replay is part of this policy. The frozen
+`retryOnConnectionFailure(true)` remains source inspection, and a fresh-peer
+close or a partial response header is still the same visible `HttpException`.
+Only a source-declared HTTP-status retry (`retry`) starts another attempt, now
+on its own client; cancellation and the whole-send timeout close the in-flight
+hop client and start no later hop.
+
+The measurements in the sections below were taken while one client served a
+whole `send`. They remain the historical record of how the gap was attributed,
+not the current policy.
 
 The measured direct source sequence **did not reproduce the reported
 exception**. On 2026-10-17 the product fetched the book information and first
@@ -90,7 +120,7 @@ The raw socket fixture preserves HTTP/1.0 and deliberate incomplete headers.
 Only TCP destinations are mapped to loopback; the real product transport still
 pools by the original URL origin and writes the source's headers and Host.
 
-| Shape | Current transport observation | Implication |
+| Shape | Measured transport observation (per-send client lifetime) | Implication |
 | --- | --- | --- |
 | Recorded HTTP/1.0 301, `Keep-Alive: timeout=4`, `Connection: keep-alive`, then peer close; cross-host target answers 200; repeat for TOC | HTTP 200 / 2 fixture bytes each; four requests on connections `[1, 2, 3, 4]` | Measured sends used distinct connections for each origin and send |
 | Same-origin 301 on a persistent socket; peer closes when the next GET reaches that socket; fresh connections would answer 200 | Exact exception at `/after`; requests `/start`, `/after` on connection `[1, 1]`; no fresh attempt | A within-send pooled connection failure exists, independent of rule `retry: 0` |
@@ -103,8 +133,9 @@ The first experiment asserted success for the pooled case and went red:
 with one connection and two GETs. The self-contained
 `attribution-tests/red/` directory retains that original red instrument.
 The five passing evidence tests instead assert the explicitly documented
-current behavior. They remain outside `test/` so a known recovery gap is not
-committed as expected product behavior.
+behavior of the per-send client lifetime. They remain outside `test/` as
+branch-scoped evidence; the selected policy's product guard is
+`test/source_http_connection_test.dart`.
 
 The hypotheses tested were: cross-send stale reuse (ruled out by per-send
 client lifetime and distinct observed connects); within-send stale reuse
@@ -159,16 +190,18 @@ at line 2594; `async/schedule_microtask.dart:123` documents microtask ordering
 before timer events. This supports the explanation that the next redirect
 acquires the socket before its zero-duration timer fires. The replay measures
 continued reuse with an effective zero timeout; it does not directly capture
-that internal ordering. No idle-timeout setting, connection-failure retry,
-header change or fresh-client-per-hop mechanism is in the worktree product.
+that internal ordering. No idle-timeout setting, connection-failure retry or
+header change was part of this investigation's worktree state; the
+fresh-client-per-hop mechanism was added later for
+[#131](https://github.com/qsgy-edge/liber/issues/131) and is the policy stated
+at the top of this document.
 
-The known within-send recovery gap remains explicit and belongs to
-[#131](https://github.com/qsgy-edge/liber/issues/131). The controller selected
-an evidence-only delivery for #92; this commit changes only this findings
-document. It does not establish a cause for the historical #92 observation;
-assigning a more specific cause would require the failing run's wire evidence.
-Windows app build/driven verification, other platform execution and any
-aggregate compatibility claim remain outside this lane.
+The known within-send recovery gap is closed by that policy; the #92 delivery
+itself remained evidence-only and changed only this findings document. It does
+not establish a cause for the historical #92 observation; assigning a more
+specific cause would require the failing run's wire evidence. Windows app
+build/driven verification, other platform execution and any aggregate
+compatibility claim remain outside this lane.
 
 ## Validation and evidence layout
 
