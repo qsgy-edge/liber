@@ -1,10 +1,18 @@
+import 'dart:convert';
+
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
-import 'package:liber/source/js_source_runtime.dart' show SourceHostMessage;
+import 'package:liber/source/js_source_runtime.dart'
+    show SourceHostMessage, sourceRuleVariableKey;
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_host_state.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 import 'native_library.dart';
 
@@ -42,6 +50,7 @@ void main() {
     () async {
       for (final (label, stored) in <(String, String)>[
         ('option tail', '$origin/book/b29$tail'),
+        ('historical relative', '/book/b29$tail'),
         ('no tail', '$origin/book/b29'),
       ]) {
         final notices = <SourceHostMessage>[];
@@ -91,6 +100,7 @@ void main() {
     () async {
       for (final (label, stored) in <(String, String)>[
         ('option tail', '$origin/book/b29$tail'),
+        ('historical relative', '/book/b29$tail'),
         ('no tail', '$origin/book/b29'),
       ]) {
         final notices = <SourceHostMessage>[];
@@ -104,6 +114,22 @@ void main() {
           onHostMessage: notices.add,
         );
 
+        if (label == 'historical relative') {
+          // Existing JSON TOC resolution uses hit.url as its base; a historical
+          // relative URL has none. Details can load, then TOC resolution fails.
+          await expectLater(
+            pipeline.details(HtmlBook(
+              url: Uri.parse(stored), rawAddress: stored, title: '万生痴魔',
+            )),
+            throwsA(isA<FormatException>().having(
+              (error) => error.message, 'message', 'Invalid source URL',
+            )),
+          );
+          expect(pages.requests.map((request) => request.url.toString()), [
+            '$origin/book/b29?isSearch=1',
+          ]);
+          continue;
+        }
         final (book, chapters) = await pipeline.details(
           HtmlBook(url: Uri.parse(stored), rawAddress: stored, title: '万生痴魔'),
         );
@@ -127,7 +153,154 @@ void main() {
     },
   );
 
+  const expandedTail = ''' ,{
+  "js": "result + '/next'"
+}''';
+  const incrementExpansion =
+      "java.put('expansionCount', String(Number(java.get('expansionCount') || '0') + 1));";
+  for (final (label, returned, expectedTail, stateful) in [
+    ('template', '/book/{{key}}', '', false),
+    ('URL wrapper', "@js:'/book/' + key", '', false),
+    (
+      'stateful template with options',
+      '/book/{{$incrementExpansion key}}$expandedTail',
+      expandedTail,
+      true,
+    ),
+    (
+      'stateful URL wrapper with options',
+      "@js:$incrementExpansion '/book/' + key + ${jsonEncode(expandedTail)}",
+      expandedTail,
+      true,
+    ),
+  ]) {
+    test(
+      'JSON returned $label expands once and persists its expanded identity',
+      () async {
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final shelf = ShelfService(store);
+        final state = SourceHostState();
+        final source = _jsonSource(origin);
+        final expectedAddress = '/book/example$expectedTail';
+        final expectedIdentity = '$origin$expectedAddress';
+        final requestTarget =
+            '$origin/book/example${expectedTail.isEmpty ? '' : '/next'}';
+        final pages = _Pages({
+          '/search': jsonEncode({
+            'items': [
+              {'title': 'Book', 'url': returned},
+            ],
+          }),
+          '/book/example': '{"title":"Book","toc":"/toc"}',
+          '/book/example/next': '{"title":"Book","toc":"/toc"}',
+          '/toc': '{"list":[{"name":"Chapter","url":"/c/1"}]}',
+        });
+        Future<void> expectExpansionCount() async {
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'expansionCount'),
+            ),
+            stateful ? '1' : isNull,
+          );
+        }
+
+        final search = JsonSourcePipeline(source, pages, hostState: state);
+        final hit = (await search.search('example')).single;
+        await expectExpansionCount();
+        expect(hit.address, expectedAddress);
+        expect(hit.preOptionUrl.toString(), '$origin/book/example');
+        expect(hit.identityAddress, expectedIdentity);
+        expect(hit.url.toString(), requestTarget);
+        final (details, _) = await search.details(hit);
+        await expectExpansionCount();
+        expect(pages.requests[1].url.toString(), requestTarget);
+        await shelf.add(source, details);
+        final entry = (await shelf.onlineShelf()).single;
+        expect(entry.book.sourceBookUrl, expectedIdentity);
+        final fresh = JsonSourcePipeline(source, pages, hostState: state);
+        final (reopened, _) = await fresh.details(entry.htmlBook);
+        await expectExpansionCount();
+        expect(pages.requests[3].url.toString(), requestTarget);
+        expect(reopened.identityAddress, expectedIdentity);
+        expect((await shelf.find(origin, expectedIdentity))!.id, entry.id);
+        await shelf.add(source, reopened);
+        expect(
+          (await shelf.onlineShelf()).single.book.sourceBookUrl,
+          expectedIdentity,
+        );
+      },
+    );
+  }
+
+  for (final (label, path, script, identityTarget, requestTarget) in [
+    ('path', '/book', "result + '/next'", '$origin/book', '$origin/book/next'),
+    (
+      'query',
+      '/book?q=中文',
+      "result.replace('/book', '/book/next')",
+      '$origin/book?q=%E4%B8%AD%E6%96%87',
+      '$origin/book/next?q=%E4%B8%AD%E6%96%87',
+    ),
+  ]) {
+    test(
+      'JSON $label option script transforms once after shelf reconstruction',
+      () async {
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final shelf = ShelfService(store);
+        final source = _jsonSource(origin);
+        final tail = ',${jsonEncode({'js': script})}';
+        final raw = '$path$tail';
+        final expectedIdentity = '$identityTarget$tail';
+        final pages = _Pages({
+          '/search': jsonEncode({
+            'items': [
+              {'title': 'Book', 'url': raw},
+            ],
+          }),
+          '/book/next': '{"title":"Book","toc":"/toc"}',
+          '/toc': '{"list":[{"name":"Chapter","url":"/c/1"}]}',
+        });
+        final search = JsonSourcePipeline(source, pages);
+        final hit = (await search.search('book')).single;
+        expect(hit.url.toString(), requestTarget);
+        expect(hit.preOptionUrl.toString(), identityTarget);
+        expect(hit.address, raw);
+        final (details, _) = await search.details(hit);
+        expect(pages.requests[1].url.toString(), requestTarget);
+        await shelf.add(source, details);
+        final entry = (await shelf.onlineShelf()).single;
+        final rebuilt = entry.htmlBook;
+        expect(rebuilt.preOptionUrl, isNull);
+        expect(details.preOptionUrl, hit.preOptionUrl);
+        final fresh = JsonSourcePipeline(source, pages);
+        final (reopened, chapters) = await fresh.details(rebuilt);
+        expect(
+          pages.requests[3].url.toString(),
+          requestTarget,
+          reason: 'Reopening applies the option once to the pre-option target',
+        );
+        expect(entry.book.sourceBookUrl, expectedIdentity);
+        expect(details.identityAddress, expectedIdentity);
+        expect(rebuilt.identityAddress, expectedIdentity);
+        expect(reopened.identityAddress, expectedIdentity);
+        expect(chapters.single.name, 'Chapter');
+        expect((await shelf.find(origin, expectedIdentity))!.id, entry.id);
+        await shelf.add(source, reopened);
+        expect(
+          (await shelf.onlineShelf()).single.book.sourceBookUrl,
+          expectedIdentity,
+        );
+      },
+    );
+  }
+
   test('a search hit carries its rule text into a fresh analysis', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = ShelfService(store);
     // The browser's 更新目录 and the precise search run a second analysis over
     // the book the first one answered. The hit keeps the address text its
     // `ruleSearch.bookUrl` rule produced — the same text a shelf row would
@@ -143,6 +316,11 @@ void main() {
     final htmlHit = (await html.search('b29')).single;
     expect(htmlHit.rawAddress, '/book/b29$tail');
     expect('${htmlHit.url}', '$origin/book/b29?isSearch=1');
+    await shelf.add(_htmlSource(origin, tail: tail), htmlHit);
+    final htmlEntry = (await shelf.find(origin, htmlHit.identityAddress))!;
+    expect(htmlEntry.book.sourceBookUrl, '$origin${htmlHit.address}');
+    await shelf.add(_htmlSource(origin, tail: tail), htmlHit);
+    expect((await shelf.find(origin, htmlHit.identityAddress))!.id, htmlEntry.id);
 
     final htmlSecond = HtmlSourcePipeline(
       _htmlSource(origin, tail: tail),
@@ -150,6 +328,8 @@ void main() {
     );
     final (htmlBook, htmlChapters) = await htmlSecond.details(htmlHit);
     expect(htmlBook.title, '万生痴魔');
+    expect(htmlBook.preOptionUrl, htmlHit.preOptionUrl);
+    expect(htmlBook.identityAddress, htmlHit.identityAddress);
     expect(htmlChapters.single.name, '第一章');
     expect(
       htmlPages.requests.map((request) => request.url.toString()),
@@ -174,6 +354,12 @@ void main() {
       '/book/b29?isSearch=1,{"js":"java.toast(1)"}',
     );
     expect('${jsonHit.url}', '$origin/book/b29?isSearch=1');
+    await shelf.add(_jsonSource(origin), jsonHit);
+    final jsonEntry = (await shelf.find(origin, jsonHit.identityAddress))!;
+    expect(jsonEntry.book.sourceBookUrl, '$origin${jsonHit.address}');
+    await shelf.add(_jsonSource(origin), jsonHit);
+    expect((await shelf.find(origin, jsonHit.identityAddress))!.id, jsonEntry.id);
+    expect(await store.shelf(), hasLength(2));
 
     final jsonSecond = JsonSourcePipeline(_jsonSource(origin), jsonPages);
     final (jsonBook, jsonChapters) = await jsonSecond.details(jsonHit);

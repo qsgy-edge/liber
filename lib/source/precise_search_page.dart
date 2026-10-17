@@ -11,6 +11,7 @@ import '../settings/reader_script.dart';
 import '../source/content_processing.dart';
 import '../store/database.dart' show ReplaceRule;
 import '../store/shelf.dart';
+import '../store/space_store.dart' show matchesBookIdentity;
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'chapter_position.dart';
@@ -1291,14 +1292,11 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// respond-time lines.
   Widget _candidate(PreciseSearchHit hit, AppLocalizations l10n, bool running) {
     final book = widget.switchBook;
-    // Imported books may retain the rule's raw `bookUrl` (including its option
-    // tail); books picked in this product store the resolved URL. Match either
-    // representation so relative links still match the resolved shelf URL and
-    // imported verbatim addresses still match without URI normalization.
+    // Use the store's identity rule for raw, encoded and legacy bare-target
+    // rows, just as the switch's clash lookup does.
     final current =
         book != null &&
-        (book.book.sourceBookUrl == hit.book.address ||
-            book.book.sourceBookUrl == '${hit.book.url}');
+        matchesBookIdentity(book.book.sourceBookUrl, hit.book.identityAddress);
     final wordCountText = hit.chapterWordCountText;
     return Card(
       child: ListTile(

@@ -232,7 +232,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     });
     try {
       final (book, items) = await _withTls(() => pipeline.details(hit));
-      final existing = await widget.service.find(sourceUrl, '${book.url}');
+      final existing = await widget.service.find(
+        sourceUrl,
+        book.identityAddress,
+      );
       if (existing != null) {
         await widget.service.updateCatalog(sourceUrl, book, items);
       }
@@ -283,7 +286,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     // Reading a book nobody added still tracks a position, and a position
     // belongs to a book row; the row stays off the shelf.
     final bookId =
-        (await widget.service.find(sourceUrl, '${book.url}'))?.id ??
+        (await widget.service.find(sourceUrl, book.identityAddress))?.id ??
         await widget.service.ensureBook(widget.source, book);
     if (!mounted) return;
     // Ownership rule: whoever runs an analysis owns its pipeline. The reader

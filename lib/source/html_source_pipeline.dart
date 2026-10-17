@@ -24,6 +24,7 @@ class HtmlBook {
   const HtmlBook({
     required this.url,
     this.rawAddress,
+    this.preOptionUrl,
     required this.title,
     this.author = '',
     this.intro = '',
@@ -34,22 +35,50 @@ class HtmlBook {
   });
   final Uri url;
 
+  /// The pipeline-resolved target before request-option transformations, with
+  /// query encoding applied. JSON's [url] can already include an option's `js`
+  /// result, so it cannot supply this identity target. Null when the carrier
+  /// has no recorded analysis base (for example a book rebuilt from storage).
+  final Uri? preOptionUrl;
+
   /// The address text this book was built from, option tail included, or null
   /// when the caller only has the URL.
   ///
-  /// The frozen keeps a book's `bookUrl` as the rule's own string — for a
-  /// shelf row, the address it was imported with — and every fetch parses the
-  /// `,{…}` options out of that text (`AnalyzeUrl.kt:214-222`). A `Uri` cannot
-  /// carry it: `Uri.toString()` percent-encodes a raw tail, so the split finds
-  /// nothing and the encoded tail reaches the site inside the query, where its
-  /// `$.data` rules match nothing (#97). This is the counterpart of
-  /// [SourceChapter.rawAddress] for a book.
+  /// The frozen keeps `Book.bookUrl` as the resolved absolute address with its
+  /// option tail untouched (`BookList.kt:272`, `AnalyzeRule.kt:317-323`). This
+  /// fetch carrier can still hold the rule's relative text; [identityAddress]
+  /// supplies that book identity. Every fetch parses the `,{…}` options from
+  /// this text (`AnalyzeUrl.kt:214-222`). A `Uri` cannot carry the tail:
+  /// `Uri.toString()` percent-encodes it, so the split finds nothing and the
+  /// encoded tail reaches the site inside the query (#97). This is the
+  /// counterpart of [SourceChapter.rawAddress] for a book.
   final String? rawAddress;
 
   /// The address text a fetch parses: the one this book was built from when it
   /// was kept, and the URL text otherwise. A bare URL carries no options, so it
   /// parses to itself.
   String get address => rawAddress ?? '$url';
+
+  /// The frozen book identity (`BookList.kt:272`, `AnalyzeRule.kt:317-323`):
+  /// without a raw carrier, keep the URL text; an absolute raw address stays
+  /// verbatim; a relative one uses [preOptionUrl] plus the splitter's raw tail
+  /// substring. `hasScheme` is also the pipelines' absolute-address test.
+  /// Unlike `BookChapter.getAbsoluteURL()`, which resolves lazily, a book
+  /// stores its resolved address. Without a recorded pre-option target, keep
+  /// the raw carrier verbatim rather than inferring identity from the request
+  /// target [url]. The fetch carrier [address] is independent of this getter.
+  String get identityAddress {
+    final raw = rawAddress;
+    if (raw == null) return '$url';
+    final boundary = sourceUrlOptionBoundaryOf(raw);
+    final path = boundary == null ? raw : raw.substring(0, boundary).trim();
+    if (Uri.tryParse(path)?.hasScheme == true) return raw;
+    final resolved = preOptionUrl;
+    if (resolved == null) return raw;
+    return boundary == null
+        ? '$resolved'
+        : '$resolved${raw.substring(boundary)}';
+  }
 
   final String title, author, intro, cover, kind, lastChapter, wordCount;
   Map<String, dynamic> toJson() => {
@@ -64,6 +93,7 @@ class HtmlBook {
   };
   factory HtmlBook.fromJson(Map<String, dynamic> value) => HtmlBook(
     url: SourceHttpUri.parse(value['url'] as String),
+    rawAddress: value['url'] as String,
     title: value['title'] as String,
     author: value['author'] as String? ?? '',
     intro: value['intro'] as String? ?? '',
@@ -406,7 +436,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ? null
         : {
             'name': _book!.title,
-            'bookUrl': '${_book!.url}',
+            'bookUrl': _book!.identityAddress,
             'author': _book!.author,
             'intro': _book!.intro,
             'coverUrl': _book!.cover,
@@ -1597,6 +1627,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       books.add(
         HtmlBook(
           url: bookUrlTarget,
+          preOptionUrl: bookUrlTarget,
           rawAddress: bookAddress,
           title: _required([title], 0, 'ruleSearch.name'),
           author: authorValue,
@@ -2113,6 +2144,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         url: hit.url,
         // Refresh retains the original address and its request options (#97).
         rawAddress: hit.rawAddress,
+        preOptionUrl: hit.preOptionUrl,
         title: title ?? current.title,
         author: author ?? current.author,
         kind: kind != null && kind.isNotEmpty ? kind : current.kind,

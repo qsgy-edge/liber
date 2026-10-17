@@ -217,7 +217,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? null
         : {
             'name': _book!.title,
-            'bookUrl': '${_book!.url}',
+            'bookUrl': _book!.identityAddress,
             'author': _book!.author,
             'intro': _book!.intro,
             'coverUrl': _book!.cover,
@@ -639,13 +639,31 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }
 
   /// Expands one rule, splits its URL options, and applies the `js` option.
+  /// Search can capture the same expanded address and its resolved identity
+  /// before the option script changes the request target. No second expansion
+  /// runs, and the captured tail belongs to the expanded address itself.
   Future<(Uri, SourceUrlOptions)> _request(
     Uri base,
     String template,
-    String keyword,
-  ) async {
-    final split = splitSourceUrlOptions(await _expand(template, keyword));
+    String keyword, {
+    void Function(Uri preOptionUrl, String expandedAddress)? captureIdentity,
+  }) async {
+    final expandedAddress = await _expand(template, keyword);
+    final split = splitSourceUrlOptions(expandedAddress);
     var url = _url(base, split.path);
+    if (captureIdentity != null) {
+      var preOptionUrl = url;
+      if (!split.options.isPost) {
+        preOptionUrl = _url(
+          base,
+          await encodeSourceQuery(
+            sourceUrlTextWithRawQuery(url, split.path),
+            charset: split.options.charset,
+          ),
+        ).removeFragment();
+      }
+      captureIdentity(preOptionUrl, expandedAddress);
+    }
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`: `evalJS(jsStr, url)
@@ -1007,10 +1025,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final bookAddress = bookAddressValue.trim().isEmpty
           ? '$finalUrl'
           : bookAddressValue;
+      late Uri preOptionUrl;
+      late String expandedBookAddress;
       final (bookUrl, bookOptions) = await _request(
         checked.url,
         bookAddress,
         keyword,
+        captureIdentity: (target, address) {
+          preOptionUrl = target;
+          expandedBookAddress = address;
+        },
       );
       _bookRequests[bookUrl] = (
         address: bookAddress,
@@ -1020,9 +1044,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       books.add(
         HtmlBook(
           url: bookUrl,
-          // The rule's own text: the address a shelf row keeps and a later
-          // fetch parses (#97).
-          rawAddress: bookAddress,
+          preOptionUrl: preOptionUrl,
+          // Persist the single expansion's address, whose raw tail belongs
+          // to the captured pre-option target rather than the wrapper source.
+          rawAddress: expandedBookAddress,
           title: name,
           author: author,
           intro: formatSourceIntro(intro),
@@ -1395,6 +1420,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         url: hit.url,
         // Refresh retains the original address and its request options (#97).
         rawAddress: hit.rawAddress,
+        preOptionUrl: hit.preOptionUrl,
         title: title ?? current.title,
         author: author ?? current.author,
         kind: kind != null && kind.isNotEmpty ? kind : current.kind,

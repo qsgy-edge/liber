@@ -275,6 +275,12 @@ sourceRequestShape(
   return (method: 'POST', body: raw, headers: const <String, String>{});
 }
 
+/// Locates the raw option boundary without parsing or validating its contents.
+/// Book identity also needs this boundary: imported addresses can carry option
+/// types the request parser refuses, and their stored identity must still work.
+int? sourceUrlOptionBoundaryOf(String address) =>
+    RegExp(r'\s*,\s*(?=\{)').firstMatch(address)?.start;
+
 /// Splits an expanded rule into its URL text and its supported options.
 ///
 /// The frozen `AnalyzeUrl` expands `@js:`/`<js>` and `{{ }}` first, then splits
@@ -291,15 +297,15 @@ sourceRequestShape(
 ({String path, String tail, SourceUrlOptions options}) splitSourceUrlOptions(
   String expanded,
 ) {
-  final match = RegExp(r'\s*,\s*(?=\{)').firstMatch(expanded);
-  if (match == null) {
+  final boundary = sourceUrlOptionBoundaryOf(expanded);
+  if (boundary == null) {
     return (path: expanded.trim(), tail: '', options: const SourceUrlOptions());
   }
-  final path = expanded.substring(0, match.start).trim();
+  final path = expanded.substring(0, boundary).trim();
   // The tail verbatim, comma included: a caller that has to persist an address
   // text keeps it exactly as the rule wrote it.
-  final tail = expanded.substring(match.start);
-  final start = expanded.indexOf('{', match.start);
+  final tail = expanded.substring(boundary);
+  final start = expanded.indexOf('{', boundary);
   final Object? decoded = _decodeUrlOptionTail(expanded.substring(start));
   if (decoded is! Map) {
     return (path: path, tail: tail, options: const SourceUrlOptions());
@@ -401,7 +407,7 @@ sourceRequestShape(
       webViewDelayTime = 0;
   }
   return (
-    path: expanded.substring(0, match.start).trim(),
+    path: path,
     tail: tail,
     options: SourceUrlOptions(
       method: rawMethod.toUpperCase() == 'POST' ? 'POST' : 'GET',

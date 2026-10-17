@@ -298,6 +298,7 @@ void main() {
             const raw = '/book?keep=1,{"headers":{"X-Detail":"retained"}}';
             final hit = HtmlBook(
               url: Uri.parse('$_origin/book?keep=1'),
+              preOptionUrl: Uri.parse('$_origin/book?keep=1'),
               rawAddress: raw,
               title: 'old-name',
               author: 'old-author',
@@ -321,7 +322,9 @@ void main() {
               book.lastChapter,
               book.intro,
               book.cover,
-              '${book.url}',
+              // Frozen BookList.kt:272 / AnalyzeRule.kt:317-323 resolve the
+              // book identity while retaining the option tail in book.bookUrl.
+              '$_origin$raw',
             ];
             expect(finalFields.take(5).toList(), [
               shape == 'update' ? 'new-name' : hit.title,

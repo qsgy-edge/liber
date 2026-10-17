@@ -1461,9 +1461,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// The row is the one the snapshot's own URL names, because that is what a
   /// script sees: the book's `bookUrl` and the chapter's `url`. Those are the
   /// values the space's identities are built from — a book row's
-  /// `sourceBookUrl` is the pipeline's own `'${book.url}'`, and a chapter row's
-  /// `chapterKey` is the target its `url` names (#58). A chapter's row is found
-  /// through its book, so a chapter binding with no book binding fails as a
+  /// `sourceBookUrl` holds the resolved raw address exposed as `book.bookUrl`
+  /// (#99), and a chapter row's `chapterKey` is the target its `url` names
+  /// (#58). A chapter's row is found through its book, so a chapter binding
+  /// with no book binding fails as a
   /// boundary error; the content stage always binds both (the reader hands the
   /// book with the chapter), and a snapshot that is absent has no row at all.
   Future<Object?> _handleVariable(
