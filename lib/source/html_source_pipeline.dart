@@ -14,6 +14,7 @@ import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_page_results.dart';
 import 'source_url_rules.dart';
+import 'source_stage_diagnostic.dart';
 
 // A declared scalar has one native Text job or one raw TextList job. Literal
 // and script-only fields need neither; the stage still runs one declared batch.
@@ -177,18 +178,25 @@ class _ListItem {
 /// or the elements an extraction segment selected (each with the rule that
 /// addresses it in the step's document).
 class _ListStep {
-  const _ListStep.raw(this.value) : elements = null, dom = null, selection = null;
-  const _ListStep.elements(this.dom, this.selection, this.elements) : value = null;
+  const _ListStep.raw(this.value)
+    : elements = null,
+      dom = null,
+      selection = null;
+  const _ListStep.elements(this.dom, this.selection, this.elements)
+    : value = null;
 
   final Object? value;
   final List<_ListItem>? elements;
   final String? dom;
   final List<SourceDomSelectionStep>? selection;
 
-  Object? get content => elements == null ? value : <String, Object?>{
-    ...(_ListItem.element(dom, selection).content as Map<String, Object?>),
-    '__elements': true,
-  };
+  Object? get content => elements == null
+      ? value
+      : <String, Object?>{
+          ...(_ListItem.element(dom, selection).content
+              as Map<String, Object?>),
+          '__elements': true,
+        };
 }
 
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
@@ -458,6 +466,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       script: checkJs,
       input: _scriptInput(_keyword, response.toJson()),
       stage: SourceStageRequest(
+        initialResponse: response,
         resend: _resendStage,
         reanalyze: _reanalyzeStage,
       ),
@@ -473,6 +482,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return _fetch(
       stage.url,
       stage.stage,
+      diagnoseRequest: false,
       options: stage.options,
       address: stage.address,
       base: stage.base,
@@ -516,27 +526,29 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         evaluator ??
         (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: (_, rule) async => rule.isEmpty
-            ? ''
-            : await _readScriptRule(
-                SourceRuleRead(
-                  member: label,
-                  form: SourceRuleForm.string,
-                  rule: rule,
-                  content: content,
-                  analysisContent: content,
-                  evaluateScript: evaluator ?? (script, result) => _evalJs(
+    extract: (_, rule) async => rule.isEmpty
+        ? ''
+        : await _readScriptRule(
+            SourceRuleRead(
+              member: label,
+              form: SourceRuleForm.string,
+              rule: rule,
+              content: content,
+              analysisContent: content,
+              evaluateScript:
+                  evaluator ??
+                  (script, result) => _evalJs(
                     script,
                     _keyword,
                     result,
                     label: label,
                     content: content,
                   ),
-                ),
-              ),
-        readVariable: _readRuleVariable,
-        writeVariable: _writeRuleVariable,
-      );
+            ),
+          ),
+    readVariable: _readRuleVariable,
+    writeVariable: _writeRuleVariable,
+  );
 
   Future<String> _readRuleVariable(String key) async {
     if (key == 'bookName') return _book?.title ?? '';
@@ -628,7 +640,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       throw SourceScriptError(
         'policy',
         '${read.member} 无法回答 HTML 内容的元素对象：本产品的 HTML 规则引擎只回答文本，'
-        '请用 java.getString/java.getStringList',
+            '请用 java.getString/java.getStringList',
       );
     }
     final field = await RuleField.resolve(
@@ -745,8 +757,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       if (step.elements == null && step.value == null) continue;
       if (segment.isScript) {
         final value = await evaluateScript(segment.text, step.content);
-        step = value is Map && value['__elements'] == true && value['__dom'] is String
-            ? await _selectList(value['__dom'] as String, sourceDomSelectionOf(value))
+        step =
+            value is Map &&
+                value['__elements'] == true &&
+                value['__dom'] is String
+            ? await _selectList(
+                value['__dom'] as String,
+                sourceDomSelectionOf(value),
+              )
             : _ListStep.raw(value);
       } else {
         step = await _listExtract(step, segment.text, label);
@@ -768,7 +786,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // AnalyzeByJSoup(Elements) parses Elements.toString(), unlike Element's
       // original-node path. Keep physically repeated markup through this edge.
       final batch = HtmlRuleBatch(step.dom!);
-      final html = batch.elementsTextList('html', '@all', batch.selection('items', step.selection!));
+      final html = batch.elementsTextList(
+        'html',
+        '@all',
+        batch.selection('items', step.selection!),
+      );
       await batch.run();
       step = _ListStep.raw(html.values.join('\n'));
     }
@@ -781,7 +803,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         throw UnsupportedError('$label 的脚本结果不是可提取的文档：$rule');
       }
       dom = source;
-      path = [...sourceDomSelectionOf(value), (rule: rule, parentIndex: null, cssSelect: false)];
+      path = [
+        ...sourceDomSelectionOf(value),
+        (rule: rule, parentIndex: null, cssSelect: false),
+      ];
     } else if (value is String) {
       dom = value;
       path = [(rule: rule, parentIndex: null, cssSelect: false)];
@@ -791,13 +816,19 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return _selectList(dom, path);
   }
 
-  Future<_ListStep> _selectList(String dom, List<SourceDomSelectionStep> path) async {
+  Future<_ListStep> _selectList(
+    String dom,
+    List<SourceDomSelectionStep> path,
+  ) async {
     final batch = HtmlRuleBatch(dom);
     final selection = batch.selection('items', path);
     await batch.run();
     return _ListStep.elements(dom, path, [
       for (var index = 0; index < selection.length; index++)
-        _ListItem.element(dom, [...path, (rule: ':root', parentIndex: index, cssSelect: false)]),
+        _ListItem.element(dom, [
+          ...path,
+          (rule: ':root', parentIndex: index, cssSelect: false),
+        ]),
     ]);
   }
 
@@ -1164,8 +1195,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 script,
                 keyword,
                 '${_resolve(base, split.path, keepFragment: true)}',
-              ))
-              ?.toString() ??
+              ))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
@@ -1246,6 +1276,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     SourceUrlOptions options = const SourceUrlOptions(),
     String? address,
     Uri? base,
+    bool diagnoseRequest = true,
   }) async {
     _stageRequest = (
       url: url,
@@ -1277,9 +1308,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
       final result = host == null
           ? await render()
-          : await host
-                .forExecution(_cancellation)
-                .withSourceRateLimit(render);
+          : await host.forExecution(_cancellation).withSourceRateLimit(render);
       _cancellation.throwIfCancelled();
       trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
       // A rendered document has no HTTP response of its own: the frozen
@@ -1290,25 +1319,41 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     var finalUrl = url;
     var statusCode = 200;
     var responseHeaders = const <String, List<String>>{};
+    SourceStageHttpDetails? httpResponse;
     if (host != null) {
-      final response = await host
-          .forExecution(_cancellation)
-          .request(
-            method,
-            '$url',
-            headers: headers,
-            body: body,
-            retry: options.retry,
-          );
+      final response = await sourceStageRequest(
+        diagnose: diagnoseRequest,
+        stage: stage,
+        url: url,
+        request: () => host
+            .forExecution(_cancellation)
+            .request(
+              method,
+              '$url',
+              headers: headers,
+              body: body,
+              retry: options.retry,
+            ),
+      );
       text = response.body;
       finalUrl = response.url;
       statusCode = response.statusCode;
       responseHeaders = response.headers;
+      httpResponse = (
+        statusCode: response.statusCode,
+        bodyByteLength: response.bodyByteLength,
+        url: response.url,
+      );
     } else {
       if (method != 'GET' || headers.isNotEmpty) {
         throw UnsupportedError('当前 transport 不支持 HTTP 请求选项');
       }
-      text = await transport.request(stage: stage, path: '$url');
+      text = await sourceStageRequest(
+        diagnose: diagnoseRequest,
+        stage: stage,
+        url: url,
+        request: () => transport.request(stage: stage, path: '$url'),
+      );
     }
     _cancellation.throwIfCancelled();
     trace.add(BookSourceTraceEntry(stage: stage, path: '$url'));
@@ -1317,6 +1362,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       url: finalUrl,
       statusCode: statusCode,
       headers: responseHeaders,
+      httpResponse: httpResponse,
     );
   }
 
@@ -1491,7 +1537,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         final item = scriptedItems != null
             ? scriptedItems[index]
             : _ListItem.element(html, [
-                (rule: listRule.extractionRule!, parentIndex: null, cssSelect: false),
+                (
+                  rule: listRule.extractionRule!,
+                  parentIndex: null,
+                  cssSelect: false,
+                ),
                 (rule: ':root', parentIndex: index, cssSelect: false),
               ]);
         return _itemFieldValue(
@@ -1595,6 +1645,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         : await _extracted(infoUrl, tocText);
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
+    SourceStageResponse? finalTocResponse;
     tocPages = 0;
     var firstPage = true;
     // The frozen page walk (`BookChapterList.kt:48-121`): this page, then the
@@ -1656,6 +1707,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             fetched = await _loginCheck(fetched);
             firstPage = false;
           }
+          finalTocResponse = fetched;
           final page = fetched.body;
           final pageUrl = fetched.url;
           tocPages++;
@@ -1760,7 +1812,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             nextTexts = await _pageTexts(job, field, page);
           }
           final count = scriptedItems?.length ?? items!.length;
-          if (count == 0) throw StateError('目录页为空');
+          if (count == 0) {
+            throw SourceStageDiagnostic.response(
+              stage: BookSourceStage.tableOfContents,
+              url: fetched.url,
+              body: fetched.body,
+              httpResponse: fetched.httpResponse,
+            );
+          }
           Future<String> fieldValue(
             String key,
             int index, {
@@ -1773,7 +1832,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               final item = scriptedItems != null
                   ? scriptedItems[index]
                   : _ListItem.element(page, [
-                      (rule: listRule.extractionRule!, parentIndex: null, cssSelect: false),
+                      (
+                        rule: listRule.extractionRule!,
+                        parentIndex: null,
+                        cssSelect: false,
+                      ),
                       (rule: ':root', parentIndex: index, cssSelect: false),
                     ]);
               return _itemFieldValue(
@@ -1891,7 +1954,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         }
       },
     );
-    if (chapters.isEmpty) throw StateError('目录为空');
+    if (chapters.isEmpty) {
+      throw SourceStageDiagnostic.response(
+        stage: BookSourceStage.tableOfContents,
+        url: finalTocResponse?.url ?? tocTarget,
+        body: finalTocResponse?.body ?? '',
+        httpResponse: finalTocResponse?.httpResponse,
+      );
+    }
     return (book, chapters);
   }
 
@@ -2213,7 +2283,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           unescape: false,
         );
         if (text.isEmpty) {
-          throw const FormatException('ruleContent.content 未匹配到内容');
+          throw SourceStageDiagnostic.response(
+            stage: BookSourceStage.content,
+            url: fetched.url,
+            body: fetched.body,
+            httpResponse: fetched.httpResponse,
+          );
         }
         // The frozen content stage turns one page's HTML into text here, before
         // the pages are joined (`BookContent.kt:178`).

@@ -16,77 +16,9 @@ import 'source_host_state.dart';
 import 'source_http_uri.dart';
 import 'source_page_results.dart';
 import 'source_url_rules.dart';
+import 'source_stage_diagnostic.dart';
 
-/// A stage whose response body is not the JSON that stage's rules read: the
-/// source got an HTML error page, a challenge page or an empty body where it
-/// expected its document.
-///
-/// The frozen reader fails inside Gson and its exception names a character
-/// offset, and this product's raw `FormatException` did the same, so the
-/// operator saw `读取失败：FormatException: Unexpected character (at character 1)`
-/// with the body pasted on and nothing about which stage, which request or
-/// which body produced it. This error carries what the caller can act on.
-class SourceStageFormatError implements Exception {
-  const SourceStageFormatError({
-    required this.stage,
-    required this.address,
-    required this.prefix,
-  });
-
-  /// The stage whose response could not be read.
-  final BookSourceStage stage;
-
-  /// The response's address, without the parts a source's credentials travel in
-  /// (see [sourceStageAddress]).
-  final String address;
-
-  /// A bounded, single-line prefix of the body (see [sourceStageBodyPrefix]).
-  final String prefix;
-
-  /// The stage's word as this product's copy uses it (`详情` for the book
-  /// information stage, the word `readingDetailsAndToc` already shows). No stage
-  /// outside the four that read a body decodes one, so the remaining stages keep
-  /// their identifier rather than inventing a word.
-  static String stageWord(BookSourceStage stage) => switch (stage) {
-    BookSourceStage.search => '搜索',
-    BookSourceStage.bookInfo => '详情',
-    BookSourceStage.tableOfContents => '目录',
-    BookSourceStage.content => '正文',
-    BookSourceStage.idle ||
-    BookSourceStage.completed ||
-    BookSourceStage.failed => stage.name,
-  };
-
-  @override
-  String toString() =>
-      '${stageWord(stage)}响应不是 JSON（可能是错误页）：$prefix（$address）';
-}
-
-/// How much of a body [SourceStageFormatError] keeps: enough to recognize an
-/// error page, not a body to read. A whole body belongs in the source's own log
-/// and in nothing the interface shows.
-const sourceStageBodyPrefixLimit = 40;
-
-/// A body's first [sourceStageBodyPrefixLimit] characters as one line, the last
-/// of them an ellipsis when the body continues. A newline in the body would put
-/// the rest of the page on its own line in a status message, so whitespace runs
-/// collapse first.
-String sourceStageBodyPrefix(String body) {
-  final text = body.replaceAll(RegExp(r'\s+'), ' ').trim();
-  if (text.length <= sourceStageBodyPrefixLimit) return text;
-  return '${text.substring(0, sourceStageBodyPrefixLimit - 1)}…';
-}
-
-/// The response's address as a diagnostic may show it: the scheme, host, port
-/// and path, without the query or any user info. A source's key, token or
-/// credential commonly travels in the query, and a message the operator can
-/// paste or screenshot must not carry it.
-String sourceStageAddress(Uri url) => Uri(
-  scheme: url.scheme,
-  host: url.host,
-  port: url.hasPort ? url.port : null,
-  path: url.path,
-).toString();
+export 'source_stage_diagnostic.dart';
 
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
 ///
@@ -341,6 +273,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       script: checkJs,
       input: _scriptInput(_keyword, response.toJson()),
       stage: SourceStageRequest(
+        initialResponse: response,
         resend: _resendStage,
         reanalyze: _reanalyzeStage,
       ),
@@ -356,6 +289,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return _fetch(
       stage.stage,
       stage.url,
+      diagnoseRequest: false,
       options: stage.options,
       address: stage.address,
       base: stage.base,
@@ -416,13 +350,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
         evaluator ??
         (script, result) =>
             _evalJs(script, _keyword, result, label: label, content: content),
-        extract: (_, rule) async => rule.isEmpty ? '' : await _field(
-          content, rule, label: label,
-          context: _ruleContext(label, content, evaluator: evaluator),
-        ),
-        readVariable: _readRuleVariable,
-        writeVariable: _writeRuleVariable,
-      );
+    extract: (_, rule) async => rule.isEmpty
+        ? ''
+        : await _field(
+            content,
+            rule,
+            label: label,
+            context: _ruleContext(label, content, evaluator: evaluator),
+          ),
+    readVariable: _readRuleVariable,
+    writeVariable: _writeRuleVariable,
+  );
 
   Future<String> _readRuleVariable(String key) async {
     if (key == 'bookName') return _book?.title ?? '';
@@ -564,9 +502,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String rule, {
     String label = '',
     bool unescape = true,
+    SourceStageResponse? response,
   }) async {
     final result = await _field(value, rule, label: label, unescape: unescape);
     if (result == null || result.toString().isEmpty) {
+      if (response != null) {
+        throw SourceStageDiagnostic.response(
+          stage: BookSourceStage.content,
+          url: response.url,
+          body: response.body,
+          httpResponse: response.httpResponse,
+        );
+      }
       throw FormatException('Missing JSON value for $rule');
     }
     return result.toString();
@@ -736,6 +683,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     SourceUrlOptions options = const SourceUrlOptions(),
     String? address,
     Uri? base,
+    bool diagnoseRequest = true,
   }) async {
     _stageRequest = (
       url: url,
@@ -766,9 +714,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
       final result = host == null
           ? await render()
-          : await host
-                .forExecution(_cancellation)
-                .withSourceRateLimit(render);
+          : await host.forExecution(_cancellation).withSourceRateLimit(render);
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
       // A rendered document has no HTTP response of its own: the frozen
@@ -779,15 +725,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // The same dispatcher every other source request goes through, so the
       // JSON stages carry cookies, the source's rate limit and the response
       // decoding exactly as the HTML stages do.
-      final response = await host
-          .forExecution(_cancellation)
-          .request(
-            method,
-            '$url',
-            headers: headers,
-            body: body,
-            retry: options.retry,
-          );
+      final response = await sourceStageRequest(
+        diagnose: diagnoseRequest,
+        stage: stage,
+        url: url,
+        request: () => host
+            .forExecution(_cancellation)
+            .request(
+              method,
+              '$url',
+              headers: headers,
+              body: body,
+              retry: options.retry,
+            ),
+      );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
       _cancellation.throwIfCancelled();
       return SourceStageResponse(
@@ -795,12 +746,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
         url: response.url,
         statusCode: response.statusCode,
         headers: response.headers,
+        httpResponse: (
+          statusCode: response.statusCode,
+          bodyByteLength: response.bodyByteLength,
+          url: response.url,
+        ),
       );
     }
     if (method != 'GET' || headers.isNotEmpty) {
       throw UnsupportedError('当前 transport 不支持 HTTP 请求选项');
     }
-    final text = await transport.request(stage: stage, path: url.toString());
+    final text = await sourceStageRequest(
+      diagnose: diagnoseRequest,
+      stage: stage,
+      url: url,
+      request: () => transport.request(stage: stage, path: url.toString()),
+    );
     trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
     _cancellation.throwIfCancelled();
     return SourceStageResponse(body: text, url: url);
@@ -823,6 +784,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         stage: stage,
         address: sourceStageAddress(response.url),
         prefix: sourceStageBodyPrefix(response.body),
+        httpResponse: response.httpResponse,
       );
     }
   }
@@ -1116,6 +1078,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? (bookUrl, bookOptions)
         : await _request(hit.url, tocAddress, _keyword);
     final chapters = <SourceChapter>[];
+    SourceStageResponse? finalTocResponse;
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
     // the approved host surface (#10, ADR 0011), so the rule field cannot run
     // the script: the adapter reads the JSONPath and decrypts with the **rule's
@@ -1185,6 +1148,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
             tocPage = await _loginCheck(tocPage);
             firstPage = false;
           }
+          finalTocResponse = tocPage;
           final document = _document(BookSourceStage.tableOfContents, tocPage);
           final entries = await _elementList(
             document,
@@ -1325,7 +1289,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
         }
       },
     );
-    if (chapters.isEmpty) throw StateError('Empty table of contents');
+    if (chapters.isEmpty) {
+      throw SourceStageDiagnostic.response(
+        stage: BookSourceStage.tableOfContents,
+        url: finalTocResponse?.url ?? tocUrl,
+        body: finalTocResponse?.body ?? '',
+        httpResponse: finalTocResponse?.httpResponse,
+      );
+    }
     return (book, chapters);
   }
 
@@ -1591,6 +1562,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               content['content']!,
               label: 'ruleContent.content',
               unescape: false,
+              response: contentPage,
             ),
           ),
         );

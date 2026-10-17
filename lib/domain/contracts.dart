@@ -145,6 +145,7 @@ class SourceHttpResponse {
     required this.body,
     required this.url,
     this.bodyBytes,
+    this.bodyByteLength,
   });
   final int statusCode;
   final Map<String, List<String>> headers;
@@ -153,6 +154,10 @@ class SourceHttpResponse {
   /// The response's raw bytes, answered only when
   /// [SourceHttpRequest.readBytes] asked for them; null otherwise.
   final Uint8List? bodyBytes;
+
+  /// Bytes collected before decoding or removing a BOM, when the transport
+  /// knows them. A legacy response leaves this unknown rather than zero.
+  final int? bodyByteLength;
   final Uri url;
 }
 

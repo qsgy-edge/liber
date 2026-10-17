@@ -313,7 +313,30 @@ void main() {
     states.clear();
     await expectLater(
       pipeline.run('x', (state) => states.add(state.stage)),
-      throwsFormatException,
+      throwsA(
+        isA<SourceStageDiagnostic>()
+            .having((error) => error.stage, 'stage', BookSourceStage.content)
+            .having(
+              (error) => error.kind,
+              'failure kind',
+              SourceStageFailureKind.extractionFailed,
+            )
+            .having(
+              (error) => error.address,
+              'response address',
+              'http://127.0.0.1:${server.port}/text/108',
+            )
+            .having(
+              (error) => error.httpResponse?.statusCode,
+              'HTTP status',
+              200,
+            )
+            .having(
+              (error) => error.httpResponse?.bodyByteLength,
+              'raw body bytes',
+              utf8.encode(jsonEncode({'body': '正文'})).length,
+            ),
+      ),
     );
     expect(states.last, BookSourceStage.failed);
     expect(states, isNot(contains(BookSourceStage.completed)));

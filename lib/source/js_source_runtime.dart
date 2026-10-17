@@ -15,6 +15,7 @@ import 'source_http_uri.dart';
 import 'source_hatch.dart';
 import 'source_login.dart';
 import 'source_url_rules.dart';
+import 'source_stage_diagnostic.dart';
 
 typedef SourceHostCall =
     Future<Object?> Function(
@@ -81,7 +82,11 @@ typedef SourceRuleEvaluator = Future<Object?> Function(SourceRuleRead read);
 enum SourceDomOp { count, extract, attribute }
 
 /// A selection step uses the preceding Elements job's final vector.
-typedef SourceDomSelectionStep = ({String rule, int? parentIndex, bool cssSelect});
+typedef SourceDomSelectionStep = ({
+  String rule,
+  int? parentIndex,
+  bool cssSelect,
+});
 
 /// Decodes the existing node descriptor at its untrusted input boundary.
 /// An empty path is the document façade; legacy __rule is one selection step.
@@ -119,7 +124,11 @@ List<SourceDomSelectionStep> sourceDomSelectionOf(Map descriptor) {
     if (cssSelect is! bool) {
       throw const SourceScriptError('host-input', 'invalid HTML cssSelect');
     }
-    steps.add((rule: step['rule'] as String, parentIndex: index as int?, cssSelect: cssSelect));
+    steps.add((
+      rule: step['rule'] as String,
+      parentIndex: index as int?,
+      cssSelect: cssSelect,
+    ));
   }
   return steps;
 }
@@ -174,6 +183,7 @@ class SourceStageResponse {
     required this.url,
     this.statusCode = 200,
     this.headers = const {},
+    this.httpResponse,
   });
 
   /// The frozen `StrResponse(analyzeUrl.url, body)` a rendered document comes
@@ -228,12 +238,51 @@ class SourceStageResponse {
   /// The response's header values by name, as the transport reported them.
   final Map<String, List<String>> headers;
 
+  /// Trusted transport facts; never serialized into the source's payload.
+  final SourceStageHttpDetails? httpResponse;
+
   Map<String, Object?> toJson() => {
     'statusCode': statusCode,
     'headers': headers,
     'body': body,
     'url': '$url',
   };
+}
+
+/// Only one loginCheck invocation owns these handles. Bodies and source
+/// payloads stay out of the table, and source JSON never registers a handle.
+class _StageResponseProvenance {
+  final _details = <int, SourceStageHttpDetails>{};
+  int _next = 0;
+
+  int? register(SourceStageHttpDetails? details) {
+    if (details == null) return null;
+    final handle = _next++;
+    _details[handle] = details;
+    return handle;
+  }
+
+  Map<String, Object?> encode(SourceStageResponse response) => {
+    'payload': response.toJson(),
+    'handle': register(response.httpResponse),
+  };
+
+  SourceStageResponse selected(Object? envelope) {
+    if (envelope is! Map) {
+      throw const SourceScriptError('host-input', 'invalid check response');
+    }
+    final response = SourceStageResponse.fromJson(envelope['payload']);
+    final handle = envelope['handle'];
+    return SourceStageResponse(
+      body: response.body,
+      url: response.url,
+      statusCode: response.statusCode,
+      headers: response.headers,
+      httpResponse: handle is num && handle.isFinite ? _details[handle] : null,
+    );
+  }
+
+  void clear() => _details.clear();
 }
 
 /// The two things only the pipeline can do for a `loginCheckJs` hook.
@@ -245,7 +294,13 @@ class SourceStageResponse {
 /// request, so the pipeline hands both operations over for the duration of one
 /// check.
 class SourceStageRequest {
-  const SourceStageRequest({required this.resend, required this.reanalyze});
+  const SourceStageRequest({
+    required this.resend,
+    required this.reanalyze,
+    this.initialResponse,
+  });
+
+  final SourceStageResponse? initialResponse;
 
   /// Sends the stage's current request again and answers its response.
   final Future<SourceStageResponse> Function() resend;
@@ -574,7 +629,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         checkResponse: true,
         stage: stage,
       );
-      return SourceStageResponse.fromJson(value);
+      return value as SourceStageResponse;
     } catch (error) {
       // The frozen `evalJS` throws straight through the `as StrResponse` cast
       // and the stage fails; this product keeps the script's own message, puts
@@ -607,7 +662,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // The frozen dialog logs 登录出错 with the script's own message and keeps
       // the dialog open; this product keeps the same message in the source's log
       // and hands it to the surface that ran the action.
-      final failure = error is SourceScriptError ? error : _classifyScript(error);
+      final failure = error is SourceScriptError
+          ? error
+          : _classifyScript(error);
       final message = SourceHostMessage('login', '$failure');
       _record(message);
       onMessage?.call(message);
@@ -626,6 +683,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // Stage-only transport mode is consumed before any source-visible binding.
     input = {...input};
     final elementsResult = input.remove('__elementsResult') == true;
+    final provenance = checkResponse ? _StageResponseProvenance() : null;
+    final initialHandle = provenance?.register(
+      stage?.initialResponse?.httpResponse,
+    );
     final sourceRef = input['sourceKey'] is String
         ? input['sourceKey'] as String
         : '';
@@ -697,7 +758,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             throw const SourceScriptError('host-input');
           }
           final encoded = value.field0;
-          if (utf8.encode(encoded).length > maxHostBytes) {
+          // The private check request is the whole message and carries its
+          // marker as the final key, so the framing is an exact ASCII tail.
+          // Exempting it keeps the source's own inbound cap unchanged for
+          // ordinary calls, nested evaluations and source-written markers.
+          final inbound = utf8.encode(encoded).length;
+          final framing =
+              provenance != null &&
+                  encoded.endsWith('$_stageResponseEnvelopeMarker}')
+              ? _stageResponseEnvelopeMarker.length
+              : 0;
+          if (inbound - framing > maxHostBytes) {
             throw const SourceScriptError('host-input-cap');
           }
           final decoded = jsonDecode(encoded);
@@ -706,6 +777,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           }
           final method = decoded['method'];
           final payload = decoded['payload'];
+          final responseProvenance = decoded['stageResponseEnvelope'] == true
+              ? provenance
+              : null;
           final Object? answer;
           if (method == 'getInput' && payload == null) {
             answer = input;
@@ -761,7 +835,14 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           } else if (method == 'dom') {
             answer = await _handleDom(payload);
           } else if (method == 'request') {
-            answer = await _dispatch(host, payload, request.id, input, token);
+            answer = await _dispatch(
+              host,
+              payload,
+              request.id,
+              input,
+              token,
+              provenance: responseProvenance,
+            );
           } else if (method == 'connect') {
             answer = await _handleConnect(
               host,
@@ -769,9 +850,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               request.id,
               input,
               token,
+              provenance: responseProvenance,
             );
           } else if (method == 'ajax') {
-            answer = await _handleAjax(host, payload, request.id, input, token);
+            answer = await _handleAjax(
+              host,
+              payload,
+              request.id,
+              input,
+              token,
+              provenance: responseProvenance,
+            );
           } else if (method == 'ajaxAll') {
             answer = await _handleAjaxAll(
               host,
@@ -779,19 +868,39 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               request.id,
               input,
               token,
+              provenance: responseProvenance,
             );
           } else if (method == 'stageResend') {
-            answer = await _handleStageResend(stage);
+            answer = await _handleStageResend(stage, responseProvenance);
           } else if (method == 'stageInitUrl') {
             answer = await _handleStageInitUrl(stage);
           } else {
             throw const SourceScriptError('host-method', 'method refused');
           }
           token.throwIfCancelled();
-          final response = jsonEncode({'ok': true, 'value': answer});
-          if (utf8.encode(response).length > maxHostBytes) {
+          // Private envelopes do not consume a source's existing payload cap.
+          Object? capAnswer = answer;
+          if (responseProvenance != null) {
+            if (method == 'ajaxAll') {
+              capAnswer = [
+                for (final packet in answer as List) (packet as Map)['payload'],
+              ];
+            } else if (const {
+              'request',
+              'connect',
+              'ajax',
+              'stageResend',
+            }.contains(method)) {
+              capAnswer = (answer as Map)['payload'];
+            }
+          }
+          final capResponse = jsonEncode({'ok': true, 'value': capAnswer});
+          if (utf8.encode(capResponse).length > maxHostBytes) {
             throw const SourceScriptError('host-output-cap');
           }
+          final response = identical(capAnswer, answer)
+              ? capResponse
+              : jsonEncode({'ok': true, 'value': answer});
           result = JsResult.ok(JsValue.string(response));
         } catch (error) {
           if (error is JsError) {
@@ -845,17 +954,26 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         await pending[id];
       };
       token.throwIfCancelled();
-      final wrapped = _wrap(source, input, checkResponse: checkResponse, elementsResult: elementsResult);
+      final wrapped = _wrap(
+        source,
+        input,
+        checkResponse: checkResponse,
+        elementsResult: elementsResult,
+        initialResponseHandle: initialHandle,
+      );
       final result = (await engine.evalScoped(
         id: executionId,
         source: wrapped,
       )).value;
       token.throwIfCancelled();
       if (hostFailure != null) throw hostFailure!;
-      if (utf8.encode(jsonEncode(result)).length > maxOutputBytes) {
+      final capResult = provenance != null && result is Map
+          ? result['payload']
+          : result;
+      if (utf8.encode(jsonEncode(capResult)).length > maxOutputBytes) {
         throw const SourceScriptError('output-cap');
       }
-      return result;
+      return provenance == null ? result : provenance.selected(result);
     } catch (error) {
       // The Rust clock reports its own deadline as `JsError_Timeout`; this is
       // the category the pipeline saw when a Dart `Timer` held the clock.
@@ -891,6 +1009,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           session?.starts.remove(executionId);
           session?.cancels.remove(executionId);
         }
+        provenance?.clear();
         release?.complete();
         _active--;
       }
@@ -994,8 +1113,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     return BookSourceWebViewAdapterFactory(
       sourceRef: host.sourceRef,
       hostState: hostState,
-      onPageCookies: (pageUrl, cookies) =>
-          host.cookies.set(pageUrl, cookies),
+      onPageCookies: (pageUrl, cookies) => host.cookies.set(pageUrl, cookies),
     );
   }
 
@@ -1105,7 +1223,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // The `openUrl` mime type only drives the frozen system-browser Intent
     // (`OpenUrlConfirmActivity`); this product has no external-opening path, so
     // it is recorded and the page is the in-app one.
-    final mimeType = kind == SourceHatchKind.openUrl ? payload['mimeType'] : null;
+    final mimeType = kind == SourceHatchKind.openUrl
+        ? payload['mimeType']
+        : null;
     _record(
       SourceHostMessage(
         'verification',
@@ -1120,8 +1240,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       case SourceHatchOutcome.ended:
         final reason = switch (answer.outcome) {
           SourceHatchOutcome.refused => '用户拒绝显示页面或图片（未打开，ADR 0011 §4）',
-          _ => '等待用户操作超过 ${_hatchCapText(hatchWaitCap)}'
-              '（ADR 0011 §4 的绝对上限）',
+          _ =>
+            '等待用户操作超过 ${_hatchCapText(hatchWaitCap)}'
+                '（ADR 0011 §4 的绝对上限）',
         };
         _record(SourceHostMessage('verification', '$member：$reason'));
         if (!request.waits) return null;
@@ -1683,10 +1804,16 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Map<String, Object?> input, {
     bool checkResponse = false,
     bool elementsResult = false,
+    int? initialResponseHandle,
   }) {
-    final run = '__liberRun(($_facade), ${jsonEncode(input)}, ${jsonEncode(source)}, '
+    if (checkResponse) {
+      return '__liberCheckResponse(($_facade), ${jsonEncode(input)}, ${jsonEncode(source)}, '
+          'false, ${domEvaluator != null}, ${initialResponseHandle ?? "null"})';
+    }
+    final run =
+        '__liberRun(($_facade), ${jsonEncode(input)}, ${jsonEncode(source)}, '
         '$checkResponse, ${elementsResult && !checkResponse}, ${domEvaluator != null})';
-    return checkResponse ? '__liberCheckResponse($run)' : run;
+    return run;
   }
 
   Future<String> _expandHostUrl(
@@ -1848,7 +1975,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           content: content,
           analysisContent: input['src'],
           evaluateScript: (script, result) => _evaluateRuleScript(
-            script, result, requestId, input, token,
+            script,
+            result,
+            requestId,
+            input,
+            token,
             elementsResult: form == SourceRuleForm.elements,
           ),
         ),
@@ -1884,7 +2015,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     token.throwIfCancelled();
     final value = await evalBridgeRequestGlobal(
       id: requestId,
-      source: _wrap(script, {...outerInput, 'result': result}, elementsResult: elementsResult),
+      source: _wrap(script, {
+        ...outerInput,
+        'result': result,
+      }, elementsResult: elementsResult),
     );
     token.throwIfCancelled();
     final decoded = value.value;
@@ -1970,8 +2104,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Object? payload,
     BigInt requestId,
     Map<String, Object?> outerInput,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    _StageResponseProvenance? provenance,
+  }) async {
     if (host == null || payload is! Map) {
       throw const SourceScriptError('host-method', 'request unavailable');
     }
@@ -1997,7 +2132,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       'POST' => await host.post(url, body as String? ?? '', headers: headers),
       _ => throw const SourceScriptError('host-method', 'HTTP method refused'),
     };
-    return _responseJson(response);
+    return _responseJson(response, provenance: provenance);
   }
 
   Future<Object?> _handleConnect(
@@ -2005,8 +2140,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Object? payload,
     BigInt requestId,
     Map<String, Object?> input,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    _StageResponseProvenance? provenance,
+  }) async {
     if (host == null || payload is! Map || payload['url'] is! String) {
       throw const SourceScriptError('host-input', 'invalid connect call');
     }
@@ -2041,7 +2177,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       body: request.body,
       retry: request.retry,
     );
-    return _responseJson(response);
+    return _responseJson(response, provenance: provenance);
   }
 
   /// Frozen `JsExtensions.ajax` (`help/JsExtensions.kt:91-105`): one
@@ -2054,8 +2190,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Object? payload,
     BigInt requestId,
     Map<String, Object?> input,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    _StageResponseProvenance? provenance,
+  }) async {
     if (host == null || payload is! String) {
       throw const SourceScriptError('host-input', 'invalid ajax url');
     }
@@ -2073,7 +2210,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       body: request.body,
       retry: request.retry,
     );
-    return _responseJson(response);
+    return _responseJson(response, provenance: provenance);
   }
 
   /// Frozen `JsExtensions.ajaxAll` (`help/JsExtensions.kt:111-125`): one
@@ -2084,8 +2221,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Object? payload,
     BigInt requestId,
     Map<String, Object?> input,
-    SourceCancellation token,
-  ) async {
+    SourceCancellation token, {
+    _StageResponseProvenance? provenance,
+  }) async {
     if (host == null || payload is! Map || payload['urls'] is! List) {
       throw const SourceScriptError('host-input', 'invalid ajaxAll call');
     }
@@ -2111,7 +2249,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       ));
     }
     final responses = await host.ajaxAll(requests);
-    return [for (final response in responses) _responseJson(response)];
+    return [
+      for (final response in responses)
+        _responseJson(response, provenance: provenance),
+    ];
   }
 
   /// The shaped request one `java.ajax`/`java.ajaxAll`/`java.connect` URL
@@ -2203,9 +2344,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// Frozen `AnalyzeUrl.getStrResponse`/`getResponse` (`AnalyzeUrl.kt:465-526`):
   /// the stage's own request repeated, answered as the response object the
   /// check script reads.
-  Future<Object?> _handleStageResend(SourceStageRequest? stage) async {
+  Future<Object?> _handleStageResend(
+    SourceStageRequest? stage,
+    _StageResponseProvenance? provenance,
+  ) async {
     if (stage == null) throw _refuseStageRequest('java.getStrResponse');
-    return (await stage.resend()).toJson();
+    final response = await stage.resend();
+    return provenance?.encode(response) ?? response.toJson();
   }
 
   /// Frozen `AnalyzeUrl.initUrl` (`AnalyzeUrl.kt:139`): the stage's address
@@ -2223,20 +2368,37 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     'policy': '只有书源 loginCheckJs 钩子持有阶段请求（#59）',
   });
 
-  static Map<String, Object?> _responseJson(SourceHttpResponse response) => {
-    'statusCode': response.statusCode,
-    'headers': response.headers,
-    'body': response.body,
-    'url': response.url.toString(),
-  };
+  static Map<String, Object?> _responseJson(
+    SourceHttpResponse response, {
+    _StageResponseProvenance? provenance,
+  }) => provenance != null
+      ? provenance.encode(
+          SourceStageResponse(
+            body: response.body,
+            url: response.url,
+            statusCode: response.statusCode,
+            headers: response.headers,
+            httpResponse: (
+              statusCode: response.statusCode,
+              bodyByteLength: response.bodyByteLength,
+              url: response.url,
+            ),
+          ),
+        )
+      : {
+          'statusCode': response.statusCode,
+          'headers': response.headers,
+          'body': response.body,
+          'url': response.url.toString(),
+        };
 
   /// The JavaScript surface one source sees: the frozen runtime's bindings
   /// (`AnalyzeUrl.buildScriptBindings` plus `JsExtensions`), with the host
   /// half bridged into Dart.
   static const _facade = r'''
-(input, checkResponse, collectionToken, htmlDom) => {
-  const bridge = fjs.bridge_call;
-  const call = (method, payload) =>
+(input, checkResponse, collectionToken, htmlDom, responseTrust) => {
+  const bridge = responseTrust ? null : fjs.bridge_call;
+  const call = responseTrust ? responseTrust.call : (method, payload) =>
     JSON.parse(bridge(JSON.stringify({method: method, payload: payload}))).value;
   // The frozen `StrResponse.headers()` is an OkHttp `Headers`: `headers().get(name)
   // is case-insensitive and answers the first value, and a script that indexes
@@ -2258,8 +2420,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   // A response as a source reads it, tagged (`__response`) so the
   // `loginCheckJs` boundary can tell it from any other value the script
   // returned, the way the frozen `as StrResponse` cast does.
-  function response(result) {
-    return Object.freeze({
+  function response(value, initial) {
+    const packet = responseTrust ? responseTrust.read(value, initial === true) : {payload:value, handle:null};
+    const result = packet.payload;
+    const wrapper = (responseTrust ? responseTrust.freeze : Object.freeze)({
       body: () => result.body,
       code: () => result.statusCode,
       url: () => result.url,
@@ -2267,6 +2431,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       raw: () => Object.freeze({request: () => Object.freeze({url: () => result.url})}),
       __response: () => result
     });
+    if (responseTrust) responseTrust.register(wrapper, result, packet.handle);
+    return wrapper;
   }
   // The frozen check script's `java` is the stage's own `AnalyzeUrl`
   // (`AnalyzeUrl.kt:139,465-526`): these two members repeat the stage request
@@ -2626,11 +2792,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (args.length < 1 || args.length > 2) throw new Error('java.connect expects one or two arguments');
       return response(call('connect', {url:String(args[0]), headers:connectHeaders(args[1])}));
     },
-    ajax: url => call('ajax', Array.isArray(url) ? String(url.length ? url[0] : null) : String(url)).body,
+    ajax: url => {
+      const value = call('ajax', Array.isArray(url) ? String(url.length ? url[0] : null) : String(url));
+      return (responseTrust ? responseTrust.read(value, false).payload : value).body;
+    },
     ajaxAll: (...args) => {
       if (args.length !== 1 || !Array.isArray(args[0])) throw new Error('java.ajaxAll expects one URL array');
       if (args[0].length === 0) return [];
-      return call('ajaxAll', {urls:args[0].map(String)}).map(response);
+      const values = call('ajaxAll', {urls:args[0].map(String)});
+      return responseTrust ? responseTrust.map(values, response) : values.map(response);
     },
     // Frozen `AnalyzeUrl.getResponse`/`getStrResponse` (`AnalyzeUrl.kt:478-526`):
     // the stage's current request repeated. The `jsStr`/`sourceRegex` arguments
@@ -2966,10 +3136,181 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // response accessors; every other evaluation keeps the raw value the rule
     // field produced, with a node descriptor resolved to the façade's node.
     src: asDom(input.src),
-    result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result)) : asDom(input.result)};
+    result: checkResponse ? (input.result === null || input.result === undefined ? null : response(input.result, true)) : asDom(input.result)};
 }
 ''';
 }
+
+// This transport closure is created before the shared library can run. It is
+// outside create/library/__read's ancestors, like the collection token, but its
+// wrapper identity map belongs to one check rather than the cached session.
+const _stageResponseCheckBootstrap = r"""
+(function(execute) {
+  const own = Object.getOwnPropertyDescriptor;
+  const names = Object.getOwnPropertyNames;
+  const create = Object.create;
+  const define = Object.defineProperty;
+  const freeze = Object.freeze;
+  const isArray = Array.isArray;
+  const map = Array.prototype.map;
+  const prototype = Object.getPrototypeOf;
+  const objectPrototype = Object.prototype;
+  const arrayPrototype = Array.prototype;
+  const parse = JSON.parse;
+  const stringify = JSON.stringify;
+  const bridge = fjs.bridge_call;
+  const apply = Reflect.apply;
+  const WeakMapType = WeakMap;
+  const weakGet = WeakMap.prototype.get;
+  const weakSet = WeakMap.prototype.set;
+  const data = (object, name) => {
+    if (object === null || typeof object !== 'object') return null;
+    const descriptor = own(object, name);
+    return descriptor && own(descriptor, 'value') ? descriptor : null;
+  };
+  const sameDescriptor = (a, b) => a && b && a.value === b.value &&
+    a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable;
+  const plain = value => prototype(value) === objectPrototype && prototype(objectPrototype) === null && !own(objectPrototype, 'toJSON');
+  // Host records are built without a prototype and finished with own data
+  // descriptors: nothing a source leaves on Object.prototype can run while the
+  // private request or the returned envelope is being constructed.
+  const field = value => {
+    const descriptor = create(null);
+    descriptor.value = value;
+    descriptor.enumerable = true;
+    descriptor.writable = false;
+    descriptor.configurable = false;
+    return descriptor;
+  };
+  const requestRecord = (method, payload) => {
+    const record = create(null);
+    record.method = method;
+    record.payload = payload;
+    record.stageResponseEnvelope = true;
+    return record;
+  };
+  // The four source fields are handed to Dart as a fresh record built from the
+  // authenticated snapshot, so later mutation of the source's own object cannot
+  // change what the selected response reports.
+  const materialize = saved => {
+    const copy = create(null);
+    copy.body = saved.body.value;
+    copy.url = saved.url.value;
+    copy.statusCode = saved.status.value;
+    const headers = create(null);
+    const keys = names(saved.savedHeaders);
+    for (let i = 0; i < keys.length; i++) {
+      const entry = saved.savedHeaders[keys[i]];
+      const values = [];
+      for (let j = 0; j < entry.length.value; j++) values.push(entry.entries[j].value);
+      headers[keys[i]] = values;
+    }
+    copy.headers = headers;
+    return copy;
+  };
+  const headerSnapshot = headers => {
+    if (headers === null || typeof headers !== 'object' || isArray(headers) || !plain(headers)) return null;
+    const result = create(null);
+    const keys = names(headers);
+    for (let i = 0; i < keys.length; i++) {
+      const name = keys[i];
+      const field = data(headers, name);
+      if (!field || !isArray(field.value) || prototype(field.value) !== arrayPrototype ||
+          prototype(arrayPrototype) !== objectPrototype || own(arrayPrototype, 'toJSON')) return null;
+      const values = field.value;
+      const length = data(values, 'length');
+      const entries = create(null);
+      if (!length || names(values).length !== length.value + 1) return null;
+      for (let j = 0; j < length.value; j++) {
+        const item = data(values, j);
+        if (!item || typeof item.value !== 'string') return null;
+        entries[j] = item;
+      }
+      result[name] = {field:field, length:length, entries:entries};
+    }
+    return result;
+  };
+  const snapshot = payload => {
+    if (payload === null || typeof payload !== 'object' || !plain(payload) || names(payload).length !== 4) return null;
+    const body = data(payload, 'body');
+    const url = data(payload, 'url');
+    const status = data(payload, 'statusCode');
+    const headers = data(payload, 'headers');
+    if (!body || typeof body.value !== 'string' || !url || typeof url.value !== 'string' ||
+        !status || typeof status.value !== 'number' || !headers) return null;
+    const savedHeaders = headerSnapshot(headers.value);
+    return savedHeaders === null ? null : {body:body, url:url, status:status, headers:headers, savedHeaders:savedHeaders};
+  };
+  const unchanged = (payload, saved) => {
+    if (!saved || !plain(payload) || !sameDescriptor(data(payload, 'body'), saved.body) ||
+        !sameDescriptor(data(payload, 'url'), saved.url) ||
+        !sameDescriptor(data(payload, 'statusCode'), saved.status) ||
+        !sameDescriptor(data(payload, 'headers'), saved.headers) || names(payload).length !== 4) return false;
+    const current = headerSnapshot(saved.headers.value);
+    const expected = saved.savedHeaders;
+    if (!current || names(current).length !== names(expected).length) return false;
+    const keys = names(expected);
+    for (let i = 0; i < keys.length; i++) {
+      const old = expected[keys[i]];
+      const now = current[keys[i]];
+      if (!now || !sameDescriptor(old.field, now.field) || !sameDescriptor(old.length, now.length)) return false;
+      for (let j = 0; j < old.length.value; j++) {
+        if (!sameDescriptor(old.entries[j], now.entries[j])) return false;
+      }
+    }
+    return true;
+  };
+  define(globalThis, '__liberCheckResponse', {
+    enumerable:true, configurable:false, writable:false,
+    value:function(factory, input, code, elementsResult, htmlDom, initialHandle) {
+      let known = new WeakMapType();
+      try {
+      const initial = data(input, 'result');
+      const initialPayload = initial ? initial.value : null;
+      const initialSnapshot = snapshot(initialPayload);
+      const trust = {
+        freeze:freeze,
+        map:(values, convert) => apply(map, values, [convert]),
+        call:(method, payload) => parse(bridge(stringify(requestRecord(method, payload)))).value,
+        read:(value, first) => {
+          if (first) return {payload:value, handle:value === initialPayload && unchanged(value, initialSnapshot) ? initialHandle : null};
+          const payload = data(value, 'payload');
+          const handle = data(value, 'handle');
+          return {payload:payload ? payload.value : value, handle:handle ? handle.value : null};
+        },
+        register:(wrapper, payload, handle) => {
+          if (known === null) return;
+          apply(weakSet, known, [wrapper, {payload:payload, handle:handle,
+            descriptor:own(wrapper, '__response'), snapshot:snapshot(payload)}]);
+        }
+      };
+      const facade = (candidate, check, collectionToken, dom) =>
+        factory(candidate, check, collectionToken, dom, trust);
+      const value = execute(facade, input, code, true, elementsResult, htmlDom);
+      // Keep the old acceptance and its two __response accesses/call in order.
+      // Authentication below reads descriptors only, never another getter/call.
+      let payload;
+      if (value !== null && typeof value === 'object' && typeof value.__response === 'function') payload = value.__response();
+      else throw new Error('loginCheckJs must return a response object (result, java.getStrResponse() or java.getResponse()); got ' + (value === null ? 'null' : typeof value));
+      const registered = apply(weakGet, known, [value]);
+      const authenticated = registered && payload === registered.payload &&
+        sameDescriptor(own(value, '__response'), registered.descriptor) &&
+        unchanged(payload, registered.snapshot) ? registered.snapshot : null;
+      const proven = authenticated === null ? snapshot(payload) : authenticated;
+      const envelope = create(null);
+      define(envelope, 'payload', field(proven === null ? payload : materialize(proven)));
+      define(envelope, 'handle', field(authenticated === null ? null : registered.handle));
+      return envelope;
+      } finally {
+        known = null;
+      }
+    }
+  });
+})(globalThis.__liberRun);
+""";
+
+// The private check-request marker is ASCII, so its length is its byte length.
+const _stageResponseEnvelopeMarker = ',"stageResponseEnvelope":true';
 
 class _ScriptSession {
   _ScriptSession(this.engine);
@@ -3029,12 +3370,7 @@ class _ScriptSession {
           'const known=elementsResult && htmlDom && !checkResponse && Array.isArray(value) '
           '? Object.getOwnPropertyDescriptor(value,collectionToken) : null; '
           'return known && typeof known.value === "function" ? (known.value(value) || value) : value; }; })(); })(); '
-          // The `loginCheckJs` boundary: the script's value must be a response
-          // object, the way the frozen `as StrResponse` cast requires one; a
-          // response crosses back as its plain payload.
-          'globalThis.__liberCheckResponse = function(value){ '
-          'if (value !== null && typeof value === "object" && typeof value.__response === "function") return value.__response(); '
-          'throw new Error("loginCheckJs must return a response object (result, java.getStrResponse() or java.getResponse()); got " + (value === null ? "null" : typeof value)); };',
+          '$_stageResponseCheckBootstrap',
         ),
       );
       return session;
