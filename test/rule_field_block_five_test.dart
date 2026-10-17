@@ -343,7 +343,13 @@ void main() {
                 : book.author;
           }
           final read = (items.single['reads'] as List).single as Map;
-          expect(actual.codeUnits, _expected(read).codeUnits, reason: name);
+          // Since #104 the content caller reads the rule with `unescape = false`
+          // and runs the frozen per-page pass, so its answer is the golden's raw
+          // read through `formatContentPage`.
+          final expected = row['unescape'] == false
+              ? formatContentPage(_expected(read))
+              : _expected(read);
+          expect(actual.codeUnits, expected.codeUnits, reason: name);
         }
         for (final entry in (observed['variables'] as Map).entries) {
           expect(

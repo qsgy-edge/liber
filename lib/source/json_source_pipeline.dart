@@ -1553,10 +1553,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
           }
         }
         // The frozen content stage turns one page's value into text here, before
-        // the pages are joined (`BookContent.kt:178`) — the same pass the HTML
-        // adapter runs, because the frozen stage is adapter-agnostic.
+        // the pages are joined (`BookContent.kt:178-181`) — the same pass the HTML
+        // adapter runs, `formatKeepImg` then the `&`-guarded `unescapeHtml4`,
+        // because the frozen stage is adapter-agnostic.
         parts.add(
-          formatChapterContent(
+          formatContentPage(
             await _text(
               document,
               content['content']!,

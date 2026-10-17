@@ -15,13 +15,16 @@ import 'native_library.dart';
 ///
 /// The golden is executed evidence from the frozen `HtmlFormatter.kt` at
 /// `14dd2494` on a host JVM (`tool/html_content_oracle/`), produced by running
-/// the frozen `BookContent.kt:178` call — `HtmlFormatter.formatKeepImg(content,
-/// rUrl)` — and the unescape that follows it over `fixtures.json`. This test
-/// runs the product's ported pass (`formatChapterContent`) over the same
-/// fixture inputs and compares byte for byte.
+/// the frozen `BookContent.kt:177-181` sequence — the rule read with
+/// `unescape = false`, `HtmlFormatter.formatKeepImg(content, rUrl)`, then the
+/// `&`-guarded `StringEscapeUtils.unescapeHtml4` — over `fixtures.json`. This
+/// test runs the product's ported pass over the same fixture inputs and
+/// compares byte for byte: `formatChapterContent` is the formatter half
+/// (`golden.formatted`) and since #104 `formatContentPage` is the whole
+/// per-page pass, matching `golden.content` on every row.
 ///
 /// A case whose `compare` is `exact` is one both sides must answer identically.
-/// The other two `compare` values are the two divergences the product carries
+/// The remaining `compare` values are the divergences the product carries
 /// deliberately, and their rows assert *both* answers, the frozen one and this
 /// product's, so neither can drift into the other:
 ///
@@ -29,12 +32,12 @@ import 'native_library.dart';
 ///   to an absolute address (`NetworkUtils.getAbsoluteURL(rUrl, …)`); this
 ///   product resolves an image's address against the chapter's own URL when it
 ///   fetches it (`#67`).
-/// - `unescape-order`: the frozen unescapes entities *after* this pass
+/// - `unescape-order`: the frozen unescapes entities *after* the formatter
 ///   (`BookContent.kt:179-181`) and reads the rule with `unescape = false`
-///   (`:177`), while this product's rule read has already unescaped once. A page
-///   that wrote its tags escaped keeps them on the frozen side and loses them
-///   here; the resolved forms of `&nbsp;`/`&ensp;`/`&emsp;` keep the pass from
-///   folding them (#104).
+///   (`:177`). `formatContentPage` reproduces that whole order (#104), so the
+///   product's full pass now matches `golden.content` for these rows too; the
+///   formatter half alone still keeps the escaped tags, which is what
+///   `golden.formatted` holds.
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
@@ -96,16 +99,19 @@ void main() {
   );
 
   test(
-    'a rule value that still carries an entity is where the orders differ',
+    'the frozen order folds and unescapes an entity-bearing rule value',
     () {
       for (final c in cases.where((c) => c['compare'] == 'unescape-order')) {
         final name = c['name'] as String;
-        final product = formatChapterContent(c['input'] as String);
+        final input = c['input'] as String;
         // The frozen's own unescape turn, after the formatter: the escaped tags
-        // reach the reader. This product's pass has no unescape of its own — its
-        // rule read already spent the one unescape (`#104`).
+        // reach the reader. `formatContentPage` is the whole per-page pass
+        // (#104), so it answers the frozen `content` byte for byte; the
+        // formatter half alone still keeps the escaped tags (`formatted`).
         expect(row(name)['content'], '<p>不是标签</p>& 乙', reason: name);
-        expect(product, '&lt;p&gt;不是标签&lt;/p&gt;&amp; 乙', reason: name);
+        expect(row(name)['formatted'], '&lt;p&gt;不是标签&lt;/p&gt;&amp; 乙', reason: name);
+        expect(formatChapterContent(input), row(name)['formatted'], reason: name);
+        expect(formatContentPage(input), row(name)['content'], reason: name);
       }
     },
   );
@@ -136,27 +142,18 @@ void main() {
       '　　也被称为“法宝坟墓”。\n'
       '　　',
     );
-    // The same page through this product. The tags are gone; each paragraph
-    // keeps the four `\u00A0` the rule read left of the page's `&nbsp;` run,
-    // because the frozen folds the entity text before its own unescape and this
-    // product's read has already resolved it (#104).
-    const resolvedNbsp = '\u00A0\u00A0\u00A0\u00A0';
-    expect(
-      body.text,
-      '　　　　最新网址：x.test\n'
-      '　　$resolvedNbsp铁锈湖。\n'
-      '　　$resolvedNbsp第二十三号特种垃圾处理场。\n'
-      '　　$resolvedNbsp也被称为“法宝坟墓”。\n'
-      '　　',
-    );
+    // Since #104 the content rule is read without the entity pass
+    // (`AnalyzeRule.getString(…, unescape = false)`) and `formatContentPage`
+    // runs the one unescape after the formatter, so this product answers the
+    // frozen content byte for byte: the `&nbsp;` run folds before any unescape.
+    expect(body.text, row('site-shape-contentdiv')['content']);
     expect(body.text, isNot(contains('<')));
     expect(body.text, isNot(contains('&')));
 
-    // The reader's own content stage is the text the reader pages, and that is
-    // where the raw difference above stops: the frozen's replace-stage line trim
-    // is Kotlin's `Char.isWhitespace()`, which carries U+00A0, so the resolved
-    // run is trimmed here exactly as the frozen's folded space is there. Both
-    // raw texts answer the same visible text — this is the operator's page.
+    // The reader's own content stage is the text the reader pages. Both raw
+    // texts are identical here, and the frozen's replace-stage line trim
+    // (Kotlin's `Char.isWhitespace()`, which carries U+00A0) leaves the same
+    // visible text on each side — this is the operator's page.
     final processing = ContentProcessing(
       rules: const ReplaceRuleSet(titleRules: [], contentRules: []),
       bookName: '修真四万年',

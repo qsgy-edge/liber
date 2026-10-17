@@ -1026,11 +1026,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// Declares a finished native Text read or a raw match-list read for a
   /// scripted scalar. Literal/script-only fields declare neither job.
+  ///
+  /// [rawEntities] reads a value-rule extraction through the frozen
+  /// `AnalyzeRule.getString(rule, unescape = false)` shape (no entity pass),
+  /// which the content stage needs; every other field keeps the default read.
   _HtmlScalarJob _declare(
     HtmlRuleBatch batch,
     String id,
     RuleField field, {
     bool unescape = true,
+    bool rawEntities = false,
   }) {
     if (!field.hasValueExtraction) return (text: null, raw: null);
     if (_deferScriptScalarTail(field, unescape: unescape)) {
@@ -1042,7 +1047,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ),
       );
     }
-    return (text: batch.documentText(id, field.extractionRule!), raw: null);
+    return (
+      text: rawEntities
+          ? batch.documentTextRaw(id, field.extractionRule!)
+          : batch.documentText(id, field.extractionRule!),
+      raw: null,
+    );
   }
 
   /// Declares the *list* read of one field (the frozen
@@ -2271,6 +2281,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           'content',
           content,
           unescape: false,
+          rawEntities: true,
         );
         final nextValue = next == null
             ? null
@@ -2291,8 +2302,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           );
         }
         // The frozen content stage turns one page's HTML into text here, before
-        // the pages are joined (`BookContent.kt:178`).
-        parts.add(formatChapterContent(text));
+        // the pages are joined (`BookContent.kt:178-181`): `formatKeepImg`,
+        // then the `&`-guarded `unescapeHtml4`.
+        parts.add(formatContentPage(text));
         return (
           pageUrl: pageUrl,
           items: await _pageTexts(nextValue, next, html),

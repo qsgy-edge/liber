@@ -27,6 +27,11 @@ pub enum HtmlJobOutput {
     CollectionCssSelect,
     /// First present raw attribute; empty is one value, missing is no value.
     RawAttribute,
+    /// The frozen `AnalyzeRule.getString(rule, unescape = false)` answer for the
+    /// document: the joined extraction with the `##` field applied and no entity
+    /// unescape. The content stage reads `ruleContent.content` this way
+    /// (`BookContent.kt:177`) and unescapes once after the formatter.
+    TextRaw,
 }
 
 /// One rule to evaluate against the document.
@@ -93,6 +98,7 @@ pub fn html_analyze(html: String, jobs: Vec<HtmlRuleJob>) -> Vec<HtmlJobOutcome>
                 HtmlJobOutput::TextList => JobOutput::TextList,
                 HtmlJobOutput::CollectionCssSelect => JobOutput::CollectionCssSelect,
                 HtmlJobOutput::RawAttribute => JobOutput::RawAttribute,
+                HtmlJobOutput::TextRaw => JobOutput::TextRaw,
             },
         })
         .collect();

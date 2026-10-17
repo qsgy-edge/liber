@@ -163,9 +163,16 @@ void main() {
             _Pages({'/chapter': content}),
             hostState: state,
           ).chapter(SourceChapter('chapter', Uri.parse('$_origin/chapter')));
+          // Since #104 the content caller reads the rule with `unescape = false`
+          // and runs the frozen per-page pass, so its answer is the golden's raw
+          // getter through `formatContentPage`.
           expect(
             body.text.codeUnits,
-            (observed['getterUnits'] as List).cast<int>(),
+            formatContentPage(
+              String.fromCharCodes(
+                (observed['getterUnits'] as List).cast<int>(),
+              ),
+            ).codeUnits,
           );
           return;
         }

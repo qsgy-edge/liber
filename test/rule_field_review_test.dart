@@ -467,9 +467,10 @@ void main() {
           final body = await pipeline.chapter(
             SourceChapter('chapter', Uri.parse('$_origin/chapter')),
           );
-          // This checks getString(unescape=false); #104's later formatter/unescape
-          // ordering remains a separate, unclaimed chapter-wide comparison.
-          expect(body.text, _value('content-false'));
+          // This checks getString(unescape=false) through the content caller;
+          // since #104 the caller then runs the frozen per-page pass, so the
+          // answer is the golden's raw read through `formatContentPage`.
+          expect(body.text, formatContentPage(_value('content-false')));
         },
       );
     }
