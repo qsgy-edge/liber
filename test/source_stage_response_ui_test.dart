@@ -604,6 +604,55 @@ void main() {
     });
   }
 
+  for (final json in [false, true]) {
+    testWidgets(
+      'reader ${json ? 'JSON' : 'HTML'} keeps the hook error diagnostic',
+      (tester) async {
+        await _withStore(tester, (shelf) async {
+          final fixture = _Fixture(json, canaries: false);
+          final url =
+              '$_origin/unused,${jsonEncode({'js': 'throw new ReferenceError("SYNTHETIC-READER-HOOK")'})}';
+          fixture.source['loginCheckJs'] =
+              'java.ajax(${jsonEncode(url)}); result;';
+          final id = await shelf.ensureBook(fixture.source, fixture.book);
+          await tester.pumpWidget(
+            localizedApp(
+              locale: const Locale('en'),
+              home: OnlineReaderPage(
+                pipeline: openBookSourcePipeline(
+                  fixture.source,
+                  fixture.transport,
+                  hostState: shelf.hostState,
+                ),
+                book: fixture.book,
+                bookId: id,
+                chapters: [fixture.chapter],
+                service: shelf,
+                convert: (text, _) => text,
+              ),
+            ),
+          );
+          final failure = find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                (widget.data?.startsWith(
+                      'Loading the chapter failed: js: ReferenceError: SYNTHETIC-READER-HOOK',
+                    ) ??
+                    false),
+          );
+          await _waitFor(tester, failure);
+          final message = tester.widget<Text>(failure).data!;
+          expect(message, isNot(contains("converting from js 'bridge'")));
+          expect(
+            fixture.transport.requests.map((request) => request.url.path),
+            ['/chapter'],
+          );
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+        });
+      },
+    );
+  }
+
   for (final rendered in [false, true]) {
     for (final json in [false, true]) {
       testWidgets(

@@ -12,7 +12,7 @@ use std::fmt;
 /// This enum provides detailed error information for different
 /// categories of errors that can occur during JavaScript execution.
 #[frb(dart_metadata = ("freezed"))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JsError {
     /// Promise-related errors (async operation failures)
     Promise(String),
