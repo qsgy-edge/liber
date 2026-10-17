@@ -104,11 +104,12 @@ bash tool/html_content_oracle/run_golden.sh
   answers the source's own address, resolving it against the chapter's URL when
   it fetches the image (#67).
 - The rule read that produces the input: every case begins at
-  `getString(ruleContent.content, unescape = false)`. This product's rule read
-  has already unescaped once (`HtmlRuleBatch.documentText`), so the frozen's
-  entity branches fire only for a rule value that still carries the entity text
-  (a `@js:` segment's value). The `unescape-order` rows pin both sides' answers;
-  the read's own `unescape = false` form is #104.
+  `getString(ruleContent.content, unescape = false)`. The content stage reads it
+  that way (`HtmlRuleBatch.documentTextRaw`, the `textRaw` job output) and runs
+  the frozen's one post-formatter `unescapeHtml4` in `formatContentPage`, so the
+  frozen's entity branches see the entity text. The `unescape-order` rows pin
+  both sides' answers: `formatChapterContent` is the `golden.formatted` half and
+  `formatContentPage` the `golden.content` one.
 - `ContentProcessor.getContent` and the reader's `TextChapter`: they run after
   this stage, and they are pinned by `tool/re_segment_oracle/`,
   `tool/replace_rule_oracle/` and `test/content_processing_test.dart`.
