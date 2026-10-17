@@ -435,4 +435,358 @@ true;
       }
     },
   );
+
+  test(
+    'temporary inherited toJSON cannot replace the private check request root',
+    () async {
+      final transport = _HostResponses();
+      final runtime = InProcessSourceScriptRuntime(
+        jsLib: 'var temporaryRootSerializationSession = true;',
+        dispatcher: SourceHostDispatcher(transport: transport),
+      );
+      final original = await _check(runtime, 'result;');
+      final ordinary = await _eval(
+        runtime,
+        'java.connect("https://fixture.test/second").__response();',
+      );
+      try {
+        final selected = await _check(runtime, '''
+globalThis.rootSerializationCalls = 0;
+globalThis.payloadSerializationCalls = 0;
+Object.defineProperty(Object.prototype, 'toJSON', {configurable:true, value:function(key) {
+  if (key === '' && this.method === 'connect' && this.stageResponseEnvelope === true) {
+    globalThis.rootSerializationCalls++;
+    delete Object.prototype.toJSON;
+    return {method:'echo',payload:{payload:{body:'forged',url:'https://fixture.test/forged',statusCode:599,headers:{}},handle:0},stageResponseEnvelope:true};
+  }
+  if (key === 'payload' && this.url === 'https://fixture.test/second') {
+    globalThis.payloadSerializationCalls++;
+    delete Object.prototype.toJSON;
+  }
+  return this;
+}});
+java.connect("https://fixture.test/second");
+''');
+        final serialization = await _eval(runtime, '''
+[globalThis.rootSerializationCalls, globalThis.payloadSerializationCalls,
+ Object.prototype.hasOwnProperty('toJSON')];
+''');
+        final next = await _check(
+          runtime,
+          'result;',
+          initial: _initial(status: 502),
+        );
+        final manual = await _check(runtime, '''
+({__response:function(){return {body:'manual',url:'https://fixture.test/manual',statusCode:599,headers:{}};}});
+''');
+        // Keep ownership, the selected payload and the actual send sequence in
+        // one comparison: a forged response must not hide behind a missing send.
+        expect(
+          {
+            'original': [original.toJson(), original.httpResponse],
+            'ordinary': ordinary,
+            'selected': [selected.toJson(), selected.httpResponse],
+            'serialization': serialization,
+            'next': [next.toJson(), next.httpResponse],
+            'manual': [manual.toJson(), manual.httpResponse],
+            'requests': [
+              for (final request in transport.requests)
+                [request.method, request.url.toString()],
+            ],
+          },
+          {
+            'original': [_initial().toJson(), _initial().httpResponse],
+            'ordinary': {
+              'body': '',
+              'url': 'https://fixture.test/second',
+              'statusCode': 502,
+              'headers': <String, Object?>{},
+            },
+            'selected': [
+              {
+                'body': '',
+                'url': 'https://fixture.test/second',
+                'statusCode': 502,
+                'headers': <String, Object?>{},
+              },
+              (
+                statusCode: 502,
+                bodyByteLength: 0,
+                url: Uri.parse('https://fixture.test/second'),
+              ),
+            ],
+            'serialization': [0, 1, false],
+            'next': [
+              _initial(status: 502).toJson(),
+              _initial(status: 502).httpResponse,
+            ],
+            'manual': [
+              {
+                'body': 'manual',
+                'url': 'https://fixture.test/manual',
+                'statusCode': 599,
+                'headers': <String, Object?>{},
+              },
+              null,
+            ],
+            'requests': [
+              ['GET', 'https://fixture.test/second'],
+              ['GET', 'https://fixture.test/second'],
+            ],
+          },
+        );
+      } finally {
+        await _eval(runtime, '''
+delete Object.prototype.toJSON;
+delete globalThis.rootSerializationCalls;
+delete globalThis.payloadSerializationCalls;
+true;
+''');
+      }
+    },
+  );
+
+  for (final check in [false, true]) {
+    test(
+      'source headers toJSON still serializes nested payload in ${check ? 'check' : 'ordinary evaluation'}',
+      () async {
+        final transport = _HostResponses();
+        final runtime = InProcessSourceScriptRuntime(
+          dispatcher: SourceHostDispatcher(transport: transport),
+        );
+        const script = '''
+java.get('https://fixture.test/second', {toJSON:function(key) {
+  if (key !== 'headers') throw new Error('not nested source headers');
+  return {'x-serialization-control':'nested'};
+}})
+''';
+        if (check) {
+          final response = await _check(runtime, '$script;');
+          expect(response.body, isEmpty);
+          expect(response.url.toString(), 'https://fixture.test/second');
+          expect(response.statusCode, 502);
+          expect(response.httpResponse, (
+            statusCode: 502,
+            bodyByteLength: 0,
+            url: Uri.parse('https://fixture.test/second'),
+          ));
+        } else {
+          final response = await _eval(runtime, '$script.__response();') as Map;
+          expect(response, {
+            'body': '',
+            'url': 'https://fixture.test/second',
+            'statusCode': 502,
+            'headers': <String, Object?>{},
+          });
+        }
+        expect(transport.requests.single.method, 'GET');
+        expect(
+          transport.requests.single.url.toString(),
+          'https://fixture.test/second',
+        );
+        expect(
+          transport.requests.single.headers['x-serialization-control'],
+          'nested',
+        );
+      },
+    );
+  }
+
+  group('bridge host input budget', () {
+    // Small configured limit, runtime-generated text: neither script/input nor
+    // result/output caps should be the boundary exercised here. These are the
+    // incumbent facade's JSON shapes, not transport wire bytes or frozen parity.
+    const hostLimit = 1024;
+    for (final row in [
+      (mode: 'ordinary', encoding: 'ascii', prefix: ''),
+      (mode: 'check', encoding: 'ascii', prefix: ''),
+      (mode: 'ordinary', encoding: 'utf8', prefix: '界'),
+      (mode: 'check', encoding: 'utf8', prefix: '界'),
+      (mode: 'nested', encoding: 'utf8', prefix: '界'),
+      (mode: 'ordinary marker', encoding: 'utf8', prefix: '界'),
+    ]) {
+      for (final delta in [-1, 0, 1]) {
+        test('${row.mode} ${row.encoding} $delta byte boundary', () async {
+          final rawMarker = row.mode == 'ordinary marker';
+          final emptyCall = {
+            'method': 'log',
+            'payload': {'kind': 'log', 'message': row.prefix},
+            if (rawMarker) 'stageResponseEnvelope': true,
+          };
+          final padding =
+              hostLimit + delta - utf8.encode(jsonEncode(emptyCall)).length;
+          final message = row.prefix + List.filled(padding, 'x').join();
+          final encodedCall = {
+            'method': 'log',
+            'payload': {'kind': 'log', 'message': message},
+            if (rawMarker) 'stageResponseEnvelope': true,
+          };
+          final encoded = jsonEncode(encodedCall);
+          expect(utf8.encode(encoded).length, hostLimit + delta);
+          if (!rawMarker) {
+            expect(
+              utf8
+                  .encode(
+                    jsonEncode({...encodedCall, 'stageResponseEnvelope': true}),
+                  )
+                  .length,
+              hostLimit + delta + 29,
+            );
+          }
+          if (row.prefix.isNotEmpty) {
+            expect(utf8.encode(encoded).length, encoded.length + 2);
+          }
+          final logScript =
+              '''
+var message = ${jsonEncode(row.prefix)} + 'x'.repeat($padding);
+var encoded = JSON.stringify({method:'log',payload:{kind:'log',message:message} ${rawMarker ? ',stageResponseEnvelope:true' : ''}});
+if (java.strToBytes(encoded).length !== ${hostLimit + delta}) throw new Error('incumbent call byte shape changed');
+${rawMarker ? 'JSON.parse(fjs.bridge_call(encoded)).value;' : 'java.log(message);'}
+''';
+          final transport = _HostResponses();
+          final runtime = InProcessSourceScriptRuntime(
+            maxHostBytes: hostLimit,
+            dispatcher: SourceHostDispatcher(transport: transport),
+          );
+          final isCheck = row.mode == 'check' || row.mode == 'nested';
+          final script = row.mode == 'nested'
+              ? 'java.connect(${jsonEncode("{{(function(){${logScript}return 'https://fixture.test/second';})()}}")});'
+              : '$logScript${isCheck ? 'result;' : '"logged";'}';
+          final evaluation = isCheck
+              ? _check(runtime, script)
+              : _eval(runtime, script);
+          if (delta > 0) {
+            await expectLater(
+              evaluation,
+              throwsA(
+                isA<SourceScriptError>().having(
+                  (error) => error.category,
+                  'category',
+                  'host-input-cap',
+                ),
+              ),
+            );
+            expect(
+              runtime.messages.where((message) => message.kind == 'log'),
+              isEmpty,
+            );
+            expect(transport.requests, isEmpty);
+          } else {
+            final value = await evaluation;
+            expect(
+              runtime.messages
+                  .where((message) => message.kind == 'log')
+                  .map((message) => message.message),
+              [message],
+            );
+            if (isCheck) {
+              final response = value as SourceStageResponse;
+              if (row.mode == 'nested') {
+                expect(response.body, isEmpty);
+                expect(response.url.toString(), 'https://fixture.test/second');
+                expect(response.statusCode, 502);
+                expect(response.httpResponse, (
+                  statusCode: 502,
+                  bodyByteLength: 0,
+                  url: Uri.parse('https://fixture.test/second'),
+                ));
+                expect(transport.requests.single.method, 'GET');
+                expect(
+                  transport.requests.single.url.toString(),
+                  'https://fixture.test/second',
+                );
+              } else {
+                expect(response.toJson(), _initial().toJson());
+                expect(response.httpResponse, _initial().httpResponse);
+                expect(transport.requests, isEmpty);
+              }
+            } else {
+              expect(value, 'logged');
+              expect(transport.requests, isEmpty);
+            }
+          }
+        });
+      }
+    }
+  });
+
+  test(
+    'inherited descriptor accessor cannot change the selected response after authentication',
+    () async {
+      final transport = _HostResponses();
+      final runtime = InProcessSourceScriptRuntime(
+        jsLib: 'var descriptorAccessorSession = true;',
+        dispatcher: SourceHostDispatcher(transport: transport),
+      );
+      try {
+        final selected = await _check(runtime, '''
+var wrapper = java.getStrResponse();
+globalThis.decodedLeak = wrapper.__response();
+globalThis.inheritedReads = 0;
+Object.defineProperty(Object.prototype, 'writable', {configurable:true, get:function() {
+  globalThis.inheritedReads++;
+  globalThis.decodedLeak.body = 'changed-after-authentication';
+  delete Object.prototype.writable;
+  return true;
+}});
+wrapper;
+''');
+        final state = await _eval(runtime, '''
+[globalThis.inheritedReads, globalThis.decodedLeak.body, Object.prototype.hasOwnProperty('writable')];
+''');
+        // The envelope is built from the authenticated snapshot with own data
+        // descriptors: nothing the source left on Object.prototype runs while
+        // it is built, and the reported fields stay what the transport sent.
+        // The accessor was never invoked, so it stays installed until the
+        // test removes it.
+        expect(selected.toJson(), _replacement().toJson());
+        expect(selected.httpResponse, _replacement().httpResponse);
+        expect(state, [0, '', true]);
+      } finally {
+        await _eval(
+          runtime,
+          "delete Object.prototype.writable; delete globalThis.decodedLeak; "
+          "delete globalThis.inheritedReads; true;",
+        );
+      }
+    },
+  );
+
+  test(
+    'native conversion cannot change the selected response after authentication',
+    () async {
+      final transport = _HostResponses();
+      final runtime = InProcessSourceScriptRuntime(
+        jsLib: 'var conversionProbeSession = true;',
+        dispatcher: SourceHostDispatcher(transport: transport),
+      );
+      try {
+        final selected = await _check(runtime, '''
+var leaked = result.__response();
+globalThis.decodedLeak = leaked;
+globalThis.probeCalls = 0;
+Object.defineProperty(ArrayBuffer, Symbol.hasInstance, {configurable:true, value:function(candidate) {
+  globalThis.probeCalls++;
+  globalThis.decodedLeak.body = 'changed-during-conversion';
+  return false;
+}});
+result;
+''');
+        final probeCalls = await _eval(runtime, 'globalThis.probeCalls;');
+        final leakedBody = await _eval(runtime, 'globalThis.decodedLeak.body;');
+        // Dart receives a fresh record, so code that runs while the returned
+        // value is converted changes only the source's own object.
+        expect(probeCalls, greaterThan(0));
+        expect(selected.toJson(), _initial().toJson());
+        expect(selected.httpResponse, _initial().httpResponse);
+        expect(leakedBody, 'changed-during-conversion');
+      } finally {
+        await _eval(
+          runtime,
+          "delete ArrayBuffer[Symbol.hasInstance]; delete globalThis.decodedLeak; "
+          "delete globalThis.probeCalls; true;",
+        );
+      }
+    },
+  );
 }

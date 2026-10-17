@@ -758,7 +758,17 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             throw const SourceScriptError('host-input');
           }
           final encoded = value.field0;
-          if (utf8.encode(encoded).length > maxHostBytes) {
+          // The private check request is the whole message and carries its
+          // marker as the final key, so the framing is an exact ASCII tail.
+          // Exempting it keeps the source's own inbound cap unchanged for
+          // ordinary calls, nested evaluations and source-written markers.
+          final inbound = utf8.encode(encoded).length;
+          final framing =
+              provenance != null &&
+                  encoded.endsWith('$_stageResponseEnvelopeMarker}')
+              ? _stageResponseEnvelopeMarker.length
+              : 0;
+          if (inbound - framing > maxHostBytes) {
             throw const SourceScriptError('host-input-cap');
           }
           final decoded = jsonDecode(encoded);
@@ -3161,6 +3171,43 @@ const _stageResponseCheckBootstrap = r"""
   const sameDescriptor = (a, b) => a && b && a.value === b.value &&
     a.writable === b.writable && a.enumerable === b.enumerable && a.configurable === b.configurable;
   const plain = value => prototype(value) === objectPrototype && prototype(objectPrototype) === null && !own(objectPrototype, 'toJSON');
+  // Host records are built without a prototype and finished with own data
+  // descriptors: nothing a source leaves on Object.prototype can run while the
+  // private request or the returned envelope is being constructed.
+  const field = value => {
+    const descriptor = create(null);
+    descriptor.value = value;
+    descriptor.enumerable = true;
+    descriptor.writable = false;
+    descriptor.configurable = false;
+    return descriptor;
+  };
+  const requestRecord = (method, payload) => {
+    const record = create(null);
+    record.method = method;
+    record.payload = payload;
+    record.stageResponseEnvelope = true;
+    return record;
+  };
+  // The four source fields are handed to Dart as a fresh record built from the
+  // authenticated snapshot, so later mutation of the source's own object cannot
+  // change what the selected response reports.
+  const materialize = saved => {
+    const copy = create(null);
+    copy.body = saved.body.value;
+    copy.url = saved.url.value;
+    copy.statusCode = saved.status.value;
+    const headers = create(null);
+    const keys = names(saved.savedHeaders);
+    for (let i = 0; i < keys.length; i++) {
+      const entry = saved.savedHeaders[keys[i]];
+      const values = [];
+      for (let j = 0; j < entry.length.value; j++) values.push(entry.entries[j].value);
+      headers[keys[i]] = values;
+    }
+    copy.headers = headers;
+    return copy;
+  };
   const headerSnapshot = headers => {
     if (headers === null || typeof headers !== 'object' || isArray(headers) || !plain(headers)) return null;
     const result = create(null);
@@ -3224,7 +3271,7 @@ const _stageResponseCheckBootstrap = r"""
       const trust = {
         freeze:freeze,
         map:(values, convert) => apply(map, values, [convert]),
-        call:(method, payload) => parse(bridge(stringify({method:method, payload:payload, stageResponseEnvelope:true}))).value,
+        call:(method, payload) => parse(bridge(stringify(requestRecord(method, payload)))).value,
         read:(value, first) => {
           if (first) return {payload:value, handle:value === initialPayload && unchanged(value, initialSnapshot) ? initialHandle : null};
           const payload = data(value, 'payload');
@@ -3246,12 +3293,13 @@ const _stageResponseCheckBootstrap = r"""
       if (value !== null && typeof value === 'object' && typeof value.__response === 'function') payload = value.__response();
       else throw new Error('loginCheckJs must return a response object (result, java.getStrResponse() or java.getResponse()); got ' + (value === null ? 'null' : typeof value));
       const registered = apply(weakGet, known, [value]);
-      const handle = registered && payload === registered.payload &&
+      const authenticated = registered && payload === registered.payload &&
         sameDescriptor(own(value, '__response'), registered.descriptor) &&
-        unchanged(payload, registered.snapshot) ? registered.handle : null;
+        unchanged(payload, registered.snapshot) ? registered.snapshot : null;
+      const proven = authenticated === null ? snapshot(payload) : authenticated;
       const envelope = create(null);
-      define(envelope, 'payload', {value:payload, enumerable:true});
-      define(envelope, 'handle', {value:handle, enumerable:true});
+      define(envelope, 'payload', field(proven === null ? payload : materialize(proven)));
+      define(envelope, 'handle', field(authenticated === null ? null : registered.handle));
       return envelope;
       } finally {
         known = null;
@@ -3260,6 +3308,9 @@ const _stageResponseCheckBootstrap = r"""
   });
 })(globalThis.__liberRun);
 """;
+
+// The private check-request marker is ASCII, so its length is its byte length.
+const _stageResponseEnvelopeMarker = ',"stageResponseEnvelope":true';
 
 class _ScriptSession {
   _ScriptSession(this.engine);
