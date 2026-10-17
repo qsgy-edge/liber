@@ -846,10 +846,16 @@ pub fn string_list(dom: &Dom, context: NodeId, rule: &str) -> Result<Vec<String>
     Ok(merge_values(&results, merge.as_deref()))
 }
 
-/// Frozen `AnalyzeByJSoup.getString`, with the `##` replacement applied to
-/// the joined extraction. The count distinguishes a missing pagination list
-/// from a value-rule fallback without changing the bridge job shape.
-pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(String, usize), RuleError> {
+/// Frozen `AnalyzeByJSoup.getString` with the entity pass removed: the joined
+/// extraction and the `##` replacement of [`string_with_count`], with no
+/// `unescape_html` step. The frozen content stage reads `ruleContent.content`
+/// with `AnalyzeRule.getString(contentRule.content, unescape = false)`
+/// (`BookContent.kt:177`) and runs the one unescape after the formatter.
+fn string_joined(
+    dom: &Dom,
+    context: NodeId,
+    rule: &str,
+) -> Result<(String, usize), RuleError> {
     let source = SourceRule::parse(rule)?;
     let values = string_list(dom, context, rule)?;
     let count = values.len();
@@ -866,8 +872,28 @@ pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(Stri
         Some(replace) => apply_replace(&joined, replace),
         None => joined,
     };
+    Ok((replaced, count))
+}
+
+/// Frozen `AnalyzeRule.getString`, with the `##` replacement applied to
+/// the joined extraction. The count distinguishes a missing pagination list
+/// from a value-rule fallback without changing the bridge job shape.
+pub fn string_with_count(dom: &Dom, context: NodeId, rule: &str) -> Result<(String, usize), RuleError> {
+    let (joined, count) = string_joined(dom, context, rule)?;
     // Frozen `AnalyzeRule.getString` unescapes the result last.
-    Ok((unescape_html(&replaced), count))
+    Ok((unescape_html(&joined), count))
+}
+
+/// Frozen `AnalyzeRule.getString(rule, unescape = false)`: the same joined
+/// extraction and `##` replacement as [`string_with_count`], with no entity
+/// unescape. The frozen content stage reads `ruleContent.content` this way
+/// (`BookContent.kt:177`) and runs `unescapeHtml4` after the formatter.
+pub fn string_raw_with_count(
+    dom: &Dom,
+    context: NodeId,
+    rule: &str,
+) -> Result<(String, usize), RuleError> {
+    string_joined(dom, context, rule)
 }
 
 /// Frozen `AnalyzeRule.getStringList` (`AnalyzeRule.kt:159-235`): the per-item
@@ -950,6 +976,25 @@ mod tests {
     fn entities_are_unescaped_like_the_frozen_get_string() {
         let dom = Dom::parse("<div id=\"e\">A&amp;amp;B</div>");
         assert_eq!(string(&dom, 0, "#e@text").unwrap(), "A&B");
+    }
+
+    #[test]
+    fn the_raw_read_answers_analyze_string_unescape_false() {
+        // jsoup's `text()` normalizes `&nbsp;` to a plain space before either
+        // read, so `&amp;` is the entity that distinguishes the two.
+        let dom = Dom::parse("<div id=\"e\">A&amp;amp;B&nbsp;C</div>");
+        // The default read spends the one unescape; the raw read keeps the
+        // entity text, the shape `ruleContent.content` is read with.
+        assert_eq!(string_with_count(&dom, 0, "#e@text").unwrap(), ("A&B C".to_string(), 1));
+        assert_eq!(string_raw_with_count(&dom, 0, "#e@text").unwrap(), ("A&amp;B C".to_string(), 1));
+        // The `##` replacement still runs on the joined value before either
+        // answer; only the trailing entity pass differs.
+        let (raw, count) = string_raw_with_count(&dom, 0, "#e@text##B##&amp;").unwrap();
+        assert_eq!(raw, "A&amp;&amp; C");
+        assert_eq!(count, 1);
+        assert_eq!(string_with_count(&dom, 0, "#e@text##B##&amp;").unwrap(), ("A&& C".to_string(), 1));
+        // Nothing matched: both reads answer the empty value and a zero count.
+        assert_eq!(string_raw_with_count(&dom, 0, "#missing@text").unwrap(), (String::new(), 0));
     }
 
     #[test]

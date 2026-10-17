@@ -81,6 +81,14 @@ class HtmlRuleBatch {
   HtmlStringList documentTextList(String id, String rule) =>
       HtmlStringList._(this, _add(id, rule, null, HtmlJobOutput.textList));
 
+  /// The value [rule] yields for the document itself, in the frozen
+  /// `AnalyzeRule.getString(rule, unescape = false)` shape: the joined extraction
+  /// and the `##` replacement with no entity unescape. The frozen content stage
+  /// reads `ruleContent.content` this way (`BookContent.kt:177`) and runs its one
+  /// unescape after the formatter.
+  HtmlString documentTextRaw(String id, String rule) =>
+      HtmlString._(this, _add(id, rule, null, HtmlJobOutput.textRaw));
+
   /// One value per element matched by [context].
   HtmlStringList elementsText(String id, String rule, HtmlElementSet context) =>
       HtmlStringList._(this, _add(id, rule, context.id, HtmlJobOutput.text));

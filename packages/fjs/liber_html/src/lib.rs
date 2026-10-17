@@ -30,6 +30,11 @@ pub enum JobOutput {
     /// The frozen `AnalyzeRule.getStringList` answer: the rule's matches, one
     /// value each, with the `##` field applied per value and no entity unescape.
     TextList,
+    /// The frozen `AnalyzeRule.getString(rule, unescape = false)` answer for the
+    /// document: the joined extraction with the `##` field applied and no entity
+    /// unescape. The frozen content stage reads `ruleContent.content` this way
+    /// (`BookContent.kt:177`) and unescapes once after the formatter.
+    TextRaw,
     /// Elements.select(raw CSS): stable identity dedup across the parent vector.
     CollectionCssSelect,
     /// First present attribute, including empty/blank values, without shaping.
@@ -174,13 +179,15 @@ pub fn analyze(html: &str, jobs: &[JobSpec]) -> Analysis {
                     values: value.into_iter().map(str::to_owned).collect(), failure: None,
                 }
             }
-            JobOutput::Text | JobOutput::TextList => {
+            JobOutput::Text | JobOutput::TextList | JobOutput::TextRaw => {
                 let mut values = Vec::new();
                 let mut count = 0;
                 let mut failure = None;
                 for node in &context {
                     let extracted = match job.output {
                         JobOutput::TextList => rule::string_list_with_count(&dom, *node, &job.rule),
+                        JobOutput::TextRaw => rule::string_raw_with_count(&dom, *node, &job.rule)
+                            .map(|(value, matched)| (vec![value], matched)),
                         _ => rule::string_with_count(&dom, *node, &job.rule)
                             .map(|(value, matched)| (vec![value], matched)),
                     };
@@ -379,6 +386,33 @@ mod tests {
         assert_eq!(result.jobs[0].values, vec!["/page/1", "/page/2"]);
         assert_eq!(result.jobs[0].count, 2);
         assert!(result.jobs[0].failure.is_none());
+    }
+
+    #[test]
+    fn a_text_raw_job_answers_the_read_without_the_entity_pass() {
+        let result = analyze(
+            "<div id=\"c\">A&amp;amp;B&nbsp;C</div>",
+            &[
+                JobSpec {
+                    id: "text".to_string(),
+                    rule: "#c@text".to_string(),
+                    parent: None,
+                    parent_index: None,
+                    output: JobOutput::Text,
+                },
+                JobSpec {
+                    id: "raw".to_string(),
+                    rule: "#c@text".to_string(),
+                    parent: None,
+                    parent_index: None,
+                    output: JobOutput::TextRaw,
+                },
+            ],
+        );
+        assert!(result.jobs.iter().all(|job| job.failure.is_none()));
+        assert_eq!(result.jobs[0].values, vec!["A&B C"]);
+        assert_eq!(result.jobs[1].values, vec!["A&amp;B C"]);
+        assert_eq!(result.jobs[1].count, 1);
     }
 
     #[test]

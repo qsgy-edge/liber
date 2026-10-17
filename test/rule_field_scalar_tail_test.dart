@@ -119,7 +119,9 @@ void main() {
         } else if (row['unescape'] == false) {
           // The same executed script removes tags and joins lines before the
           // content caller; its entity-bearing result survives the formatter.
-          // This isolates unescape=false without claiming #104's full ordering.
+          // Since #104 the content caller reads the rule with `unescape = false`
+          // and runs the frozen per-page pass after it, so the caller answer is
+          // the golden's raw read through `formatContentPage`.
           source['ruleContent'] = {'content': rule};
           final body = await HtmlSourcePipeline(
             source,
@@ -139,9 +141,12 @@ void main() {
           ).details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old'));
           actual = list ? book.kind : book.author;
         }
+        final expected = row['unescape'] == false
+            ? formatContentPage(_expected(row))
+            : _expected(row);
         expect(
           actual.codeUnits,
-          _expected(row).codeUnits,
+          expected.codeUnits,
           reason: '${row['name']}',
         );
         if (row['name'] == 'literal-sibling-count') {

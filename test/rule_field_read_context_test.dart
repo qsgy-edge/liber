@@ -143,7 +143,15 @@ void main() {
           source['ruleContent'] = {'content': rule};
           final body = await JsonSourcePipeline(source, _Pages({'/chapter': content}), hostState: state)
               .chapter(SourceChapter('chapter', Uri.parse('$_origin/chapter')));
-          expect(body.text.codeUnits, _expected((items.single['reads'] as List).single as Map).codeUnits);
+          // Since #104 the content caller reads the rule with `unescape = false`
+          // and runs the frozen per-page pass, so its answer is the golden's raw
+          // read through `formatContentPage`.
+          expect(
+            body.text.codeUnits,
+            formatContentPage(
+              _expected((items.single['reads'] as List).single as Map),
+            ).codeUnits,
+          );
         } else {
           (source['ruleBookInfo'] as Map)['author'] = rule;
           final pages = _Pages({'/book': content, '/toc': tocBody});

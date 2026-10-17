@@ -100,6 +100,12 @@ enum HtmlJobOutput {
 
   /// First present raw attribute; empty is one value, missing is no value.
   rawAttribute,
+
+  /// The frozen `AnalyzeRule.getString(rule, unescape = false)` answer for the
+  /// document: the joined extraction with the `##` field applied and no entity
+  /// unescape. The content stage reads `ruleContent.content` this way
+  /// (`BookContent.kt:177`) and unescapes once after the formatter.
+  textRaw,
   ;
 }
 

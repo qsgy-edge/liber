@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'book_source_service.dart';
+import 'html4_unescape.dart';
 import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
@@ -162,6 +163,21 @@ String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
 ///   (`&lt;p&gt;`) keeps them on the frozen side where this pass strips them.
 String formatChapterContent(String value) =>
     _formatHtml(value, _keepImgHtmlRegex);
+
+/// The frozen content stage's whole per-page pass (`BookContent.kt:177-181`):
+/// the value `AnalyzeRule.getString(contentRule.content, unescape = false)`
+/// produced goes through `HtmlFormatter.formatKeepImg`, and the formatted text
+/// then through `StringEscapeUtils.unescapeHtml4` when it still carries `&`.
+///
+/// [formatChapterContent] is the formatter half alone, the unit the
+/// `tool/html_content_oracle/` fixtures compare against `golden.formatted`; this
+/// composes it with the frozen's one post-formatter unescape so an escaped-tag
+/// page (`&lt;p&gt;`) keeps its tags and a `&nbsp;` run is folded, not resolved,
+/// before the fold.
+String formatContentPage(String value) {
+  final formatted = formatChapterContent(value);
+  return formatted.contains('&') ? unescapeHtml4(formatted) : formatted;
+}
 
 /// Formats a source word-count value using Legado's `StringUtils.wordCountFormat`.
 ///
