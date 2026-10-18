@@ -225,6 +225,7 @@ class PreciseSearchPage extends StatefulWidget {
     this.initialAuthor,
     this.transport,
     this.openPipeline,
+    this.openDeferredPipeline,
     this.convert,
   });
 
@@ -254,6 +255,14 @@ class PreciseSearchPage extends StatefulWidget {
   /// native rule adapter (the binding never settles flutter_rust_bridge's
   /// pending work).
   final BookSourcePipeline Function(Map<String, dynamic> source)? openPipeline;
+
+  /// How this page builds the *deferred* candidate pipeline a switch analysis
+  /// (details/TOC, word-count preview) runs on (#132). Null falls back to
+  /// [openPipeline], and the real path passes `deferEntityVariables: true` to
+  /// `openBookSourcePipeline`, so a preview of a stored row and a pick that is
+  /// cancelled or fails cannot mutate the row before the switch publishes.
+  final BookSourcePipeline Function(Map<String, dynamic> source)?
+  openDeferredPipeline;
 
   /// Conversion boundary shared with [ContentProcessing]; null uses the native
   /// reader engine.
@@ -473,17 +482,24 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   /// cancelled, its notices would have nowhere to go, and its confirmation
   /// could not be shown. [search]'s `isCancelled` stops a run at its next
   /// source, and this refuses the call even if some path reaches it.
-  BookSourcePipeline _openPipeline(Map<String, dynamic> source) {
+  BookSourcePipeline _openPipeline(
+    Map<String, dynamic> source, {
+    bool deferEntityVariables = false,
+  }) {
     if (!mounted) {
       throw StateError('页面已销毁，不能再开始书源分析');
     }
+    final injected = deferEntityVariables
+        ? (widget.openDeferredPipeline ?? widget.openPipeline)
+        : widget.openPipeline;
     final pipeline =
-        widget.openPipeline?.call(source) ??
+        injected?.call(source) ??
         openBookSourcePipeline(
           source,
           widget.transport ?? HttpSourceTransport(store: widget.service.store),
           hostState: widget.service.hostState,
           androidId: widget.service.androidId,
+          deferEntityVariables: deferEntityVariables,
           onHostMessage: _showHostNotice,
         );
     _pipelines.add(pipeline);
@@ -741,7 +757,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
   }) async {
     final l10n = AppLocalizations.of(context);
     final book = widget.switchBook;
-    final pipeline = _openPipeline(hit.source);
+    final pipeline = _openPipeline(hit.source, deferEntityVariables: true);
     Future<T> run<T>(Future<T> Function() analysis) =>
         withTlsExceptionConfirmation<T>(
           context: context,
@@ -750,8 +766,14 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
           sourceName: hit.sourceName,
           run: analysis,
         );
+    // The same candidate carrier the switch would publish: a same-source
+    // candidate starts from the stored row's variables overlaid by the search
+    // map, a cross-source one from the search map alone (#132).
+    final candidate = book == null
+        ? hit.book
+        : widget.service.associationCandidate(book, hit.source, hit.book);
     try {
-      final (_, chapters) = await run(() => pipeline.details(hit.book));
+      final (_, chapters) = await run(() => pipeline.details(candidate));
       if (!_isCurrent(generation) || chapters.isEmpty) return;
       final index = book == null
           ? chapters.length - 1
@@ -771,7 +793,7 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
         final body = await run(
           () => pipeline.chapter(
             chapter,
-            book: hit.book,
+            book: candidate,
             nextChapterUrl: nextChapterUrl,
           ),
         );
@@ -1015,20 +1037,31 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       error = null;
       status = l10n.readingSourceToc(hit.sourceName);
     });
-    final pipeline = _openPipeline(hit.source);
+    final pipeline = _openPipeline(hit.source, deferEntityVariables: true);
     try {
+      final candidate = widget.service.associationCandidate(
+        book,
+        hit.source,
+        hit.book,
+      );
       final (details, chapters) = await withTlsExceptionConfirmation(
         context: context,
         hostState: widget.service.hostState,
         sourceRef: hit.sourceRef,
         sourceName: hit.sourceName,
-        run: () => pipeline.details(hit.book),
+        run: () => pipeline.details(candidate),
       );
+      // Cancellation immediately before publication: a page popped while its
+      // candidate analysis was in flight cannot commit a late result (#132).
+      // The liveness signal rides the write as well, so a pop between this
+      // check and the queued transaction still refuses the publication.
+      if (!mounted) return;
       final switched = await widget.service.switchSource(
         book.id,
         hit.source,
         details,
         chapters,
+        isCancelled: () => !mounted,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
