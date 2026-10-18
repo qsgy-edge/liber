@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/workspace.dart';
 
@@ -177,6 +179,99 @@ void main() {
     );
     expect(await after.entry('s', 'timed'), isNull);
     expect(await store.db.select(store.db.sourceEntries).get(), isEmpty);
+    await workspace.close();
+  });
+
+  // #132: the load boundary must tell a missing row from an existing row whose
+  // variable is null. A read that conflates them resurrects the in-process
+  // unwritten value after a valid empty replacement.
+  test('a stored book row with a null variable is authoritative', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    // A write for a book the space has no row for stays in this process.
+    await state.putBookVariable(
+      'https://a.test',
+      'https://a.test/book',
+      '{"unwritten":"U"}',
+    );
+    expect(
+      await state.bookVariable('https://a.test', 'https://a.test/book'),
+      '{"unwritten":"U"}',
+      reason: 'no row yet, so the unwritten value is the read',
+    );
+    // The space now holds the row, and its own empty text is authoritative: the
+    // unwritten value must not come back.
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value('https://a.test'),
+        sourceBookUrl: const Value('https://a.test/book'),
+      ),
+    );
+    expect(
+      await state.bookVariable('https://a.test', 'https://a.test/book'),
+      isNull,
+      reason: 'the row carries none, which is not the missing-row case',
+    );
+    await workspace.close();
+  });
+
+  test('a stored chapter row with a null variable is authoritative', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value('https://a.test'),
+        sourceBookUrl: const Value('https://a.test/book'),
+      ),
+    );
+    await state.putChapterVariable(
+      'https://a.test',
+      'https://a.test/book',
+      'https://a.test/c/1',
+      '{"unwritten":"U"}',
+    );
+    expect(
+      await state.chapterVariable(
+        'https://a.test',
+        'https://a.test/book',
+        'https://a.test/c/1',
+      ),
+      '{"unwritten":"U"}',
+      reason: 'no chapter row yet, so the unwritten value is the read',
+    );
+    await store.putChapters('b1', [
+      BookChapter(
+        bookId: 'b1',
+        chapterKey: 'https://a.test/c/1',
+        name: '第一章',
+        url: 'https://a.test/c/1',
+        chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
+      ),
+    ]);
+    expect(
+      await state.chapterVariable(
+        'https://a.test',
+        'https://a.test/book',
+        'https://a.test/c/1',
+      ),
+      isNull,
+      reason: 'the row carries none, which is not the missing-row case',
+    );
     await workspace.close();
   });
 }

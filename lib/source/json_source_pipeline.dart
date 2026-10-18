@@ -148,6 +148,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       ? SourceEntityVariableDraft()
       : null;
 
+  /// The runtime's entity-variable store (#132): the candidate draft, the
+  /// space's rows, and — while a TOC item is rebuilt — that item's own chapter
+  /// scope, so a rebuilt chapter starts empty and keeps only its own writes.
+  late final SourceEntityVariableScope _entityVariables =
+      SourceEntityVariableScope(
+        _entityDraft ?? _hostSurface,
+        through: _entityDraft == null ? _hostSurface : null,
+      );
+
   late final BookSourceWebViewAdapterFactory _webViewAdapter =
       webViewFactory ??
       BookSourceWebViewAdapterFactory(
@@ -176,7 +185,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     jsLib: source['jsLib'] as String? ?? '',
     dispatcher: _host,
     hostState: _hostSurface,
-    entityVariables: _entityDraft,
+    entityVariables: _entityVariables,
     androidId: androidId,
     onMessage: (message) => onHostMessage?.call(message),
     ruleEvaluator: _readScriptRule,
@@ -1223,6 +1232,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
           late final ordinaryFallbackAddress = tocFallbackAddress(request);
           for (var index = 0; index < entries.length; index++) {
             publishTocChapter('', '');
+            // One rebuilt item's chapter variables start empty and keep only
+            // what this item's own rules write (#132).
+            _entityVariables.beginChapter();
             try {
               final entry = entries[index];
               // The frozen adds a chapter only when its title is non-empty
@@ -1330,11 +1342,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
               // address and rule analysis: a supported chapterUrl option `js`
               // runs inside `_request` above and may write it, keyed by the same
               // raw address the script bound as `chapter.url` (#132). Reading
-              // here does not run that option script again.
-              final chapterVariable = await _finalChapterVariable(
-                _book!.identityAddress,
-                _tocChapterAddress ?? '',
-              );
+              // here does not run that option script again, and the item's own
+              // capture is the write alone.
+              final chapterVariable = _entityVariables.chapterText;
               // A repeated chapter address is kept, as this path always has: the frozen
               // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
               // path refuses the repeat by name, but a JSON TOC that names one address
@@ -1343,6 +1353,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               // at this point.
               chapters.add(chapter.withVariable(chapterVariable));
             } finally {
+              _entityVariables.endChapter();
               clearTocChapter();
             }
           }
@@ -1381,8 +1392,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return _hostSurface.bookVariable(_sourceRef, bookKey);
   }
 
-  /// The chapter variable text a TOC stage hands back: the candidate's own
-  /// draft text in a deferred analysis, the row's text otherwise (#132).
+  /// The chapter variable text a content stage hands back: the candidate's own
+  /// draft text in a deferred analysis, the row's text otherwise (#132). A TOC
+  /// rebuild does not read this: it takes its item's own captured write
+  /// ([SourceEntityVariableScope.chapterText]).
   Future<String?> _finalChapterVariable(String bookKey, String addressKey) {
     final draft = _entityDraft;
     if (draft != null) {
@@ -1420,7 +1433,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
       HtmlBook(url: finalUrl, title: ''),
       _rules('ruleBookInfo', const []),
     );
-    return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
+    if (book.title.isEmpty) return const <HtmlBook>[];
+    // The response's own final book-variable text rides the carrier: a
+    // search-only rule write survives into the deferred details pipeline the
+    // association opens next (#132).
+    return <HtmlBook>[
+      book.withVariable(await _finalBookVariable(book.identityAddress)),
+    ];
   }
 
   /// `ruleBookInfo` over one response document this pipeline already has.
