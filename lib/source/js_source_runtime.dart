@@ -1507,29 +1507,18 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         rowKey.isEmpty) {
       throw const SourceScriptError('host-input', 'variable row absent');
     }
-    Future<String?> read() {
-      final store = entityVariables;
-      if (store != null) {
-        return target == 'book'
-            ? store.bookVariable(sourceRef, bookUrl)
-            : store.chapterVariable(sourceRef, bookUrl, rowKey);
-      }
-      return target == 'book'
-          ? hostState.bookVariable(sourceRef, bookUrl)
-          : hostState.chapterVariable(sourceRef, bookUrl, rowKey);
-    }
+    // One store answers both the read and the write: the candidate's private
+    // draft when the analysis defers entity variables, the space's rows
+    // otherwise. [SourceHostState] implements the same interface, so the
+    // routing below is one dispatch, not two.
+    final store = entityVariables ?? hostState;
+    Future<String?> read() => target == 'book'
+        ? store.bookVariable(sourceRef, bookUrl)
+        : store.chapterVariable(sourceRef, bookUrl, rowKey);
 
-    Future<void> write(String text) {
-      final store = entityVariables;
-      if (store != null) {
-        return target == 'book'
-            ? store.putBookVariable(sourceRef, bookUrl, text)
-            : store.putChapterVariable(sourceRef, bookUrl, rowKey, text);
-      }
-      return target == 'book'
-          ? hostState.putBookVariable(sourceRef, bookUrl, text)
-          : hostState.putChapterVariable(sourceRef, bookUrl, rowKey, text);
-    }
+    Future<void> write(String text) => target == 'book'
+        ? store.putBookVariable(sourceRef, bookUrl, text)
+        : store.putChapterVariable(sourceRef, bookUrl, rowKey, text);
 
     final raw = await read();
     switch (op) {
