@@ -20,6 +20,7 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 import 'l10n_support.dart';
+import 'space_test_support.dart';
 
 /// The text a variable write stores, the frozen `GSON.toJson(variableMap)`
 /// shape (#132).
@@ -863,6 +864,45 @@ void main() {
     final still = (await store.bookById(entry.id))!;
     expect(still.sourceRef, 'https://a.test', reason: '迟到的结果不写换源');
     expect((await store.chaptersOf(entry.id)).length, 5);
+  });
+
+  testWidgets('换源：发布事务排队时页面被销毁，迟到的结果不写换源', (tester) async {
+    // The setUp store is replaced by one whose publication transaction can be
+    // held open, so the page can be popped between the finished analysis and
+    // the queued write (#132); only one database is ever open at a time.
+    await store.close();
+    final gate = GateableSpaceStore();
+    store = gate;
+    shelf = ShelfService(gate);
+
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+
+    await pumpSwitchEntry(tester, entry);
+    gate.holdNextTransaction = true;
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+      ),
+    );
+    for (var i = 0; i < 100 && !gate.entered.isCompleted; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(gate.entered.isCompleted, isTrue, reason: '换源已经在等它的事务');
+
+    // The owner goes away while the publication is queued.
+    await tapBack(tester);
+    gate.release.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    final still = (await store.bookById(entry.id))!;
+    expect(still.sourceRef, 'https://a.test', reason: '迟到的结果不写换源');
+    expect((await store.chaptersOf(entry.id)).length, 5);
+    expect((await store.progressOf(entry.id))!.textOffset, 42);
+    expect(tester.takeException(), isNull);
   });
 
   Future<void> groupedSources({bool hits = true}) async {

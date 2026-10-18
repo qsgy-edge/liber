@@ -1053,12 +1053,15 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       );
       // Cancellation immediately before publication: a page popped while its
       // candidate analysis was in flight cannot commit a late result (#132).
+      // The liveness signal rides the write as well, so a pop between this
+      // check and the queued transaction still refuses the publication.
       if (!mounted) return;
       final switched = await widget.service.switchSource(
         book.id,
         hit.source,
         details,
         chapters,
+        isCancelled: () => !mounted,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);

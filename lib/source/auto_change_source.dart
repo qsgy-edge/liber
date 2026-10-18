@@ -1,3 +1,4 @@
+import '../domain/contracts.dart' show SourceRequestCancelled;
 import '../settings/auto_change_source.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
@@ -125,7 +126,8 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
 
   /// Whether the caller has gone away, the way
   /// [PreciseSearch.searchSource]'s own hook works: a cancelled run stops at its
-  /// next check instead of walking the rest of the sources — and never writes.
+  /// next check instead of walking the rest of the sources — and never writes,
+  /// because the publication re-checks this signal inside its own transaction.
   /// Null never cancels, which is what the tools do.
   bool Function()? isCancelled,
 }) async {
@@ -171,15 +173,27 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
     // is already on the shelf as another row) fails the flow instead of
     // silently walking on to the next source.
     final (details, chapters) = verified;
-    return (
-      switched: await service.switchSource(
-        book.id,
-        candidate.data,
-        details,
-        chapters,
-      ),
-      ran: true,
-    );
+    try {
+      return (
+        switched: await service.switchSource(
+          book.id,
+          candidate.data,
+          details,
+          chapters,
+          // The same liveness signal this walk already checks between its own
+          // steps, handed to the publication: a run cancelled while the switch
+          // was in flight rolls its transaction back instead of committing a
+          // late result, and the walk stops here (#132).
+          isCancelled: isCancelled,
+        ),
+        ran: true,
+      );
+    } on SourceRequestCancelled {
+      // Only the cancellation signal is caught: a collision or any other
+      // storage failure stays visible (the frozen's `changeTo` runs outside
+      // the per-source swallow too).
+      return (switched: null, ran: false);
+    }
   }
   return (switched: null, ran: true);
 }
