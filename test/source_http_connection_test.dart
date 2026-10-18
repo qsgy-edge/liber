@@ -41,7 +41,22 @@ class _ConnectionServer {
   final connections = <String>[];
   final _sockets = <Socket>[];
   final _closed = <int, Completer<void>>{};
+  final _accepted = Completer<void>();
+  final _settled = Completer<void>();
   late final ServerSocket _server;
+
+  /// Accepted sockets that have since closed, counted once each.
+  int closedSockets = 0;
+
+  /// Resolves when the fixture has accepted a socket.
+  Future<void> get accepted => _accepted.future;
+
+  /// The loopback port this fixture listens on.
+  int get port => _server.port;
+
+  /// Resolves when the fixture first sees a request or a socket close, so a
+  /// test can prove what a released connection did without sleeping.
+  Future<void> get settled => _settled.future;
 
   Future<void> start() async {
     _server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -49,6 +64,14 @@ class _ConnectionServer {
       _sockets.add(socket);
       final id = _sockets.length;
       final closed = _closed[id] = Completer<void>();
+      if (!_accepted.isCompleted) _accepted.complete();
+      void markClosed() {
+        if (closed.isCompleted) return;
+        closed.complete();
+        closedSockets++;
+        if (!_settled.isCompleted) _settled.complete();
+      }
+
       var buffer = '';
       socket.listen(
         (bytes) {
@@ -72,6 +95,7 @@ class _ConnectionServer {
               headers: head.toLowerCase(),
             );
             requests.add(request);
+            if (!_settled.isCompleted) _settled.complete();
             final answer = reply(request);
             socket.add(latin1.encode(answer.text));
             if (answer.close) {
@@ -82,12 +106,8 @@ class _ConnectionServer {
         },
         // The transport closes the client that served a finished hop; a reset
         // from that close is the policy under test, not a fixture error.
-        onError: (Object _) {
-          if (!closed.isCompleted) closed.complete();
-        },
-        onDone: () {
-          if (!closed.isCompleted) closed.complete();
-        },
+        onError: (Object _) => markClosed(),
+        onDone: markClosed,
       );
     });
   }
@@ -174,6 +194,49 @@ Matcher _preHeaderFailure(String url) => throwsA(
       )
       .having((e) => '${e.uri}', 'uri', url),
 );
+
+/// The fixture and transport for a late-connection race: [release] is the latch
+/// that answers the held connection factory, and [connecting] resolves once the
+/// fixture's socket is established and accepted.
+typedef _HeldConnection = ({
+  _ConnectionServer server,
+  HttpSourceTransport transport,
+  Completer<void> release,
+  Future<void> connecting,
+});
+
+/// A transport whose connection is established and accepted by the fixture,
+/// then held behind [release] before the connection factory answers it. The
+/// send can therefore fail while `openUrl` is still unresolved, and releasing
+/// the latch decides what the abandoned hop does with the connection.
+Future<_HeldConnection> _heldConnection({required Duration timeout}) async {
+  final server = _ConnectionServer((_) => _ok());
+  await server.start();
+  final connecting = Completer<void>();
+  final release = Completer<void>();
+  final transport = HttpSourceTransport(
+    timeout: timeout,
+    clientFactory: ({bool useSystemProxy = false}) {
+      final client = server.client(useSystemProxy: useSystemProxy);
+      client.connectionFactory = (url, proxyHost, proxyPort) async {
+        final task = await Socket.startConnect(
+          InternetAddress.loopbackIPv4,
+          server.port,
+        );
+        if (!connecting.isCompleted) connecting.complete();
+        await release.future;
+        return task;
+      };
+      return client;
+    },
+  );
+  return (
+    server: server,
+    transport: transport,
+    release: release,
+    connecting: connecting.future,
+  );
+}
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
@@ -393,6 +456,51 @@ void main() {
       expect(server.requests.map((r) => r.connection), [1, 2]);
       expect(clients, 2);
       await server.whenClosed(2).timeout(const Duration(seconds: 5));
+    },
+  );
+
+  test(
+    'a connection that resolves after cancellation never sends the request',
+    () async {
+      final held = await _heldConnection(timeout: const Duration(seconds: 30));
+      addTearDown(held.server.stop);
+      final cancellation = SourceCancellation();
+      final cancelled = expectLater(
+        held.transport.send(_get(_startAddress, cancellation: cancellation)),
+        throwsA(isA<SourceRequestCancelled>()),
+      );
+      await held.connecting.timeout(const Duration(seconds: 5));
+      await held.server.accepted.timeout(const Duration(seconds: 5));
+      cancellation.cancel();
+      await cancelled;
+      // The send failed and closed its client while the connection was still
+      // held: releasing it must not put the request on the wire, and the
+      // released connection must be dropped rather than left open.
+      held.release.complete();
+      await held.server.settled.timeout(const Duration(seconds: 5));
+      expect(held.server.requests, isEmpty);
+      expect(held.server.closedSockets, 1);
+    },
+  );
+
+  test(
+    'a connection that resolves after the timeout never sends the request',
+    () async {
+      final held = await _heldConnection(timeout: const Duration(seconds: 2));
+      addTearDown(held.server.stop);
+      final failed = expectLater(
+        held.transport.send(_get(_startAddress)),
+        throwsA(isA<TimeoutException>()),
+      );
+      await held.connecting.timeout(const Duration(seconds: 5));
+      await held.server.accepted.timeout(const Duration(seconds: 5));
+      await failed;
+      // Same race on the whole-send timeout: the connection the hop was still
+      // waiting for must not carry a request the send already abandoned.
+      held.release.complete();
+      await held.server.settled.timeout(const Duration(seconds: 5));
+      expect(held.server.requests, isEmpty);
+      expect(held.server.closedSockets, 1);
     },
   );
 }

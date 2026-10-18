@@ -214,6 +214,10 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       client.close(force: true);
     }
 
+    // Whether this send has already failed, so a hop whose asynchronous setup
+    // resumes late can abandon the request instead of transmitting it.
+    bool isStopped() => stopped;
+
     Future<SourceHttpResponse> read() async {
       SourceHttpResponse? response;
       for (var attempt = 0; attempt <= sourceRequest.retry; attempt++) {
@@ -224,6 +228,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
           headers,
           openClient,
           closeClient,
+          isStopped,
         );
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return response;
@@ -278,21 +283,35 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
   /// in-flight client; [closeClient] closes it once that hop's response has
   /// been consumed, so no hop starts on a connection an earlier hop left
   /// behind. A hop whose request fails before its response arrives is closed by
-  /// the caller's own client teardown.
+  /// the caller's own client teardown. [isStopped] answers whether the send has
+  /// already failed, so a hop whose asynchronous setup resumes late is aborted
+  /// rather than written to the peer.
   Future<SourceHttpResponse> _readOnce(
     Uri uri,
     SourceHttpRequest sourceRequest,
     Map<String, String> headers,
     HttpClient Function() openClient,
     void Function(HttpClient) closeClient,
+    bool Function() isStopped,
   ) async {
     var method = sourceRequest.method;
     var target = uri.hasFragment ? uri.removeFragment() : uri;
     var body = sourceRequest.body;
     var hop = 0;
+    // The send failed while this hop's asynchronous setup was still in flight:
+    // the request must not reach the peer. The abort marks it before a header
+    // or body byte is written and destroys the connection that setup
+    // established; [closeClient] keeps the client's exactly-once ownership.
+    Never abandonLateRequest(HttpClientRequest request, HttpClient client) {
+      request.abort();
+      closeClient(client);
+      throw const _SourceSendStopped();
+    }
+
     while (true) {
       final client = openClient();
       final request = await client.openUrl(method, target);
+      if (isStopped()) abandonLateRequest(request, client);
       request.followRedirects = false;
       final requestHeaders = body == null
           ? headers
@@ -314,6 +333,9 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
           // Preserve the explicitly declared header and the UTF-8 body fallback.
           bytes = utf8.encode(body);
         }
+        // The send may have failed while the body was being encoded: the
+        // request must not be written then either.
+        if (isStopped()) abandonLateRequest(request, client);
         // The frozen client knows the body it built, so its request carries
         // `Content-Length` rather than a chunked stream; Dart's `HttpClient`
         // frames an unknown length chunked unless the length is set first.
@@ -321,20 +343,15 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
         request.add(bytes);
       }
       final response = await request.close();
-      if (!sourceRequest.followRedirects ||
-          !_sourceRedirectStatuses.contains(response.statusCode)) {
-        try {
-          return await _readResponse(
-            response,
-            target,
-            sourceRequest.maxResponseBytes,
-            readBytes: sourceRequest.readBytes,
-          );
-        } finally {
-          closeClient(client);
-        }
-      }
-      final location = response.headers.value(HttpHeaders.locationHeader);
+      // A response this attempt does not follow, and a redirect status without
+      // a Location, are both the terminal response: read it and release the
+      // hop's client. The Location header is read only where the redirect rules
+      // would use it.
+      final location =
+          sourceRequest.followRedirects &&
+              _sourceRedirectStatuses.contains(response.statusCode)
+          ? response.headers.value(HttpHeaders.locationHeader)
+          : null;
       if (location == null) {
         try {
           return await _readResponse(
@@ -454,9 +471,10 @@ class SourceRedirectLimitExceeded implements Exception {
 }
 
 /// Raised inside [HttpSourceTransport.send]'s hop loop when the whole send has
-/// already failed — its cancellation or its timeout — and no later hop or retry
-/// attempt may build a client. The send's own future has settled by then, so
-/// this never reaches a caller.
+/// already failed — its cancellation or its timeout — and the hop must not go
+/// on: no later attempt or redirect builds a client, and a connection that
+/// resolved late is aborted instead of written. The send's own outcome is
+/// already determined by then, so this never reaches a caller.
 class _SourceSendStopped implements Exception {
   const _SourceSendStopped();
 }
