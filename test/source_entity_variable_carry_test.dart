@@ -448,6 +448,74 @@ void main() {
     },
   );
 
+  test(
+    'a JSON chapter address option js write is captured exactly once',
+    () async {
+      const script =
+          "java.put('addressRuns', "
+          "String(Number(java.get('addressRuns') || '0') + 1)); "
+          "chapter.putVariable('addressToken','ready'); void 0";
+      final address = '/c/1,${jsonEncode({'js': script})}';
+      final state = SourceHostState();
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: r'$.missing',
+          contentScript: readBoth,
+        ),
+        _Pages({
+          '/book': '{"title":"书","toc":"/toc"}',
+          '/toc': jsonEncode({
+            'list': [
+              {'name': '第一章', 'url': address},
+            ],
+          }),
+          '/c/1': '{"text":"正文"}',
+        }),
+        hostState: state,
+        deferEntityVariables: true,
+      );
+
+      final (_, chapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(chapters.single.variable), {
+        'addressToken': 'ready',
+      });
+      expect(
+        await state.entry(origin, sourceRuleVariableKey(origin, 'addressRuns')),
+        '1',
+        reason: 'the address option script ran once',
+      );
+    },
+  );
+
+  test('HTML keeps its named refusal for a chapter address js option', () async {
+    final pageMap = _Pages({
+      '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+      '/toc':
+          '<ul id="list"><li><a href="/c/1,{&#34;js&#34;:&#34;void 0&#34;}">第一章</a></li></ul>',
+    });
+    final pipeline = HtmlSourcePipeline(
+      htmlSource(
+        infoScript: '@CSS:h2@text',
+        tocScript: '""',
+        contentScript: readBoth,
+      ),
+      pageMap,
+      deferEntityVariables: true,
+    );
+
+    await expectLater(
+      pipeline.details(hitWith(null)),
+      throwsA(
+        isA<UnsupportedError>().having(
+          (error) => error.message,
+          'message',
+          '暂不支持章节地址的 URL 选项',
+        ),
+      ),
+    );
+  });
+
   for (final json in [false, true]) {
     final label = json ? 'JSON' : 'HTML';
 

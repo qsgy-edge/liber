@@ -1287,13 +1287,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.isPay',
                 ),
               );
-              // The chapter's own variable text the item scripts wrote, keyed by
-              // the address they saw as `chapter.url` (#132). A TOC chapter
-              // starts with none, so this is the script's write alone.
-              final chapterVariable = await _finalChapterVariable(
-                _book!.identityAddress,
-                _tocChapterAddress ?? '',
-              );
               final SourceChapter chapter;
               if (chapterUrl.isEmpty) {
                 // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
@@ -1308,7 +1301,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         tag: tag.isEmpty ? null : tag,
                         isVip: isVip,
                         isPay: isPay,
-                        variable: chapterVariable,
                       )
                     : SourceChapter(
                         name,
@@ -1317,7 +1309,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         tag: tag.isEmpty ? null : tag,
                         isVip: isVip,
                         isPay: isPay,
-                        variable: chapterVariable,
                       );
               } else {
                 final (resolved, _) = await _request(
@@ -1333,16 +1324,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isVolume: isVolume,
                   isVip: isVip,
                   isPay: isPay,
-                  variable: chapterVariable,
                 );
               }
+              // The chapter's own variable text, read after all the item's
+              // address and rule analysis: a supported chapterUrl option `js`
+              // runs inside `_request` above and may write it, keyed by the same
+              // raw address the script bound as `chapter.url` (#132). Reading
+              // here does not run that option script again.
+              final chapterVariable = await _finalChapterVariable(
+                _book!.identityAddress,
+                _tocChapterAddress ?? '',
+              );
               // A repeated chapter address is kept, as this path always has: the frozen
               // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
               // path refuses the repeat by name, but a JSON TOC that names one address
               // twice has always produced both chapters here. Such a pair would name one
               // row twice, which is a store-level limit (D4), not a rule decision taken
               // at this point.
-              chapters.add(chapter);
+              chapters.add(chapter.withVariable(chapterVariable));
             } finally {
               clearTocChapter();
             }
