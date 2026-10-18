@@ -41,22 +41,29 @@ difference between them.
 written) when any of these is not a genuine match:
 
 - the corpus is missing, malformed or has no rows;
+- the corpus has no valid frozen target pin (`target.package`,
+  `target.apkSha256`, `target.baselineCommit`);
 - the golden names another `fixtureId`, `corpusVersion`, `baselineCommit` or
   `entryPoint`;
 - the golden's `corpusSha256` is not the SHA-256 of the corpus bytes with CRLF
   normalized to LF (so a stale or edited corpus is rejected);
-- the golden has no `provenance` block of `kind: frozen-device-capture` with a
-  non-empty device fingerprint and capture time (a product-only record capture
-  is rejected by its `mode`/`comparison` marker);
+- the golden has no `provenance` block of `kind: frozen-device-capture`, or its
+  duplicated identity fields (`entryPoint`, `baselineCommit`, `targetPackage`,
+  `targetApkSha256`) disagree with the corpus, or its `targetApkPath`,
+  device fingerprint or capture time is blank (a product-only record capture is
+  rejected by its `mode`/`comparison` marker);
 - the golden's row count or row identity does not match the corpus, or the
   golden holds no observations or no request trace;
 - the product records a different number of rows.
 
-A value or request-trace difference is reported as `status: fail` with both
-sides, never as a pass. There is no empty or vacuous pass: an empty golden and a
-short product run are both hard refusals.
+Observations are compared with **semantic JSON equality**: object member order
+is ignored (the differential contract's Matching Rules -> Outputs), while array
+order and every primitive/string value are exact. A value or request-trace
+difference is reported as `status: fail` with both sides, never as a pass. There
+is no empty or vacuous pass: an empty golden and a short product run are both
+hard refusals.
 
-## Local `jsLib` shared scope (corpus `JSLIB-01`)
+## Local `jsLib` shared scope (corpus `JSLIB-01` v2)
 
 `tool/nested_oracle/jslib-fixtures.json` is the dedicated corpus for the local
 `jsLib` shared-scope family (#74, the P5 gap "Local `jsLib` shared scope"). It
@@ -73,10 +80,45 @@ at `14dd24945b2914ce2708b8abaa4ee67ceef892af`**, not an executed golden:
   without mutating it, while a function defined in `jsLib` resolves names
   through the shared scope only (never the per-eval bindings).
 
+Shared mutation goes through the mutable object's property (`sharedState.n`)
+only. A write to a jsLib **top-level binding** from inside a library function
+(for example `sharedCounter += 1`) is a write to the sealed defining scope: the
+pinned frozen APK's Rhino `ScriptableObject.putImpl` calls `checkNotSealed` and
+throws `msg.modify.sealed`. That is recorded in the corpus'
+`potentialDivergences` as a source/bytecode-derived, device-not-run divergence
+and is deliberately not a compared row; the product's closure model would allow
+the write, and that potential parity discrepancy is reported, not repaired.
+
 The corpus covers shared state across repeated evaluations, nested evaluations
 and a second source, plus binding/local isolation. `--jslib-record` was run on
 Windows against the read-only `fjs.dll`; it is product-only evidence and its
 comparison is explicitly `not-run`.
+
+## Device capture provenance (for future promotion)
+
+The jsLib capture is only a frozen golden after the instrumentation measured and
+verified the installed target. Collect and record:
+
+1. **Producer (harness) APK** — the built `nested-oracle.apk` SHA-256; after
+   install, `adb shell pm path io.liber.oracle.nested` and `adb pull` the
+   installed APK and re-hash it, or reuse the build manifest hash.
+2. **Harness source** — SHA-256 of `NestedOracle.java`, `build.ps1`,
+   `AndroidManifest.xml`, `jslib-fixtures.json` and
+   `tool/nested_oracle_compare.dart`.
+3. **Corpus** — `sha256` and CRLF-normalized `sha256Lf` of
+   `tool/nested_oracle/jslib-fixtures.json`; the bundled asset must hash to the
+   same value.
+4. **Target** — `provenance.targetPackage`, `provenance.targetApkPath` and
+   `provenance.targetApkSha256`, measured by the instrumentation from the
+   target `ApplicationInfo.sourceDir` and verified against `corpus.target`
+   before the capture is labelled frozen. The pinned identity is
+   `tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json`
+   (baseline `14dd24945b2914ce2708b8abaa4ee67ceef892af`, package
+   `io.legado.app.debug`, APK SHA-256
+   `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6`).
+5. **Capture** — SHA-256 of the pulled `jslib-oracle.json`.
+6. **Instrumentation receipt** — the `am instrument -w -r` output's
+   `INSTRUMENTATION_RESULT` / `INSTRUMENTATION_CODE` and the process exit.
 
 ## Device resume runbook (not run by the preparation lane)
 
@@ -93,14 +135,17 @@ adb -s <serial> pull \
 
 The `-e corpus jslib` extra is the explicitly named jsLib selection; without it
 `NestedOracle` reads `fixtures.json` and writes `nested-oracle.json`, exactly as
-before. The pulled `jslib-oracle.json` already carries `fixtureId`,
-`corpusVersion`, `corpusSha256` and a `provenance` block, so it is a valid golden
-for `--jslib` as-is. Then compare on the host:
+before. In the jsLib mode the instrumentation measures the installed target's
+package and APK bytes and refuses (no file, non-zero instrumentation code) when
+either disagrees with the corpus pin. The pulled `jslib-oracle.json` carries
+`fixtureId`, `corpusVersion`, `corpusSha256` and a verified `provenance` block,
+so it is a valid golden for `--jslib` as-is. Then compare on the host:
 
 ```bash
 dart run tool/nested_oracle_compare.dart --jslib \
   build/windows/x64/runner/Debug/fjs.dll <golden.json> <report.json>
 ```
 
-The device fingerprint, APK hash and corpus hash the run must collect are the
-ones the comparator checks; record them in the accompanying manifest.
+The device fingerprint, target APK identity and corpus hash the run must
+collect are the ones the comparator checks; record them in the accompanying
+manifest.

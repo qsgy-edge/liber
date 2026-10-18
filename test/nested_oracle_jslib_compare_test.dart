@@ -11,6 +11,7 @@ import '../tool/nested_oracle_compare.dart';
 /// committed corpus is the only real fixture this file reads.
 void main() {
   late Map<String, dynamic> corpus;
+  late Map<String, dynamic> target;
   late String corpusSha256;
   late List<Map<String, Object?>> observations;
   late List<String> requests;
@@ -18,6 +19,7 @@ void main() {
 
   setUp(() {
     corpus = loadJsLibCorpus();
+    target = (corpus['target'] as Map).cast<String, dynamic>();
     corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
     // Synthetic observations for comparator mechanics only; never evidence.
     observations = [
@@ -37,6 +39,10 @@ void main() {
             'Redmi/synthetic/synthetic:17/CP2A/OS:user/release-keys',
         'capturedAt': '2026-10-18T00:00:00+08:00',
         'entryPoint': corpus['entryPoint'],
+        'baselineCommit': corpus['baselineCommit'],
+        'targetPackage': target['package'],
+        'targetApkPath': '/data/app/~~x==/io.legado.app.debug--y==/base.apk',
+        'targetApkSha256': target['apkSha256'],
       },
       'observations': jsonDecode(jsonEncode(observations)),
       'requests': jsonDecode(jsonEncode(requests)),
@@ -56,15 +62,28 @@ void main() {
   test('the corpus is a versioned, non-empty fixture with unique row ids', () {
     expect(corpus['schemaVersion'], 1);
     expect(corpus['fixtureId'], 'JSLIB-01');
-    expect(corpus['corpusVersion'], 1);
+    expect(corpus['corpusVersion'], 2);
     expect(corpus['baselineCommit'], isNotEmpty);
     expect(corpus['entryPoint'], isNotEmpty);
     expect(corpus['jsLib'], isNotEmpty);
+    expect(target['package'], 'io.legado.app.debug');
+    expect(target['apkSha256'], matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(target['baselineCommit'], corpus['baselineCommit']);
     final steps = corpus['steps'] as List;
     expect(steps, isNotEmpty);
     final ids = [for (final step in steps) (step as Map)['id']];
     expect(ids.toSet().length, ids.length);
     expect(corpusSha256, matches(RegExp(r'^[0-9a-f]{64}$')));
+  });
+
+  test('the corpus never writes a sealed top-level binding', () {
+    // The frozen shared scope is sealed; a library function that assigns a
+    // top-level jsLib name would throw `msg.modify.sealed`. Shared mutation must
+    // go through the mutable object's property only.
+    final jsLib = corpus['jsLib'] as String;
+    expect(jsLib, contains('function bump() { return ++sharedState.n; }'));
+    expect(jsLib, isNot(contains('sharedCounter')));
+    expect(jsLib, isNot(contains('+=')));
   });
 
   test('a genuine matching frozen capture passes', () {
@@ -73,6 +92,30 @@ void main() {
     expect(report['countMatches'], true);
     expect(report['requestsMatch'], true);
     expect(report['mismatches'], isEmpty);
+  });
+
+  test('reordered JSON object members still pass', () {
+    golden['observations'] = <Map<String, Object?>>[
+      for (final row in observations)
+        <String, Object?>{'value': row['value'], 'id': row['id']},
+    ];
+    final report = compare();
+    expect(report['status'], 'pass');
+    expect(report['mismatches'], isEmpty);
+  });
+
+  test('array order is still compared', () {
+    observations[0] = <String, Object?>{
+      ...observations[0],
+      'value': <Object?>[1, 2],
+    };
+    (golden['observations'] as List)[0] = <String, Object?>{
+      ...observations[0],
+      'value': <Object?>[2, 1],
+    };
+    final report = compare();
+    expect(report['status'], 'fail');
+    expect(report['mismatches'], isNotEmpty);
   });
 
   test('a product-only record capture is refused as a golden', () {
@@ -118,6 +161,49 @@ void main() {
       expect(compare, throwsFormatException, reason: entry.key);
       golden[entry.key] = previous;
     }
+  });
+
+  test('a contradictory provenance identity is refused', () {
+    final provenance = golden['provenance'] as Map;
+    for (final entry in <String, Object?>{
+      'entryPoint': 'Another.entryPoint',
+      'baselineCommit': '0000000000000000000000000000000000000000',
+      'targetPackage': 'io.legado.app.release',
+      'targetApkSha256': '0' * 64,
+    }.entries) {
+      final previous = provenance[entry.key];
+      provenance[entry.key] = entry.value;
+      expect(compare, throwsFormatException, reason: entry.key);
+      provenance[entry.key] = previous;
+    }
+    for (final key in [
+      'entryPoint',
+      'baselineCommit',
+      'targetPackage',
+      'targetApkSha256',
+      'targetApkPath',
+    ]) {
+      final previous = provenance.remove(key);
+      expect(compare, throwsFormatException, reason: 'missing $key');
+      provenance[key] = previous;
+    }
+  });
+
+  test('a corpus without a target pin is refused', () {
+    final withoutTarget = jsonDecode(jsonEncode(corpus)) as Map<String, dynamic>
+      ..remove('target');
+    expect(
+      () => compareJsLib(
+        corpus: withoutTarget,
+        corpusSha256: corpusSha256,
+        golden: golden,
+        observations: observations,
+        requests: requests,
+        goldenPath: 'synthetic-golden.json',
+        library: 'synthetic-fjs.dll',
+      ),
+      throwsFormatException,
+    );
   });
 
   test('row count, identity and duplicate rows are refused', () {

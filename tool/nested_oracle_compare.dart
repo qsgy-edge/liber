@@ -187,6 +187,54 @@ String jsLibCorpusSha256(File file) => _sha256Bytes(
   ),
 );
 
+/// Structural JSON equality for the jsLib comparison: object member order is
+/// ignored (`book-source-differential-contract.md` -> Matching Rules ->
+/// Outputs), while array order and every primitive/string value are compared
+/// exactly.
+bool jsonSemanticEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key) || !jsonSemanticEquals(a[key], b[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!jsonSemanticEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
+}
+
+/// The frozen target application pin a jsLib golden must match, or a refusal.
+/// The pin comes from the existing device manifest pattern
+/// (`evidence/android-17-os4.0.0.31/request-manifest.json`): the baseline
+/// commit, the target package and the installed target APK SHA-256.
+Map<String, dynamic> jsLibTargetOf(Map<String, dynamic> corpus) {
+  final target = corpus['target'];
+  if (target is! Map) {
+    throw const FormatException('jsLib corpus has no frozen target pin');
+  }
+  final package = '${target['package'] ?? ''}'.trim();
+  final apkSha256 = '${target['apkSha256'] ?? ''}'.trim();
+  if (package.isEmpty || !RegExp(r'^[0-9a-f]{64}$').hasMatch(apkSha256)) {
+    throw const FormatException('jsLib corpus target pin is incomplete');
+  }
+  if ('${target['baselineCommit'] ?? ''}'.trim() !=
+      '${corpus['baselineCommit'] ?? ''}'.trim()) {
+    throw const FormatException(
+      'jsLib corpus target pin names another baseline',
+    );
+  }
+  return target.cast<String, dynamic>();
+}
+
 /// Decodes and validates the dedicated jsLib corpus, failing closed on a
 /// missing, malformed or empty corpus before anything runs.
 Map<String, dynamic> loadJsLibCorpus() {
@@ -213,6 +261,7 @@ Map<String, dynamic> loadJsLibCorpus() {
   if (corpus['jsLib'] is! String) {
     throw const FormatException('jsLib corpus has no jsLib');
   }
+  jsLibTargetOf(corpus);
   final steps = corpus['steps'];
   if (steps is! List || steps.isEmpty) {
     throw const FormatException('jsLib corpus has no rows');
@@ -260,9 +309,29 @@ void checkJsLibGolden({
       'the golden was captured against different corpus bytes',
     );
   }
+  final target = jsLibTargetOf(corpus);
   final provenance = golden['provenance'];
-  if (provenance is! Map ||
-      provenance['kind'] != 'frozen-device-capture' ||
+  if (provenance is! Map || provenance['kind'] != 'frozen-device-capture') {
+    throw const FormatException(
+      'the golden carries no frozen-device capture provenance',
+    );
+  }
+  // Every duplicated identity field is compared with the corpus, including the
+  // frozen target package and APK bytes: a capture of another build, package or
+  // entry point is refused rather than accepted under the corpus' label.
+  for (final entry in <String, Object?>{
+    'entryPoint': corpus['entryPoint'],
+    'baselineCommit': corpus['baselineCommit'],
+    'targetPackage': target['package'],
+    'targetApkSha256': target['apkSha256'],
+  }.entries) {
+    if (provenance[entry.key] != entry.value) {
+      throw FormatException(
+        'the golden provenance does not match the corpus (${entry.key})',
+      );
+    }
+  }
+  if ('${provenance['targetApkPath'] ?? ''}'.trim().isEmpty ||
       '${provenance['deviceFingerprint'] ?? ''}'.trim().isEmpty ||
       '${provenance['capturedAt'] ?? ''}'.trim().isEmpty) {
     throw const FormatException(
@@ -313,7 +382,7 @@ Map<String, Object?> compareJsLib({
   final expected = golden['observations'] as List;
   final mismatches = <Map<String, Object?>>[];
   for (var i = 0; i < steps.length; i++) {
-    if (jsonEncode(observations[i]) != jsonEncode(expected[i])) {
+    if (!jsonSemanticEquals(observations[i], expected[i])) {
       mismatches.add({
         'index': i,
         'expected': expected[i],
@@ -321,7 +390,7 @@ Map<String, Object?> compareJsLib({
       });
     }
   }
-  final requestsMatch = jsonEncode(requests) == jsonEncode(golden['requests']);
+  final requestsMatch = jsonSemanticEquals(requests, golden['requests']);
   final pass = requestsMatch && mismatches.isEmpty;
   return <String, Object?>{
     'platform': Platform.operatingSystem,
@@ -331,6 +400,7 @@ Map<String, Object?> compareJsLib({
     'baselineCommit': corpus['baselineCommit'],
     'entryPoint': corpus['entryPoint'],
     'corpusSha256': corpusSha256,
+    'target': jsLibTargetOf(corpus),
     'golden': goldenPath,
     'library': library,
     'status': pass ? 'pass' : 'fail',
@@ -354,6 +424,7 @@ Future<void> _runJsLibRecord(List<String> args) async {
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
   final corpus = loadJsLibCorpus();
   final corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+  final target = jsLibTargetOf(corpus);
   final observed = await _observeSteps(args[0], corpus);
   final report = <String, Object?>{
     'mode': 'jslib-record',
@@ -364,6 +435,12 @@ Future<void> _runJsLibRecord(List<String> args) async {
     'entryPoint': corpus['entryPoint'],
     'corpusPath': jsLibCorpusPath,
     'corpusSha256': corpusSha256,
+    'expectedTarget': {
+      'package': target['package'],
+      'apkSha256': target['apkSha256'],
+      'baselineCommit': target['baselineCommit'],
+      'manifest': target['manifest'],
+    },
     'library': args[0],
     'platform': Platform.operatingSystem,
     'observations': observed.observations,
@@ -371,7 +448,9 @@ Future<void> _runJsLibRecord(List<String> args) async {
     'note':
         'Product-only prepared capture: no frozen golden was compared, so the '
         'comparison is explicitly not-run. A device golden is produced by '
-        '`am instrument -e corpus jslib` and compared with --jslib.',
+        '`am instrument -e corpus jslib`, which measures and verifies the '
+        'expected target package and APK before labelling the capture frozen, '
+        'and is compared with --jslib.',
   };
   output.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(report)}\n',

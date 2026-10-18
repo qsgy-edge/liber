@@ -1,14 +1,20 @@
 {
   "schemaVersion": 1,
   "fixtureId": "JSLIB-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "AnalyzeUrl.evalJS shared-jsLib scope",
-  "jsLib": "var sharedCounter = 0; var sharedState = {n: 0}; function bump() { sharedCounter += 1; return sharedState.n += 1; } function libraryKeyType() { return typeof key; } function libraryPageType() { return typeof page; } function libraryResultType() { return typeof result; } var libraryMarker = \"library\";",
+  "target": {
+    "package": "io.legado.app.debug",
+    "apkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+    "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "manifest": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json"
+  },
+  "jsLib": "var sharedState = {n: 0}; function bump() { return ++sharedState.n; } function libraryKeyType() { return typeof key; } function libraryPageType() { return typeof page; } function libraryResultType() { return typeof result; } var libraryMarker = \"library\";",
   "sourceDerivedNotes": {
     "basis": "Source-derived from the frozen tree at 14dd24945b2914ce2708b8abaa4ee67ceef892af: SharedJsScope.kt caches one sealed Rhino scope per MD5(jsLib) and AnalyzeUrl.evalJS sets bindings.prototype = sharedScope. These notes are expectations read from that source, never a frozen golden; the comparator never reads them.",
     "steps": {
-      "library-eval-first": "bump() increments the shared object and counter: 1.",
+      "library-eval-first": "bump() mutates only the shared object's property: 1.",
       "library-eval-second": "the same shared scope is reused across evals of one source: 2.",
       "library-nested-eval": "a {{...}} nested evaluation runs against the same shared scope: the request path is /value/3.",
       "library-second-source": "a second source carrying the same jsLib gets the same MD5-keyed scope: 4.",
@@ -20,12 +26,18 @@
       "eval-local-absent-next-eval": "the next eval cannot see the previous eval's local: undefined.",
       "library-object-assignment-shadows-only": "assigning the library object name writes the per-eval binding, shadowing it there: 900.",
       "library-object-restored-next-eval": "the shared object is untouched by the shadow: n is 4.",
-      "library-counter-after-shadow": "the shared counter is untouched by the shadow: 4.",
-      "nested-throw-caught-shared-intact": "a throwing nested evaluation is catchable and leaves the shared state intact: [true,4].",
+      "library-bump-after-shadow": "the shared object still mutates after the shadow: 5.",
+      "nested-throw-caught-shared-intact": "a throwing nested evaluation is catchable and leaves the shared state intact: [true,5].",
       "two-level-nested-shared": "two nested levels resolve against the shared scope: inner.",
-      "xml-js-shared": "a <js> URL segment shares the scope and bumps it to 5.",
-      "at-js-shared": "an @js: URL segment shares the scope and bumps it to 6.",
-      "connect-shared": "java.connect's {{...}} shares the scope and bumps it to 7."
+      "xml-js-shared": "a <js> URL segment shares the scope and bumps it to 6.",
+      "at-js-shared": "an @js: URL segment shares the scope and bumps it to 7.",
+      "connect-shared": "java.connect's {{...}} shares the scope and bumps it to 8."
+    }
+  },
+  "potentialDivergences": {
+    "sealed-top-level-write": {
+      "status": "source/bytecode-derived; frozen device execution not-run",
+      "note": "A write to a jsLib top-level binding from inside a library function (for example `sharedCounter += 1`) is a write to the sealed shared scope. The pinned frozen APK's Rhino ScriptableObject.putImpl calls checkNotSealed and throws `msg.modify.sealed` for that write. The product's closure model would allow it. The corpus therefore mutates only the shared object's property (`sharedState.n`); this divergence is reported, not repaired in product code, and is not a compared row."
     }
   },
   "steps": [
@@ -41,8 +53,8 @@
     {"id": "eval-local-absent-next-eval", "script": "JSON.stringify(typeof evalLocal)"},
     {"id": "library-object-assignment-shadows-only", "script": "sharedState = {n: 900}; JSON.stringify(sharedState.n)"},
     {"id": "library-object-restored-next-eval", "script": "JSON.stringify(sharedState.n)"},
-    {"id": "library-counter-after-shadow", "script": "JSON.stringify(sharedCounter)"},
-    {"id": "nested-throw-caught-shared-intact", "script": "var caught=false; try { java.ajax('$ORIGIN/value/{{throw new Error(\"nested\")}}'); } catch (e) { caught = true; } JSON.stringify([caught, sharedCounter])"},
+    {"id": "library-bump-after-shadow", "script": "JSON.stringify(bump())"},
+    {"id": "nested-throw-caught-shared-intact", "script": "var caught=false; try { java.ajax('$ORIGIN/value/{{throw new Error(\"nested\")}}'); } catch (e) { caught = true; } JSON.stringify([caught, sharedState.n])"},
     {"id": "two-level-nested-shared", "script": "JSON.stringify(java.ajax('$ORIGIN/value/{{java.ajax(\"$ORIGIN/value/inner\")}}'))"},
     {"id": "xml-js-shared", "script": "JSON.stringify(java.ajax('<js>\"$ORIGIN/value/\" + bump()</js>'))"},
     {"id": "at-js-shared", "script": "JSON.stringify(java.ajax('@js:\"$ORIGIN/value/\" + bump()'))"},
