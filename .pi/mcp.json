@@ -2,7 +2,14 @@
   "mcpServers": {
     "dart": {
       "command": "dart",
-      "args": ["mcp-server", "--force-roots-fallback", "--enable", "all"],
+      "args": [
+        "mcp-server",
+        "--force-roots-fallback",
+        "--disable",
+        "cli",
+        "--enable",
+        "flutter_app_lifecycle"
+      ],
       "exposure": "deferred"
     }
   }

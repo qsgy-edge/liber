@@ -5,8 +5,10 @@
       "args": [
         "mcp-server",
         "--force-roots-fallback",
+        "--disable",
+        "cli",
         "--enable",
-        "all"
+        "flutter_app_lifecycle"
       ],
       "env": {}
     }
