@@ -119,12 +119,14 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
   /// need: a JSON source gets the JSON adapter (ticket #29).
   BookSourcePipeline _openPipeline(
     Map<String, dynamic> source,
-    BookSourceTransport transport,
-  ) => openBookSourcePipeline(
+    BookSourceTransport transport, {
+    bool deferEntityVariables = false,
+  }) => openBookSourcePipeline(
     source,
     transport,
     hostState: widget.service.hostState,
     androidId: widget.service.androidId,
+    deferEntityVariables: deferEntityVariables,
     onHostMessage: _showHostNotice,
   );
 
@@ -182,6 +184,14 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
         openPipeline: (source) => _openPipeline(
           source,
           widget.transport ?? HttpSourceTransport(store: widget.service.store),
+        ),
+        // The candidate's details/TOC/content stages are deferred (#132): a
+        // failed, cancelled or colliding candidate cannot mutate a stored
+        // destination row before the switch publishes the final carriers.
+        openDeferredPipeline: (source) => _openPipeline(
+          source,
+          widget.transport ?? HttpSourceTransport(store: widget.service.store),
+          deferEntityVariables: true,
         ),
         // ADR 0011 §5: one certificate confirmation per source, around that
         // source's own stages — the manual search and switch wrap theirs the

@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../source/chapter_position.dart';
 import '../source/html_source_pipeline.dart';
+import '../source/js_source_runtime.dart' show variableMapOf, variableTextOf;
 import '../source/json_source_pipeline.dart' show SourceChapter;
 import '../source/source_host_state.dart';
 import 'database.dart';
@@ -208,6 +209,11 @@ class ShelfService {
         coverUrl: Value(book.cover),
         latestChapterTitle: Value(book.lastChapter),
         shelved: const Value(true),
+        // The carrier's own variable text, when it carries one: an add that
+        // arrived without it must not erase the row's existing data (#132).
+        variable: book.variable == null
+            ? const Value.absent()
+            : Value(book.variable),
       ),
     );
     if (chapters.isNotEmpty) {
@@ -244,6 +250,11 @@ class ShelfService {
         intro: Value(book.intro),
         coverUrl: Value(book.cover),
         latestChapterTitle: Value(book.lastChapter),
+        // A refresh carries the new variable text when it has one; a carrier
+        // without one leaves the row's existing value alone (#132).
+        variable: book.variable == null
+            ? const Value.absent()
+            : Value(book.variable),
       ),
     );
     await store.putChapters(existing.id, _chapterRows(existing.id, chapters));
@@ -332,6 +343,11 @@ class ShelfService {
           intro: Value(book.intro),
           coverUrl: Value(book.cover),
           latestChapterTitle: Value(book.lastChapter),
+          // The final candidate variable text, including null: the association
+          // flow has already prepared and carried it, so the switch publishes
+          // exactly what the details/TOC stages produced and never re-merges the
+          // old row's value (#132). A null here is the cross-source clear.
+          variable: Value(book.variable),
         ),
       );
       await store.putChapters(bookId, _chapterRows(bookId, chapters));
@@ -358,6 +374,64 @@ class ShelfService {
       }
     });
     return _entry((await store.bookById(bookId))!);
+  }
+
+  /// The candidate carrier an association analysis starts from (#132): the
+  /// search result's own book with its variable text seeded for the switch.
+  ///
+  /// A candidate on the book's *same* source reference starts from the stored
+  /// row's own variable text overlaid by the search result's map — new
+  /// same-name values win, a later deletion stays deleted — and keeps the
+  /// stored raw text verbatim when the search result carries no map of its own
+  /// (the approved preservation rule, no re-encoding). A candidate on a
+  /// *different* source reference starts from the search result's text alone,
+  /// so the old source's book variables are not carried across and the final
+  /// value (including null) replaces the old one.
+  ///
+  /// This is the one preparation both the manual precise-search pick and the
+  /// automatic switch call before their details/TOC stages; the analysis runs
+  /// with deferred entity variables, so the seeded draft never touches a stored
+  /// row until [switchSource] publishes the final carriers.
+  HtmlBook associationCandidate(
+    ShelfEntry book,
+    Map<String, dynamic> candidateSource,
+    HtmlBook candidate,
+  ) {
+    final sameSource =
+        '${candidateSource['bookSourceUrl'] ?? ''}' == book.sourceRef;
+    final stored = book.book.variable;
+    final incoming = candidate.variable;
+    final String? seeded;
+    if (!sameSource) {
+      seeded = incoming;
+    } else if (incoming == null) {
+      seeded = stored;
+    } else {
+      final merged = <String, String?>{
+        ...variableMapOf(stored),
+        ...variableMapOf(incoming),
+      };
+      seeded = variableTextOf(merged);
+    }
+    // A fresh details pipeline fetches the candidate's *resolved* identity, not
+    // the relative raw text it was found by: the analysis base that resolved it
+    // (a redirected search response, #132) is not on the row, and re-resolving
+    // against the source origin is the lost-base heuristic the investigation
+    // recorded. The resolved pre-option identity keeps the raw option tail, so
+    // the fetch parses the same options the search result carried.
+    return HtmlBook(
+      url: candidate.url,
+      rawAddress: candidate.identityAddress,
+      preOptionUrl: candidate.preOptionUrl,
+      title: candidate.title,
+      author: candidate.author,
+      intro: candidate.intro,
+      cover: candidate.cover,
+      kind: candidate.kind,
+      lastChapter: candidate.lastChapter,
+      wordCount: candidate.wordCount,
+      variable: seeded,
+    );
   }
 
   /// Takes a book off the shelf. Its chapters and its progress stay, so adding
@@ -496,6 +570,7 @@ class ShelfService {
         shelved: Value(shelved),
         bookOrder: Value(await store.nextBookOrder()),
         raw: Value(jsonEncode(book.toJson())),
+        variable: Value(book.variable),
       ),
     );
     return (await store.bookById(id))!;
@@ -547,6 +622,7 @@ class ShelfService {
         isVolume: chapters[index].isVolume,
         isVip: chapters[index].isVip,
         isPay: chapters[index].isPay,
+        variable: chapters[index].variable,
       ),
   ];
 }
