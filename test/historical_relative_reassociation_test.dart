@@ -901,4 +901,57 @@ void main() {
       );
     },
   );
+
+  test(
+    'a relative TOC chapter keeps its variable through read then add',
+    () async {
+      // The TOC address is relative ('/c/1'), so its variable write lands under
+      // that key while the content stage reads and writes the resolved row key
+      // ('$origin/c/1'). The content writes no chapter variable, so the add must
+      // still publish the TOC text rather than clearing it (#132).
+      final source = sourceJson(
+        origin,
+        tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+        contentScript: '@js:"正文"',
+      );
+      final site = _Site({
+        '$origin/book/1': const _Route('{"title":"Book","toc":"/toc/1"}'),
+        '$origin/toc/1': const _Route('{"list":[{"name":"第1章","url":"/c/1"}]}'),
+        '$origin/c/1': const _Route('{"text":"正文"}'),
+      });
+      final pipeline = JsonSourcePipeline(
+        source,
+        site,
+        hostState: shelf.hostState,
+      );
+      final (book, chapters) = await pipeline.details(
+        HtmlBook(
+          url: Uri.parse('$origin/book/1'),
+          rawAddress: '$origin/book/1',
+          title: name,
+        ),
+      );
+      expect(variableMapOf(chapters.single.variable), {'toc': 'T'});
+      await shelf.ensureBook(source, book);
+
+      final body = await pipeline.chapter(chapters.single, book: book);
+      await shelf.add(source, book.withVariable(body.bookVariable), [
+        chapters.single.withVariable(body.chapterVariable),
+      ]);
+
+      final reopened = await space.reopen();
+      expect(
+        variableMapOf(
+          await reopened.chapterVariable(
+            origin,
+            '$origin/book/1',
+            '$origin/c/1',
+          ),
+        ),
+        {'toc': 'T'},
+        reason:
+            'reading without a variable write must not erase the TOC variable',
+      );
+    },
+  );
 }

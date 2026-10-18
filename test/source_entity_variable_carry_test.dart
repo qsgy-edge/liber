@@ -1190,6 +1190,167 @@ void main() {
       },
     );
   }
+
+  // #132 repair3 follow-up: a relative TOC chapter's variable is written under
+  // the TOC stage's own key ('/c/1'), while the content stage reads and writes
+  // the row key ('$origin/c/1'). The content stage starts from the chapter's own
+  // carrier text when — and only when — the row key holds no entry at all.
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    Map<String, dynamic> relativeSource(String contentScript) => json
+        ? jsonSource(
+            infoScript: '@js:""',
+            tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+            contentScript: contentScript,
+          )
+        : htmlSource(
+            infoScript: '@js:""',
+            tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+            contentScript: contentScript,
+          );
+
+    Future<HtmlChapterBody> runContent(
+      String contentScript, {
+      SourceHostState? hostState,
+    }) async {
+      final source = relativeSource(contentScript);
+      final pipeline = json
+          ? JsonSourcePipeline(source, jsonPages(), hostState: hostState)
+          : HtmlSourcePipeline(source, htmlPages(), hostState: hostState);
+      final (book, chapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(chapters.single.variable), {'toc': 'T'});
+      return pipeline.chapter(chapters.single, book: book);
+    }
+
+    test(
+      '$label a relative TOC chapter keeps its variable with no content write',
+      () async {
+        final body = await runContent('@js:"正文"');
+        expect(variableMapOf(body.chapterVariable), {'toc': 'T'});
+      },
+    );
+
+    test('$label a relative TOC chapter merges a content write', () async {
+      final body = await runContent(
+        '@js:chapter.putVariable("content","C"); "正文"',
+      );
+      expect(variableMapOf(body.chapterVariable), {'toc': 'T', 'content': 'C'});
+    });
+
+    test(
+      '$label a relative TOC chapter replaces a same-name key from the TOC value',
+      () async {
+        final body = await runContent(
+          '@js:chapter.putVariable("toc", chapter.getVariable("toc") + "!"); "正文"',
+        );
+        expect(variableMapOf(body.chapterVariable), {'toc': 'T!'});
+      },
+    );
+
+    test(
+      '$label a relative TOC chapter deletion of the last key is not resurrected',
+      () async {
+        final body = await runContent(
+          '@js:chapter.putVariable("toc", null); "正文"',
+        );
+        expect(variableMapOf(body.chapterVariable), isEmpty);
+      },
+    );
+
+    test(
+      '$label a relative TOC chapter keeps repeated reads without persistence',
+      () async {
+        final source = relativeSource(
+          '@js:chapter.putVariable("n", '
+          'String(Number(chapter.getVariable("n") || "0") + 1)); '
+          'chapter.getVariable("n")',
+        );
+        final pipeline = json
+            ? JsonSourcePipeline(source, jsonPages())
+            : HtmlSourcePipeline(source, htmlPages());
+        final (book, chapters) = await pipeline.details(hitWith(null));
+        final first = await pipeline.chapter(chapters.single, book: book);
+        final second = await pipeline.chapter(chapters.single, book: book);
+        expect(variableMapOf(first.chapterVariable), {'toc': 'T', 'n': '1'});
+        expect(variableMapOf(second.chapterVariable), {'toc': 'T', 'n': '2'});
+      },
+    );
+
+    test(
+      '$label an existing null chapter row is not reseeded from the carrier',
+      () async {
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final state = SourceHostState(
+          persistence: SpaceHostStatePersistence(store),
+        );
+        await store.putBook(
+          BooksCompanion.insert(
+            id: 'b1',
+            title: '书',
+            kind: const Value('network'),
+            sourceRef: const Value(origin),
+            sourceBookUrl: const Value(bookUrl),
+          ),
+        );
+        await store.putChapters('b1', [
+          BookChapter(
+            bookId: 'b1',
+            chapterKey: '$origin/c/1',
+            name: '第一章',
+            url: '$origin/c/1',
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+          ),
+        ]);
+
+        final body = await runContent('@js:"正文"', hostState: state);
+
+        expect(
+          body.chapterVariable,
+          isNull,
+          reason: 'a present row is authoritative, even with no text',
+        );
+        expect(
+          await store.chapterVariable(origin, bookUrl, '$origin/c/1'),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      '$label an existing null unwritten entry is not reseeded from the carrier',
+      () async {
+        final state = SourceHostState();
+        await state.putChapterVariable(origin, bookUrl, '$origin/c/1', null);
+
+        final body = await runContent('@js:"正文"', hostState: state);
+
+        expect(
+          body.chapterVariable,
+          isNull,
+          reason: 'a present entry is authoritative, even with no text',
+        );
+      },
+    );
+
+    test('$label an existing unwritten entry wins over the carrier', () async {
+      final state = SourceHostState();
+      await state.putChapterVariable(
+        origin,
+        bookUrl,
+        '$origin/c/1',
+        '{"prior":"P"}',
+      );
+
+      final body = await runContent('@js:"正文"', hostState: state);
+
+      expect(variableMapOf(body.chapterVariable), {'prior': 'P'});
+    });
+  }
 }
 
 /// Answers one page per path and records every request.

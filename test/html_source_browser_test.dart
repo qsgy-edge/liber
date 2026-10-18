@@ -123,6 +123,38 @@ class _MarkerPipeline extends ScriptedPipeline {
 /// A tag long enough to wrap without the frozen `singleLine="true"`.
 const _longTag = '2026-01-01 12:34:56 更新时间很长很长很长很长很长很长很长很长很长很长很长很长';
 
+/// A browser analysis whose content stage writes no chapter variable and
+/// returns the chapter's own carried text — the corrected snapshot the real
+/// content stage produces for a relative TOC address whose row key holds no
+/// entry (#132). The rule engine is scripted; the host/store writes are the
+/// product's own, which is the read→return→add handoff it covers.
+class _RelativeCarrierPipeline extends HtmlSourcePipeline {
+  _RelativeCarrierPipeline(SourceHostState hostState)
+    : super(source, const _UnusedTransport(), hostState: hostState);
+
+  static const chapterVariable = '{"toc":"T"}';
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async => (
+    hit,
+    [
+      SourceChapter(
+        'Book章',
+        Uri.parse('$bookUrl/1'),
+        rawAddress: '/book/1',
+        variable: chapterVariable,
+      ),
+    ],
+  );
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async => HtmlChapterBody('正文', 1, chapterVariable: chapterVariable);
+}
+
 /// A browser analysis whose content stage writes the entity state through the
 /// real host surface and returns the same final snapshots a real content stage
 /// returns (#132). The rule engine is scripted — a widget test cannot load the
@@ -761,6 +793,46 @@ void main() {
         ),
         {'toc': 'T', 'content': 'C'},
         reason: 'the chapter keeps its TOC write and the content write',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'read then add keeps a relative TOC chapter variable the content did not rewrite',
+    (tester) async {
+      // The content stage writes no chapter variable, so the published carrier
+      // must still be the chapter's own TOC text (#132).
+      final pipeline = _RelativeCarrierPipeline(shelf.hostState);
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            directBook: HtmlBook(url: Uri.parse(bookUrl), title: 'Book'),
+            pipeline: pipeline,
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Book章'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlineReaderPage), findsOneWidget);
+
+      await tapBack(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('加入书架'));
+      await tester.pumpAndSettle();
+
+      expect(
+        variableMapOf(
+          await store.chapterVariable(sourceUrl, bookUrl, '$bookUrl/1'),
+        ),
+        {'toc': 'T'},
+        reason: 'reading without a chapter-variable write keeps the TOC text',
       );
       expect(tester.takeException(), isNull);
     },

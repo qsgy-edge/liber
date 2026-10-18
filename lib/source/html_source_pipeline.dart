@@ -2334,6 +2334,28 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         chapter.storeKey,
         chapter.variable,
       );
+      // The ordinary path reads and writes the space's rows, keyed by the
+      // chapter's row identity. A chapter whose key holds no entry at all
+      // starts from its own carrier text: a TOC write lands under the TOC
+      // stage's own key, so the rules and the final snapshot must still see it.
+      // A stored row — or an unwritten entry, even one whose text is null — is
+      // present and authoritative and is never reseeded (#132).
+      if (_entityDraft == null && chapter.variable != null) {
+        final chapterKey = chapter.storeKey;
+        final entry = await _hostSurface.chapterVariableRow(
+          _sourceRef,
+          candidateBook.identityAddress,
+          chapterKey,
+        );
+        if (entry == null) {
+          await _hostSurface.putChapterVariable(
+            _sourceRef,
+            candidateBook.identityAddress,
+            chapterKey,
+            chapter.variable,
+          );
+        }
+      }
     }
     _page = null;
     _chapterTitle = chapter.name;
