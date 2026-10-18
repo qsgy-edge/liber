@@ -8,19 +8,27 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.lang.reflect.*;
 import java.util.*;
 
 /** Calls the installed, hash-pinned APK. No Legado production class is rebuilt. */
 public final class NestedOracle extends Instrumentation {
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    private Bundle arguments;
+    @Override public void onCreate(Bundle args) { arguments = args; super.onCreate(args); start(); }
     @Override public void onStart() {
         Bundle status = new Bundle();
         try (Replay replay = new Replay()) {
-            String fixture;
-            try (InputStream input = getContext().getAssets().open("fixtures.json")) {
-                fixture = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            // The default run is unchanged. An explicit `-e corpus jslib` selects
+            // the local jsLib shared-scope corpus; nothing else may change it.
+            boolean jsLib = "jslib".equals(
+                arguments == null ? null : arguments.getString("corpus"));
+            String asset = jsLib ? "jslib-fixtures.json" : "fixtures.json";
+            byte[] fixtureBytes;
+            try (InputStream input = getContext().getAssets().open(asset)) {
+                fixtureBytes = input.readAllBytes();
             }
+            String fixture = new String(fixtureBytes, StandardCharsets.UTF_8);
             JSONObject corpus = new JSONObject(fixture);
             ClassLoader loader = getTargetContext().getClassLoader();
             Class<?> sourceClass = loader.loadClass("io.legado.app.data.entities.BookSource");
@@ -58,16 +66,41 @@ public final class NestedOracle extends Instrumentation {
             JSONObject report = new JSONObject().put("baselineCommit", corpus.getString("baselineCommit"))
                 .put("fingerprint", Build.FINGERPRINT).put("entryPoint", corpus.getString("entryPoint"))
                 .put("observations", observations).put("requests", replay.requests);
-            File output = new File(getTargetContext().getExternalFilesDir(null), "nested-oracle.json");
+            if (jsLib) {
+                // The comparator refuses to compare without this identity, the
+                // corpus hash and a real frozen-capture provenance block.
+                report.put("fixtureId", corpus.getString("fixtureId"));
+                report.put("corpusVersion", corpus.getInt("corpusVersion"));
+                report.put("corpusSha256", sha256Lf(fixtureBytes));
+                report.put("provenance", new JSONObject()
+                    .put("kind", "frozen-device-capture")
+                    .put("deviceFingerprint", Build.FINGERPRINT)
+                    .put("capturedAt", new java.text.SimpleDateFormat(
+                        "yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US).format(new Date()))
+                    .put("entryPoint", corpus.getString("entryPoint")));
+            }
+            File output = new File(getTargetContext().getExternalFilesDir(null),
+                jsLib ? "jslib-oracle.json" : "nested-oracle.json");
             try (FileOutputStream stream = new FileOutputStream(output)) {
                 stream.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
             }
-            status.putString("stream", "Nested oracle recorded " + observations.length() + " observations\n");
+            status.putString("stream", (jsLib ? "jsLib oracle" : "Nested oracle")
+                + " recorded " + observations.length() + " observations\n");
             finish(-1, status);
         } catch (Throwable error) {
             status.putString("stream", error.toString() + "\n");
             finish(1, status);
         }
+    }
+
+    /** SHA-256 of the corpus bytes with CRLF normalized to LF, so one pin means
+     *  the same corpus on a Windows and an LF checkout. */
+    static String sha256Lf(byte[] bytes) throws Exception {
+        String text = new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder();
+        for (byte value : digest) hex.append(String.format("%02x", value));
+        return hex.toString();
     }
 
     static final class Replay implements AutoCloseable {

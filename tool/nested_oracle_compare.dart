@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/http_source_transport.dart';
@@ -8,19 +9,30 @@ import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_url_rules.dart';
+import 'package:pointycastle/digests/sha256.dart';
 
 /// Compares a frozen-oracle golden against the same run on this platform.
 ///
-/// Two modes:
+/// Modes:
 ///
 /// - the JS oracle (default): `<fjs.dll> <golden.json> <new-result.json>`
 /// - the request-semantics oracle:
-///   `--requests <fjs.dll> <golden.json> <new-report.json>`. The library is
-///   needed for the response-body decode the transport performs, not for a
-///   JavaScript rule: the request corpus declares none.
+///   `--requests <fjs.dll> <golden.json> <new-report.json>`
+/// - the local jsLib shared-scope product capture (no golden; comparison is
+///   explicitly `not-run`): `--jslib-record <fjs.dll> <new-capture.json>`
+/// - the local jsLib shared-scope comparison against a frozen device golden:
+///   `--jslib <fjs.dll> <golden.json> <new-report.json>`
 Future<void> main(List<String> args) async {
   if (args.isNotEmpty && args.first == '--requests') {
     await _runRequestOracle(args.sublist(1));
+    return;
+  }
+  if (args.isNotEmpty && args.first == '--jslib-record') {
+    await _runJsLibRecord(args.sublist(1));
+    return;
+  }
+  if (args.isNotEmpty && args.first == '--jslib') {
+    await _runJsLib(args.sublist(1));
     return;
   }
   await _runScriptOracle(args);
@@ -42,6 +54,47 @@ Future<void> _runScriptOracle(List<String> args) async {
       golden['entryPoint'] != corpus['entryPoint']) {
     throw StateError('Oracle identity mismatch');
   }
+  final observed = await _observeSteps(args[0], corpus);
+  final observations = observed.observations;
+  final requests = observed.requests;
+  final expected = golden['observations'] as List;
+  final mismatches = <Map<String, Object?>>[];
+  for (var i = 0; i < observations.length; i++) {
+    if (i >= expected.length ||
+        jsonEncode(observations[i]) != jsonEncode(expected[i])) {
+      mismatches.add({
+        'index': i,
+        'expected': i < expected.length ? expected[i] : null,
+        'actual': observations[i],
+      });
+    }
+  }
+  final countMatches = observations.length == expected.length;
+  final requestsMatch = jsonEncode(requests) == jsonEncode(golden['requests']);
+  final pass = countMatches && requestsMatch && mismatches.isEmpty;
+  final report = {
+    'platform': Platform.operatingSystem,
+    'baselineCommit': corpus['baselineCommit'],
+    'golden': args[1],
+    'status': pass ? 'pass' : 'fail',
+    'observations': observations,
+    'requests': requests,
+    'countMatches': countMatches,
+    'requestsMatch': requestsMatch,
+    'mismatches': mismatches,
+  };
+  output.writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+  );
+  stdout.writeln(jsonEncode(report));
+  if (!pass) exitCode = 1;
+}
+
+/// Runs one corpus' steps against the product and returns the observations and
+/// the replay server's request trace. Shared by the default JS oracle and the
+/// jsLib shared-scope modes so all three observe the same way.
+Future<({List<Map<String, Object?>> observations, List<String> requests})>
+_observeSteps(String dll, Map<String, dynamic> corpus) async {
   final requests = <String>[];
   final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 18763);
   const origin = 'http://127.0.0.1:18763';
@@ -76,7 +129,7 @@ Future<void> _runScriptOracle(List<String> args) async {
       },
     );
   });
-  await InProcessSourceScriptRuntime.initialize(libraryPath: args[0]);
+  await InProcessSourceScriptRuntime.initialize(libraryPath: dll);
   final observations = <Map<String, Object?>>[];
   final host = SourceHostDispatcher(transport: HttpSourceTransport());
   try {
@@ -108,37 +161,256 @@ Future<void> _runScriptOracle(List<String> args) async {
       socket.destroy();
     }
   }
+  return (observations: observations, requests: requests);
+}
+
+// --------------------------------------------------------------------------
+// Local jsLib shared-scope corpus (#74)
+// --------------------------------------------------------------------------
+
+/// The dedicated corpus for the local `jsLib` shared-scope family. It is
+/// selected explicitly by `--jslib-record`/`--jslib`; the default JS oracle
+/// keeps reading `tool/nested_oracle/fixtures.json`.
+const jsLibCorpusPath = 'tool/nested_oracle/jslib-fixtures.json';
+
+String _sha256Bytes(Uint8List bytes) => SHA256Digest()
+    .process(bytes)
+    .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+    .join();
+
+/// SHA-256 of the corpus with CRLF normalized to LF. The device harness pins
+/// the same value, so one pin means the same corpus on a Windows checkout and
+/// on an LF checkout.
+String jsLibCorpusSha256(File file) => _sha256Bytes(
+  Uint8List.fromList(
+    utf8.encode(file.readAsStringSync().replaceAll('\r\n', '\n')),
+  ),
+);
+
+/// Decodes and validates the dedicated jsLib corpus, failing closed on a
+/// missing, malformed or empty corpus before anything runs.
+Map<String, dynamic> loadJsLibCorpus() {
+  final file = File(jsLibCorpusPath);
+  if (!file.existsSync()) {
+    throw StateError('jsLib corpus missing: $jsLibCorpusPath');
+  }
+  final corpus = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  if (corpus['schemaVersion'] != 1) {
+    throw const FormatException('jsLib corpus schemaVersion is not 1');
+  }
+  if ('${corpus['fixtureId'] ?? ''}'.trim().isEmpty) {
+    throw const FormatException('jsLib corpus has no fixtureId');
+  }
+  if (corpus['corpusVersion'] is! int) {
+    throw const FormatException('jsLib corpus has no corpusVersion');
+  }
+  if ('${corpus['baselineCommit'] ?? ''}'.trim().isEmpty) {
+    throw const FormatException('jsLib corpus has no baselineCommit');
+  }
+  if ('${corpus['entryPoint'] ?? ''}'.trim().isEmpty) {
+    throw const FormatException('jsLib corpus has no entryPoint');
+  }
+  if (corpus['jsLib'] is! String) {
+    throw const FormatException('jsLib corpus has no jsLib');
+  }
+  final steps = corpus['steps'];
+  if (steps is! List || steps.isEmpty) {
+    throw const FormatException('jsLib corpus has no rows');
+  }
+  final ids = <String>{};
+  for (final step in steps) {
+    if (step is! Map || '${step['id'] ?? ''}'.trim().isEmpty) {
+      throw const FormatException('jsLib corpus row has no id');
+    }
+    if (step['script'] is! String) {
+      throw const FormatException('jsLib corpus row has no script');
+    }
+    if (!ids.add('${step['id']}')) {
+      throw FormatException('jsLib corpus row id is duplicated: ${step['id']}');
+    }
+  }
+  return corpus;
+}
+
+/// Refuses a golden that is not a real frozen-device capture of exactly this
+/// corpus. Every identity, hash, row and provenance problem is a hard refusal
+/// (a `FormatException`), so no comparison can pass vacuously.
+void checkJsLibGolden({
+  required Map<String, dynamic> corpus,
+  required String corpusSha256,
+  required Map<String, dynamic> golden,
+}) {
+  if (golden['mode'] != null || golden['comparison'] != null) {
+    throw const FormatException(
+      'Not a frozen golden: the input carries a record-mode marker',
+    );
+  }
+  for (final key in [
+    'fixtureId',
+    'corpusVersion',
+    'baselineCommit',
+    'entryPoint',
+  ]) {
+    if (golden[key] != corpus[key]) {
+      throw FormatException('the golden does not describe this corpus ($key)');
+    }
+  }
+  if (golden['corpusSha256'] != corpusSha256) {
+    throw const FormatException(
+      'the golden was captured against different corpus bytes',
+    );
+  }
+  final provenance = golden['provenance'];
+  if (provenance is! Map ||
+      provenance['kind'] != 'frozen-device-capture' ||
+      '${provenance['deviceFingerprint'] ?? ''}'.trim().isEmpty ||
+      '${provenance['capturedAt'] ?? ''}'.trim().isEmpty) {
+    throw const FormatException(
+      'the golden carries no frozen-device capture provenance',
+    );
+  }
+  final expected = golden['observations'];
+  if (expected is! List || expected.isEmpty) {
+    throw const FormatException('the golden holds no observations');
+  }
+  final goldenRequests = golden['requests'];
+  if (goldenRequests is! List || goldenRequests.isEmpty) {
+    throw const FormatException('the golden holds no request trace');
+  }
+  final steps = corpus['steps'] as List;
+  if (expected.length != steps.length) {
+    throw FormatException(
+      'row count mismatch: golden ${expected.length} vs corpus ${steps.length}',
+    );
+  }
+  for (var i = 0; i < steps.length; i++) {
+    final row = expected[i];
+    if (row is! Map || row['id'] != (steps[i] as Map)['id']) {
+      throw FormatException('row identity mismatch at index $i');
+    }
+  }
+}
+
+/// Compares the product's jsLib observations with a validated frozen golden.
+/// The caller has already refused a bad golden with [checkJsLibGolden].
+Map<String, Object?> compareJsLib({
+  required Map<String, dynamic> corpus,
+  required String corpusSha256,
+  required Map<String, dynamic> golden,
+  required List<Map<String, Object?>> observations,
+  required List<String> requests,
+  required String goldenPath,
+  required String library,
+}) {
+  checkJsLibGolden(corpus: corpus, corpusSha256: corpusSha256, golden: golden);
+  final steps = corpus['steps'] as List;
+  if (observations.length != steps.length) {
+    throw FormatException(
+      'the product recorded ${observations.length} rows for '
+      '${steps.length} corpus rows',
+    );
+  }
   final expected = golden['observations'] as List;
   final mismatches = <Map<String, Object?>>[];
-  for (var i = 0; i < observations.length; i++) {
-    if (i >= expected.length ||
-        jsonEncode(observations[i]) != jsonEncode(expected[i])) {
+  for (var i = 0; i < steps.length; i++) {
+    if (jsonEncode(observations[i]) != jsonEncode(expected[i])) {
       mismatches.add({
         'index': i,
-        'expected': i < expected.length ? expected[i] : null,
+        'expected': expected[i],
         'actual': observations[i],
       });
     }
   }
-  final countMatches = observations.length == expected.length;
   final requestsMatch = jsonEncode(requests) == jsonEncode(golden['requests']);
-  final pass = countMatches && requestsMatch && mismatches.isEmpty;
-  final report = {
+  final pass = requestsMatch && mismatches.isEmpty;
+  return <String, Object?>{
     'platform': Platform.operatingSystem,
+    'mode': 'jslib',
+    'fixtureId': corpus['fixtureId'],
+    'corpusVersion': corpus['corpusVersion'],
     'baselineCommit': corpus['baselineCommit'],
-    'golden': args[1],
+    'entryPoint': corpus['entryPoint'],
+    'corpusSha256': corpusSha256,
+    'golden': goldenPath,
+    'library': library,
     'status': pass ? 'pass' : 'fail',
+    'provenance': golden['provenance'],
     'observations': observations,
     'requests': requests,
-    'countMatches': countMatches,
+    'countMatches': true,
     'requestsMatch': requestsMatch,
     'mismatches': mismatches,
+  };
+}
+
+/// Prepares the product-only capture the later device comparison will need. It
+/// runs the same corpus the frozen harness will serve and labels the result
+/// `comparison: not-run`: no golden exists on this machine, so none is claimed.
+Future<void> _runJsLibRecord(List<String> args) async {
+  if (args.length != 2) {
+    throw ArgumentError('Usage: --jslib-record <fjs.dll> <new-capture.json>');
+  }
+  final output = File(args[1]);
+  if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
+  final corpus = loadJsLibCorpus();
+  final corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+  final observed = await _observeSteps(args[0], corpus);
+  final report = <String, Object?>{
+    'mode': 'jslib-record',
+    'comparison': 'not-run',
+    'fixtureId': corpus['fixtureId'],
+    'corpusVersion': corpus['corpusVersion'],
+    'baselineCommit': corpus['baselineCommit'],
+    'entryPoint': corpus['entryPoint'],
+    'corpusPath': jsLibCorpusPath,
+    'corpusSha256': corpusSha256,
+    'library': args[0],
+    'platform': Platform.operatingSystem,
+    'observations': observed.observations,
+    'requests': observed.requests,
+    'note':
+        'Product-only prepared capture: no frozen golden was compared, so the '
+        'comparison is explicitly not-run. A device golden is produced by '
+        '`am instrument -e corpus jslib` and compared with --jslib.',
   };
   output.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(report)}\n',
   );
   stdout.writeln(jsonEncode(report));
-  if (!pass) exitCode = 1;
+}
+
+/// Runs the product against the dedicated corpus and compares it with a frozen
+/// device golden, refusing to run the comparison at all without a genuine one.
+Future<void> _runJsLib(List<String> args) async {
+  if (args.length != 3) {
+    throw ArgumentError(
+      'Usage: --jslib <fjs.dll> <golden.json> <new-report.json>',
+    );
+  }
+  final output = File(args[2]);
+  if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
+  final corpus = loadJsLibCorpus();
+  final corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+  final golden =
+      jsonDecode(File(args[1]).readAsStringSync()) as Map<String, dynamic>;
+  // Refuse a bad golden before running anything, so a stale or forged input
+  // cannot leave a half-written report behind.
+  checkJsLibGolden(corpus: corpus, corpusSha256: corpusSha256, golden: golden);
+  final observed = await _observeSteps(args[0], corpus);
+  final report = compareJsLib(
+    corpus: corpus,
+    corpusSha256: corpusSha256,
+    golden: golden,
+    observations: observed.observations,
+    requests: observed.requests,
+    goldenPath: args[1],
+    library: args[0],
+  );
+  output.writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+  );
+  stdout.writeln(jsonEncode(report));
+  if (report['status'] != 'pass') exitCode = 1;
 }
 
 // --------------------------------------------------------------------------
@@ -239,10 +511,12 @@ Future<void> _runRequestOracle(List<String> args) async {
     for (final entry in corpus['rows'] as List) {
       final row = entry as Map<String, dynamic>;
       final id = row['id'] as String;
-      final frozen = (golden['rows'] as List).firstWhere(
-        (goldenRow) => (goldenRow as Map)['id'] == id,
-        orElse: () => throw StateError('the golden has no row $id'),
-      ) as Map<String, dynamic>;
+      final frozen =
+          (golden['rows'] as List).firstWhere(
+                (goldenRow) => (goldenRow as Map)['id'] == id,
+                orElse: () => throw StateError('the golden has no row $id'),
+              )
+              as Map<String, dynamic>;
       final offset = replay.requests.length;
       final observed = await _liberRow(
         row,
@@ -312,27 +586,22 @@ Future<Map<String, Object?>> _liberRow(
       .replaceAll(r'$ORIGIN', origin);
   final declaredHeaders = <String, String>{
     for (final entry
-        in (declared['headers'] as Map<String, dynamic>? ?? const {})
-            .entries)
+        in (declared['headers'] as Map<String, dynamic>? ?? const {}).entries)
       entry.key: '${entry.value}',
   };
-  final expanded = await expandSourceUrl(
-    ruleText,
-    (expression, result) {
-      switch (expression.trim()) {
-        case 'key':
-          return Future<Object?>.value(key);
-        case 'page':
-          return Future<Object?>.value(page);
-        default:
-          throw UnsupportedError(
-            'the request corpus declares no JavaScript in a request rule: '
-            '$expression',
-          );
-      }
-    },
-    page: page,
-  );
+  final expanded = await expandSourceUrl(ruleText, (expression, result) {
+    switch (expression.trim()) {
+      case 'key':
+        return Future<Object?>.value(key);
+      case 'page':
+        return Future<Object?>.value(page);
+      default:
+        throw UnsupportedError(
+          'the request corpus declares no JavaScript in a request rule: '
+          '$expression',
+        );
+    }
+  }, page: page);
   final split = splitSourceUrlOptions(expanded);
   final base = Uri.parse(origin);
   var url = base.resolve(split.path);
@@ -430,7 +699,8 @@ Map<String, Object?> _compareRow(
     }
     final frozenHeaders = (expected['headers'] as Map).cast<String, Object?>();
     final liberHeaders = (actual['headers'] as Map).cast<String, Object?>();
-    final names = {...frozenHeaders.keys, ...liberHeaders.keys}.toList()..sort();
+    final names = {...frozenHeaders.keys, ...liberHeaders.keys}.toList()
+      ..sort();
     for (final name in names) {
       if (_ignoredHeaders.contains(name) && !declaredNames.contains(name)) {
         continue;
@@ -466,7 +736,14 @@ Map<String, Object?> _compareRow(
   } else if (frozen['outcome'] == 'ok') {
     for (final field in ['status', 'body']) {
       if (frozen[field] != liber[field]) {
-        _record(id, field, frozen[field], liber[field], mismatches, divergences);
+        _record(
+          id,
+          field,
+          frozen[field],
+          liber[field],
+          mismatches,
+          divergences,
+        );
       }
     }
   }
@@ -559,8 +836,9 @@ class _ReplayServer {
             final existing = headers[name];
             headers[name] = existing == null ? value : '$existing, $value';
           }
-          final declaredLength =
-              int.tryParse('${headers['content-length'] ?? ''}');
+          final declaredLength = int.tryParse(
+            '${headers['content-length'] ?? ''}',
+          );
           final chunked = '${headers['transfer-encoding'] ?? ''}'
               .toLowerCase()
               .contains('chunked');
@@ -577,7 +855,9 @@ class _ReplayServer {
           } else {
             final length = declaredLength ?? 0;
             if (buffer.length < end + 4 + length) return;
-            body = length > 0 ? buffer.substring(end + 4, end + 4 + length) : '';
+            body = length > 0
+                ? buffer.substring(end + 4, end + 4 + length)
+                : '';
             consumed = end + 4 + length;
           }
           buffer = buffer.substring(consumed);
@@ -588,8 +868,7 @@ class _ReplayServer {
           final declared = (corpus['responses'] as List)
               .cast<Map<String, dynamic>>()
               .firstWhere(
-                (entry) =>
-                    entry['method'] == method && entry['path'] == path,
+                (entry) => entry['method'] == method && entry['path'] == path,
                 orElse: () => <String, dynamic>{},
               );
           requests.add({
