@@ -355,8 +355,9 @@ class ShelfService {
         );
       }
       // The cancellation check authorizes the publication: it runs after this
-      // transaction's own asynchronous reads and before its first write, so a
-      // caller that went away while the transaction was queued commits nothing.
+      // transaction's own asynchronous reads and before the book and chapter
+      // rows are written, so a caller that went away while the transaction was
+      // queued commits nothing.
       throwIfCancelled();
       await store.putBook(
         BooksCompanion(

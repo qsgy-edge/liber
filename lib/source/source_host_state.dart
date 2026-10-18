@@ -181,7 +181,7 @@ abstract interface class SourceEntityVariableStore {
 /// rejected — a failed or cancelled details/TOC draft — leaves every stored row
 /// exactly as it was. The draft is seeded from the carriers the analysis is
 /// handed ([seedBook]/[seedChapter]) and read back into the carriers it
-/// returns ([bookText]/[chapterText]).
+/// returns through [bookVariable]/[chapterVariable].
 class SourceEntityVariableDraft implements SourceEntityVariableStore {
   final Map<(String, String), String?> _books = {};
   final Map<(String, String, String), String?> _chapters = {};
@@ -214,15 +214,6 @@ class SourceEntityVariableDraft implements SourceEntityVariableStore {
     _books.remove((sourceRef, bookUrl));
     _chapters.removeWhere((key, _) => key.$1 == sourceRef && key.$2 == bookUrl);
   }
-
-  /// The candidate book's current text, for the carrier the analysis returns.
-  String? bookText(String sourceRef, String bookUrl) =>
-      _books[(sourceRef, bookUrl)];
-
-  /// One candidate chapter's current text, for the carrier the analysis
-  /// returns.
-  String? chapterText(String sourceRef, String bookUrl, String chapterKey) =>
-      _chapters[(sourceRef, bookUrl, chapterKey)];
 
   @override
   Future<String?> bookVariable(String sourceRef, String bookUrl) async =>

@@ -152,6 +152,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                   isVolume: chapter.isVolume,
                   isVip: chapter.isVip,
                   isPay: chapter.isPay,
+                  // The row's own variable text travels with the chapter it
+                  // belongs to: an untouched chapter keeps it through a later
+                  // add, which rewrites every row (#132).
+                  variable: chapter.variable,
                 ),
             ];
             busy = false;
