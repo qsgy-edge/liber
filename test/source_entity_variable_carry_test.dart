@@ -1,0 +1,705 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_service.dart';
+import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/js_source_runtime.dart';
+import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/source_host_state.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/host_state.dart';
+import 'package:liber/store/space_store.dart';
+
+import 'native_library.dart';
+
+/// #132 entity-variable transport: the carrier/runtime contract that carries a
+/// candidate's book and chapter variable text across stage handoffs, copies and
+/// a new pipeline, without touching a stored row while the candidate is a draft.
+///
+/// The real [InProcessSourceScriptRuntime] runs every script here, through the
+/// same `book.getVariable`/`putVariable`/`variable` and chapter pair the frozen
+/// `Book`/`BookChapter` expose. Both adapters run the same checks.
+void main() {
+  setUpAll(
+    () => InProcessSourceScriptRuntime.initialize(
+      libraryPath: nativeLibraryPath(),
+    ),
+  );
+  tearDownAll(InProcessSourceScriptRuntime.dispose);
+
+  const origin = 'http://entity.test';
+  const bookUrl = '$origin/book';
+  const chapterUrl = '$origin/c/1';
+
+  /// The text a write stores, the frozen `GSON.toJson(variableMap)` shape.
+  String variableText(Map<String, String?> map) =>
+      JsonEncoder.withIndent('  ').convert({
+        for (final entry in map.entries)
+          if (entry.value != null) entry.key: entry.value,
+      });
+
+  _Pages htmlPages() => _Pages({
+    '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+    '/toc': '<ul id="list"><li><a href="/c/1">第一章</a></li></ul>',
+    '/c/1': '<p>正文</p>',
+  });
+  _Pages jsonPages() => _Pages({
+    '/book': '{"title":"书","toc":"/toc"}',
+    '/toc': '{"list":[{"name":"第一章","url":"/c/1"}]}',
+    '/c/1': '{"text":"正文"}',
+  });
+
+  Map<String, dynamic> htmlSource({
+    required String infoScript,
+    required String tocScript,
+    required String contentScript,
+  }) => {
+    'bookSourceUrl': origin,
+    'bookSourceName': '实体变量源',
+    'ruleBookInfo': {
+      'name': '@CSS:h2@text',
+      'intro': infoScript,
+      'tocUrl': '@CSS:#toc a@href',
+    },
+    'ruleToc': {
+      'chapterList': '@CSS:#list li',
+      'chapterName': '@CSS:a@text',
+      'chapterUrl': '@CSS:a@href',
+      'updateTime': tocScript,
+    },
+    'ruleContent': {'content': contentScript},
+  };
+
+  Map<String, dynamic> jsonSource({
+    required String infoScript,
+    required String tocScript,
+    required String contentScript,
+  }) => {
+    'bookSourceUrl': origin,
+    'bookSourceName': '实体变量源',
+    'searchUrl': '/search?key={{key}}',
+    'ruleSearch': {
+      'bookList': r'$.items',
+      'name': r'$.title',
+      'bookUrl': r'$.url',
+    },
+    'ruleBookInfo': {
+      'name': r'$.title',
+      'intro': infoScript,
+      'tocUrl': r'$.toc',
+    },
+    'ruleToc': {
+      'chapterList': r'$.list',
+      'chapterName': r'$.name',
+      'chapterUrl': r'$.url',
+      'updateTime': tocScript,
+    },
+    'ruleContent': {'content': contentScript},
+  };
+
+  HtmlBook hitWith(String? variable) => HtmlBook(
+    url: Uri.parse(bookUrl),
+    rawAddress: bookUrl,
+    preOptionUrl: Uri.parse(bookUrl),
+    title: '书',
+    variable: variable,
+  );
+
+  const writeBook =
+      '@js:book.putVariable("written","B"); '
+      'book.getVariable("seed") + "|" + book.getVariable("written")';
+  const writeChapter = '@js:(chapter.putVariable("c","T"), "")';
+  const readBoth =
+      '@js:book.getVariable("written") + "|" + chapter.getVariable("c")';
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    test('$label deferred details returns script-written book and chapter '
+        'variables and a fresh pipeline reads them', () async {
+      final pageMap = json ? jsonPages() : htmlPages();
+      final source = json
+          ? jsonSource(
+              infoScript: writeBook,
+              tocScript: writeChapter,
+              contentScript: readBoth,
+            )
+          : htmlSource(
+              infoScript: writeBook,
+              tocScript: writeChapter,
+              contentScript: readBoth,
+            );
+      final pipeline = json
+          ? JsonSourcePipeline(source, pageMap, deferEntityVariables: true)
+          : HtmlSourcePipeline(source, pageMap, deferEntityVariables: true);
+
+      final (book, chapters) = await pipeline.details(
+        hitWith(variableText({'seed': 'old'})),
+      );
+
+      expect(
+        variableMapOf(book.variable),
+        {'seed': 'old', 'written': 'B'},
+        reason: 'the book snapshot carries the seed plus the script write',
+      );
+      expect(chapters, hasLength(1));
+      expect(
+        variableMapOf(chapters.single.variable),
+        {'c': 'T'},
+        reason: 'the TOC script write rides the chapter carrier',
+      );
+
+      // The carriers are usable by a later pipeline: it seeds its own draft
+      // from the text on the book and chapter it is handed.
+      final fresh = json
+          ? JsonSourcePipeline(source, jsonPages(), deferEntityVariables: true)
+          : HtmlSourcePipeline(source, htmlPages(), deferEntityVariables: true);
+      final body = await fresh.chapter(chapters.single, book: book);
+      expect(body.text, contains('B|T'));
+    });
+
+    test(
+      '$label deferred details seeds, deletes and lets a later stage observe it',
+      () async {
+        final pageMap = json ? jsonPages() : htmlPages();
+        final source = json
+            ? jsonSource(
+                infoScript:
+                    '@js:book.putVariable("seed", null); '
+                    'book.getVariable("keep")',
+                tocScript:
+                    '@js:(chapter.putVariable("seen", '
+                    'book.getVariable("seed") || "empty"), "")',
+                contentScript: readBoth,
+              )
+            : htmlSource(
+                infoScript:
+                    '@js:book.putVariable("seed", null); '
+                    'book.getVariable("keep")',
+                tocScript:
+                    '@js:(chapter.putVariable("seen", '
+                    'book.getVariable("seed") || "empty"), "")',
+                contentScript: readBoth,
+              );
+        final pipeline = json
+            ? JsonSourcePipeline(source, pageMap, deferEntityVariables: true)
+            : HtmlSourcePipeline(source, pageMap, deferEntityVariables: true);
+
+        final (book, chapters) = await pipeline.details(
+          hitWith(variableText({'seed': 'old', 'keep': 'K'})),
+        );
+
+        expect(variableMapOf(book.variable), {'keep': 'K'});
+        expect(variableMapOf(chapters.single.variable), {'seen': 'empty'});
+      },
+    );
+  }
+
+  test('deferred preview leaves a matching persisted row unchanged', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value(origin),
+        sourceBookUrl: const Value(bookUrl),
+        variable: Value(variableText({'seed': 'stored'})),
+      ),
+    );
+    await store.putChapters('b1', [
+      BookChapter(
+        bookId: 'b1',
+        chapterKey: chapterUrl,
+        name: '第一章',
+        url: chapterUrl,
+        chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
+        variable: variableText({'c': 'stored'}),
+      ),
+    ]);
+
+    final pipeline = JsonSourcePipeline(
+      jsonSource(
+        infoScript: writeBook,
+        tocScript: writeChapter,
+        contentScript: readBoth,
+      ),
+      jsonPages(),
+      hostState: state,
+      deferEntityVariables: true,
+    );
+    final (book, chapters) = await pipeline.details(
+      hitWith(variableText({'seed': 'old'})),
+    );
+
+    // The candidate carries its own text...
+    expect(variableMapOf(book.variable), {'seed': 'old', 'written': 'B'});
+    expect(variableMapOf(chapters.single.variable), {'c': 'T'});
+    // ...while the persisted row and the shared host surface do not move, and
+    // the draft did not leak into the shared unwritten-value caches.
+    expect(
+      await store.bookVariable(origin, bookUrl),
+      variableText({'seed': 'stored'}),
+    );
+    expect(
+      await store.chapterVariable(origin, bookUrl, chapterUrl),
+      variableText({'c': 'stored'}),
+    );
+    expect(
+      await state.bookVariable(origin, bookUrl),
+      variableText({'seed': 'stored'}),
+    );
+    expect(
+      await state.chapterVariable(origin, bookUrl, chapterUrl),
+      variableText({'c': 'stored'}),
+    );
+  });
+
+  test('a failed deferred draft leaves the persisted row unchanged', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value(origin),
+        sourceBookUrl: const Value(bookUrl),
+        variable: Value(variableText({'seed': 'stored'})),
+      ),
+    );
+
+    final pipeline = JsonSourcePipeline(
+      jsonSource(
+        infoScript: '@js:book.putVariable("written","B"); missing.handler()',
+        tocScript: writeChapter,
+        contentScript: readBoth,
+      ),
+      jsonPages(),
+      hostState: state,
+      deferEntityVariables: true,
+    );
+
+    await expectLater(
+      pipeline.details(hitWith(variableText({'seed': 'old'}))),
+      throwsA(isA<SourceScriptError>()),
+    );
+    expect(
+      await store.bookVariable(origin, bookUrl),
+      variableText({'seed': 'stored'}),
+    );
+    expect(
+      await state.bookVariable(origin, bookUrl),
+      variableText({'seed': 'stored'}),
+    );
+  });
+
+  test(
+    'a cancelled deferred draft leaves the persisted row unchanged',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      await store.putBook(
+        BooksCompanion.insert(
+          id: 'b1',
+          title: '书',
+          kind: const Value('network'),
+          sourceRef: const Value(origin),
+          sourceBookUrl: const Value(bookUrl),
+          variable: Value(variableText({'seed': 'stored'})),
+        ),
+      );
+
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: writeBook,
+          tocScript: writeChapter,
+          contentScript: readBoth,
+        ),
+        jsonPages(),
+        hostState: state,
+        deferEntityVariables: true,
+      )..cancel();
+
+      await expectLater(
+        pipeline.details(hitWith(variableText({'seed': 'old'}))),
+        throwsA(isA<SourceRequestCancelled>()),
+      );
+      expect(
+        await store.bookVariable(origin, bookUrl),
+        variableText({'seed': 'stored'}),
+      );
+    },
+  );
+
+  test('two deferred candidates over one host surface stay isolated', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    Map<String, dynamic> source() => jsonSource(
+      infoScript: writeBook,
+      tocScript: writeChapter,
+      contentScript: readBoth,
+    );
+
+    final first = JsonSourcePipeline(
+      source(),
+      jsonPages(),
+      hostState: state,
+      deferEntityVariables: true,
+    );
+    final second = JsonSourcePipeline(
+      source(),
+      jsonPages(),
+      hostState: state,
+      deferEntityVariables: true,
+    );
+    final (firstBook, _) = await first.details(
+      hitWith(variableText({'seed': 'first'})),
+    );
+    final (secondBook, _) = await second.details(
+      hitWith(variableText({'seed': 'second'})),
+    );
+
+    expect(variableMapOf(firstBook.variable), {
+      'seed': 'first',
+      'written': 'B',
+    });
+    expect(variableMapOf(secondBook.variable), {
+      'seed': 'second',
+      'written': 'B',
+    });
+    // Neither candidate wrote the space's row.
+    expect(await store.bookVariable(origin, bookUrl), isNull);
+  });
+
+  test(
+    'a second chapter() on one deferred pipeline keeps the first book write',
+    () async {
+      final pageMap = _Pages({
+        '/c/1': '{"text":"one"}',
+        '/c/2': '{"text":"two"}',
+      });
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: '""',
+          contentScript:
+              '@js:book.putVariable("n", '
+              'String(Number(book.getVariable("n") || "0") + 1)); '
+              'book.getVariable("n")',
+        ),
+        pageMap,
+        deferEntityVariables: true,
+      );
+      final first = await pipeline.chapter(
+        SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+        book: hitWith(variableText({'n': '0'})),
+      );
+      expect(first.text, '1');
+      // The second request is handed an older carrier with the same starting
+      // value; the draft keeps the first call's write instead of reseeding.
+      final second = await pipeline.chapter(
+        SourceChapter('二', Uri.parse('$origin/c/2'), rawAddress: '/c/2'),
+        book: hitWith(variableText({'n': '0'})),
+      );
+      expect(second.text, '2');
+    },
+  );
+
+  test(
+    'a second details() on one deferred pipeline starts a fresh chapter draft',
+    () async {
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript:
+              '@js:if (java.get("tocRan") !== "1") { '
+              'chapter.putVariable("c","T"); java.put("tocRan","1"); } ""',
+          contentScript: '""',
+        ),
+        jsonPages(),
+        deferEntityVariables: true,
+      );
+      final (_, firstChapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(firstChapters.single.variable), {'c': 'T'});
+      // The rebuilt TOC does not write the chapter variable this time, so a
+      // stale draft entry from the first TOC must not come back.
+      final (_, secondChapters) = await pipeline.details(hitWith(null));
+      expect(secondChapters.single.variable, isNull);
+    },
+  );
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    test(
+      '$label content returns the final book and chapter entity snapshots',
+      () async {
+        const contentScript =
+            '@js:book.putVariable("b","B"); '
+            'chapter.putVariable("c","C"); "正文"';
+        final source = json
+            ? jsonSource(
+                infoScript: '@js:""',
+                tocScript: '""',
+                contentScript: contentScript,
+              )
+            : htmlSource(
+                infoScript: '@js:""',
+                tocScript: '""',
+                contentScript: contentScript,
+              );
+        final pipeline = json
+            ? JsonSourcePipeline(
+                source,
+                jsonPages(),
+                deferEntityVariables: true,
+              )
+            : HtmlSourcePipeline(
+                source,
+                htmlPages(),
+                deferEntityVariables: true,
+              );
+        final body = await pipeline.chapter(
+          SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+          book: hitWith(variableText({'seed': 'S'})),
+        );
+
+        expect(body.text, contains('正文'));
+        expect(variableMapOf(body.bookVariable), {'seed': 'S', 'b': 'B'});
+        expect(variableMapOf(body.chapterVariable), {'c': 'C'});
+      },
+    );
+  }
+
+  test('HTML content snapshots include every paginated page write', () async {
+    final pageMap = _Pages({
+      '/c/1':
+          '<div class="con"><p>one</p></div>'
+          '<div class="next"><a href="/c/1-2">next</a></div>',
+      '/c/1-2': '<div class="con"><p>two</p></div>',
+    });
+    final pipeline = HtmlSourcePipeline(
+      {
+        'bookSourceUrl': origin,
+        'bookSourceName': '实体变量源',
+        'ruleBookInfo': {'name': '@CSS:h2@text', 'tocUrl': '@CSS:#toc a@href'},
+        'ruleToc': {
+          'chapterList': '@CSS:#list li',
+          'chapterName': '@CSS:a@text',
+          'chapterUrl': '@CSS:a@href',
+        },
+        'ruleContent': {
+          'content':
+              '@js:book.putVariable("pages", '
+              'String(Number(book.getVariable("pages") || "0") + 1)); '
+              '"page " + book.getVariable("pages")',
+          'nextContentUrl': '@CSS:.next a@href',
+        },
+      },
+      pageMap,
+      deferEntityVariables: true,
+    );
+    final body = await pipeline.chapter(
+      SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+      book: hitWith(variableText({'seed': 'S'})),
+    );
+
+    expect(body.pages, 2);
+    expect(body.text, contains('page 1'));
+    expect(body.text, contains('page 2'));
+    expect(variableMapOf(body.bookVariable), {'seed': 'S', 'pages': '2'});
+  });
+
+  test(
+    'a volume shortcut still returns the carriers\' entity snapshots',
+    () async {
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: '""',
+          contentScript: '@js:"unused"',
+        ),
+        jsonPages(),
+        deferEntityVariables: true,
+      );
+      final body = await pipeline.chapter(
+        SourceChapter.volume(
+          '第一卷',
+          0,
+          tocUrl: Uri.parse('$origin/toc'),
+          tag: '卷内容',
+          variable: variableText({'v': 'V'}),
+        ),
+        book: hitWith(variableText({'seed': 'S'})),
+      );
+
+      expect(body.text, '卷内容');
+      expect(body.pages, 0);
+      expect(variableMapOf(body.bookVariable), {'seed': 'S'});
+      expect(variableMapOf(body.chapterVariable), {'v': 'V'});
+    },
+  );
+
+  test(
+    'ordinary mode still writes the space row and returns its snapshot',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      await store.putBook(
+        BooksCompanion.insert(
+          id: 'b1',
+          title: '书',
+          kind: const Value('network'),
+          sourceRef: const Value(origin),
+          sourceBookUrl: const Value(bookUrl),
+          variable: Value(variableText({'seed': 'stored'})),
+        ),
+      );
+
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: writeBook,
+          tocScript: writeChapter,
+          contentScript: readBoth,
+        ),
+        jsonPages(),
+        hostState: state,
+      );
+      final (book, chapters) = await pipeline.details(hitWith(null));
+
+      expect(variableMapOf(book.variable), {'seed': 'stored', 'written': 'B'});
+      expect(
+        await store.bookVariable(origin, bookUrl),
+        variableText({'seed': 'stored', 'written': 'B'}),
+      );
+      // The TOC chapter write is both in the host surface under the key the
+      // script bound and on the carrier the details stage returns.
+      expect(
+        await state.chapterVariable(origin, bookUrl, '/c/1'),
+        variableText({'c': 'T'}),
+      );
+      expect(variableMapOf(chapters.single.variable), {'c': 'T'});
+    },
+  );
+
+  test(
+    'a carrier copy keeps the raw identity and option tail verbatim',
+    () async {
+      const raw = '$bookUrl?isSearch=1,{"js":"java.toast(1)"}';
+      final original = HtmlBook(
+        url: Uri.parse('$bookUrl?isSearch=1'),
+        rawAddress: raw,
+        preOptionUrl: Uri.parse('$bookUrl?isSearch=1'),
+        title: '书',
+        variable: variableText({'a': '1'}),
+      );
+      final copied = original.withVariable(variableText({'a': '2'}));
+      expect(copied.rawAddress, raw);
+      expect(copied.preOptionUrl, original.preOptionUrl);
+      expect(copied.identityAddress, raw);
+      expect(copied.title, original.title);
+
+      final round = HtmlBook.fromJson(copied.toJson());
+      expect(round.variable, variableText({'a': '2'}));
+      expect(round.title, original.title);
+    },
+  );
+
+  test('a book option script runs once across a deferred analysis', () async {
+    const increment =
+        "java.put('expansionCount', "
+        "String(Number(java.get('expansionCount') || '0') + 1)); void 0";
+    final raw = '$bookUrl?isSearch=1,${jsonEncode({'js': increment})}';
+    final state = SourceHostState();
+    final pageMap = htmlPages();
+    final pipeline = HtmlSourcePipeline(
+      htmlSource(
+        infoScript: '@CSS:h2@text',
+        tocScript: '""',
+        contentScript: readBoth,
+      ),
+      pageMap,
+      hostState: state,
+      deferEntityVariables: true,
+    );
+    final hit = HtmlBook(
+      url: Uri.parse('$bookUrl?isSearch=1'),
+      rawAddress: raw,
+      preOptionUrl: Uri.parse('$bookUrl?isSearch=1'),
+      title: '书',
+    );
+
+    final (book, _) = await pipeline.details(hit);
+    expect(
+      await state.entry(
+        origin,
+        sourceRuleVariableKey(origin, 'expansionCount'),
+      ),
+      '1',
+      reason: 'the option script transformed the address once',
+    );
+    expect(book.rawAddress, raw, reason: 'the option tail stays verbatim');
+    expect(book.identityAddress, raw);
+    expect(pageMap.requests.map((request) => request.url.toString()), [
+      '$bookUrl?isSearch=1',
+      '$origin/toc',
+    ]);
+  });
+}
+
+/// Answers one page per path and records every request.
+class _Pages implements BookSourceTransport, SourceHttpTransport {
+  _Pages(this.pages);
+  final Map<String, String> pages;
+  final requests = <SourceHttpRequest>[];
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    requests.add(request);
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: _body(request.url),
+      url: request.url,
+    );
+  }
+
+  @override
+  Future<String> request({
+    required BookSourceStage stage,
+    required String path,
+  }) async {
+    final url = Uri.parse(path);
+    requests.add(SourceHttpRequest(method: 'GET', url: url));
+    return _body(url);
+  }
+
+  String _body(Uri url) {
+    final body = pages[url.path];
+    if (body == null) throw StateError('不应请求：$url');
+    return body;
+  }
+}

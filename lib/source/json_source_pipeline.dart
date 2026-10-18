@@ -36,6 +36,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     this.hostState,
     this.androidId = '',
     this.onHostMessage,
+    this.deferEntityVariables = false,
     this.webViewFactory,
   });
 
@@ -55,6 +56,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// cache entries and per-source variables outlive the analysis. Without one
   /// they live for the process.
   final SourceHostState? hostState;
+
+  /// Whether this analysis carries its own book/chapter variables instead of
+  /// reading and writing the space's rows (#132).
+  ///
+  /// The candidate flow sets this: a preview of a row that already exists must
+  /// not mutate it, and a failed or cancelled draft must leave it as it was.
+  /// The candidate's variables live in [_entityDraft]; cookies, cache entries
+  /// and `java.put`/`get` still use the shared host surface. Default false, so
+  /// every existing caller keeps the direct row behavior.
+  final bool deferEntityVariables;
 
   /// The rendered-document adapter factory this pipeline's WebView stages use.
   /// Null builds the platform one for this source; a test substitutes its own,
@@ -128,6 +139,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   late final SourceHostState _hostSurface = hostState ?? SourceHostState();
 
+  /// The candidate-scoped book/chapter variables a deferred analysis carries,
+  /// or null when this analysis reads and writes the space's rows directly.
+  ///
+  /// A field of this pipeline, so two candidates — even of one source over one
+  /// host surface — never share a draft.
+  late final SourceEntityVariableDraft? _entityDraft = deferEntityVariables
+      ? SourceEntityVariableDraft()
+      : null;
+
   late final BookSourceWebViewAdapterFactory _webViewAdapter =
       webViewFactory ??
       BookSourceWebViewAdapterFactory(
@@ -156,6 +176,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     jsLib: source['jsLib'] as String? ?? '',
     dispatcher: _host,
     hostState: _hostSurface,
+    entityVariables: _entityDraft,
     androidId: androidId,
     onMessage: (message) => onHostMessage?.call(message),
     ruleEvaluator: _readScriptRule,
@@ -1067,6 +1088,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _tocChapterAddress = null;
+    // The candidate carries the variable text it was handed: a deferred
+    // analysis reads and writes that text, never the stored row (#132). A
+    // rebuilt TOC starts with no chapter variables of its own.
+    final draft = _entityDraft;
+    if (draft != null) {
+      draft.resetBook(_sourceRef, hit.identityAddress);
+      draft.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    }
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
@@ -1258,6 +1287,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.isPay',
                 ),
               );
+              // The chapter's own variable text the item scripts wrote, keyed by
+              // the address they saw as `chapter.url` (#132). A TOC chapter
+              // starts with none, so this is the script's write alone.
+              final chapterVariable = await _finalChapterVariable(
+                _book!.identityAddress,
+                _tocChapterAddress ?? '',
+              );
               final SourceChapter chapter;
               if (chapterUrl.isEmpty) {
                 // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
@@ -1272,6 +1308,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         tag: tag.isEmpty ? null : tag,
                         isVip: isVip,
                         isPay: isPay,
+                        variable: chapterVariable,
                       )
                     : SourceChapter(
                         name,
@@ -1280,6 +1317,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         tag: tag.isEmpty ? null : tag,
                         isVip: isVip,
                         isPay: isPay,
+                        variable: chapterVariable,
                       );
               } else {
                 final (resolved, _) = await _request(
@@ -1295,6 +1333,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isVolume: isVolume,
                   isVip: isVip,
                   isPay: isPay,
+                  variable: chapterVariable,
                 );
               }
               // A repeated chapter address is kept, as this path always has: the frozen
@@ -1322,7 +1361,35 @@ class JsonSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (book, chapters);
+    return (
+      book.withVariable(await _finalBookVariable(book.identityAddress)),
+      chapters,
+    );
+  }
+
+  /// The book variable text a details/TOC/content stage hands back: the
+  /// candidate's own draft text in a deferred analysis, the row's text
+  /// otherwise (#132).
+  ///
+  /// The two paths never mix: a deferred analysis reads the draft even when it
+  /// is null, so a preview of a stored row cannot pull that row's variable back
+  /// into the candidate.
+  Future<String?> _finalBookVariable(String bookKey) {
+    final draft = _entityDraft;
+    if (draft != null) {
+      return Future.value(draft.bookText(_sourceRef, bookKey));
+    }
+    return _hostSurface.bookVariable(_sourceRef, bookKey);
+  }
+
+  /// The chapter variable text a TOC stage hands back: the candidate's own
+  /// draft text in a deferred analysis, the row's text otherwise (#132).
+  Future<String?> _finalChapterVariable(String bookKey, String addressKey) {
+    final draft = _entityDraft;
+    if (draft != null) {
+      return Future.value(draft.chapterText(_sourceRef, bookKey, addressKey));
+    }
+    return _hostSurface.chapterVariable(_sourceRef, bookKey, addressKey);
   }
 
   /// The single book a response that is a book detail page describes, or an
@@ -1432,6 +1499,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
             : current.lastChapter,
         intro: intro != null && intro.isNotEmpty ? intro : current.intro,
         cover: cover != null && cover.isNotEmpty ? cover : current.cover,
+        // A metadata copy does not clear the variable it started from (#132).
+        variable: current.variable,
       );
     }
 
@@ -1503,6 +1572,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (book != null) _book = book;
     _tocChapterAddress = null;
     _chapter = chapter;
+    // A deferred content analysis starts from the carriers it was handed: the
+    // book's variable text and this chapter's own, keyed as the content stage's
+    // `book.bookUrl`/`chapter.url` bind them (#132).
+    final candidateBook = _book;
+    if (candidateBook != null) {
+      _entityDraft?.seedBook(
+        _sourceRef,
+        candidateBook.identityAddress,
+        candidateBook.variable,
+      );
+      _entityDraft?.seedChapter(
+        _sourceRef,
+        candidateBook.identityAddress,
+        '${chapter.url}',
+        chapter.variable,
+      );
+    }
     _validate();
     _page = null;
     _chapterTitle = chapter.name;
@@ -1513,8 +1599,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // (`WebBook.kt:303-306`), then answers a volume's `tag` without building a
     // request (`:307-310`); the request's headers are read after both.
     final content = _rules('ruleContent', ['content']);
+    final contentBookKey = _book?.identityAddress;
     if (chapter.rendersTagAsContent) {
-      return HtmlChapterBody(chapter.tag ?? '', 0);
+      // The volume shortcut makes no request and runs no rule, but the
+      // caller still gets the carriers' entity snapshots (#132).
+      return HtmlChapterBody(
+        chapter.tag ?? '',
+        0,
+        bookVariable: contentBookKey == null
+            ? null
+            : await _finalBookVariable(contentBookKey),
+        chapterVariable: await _finalChapterVariable(
+          contentBookKey ?? '',
+          '${chapter.url}',
+        ),
+      );
     }
     _activeHeaders = await _ensureHeaders();
     final parts = <String>[];
@@ -1575,6 +1674,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               rawAddress: chapter.rawAddress,
               storedKey: chapter.storedKey,
               addressBase: chapter.addressBase,
+              variable: chapter.variable,
             );
           }
         }
@@ -1615,6 +1715,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
+      // The final entity snapshots of this content request, pagination and all:
+      // every page wrote through the same candidate draft (#132).
+      bookVariable: contentBookKey == null
+          ? null
+          : await _finalBookVariable(contentBookKey),
+      chapterVariable: await _finalChapterVariable(
+        contentBookKey ?? '',
+        '${chapter.url}',
+      ),
     );
   }
 
@@ -1806,6 +1915,7 @@ class SourceChapter {
     this.isVolume = false,
     this.isVip = false,
     this.isPay = false,
+    this.variable,
   });
 
   /// A volume chapter whose URL rule produced nothing.
@@ -1824,6 +1934,7 @@ class SourceChapter {
     String? tag,
     bool isVip = false,
     bool isPay = false,
+    String? variable,
   }) => SourceChapter(
     title,
     tocUrl,
@@ -1832,6 +1943,7 @@ class SourceChapter {
     isVolume: true,
     isVip: isVip,
     isPay: isPay,
+    variable: variable,
   );
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
@@ -1845,6 +1957,7 @@ class SourceChapter {
     bool isVolume = false,
     bool isVip = false,
     bool isPay = false,
+    String? variable,
   }) {
     final target = sourceUrlTargetOf(address);
     return SourceChapter(
@@ -1857,6 +1970,7 @@ class SourceChapter {
       isVolume: isVolume,
       isVip: isVip,
       isPay: isPay,
+      variable: variable,
     );
   }
 
@@ -1881,6 +1995,31 @@ class SourceChapter {
 
   /// A chapter the source marks as already paid for (`ruleToc.isPay`).
   final bool isPay;
+
+  /// The chapter row's own variable text (the frozen `BookChapter.variable`
+  /// column, `BookChapter.kt:58`), or null when this carrier carries none.
+  ///
+  /// A carrier keeps the text so an analysis can seed a candidate from it and
+  /// hand the final text on with the same identity; the runtime reads and
+  /// writes the row (or the candidate draft) under the key the script sees as
+  /// `chapter.url`, never this field directly.
+  final String? variable;
+
+  /// This carrier with [variable] replaced, every identity, address and marker
+  /// field retained. A metadata or content-stage copy must not drop the
+  /// variable it started from.
+  SourceChapter withVariable(String? variable) => SourceChapter(
+    name,
+    url,
+    rawAddress: rawAddress,
+    storedKey: storedKey,
+    addressBase: addressBase,
+    tag: tag,
+    isVolume: isVolume,
+    isVip: isVip,
+    isPay: isPay,
+    variable: variable,
+  );
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
   /// resolved target, except a volume the rules left without a URL: it has no
