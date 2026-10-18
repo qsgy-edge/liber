@@ -362,6 +362,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// The runtime's entity-variable store (#132): the candidate draft, the
   /// space's rows, and — while a TOC item is rebuilt — that item's own chapter
   /// scope, so a rebuilt chapter starts empty and keeps only its own writes.
+  /// A details/TOC/content stage hands its final book and chapter text back
+  /// through this same store, so the draft and the rows never mix.
   late final SourceEntityVariableScope _entityVariables =
       SourceEntityVariableScope(
         _entityDraft ?? _hostSurface,
@@ -2099,36 +2101,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       );
     }
     return (
-      book.withVariable(await _finalBookVariable(book.identityAddress)),
+      book.withVariable(
+        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
+      ),
       chapters,
     );
-  }
-
-  /// The book variable text a details/TOC/content stage hands back: the
-  /// candidate's own draft text in a deferred analysis, the row's text
-  /// otherwise (#132).
-  ///
-  /// The two paths never mix: a deferred analysis reads the draft even when it
-  /// is null, so a preview of a stored row cannot pull that row's variable back
-  /// into the candidate.
-  Future<String?> _finalBookVariable(String bookKey) {
-    final draft = _entityDraft;
-    if (draft != null) {
-      return Future.value(draft.bookText(_sourceRef, bookKey));
-    }
-    return _hostSurface.bookVariable(_sourceRef, bookKey);
-  }
-
-  /// The chapter variable text a content stage hands back: the candidate's own
-  /// draft text in a deferred analysis, the row's text otherwise (#132). A TOC
-  /// rebuild does not read this: it takes its item's own captured write
-  /// ([SourceEntityVariableScope.chapterText]).
-  Future<String?> _finalChapterVariable(String bookKey, String addressKey) {
-    final draft = _entityDraft;
-    if (draft != null) {
-      return Future.value(draft.chapterText(_sourceRef, bookKey, addressKey));
-    }
-    return _hostSurface.chapterVariable(_sourceRef, bookKey, addressKey);
   }
 
   /// The single book a response that is a book detail page describes, or an
@@ -2157,7 +2134,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // search-only rule write survives into the deferred details pipeline the
     // association opens next (#132).
     return <HtmlBook>[
-      book.withVariable(await _finalBookVariable(book.identityAddress)),
+      book.withVariable(
+        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
+      ),
     ];
   }
 
@@ -2352,7 +2331,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _entityDraft?.seedChapter(
         _sourceRef,
         candidateBook.identityAddress,
-        '${chapter.url}',
+        chapter.storeKey,
         chapter.variable,
       );
     }
@@ -2375,10 +2354,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         0,
         bookVariable: contentBookKey == null
             ? null
-            : await _finalBookVariable(contentBookKey),
-        chapterVariable: await _finalChapterVariable(
+            : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
+        chapterVariable: await _entityVariables.chapterVariable(
+          _sourceRef,
           contentBookKey ?? '',
-          '${chapter.url}',
+          chapter.storeKey,
         ),
       );
     }
@@ -2517,10 +2497,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // every page wrote through the same candidate draft (#132).
       bookVariable: contentBookKey == null
           ? null
-          : await _finalBookVariable(contentBookKey),
-      chapterVariable: await _finalChapterVariable(
+          : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
+      chapterVariable: await _entityVariables.chapterVariable(
+        _sourceRef,
         contentBookKey ?? '',
-        '${chapter.url}',
+        chapter.storeKey,
       ),
     );
   }
