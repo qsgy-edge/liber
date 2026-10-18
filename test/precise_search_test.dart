@@ -94,8 +94,13 @@ class _UnusedTransport implements BookSourceTransport {
 }
 
 class ScriptedPipeline extends HtmlSourcePipeline {
-  ScriptedPipeline(this.fake) : super(fake.source, const _UnusedTransport());
+  ScriptedPipeline(this.fake, {this.onSearch})
+    : super(fake.source, const _UnusedTransport());
   final FakeSource fake;
+
+  /// Runs after this source's search answers, so a row can stand in for a rule
+  /// write the ordinary search fallback would make (the #132 repair).
+  final Future<void> Function()? onSearch;
 
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
@@ -103,6 +108,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
     fake.keywords.add(keyword);
     if (fake.gate != null) await fake.gate!.future;
     if (fake.failure != null) throw fake.failure!;
+    await onSearch?.call();
     return fake.hits;
   }
 
@@ -728,6 +734,7 @@ void main() {
     ShelfEntry entry, {
     void Function(bool)? onPopped,
     String Function(String text, ConvertTarget target)? convert,
+    BookSourcePipeline Function(Map<String, dynamic>)? openPipeline,
     BookSourcePipeline Function(Map<String, dynamic>)? openDeferredPipeline,
   }) async {
     await tester.pumpWidget(
@@ -741,7 +748,7 @@ void main() {
                   builder: (_) => PreciseSearchPage(
                     service: shelf,
                     switchBook: entry,
-                    openPipeline: open,
+                    openPipeline: openPipeline ?? open,
                     openDeferredPipeline: openDeferredPipeline,
                     convert: convert,
                   ),
@@ -757,6 +764,53 @@ void main() {
     await tester.tap(find.text('打开换源'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('换源搜索走延迟工厂：详情页回退的写不落已存目标行', (tester) async {
+    final entry = await shelvedBook();
+    await store.putBookVariable(
+      'https://a.test',
+      'https://a.test/book/1',
+      variableText({'persisted': 'P'}),
+    );
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+    var ordinaryOpens = 0;
+    var deferredOpens = 0;
+
+    await pumpSwitchEntry(
+      tester,
+      entry,
+      openPipeline: (source) {
+        ordinaryOpens++;
+        // The ordinary search's detail-page fallback writes the stored row the
+        // response names; the repaired call site must not select this factory
+        // for a switch search.
+        return ScriptedPipeline(
+          byRef['${source['bookSourceUrl']}']!,
+          onSearch: () => store.putBookVariable(
+            'https://a.test',
+            'https://a.test/book/1',
+            variableText({'persisted': 'P', 'searchWrite': 'new'}),
+          ),
+        );
+      },
+      openDeferredPipeline: (source) {
+        deferredOpens++;
+        return open(source);
+      },
+    );
+
+    expect(ordinaryOpens, 0, reason: '换源搜索是候选分析，走延迟工厂');
+    expect(deferredOpens, greaterThan(0));
+    expect(
+      variableMapOf(
+        await store.bookVariable('https://a.test', 'https://a.test/book/1'),
+      ),
+      {'persisted': 'P'},
+      reason: '未选候选前详情页回退的规则写不落已存目标行',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('换源：选中的同源候选把旧变量与新写入一起发布到书和章节行', (tester) async {
     final entry = await shelvedBook();

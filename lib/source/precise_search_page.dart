@@ -585,10 +585,18 @@ class _PreciseSearchPageState extends State<PreciseSearchPage> {
       answered = 0;
       status = l10n.searchingSources(chosen.length);
     });
+    // A switch re-search is a candidate analysis: its search response can be a
+    // detail page whose rules write book variables, and no candidate has been
+    // accepted yet, so it runs through the deferred factory like the details
+    // preview (#132). A plain search keeps the ordinary factory.
+    final BookSourcePipeline Function(Map<String, dynamic>) openSearch =
+        widget.switchBook == null
+        ? _openPipeline
+        : (source) => _openPipeline(source, deferEntityVariables: true);
     final search = PreciseSearch(
       name: name,
       author: author,
-      openPipeline: _openPipeline,
+      openPipeline: openSearch,
       checkAuthor: checkAuthor,
       // ADR 0011 §5: one certificate confirmation per source, around that
       // source's own search.

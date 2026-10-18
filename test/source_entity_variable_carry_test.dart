@@ -736,6 +736,246 @@ void main() {
       '$origin/toc',
     ]);
   });
+
+  // #132 finding 2: a search response interpreted as a detail page must return
+  // the final book-variable text its own rules wrote, so a search-only write
+  // survives into the deferred details pipeline the association opens next.
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    test(
+      '$label search detail fallback carries its final book variable',
+      () async {
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'bookSourceName': '实体变量源',
+          'searchUrl': '/book',
+          'bookUrlPattern': '$origin/book',
+          'ruleSearch': {
+            'bookList': json ? r'$.items' : '@CSS:li',
+            'name': json ? r'$.title' : '@CSS:h2@text',
+            'bookUrl': json ? r'$.url' : '@CSS:a@href',
+          },
+          'ruleBookInfo': {
+            'name': json ? r'$.title' : '@CSS:h2@text',
+            'intro': '@js:book.putVariable("searchWrite","new"); "intro"',
+            'tocUrl': json ? r'$.toc' : '@CSS:#toc a@href',
+          },
+          'ruleToc': {
+            'chapterList': json ? r'$.list' : '@CSS:#list li',
+            'chapterName': json ? r'$.name' : '@CSS:a@text',
+            'chapterUrl': json ? r'$.url' : '@CSS:a@href',
+          },
+          'ruleContent': {'content': '@js:"正文"'},
+        };
+        final pageMap = json ? jsonPages() : htmlPages();
+        final search = json
+            ? JsonSourcePipeline(source, pageMap, deferEntityVariables: true)
+            : HtmlSourcePipeline(source, pageMap, deferEntityVariables: true);
+        final hits = await search.search('书');
+        expect(hits, hasLength(1));
+        expect(
+          variableMapOf(hits.single.variable),
+          {'searchWrite': 'new'},
+          reason: 'the source writes while its search response is book info',
+        );
+
+        // The carrier seeds a separate deferred details pipeline: the search-only
+        // write reaches the details draft without a shared host fallback cache.
+        final detailsPipeline = json
+            ? JsonSourcePipeline(
+                source,
+                jsonPages(),
+                deferEntityVariables: true,
+              )
+            : HtmlSourcePipeline(
+                source,
+                htmlPages(),
+                deferEntityVariables: true,
+              );
+        final (book, _) = await detailsPipeline.details(hits.single);
+        expect(variableMapOf(book.variable), {'searchWrite': 'new'});
+      },
+    );
+  }
+
+  /// The absolute TOC address a stored chapter row is keyed by, so a rebuilt
+  /// item's address matches the row the previous directory wrote.
+  Map<String, dynamic> tocSource() => {
+    'bookSourceUrl': origin,
+    'bookSourceName': '实体变量源',
+    'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+    'ruleToc': {
+      'chapterList': r'$.list',
+      'chapterName': r'$.name',
+      'chapterUrl': r'$.url',
+    },
+    'ruleContent': {'content': r'$.text'},
+  };
+
+  _Pages absoluteTocPages() => _Pages({
+    '/book': '{"title":"书","toc":"/toc"}',
+    '/toc': jsonEncode({
+      'list': [
+        {'name': '第一章', 'url': chapterUrl},
+        {'name': '第二章', 'url': '$origin/c/2'},
+      ],
+    }),
+    '/c/1': '{"text":"正文"}',
+    '/c/2': '{"text":"正文"}',
+  });
+
+  test(
+    'an ordinary TOC rebuild starts each chapter empty and drops the row value',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      await store.putBook(
+        BooksCompanion.insert(
+          id: 'b1',
+          title: '书',
+          kind: const Value('network'),
+          sourceRef: const Value(origin),
+          sourceBookUrl: const Value(bookUrl),
+        ),
+      );
+      await store.putChapters('b1', [
+        for (final key in [chapterUrl, '$origin/c/2'])
+          BookChapter(
+            bookId: 'b1',
+            chapterKey: key,
+            name: '章',
+            url: key,
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: variableText({'oldChapter': 'OLD'}),
+          ),
+      ]);
+
+      final pipeline = JsonSourcePipeline(
+        tocSource(),
+        absoluteTocPages(),
+        hostState: state,
+      );
+      final (_, chapters) = await pipeline.details(hitWith(null));
+
+      expect(chapters, hasLength(2));
+      expect(
+        chapters.map((chapter) => chapter.variable),
+        everyElement(isNull),
+        reason:
+            'a rebuilt item keeps only its own writes, not the row it replaces',
+      );
+      // The ordinary path does not write a row during the analysis: the rebuilt
+      // directory is what replaces it.
+      expect(
+        await store.chapterVariable(origin, bookUrl, chapterUrl),
+        variableText({'oldChapter': 'OLD'}),
+      );
+    },
+  );
+
+  test('a deferred TOC rebuild also starts each chapter empty', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final state = SourceHostState(
+      persistence: SpaceHostStatePersistence(store),
+    );
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value(origin),
+        sourceBookUrl: const Value(bookUrl),
+      ),
+    );
+    await store.putChapters('b1', [
+      BookChapter(
+        bookId: 'b1',
+        chapterKey: chapterUrl,
+        name: '第一章',
+        url: chapterUrl,
+        chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
+        variable: variableText({'oldChapter': 'OLD'}),
+      ),
+    ]);
+
+    final pipeline = JsonSourcePipeline(
+      tocSource(),
+      absoluteTocPages(),
+      hostState: state,
+      deferEntityVariables: true,
+    );
+    final (_, chapters) = await pipeline.details(hitWith(null));
+
+    expect(chapters, hasLength(2));
+    expect(chapters.map((chapter) => chapter.variable), everyElement(isNull));
+    expect(
+      await store.chapterVariable(origin, bookUrl, chapterUrl),
+      variableText({'oldChapter': 'OLD'}),
+      reason: 'a candidate preview never writes the stored row',
+    );
+  });
+
+  test(
+    'a JSON TOC item keeps its own writes and never leaks them to the next',
+    () async {
+      const addressScript = 'chapter.putVariable(\'token\',\'t1\'); void 0';
+      final address = '/c/1,${jsonEncode({'js': addressScript})}';
+      // The first item's rule writes while `chapter.url` is still the raw address
+      // the directory declared; the address-option script then writes again. Both
+      // belong to that item. The second item starts empty.
+      const tocScript =
+          '@js:if (java.get("tocRuns") !== "1") { '
+          'java.put("tocRuns","1"); '
+          'chapter.putVariable("one", "first"); '
+          '} else { '
+          'chapter.putVariable("leak", chapter.getVariable("token") || "none"); } ""';
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: tocScript,
+          contentScript: '@js:""',
+        ),
+        _Pages({
+          '/book': '{"title":"书","toc":"/toc"}',
+          '/toc': jsonEncode({
+            'list': [
+              {'name': '第一章', 'url': address},
+              {'name': '第二章', 'url': '/c/2'},
+            ],
+          }),
+          '/c/1': '{"text":"正文"}',
+          '/c/2': '{"text":"正文"}',
+        }),
+        deferEntityVariables: true,
+      );
+
+      final (_, chapters) = await pipeline.details(hitWith(null));
+
+      expect(chapters, hasLength(2));
+      expect(
+        variableMapOf(chapters[0].variable),
+        {'one': 'first', 'token': 't1'},
+        reason: 'the item rule write and the address-option write both stay',
+      );
+      expect(
+        variableMapOf(chapters[1].variable),
+        {'leak': 'none'},
+        reason:
+            'the second item starts empty and does not see the first item\'s write',
+      );
+    },
+  );
 }
 
 /// Answers one page per path and records every request.

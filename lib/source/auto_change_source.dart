@@ -137,7 +137,10 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
   final search = PreciseSearch(
     name: book.title,
     author: book.book.author,
-    openPipeline: openPipeline,
+    // The automatic walk is a candidate analysis from its search on: a search
+    // response interpreted as a detail page must not write the stored rows
+    // before a candidate is accepted (#132).
+    openPipeline: openDeferredPipeline ?? openPipeline,
     confirm: confirm,
   );
   for (final candidate in await service.sources()) {

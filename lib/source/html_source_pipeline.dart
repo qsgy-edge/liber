@@ -358,6 +358,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   late final SourceEntityVariableDraft? _entityDraft = deferEntityVariables
       ? SourceEntityVariableDraft()
       : null;
+
+  /// The runtime's entity-variable store (#132): the candidate draft, the
+  /// space's rows, and — while a TOC item is rebuilt — that item's own chapter
+  /// scope, so a rebuilt chapter starts empty and keeps only its own writes.
+  late final SourceEntityVariableScope _entityVariables =
+      SourceEntityVariableScope(
+        _entityDraft ?? _hostSurface,
+        through: _entityDraft == null ? _hostSurface : null,
+      );
   late final BookSourceWebViewAdapterFactory _webViewAdapter =
       webViewFactory ??
       BookSourceWebViewAdapterFactory(
@@ -385,7 +394,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       InProcessSourceScriptRuntime(
         dispatcher: _host,
         hostState: _hostSurface,
-        entityVariables: _entityDraft,
+        entityVariables: _entityVariables,
         jsLib: source['jsLib'] as String? ?? '',
         androidId: androidId,
         onMessage: (message) => onHostMessage?.call(message),
@@ -1972,6 +1981,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           late final ordinaryFallbackAddress = tocFallbackAddress(request);
           for (var index = 0; index < count; index++) {
             publishTocChapter('', '');
+            // One rebuilt item's chapter variables start empty and keep only
+            // what this item's own rules write (#132).
+            _entityVariables.beginChapter();
             try {
               final title = await fieldValue('chapterName', index);
               publishTocChapter(title, '');
@@ -1998,10 +2010,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               // The chapter's own variable text the item scripts wrote, keyed by
               // the address they saw as `chapter.url` (#132). A TOC chapter
               // starts with none, so this is the script's write alone.
-              final chapterVariable = await _finalChapterVariable(
-                _book!.identityAddress,
-                _tocChapterAddress ?? '',
-              );
+              final chapterVariable = _entityVariables.chapterText;
               final SourceChapter chapter;
               if (address.isEmpty) {
                 // The frozen's empty-URL fallbacks (`BookChapterList.kt:229-243`): a
@@ -2071,6 +2080,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               }
               chapters.add(chapter);
             } finally {
+              _entityVariables.endChapter();
               clearTocChapter();
             }
           }
@@ -2109,8 +2119,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return _hostSurface.bookVariable(_sourceRef, bookKey);
   }
 
-  /// The chapter variable text a TOC stage hands back: the candidate's own
-  /// draft text in a deferred analysis, the row's text otherwise (#132).
+  /// The chapter variable text a content stage hands back: the candidate's own
+  /// draft text in a deferred analysis, the row's text otherwise (#132). A TOC
+  /// rebuild does not read this: it takes its item's own captured write
+  /// ([SourceEntityVariableScope.chapterText]).
   Future<String?> _finalChapterVariable(String bookKey, String addressKey) {
     final draft = _entityDraft;
     if (draft != null) {
@@ -2140,7 +2152,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       finalUrl,
       HtmlBook(url: finalUrl, title: ''),
     );
-    return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
+    if (book.title.isEmpty) return const <HtmlBook>[];
+    // The response's own final book-variable text rides the carrier: a
+    // search-only rule write survives into the deferred details pipeline the
+    // association opens next (#132).
+    return <HtmlBook>[
+      book.withVariable(await _finalBookVariable(book.identityAddress)),
+    ];
   }
 
   /// The `ruleBookInfo` rules over a response this pipeline already has.

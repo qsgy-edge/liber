@@ -712,4 +712,193 @@ void main() {
       );
     },
   );
+
+  test(
+    'the automatic search is deferred: a fallback detail page never writes the stored destination',
+    () async {
+      // The book being switched: its source is gone.
+      await shelf.add(
+        sourceJson(origin),
+        HtmlBook(
+          url: Uri.parse('$origin/book/1'),
+          rawAddress: '$origin/book/1',
+          title: name,
+          author: author,
+        ),
+        [SourceChapter('第1章', Uri.parse('$origin/c/0'))],
+      );
+      await store.putBookVariable(
+        origin,
+        '$origin/book/1',
+        variableText({'old': 'O'}),
+      );
+      await shelf.deleteSource(origin);
+      final book = (await shelf.find(origin, '$origin/book/1'))!;
+      expect(book.sourceMissing, isTrue);
+
+      // A stored destination row at the identity the candidate's search
+      // fallback describes: an ordinary search would write it before any
+      // candidate is accepted.
+      final candidateSource = <String, dynamic>{
+        ...sourceJson(candidateOrigin),
+        'searchUrl': '/book/1',
+        'bookUrlPattern': '$candidateOrigin/book/1',
+        'ruleBookInfo': {
+          'name': r'$.title',
+          'author': r'$.author',
+          'intro': '@js:book.putVariable("searchWrite","new"); ""',
+          'tocUrl': r'$.toc',
+        },
+      };
+      await store.putSourceJson(candidateSource);
+      await store.putBook(
+        BooksCompanion.insert(
+          id: 'target',
+          kind: const Value('network'),
+          sourceRef: const Value(candidateOrigin),
+          sourceBookUrl: const Value('$candidateOrigin/book/1'),
+          title: name,
+          variable: Value(variableText({'persisted': 'P'})),
+        ),
+      );
+
+      // The search response is the detail page; its TOC route is absent, so the
+      // candidate fails before acceptance and nothing may be published.
+      final site = _Site({
+        '$candidateOrigin/book/1': const _Route(
+          '{"title":"Book","author":"Writer","toc":"/toc/1"}',
+        ),
+      });
+
+      var ordinaryOpens = 0;
+      var deferredOpens = 0;
+      final result = await autoChangeSource(
+        service: shelf,
+        book: book,
+        openPipeline: (source) {
+          ordinaryOpens++;
+          return JsonSourcePipeline(source, site);
+        },
+        openDeferredPipeline: (source) {
+          deferredOpens++;
+          return JsonSourcePipeline(source, site, deferEntityVariables: true);
+        },
+      );
+
+      expect(result.ran, isTrue);
+      expect(result.switched, isNull);
+      expect(
+        ordinaryOpens,
+        0,
+        reason: 'the automatic search is a candidate stage and runs deferred',
+      );
+      expect(deferredOpens, greaterThanOrEqualTo(2));
+      expect(
+        await store.bookVariable(candidateOrigin, '$candidateOrigin/book/1'),
+        variableText({'persisted': 'P'}),
+        reason:
+            'a search fallback write before acceptance must not reach the row',
+      );
+      expect(
+        await store.bookVariable(origin, '$origin/book/1'),
+        variableText({'old': 'O'}),
+      );
+    },
+  );
+
+  test(
+    'an accepted empty replacement does not resurrect a prior unwritten value',
+    () async {
+      final before = await storedRelativeBook(
+        variable: variableText({'old': 'O'}),
+      );
+      final site = _Site({
+        '$candidateOrigin/book/1': const _Route(
+          '{"title":"Book","toc":"/toc/1"}',
+        ),
+        '$candidateOrigin/toc/1': const _Route(
+          '{"list":[{"name":"第1章","url":"/c/1"}]}',
+        ),
+        '$candidateOrigin/c/1': const _Route('{"text":"正文"}'),
+      });
+      // An ordinary unsaved details view has no row to receive its write, so
+      // the value stays on the space's shared host surface.
+      final prior = JsonSourcePipeline(
+        sourceJson(
+          candidateOrigin,
+          infoScript: '@js:book.putVariable("discarded","STALE"); ""',
+        ),
+        site,
+        hostState: shelf.hostState,
+      );
+      await prior.details(
+        HtmlBook(
+          url: Uri.parse('$candidateOrigin/book/1'),
+          rawAddress: '$candidateOrigin/book/1',
+          title: name,
+          author: author,
+        ),
+      );
+      expect(
+        await store.bookByNaturalKey(
+          candidateOrigin,
+          '$candidateOrigin/book/1',
+        ),
+        isNull,
+      );
+      expect(
+        variableMapOf(
+          await shelf.hostState.bookVariable(
+            candidateOrigin,
+            '$candidateOrigin/book/1',
+          ),
+        ),
+        {'discarded': 'STALE'},
+      );
+
+      // A cross-source candidate carries no book variables; the accepted switch
+      // writes the row's empty value.
+      final candidateSource = sourceJson(candidateOrigin);
+      final prepared = shelf.associationCandidate(
+        before,
+        candidateSource,
+        HtmlBook(
+          url: Uri.parse('$candidateOrigin/book/1'),
+          rawAddress: '$candidateOrigin/book/1',
+          preOptionUrl: Uri.parse('$candidateOrigin/book/1'),
+          title: name,
+        ),
+      );
+      final candidate = JsonSourcePipeline(
+        candidateSource,
+        site,
+        hostState: shelf.hostState,
+        deferEntityVariables: true,
+      );
+      final (details, chapters) = await candidate.details(prepared);
+      expect(details.variable, isNull);
+      await shelf.switchSource(before.id, candidateSource, details, chapters);
+      expect(
+        await store.bookVariable(candidateOrigin, '$candidateOrigin/book/1'),
+        isNull,
+      );
+
+      // The reading source reads the row, not the unwritten value the row
+      // replaced.
+      final reader = JsonSourcePipeline(
+        sourceJson(
+          candidateOrigin,
+          contentScript: '@js:book.getVariable("discarded") || "CLEAN"',
+        ),
+        site,
+        hostState: shelf.hostState,
+      );
+      final body = await reader.chapter(chapters.single, book: details);
+      expect(
+        body.text,
+        'CLEAN',
+        reason: 'the accepted final null replaces all candidate book variables',
+      );
+    },
+  );
 }
