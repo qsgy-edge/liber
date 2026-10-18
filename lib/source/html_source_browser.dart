@@ -306,6 +306,17 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           service: widget.service,
           chapterIndex: index,
           textOffset: offset,
+          // The reader's content stage writes the entity state through the
+          // shared host surface; its final snapshots replace the details
+          // carriers here, so a later add publishes the completed state rather
+          // than the stale details/TOC text (#132).
+          onEntityState: (updatedBook, updatedChapters) {
+            if (!mounted) return;
+            setState(() {
+              selected = updatedBook;
+              chapters = updatedChapters;
+            });
+          },
         ),
       ),
     );

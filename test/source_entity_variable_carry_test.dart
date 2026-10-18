@@ -557,6 +557,60 @@ void main() {
         expect(variableMapOf(body.chapterVariable), {'c': 'C'});
       },
     );
+
+    test('$label content replaces and deletes the details variables', () async {
+      const infoScript =
+          '@js:book.putVariable("detail","D"); '
+          'book.putVariable("shared","old"); ""';
+      const contentScript =
+          '@js:book.putVariable("detail", null); '
+          'book.putVariable("shared","new"); '
+          'book.putVariable("content","B"); '
+          'chapter.putVariable("content","C"); "正文"';
+      final source = json
+          ? jsonSource(
+              infoScript: infoScript,
+              tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+              contentScript: contentScript,
+            )
+          : htmlSource(
+              infoScript: infoScript,
+              tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+              contentScript: contentScript,
+            );
+      // An absolute TOC address keys the TOC write and the content read alike,
+      // so this covers the replacement and deletion the ordinary read→add
+      // lifecycle publishes (the relative raw-key boundary is pre-existing).
+      final pageMap = _Pages({
+        '/book': json
+            ? '{"title":"书","toc":"/toc"}'
+            : '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+        '/toc': json
+            ? jsonEncode({
+                'list': [
+                  {'name': '第一章', 'url': '$origin/c/1'},
+                ],
+              })
+            : '<ul id="list"><li><a href="$origin/c/1">第一章</a></li></ul>',
+        '/c/1': json ? '{"text":"正文"}' : '<p>正文</p>',
+      });
+      final pipeline = json
+          ? JsonSourcePipeline(source, pageMap)
+          : HtmlSourcePipeline(source, pageMap);
+      final (book, chapters) = await pipeline.details(hitWith(null));
+
+      expect(variableMapOf(book.variable), {'detail': 'D', 'shared': 'old'});
+      expect(variableMapOf(chapters.single.variable), {'toc': 'T'});
+
+      final body = await pipeline.chapter(chapters.single, book: book);
+      expect(body.text, contains('正文'));
+      expect(
+        variableMapOf(body.bookVariable),
+        {'shared': 'new', 'content': 'B'},
+        reason: 'the content rule deleted detail and replaced shared',
+      );
+      expect(variableMapOf(body.chapterVariable), {'toc': 'T', 'content': 'C'});
+    });
   }
 
   test('HTML content snapshots include every paginated page write', () async {
@@ -976,6 +1030,327 @@ void main() {
       );
     },
   );
+
+  /// A TOC whose items the source marks as volumes: each item's own `isVip`
+  /// rule writes its title under `v`, and a volume the rules left without a URL
+  /// has no page, so its store identity is the frozen `title + index` text.
+  Map<String, dynamic> volumeSource(bool json) => {
+    'bookSourceUrl': origin,
+    'bookSourceName': '实体变量源',
+    'ruleBookInfo': {
+      'name': json ? r'$.title' : '@CSS:h2@text',
+      'tocUrl': json ? r'$.toc' : '@CSS:#toc a@href',
+    },
+    'ruleToc': {
+      'chapterList': json ? r'$.list' : '@CSS:#list li',
+      'chapterName': json ? r'$.name' : '@CSS:span@text',
+      'chapterUrl': json ? r'$.missing' : '@CSS:a@href',
+      'updateTime': json ? r'$.tag' : '@CSS:i@text',
+      'isVolume': '@js:true',
+      'isVip': '@js:chapter.putVariable("v", chapter.title); false',
+    },
+    'ruleContent': {'content': '@js:"正文"'},
+  };
+
+  _Pages volumePages(bool json) => _Pages({
+    '/book': json
+        ? '{"title":"书","toc":"/toc"}'
+        : '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+    '/toc': json
+        ? jsonEncode({
+            'list': [
+              {'name': 'Volume A', 'tag': 'A'},
+              {'name': 'Volume B', 'tag': 'B'},
+            ],
+          })
+        : '<ul id="list">'
+              '<li><span>Volume A</span><i>A</i></li>'
+              '<li><span>Volume B</span><i>B</i></li>'
+              '</ul>',
+  });
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    test(
+      '$label deferred volume shortcuts keep their own chapter variables',
+      () async {
+        final pipeline = json
+            ? JsonSourcePipeline(
+                volumeSource(json),
+                volumePages(json),
+                deferEntityVariables: true,
+              )
+            : HtmlSourcePipeline(
+                volumeSource(json),
+                volumePages(json),
+                deferEntityVariables: true,
+              );
+        final (book, chapters) = await pipeline.details(hitWith(null));
+
+        expect(chapters, hasLength(2));
+        expect(variableMapOf(chapters[0].variable), {'v': 'Volume A'});
+        expect(variableMapOf(chapters[1].variable), {'v': 'Volume B'});
+        // Both volumes share the TOC page URL; each keeps its own snapshot.
+        final first = await pipeline.chapter(chapters[0], book: book);
+        final second = await pipeline.chapter(chapters[1], book: book);
+        expect(first.text, 'A');
+        expect(second.text, 'B');
+        expect(variableMapOf(first.chapterVariable), {'v': 'Volume A'});
+        expect(variableMapOf(second.chapterVariable), {'v': 'Volume B'});
+      },
+    );
+
+    test(
+      '$label ordinary volume shortcuts keep their own chapter variables',
+      () async {
+        final state = SourceHostState();
+        final pipeline = json
+            ? JsonSourcePipeline(
+                volumeSource(json),
+                volumePages(json),
+                hostState: state,
+              )
+            : HtmlSourcePipeline(
+                volumeSource(json),
+                volumePages(json),
+                hostState: state,
+              );
+        final (book, chapters) = await pipeline.details(hitWith(null));
+
+        final first = await pipeline.chapter(chapters[0], book: book);
+        final second = await pipeline.chapter(chapters[1], book: book);
+        expect(first.text, 'A');
+        expect(second.text, 'B');
+        expect(variableMapOf(first.chapterVariable), {'v': 'Volume A'});
+        expect(variableMapOf(second.chapterVariable), {'v': 'Volume B'});
+      },
+    );
+
+    test(
+      '$label a volume and a chapter sharing the fetch URL stay separate',
+      () async {
+        // The non-volume chapter's own URL is the TOC page, which is the URL the
+        // URL-less volume also carries: only their store identities tell them
+        // apart.
+        final source = <String, dynamic>{
+          ...volumeSource(json),
+          'ruleToc': {
+            'chapterList': json ? r'$.list' : '@CSS:#list li',
+            'chapterName': json ? r'$.name' : '@CSS:span@text',
+            'chapterUrl': json ? r'$.url' : '@CSS:a@href',
+            'updateTime': json ? r'$.tag' : '@CSS:i@text',
+            'isVolume': '@js:chapter.title.indexOf("Volume") >= 0',
+            'isVip':
+                '@js:chapter.title.indexOf("Volume") >= 0 && '
+                'chapter.putVariable("vol", chapter.title); false',
+          },
+          'ruleContent': {
+            'content':
+                '@js:chapter.putVariable("seen", '
+                'chapter.getVariable("vol") || "none"); "正文"',
+          },
+        };
+        final pageMap = _Pages({
+          '/book': json
+              ? '{"title":"书","toc":"/toc"}'
+              : '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+          '/toc': json
+              ? jsonEncode({
+                  'list': [
+                    {'name': 'Volume A', 'tag': 'A'},
+                    {'name': 'Chapter C', 'url': '/toc', 'tag': 'C'},
+                  ],
+                })
+              : '<ul id="list">'
+                    '<li><span>Volume A</span><i>A</i></li>'
+                    '<li><span>Chapter C</span><a href="/toc">c</a><i>C</i></li>'
+                    '</ul>',
+        });
+        final pipeline = json
+            ? JsonSourcePipeline(source, pageMap, deferEntityVariables: true)
+            : HtmlSourcePipeline(source, pageMap, deferEntityVariables: true);
+        final (book, chapters) = await pipeline.details(hitWith(null));
+
+        expect(chapters, hasLength(2));
+        expect(chapters[0].rendersTagAsContent, isTrue);
+        expect(chapters[1].rendersTagAsContent, isFalse);
+        expect('${chapters[0].url}', '${chapters[1].url}');
+        expect(chapters[0].storeKey, isNot(chapters[1].storeKey));
+
+        final volume = await pipeline.chapter(chapters[0], book: book);
+        final chapter = await pipeline.chapter(chapters[1], book: book);
+        expect(volume.text, 'A');
+        expect(variableMapOf(volume.chapterVariable), {'vol': 'Volume A'});
+        expect(
+          variableMapOf(chapter.chapterVariable),
+          {'seen': 'none'},
+          reason: "the chapter does not see the volume's snapshot",
+        );
+      },
+    );
+  }
+
+  // #132 repair3 follow-up: a relative TOC chapter's variable is written under
+  // the TOC stage's own key ('/c/1'), while the content stage reads and writes
+  // the row key ('$origin/c/1'). The content stage starts from the chapter's own
+  // carrier text when — and only when — the row key holds no entry at all.
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    Map<String, dynamic> relativeSource(String contentScript) => json
+        ? jsonSource(
+            infoScript: '@js:""',
+            tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+            contentScript: contentScript,
+          )
+        : htmlSource(
+            infoScript: '@js:""',
+            tocScript: '@js:(chapter.putVariable("toc","T"), "")',
+            contentScript: contentScript,
+          );
+
+    Future<HtmlChapterBody> runContent(
+      String contentScript, {
+      SourceHostState? hostState,
+    }) async {
+      final source = relativeSource(contentScript);
+      final pipeline = json
+          ? JsonSourcePipeline(source, jsonPages(), hostState: hostState)
+          : HtmlSourcePipeline(source, htmlPages(), hostState: hostState);
+      final (book, chapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(chapters.single.variable), {'toc': 'T'});
+      return pipeline.chapter(chapters.single, book: book);
+    }
+
+    test(
+      '$label a relative TOC chapter keeps its variable with no content write',
+      () async {
+        final body = await runContent('@js:"正文"');
+        expect(variableMapOf(body.chapterVariable), {'toc': 'T'});
+      },
+    );
+
+    test('$label a relative TOC chapter merges a content write', () async {
+      final body = await runContent(
+        '@js:chapter.putVariable("content","C"); "正文"',
+      );
+      expect(variableMapOf(body.chapterVariable), {'toc': 'T', 'content': 'C'});
+    });
+
+    test(
+      '$label a relative TOC chapter replaces a same-name key from the TOC value',
+      () async {
+        final body = await runContent(
+          '@js:chapter.putVariable("toc", chapter.getVariable("toc") + "!"); "正文"',
+        );
+        expect(variableMapOf(body.chapterVariable), {'toc': 'T!'});
+      },
+    );
+
+    test(
+      '$label a relative TOC chapter deletion of the last key is not resurrected',
+      () async {
+        final body = await runContent(
+          '@js:chapter.putVariable("toc", null); "正文"',
+        );
+        expect(variableMapOf(body.chapterVariable), isEmpty);
+      },
+    );
+
+    test(
+      '$label a relative TOC chapter keeps repeated reads without persistence',
+      () async {
+        final source = relativeSource(
+          '@js:chapter.putVariable("n", '
+          'String(Number(chapter.getVariable("n") || "0") + 1)); '
+          'chapter.getVariable("n")',
+        );
+        final pipeline = json
+            ? JsonSourcePipeline(source, jsonPages())
+            : HtmlSourcePipeline(source, htmlPages());
+        final (book, chapters) = await pipeline.details(hitWith(null));
+        final first = await pipeline.chapter(chapters.single, book: book);
+        final second = await pipeline.chapter(chapters.single, book: book);
+        expect(variableMapOf(first.chapterVariable), {'toc': 'T', 'n': '1'});
+        expect(variableMapOf(second.chapterVariable), {'toc': 'T', 'n': '2'});
+      },
+    );
+
+    test(
+      '$label an existing null chapter row is not reseeded from the carrier',
+      () async {
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final state = SourceHostState(
+          persistence: SpaceHostStatePersistence(store),
+        );
+        await store.putBook(
+          BooksCompanion.insert(
+            id: 'b1',
+            title: '书',
+            kind: const Value('network'),
+            sourceRef: const Value(origin),
+            sourceBookUrl: const Value(bookUrl),
+          ),
+        );
+        await store.putChapters('b1', [
+          BookChapter(
+            bookId: 'b1',
+            chapterKey: '$origin/c/1',
+            name: '第一章',
+            url: '$origin/c/1',
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+          ),
+        ]);
+
+        final body = await runContent('@js:"正文"', hostState: state);
+
+        expect(
+          body.chapterVariable,
+          isNull,
+          reason: 'a present row is authoritative, even with no text',
+        );
+        expect(
+          await store.chapterVariable(origin, bookUrl, '$origin/c/1'),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      '$label an existing null unwritten entry is not reseeded from the carrier',
+      () async {
+        final state = SourceHostState();
+        await state.putChapterVariable(origin, bookUrl, '$origin/c/1', null);
+
+        final body = await runContent('@js:"正文"', hostState: state);
+
+        expect(
+          body.chapterVariable,
+          isNull,
+          reason: 'a present entry is authoritative, even with no text',
+        );
+      },
+    );
+
+    test('$label an existing unwritten entry wins over the carrier', () async {
+      final state = SourceHostState();
+      await state.putChapterVariable(
+        origin,
+        bookUrl,
+        '$origin/c/1',
+        '{"prior":"P"}',
+      );
+
+      final body = await runContent('@js:"正文"', hostState: state);
+
+      expect(variableMapOf(body.chapterVariable), {'prior': 'P'});
+    });
+  }
 }
 
 /// Answers one page per path and records every request.

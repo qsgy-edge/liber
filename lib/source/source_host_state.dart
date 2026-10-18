@@ -569,15 +569,30 @@ class SourceHostState implements SourceEntityVariableStore {
     String sourceRef,
     String bookUrl,
     String chapterKey,
+  ) async =>
+      (await chapterVariableRow(sourceRef, bookUrl, chapterKey))?.variable;
+
+  /// The chapter entry's own variable text with its presence (#132): null when
+  /// the space holds neither a row nor an unwritten value for exactly that key,
+  /// and otherwise the entry with the text it carries, which may itself be
+  /// null. A stored row wins over an unwritten cache entry, so an entry whose
+  /// text is null is present and authoritative rather than absent.
+  Future<SourceEntityVariableRow?> chapterVariableRow(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
   ) async {
-    final key = (sourceRef, bookUrl, chapterKey);
     final stored = await _persistence?.loadChapterVariable(
       sourceRef,
       bookUrl,
       chapterKey,
     );
-    if (stored != null) return stored.variable;
-    return _unwrittenChapterVariables[key];
+    if (stored != null) return stored;
+    final key = (sourceRef, bookUrl, chapterKey);
+    if (_unwrittenChapterVariables.containsKey(key)) {
+      return SourceEntityVariableRow(_unwrittenChapterVariables[key]);
+    }
+    return null;
   }
 
   /// Writes the chapter row's own variable text, under the same rule as

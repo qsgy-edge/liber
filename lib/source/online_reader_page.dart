@@ -92,6 +92,7 @@ class OnlineReaderPage extends StatefulWidget {
     this.chapterIndex = 0,
     this.textOffset = 0,
     this.convert,
+    this.onEntityState,
   });
   final BookSourcePipeline pipeline;
   final HtmlBook book;
@@ -107,6 +108,16 @@ class OnlineReaderPage extends StatefulWidget {
   /// its binding cannot load the native library — the same seam reason
   /// `ContentProcessing.scriptRuntime` exists.
   final String Function(String text, ConvertTarget target)? convert;
+
+  /// Reports the current entity carriers after each loaded chapter's content
+  /// stage (#132): the book and its chapters with the content stage's final
+  /// variable snapshots, so the page that opened the reader publishes the
+  /// completed state when the book is later added to the shelf. A chapter that
+  /// has not been fetched keeps the carrier it was handed. Null when the caller
+  /// has nowhere to take them.
+  final void Function(HtmlBook book, List<SourceChapter> chapters)?
+  onEntityState;
+
   @override
   State<OnlineReaderPage> createState() => _OnlineReaderPageState();
 }
@@ -161,6 +172,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// The content images the last fetched chapter carries, keyed to
   /// [sourceBody]'s own offsets — the pipeline's extraction, as it returned it.
   List<SourceChapterImage> sourceImages = const [];
+
+  /// The book variable the last loaded content stage returned, and the loaded
+  /// chapters' own snapshots by index (#132). A chapter that has not been
+  /// fetched keeps the carrier it was handed.
+  String? _bookVariable;
+  final Map<int, String?> _chapterVariables = {};
 
   /// The current chapter's display title, replaced by the title rules.
   String chapterTitle = '';
@@ -323,6 +340,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       sourceImages = result.images;
       _chapterUrl = widget.chapters[next].url;
       _images.clear();
+      // The content stage's final entity snapshots reach the page that opened
+      // the reader, so a later add publishes them rather than the stale
+      // details carriers (#132).
+      _bookVariable = result.bookVariable;
+      _chapterVariables[next] = result.chapterVariable;
+      _reportEntityState();
       await _render(next, resume);
     } catch (e) {
       if (mounted) {
@@ -332,6 +355,20 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         });
       }
     }
+  }
+
+  /// Reports the current book and chapter carriers to the page that opened the
+  /// reader (#132): the content stage's final variable snapshots for the
+  /// chapters it loaded, the handed carriers for the rest.
+  void _reportEntityState() {
+    final report = widget.onEntityState;
+    if (report == null) return;
+    report(widget.book.withVariable(_bookVariable), [
+      for (var i = 0; i < widget.chapters.length; i++)
+        _chapterVariables.containsKey(i)
+            ? widget.chapters[i].withVariable(_chapterVariables[i])
+            : widget.chapters[i],
+    ]);
   }
 
   /// Renders the chapter [sourceBody]/[sourceTitle] already hold the way the
