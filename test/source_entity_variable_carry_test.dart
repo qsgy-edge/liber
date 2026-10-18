@@ -1191,7 +1191,7 @@ void main() {
     );
   }
 
-  // #132 repair3 follow-up: a relative TOC chapter's variable is written under
+  // A relative TOC chapter's variable is written under
   // the TOC stage's own key ('/c/1'), while the content stage reads and writes
   // the row key ('$origin/c/1'). The content stage starts from the chapter's own
   // carrier text when — and only when — the row key holds no entry at all.
