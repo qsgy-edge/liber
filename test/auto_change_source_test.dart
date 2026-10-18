@@ -144,11 +144,7 @@ void main() {
     a = FakeSource(sourceA);
     b = FakeSource(sourceB);
     c = FakeSource(sourceC);
-    byRef = {
-      'https://a.test': a,
-      'https://b.test': b,
-      'https://c.test': c,
-    };
+    byRef = {'https://a.test': a, 'https://b.test': b, 'https://c.test': c};
     for (final fake in byRef.values) {
       await store.putSourceJson(fake.source);
     }
@@ -167,7 +163,10 @@ void main() {
           Uri.parse('https://a.test/chapter/$i'),
         ),
     ]);
-    final entry = (await shelf.find('https://a.test', 'https://a.test/book/1'))!;
+    final entry = (await shelf.find(
+      'https://a.test',
+      'https://a.test/book/1',
+    ))!;
     await shelf.saveProgress(
       entry.id,
       chapterKey: 'https://a.test/chapter/2',
@@ -236,11 +235,7 @@ void main() {
       openPipeline: open,
     );
 
-    expect(
-      b.detailsCalls,
-      0,
-      reason: '作者只包含搜索词的命中不是 preciseSearchAwait 要的那一本',
-    );
+    expect(b.detailsCalls, 0, reason: '作者只包含搜索词的命中不是 preciseSearchAwait 要的那一本');
     expect(b.searchCalls, 1);
     expect(result.switched!.sourceRef, 'https://c.test');
   });
@@ -250,7 +245,11 @@ void main() {
     b.hits.addAll([
       hitFor('https://b.test', by: '别人的笔名'),
       hitFor('https://b.test'),
-      HtmlBook(url: Uri.parse('https://b.test/book/2'), title: name, author: author),
+      HtmlBook(
+        url: Uri.parse('https://b.test/book/2'),
+        title: name,
+        author: author,
+      ),
     ]);
     b.chapters.addAll(const ['第一章', '第二章']);
 
@@ -409,7 +408,11 @@ void main() {
     );
 
     expect(result.switched, isNull);
-    expect(result.ran, isFalse, reason: '冻结的 if (!AppConfig.autoChangeSource) return');
+    expect(
+      result.ran,
+      isFalse,
+      reason: '冻结的 if (!AppConfig.autoChangeSource) return',
+    );
     expect(b.searchCalls, 0);
     expect(b.detailsCalls, 0);
     expect((await store.bookById(lost.id))!.sourceRef, 'https://a.test');
@@ -578,9 +581,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('设置页的一个开关：默认开着，关掉写下 false，再打开写回 true', (
-      tester,
-    ) async {
+    testWidgets('设置页的一个开关：默认开着，关掉写下 false，再打开写回 true', (tester) async {
       await tester.pumpWidget(
         localizedApp(home: AutoChangeSourcePage(store: store)),
       );
