@@ -245,18 +245,15 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
   @override
   Future<void> deleteSource(String sourceRef) async {
     await _db.transaction(() async {
-      await (_db.delete(_db.sourceEntries)..where(
-            (entry) => entry.sourceRef.equals(sourceRef),
-          ))
-          .go();
-      await (_db.delete(_db.sourceCookies)..where(
-            (cookie) => cookie.writerRef.equals(sourceRef),
-          ))
-          .go();
-      await (_db.delete(_db.sourceTlsExceptions)..where(
-            (exception) => exception.sourceRef.equals(sourceRef),
-          ))
-          .go();
+      await (_db.delete(
+        _db.sourceEntries,
+      )..where((entry) => entry.sourceRef.equals(sourceRef))).go();
+      await (_db.delete(
+        _db.sourceCookies,
+      )..where((cookie) => cookie.writerRef.equals(sourceRef))).go();
+      await (_db.delete(
+        _db.sourceTlsExceptions,
+      )..where((exception) => exception.sourceRef.equals(sourceRef))).go();
     });
   }
 
