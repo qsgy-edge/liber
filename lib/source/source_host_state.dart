@@ -170,20 +170,32 @@ class SourceEntityVariableDraft implements SourceEntityVariableStore {
   final Map<(String, String, String), String?> _chapters = {};
 
   /// Seeds the candidate book's variable text under the identity the script
-  /// binds as `book.bookUrl`.
+  /// binds as `book.bookUrl`. An entity the draft already carries is left as it
+  /// is, so a later request on the same analysis cannot reseed an older
+  /// carrier over a write an earlier stage made.
   void seedBook(String sourceRef, String bookUrl, String? variable) {
-    _books[(sourceRef, bookUrl)] = variable;
+    _books.putIfAbsent((sourceRef, bookUrl), () => variable);
   }
 
   /// Seeds one candidate chapter's variable text under the row key the script
-  /// binds as `chapter.url`.
+  /// binds as `chapter.url`. Left as it is when the draft already carries that
+  /// chapter, like [seedBook].
   void seedChapter(
     String sourceRef,
     String bookUrl,
     String chapterKey,
     String? variable,
   ) {
-    _chapters[(sourceRef, bookUrl, chapterKey)] = variable;
+    _chapters.putIfAbsent((sourceRef, bookUrl, chapterKey), () => variable);
+  }
+
+  /// Starts a fresh candidate for one book identity: the book's own entry and
+  /// every chapter entry under it are dropped, so a rebuilt TOC cannot see a
+  /// variable written by a previous TOC. [details] calls this before it seeds
+  /// the new carrier.
+  void resetBook(String sourceRef, String bookUrl) {
+    _books.remove((sourceRef, bookUrl));
+    _chapters.removeWhere((key, _) => key.$1 == sourceRef && key.$2 == bookUrl);
   }
 
   /// The candidate book's current text, for the carrier the analysis returns.

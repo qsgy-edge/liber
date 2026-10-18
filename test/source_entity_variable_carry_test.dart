@@ -392,6 +392,175 @@ void main() {
   });
 
   test(
+    'a second chapter() on one deferred pipeline keeps the first book write',
+    () async {
+      final pageMap = _Pages({
+        '/c/1': '{"text":"one"}',
+        '/c/2': '{"text":"two"}',
+      });
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: '""',
+          contentScript:
+              '@js:book.putVariable("n", '
+              'String(Number(book.getVariable("n") || "0") + 1)); '
+              'book.getVariable("n")',
+        ),
+        pageMap,
+        deferEntityVariables: true,
+      );
+      final first = await pipeline.chapter(
+        SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+        book: hitWith(variableText({'n': '0'})),
+      );
+      expect(first.text, '1');
+      // The second request is handed an older carrier with the same starting
+      // value; the draft keeps the first call's write instead of reseeding.
+      final second = await pipeline.chapter(
+        SourceChapter('二', Uri.parse('$origin/c/2'), rawAddress: '/c/2'),
+        book: hitWith(variableText({'n': '0'})),
+      );
+      expect(second.text, '2');
+    },
+  );
+
+  test(
+    'a second details() on one deferred pipeline starts a fresh chapter draft',
+    () async {
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript:
+              '@js:if (java.get("tocRan") !== "1") { '
+              'chapter.putVariable("c","T"); java.put("tocRan","1"); } ""',
+          contentScript: '""',
+        ),
+        jsonPages(),
+        deferEntityVariables: true,
+      );
+      final (_, firstChapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(firstChapters.single.variable), {'c': 'T'});
+      // The rebuilt TOC does not write the chapter variable this time, so a
+      // stale draft entry from the first TOC must not come back.
+      final (_, secondChapters) = await pipeline.details(hitWith(null));
+      expect(secondChapters.single.variable, isNull);
+    },
+  );
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+
+    test(
+      '$label content returns the final book and chapter entity snapshots',
+      () async {
+        const contentScript =
+            '@js:book.putVariable("b","B"); '
+            'chapter.putVariable("c","C"); "正文"';
+        final source = json
+            ? jsonSource(
+                infoScript: '@js:""',
+                tocScript: '""',
+                contentScript: contentScript,
+              )
+            : htmlSource(
+                infoScript: '@js:""',
+                tocScript: '""',
+                contentScript: contentScript,
+              );
+        final pipeline = json
+            ? JsonSourcePipeline(
+                source,
+                jsonPages(),
+                deferEntityVariables: true,
+              )
+            : HtmlSourcePipeline(
+                source,
+                htmlPages(),
+                deferEntityVariables: true,
+              );
+        final body = await pipeline.chapter(
+          SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+          book: hitWith(variableText({'seed': 'S'})),
+        );
+
+        expect(body.text, contains('正文'));
+        expect(variableMapOf(body.bookVariable), {'seed': 'S', 'b': 'B'});
+        expect(variableMapOf(body.chapterVariable), {'c': 'C'});
+      },
+    );
+  }
+
+  test('HTML content snapshots include every paginated page write', () async {
+    final pageMap = _Pages({
+      '/c/1':
+          '<div class="con"><p>one</p></div>'
+          '<div class="next"><a href="/c/1-2">next</a></div>',
+      '/c/1-2': '<div class="con"><p>two</p></div>',
+    });
+    final pipeline = HtmlSourcePipeline(
+      {
+        'bookSourceUrl': origin,
+        'bookSourceName': '实体变量源',
+        'ruleBookInfo': {'name': '@CSS:h2@text', 'tocUrl': '@CSS:#toc a@href'},
+        'ruleToc': {
+          'chapterList': '@CSS:#list li',
+          'chapterName': '@CSS:a@text',
+          'chapterUrl': '@CSS:a@href',
+        },
+        'ruleContent': {
+          'content':
+              '@js:book.putVariable("pages", '
+              'String(Number(book.getVariable("pages") || "0") + 1)); '
+              '"page " + book.getVariable("pages")',
+          'nextContentUrl': '@CSS:.next a@href',
+        },
+      },
+      pageMap,
+      deferEntityVariables: true,
+    );
+    final body = await pipeline.chapter(
+      SourceChapter('一', Uri.parse('$origin/c/1'), rawAddress: '/c/1'),
+      book: hitWith(variableText({'seed': 'S'})),
+    );
+
+    expect(body.pages, 2);
+    expect(body.text, contains('page 1'));
+    expect(body.text, contains('page 2'));
+    expect(variableMapOf(body.bookVariable), {'seed': 'S', 'pages': '2'});
+  });
+
+  test(
+    'a volume shortcut still returns the carriers\' entity snapshots',
+    () async {
+      final pipeline = JsonSourcePipeline(
+        jsonSource(
+          infoScript: '@js:""',
+          tocScript: '""',
+          contentScript: '@js:"unused"',
+        ),
+        jsonPages(),
+        deferEntityVariables: true,
+      );
+      final body = await pipeline.chapter(
+        SourceChapter.volume(
+          '第一卷',
+          0,
+          tocUrl: Uri.parse('$origin/toc'),
+          tag: '卷内容',
+          variable: variableText({'v': 'V'}),
+        ),
+        book: hitWith(variableText({'seed': 'S'})),
+      );
+
+      expect(body.text, '卷内容');
+      expect(body.pages, 0);
+      expect(variableMapOf(body.bookVariable), {'seed': 'S'});
+      expect(variableMapOf(body.chapterVariable), {'v': 'V'});
+    },
+  );
+
+  test(
     'ordinary mode still writes the space row and returns its snapshot',
     () async {
       final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));

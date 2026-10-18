@@ -1089,8 +1089,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _chapterTitle = null;
     _tocChapterAddress = null;
     // The candidate carries the variable text it was handed: a deferred
-    // analysis reads and writes that text, never the stored row (#132).
-    _entityDraft?.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    // analysis reads and writes that text, never the stored row (#132). A
+    // rebuilt TOC starts with no chapter variables of its own.
+    final draft = _entityDraft;
+    if (draft != null) {
+      draft.resetBook(_sourceRef, hit.identityAddress);
+      draft.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    }
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
@@ -1356,21 +1361,25 @@ class JsonSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (book.withVariable(await _finalBookVariable(book)), chapters);
+    return (
+      book.withVariable(await _finalBookVariable(book.identityAddress)),
+      chapters,
+    );
   }
 
-  /// The book variable text a details/TOC stage hands back: the candidate's own
-  /// draft text in a deferred analysis, the row's text otherwise (#132).
+  /// The book variable text a details/TOC/content stage hands back: the
+  /// candidate's own draft text in a deferred analysis, the row's text
+  /// otherwise (#132).
   ///
   /// The two paths never mix: a deferred analysis reads the draft even when it
   /// is null, so a preview of a stored row cannot pull that row's variable back
   /// into the candidate.
-  Future<String?> _finalBookVariable(HtmlBook book) {
+  Future<String?> _finalBookVariable(String bookKey) {
     final draft = _entityDraft;
     if (draft != null) {
-      return Future.value(draft.bookText(_sourceRef, book.identityAddress));
+      return Future.value(draft.bookText(_sourceRef, bookKey));
     }
-    return _hostSurface.bookVariable(_sourceRef, book.identityAddress);
+    return _hostSurface.bookVariable(_sourceRef, bookKey);
   }
 
   /// The chapter variable text a TOC stage hands back: the candidate's own
@@ -1590,8 +1599,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // (`WebBook.kt:303-306`), then answers a volume's `tag` without building a
     // request (`:307-310`); the request's headers are read after both.
     final content = _rules('ruleContent', ['content']);
+    final contentBookKey = _book?.identityAddress;
     if (chapter.rendersTagAsContent) {
-      return HtmlChapterBody(chapter.tag ?? '', 0);
+      // The volume shortcut makes no request and runs no rule, but the
+      // caller still gets the carriers' entity snapshots (#132).
+      return HtmlChapterBody(
+        chapter.tag ?? '',
+        0,
+        bookVariable: contentBookKey == null
+            ? null
+            : await _finalBookVariable(contentBookKey),
+        chapterVariable: await _finalChapterVariable(
+          contentBookKey ?? '',
+          '${chapter.url}',
+        ),
+      );
     }
     _activeHeaders = await _ensureHeaders();
     final parts = <String>[];
@@ -1693,6 +1715,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
+      // The final entity snapshots of this content request, pagination and all:
+      // every page wrote through the same candidate draft (#132).
+      bookVariable: contentBookKey == null
+          ? null
+          : await _finalBookVariable(contentBookKey),
+      chapterVariable: await _finalChapterVariable(
+        contentBookKey ?? '',
+        '${chapter.url}',
+      ),
     );
   }
 
@@ -1973,6 +2004,22 @@ class SourceChapter {
   /// writes the row (or the candidate draft) under the key the script sees as
   /// `chapter.url`, never this field directly.
   final String? variable;
+
+  /// This carrier with [variable] replaced, every identity, address and marker
+  /// field retained. A metadata or content-stage copy must not drop the
+  /// variable it started from.
+  SourceChapter withVariable(String? variable) => SourceChapter(
+    name,
+    url,
+    rawAddress: rawAddress,
+    storedKey: storedKey,
+    addressBase: addressBase,
+    tag: tag,
+    isVolume: isVolume,
+    isVip: isVip,
+    isPay: isPay,
+    variable: variable,
+  );
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
   /// resolved target, except a volume the rules left without a URL: it has no

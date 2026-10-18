@@ -139,6 +139,8 @@ class HtmlChapterBody {
     this.pages, {
     this.title,
     this.images = const [],
+    this.bookVariable,
+    this.chapterVariable,
   });
   final String text;
   final int pages;
@@ -149,6 +151,21 @@ class HtmlChapterBody {
 
   /// The content images [text] carries, in document order.
   final List<SourceChapterImage> images;
+
+  /// The book row's own variable text at the end of the content stage (#132):
+  /// the candidate's draft text in a deferred analysis, the row's text
+  /// otherwise. Null when the carrier started with none and no rule wrote one.
+  ///
+  /// The content stage is the automatic-switch probe
+  /// (`auto_change_source.dart` runs details then a content request on the same
+  /// candidate), so the writes this stage makes have to reach the caller: a
+  /// successful probe's snapshots are what the consumer publishes.
+  final String? bookVariable;
+
+  /// The chapter row's own variable text at the end of the content stage
+  /// (#132), keyed as the stage's `chapter.url` binds it. Read like
+  /// [bookVariable].
+  final String? chapterVariable;
 }
 
 /// One content image of a chapter body.
@@ -1699,8 +1716,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _tocChapterAddress = null;
     _page = null;
     // The candidate carries the variable text it was handed: a deferred
-    // analysis reads and writes that text, never the stored row (#132).
-    _entityDraft?.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    // analysis reads and writes that text, never the stored row (#132). A
+    // rebuilt TOC starts with no chapter variables of its own.
+    final draft = _entityDraft;
+    if (draft != null) {
+      draft.resetBook(_sourceRef, hit.identityAddress);
+      draft.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    }
     final bookRequest = _bookRequests.remove(hit.url);
     // The book's own address text is what this request analyzes, the way the
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
@@ -2066,21 +2088,25 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (book.withVariable(await _finalBookVariable(book)), chapters);
+    return (
+      book.withVariable(await _finalBookVariable(book.identityAddress)),
+      chapters,
+    );
   }
 
-  /// The book variable text a details/TOC stage hands back: the candidate's own
-  /// draft text in a deferred analysis, the row's text otherwise (#132).
+  /// The book variable text a details/TOC/content stage hands back: the
+  /// candidate's own draft text in a deferred analysis, the row's text
+  /// otherwise (#132).
   ///
   /// The two paths never mix: a deferred analysis reads the draft even when it
   /// is null, so a preview of a stored row cannot pull that row's variable back
   /// into the candidate.
-  Future<String?> _finalBookVariable(HtmlBook book) {
+  Future<String?> _finalBookVariable(String bookKey) {
     final draft = _entityDraft;
     if (draft != null) {
-      return Future.value(draft.bookText(_sourceRef, book.identityAddress));
+      return Future.value(draft.bookText(_sourceRef, bookKey));
     }
-    return _hostSurface.bookVariable(_sourceRef, book.identityAddress);
+    return _hostSurface.bookVariable(_sourceRef, bookKey);
   }
 
   /// The chapter variable text a TOC stage hands back: the candidate's own
@@ -2322,8 +2348,21 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // failing by name; the shortcut (`:307-310`) then answers the chapter's
     // `tag` without building a request or reading the source headers.
     _rule('ruleContent', 'content');
+    final contentBookKey = _book?.identityAddress;
     if (chapter.rendersTagAsContent) {
-      return HtmlChapterBody(chapter.tag ?? '', 0);
+      // The volume shortcut makes no request and runs no rule, but the
+      // caller still gets the carriers' entity snapshots (#132).
+      return HtmlChapterBody(
+        chapter.tag ?? '',
+        0,
+        bookVariable: contentBookKey == null
+            ? null
+            : await _finalBookVariable(contentBookKey),
+        chapterVariable: await _finalChapterVariable(
+          contentBookKey ?? '',
+          '${chapter.url}',
+        ),
+      );
     }
     final parts = <String>[];
     String? contentTitle;
@@ -2456,6 +2495,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
+      // The final entity snapshots of this content request, pagination and all:
+      // every page wrote through the same candidate draft (#132).
+      bookVariable: contentBookKey == null
+          ? null
+          : await _finalBookVariable(contentBookKey),
+      chapterVariable: await _finalChapterVariable(
+        contentBookKey ?? '',
+        '${chapter.url}',
+      ),
     );
   }
 
