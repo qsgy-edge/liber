@@ -1243,7 +1243,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get libraryOwnedFile =>
-      'The selected file already belongs to another book, so nothing was connected. Choose a different file.';
+      'The selected file or the same-named library file is already associated with another book, so nothing was connected. Choose a different file.';
 
   @override
   String get libraryLegacyBooks => 'Existing books to move into the library';

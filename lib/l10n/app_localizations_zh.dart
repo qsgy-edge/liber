@@ -1204,7 +1204,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get libraryOwnedFile => '所选文件已属于另一部书，本次关联未生效。请选择其他文件。';
+  String get libraryOwnedFile => '所选文件或书库中的同名文件已关联另一部书，本次关联未生效。请选择其他文件。';
 
   @override
   String get libraryLegacyBooks => '待迁入的已有本地书';
@@ -2476,7 +2476,7 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
-  String get libraryOwnedFile => '所選文件已屬於另一部書，本次關聯未生效。請選擇其他文件。';
+  String get libraryOwnedFile => '所選文件或書庫中的同名文件已關聯另一部書，本次關聯未生效。請選擇其他文件。';
 
   @override
   String get libraryLegacyBooks => '待遷入的既有本機書籍';
@@ -3748,7 +3748,7 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   }
 
   @override
-  String get libraryOwnedFile => '所選檔案已屬於另一部書，本次關聯未生效。請選擇其他檔案。';
+  String get libraryOwnedFile => '所選檔案或書庫中的同名檔案已關聯另一部書，本次關聯未生效。請選擇其他檔案。';
 
   @override
   String get libraryLegacyBooks => '待遷入的既有本機書籍';

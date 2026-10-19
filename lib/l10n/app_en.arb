@@ -332,7 +332,7 @@
   "libraryAdopted": "{count} books copied into the library. Unavailable files still need relinking.",
   "libraryRelink": "Select this book's file",
   "libraryRelinked": "Reconnected {title} to the selected file; its record, groups and reading progress are kept.",
-  "libraryOwnedFile": "The selected file already belongs to another book, so nothing was connected. Choose a different file.",
+  "libraryOwnedFile": "The selected file or the same-named library file is already associated with another book, so nothing was connected. Choose a different file.",
   "libraryLegacyBooks": "Existing books to move into the library",
   "libraryWorking": "Processing library files…",
   "libraryProgress": "Current file: {bytes} bytes copied",

@@ -500,27 +500,39 @@ class LocalLibrary {
     return _books.firstWhere((book) => book.id == id);
   });
 
-  /// The selected file must not be another book's current file. Only the stored
-  /// roots that could contain it are inspected, and a stored original pair never
-  /// counts: an original association is correlation, not current ownership.
+  /// The selected file must not be another book's current file.
+  ///
+  /// Only a book's own recorded key can nominate its root: a stored locator,
+  /// key or grant is a hint, never access, so a provider authority shared with
+  /// an unrelated retained root neither refreshes that grant nor blocks the
+  /// reconnect. A stored original pair never counts either — an original
+  /// association is correlation, not current ownership.
   Future<void> _refuseOwnedSelectedFile(
     LibraryFileReference selected,
     ShelfBook incoming,
   ) async {
-    for (final root in (await _rootsById()).values) {
+    final roots = await _rootsById();
+    final inspected = <String>{};
+    for (final book in await store.localBooks()) {
+      if (book.id == incoming.id) continue;
+      final root = roots[book.rootId];
       final location = _location(root);
-      if (location == null || location.kind != selected.kind) continue;
+      final key = book.relativePath;
+      if (root == null || location == null || location.kind != selected.kind) {
+        continue;
+      }
+      if (key == null) continue;
       final nearby =
           selected.root != null &&
           _sameLocator(location.kind, location.locator, selected.root!.locator);
       final inside =
           location.kind == LibraryLocationKind.filesystem &&
           p.isWithin(location.locator, selected.locator);
-      if (!nearby &&
-          !inside &&
-          !_nativeRootHint(location, selected.key, selected)) {
+      if (!nearby && !inside && !_nativeRootHint(location, key, selected)) {
         continue;
       }
+      // One inspection answers for every book recorded under this root.
+      if (!inspected.add(root.id)) continue;
       LibraryLocation? actual;
       try {
         actual = await access.inspectRoot(location);
@@ -533,20 +545,27 @@ class LocalLibrary {
       if (member == null) continue;
       final owner = (await _ownersOf(actual, [member]))[member.key];
       if (owner != null && owner.id != incoming.id) {
-        throw _ownedTarget(incoming, owner, member.locator);
+        throw _ownedTarget(
+          incoming,
+          owner,
+          member.locator,
+          'The selected file already belongs to another book',
+        );
       }
     }
   }
 
   /// The one refusal an explicit reconnect makes instead of an ordinary conflict
-  /// choice: `books` names both identities so a caller can report them.
+  /// choice: `books` names both identities so a caller can report them, and
+  /// [message] names the entry the association would have taken.
   static LibraryAccessFailure _ownedTarget(
     ShelfBook incoming,
     ShelfBook owner,
     String locator,
+    String message,
   ) => LibraryAccessFailure(
     LibraryAccessError.collision,
-    'The selected file already belongs to another book',
+    message,
     details: {
       'bookIds': [incoming.id, owner.id],
       'locator': locator,
@@ -1476,7 +1495,12 @@ class LocalLibrary {
         // A reconnect never takes another book's file or entry. Offering the
         // ordinary conflict choice would let keep-both copy an owned target
         // into a second book instead of refusing the association.
-        throw _ownedTarget(incoming, owner, collision.file.locator);
+        throw _ownedTarget(
+          incoming,
+          owner,
+          collision.file.locator,
+          'The library entry for this name already belongs to another book',
+        );
       }
       final conflict = LibraryImportConflict(
         source: source,

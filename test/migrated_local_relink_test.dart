@@ -488,4 +488,263 @@ void main() {
     expect(row.needsRelink, isFalse);
     expect(access.copyCount, 1);
   });
+
+  test(
+    'a retained grant of the same provider that owns no book does not block a reconnect',
+    () async {
+      final migrated = await importMigrated();
+      await selectManagedRoot();
+      final selected = access.addFile(
+        'picked-document',
+        'selected.txt',
+        '第一章 所选文件的正文',
+        root: access.addRoot(
+          'picked',
+          locator: 'content://example.documents/tree/picked',
+        ),
+      );
+      final unrelated = access.addRoot(
+        'retired-unrelated',
+        locator: 'content://example.documents/tree/retired-unrelated',
+      );
+      await store.putLocalRoot(
+        LocalRootsCompanion.insert(
+          id: unrelated.identity,
+          displayName: unrelated.displayName,
+          kind: Value(unrelated.kind.name),
+          locator: Value(unrelated.locator),
+          identity: Value(unrelated.identity),
+          authorization: Value(unrelated.authorization),
+        ),
+      );
+      // No current book and no original pair refers to this retained grant.
+      access.rootFailures[unrelated.locator] = LibraryAccessError.verification;
+      access.inspectedRoots.clear();
+
+      final relinked = await library.relinkBook(
+        migrated.id,
+        selected,
+        transfer: transfer(),
+        resolveConflict: unexpected,
+      );
+
+      expect(relinked.id, migrated.id);
+      expect((await store.bookById(migrated.id))!.needsRelink, isFalse);
+      expect(
+        access.inspectedRoots,
+        isNot(contains(unrelated.locator)),
+        reason:
+            'A shared provider authority is not a grant to inspect another root',
+      );
+      expect(access.bytes[selected.locator], '第一章 所选文件的正文');
+      expect(access.copyCount, 1);
+    },
+  );
+
+  test(
+    'a same-provider root whose book records another file does not block a reconnect',
+    () async {
+      final migrated = await importMigrated();
+      await selectManagedRoot();
+      final provider = access.addRoot(
+        'provider',
+        locator: 'content://example.documents/tree/provider',
+      );
+      final otherFile = access.addFile(
+        'other-document',
+        'other.txt',
+        '另一部书的正文',
+        root: provider,
+        identity: 'other-id',
+      );
+      await otherBookFile(otherFile, 'book-c');
+      access.rootFailures[provider.locator] = LibraryAccessError.verification;
+      access.inspectedRoots.clear();
+      final selected = access.addFile(
+        'picked-document',
+        'selected.txt',
+        '第一章 所选文件的正文',
+        root: access.addRoot(
+          'picked',
+          locator: 'content://example.documents/tree/picked',
+        ),
+      );
+
+      final relinked = await library.relinkBook(
+        migrated.id,
+        selected,
+        transfer: transfer(),
+        resolveConflict: unexpected,
+      );
+
+      expect(relinked.id, migrated.id);
+      expect((await store.bookById(migrated.id))!.needsRelink, isFalse);
+      expect(
+        access.inspectedRoots,
+        isNot(contains(provider.locator)),
+        reason:
+            "Another book's recorded key cannot nominate this root for the "
+            'selected document',
+      );
+      final other = (await store.bookById('book-c'))!;
+      expect(other.rootId, provider.identity);
+      expect(other.relativePath, otherFile.key);
+      expect(access.bytes[otherFile.locator], '另一部书的正文');
+      expect(access.bytes[selected.locator], '第一章 所选文件的正文');
+      expect(access.copyCount, 1);
+    },
+  );
+
+  test(
+    'a selected document another book owns is refused through a detached grant',
+    () async {
+      final migrated = await importMigrated();
+      final correlation = migrated.rootId!;
+      await selectManagedRoot();
+      final provider = access.addRoot(
+        'provider',
+        locator: 'content://example.documents/tree/books',
+      );
+      final owned = access.addFile(
+        'owned-document',
+        'owned.txt',
+        'B 的正文',
+        root: provider,
+        identity: 'owned-id',
+      );
+      await otherBookFile(owned, 'book-b');
+      // A fresh pick of the same document: the provider key stays its identity
+      // while the grant that opened it is new.
+      final fresh = LibraryFileReference(
+        kind: owned.kind,
+        locator: owned.locator,
+        key: owned.key,
+        name: owned.name,
+        identity: owned.identity,
+        authorization: 'grant:fresh-pick',
+        size: owned.size,
+      );
+
+      await expectLater(
+        library.relinkBook(
+          migrated.id,
+          fresh,
+          transfer: transfer(),
+          resolveConflict: unexpected,
+        ),
+        throwsA(
+          isA<LibraryAccessFailure>()
+              .having(
+                (error) => error.code,
+                'code',
+                LibraryAccessError.collision,
+              )
+              .having(
+                (error) => (error.details as Map)['bookIds'],
+                'both identities',
+                [migrated.id, 'book-b'],
+              ),
+        ),
+      );
+      final row = (await store.bookById(migrated.id))!;
+      expect(row.needsRelink, isTrue);
+      expect(row.rootId, correlation);
+      expect((await store.bookById('book-b'))!.relativePath, owned.key);
+      expect(access.bytes[owned.locator], 'B 的正文');
+      expect(access.copyCount, 0);
+    },
+  );
+
+  test(
+    'a selected apple document another book owns is refused when its key changed',
+    () async {
+      final migrated = await importMigrated();
+      final correlation = migrated.rootId!;
+      await selectManagedRoot();
+      final shelf = access.addRoot(
+        'shelf',
+        kind: LibraryLocationKind.apple,
+        locator: 'file:///shelf',
+      );
+      final owned = access.addFile(
+        'apple.txt',
+        'apple.txt',
+        'B 的正文',
+        root: shelf,
+        identity: 'apple-id',
+      );
+      await otherBookFile(owned, 'book-b');
+      // An Apple key is scoped to the root that opened it, so a fresh grant of
+      // the same file need not repeat the recorded key.
+      final fresh = LibraryFileReference(
+        kind: LibraryLocationKind.apple,
+        locator: owned.locator,
+        key: 'fresh-scope-key',
+        name: owned.name,
+        identity: owned.identity,
+        authorization: 'bookmark:fresh',
+        size: owned.size,
+      );
+
+      await expectLater(
+        library.relinkBook(
+          migrated.id,
+          fresh,
+          transfer: transfer(),
+          resolveConflict: unexpected,
+        ),
+        throwsA(accessError(LibraryAccessError.collision)),
+      );
+      final row = (await store.bookById(migrated.id))!;
+      expect(row.needsRelink, isTrue);
+      expect(row.rootId, correlation);
+      expect(access.bytes[owned.locator], 'B 的正文');
+      expect(access.copyCount, 0);
+    },
+  );
+
+  test(
+    'a picked file inside another book\'s filesystem root is refused',
+    () async {
+      final migrated = await importMigrated();
+      final correlation = migrated.rootId!;
+      await selectManagedRoot();
+      final shelf = access.addRoot(
+        'shelf',
+        kind: LibraryLocationKind.filesystem,
+        locator: '${space.directory.path}/shelf',
+      );
+      final owned = access.addFile(
+        'nested.txt',
+        'nested.txt',
+        'B 的正文',
+        root: shelf,
+      );
+      await otherBookFile(owned, 'book-b');
+      // The picker's own reference: the containing root is the nomination, not
+      // a grant the selected file carries.
+      final picked = LibraryFileReference(
+        kind: LibraryLocationKind.filesystem,
+        locator: owned.locator,
+        key: owned.key,
+        name: owned.name,
+        size: owned.size,
+      );
+
+      await expectLater(
+        library.relinkBook(
+          migrated.id,
+          picked,
+          transfer: transfer(),
+          resolveConflict: unexpected,
+        ),
+        throwsA(accessError(LibraryAccessError.collision)),
+      );
+      final row = (await store.bookById(migrated.id))!;
+      expect(row.needsRelink, isTrue);
+      expect(row.rootId, correlation);
+      expect(access.bytes[owned.locator], 'B 的正文');
+      expect(access.copyCount, 0);
+    },
+  );
 }

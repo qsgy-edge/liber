@@ -173,7 +173,7 @@
   "libraryNameConflict": "同名檔案內容不同",
   "libraryNoFolder": "首次匯入本機書籍時選擇書庫目錄。",
   "libraryOperationFailed": "操作失敗：{message}",
-  "libraryOwnedFile": "所選檔案已屬於另一部書，本次關聯未生效。請選擇其他檔案。",
+  "libraryOwnedFile": "所選檔案或書庫中的同名檔案已關聯另一部書，本次關聯未生效。請選擇其他檔案。",
   "libraryPermissionLost": "檔案或目錄授權已失效，請重新選擇以恢復存取。",
   "libraryProgress": "目前檔案已複製 {bytes} 位元組",
   "libraryRead": "閱讀此書",

@@ -2049,7 +2049,7 @@ abstract class AppLocalizations {
   /// No description provided for @libraryOwnedFile.
   ///
   /// In zh, this message translates to:
-  /// **'所选文件已属于另一部书，本次关联未生效。请选择其他文件。'**
+  /// **'所选文件或书库中的同名文件已关联另一部书，本次关联未生效。请选择其他文件。'**
   String get libraryOwnedFile;
 
   /// No description provided for @libraryLegacyBooks.
