@@ -47,7 +47,7 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - Execute approved implementation graphs with `implement-spec`; use `subagent-delegation` and
   `pi-subagents` for Pi execution. The migration map remains the route; investigation and decision tickets
   keep their own acceptance and execution paths, with decision tickets using the interactive path below.
-- Implementation and repair workers use `cline/cline-pass/deepseek-v4.1-flash:max`. The controller uses the
+- Implementation and repair workers use `cline/cline-pass/deepseek-v4.1-flash-1017:max`. The controller uses the
   operator-selected main-session model. Fresh Standards and Spec reviewers use that session's selected
   provider/model and thinking level, explicitly pinned at dispatch. An unavailable requested model is a
   dispatch blocker.

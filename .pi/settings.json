@@ -2,7 +2,7 @@
   "subagents": {
     "agentOverrides": {
       "worker": {
-        "model": "cline/cline-pass/deepseek-v4.1-flash",
+        "model": "cline/cline-pass/deepseek-v4.1-flash-1017",
         "thinking": "max"
       }
     }
