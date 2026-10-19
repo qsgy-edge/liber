@@ -2034,6 +2034,24 @@ abstract class AppLocalizations {
   /// **'已复制 {count} 本到书库，无法读取的文件仍待关联。'**
   String libraryAdopted(int count);
 
+  /// No description provided for @libraryRelink.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择此书文件'**
+  String get libraryRelink;
+
+  /// No description provided for @libraryRelinked.
+  ///
+  /// In zh, this message translates to:
+  /// **'已将 {title} 关联到所选文件，书籍记录、分组和阅读进度均已保留。'**
+  String libraryRelinked(String title);
+
+  /// No description provided for @libraryOwnedFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选文件或书库中的同名文件已关联另一部书，本次关联未生效。请选择其他文件。'**
+  String get libraryOwnedFile;
+
   /// No description provided for @libraryLegacyBooks.
   ///
   /// In zh, this message translates to:

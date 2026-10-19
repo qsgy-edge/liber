@@ -104,6 +104,22 @@ pair is occupied, and a later move may capture its then-current pair if unclaime
 No original association authorizes file access, and no history registry or
 startup rewrite is introduced.
 
+**Unresolved books (#142).** A local book whose file is unavailable — the state a
+Legacy backup import leaves behind, because the backup carries no bytes — is
+reconnected explicitly: the user selects the file for that exact book, and no
+title, file name, Android path or correlation key ever matches one automatically.
+The selected file is admitted through the same verified managed copy and
+conflict rules as an import, and the book keeps its minted ID, groups, per-book
+settings, imported metadata and progress record. The migration correlation stays
+as the book's original pair, so importing the same backup again finds the
+recovered book instead of minting a second one, and never moves its position
+backward. A selected file or destination candidate that another book currently
+owns is refused instead: a reconnect associates one book with one file and never
+reuses another book's identity, merges two books, or bypasses that refusal by
+keeping both. Cancellation, a provider/copy/verification/publication failure or
+that refusal leaves both books and the selected original file as they were, and
+removes only the copies the operation itself created.
+
 `sourceRef` is the space-local Book Source
 key (`bookSourceUrl`) — the frozen baseline's `Book.origin`, which overloads that field with
 `loc_book` for local books, hence an explicit `kind` instead. `originName` stays denormalized

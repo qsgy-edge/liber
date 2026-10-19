@@ -1103,6 +1103,9 @@
   "libraryCleanupFailed": "书库已更新，部分旧副本未能清理：{message}",
   "libraryAdopt": "迁入选中的书",
   "libraryAdopted": "已复制 {count} 本到书库，无法读取的文件仍待关联。",
+  "libraryRelink": "选择此书文件",
+  "libraryRelinked": "已将 {title} 关联到所选文件，书籍记录、分组和阅读进度均已保留。",
+  "libraryOwnedFile": "所选文件或书库中的同名文件已关联另一部书，本次关联未生效。请选择其他文件。",
   "libraryLegacyBooks": "待迁入的已有本地书",
   "libraryWorking": "正在处理书库文件…",
   "libraryProgress": "当前文件已复制 {bytes} 字节",
@@ -1155,6 +1158,13 @@
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "@libraryRelinked": {
+    "placeholders": {
+      "title": {
+        "type": "String"
       }
     }
   },

@@ -1234,6 +1234,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get libraryRelink => 'Select this book\'s file';
+
+  @override
+  String libraryRelinked(String title) {
+    return 'Reconnected $title to the selected file; its record, groups and reading progress are kept.';
+  }
+
+  @override
+  String get libraryOwnedFile =>
+      'The selected file or the same-named library file is already associated with another book, so nothing was connected. Choose a different file.';
+
+  @override
   String get libraryLegacyBooks => 'Existing books to move into the library';
 
   @override

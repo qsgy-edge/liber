@@ -1196,6 +1196,17 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get libraryRelink => '选择此书文件';
+
+  @override
+  String libraryRelinked(String title) {
+    return '已将 $title 关联到所选文件，书籍记录、分组和阅读进度均已保留。';
+  }
+
+  @override
+  String get libraryOwnedFile => '所选文件或书库中的同名文件已关联另一部书，本次关联未生效。请选择其他文件。';
+
+  @override
   String get libraryLegacyBooks => '待迁入的已有本地书';
 
   @override
@@ -2457,6 +2468,17 @@ class AppLocalizationsZhHantHk extends AppLocalizationsZh {
   }
 
   @override
+  String get libraryRelink => '選擇此書文件';
+
+  @override
+  String libraryRelinked(String title) {
+    return '已將 $title 關聯到所選文件，書籍記錄、分組和閲讀進度均已保留。';
+  }
+
+  @override
+  String get libraryOwnedFile => '所選文件或書庫中的同名文件已關聯另一部書，本次關聯未生效。請選擇其他文件。';
+
+  @override
   String get libraryLegacyBooks => '待遷入的既有本機書籍';
 
   @override
@@ -3716,6 +3738,17 @@ class AppLocalizationsZhHantTw extends AppLocalizationsZh {
   String libraryAdopted(int count) {
     return '已複製 $count 本到書庫，無法讀取的檔案仍待關聯。';
   }
+
+  @override
+  String get libraryRelink => '選擇此書檔案';
+
+  @override
+  String libraryRelinked(String title) {
+    return '已將 $title 關聯到所選檔案，書籍記錄、分組和閱讀進度均已保留。';
+  }
+
+  @override
+  String get libraryOwnedFile => '所選檔案或書庫中的同名檔案已關聯另一部書，本次關聯未生效。請選擇其他檔案。';
 
   @override
   String get libraryLegacyBooks => '待遷入的既有本機書籍';

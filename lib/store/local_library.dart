@@ -449,11 +449,135 @@ class LocalLibrary {
     return _books.where((book) => ids.contains(book.id)).toList();
   });
 
+  /// Explicitly reconnects one book whose file is unavailable to [file] — the
+  /// file the user picked for that exact book.
+  ///
+  /// The book keeps its minted id, groups, per-book settings, migrated metadata
+  /// and progress record: [file] enters through the same verified managed copy
+  /// [importFiles] uses, and publication keeps the row the book already had. Its
+  /// migration correlation stays as the book's original pair, so importing the
+  /// same backup again finds this book instead of minting a second one.
+  ///
+  /// A file another book currently reads, or a destination candidate another
+  /// book owns, is refused: a reconnect associates one book with one file and
+  /// never merges two books or moves one book's access onto another's identity.
+  /// Every failure leaves both books and the selected file as they were, and
+  /// removes only the copies this operation created.
+  Future<LocalBook> relinkBook(
+    String bookId,
+    LibraryFileReference file, {
+    required LibraryTransfer transfer,
+    required LibraryConflictResolver resolveConflict,
+  }) => _serialize(() async {
+    transfer.checkCancelled();
+    final row = await store.bookById(bookId);
+    if (row == null || row.kind != 'local') {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.missing,
+        'Unknown local book',
+      );
+    }
+    if (!row.needsRelink) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.permission,
+        'Only a book whose file is unavailable can be reconnected',
+      );
+    }
+    if (file.directory || !_isSupported(file.name)) {
+      throw const LibraryAccessFailure(
+        LibraryAccessError.unsupported,
+        'Choose one TXT or Markdown file',
+      );
+    }
+    await _refuseOwnedSelectedFile(file, row);
+    final id = await _importOne(
+      file,
+      transfer,
+      resolveConflict,
+      incoming: row,
+      refuseOwnedTarget: true,
+    );
+    return _books.firstWhere((book) => book.id == id);
+  });
+
+  /// The selected file must not be another book's current file.
+  ///
+  /// Only a book's own recorded key can nominate its root: a stored locator,
+  /// key or grant is a hint, never access, so a provider authority shared with
+  /// an unrelated retained root neither refreshes that grant nor blocks the
+  /// reconnect. A stored original pair never counts either — an original
+  /// association is correlation, not current ownership.
+  Future<void> _refuseOwnedSelectedFile(
+    LibraryFileReference selected,
+    ShelfBook incoming,
+  ) async {
+    final roots = await _rootsById();
+    final inspected = <String>{};
+    for (final book in await store.localBooks()) {
+      if (book.id == incoming.id) continue;
+      final root = roots[book.rootId];
+      final location = _location(root);
+      final key = book.relativePath;
+      if (root == null || location == null || location.kind != selected.kind) {
+        continue;
+      }
+      if (key == null) continue;
+      final nearby =
+          selected.root != null &&
+          _sameLocator(location.kind, location.locator, selected.root!.locator);
+      final inside =
+          location.kind == LibraryLocationKind.filesystem &&
+          p.isWithin(location.locator, selected.locator);
+      if (!nearby && !inside && !_nativeRootHint(location, key, selected)) {
+        continue;
+      }
+      // One inspection answers for every book recorded under this root.
+      if (!inspected.add(root.id)) continue;
+      LibraryLocation? actual;
+      try {
+        actual = await access.inspectRoot(location);
+      } on LibraryAccessFailure catch (error) {
+        // An unavailable root cannot be a current owner.
+        if (!_unreachable(error)) rethrow;
+      }
+      if (actual == null) continue;
+      final member = await access.fileInRoot(actual, selected);
+      if (member == null) continue;
+      final owner = (await _ownersOf(actual, [member]))[member.key];
+      if (owner != null && owner.id != incoming.id) {
+        throw _ownedTarget(
+          incoming,
+          owner,
+          member.locator,
+          'The selected file already belongs to another book',
+        );
+      }
+    }
+  }
+
+  /// The one refusal an explicit reconnect makes instead of an ordinary conflict
+  /// choice: `books` names both identities so a caller can report them, and
+  /// [message] names the entry the association would have taken.
+  static LibraryAccessFailure _ownedTarget(
+    ShelfBook incoming,
+    ShelfBook owner,
+    String locator,
+    String message,
+  ) => LibraryAccessFailure(
+    LibraryAccessError.collision,
+    message,
+    details: {
+      'bookIds': [incoming.id, owner.id],
+      'locator': locator,
+    },
+  );
+
   Future<String> _importOne(
     LibraryFileReference source,
     LibraryTransfer transfer,
     LibraryConflictResolver resolver, {
     ShelfBook? incoming,
+    bool refuseOwnedTarget = false,
   }) async {
     transfer.checkCancelled();
     final rootId = await store.setting(managedRootKey);
@@ -478,6 +602,7 @@ class LocalLibrary {
         resolver,
         rootId: root.id,
         incoming: incoming,
+        refuseOwnedTarget: refuseOwnedTarget,
       );
       transfer.checkCancelled();
       await store.transaction(() async {
@@ -1263,6 +1388,7 @@ class LocalLibrary {
     required String rootId,
     ShelfBook? incoming,
     String? name,
+    bool refuseOwnedTarget = false,
   }) async {
     transfer.checkCancelled();
     final logicalName = name ?? source.name;
@@ -1361,6 +1487,21 @@ class LocalLibrary {
     var copyName = logicalName;
     var importName = logicalName;
     if (collision != null) {
+      final owner = collision.book;
+      if (refuseOwnedTarget &&
+          incoming != null &&
+          owner != null &&
+          owner.id != incoming.id) {
+        // A reconnect never takes another book's file or entry. Offering the
+        // ordinary conflict choice would let keep-both copy an owned target
+        // into a second book instead of refusing the association.
+        throw _ownedTarget(
+          incoming,
+          owner,
+          collision.file.locator,
+          'The library entry for this name already belongs to another book',
+        );
+      }
       final conflict = LibraryImportConflict(
         source: source,
         existing: collision.file,
