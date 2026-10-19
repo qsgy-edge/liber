@@ -136,7 +136,12 @@ progress. Files without a saved hash, missing files or different bytes keep the
 old association; restore the original location first. Direct member admissions
 also record their bytes without creating another copy.
 Existing external-reference books are shown
-for explicit selected-book adoption. See ADR 0006's #121 amendment for identity,
+for explicit selected-book adoption. A book a Legado backup import left without a
+file — the backup carries no bytes — shows **Select this book's file** on
+**Local library**: the picked TXT/Markdown file is copied into the managed library
+and that same book keeps its id, groups, settings and reading progress, so
+re-importing the backup finds it instead of adding a second book. A file another
+book already owns is refused. See ADR 0006's #121 amendment for identity,
 progress and the recorded original-association collision limitation.
 
 `pubspec.lock` records the host each package came from. This project resolves
