@@ -483,6 +483,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     this.ruleEvaluator,
     this.domEvaluator,
     SourceHostState? hostState,
+    this.entityVariables,
     this.webViewFactory,
     this.hatchSurface,
     this.hatchWaitCap = sourceHatchWaitCap,
@@ -511,6 +512,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   final SourceHostCall? hostCall;
   final SourceHostDispatcher? dispatcher;
   final SourceHostState? _providedState;
+
+  /// The candidate-scoped book/chapter variables this run reads and writes
+  /// instead of the space's rows (#132), or null when the run reads and writes
+  /// the rows through [hostState]. The four variable members are the only
+  /// members this store replaces: cookies, cache entries and `java.put`/`get`
+  /// stay on the shared host surface.
+  final SourceEntityVariableStore? entityVariables;
 
   /// The rule evaluator `java.getString`/`getStringList`/`getElement`/
   /// `getElements` run through: the pipeline's own rule path over the content
@@ -1499,12 +1507,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
         rowKey.isEmpty) {
       throw const SourceScriptError('host-input', 'variable row absent');
     }
+    // One store answers both the read and the write: the candidate's private
+    // draft when the analysis defers entity variables, the space's rows
+    // otherwise. [SourceHostState] implements the same interface, so the
+    // routing below is one dispatch, not two.
+    final store = entityVariables ?? hostState;
     Future<String?> read() => target == 'book'
-        ? hostState.bookVariable(sourceRef, bookUrl)
-        : hostState.chapterVariable(sourceRef, bookUrl, rowKey);
+        ? store.bookVariable(sourceRef, bookUrl)
+        : store.chapterVariable(sourceRef, bookUrl, rowKey);
+
     Future<void> write(String text) => target == 'book'
-        ? hostState.putBookVariable(sourceRef, bookUrl, text)
-        : hostState.putChapterVariable(sourceRef, bookUrl, rowKey, text);
+        ? store.putBookVariable(sourceRef, bookUrl, text)
+        : store.putChapterVariable(sourceRef, bookUrl, rowKey, text);
+
     final raw = await read();
     switch (op) {
       case 'raw':

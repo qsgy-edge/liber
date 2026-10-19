@@ -13,6 +13,7 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 import 'l10n_support.dart';
+import 'space_test_support.dart';
 
 /// One source's scripted answers: what its search returns, the table of
 /// contents its details stage answers with, whether its content stage answers,
@@ -143,11 +144,7 @@ void main() {
     a = FakeSource(sourceA);
     b = FakeSource(sourceB);
     c = FakeSource(sourceC);
-    byRef = {
-      'https://a.test': a,
-      'https://b.test': b,
-      'https://c.test': c,
-    };
+    byRef = {'https://a.test': a, 'https://b.test': b, 'https://c.test': c};
     for (final fake in byRef.values) {
       await store.putSourceJson(fake.source);
     }
@@ -166,7 +163,10 @@ void main() {
           Uri.parse('https://a.test/chapter/$i'),
         ),
     ]);
-    final entry = (await shelf.find('https://a.test', 'https://a.test/book/1'))!;
+    final entry = (await shelf.find(
+      'https://a.test',
+      'https://a.test/book/1',
+    ))!;
     await shelf.saveProgress(
       entry.id,
       chapterKey: 'https://a.test/chapter/2',
@@ -235,11 +235,7 @@ void main() {
       openPipeline: open,
     );
 
-    expect(
-      b.detailsCalls,
-      0,
-      reason: '作者只包含搜索词的命中不是 preciseSearchAwait 要的那一本',
-    );
+    expect(b.detailsCalls, 0, reason: '作者只包含搜索词的命中不是 preciseSearchAwait 要的那一本');
     expect(b.searchCalls, 1);
     expect(result.switched!.sourceRef, 'https://c.test');
   });
@@ -249,7 +245,11 @@ void main() {
     b.hits.addAll([
       hitFor('https://b.test', by: '别人的笔名'),
       hitFor('https://b.test'),
-      HtmlBook(url: Uri.parse('https://b.test/book/2'), title: name, author: author),
+      HtmlBook(
+        url: Uri.parse('https://b.test/book/2'),
+        title: name,
+        author: author,
+      ),
     ]);
     b.chapters.addAll(const ['第一章', '第二章']);
 
@@ -408,7 +408,11 @@ void main() {
     );
 
     expect(result.switched, isNull);
-    expect(result.ran, isFalse, reason: '冻结的 if (!AppConfig.autoChangeSource) return');
+    expect(
+      result.ran,
+      isFalse,
+      reason: '冻结的 if (!AppConfig.autoChangeSource) return',
+    );
     expect(b.searchCalls, 0);
     expect(b.detailsCalls, 0);
     expect((await store.bookById(lost.id))!.sourceRef, 'https://a.test');
@@ -463,6 +467,84 @@ void main() {
     expect((await store.chaptersOf(lost.id)).length, 5);
   });
 
+  test(
+    '发布事务还在排队时被取消：不写换源、报取消，也不再问后面的书源',
+    () async {
+      // The space the setUp opened is replaced by one whose publication can be
+      // held open; only one database is ever open at a time.
+      await store.close();
+      final gate = GateableSpaceStore();
+      store = gate;
+      shelf = ShelfService(gate);
+      await gate.putSourceJson({...sourceB});
+      await gate.putSourceJson({...sourceC});
+
+      await shelf.add(
+        {...sourceA},
+        hitFor('https://a.test'),
+        [
+          for (var i = 0; i < 5; i++)
+            SourceChapter(
+              '第${['一', '二', '三', '四', '五'][i]}章',
+              Uri.parse('https://a.test/chapter/$i'),
+            ),
+        ],
+      );
+      final entry = (await shelf.find(
+        'https://a.test',
+        'https://a.test/book/1',
+      ))!;
+      await shelf.saveProgress(
+        entry.id,
+        chapterKey: 'https://a.test/chapter/2',
+        chapterIndex: 2,
+        textOffset: 42,
+      );
+      await shelf.deleteSource('https://a.test');
+      final lost = (await shelf.find(
+        'https://a.test',
+        'https://a.test/book/1',
+      ))!;
+      expect(lost.sourceMissing, isTrue);
+      final before = (await gate.bookById(lost.id))!.toJson();
+
+      b.hits.add(hitFor('https://b.test'));
+      b.chapters.addAll(const ['第一章', '第二章', '第三章']);
+      c.hits.add(hitFor('https://c.test'));
+      c.chapters.addAll(const ['第一章', '第二章']);
+
+      var cancelled = false;
+      gate.holdNextTransaction = true;
+      final pending = autoChangeSource(
+        service: shelf,
+        book: lost,
+        openPipeline: open,
+        isCancelled: () => cancelled,
+      );
+      await gate.entered.future.timeout(const Duration(seconds: 5));
+      // The owner goes away while the accepted candidate's write is queued.
+      cancelled = true;
+      gate.release.complete();
+
+      final result = await pending.timeout(const Duration(seconds: 5));
+      expect(result.switched, isNull);
+      expect(result.ran, isFalse, reason: '被取消的运行没有结果要报');
+      expect(
+        (await gate.bookById(lost.id))!.toJson(),
+        before,
+        reason: '排队的事务没有提交任何一行',
+      );
+      expect(
+        (await gate.chaptersOf(lost.id)).map((chapter) => chapter.chapterKey),
+        [for (var i = 0; i < 5; i++) 'https://a.test/chapter/$i'],
+      );
+      expect((await gate.progressOf(lost.id))!.textOffset, 42);
+      expect(b.searchCalls, 1);
+      expect(c.searchCalls, 0, reason: '取消之后不再问后面的书源');
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
+
   group('AutoChangeSourceSetting', () {
     test('默认开启：没有行或行不是 putGlobal 写的 false 时都算开着', () {
       expect(AutoChangeSourceSetting.key, 'source.auto_change');
@@ -499,9 +581,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('设置页的一个开关：默认开着，关掉写下 false，再打开写回 true', (
-      tester,
-    ) async {
+    testWidgets('设置页的一个开关：默认开着，关掉写下 false，再打开写回 true', (tester) async {
       await tester.pumpWidget(
         localizedApp(home: AutoChangeSourcePage(store: store)),
       );

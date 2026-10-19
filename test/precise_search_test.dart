@@ -12,6 +12,7 @@ import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/settings/reader_script.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/js_source_runtime.dart' show variableMapOf;
 import 'package:liber/source/precise_search.dart';
 import 'package:liber/source/precise_search_page.dart';
 import 'package:liber/store/database.dart';
@@ -19,6 +20,15 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 import 'l10n_support.dart';
+import 'space_test_support.dart';
+
+/// The text a variable write stores, the frozen `GSON.toJson(variableMap)`
+/// shape (#132).
+String variableText(Map<String, String?> map) =>
+    JsonEncoder.withIndent('  ').convert({
+      for (final entry in map.entries)
+        if (entry.value != null) entry.key: entry.value,
+    });
 
 /// One source's scripted answers: what its search returns, what its details
 /// stage answers with, whether its content stage answers, and how often each
@@ -45,6 +55,14 @@ class FakeSource {
   /// `'<章名>的正文'`. The displayed count is measured after content processing.
   String? chapterBody;
 
+  /// The book variable text this source's details stage returns, or null to
+  /// keep the carrier it was handed (#132).
+  String? detailsVariable;
+
+  /// The chapter variable text every chapter the details stage returns carries
+  /// (#132).
+  String? chapterVariable;
+
   /// How long this source's search takes, for the walk's own rows.
   final Duration? delay;
 
@@ -60,6 +78,10 @@ class FakeSource {
   /// Holds this source's search response so a page can be disposed while its
   /// analysis is in flight.
   Completer<void>? gate;
+
+  /// Holds this source's details response, so a switch analysis can be held
+  /// while its owner is disposed (#132).
+  Completer<void>? detailsGate;
 }
 
 class _UnusedTransport implements BookSourceTransport {
@@ -72,8 +94,13 @@ class _UnusedTransport implements BookSourceTransport {
 }
 
 class ScriptedPipeline extends HtmlSourcePipeline {
-  ScriptedPipeline(this.fake) : super(fake.source, const _UnusedTransport());
+  ScriptedPipeline(this.fake, {this.onSearch})
+    : super(fake.source, const _UnusedTransport());
   final FakeSource fake;
+
+  /// Runs after this source's search answers, so a row can stand in for a rule
+  /// write the ordinary search fallback would make (the #132 repair).
+  final Future<void> Function()? onSearch;
 
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
@@ -81,18 +108,27 @@ class ScriptedPipeline extends HtmlSourcePipeline {
     fake.keywords.add(keyword);
     if (fake.gate != null) await fake.gate!.future;
     if (fake.failure != null) throw fake.failure!;
+    await onSearch?.call();
     return fake.hits;
   }
 
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
     fake.detailsCalls++;
+    final detailsGate = fake.detailsGate;
+    if (detailsGate != null) await detailsGate.future;
     final sourceUrl = '${fake.source['bookSourceUrl']}';
     return (
-      hit,
+      fake.detailsVariable == null
+          ? hit
+          : hit.withVariable(fake.detailsVariable),
       [
         for (var i = 0; i < fake.titles.length; i++)
-          SourceChapter(fake.titles[i], Uri.parse('$sourceUrl/chapter/$i')),
+          SourceChapter(
+            fake.titles[i],
+            Uri.parse('$sourceUrl/chapter/$i'),
+            variable: fake.chapterVariable,
+          ),
       ],
     );
   }
@@ -698,6 +734,8 @@ void main() {
     ShelfEntry entry, {
     void Function(bool)? onPopped,
     String Function(String text, ConvertTarget target)? convert,
+    BookSourcePipeline Function(Map<String, dynamic>)? openPipeline,
+    BookSourcePipeline Function(Map<String, dynamic>)? openDeferredPipeline,
   }) async {
     await tester.pumpWidget(
       localizedApp(
@@ -710,7 +748,8 @@ void main() {
                   builder: (_) => PreciseSearchPage(
                     service: shelf,
                     switchBook: entry,
-                    openPipeline: open,
+                    openPipeline: openPipeline ?? open,
+                    openDeferredPipeline: openDeferredPipeline,
                     convert: convert,
                   ),
                 ),
@@ -725,6 +764,200 @@ void main() {
     await tester.tap(find.text('打开换源'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('换源搜索走延迟工厂：详情页回退的写不落已存目标行', (tester) async {
+    final entry = await shelvedBook();
+    await store.putBookVariable(
+      'https://a.test',
+      'https://a.test/book/1',
+      variableText({'persisted': 'P'}),
+    );
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+    var ordinaryOpens = 0;
+    var deferredOpens = 0;
+
+    await pumpSwitchEntry(
+      tester,
+      entry,
+      openPipeline: (source) {
+        ordinaryOpens++;
+        // The ordinary search's detail-page fallback writes the stored row the
+        // response names; the repaired call site must not select this factory
+        // for a switch search.
+        return ScriptedPipeline(
+          byRef['${source['bookSourceUrl']}']!,
+          onSearch: () => store.putBookVariable(
+            'https://a.test',
+            'https://a.test/book/1',
+            variableText({'persisted': 'P', 'searchWrite': 'new'}),
+          ),
+        );
+      },
+      openDeferredPipeline: (source) {
+        deferredOpens++;
+        return open(source);
+      },
+    );
+
+    expect(ordinaryOpens, 0, reason: '换源搜索是候选分析，走延迟工厂');
+    expect(deferredOpens, greaterThan(0));
+    expect(
+      variableMapOf(
+        await store.bookVariable('https://a.test', 'https://a.test/book/1'),
+      ),
+      {'persisted': 'P'},
+      reason: '未选候选前详情页回退的规则写不落已存目标行',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：选中的同源候选把旧变量与新写入一起发布到书和章节行', (tester) async {
+    final entry = await shelvedBook();
+    await store.putBookVariable(
+      'https://a.test',
+      'https://a.test/book/1',
+      variableText({'old': 'O'}),
+    );
+    // The candidate is the same source's copy: the seed keeps the stored map
+    // and the details stage's own write rides the final carrier (#132).
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['楔子', '第一章', '第二章', '第三章']);
+    sourceA.detailsVariable = variableText({'old': 'O', 'written': 'W'});
+    sourceA.chapterVariable = variableText({'c': 'T'});
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final switched = (await store.bookById(entry.id))!;
+    expect(switched.sourceBookUrl, 'https://a.test/book/1');
+    expect(
+      variableMapOf(
+        await store.bookVariable('https://a.test', 'https://a.test/book/1'),
+      ),
+      {'old': 'O', 'written': 'W'},
+    );
+    expect(
+      variableMapOf(
+        await store.chapterVariable(
+          'https://a.test',
+          'https://a.test/book/1',
+          'https://a.test/chapter/0',
+        ),
+      ),
+      {'c': 'T'},
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：候选预览走延迟分析，预览的写不落到已存的目标行', (tester) async {
+    final entry = await shelvedBook();
+    await store.putBookVariable(
+      'https://a.test',
+      'https://a.test/book/1',
+      variableText({'old': 'O'}),
+    );
+    await store.putSetting('changeSourceLoadWordCount', '1');
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+    sourceA.detailsVariable = variableText({'preview': 'P'});
+    sourceA.chapterVariable = variableText({'pc': 'PC'});
+    var deferredOpened = 0;
+
+    await pumpSwitchEntry(
+      tester,
+      entry,
+      openDeferredPipeline: (source) {
+        deferredOpened++;
+        return open(source);
+      },
+    );
+
+    // The word-count preview ran through the deferred builder...
+    expect(deferredOpened, greaterThan(0));
+    // ...and neither the row nor its variable moved: previewing is not a switch.
+    final still = (await store.bookById(entry.id))!;
+    expect(still.sourceBookUrl, 'https://a.test/book/1');
+    expect(
+      variableMapOf(
+        await store.bookVariable('https://a.test', 'https://a.test/book/1'),
+      ),
+      {'old': 'O'},
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('换源：候选分析还在飞时页面被销毁，迟到的结果不写换源', (tester) async {
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+    final gate = Completer<void>();
+    sourceA.detailsGate = gate;
+
+    await pumpSwitchEntry(tester, entry);
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+      ),
+    );
+    await tester.pump();
+    expect(sourceA.detailsCalls, 1, reason: '候选分析已经开始');
+
+    // The owner goes away while the analysis is in flight.
+    await tapBack(tester);
+    gate.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    final still = (await store.bookById(entry.id))!;
+    expect(still.sourceRef, 'https://a.test', reason: '迟到的结果不写换源');
+    expect((await store.chaptersOf(entry.id)).length, 5);
+  });
+
+  testWidgets('换源：发布事务排队时页面被销毁，迟到的结果不写换源', (tester) async {
+    // The setUp store is replaced by one whose publication transaction can be
+    // held open, so the page can be popped between the finished analysis and
+    // the queued write (#132); only one database is ever open at a time.
+    await store.close();
+    final gate = GateableSpaceStore();
+    store = gate;
+    shelf = ShelfService(gate);
+
+    final entry = await shelvedBook();
+    sourceA.hits.add(candidate('https://a.test', '1', name, author));
+    sourceA.titles.addAll(const ['第一章', '第二章']);
+
+    await pumpSwitchEntry(tester, entry);
+    gate.holdNextTransaction = true;
+    await tester.tap(
+      find.byKey(
+        const ValueKey('precise-hit-https://a.test-https://a.test/book/1'),
+      ),
+    );
+    for (var i = 0; i < 100 && !gate.entered.isCompleted; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(gate.entered.isCompleted, isTrue, reason: '换源已经在等它的事务');
+
+    // The owner goes away while the publication is queued.
+    await tapBack(tester);
+    gate.release.complete();
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    final still = (await store.bookById(entry.id))!;
+    expect(still.sourceRef, 'https://a.test', reason: '迟到的结果不写换源');
+    expect((await store.chaptersOf(entry.id)).length, 5);
+    expect((await store.progressOf(entry.id))!.textOffset, 42);
+    expect(tester.takeException(), isNull);
+  });
 
   Future<void> groupedSources({bool hits = true}) async {
     await store.putSourceJson({

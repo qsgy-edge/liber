@@ -13,6 +13,7 @@ import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/online_reader_page.dart';
+import 'package:liber/source/source_host_state.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/legacy_import.dart';
 import 'package:liber/store/shelf.dart';
@@ -121,6 +122,111 @@ class _MarkerPipeline extends ScriptedPipeline {
 
 /// A tag long enough to wrap without the frozen `singleLine="true"`.
 const _longTag = '2026-01-01 12:34:56 更新时间很长很长很长很长很长很长很长很长很长很长很长很长';
+
+/// A browser analysis whose content stage writes no chapter variable and
+/// returns the chapter's own carried text — the corrected snapshot the real
+/// content stage produces for a relative TOC address whose row key holds no
+/// entry (#132). The rule engine is scripted; the host/store writes are the
+/// product's own, which is the read→return→add handoff it covers.
+class _RelativeCarrierPipeline extends HtmlSourcePipeline {
+  _RelativeCarrierPipeline(SourceHostState hostState)
+    : super(source, const _UnusedTransport(), hostState: hostState);
+
+  static const chapterVariable = '{"toc":"T"}';
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async => (
+    hit,
+    [
+      SourceChapter(
+        'Book章',
+        Uri.parse('$bookUrl/1'),
+        rawAddress: '/book/1',
+        variable: chapterVariable,
+      ),
+    ],
+  );
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async => HtmlChapterBody('正文', 1, chapterVariable: chapterVariable);
+}
+
+/// A resume whose chapter fetch returns the loaded chapter's final content
+/// snapshot (#132): that chapter's replacement or deletion stays authoritative,
+/// while a chapter the reader never fetched keeps the variable its stored row
+/// carried.
+class _ResumePipeline extends ScriptedPipeline {
+  _ResumePipeline(this.loadedVariable);
+
+  final String? loadedVariable;
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    chapterCalls.add('${chapter.url}');
+    return HtmlChapterBody('已读章节正文', 1, chapterVariable: loadedVariable);
+  }
+}
+
+/// A browser analysis whose content stage writes the entity state through the
+/// real host surface and returns the same final snapshots a real content stage
+/// returns (#132). The rule engine is scripted — a widget test cannot load the
+/// native rule adapter — so this is not a native source run; the variable writes
+/// are the product's own host/store writes, which is the read→return→add
+/// handoff it covers.
+class _ContentWritesPipeline extends HtmlSourcePipeline {
+  _ContentWritesPipeline(SourceHostState hostState)
+    : super(source, const _UnusedTransport(), hostState: hostState);
+
+  static const detailsBook = '{"detail":"D","shared":"old"}';
+  static const detailsChapter = '{"toc":"T"}';
+  static const contentBook = '{"shared":"new","content":"B"}';
+  static const contentChapter = '{"toc":"T","content":"C"}';
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async => (
+    hit.withVariable(detailsBook),
+    [
+      SourceChapter(
+        'Book章',
+        Uri.parse('$bookUrl/1'),
+        rawAddress: '/book/1',
+        variable: detailsChapter,
+      ),
+    ],
+  );
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    final bookKey = book!.identityAddress;
+    // The content rule deletes `detail`, replaces `shared` and writes
+    // `content`; the chapter rule adds `content` beside the TOC `toc`.
+    await hostState!.putBookVariable(sourceUrl, bookKey, contentBook);
+    await hostState!.putChapterVariable(
+      sourceUrl,
+      bookKey,
+      chapter.storeKey,
+      contentChapter,
+    );
+    return HtmlChapterBody(
+      '正文',
+      1,
+      bookVariable: contentBook,
+      chapterVariable: contentChapter,
+    );
+  }
+}
 
 void main() {
   late SpaceStore store;
@@ -657,6 +763,221 @@ void main() {
         isFalse,
         reason: 'details() 不得覆写正在取章的 pipeline 的页面与规则状态',
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'read then add publishes the content stage\'s final entity state',
+    (tester) async {
+      // The details carriers carry {detail, shared}; the reader's content stage
+      // deletes detail, replaces shared and writes content. Returning to the
+      // browser and adding must publish the content stage's state, not the
+      // stale details/TOC carriers (#132).
+      final pipeline = _ContentWritesPipeline(shelf.hostState);
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            directBook: HtmlBook(url: Uri.parse(bookUrl), title: 'Book'),
+            pipeline: pipeline,
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Book章'), findsOneWidget);
+      expect(find.text('加入书架'), findsOneWidget);
+
+      // Open the reader: the content stage writes through the host surface and
+      // reports its final snapshots back to the browser.
+      await tester.tap(find.text('Book章'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlineReaderPage), findsOneWidget);
+
+      await tapBack(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('加入书架'));
+      await tester.pumpAndSettle();
+
+      expect(
+        variableMapOf(await store.bookVariable(sourceUrl, bookUrl)),
+        {'shared': 'new', 'content': 'B'},
+        reason: 'the content stage replaced shared and dropped detail',
+      );
+      expect(
+        variableMapOf(
+          await store.chapterVariable(sourceUrl, bookUrl, '$bookUrl/1'),
+        ),
+        {'toc': 'T', 'content': 'C'},
+        reason: 'the chapter keeps its TOC write and the content write',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'read then add keeps a relative TOC chapter variable the content did not rewrite',
+    (tester) async {
+      // The content stage writes no chapter variable, so the published carrier
+      // must still be the chapter's own TOC text (#132).
+      final pipeline = _RelativeCarrierPipeline(shelf.hostState);
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            directBook: HtmlBook(url: Uri.parse(bookUrl), title: 'Book'),
+            pipeline: pipeline,
+            service: shelf,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Book章'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlineReaderPage), findsOneWidget);
+
+      await tapBack(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('加入书架'));
+      await tester.pumpAndSettle();
+
+      expect(
+        variableMapOf(
+          await store.chapterVariable(sourceUrl, bookUrl, '$bookUrl/1'),
+        ),
+        {'toc': 'T'},
+        reason: 'reading without a chapter-variable write keeps the TOC text',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  /// A stored two-chapter book with per-chapter variables, removed from the
+  /// shelf, resumed through `lastRead()`.
+  Future<ShelfEntry> removedBook({
+    required String? firstVariable,
+    required String? secondVariable,
+  }) async {
+    await shelf.add(
+      source,
+      HtmlBook(
+        url: Uri.parse(bookUrl),
+        title: '恢复书籍',
+        variable: '{"book":"B"}',
+      ),
+      [
+        SourceChapter(
+          '已读章节',
+          Uri.parse('$sourceUrl/c/1'),
+          variable: firstVariable,
+        ),
+        SourceChapter(
+          '未读章节',
+          Uri.parse('$sourceUrl/c/2'),
+          variable: secondVariable,
+        ),
+      ],
+    );
+    final id = (await shelf.onlineShelf()).single.id;
+    await shelf.saveProgress(
+      id,
+      chapterIndex: 0,
+      chapterKey: '$sourceUrl/c/1',
+      textOffset: 0,
+    );
+    await shelf.remove(id);
+    return (await shelf.lastRead())!;
+  }
+
+  /// Resumes [resume], reads its saved chapter, returns and adds it back,
+  /// answering the stored chapter rows. The stored TOC must be used as it is:
+  /// only the saved chapter is fetched, and no details/TOC refresh runs.
+  Future<List<BookChapter>> resumeReadAndReadd(
+    WidgetTester tester,
+    ShelfEntry resume,
+    _ResumePipeline pipeline,
+  ) async {
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          resume: resume,
+          pipeline: pipeline,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pipeline.detailsCalls, isEmpty, reason: '沿用已存目录，不刷新');
+    expect(pipeline.chapterCalls, ['$sourceUrl/c/1'], reason: '只读已保存的那一章');
+    expect(find.byType(OnlineReaderPage), findsOneWidget);
+
+    await tapBack(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加入书架'));
+    await tester.pumpAndSettle();
+    return store.chaptersOf(resume.id);
+  }
+
+  testWidgets(
+    'resuming a removed book keeps unread chapter variables through read then add',
+    (tester) async {
+      final resume = await removedBook(
+        firstVariable: '{"loaded":"old"}',
+        secondVariable: '{"unread":"U"}',
+      );
+      final pipeline = _ResumePipeline('{"loaded":"L"}');
+
+      final rows = await resumeReadAndReadd(tester, resume, pipeline);
+
+      expect(
+        (await shelf.onlineShelf()).single.id,
+        resume.id,
+        reason: '原 id 保留',
+      );
+      expect(rows, hasLength(2));
+      expect(rows[0].variable, '{"loaded":"L"}', reason: '已读章节以正文快照为准');
+      expect(rows[1].variable, '{"unread":"U"}', reason: '未读章节变量原样保留');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'resuming a removed book keeps a present-empty unread chapter variable',
+    (tester) async {
+      final resume = await removedBook(
+        firstVariable: '{"loaded":"old"}',
+        secondVariable: '',
+      );
+      final pipeline = _ResumePipeline('{"loaded":"L"}');
+
+      final rows = await resumeReadAndReadd(tester, resume, pipeline);
+
+      expect(rows[1].variable, '', reason: '存在但为空的变量原样保留，不回退为 null');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    "resuming a removed book publishes the loaded chapter's deleted variable",
+    (tester) async {
+      final resume = await removedBook(
+        firstVariable: '{"loaded":"old"}',
+        secondVariable: '{"unread":"U"}',
+      );
+      final pipeline = _ResumePipeline('{}');
+
+      final rows = await resumeReadAndReadd(tester, resume, pipeline);
+
+      expect(rows[0].variable, '{}', reason: '已读章节的显式删除生效');
+      expect(rows[1].variable, '{"unread":"U"}');
       expect(tester.takeException(), isNull);
     },
   );

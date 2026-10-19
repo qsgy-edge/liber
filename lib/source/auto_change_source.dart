@@ -1,3 +1,4 @@
+import '../domain/contracts.dart' show SourceRequestCancelled;
 import '../settings/auto_change_source.dart';
 import '../store/shelf.dart';
 import 'book_source_pipeline.dart';
@@ -104,21 +105,29 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
   /// The book the reader would have opened: its name and author are what the
   /// sources are searched for, and its row is what a switch rewrites.
   required ShelfEntry book,
-  required BookSourcePipeline Function(Map<String, dynamic> source) openPipeline,
+  required BookSourcePipeline Function(Map<String, dynamic> source)
+  openPipeline,
+
+  /// How the candidate's own details/TOC/content stages are opened. Null falls
+  /// back to [openPipeline]. The real caller passes a builder with
+  /// `deferEntityVariables: true` (#132): a candidate whose details, TOC or
+  /// content probe fails, is cancelled, or turns out to collide must leave the
+  /// stored destination row untouched, so its variable writes stay private
+  /// until [ShelfService.switchSource] publishes the final carriers.
+  BookSourcePipeline Function(Map<String, dynamic> source)?
+  openDeferredPipeline,
 
   /// Wraps one source's stage, so the page that owns the switch can put its
   /// per-source TLS-exception confirmation around that source's own requests
   /// (ADR 0011 §5), the way the manual search and switch do. Null runs the
   /// stages bare, which is what the tests do.
-  Future<T> Function<T>(
-    Map<String, dynamic> source,
-    Future<T> Function() run,
-  )?
+  Future<T> Function<T>(Map<String, dynamic> source, Future<T> Function() run)?
   confirm,
 
   /// Whether the caller has gone away, the way
   /// [PreciseSearch.searchSource]'s own hook works: a cancelled run stops at its
-  /// next check instead of walking the rest of the sources — and never writes.
+  /// next check instead of walking the rest of the sources — and never writes,
+  /// because the publication re-checks this signal inside its own transaction.
   /// Null never cancels, which is what the tools do.
   bool Function()? isCancelled,
 }) async {
@@ -128,7 +137,10 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
   final search = PreciseSearch(
     name: book.title,
     author: book.book.author,
-    openPipeline: openPipeline,
+    // The automatic walk is a candidate analysis from its search on: a search
+    // response interpreted as a detail page must not write the stored rows
+    // before a candidate is accepted (#132).
+    openPipeline: openDeferredPipeline ?? openPipeline,
     confirm: confirm,
   );
   for (final candidate in await service.sources()) {
@@ -143,10 +155,18 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
     // book's. A near hit the manual dialog would admit is not a candidate here.
     final exact = outcome.hits.where((admitted) => admitted.exact);
     if (exact.isEmpty) continue;
+    // The candidate carrier the switch will publish: a same-source candidate
+    // starts from the stored row's variables overlaid by the search map, a
+    // cross-source one from the search map alone (#132).
+    final prepared = service.associationCandidate(
+      book,
+      candidate.data,
+      exact.first.book,
+    );
     final verified = await _verifiedCandidate(
       source: candidate.data,
-      hit: exact.first,
-      openPipeline: openPipeline,
+      book: prepared,
+      openPipeline: openDeferredPipeline ?? openPipeline,
       confirm: confirm,
     );
     if (verified == null) continue;
@@ -156,15 +176,27 @@ Future<({ShelfEntry? switched, bool ran})> autoChangeSource({
     // is already on the shelf as another row) fails the flow instead of
     // silently walking on to the next source.
     final (details, chapters) = verified;
-    return (
-      switched: await service.switchSource(
-        book.id,
-        candidate.data,
-        details,
-        chapters,
-      ),
-      ran: true,
-    );
+    try {
+      return (
+        switched: await service.switchSource(
+          book.id,
+          candidate.data,
+          details,
+          chapters,
+          // The same liveness signal this walk already checks between its own
+          // steps, handed to the publication: a run cancelled while the switch
+          // was in flight rolls its transaction back instead of committing a
+          // late result, and the walk stops here (#132).
+          isCancelled: isCancelled,
+        ),
+        ran: true,
+      );
+    } on SourceRequestCancelled {
+      // Only the cancellation signal is caught: a collision or any other
+      // storage failure stays visible (the frozen's `changeTo` runs outside
+      // the per-source swallow too).
+      return (switched: null, ran: false);
+    }
   }
   return (switched: null, ran: true);
 }
@@ -183,32 +215,37 @@ bool _isAutomaticCandidate(Map<String, dynamic> source) =>
 /// does not answer all leave the source out and the next one is asked.
 Future<(HtmlBook, List<SourceChapter>)?> _verifiedCandidate({
   required Map<String, dynamic> source,
-  required PreciseSearchHit hit,
-  required BookSourcePipeline Function(Map<String, dynamic> source) openPipeline,
-  Future<T> Function<T>(
-    Map<String, dynamic> source,
-    Future<T> Function() run,
-  )?
+  required HtmlBook book,
+  required BookSourcePipeline Function(Map<String, dynamic> source)
+  openPipeline,
+  Future<T> Function<T>(Map<String, dynamic> source, Future<T> Function() run)?
   confirm,
 }) async {
   final pipeline = openPipeline(source);
   Future<T> run<T>(Future<T> Function() analysis) =>
       confirm == null ? analysis() : confirm<T>(source, analysis);
   try {
-    final (details, chapters) = await run(() => pipeline.details(hit.book));
+    final (details, chapters) = await run(() => pipeline.details(book));
     if (chapters.isEmpty) return null;
     // `toc.getOrElse(book.durChapterIndex) { toc.last() }` on the fresh search
     // book: index 0. `chapter.index` is 0 too, so the frozen's "next chapter"
     // URL is this same chapter's.
     final chapter = chapters.first;
-    await run(
+    final body = await run(
       () => pipeline.chapter(
         chapter,
         book: details,
         nextChapterUrl: '${chapters.first.url}',
       ),
     );
-    return (details, chapters);
+    // A successful content probe returns its final book/chapter variable
+    // snapshots (#132): the deferred draft carried the details/TOC writes into
+    // the content stage and the probe's own writes have to survive the switch
+    // too, so they ride the carriers the caller publishes.
+    return (
+      details.withVariable(body.bookVariable),
+      [chapter.withVariable(body.chapterVariable), ...chapters.skip(1)],
+    );
   } on Object {
     return null;
   } finally {

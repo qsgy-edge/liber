@@ -190,10 +190,17 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
 
   /// The book and chapter rows' own variables are not host-surface rows: they
   /// are the shelf's columns (the frozen `Book.variable`/`BookChapter.variable`),
-  /// so the store's own accessors own them (#76).
+  /// so the store's own accessors own them (#76). The lookup answers the row's
+  /// presence as well as its text, so a row that carries null is not read as a
+  /// missing row (#132).
   @override
-  Future<String?> loadBookVariable(String sourceRef, String bookUrl) =>
-      store.bookVariable(sourceRef, bookUrl);
+  Future<SourceEntityVariableRow?> loadBookVariable(
+    String sourceRef,
+    String bookUrl,
+  ) async {
+    final book = await store.bookByNaturalKey(sourceRef, bookUrl);
+    return book == null ? null : SourceEntityVariableRow(book.variable);
+  }
 
   @override
   Future<bool> saveBookVariable(
@@ -203,11 +210,18 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
   ) => store.putBookVariable(sourceRef, bookUrl, variable);
 
   @override
-  Future<String?> loadChapterVariable(
+  Future<SourceEntityVariableRow?> loadChapterVariable(
     String sourceRef,
     String bookUrl,
     String chapterKey,
-  ) => store.chapterVariable(sourceRef, bookUrl, chapterKey);
+  ) async {
+    final chapter = await store.chapterByNaturalKey(
+      sourceRef,
+      bookUrl,
+      chapterKey,
+    );
+    return chapter == null ? null : SourceEntityVariableRow(chapter.variable);
+  }
 
   @override
   Future<bool> saveChapterVariable(
@@ -231,18 +245,15 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
   @override
   Future<void> deleteSource(String sourceRef) async {
     await _db.transaction(() async {
-      await (_db.delete(_db.sourceEntries)..where(
-            (entry) => entry.sourceRef.equals(sourceRef),
-          ))
-          .go();
-      await (_db.delete(_db.sourceCookies)..where(
-            (cookie) => cookie.writerRef.equals(sourceRef),
-          ))
-          .go();
-      await (_db.delete(_db.sourceTlsExceptions)..where(
-            (exception) => exception.sourceRef.equals(sourceRef),
-          ))
-          .go();
+      await (_db.delete(
+        _db.sourceEntries,
+      )..where((entry) => entry.sourceRef.equals(sourceRef))).go();
+      await (_db.delete(
+        _db.sourceCookies,
+      )..where((cookie) => cookie.writerRef.equals(sourceRef))).go();
+      await (_db.delete(
+        _db.sourceTlsExceptions,
+      )..where((exception) => exception.sourceRef.equals(sourceRef))).go();
     });
   }
 

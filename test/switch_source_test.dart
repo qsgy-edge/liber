@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/store/database.dart';
@@ -311,4 +312,109 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  // --- #132 cancellation -----------------------------------------------------
+  //
+  // The publication re-reads the caller's liveness inside its own transaction,
+  // so the two windows the manual page and the automatic walk can be cancelled
+  // in — a transaction still queued, and one already writing — both refuse the
+  // switch instead of committing a late result.
+
+  /// A book on 甲源 with a group, a per-book setting and a position, read at the
+  /// second of three chapters — the row a cancelled switch must leave alone.
+  Future<ShelfEntry> cancelWindowBook(SpaceStore gated) async {
+    final gatedShelf = ShelfService(gated);
+    await gatedShelf.add(
+      sourceA,
+      book('https://a.test'),
+      chapters('https://a.test', const ['第一章', '第二章', '第三章']),
+    );
+    final entry = (await gatedShelf.find(
+      'https://a.test',
+      bookUrl('https://a.test'),
+    ))!;
+    final group = await gated.ensureGroup('在追');
+    await gated.setBookGroups(entry.id, [group.id]);
+    await gated.putSetting('convert', 't2s', bookId: entry.id);
+    await gatedShelf.saveProgress(
+      entry.id,
+      chapterKey: 'https://a.test/chapter/1',
+      chapterIndex: 1,
+      textOffset: 42,
+    );
+    return (await gatedShelf.find(
+      'https://a.test',
+      bookUrl('https://a.test'),
+    ))!;
+  }
+
+  Future<void> expectUntouched(SpaceStore gated, ShelfEntry before) async {
+    final row = (await gated.bookById(before.id))!;
+    expect(row.toJson(), before.book.toJson(), reason: '书行原封不动');
+    expect(
+      (await gated.chaptersOf(before.id)).map((chapter) => chapter.chapterKey),
+      before.chapters.map((chapter) => chapter.chapterKey),
+      reason: '目录还是旧书源的',
+    );
+    final progress = (await gated.progressOf(before.id))!;
+    expect(progress.chapterKey, before.progress!.chapterKey);
+    expect(progress.textOffset, 42);
+    expect((await gated.groupsOf(before.id)).map((row) => row.name), ['在追']);
+    expect(await gated.setting('convert', bookId: before.id), 't2s');
+  }
+
+  test('换源的事务还在排队时被取消：取消信号抛出，旧行不动', () async {
+    // The gate wraps this space's own database, so `space.delete()` in the
+    // tear-down is what closes it and only one database is ever open.
+    final gated = GateableSpaceStore(database: space.store.db);
+    final before = await cancelWindowBook(gated);
+    var cancelled = false;
+    gated.holdNextTransaction = true;
+    final pending = ShelfService(gated).switchSource(
+      before.id,
+      sourceB,
+      book('https://b.test'),
+      chapters('https://b.test', const ['第一章', '第二章']),
+      isCancelled: () => cancelled,
+    );
+    await gated.entered.future.timeout(const Duration(seconds: 5));
+    // The owner goes away while the write is queued.
+    cancelled = true;
+    gated.release.complete();
+
+    await expectLater(pending, throwsA(isA<SourceRequestCancelled>()));
+    await expectUntouched(gated, before);
+  }, timeout: const Timeout(Duration(seconds: 20)));
+
+  test(
+    '换源的事务已经写下一行后被取消：整个事务回滚，旧行、目录与进度都在',
+    () async {
+      final gated = GateableSpaceStore(database: space.store.db);
+      final before = await cancelWindowBook(gated);
+      var cancelled = false;
+      // The cancellation lands after the transaction has already written the
+      // book row: the publication's last check aborts it, and the transaction
+      // rolls that write back.
+      gated.afterBookWrite = () => cancelled = true;
+      await expectLater(
+        () => ShelfService(gated).switchSource(
+          before.id,
+          sourceB,
+          book('https://b.test'),
+          chapters('https://b.test', const ['第一章', '第二章']),
+          isCancelled: () => cancelled,
+        ),
+        throwsA(isA<SourceRequestCancelled>()),
+      );
+      gated.afterBookWrite = null;
+
+      await expectUntouched(gated, before);
+      expect(
+        (await ShelfService(gated).onlineShelf()).length,
+        1,
+        reason: '还是一条书架行',
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
 }

@@ -36,6 +36,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     this.hostState,
     this.androidId = '',
     this.onHostMessage,
+    this.deferEntityVariables = false,
     this.webViewFactory,
   });
 
@@ -55,6 +56,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// cache entries and per-source variables outlive the analysis. Without one
   /// they live for the process.
   final SourceHostState? hostState;
+
+  /// Whether this analysis carries its own book/chapter variables instead of
+  /// reading and writing the space's rows (#132).
+  ///
+  /// The candidate flow sets this: a preview of a row that already exists must
+  /// not mutate it, and a failed or cancelled draft must leave it as it was.
+  /// The candidate's variables live in [_entityDraft]; cookies, cache entries
+  /// and `java.put`/`get` still use the shared host surface. Default false, so
+  /// every existing caller keeps the direct row behavior.
+  final bool deferEntityVariables;
 
   /// The rendered-document adapter factory this pipeline's WebView stages use.
   /// Null builds the platform one for this source; a test substitutes its own,
@@ -128,6 +139,26 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   late final SourceHostState _hostSurface = hostState ?? SourceHostState();
 
+  /// The candidate-scoped book/chapter variables a deferred analysis carries,
+  /// or null when this analysis reads and writes the space's rows directly.
+  ///
+  /// A field of this pipeline, so two candidates — even of one source over one
+  /// host surface — never share a draft.
+  late final SourceEntityVariableDraft? _entityDraft = deferEntityVariables
+      ? SourceEntityVariableDraft()
+      : null;
+
+  /// The runtime's entity-variable store (#132): the candidate draft, the
+  /// space's rows, and — while a TOC item is rebuilt — that item's own chapter
+  /// scope, so a rebuilt chapter starts empty and keeps only its own writes.
+  /// A details/TOC/content stage hands its final book and chapter text back
+  /// through this same store, so the draft and the rows never mix.
+  late final SourceEntityVariableScope _entityVariables =
+      SourceEntityVariableScope(
+        _entityDraft ?? _hostSurface,
+        through: _entityDraft == null ? _hostSurface : null,
+      );
+
   late final BookSourceWebViewAdapterFactory _webViewAdapter =
       webViewFactory ??
       BookSourceWebViewAdapterFactory(
@@ -156,6 +187,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     jsLib: source['jsLib'] as String? ?? '',
     dispatcher: _host,
     hostState: _hostSurface,
+    entityVariables: _entityVariables,
     androidId: androidId,
     onMessage: (message) => onHostMessage?.call(message),
     ruleEvaluator: _readScriptRule,
@@ -1067,6 +1099,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _tocChapterAddress = null;
+    // The candidate carries the variable text it was handed: a deferred
+    // analysis reads and writes that text, never the stored row (#132). A
+    // rebuilt TOC starts with no chapter variables of its own.
+    final draft = _entityDraft;
+    if (draft != null) {
+      draft.resetBook(_sourceRef, hit.identityAddress);
+      draft.seedBook(_sourceRef, hit.identityAddress, hit.variable);
+    }
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
@@ -1194,6 +1234,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
           late final ordinaryFallbackAddress = tocFallbackAddress(request);
           for (var index = 0; index < entries.length; index++) {
             publishTocChapter('', '');
+            // One rebuilt item's chapter variables start empty and keep only
+            // what this item's own rules write (#132).
+            _entityVariables.beginChapter();
             try {
               final entry = entries[index];
               // The frozen adds a chapter only when its title is non-empty
@@ -1297,14 +1340,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isPay: isPay,
                 );
               }
+              // The chapter's own variable text, read after all the item's
+              // address and rule analysis: a supported chapterUrl option `js`
+              // runs inside `_request` above and may write it, keyed by the same
+              // raw address the script bound as `chapter.url` (#132). Reading
+              // here does not run that option script again, and the item's own
+              // capture is the write alone.
+              final chapterVariable = _entityVariables.chapterText;
               // A repeated chapter address is kept, as this path always has: the frozen
               // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
               // path refuses the repeat by name, but a JSON TOC that names one address
               // twice has always produced both chapters here. Such a pair would name one
               // row twice, which is a store-level limit (D4), not a rule decision taken
               // at this point.
-              chapters.add(chapter);
+              chapters.add(chapter.withVariable(chapterVariable));
             } finally {
+              _entityVariables.endChapter();
               clearTocChapter();
             }
           }
@@ -1322,7 +1373,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (book, chapters);
+    return (
+      book.withVariable(
+        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
+      ),
+      chapters,
+    );
   }
 
   /// The single book a response that is a book detail page describes, or an
@@ -1354,7 +1410,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       HtmlBook(url: finalUrl, title: ''),
       _rules('ruleBookInfo', const []),
     );
-    return book.title.isEmpty ? const <HtmlBook>[] : <HtmlBook>[book];
+    if (book.title.isEmpty) return const <HtmlBook>[];
+    // The response's own final book-variable text rides the carrier: a
+    // search-only rule write survives into the deferred details pipeline the
+    // association opens next (#132).
+    return <HtmlBook>[
+      book.withVariable(
+        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
+      ),
+    ];
   }
 
   /// `ruleBookInfo` over one response document this pipeline already has.
@@ -1432,6 +1496,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
             : current.lastChapter,
         intro: intro != null && intro.isNotEmpty ? intro : current.intro,
         cover: cover != null && cover.isNotEmpty ? cover : current.cover,
+        // A metadata copy does not clear the variable it started from (#132).
+        variable: current.variable,
       );
     }
 
@@ -1503,6 +1569,45 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (book != null) _book = book;
     _tocChapterAddress = null;
     _chapter = chapter;
+    // A deferred content analysis starts from the carriers it was handed: the
+    // book's variable text and this chapter's own, keyed as the content stage's
+    // `book.bookUrl`/`chapter.url` bind them (#132).
+    final candidateBook = _book;
+    if (candidateBook != null) {
+      _entityDraft?.seedBook(
+        _sourceRef,
+        candidateBook.identityAddress,
+        candidateBook.variable,
+      );
+      _entityDraft?.seedChapter(
+        _sourceRef,
+        candidateBook.identityAddress,
+        chapter.storeKey,
+        chapter.variable,
+      );
+      // The ordinary path reads and writes the space's rows, keyed by the
+      // chapter's row identity. A chapter whose key holds no entry at all
+      // starts from its own carrier text: a TOC write lands under the TOC
+      // stage's own key, so the rules and the final snapshot must still see it.
+      // A stored row — or an unwritten entry, even one whose text is null — is
+      // present and authoritative and is never reseeded (#132).
+      if (_entityDraft == null && chapter.variable != null) {
+        final chapterKey = chapter.storeKey;
+        final entry = await _hostSurface.chapterVariableRow(
+          _sourceRef,
+          candidateBook.identityAddress,
+          chapterKey,
+        );
+        if (entry == null) {
+          await _hostSurface.putChapterVariable(
+            _sourceRef,
+            candidateBook.identityAddress,
+            chapterKey,
+            chapter.variable,
+          );
+        }
+      }
+    }
     _validate();
     _page = null;
     _chapterTitle = chapter.name;
@@ -1513,8 +1618,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // (`WebBook.kt:303-306`), then answers a volume's `tag` without building a
     // request (`:307-310`); the request's headers are read after both.
     final content = _rules('ruleContent', ['content']);
+    final contentBookKey = _book?.identityAddress;
     if (chapter.rendersTagAsContent) {
-      return HtmlChapterBody(chapter.tag ?? '', 0);
+      // The volume shortcut makes no request and runs no rule, but the
+      // caller still gets the carriers' entity snapshots (#132).
+      return HtmlChapterBody(
+        chapter.tag ?? '',
+        0,
+        bookVariable: contentBookKey == null
+            ? null
+            : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
+        chapterVariable: await _entityVariables.chapterVariable(
+          _sourceRef,
+          contentBookKey ?? '',
+          chapter.storeKey,
+        ),
+      );
     }
     _activeHeaders = await _ensureHeaders();
     final parts = <String>[];
@@ -1575,6 +1694,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               rawAddress: chapter.rawAddress,
               storedKey: chapter.storedKey,
               addressBase: chapter.addressBase,
+              variable: chapter.variable,
             );
           }
         }
@@ -1615,6 +1735,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
+      // The final entity snapshots of this content request, pagination and all:
+      // every page wrote through the same candidate draft (#132).
+      bookVariable: contentBookKey == null
+          ? null
+          : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
+      chapterVariable: await _entityVariables.chapterVariable(
+        _sourceRef,
+        contentBookKey ?? '',
+        chapter.storeKey,
+      ),
     );
   }
 
@@ -1806,6 +1936,7 @@ class SourceChapter {
     this.isVolume = false,
     this.isVip = false,
     this.isPay = false,
+    this.variable,
   });
 
   /// A volume chapter whose URL rule produced nothing.
@@ -1824,6 +1955,7 @@ class SourceChapter {
     String? tag,
     bool isVip = false,
     bool isPay = false,
+    String? variable,
   }) => SourceChapter(
     title,
     tocUrl,
@@ -1832,6 +1964,7 @@ class SourceChapter {
     isVolume: true,
     isVip: isVip,
     isPay: isPay,
+    variable: variable,
   );
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
@@ -1845,6 +1978,7 @@ class SourceChapter {
     bool isVolume = false,
     bool isVip = false,
     bool isPay = false,
+    String? variable,
   }) {
     final target = sourceUrlTargetOf(address);
     return SourceChapter(
@@ -1857,6 +1991,7 @@ class SourceChapter {
       isVolume: isVolume,
       isVip: isVip,
       isPay: isPay,
+      variable: variable,
     );
   }
 
@@ -1881,6 +2016,31 @@ class SourceChapter {
 
   /// A chapter the source marks as already paid for (`ruleToc.isPay`).
   final bool isPay;
+
+  /// The chapter row's own variable text (the frozen `BookChapter.variable`
+  /// column, `BookChapter.kt:58`), or null when this carrier carries none.
+  ///
+  /// A carrier keeps the text so an analysis can seed a candidate from it and
+  /// hand the final text on with the same identity; the runtime reads and
+  /// writes the row (or the candidate draft) under the key the script sees as
+  /// `chapter.url`, never this field directly.
+  final String? variable;
+
+  /// This carrier with [variable] replaced, every identity, address and marker
+  /// field retained. A metadata or content-stage copy must not drop the
+  /// variable it started from.
+  SourceChapter withVariable(String? variable) => SourceChapter(
+    name,
+    url,
+    rawAddress: rawAddress,
+    storedKey: storedKey,
+    addressBase: addressBase,
+    tag: tag,
+    isVolume: isVolume,
+    isVip: isVip,
+    isPay: isPay,
+    variable: variable,
+  );
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
   /// resolved target, except a volume the rules left without a URL: it has no

@@ -81,9 +81,14 @@ abstract interface class SourceHostStatePersistence {
   Future<void> deleteCacheEntry(String sourceRef, String key);
 
   /// The book row's own variable text (the frozen `Book.variable` column,
-  /// `Book.kt:115`), or null when the space holds no such row or the row
-  /// carries none.
-  Future<String?> loadBookVariable(String sourceRef, String bookUrl);
+  /// `Book.kt:115`): null when the space holds no such row, and otherwise the
+  /// row with the text it carries, which may itself be null (#132). The two
+  /// cases are different: a row that carries no text is authoritative, where a
+  /// missing row leaves the in-process unwritten value as the only one.
+  Future<SourceEntityVariableRow?> loadBookVariable(
+    String sourceRef,
+    String bookUrl,
+  );
 
   /// Writes that column and answers whether the space holds the row: a write
   /// for a book the space has no row for is kept by [SourceHostState] alone.
@@ -94,9 +99,9 @@ abstract interface class SourceHostStatePersistence {
   );
 
   /// The chapter row's own variable text (the frozen `BookChapter.variable`
-  /// column, `BookChapter.kt:58`). [chapterKey] is the row identity a script's
-  /// `chapter.url` names.
-  Future<String?> loadChapterVariable(
+  /// column, `BookChapter.kt:58`), read like [loadBookVariable]. [chapterKey] is
+  /// the row identity a script's `chapter.url` names.
+  Future<SourceEntityVariableRow?> loadChapterVariable(
     String sourceRef,
     String bookUrl,
     String chapterKey,
@@ -127,6 +132,204 @@ abstract interface class SourceHostStatePersistence {
   Future<void> saveTlsException(SourceTlsException exception);
 }
 
+/// One stored book or chapter row's own variable text as
+/// [SourceHostStatePersistence] answers it (#132).
+///
+/// A non-null value is the row: [variable] is authoritative, and a null
+/// [variable] is a row that carries no text rather than a missing row. A null
+/// value is the missing row, where the in-process unwritten-value cache is the
+/// only value a read has.
+class SourceEntityVariableRow {
+  const SourceEntityVariableRow(this.variable);
+  final String? variable;
+}
+
+/// The book and chapter rows' own variable text a rule script reads and writes
+/// (`book.getVariable`/`putVariable`/`variable` and the chapter pair, #76),
+/// separated from the wider host surface.
+///
+/// A run reads and writes the space's own rows through [SourceHostState]; a
+/// candidate analysis that must not touch them yet carries the same four
+/// operations over a private [SourceEntityVariableDraft] instead, so a preview
+/// of a row that already exists leaves it alone.
+abstract interface class SourceEntityVariableStore {
+  Future<String?> bookVariable(String sourceRef, String bookUrl);
+  Future<void> putBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  );
+  Future<String?> chapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  );
+  Future<void> putChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  );
+}
+
+/// The candidate-scoped book and chapter variable text one deferred analysis
+/// carries (#132).
+///
+/// The maps are private to the analysis that owns the draft: nothing here
+/// reaches the space's store or the shared unwritten-value caches on
+/// [SourceHostState], so an analysis of a candidate that turns out to be
+/// rejected — a failed or cancelled details/TOC draft — leaves every stored row
+/// exactly as it was. The draft is seeded from the carriers the analysis is
+/// handed ([seedBook]/[seedChapter]) and read back into the carriers it
+/// returns through [bookVariable]/[chapterVariable].
+class SourceEntityVariableDraft implements SourceEntityVariableStore {
+  final Map<(String, String), String?> _books = {};
+  final Map<(String, String, String), String?> _chapters = {};
+
+  /// Seeds the candidate book's variable text under the identity the script
+  /// binds as `book.bookUrl`. An entity the draft already carries is left as it
+  /// is, so a later request on the same analysis cannot reseed an older
+  /// carrier over a write an earlier stage made.
+  void seedBook(String sourceRef, String bookUrl, String? variable) {
+    _books.putIfAbsent((sourceRef, bookUrl), () => variable);
+  }
+
+  /// Seeds one candidate chapter's variable text under the row key the script
+  /// binds as `chapter.url`. Left as it is when the draft already carries that
+  /// chapter, like [seedBook].
+  void seedChapter(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  ) {
+    _chapters.putIfAbsent((sourceRef, bookUrl, chapterKey), () => variable);
+  }
+
+  /// Starts a fresh candidate for one book identity: the book's own entry and
+  /// every chapter entry under it are dropped, so a rebuilt TOC cannot see a
+  /// variable written by a previous TOC. [details] calls this before it seeds
+  /// the new carrier.
+  void resetBook(String sourceRef, String bookUrl) {
+    _books.remove((sourceRef, bookUrl));
+    _chapters.removeWhere((key, _) => key.$1 == sourceRef && key.$2 == bookUrl);
+  }
+
+  @override
+  Future<String?> bookVariable(String sourceRef, String bookUrl) async =>
+      _books[(sourceRef, bookUrl)];
+
+  @override
+  Future<void> putBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  ) async {
+    _books[(sourceRef, bookUrl)] = variable;
+  }
+
+  @override
+  Future<String?> chapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  ) async => _chapters[(sourceRef, bookUrl, chapterKey)];
+
+  @override
+  Future<void> putChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  ) async {
+    _chapters[(sourceRef, bookUrl, chapterKey)] = variable;
+  }
+}
+
+/// The book and chapter variable store one pipeline's runtime reads and writes
+/// (#132), composed of the analysis's [base] store and, while a TOC item is
+/// being rebuilt, that item's own chapter scope.
+///
+/// [base] is the candidate's private [SourceEntityVariableDraft] when the
+/// analysis defers entity variables and the space's rows otherwise, so the book
+/// half and the chapter half outside a rebuild keep their existing path.
+/// [through] is the row store an ordinary TOC item's chapter write also reaches;
+/// a deferred analysis leaves it null, so a rebuilt candidate chapter never
+/// touches a row.
+///
+/// One TOC item is one [beginChapter] scope: its chapter variables start empty —
+/// a read answers only what this item's own rules wrote, never the row a
+/// previous directory left — and its last write is what the item's carrier
+/// keeps ([chapterText]). The scope ends with [endChapter].
+class SourceEntityVariableScope implements SourceEntityVariableStore {
+  SourceEntityVariableScope(this.base, {this.through});
+
+  /// The book half and the chapter half outside a TOC item rebuild.
+  final SourceEntityVariableStore base;
+
+  /// The row store an ordinary TOC item's chapter write also reaches.
+  final SourceEntityVariableStore? through;
+
+  Map<String, String?>? _item;
+  String? _itemText;
+
+  /// Starts one rebuilt TOC item's chapter scope: its reads answer only this
+  /// item's own writes.
+  void beginChapter() {
+    _item = {};
+    _itemText = null;
+  }
+
+  /// Ends the current item's scope, restoring the direct chapter path.
+  void endChapter() => _item = null;
+
+  /// The text the current TOC item's carrier keeps: its last rule write, or
+  /// null when no rule wrote one.
+  String? get chapterText => _itemText;
+
+  @override
+  Future<String?> bookVariable(String sourceRef, String bookUrl) =>
+      base.bookVariable(sourceRef, bookUrl);
+
+  @override
+  Future<void> putBookVariable(
+    String sourceRef,
+    String bookUrl,
+    String? variable,
+  ) => base.putBookVariable(sourceRef, bookUrl, variable);
+
+  @override
+  Future<String?> chapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+  ) {
+    final item = _item;
+    return item == null
+        ? base.chapterVariable(sourceRef, bookUrl, chapterKey)
+        : Future<String?>.value(item[chapterKey]);
+  }
+
+  @override
+  Future<void> putChapterVariable(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
+    String? variable,
+  ) async {
+    final item = _item;
+    if (item == null) {
+      return base.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+    }
+    item[chapterKey] = variable;
+    _itemText = variable;
+    final row = through;
+    if (row != null) {
+      await row.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+    }
+  }
+}
+
 /// The host surface's state one space's sources share (ADR 0011 §3): the cookie
 /// jar the frozen `CookieStore` keeps, the cache entries and per-source
 /// variables whose owner is the source that wrote them, and the per-source,
@@ -149,7 +352,7 @@ abstract interface class SourceHostStatePersistence {
 /// process cannot see a row the store no longer holds. A state with no
 /// persistence (a gate, a tool, a test that speaks for one source) has no
 /// durable store to bound.
-class SourceHostState {
+class SourceHostState implements SourceEntityVariableStore {
   factory SourceHostState({
     SourceHostStatePersistence? persistence,
     int Function()? clock,
@@ -176,8 +379,7 @@ class SourceHostState {
   /// Without a persistence (a gate, a tool, a test that speaks for no space)
   /// this map is the whole store.
   final Map<(String, String), String?> _unwrittenBookVariables = {};
-  final Map<(String, String, String), String?> _unwrittenChapterVariables =
-      {};
+  final Map<(String, String, String), String?> _unwrittenChapterVariables = {};
 
   /// Accepted TLS exceptions, as `(sourceRef, host)` pairs (ADR 0011 §5).
   final Set<(String, String)> _tlsExceptions = {};
@@ -315,11 +517,14 @@ class SourceHostState {
   /// none.
   ///
   /// The store is the read: a row the shelf rewrote is read as it now is, and a
-  /// value no row took is served from [_unwrittenBookVariables].
+  /// value no row took is served from [_unwrittenBookVariables]. A row that
+  /// carries no text is authoritative — the unwritten cache does not resurrect
+  /// a value the row replaced with an empty one (#132).
+  @override
   Future<String?> bookVariable(String sourceRef, String bookUrl) async {
     final key = (sourceRef, bookUrl);
     final stored = await _persistence?.loadBookVariable(sourceRef, bookUrl);
-    if (stored != null) return stored;
+    if (stored != null) return stored.variable;
     return _unwrittenBookVariables[key];
   }
 
@@ -328,9 +533,10 @@ class SourceHostState {
   /// A write the store took is the row's now and drops any unwritten value for
   /// it; a write for a book the space has no row for stays readable in this
   /// process — the frozen entity a script holds exists before its row does
-  /// (`BookInfoViewModel` runs the rules and then saves the entity), while
-  /// carrying such a value into the row the shelf later writes is not
-  /// implemented (#76, recorded divergence).
+  /// (`BookInfoViewModel` runs the rules and then saves the entity). The carrier
+  /// a details/TOC stage returns takes the final text with the same identity, so
+  /// the row the shelf later writes receives it (#132).
+  @override
   Future<void> putBookVariable(
     String sourceRef,
     String bookUrl,
@@ -347,24 +553,42 @@ class SourceHostState {
 
   /// The chapter row's own variable text (the frozen `BookChapter.variable`
   /// column, `BookChapter.kt:58`); [chapterKey] is the identity a script's
-  /// `chapter.url` names. Read like [bookVariable].
+  /// `chapter.url` names. Read like [bookVariable]: an existing row is
+  /// authoritative even when it carries no text.
+  @override
   Future<String?> chapterVariable(
     String sourceRef,
     String bookUrl,
     String chapterKey,
+  ) async =>
+      (await chapterVariableRow(sourceRef, bookUrl, chapterKey))?.variable;
+
+  /// The chapter entry's own variable text with its presence (#132): null when
+  /// the space holds neither a row nor an unwritten value for exactly that key,
+  /// and otherwise the entry with the text it carries, which may itself be
+  /// null. A stored row wins over an unwritten cache entry, so an entry whose
+  /// text is null is present and authoritative rather than absent.
+  Future<SourceEntityVariableRow?> chapterVariableRow(
+    String sourceRef,
+    String bookUrl,
+    String chapterKey,
   ) async {
-    final key = (sourceRef, bookUrl, chapterKey);
     final stored = await _persistence?.loadChapterVariable(
       sourceRef,
       bookUrl,
       chapterKey,
     );
     if (stored != null) return stored;
-    return _unwrittenChapterVariables[key];
+    final key = (sourceRef, bookUrl, chapterKey);
+    if (_unwrittenChapterVariables.containsKey(key)) {
+      return SourceEntityVariableRow(_unwrittenChapterVariables[key]);
+    }
+    return null;
   }
 
   /// Writes the chapter row's own variable text, under the same rule as
   /// [putBookVariable].
+  @override
   Future<void> putChapterVariable(
     String sourceRef,
     String bookUrl,
@@ -545,14 +769,14 @@ class SourceCookieJar {
   /// [domain]: the site is its own, or it wrote that pair itself.
   bool _visible(String domain, String name) {
     if (_sourceRef.isEmpty) return true;
-    return domain == _siteGroup ||
-        _state._writers[domain]?[name] == _sourceRef;
+    return domain == _siteGroup || _state._writers[domain]?[name] == _sourceRef;
   }
 
   /// The names this source may delete under [domain]: all of its own site's
   /// pairs, and under another site only the ones it wrote.
   List<String> _clearable(String domain) => [
-    for (final name in _state._cookies[domain]?.keys.toList() ?? const <String>[])
+    for (final name
+        in _state._cookies[domain]?.keys.toList() ?? const <String>[])
       if (_visible(domain, name)) name,
   ];
 

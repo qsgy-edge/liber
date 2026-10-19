@@ -145,6 +145,40 @@ void main() {
     expect('${entry.htmlBook.url}', contains('%7B'));
   });
 
+  test('书架行交给管线的载体带着地址身份与变量文本', () async {
+    await shelf.add(source, book('A'), chapters('A'));
+    final id = (await entryOf('A')).id;
+    // A stored historical relative identity with an option tail: the row's
+    // `source_book_url` text is what a fetch parses (#97).
+    const stored = '$sourceUrl/A?isSearch=1,{"method":"GET"}';
+    await store.putBook(
+      BooksCompanion(
+        id: Value(id),
+        sourceBookUrl: const Value(stored),
+        title: const Value('A'),
+      ),
+    );
+    await store.putBookVariable(sourceUrl, stored, '{"carry":"C"}');
+
+    final entry = (await shelf.onlineShelf()).single;
+    expect(entry.book.variable, '{"carry":"C"}', reason: '行里的变量文本在');
+    expect(
+      entry.htmlBook.variable,
+      entry.book.variable,
+      reason: '书架到管线的副本带着它，而不是 null',
+    );
+    expect(entry.htmlBook.rawAddress, stored, reason: '地址文本原样带上');
+    expect(entry.htmlBook.identityAddress, stored, reason: '解析后的身份还是它');
+    expect(entry.htmlBook.title, entry.book.title);
+    expect(entry.htmlBook.author, entry.book.author);
+    expect(entry.htmlBook.cover, entry.book.coverUrl);
+    // A metadata copy keeps the identity and the variable together.
+    final copy = entry.htmlBook.withVariable('{"carry":"C","next":"N"}');
+    expect(copy.rawAddress, stored);
+    expect(copy.identityAddress, stored);
+    expect(copy.variable, '{"carry":"C","next":"N"}');
+  });
+
   test('重复加入不新建书籍，刷新目录保留进度与书架位置', () async {
     await shelf.add(source, book('A', title: '甲'), chapters('A'));
     final before = await entryOf('A');
@@ -321,6 +355,54 @@ void main() {
     expect(await shelf.onlineShelf(), isEmpty);
     expect((await store.bookById(id))!.shelved, isFalse);
     expect((await shelf.lastRead())!.id, id, reason: '“继续上次阅读”仍然找得到它');
+  });
+
+  test('普通 ensureBook 对已有的行写入带上来的变量文本，没带文本时保留原值', () async {
+    final id = await shelf.ensureBook(
+      source,
+      HtmlBook(
+        url: Uri.parse(bookUrl('A')),
+        title: 'A',
+        variable: '{"old":"O"}',
+      ),
+    );
+    final group = await store.ensureGroup('在追');
+    await store.setBookGroups(id, [group.id]);
+    await store.putSetting('convert', 't2s', bookId: id);
+    await shelf.saveProgress(
+      id,
+      chapterKey: '$sourceUrl/A/1',
+      chapterIndex: 0,
+      textOffset: 12,
+    );
+    final before = (await store.bookById(id))!;
+
+    final again = await shelf.ensureBook(
+      source,
+      HtmlBook(
+        url: Uri.parse(bookUrl('A')),
+        title: 'A',
+        variable: '{"fresh":"F"}',
+      ),
+    );
+    expect(again, id, reason: '自然键相同就是同一行');
+    final after = (await store.bookById(id))!;
+    expect(after.variable, '{"fresh":"F"}', reason: '普通 ensure 带上来的文本替换掉旧值');
+    expect(after.shelved, before.shelved);
+    expect(after.bookOrder, before.bookOrder);
+    expect(after.title, before.title);
+    expect(after.author, before.author);
+    expect((await store.groupsOf(id)).map((row) => row.name), ['在追']);
+    expect(await store.setting('convert', bookId: id), 't2s');
+    expect((await store.progressOf(id))!.textOffset, 12);
+
+    // A carrier without a variable leaves the stored text alone: only the
+    // association commit publishes a final null value (#132).
+    await shelf.ensureBook(
+      source,
+      HtmlBook(url: Uri.parse(bookUrl('A')), title: 'A'),
+    );
+    expect((await store.bookById(id))!.variable, '{"fresh":"F"}');
   });
 
   test('迁移留下的没有书源的书只出现在已迁移书籍里', () async {

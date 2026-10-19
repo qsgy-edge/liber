@@ -340,6 +340,7 @@ BookSourcePipeline openBookSourcePipeline(
   BookSourceTransport transport, {
   SourceHostState? hostState,
   String androidId = '',
+  bool deferEntityVariables = false,
   void Function(SourceHostMessage message)? onHostMessage,
 }) => isJsonRuleSource(source)
     ? JsonSourcePipeline(
@@ -347,6 +348,7 @@ BookSourcePipeline openBookSourcePipeline(
         transport,
         hostState: hostState,
         androidId: androidId,
+        deferEntityVariables: deferEntityVariables,
         onHostMessage: onHostMessage,
       )
     : HtmlSourcePipeline(
@@ -354,5 +356,6 @@ BookSourcePipeline openBookSourcePipeline(
         transport,
         hostState: hostState,
         androidId: androidId,
+        deferEntityVariables: deferEntityVariables,
         onHostMessage: onHostMessage,
       );

@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
 
+import '../domain/contracts.dart' show SourceRequestCancelled;
 import '../source/chapter_position.dart';
 import '../source/html_source_pipeline.dart';
+import '../source/js_source_runtime.dart' show variableMapOf, variableTextOf;
 import '../source/json_source_pipeline.dart' show SourceChapter;
 import '../source/source_host_state.dart';
 import 'database.dart';
@@ -105,6 +107,10 @@ class ShelfEntry {
     intro: book.intro,
     cover: book.coverUrl,
     lastChapter: book.latestChapterTitle,
+    // The row's own variable text travels with the identity it belongs to
+    // (#132): a stored book handed to an analysis carries its variable, and a
+    // copy must not drop it.
+    variable: book.variable,
   );
 }
 
@@ -199,6 +205,10 @@ class ShelfService {
     final row = await _ensureBook(source, book, shelved: true);
     // An existing row keeps its position, its `raw` and its source reference:
     // the fields a Legado import carried must survive an update (D2).
+    //
+    // The variable column is not written here: `_ensureBook` carries the
+    // carrier's own text for both a new and an existing row (#132), and a
+    // companion that left the field out would leave that write alone anyway.
     await store.putBook(
       BooksCompanion(
         id: Value(row.id),
@@ -221,6 +231,10 @@ class ShelfService {
   /// Reading a book nobody added still has to track a position, and a position
   /// belongs to a book row (D4) — the JSON store's positional write did the same
   /// when it appended a record. Merely opening a book's details writes nothing.
+  ///
+  /// An existing row keeps its identity, membership, metadata and progress;
+  /// the supplied variable text is carried by [_ensureBook] like the other
+  /// ordinary writers (#132).
   Future<String> ensureBook(Map<String, dynamic> source, HtmlBook book) async =>
       (await _ensureBook(source, book, shelved: false)).id;
 
@@ -244,6 +258,11 @@ class ShelfService {
         intro: Value(book.intro),
         coverUrl: Value(book.cover),
         latestChapterTitle: Value(book.lastChapter),
+        // A refresh carries the new variable text when it has one; a carrier
+        // without one leaves the row's existing value alone (#132).
+        variable: book.variable == null
+            ? const Value.absent()
+            : Value(book.variable),
       ),
     );
     await store.putChapters(existing.id, _chapterRows(existing.id, chapters));
@@ -285,12 +304,26 @@ class ShelfService {
   /// (D2), and the frozen's answer to the same situation is a `REPLACE` that
   /// silently drops one of the two rows (the migration contract's rule 3 records
   /// that the baseline "can overwrite a shelf entry and its progress").
+  ///
+  /// [isCancelled] is the caller's liveness check, the same signal the pages
+  /// already hand their pipelines: the publication runs inside the transaction
+  /// below, so a caller that went away while the switch was in flight (the
+  /// manual page popped, the automatic run's owner gone) has its write refused
+  /// instead of committing a late result (#132). The check authorizes the
+  /// publication — it does not claim the writes never physically ran, only
+  /// that a cancelled transaction rolls them back. Null never cancels, which
+  /// is what every caller without a liveness signal passes.
   Future<ShelfEntry> switchSource(
     String bookId,
     Map<String, dynamic> source,
     HtmlBook book,
-    List<SourceChapter> chapters,
-  ) async {
+    List<SourceChapter> chapters, {
+    bool Function()? isCancelled,
+  }) async {
+    void throwIfCancelled() {
+      if (isCancelled?.call() == true) throw const SourceRequestCancelled();
+    }
+
     final existing = await store.bookById(bookId);
     if (existing == null) throw StateError('书籍不存在：$bookId');
     if (existing.kind != 'network') {
@@ -321,6 +354,11 @@ class ShelfService {
           '该书籍已在书源“${sourceRow.name}”下：${clash.title}（$bookUrl）',
         );
       }
+      // The cancellation check authorizes the publication: it runs after this
+      // transaction's own asynchronous reads and before the book and chapter
+      // rows are written, so a caller that went away while the transaction was
+      // queued commits nothing.
+      throwIfCancelled();
       await store.putBook(
         BooksCompanion(
           id: Value(bookId),
@@ -332,6 +370,11 @@ class ShelfService {
           intro: Value(book.intro),
           coverUrl: Value(book.cover),
           latestChapterTitle: Value(book.lastChapter),
+          // The final candidate variable text, including null: the association
+          // flow has already prepared and carried it, so the switch publishes
+          // exactly what the details/TOC stages produced and never re-merges the
+          // old row's value (#132). A null here is the cross-source clear.
+          variable: Value(book.variable),
         ),
       );
       await store.putChapters(bookId, _chapterRows(bookId, chapters));
@@ -356,8 +399,71 @@ class ShelfService {
           ),
         );
       }
+      // A cancellation observed while the transaction's writes were running
+      // aborts it before it completes: the transaction rolls back the rows it
+      // already wrote, so the old book, its chapters and its progress stay as
+      // they were.
+      throwIfCancelled();
     });
     return _entry((await store.bookById(bookId))!);
+  }
+
+  /// The candidate carrier an association analysis starts from (#132): the
+  /// search result's own book with its variable text seeded for the switch.
+  ///
+  /// A candidate on the book's *same* source reference starts from the stored
+  /// row's own variable text overlaid by the search result's map — new
+  /// same-name values win, a later deletion stays deleted — and keeps the
+  /// stored raw text verbatim when the search result carries no map of its own
+  /// (the approved preservation rule, no re-encoding). A candidate on a
+  /// *different* source reference starts from the search result's text alone,
+  /// so the old source's book variables are not carried across and the final
+  /// value (including null) replaces the old one.
+  ///
+  /// This is the one preparation both the manual precise-search pick and the
+  /// automatic switch call before their details/TOC stages; the analysis runs
+  /// with deferred entity variables, so the seeded draft never touches a stored
+  /// row until [switchSource] publishes the final carriers.
+  HtmlBook associationCandidate(
+    ShelfEntry book,
+    Map<String, dynamic> candidateSource,
+    HtmlBook candidate,
+  ) {
+    final sameSource =
+        '${candidateSource['bookSourceUrl'] ?? ''}' == book.sourceRef;
+    final stored = book.book.variable;
+    final incoming = candidate.variable;
+    final String? seeded;
+    if (!sameSource) {
+      seeded = incoming;
+    } else if (incoming == null) {
+      seeded = stored;
+    } else {
+      final merged = <String, String?>{
+        ...variableMapOf(stored),
+        ...variableMapOf(incoming),
+      };
+      seeded = variableTextOf(merged);
+    }
+    // A fresh details pipeline fetches the candidate's *resolved* identity, not
+    // the relative raw text it was found by: the analysis base that resolved it
+    // (a redirected search response, #132) is not on the row, and re-resolving
+    // against the source origin is the lost-base heuristic the investigation
+    // recorded. The resolved pre-option identity keeps the raw option tail, so
+    // the fetch parses the same options the search result carried.
+    return HtmlBook(
+      url: candidate.url,
+      rawAddress: candidate.identityAddress,
+      preOptionUrl: candidate.preOptionUrl,
+      title: candidate.title,
+      author: candidate.author,
+      intro: candidate.intro,
+      cover: candidate.cover,
+      kind: candidate.kind,
+      lastChapter: candidate.lastChapter,
+      wordCount: candidate.wordCount,
+      variable: seeded,
+    );
   }
 
   /// Takes a book off the shelf. Its chapters and its progress stay, so adding
@@ -479,7 +585,26 @@ class ShelfService {
       sourceRow.bookSourceUrl,
       bookUrl,
     );
-    if (existing != null) return existing;
+    if (existing != null) {
+      // An ordinary ensure/refresh carries a supplied variable without erasing
+      // the row's own when the carrier has none (#132) — the same rule
+      // [updateCatalog] applies. A null payload here still leaves the stored
+      // text alone; the intentional final null replacement belongs to the
+      // association commit, not to this writer. The row keeps its id, its
+      // membership, its metadata and its progress; only the variable column
+      // moves.
+      final variable = book.variable;
+      if (variable == null) return existing;
+      // The store's own variable-column writer, not a partial [putBook]
+      // companion: it writes that one column and leaves every other one —
+      // membership, metadata, progress — where it was.
+      await store.putBookVariable(
+        existing.sourceRef!,
+        existing.sourceBookUrl!,
+        variable,
+      );
+      return (await store.bookById(existing.id))!;
+    }
     final id = mintId('book');
     await store.putBook(
       BooksCompanion.insert(
@@ -496,6 +621,7 @@ class ShelfService {
         shelved: Value(shelved),
         bookOrder: Value(await store.nextBookOrder()),
         raw: Value(jsonEncode(book.toJson())),
+        variable: Value(book.variable),
       ),
     );
     return (await store.bookById(id))!;
@@ -547,6 +673,7 @@ class ShelfService {
         isVolume: chapters[index].isVolume,
         isVip: chapters[index].isVip,
         isPay: chapters[index].isPay,
+        variable: chapters[index].variable,
       ),
   ];
 }

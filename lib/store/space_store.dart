@@ -246,6 +246,22 @@ class SpaceStore {
         0;
   }
 
+  /// The chapter row for [chapterKey], or null when the space holds none. The
+  /// row-presence-preserving companion to [chapterVariable]: its caller can tell
+  /// a missing row from a row whose `variable` is null (#132).
+  Future<BookChapter?> chapterByNaturalKey(
+    String sourceRef,
+    String sourceBookUrl,
+    String chapterKey,
+  ) async {
+    final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
+    if (book == null) return null;
+    return (db.select(db.chapters)..where(
+          (c) => c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
+        ))
+        .getSingleOrNull();
+  }
+
   /// The chapter row's own variable text (frozen `BookChapter.variable`,
   /// `BookChapter.kt:58`), or null when the space holds no such row or the row
   /// carries none.
@@ -256,16 +272,11 @@ class SpaceStore {
     String sourceRef,
     String sourceBookUrl,
     String chapterKey,
-  ) async {
-    final book = await bookByNaturalKey(sourceRef, sourceBookUrl);
-    if (book == null) return null;
-    final row =
-        await (db.select(db.chapters)..where(
-              (c) => c.bookId.equals(book.id) & c.chapterKey.equals(chapterKey),
-            ))
-            .getSingleOrNull();
-    return row?.variable;
-  }
+  ) async => (await chapterByNaturalKey(
+    sourceRef,
+    sourceBookUrl,
+    chapterKey,
+  ))?.variable;
 
   /// Writes the chapter row's variable column and answers whether the space
   /// holds the row; a row the space does not hold keeps none, as

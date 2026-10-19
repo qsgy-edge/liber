@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/workspace.dart';
 
@@ -71,42 +73,44 @@ void main() {
     await reopened.close();
   });
 
-  test('a confirmed TLS exception survives a restart and never spills over',
-      () async {
-    const sourceRef = 'https://www.example.com/book';
-    var workspace = await Workspace.open(root: root);
-    final store = await workspace.openSpace();
-    final state = SourceHostState(
-      persistence: SpaceHostStatePersistence(store),
-    );
-    await state.allowInvalidCertificate(sourceRef, 'self-signed.example');
-    await workspace.close();
+  test(
+    'a confirmed TLS exception survives a restart and never spills over',
+    () async {
+      const sourceRef = 'https://www.example.com/book';
+      var workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      await state.allowInvalidCertificate(sourceRef, 'self-signed.example');
+      await workspace.close();
 
-    // The process ends here; the same space file is opened again.
-    workspace = await Workspace.open(root: root);
-    final reopened = SourceHostState(
-      persistence: SpaceHostStatePersistence(await workspace.openSpace()),
-    );
-    await reopened.ready();
-    expect(
-      reopened.allowsInvalidCertificate(sourceRef, 'self-signed.example'),
-      isTrue,
-    );
-    // The stored exception is the pair: another host, and another source on
-    // the same host, both still fail.
-    expect(
-      reopened.allowsInvalidCertificate(sourceRef, 'other.example'),
-      isFalse,
-    );
-    expect(
-      reopened.allowsInvalidCertificate(
-        'https://other.example/book',
-        'self-signed.example',
-      ),
-      isFalse,
-    );
-    await workspace.close();
-  });
+      // The process ends here; the same space file is opened again.
+      workspace = await Workspace.open(root: root);
+      final reopened = SourceHostState(
+        persistence: SpaceHostStatePersistence(await workspace.openSpace()),
+      );
+      await reopened.ready();
+      expect(
+        reopened.allowsInvalidCertificate(sourceRef, 'self-signed.example'),
+        isTrue,
+      );
+      // The stored exception is the pair: another host, and another source on
+      // the same host, both still fail.
+      expect(
+        reopened.allowsInvalidCertificate(sourceRef, 'other.example'),
+        isFalse,
+      );
+      expect(
+        reopened.allowsInvalidCertificate(
+          'https://other.example/book',
+          'self-signed.example',
+        ),
+        isFalse,
+      );
+      await workspace.close();
+    },
+  );
 
   test('a second space has its own jar and cache', () async {
     const sourceRef = 'https://www.example.com/book';
@@ -135,48 +139,147 @@ void main() {
     await workspace.close();
   });
 
-  test('the saveTime deadline is one rule on the write and read paths', () async {
-    var now = 1000;
+  test(
+    'the saveTime deadline is one rule on the write and read paths',
+    () async {
+      var now = 1000;
+      final workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+        clock: () => now,
+      );
+      await state.putEntry('s', 'permanent', 'p', saveTime: 0);
+      await state.putEntry('s', 'timed', 't', saveTime: 1);
+      // A `saveTime` of 0 has no deadline, and a deadline still ahead is a hit.
+      expect(await state.entry('s', 'permanent'), 'p');
+      expect(await state.entry('s', 'timed'), 't');
+      // Reaching the deadline makes the same entry a miss, and the miss removes
+      // the row instead of leaving it to be read again.
+      now = 2000;
+      expect(await state.entry('s', 'timed'), isNull);
+      final rows = await store.db.select(store.db.sourceEntries).get();
+      expect(rows.map((row) => row.key), ['permanent']);
+      await workspace.close();
+    },
+  );
+
+  test(
+    'a row that expired while the space was closed is not read back',
+    () async {
+      var now = 1000;
+      var workspace = await Workspace.open(root: root);
+      var store = await workspace.openSpace();
+      final before = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+        clock: () => now,
+      );
+      await before.putEntry('s', 'timed', 't', saveTime: 1);
+      await workspace.close();
+
+      now = 5000;
+      workspace = await Workspace.open(root: root);
+      store = await workspace.openSpace();
+      final after = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+        clock: () => now,
+      );
+      expect(await after.entry('s', 'timed'), isNull);
+      expect(await store.db.select(store.db.sourceEntries).get(), isEmpty);
+      await workspace.close();
+    },
+  );
+
+  // #132: the load boundary must tell a missing row from an existing row whose
+  // variable is null. A read that conflates them resurrects the in-process
+  // unwritten value after a valid empty replacement.
+  test('a stored book row with a null variable is authoritative', () async {
     final workspace = await Workspace.open(root: root);
     final store = await workspace.openSpace();
     final state = SourceHostState(
       persistence: SpaceHostStatePersistence(store),
-      clock: () => now,
     );
-    await state.putEntry('s', 'permanent', 'p', saveTime: 0);
-    await state.putEntry('s', 'timed', 't', saveTime: 1);
-    // A `saveTime` of 0 has no deadline, and a deadline still ahead is a hit.
-    expect(await state.entry('s', 'permanent'), 'p');
-    expect(await state.entry('s', 'timed'), 't');
-    // Reaching the deadline makes the same entry a miss, and the miss removes
-    // the row instead of leaving it to be read again.
-    now = 2000;
-    expect(await state.entry('s', 'timed'), isNull);
-    final rows = await store.db.select(store.db.sourceEntries).get();
-    expect(rows.map((row) => row.key), ['permanent']);
+    // A write for a book the space has no row for stays in this process.
+    await state.putBookVariable(
+      'https://a.test',
+      'https://a.test/book',
+      '{"unwritten":"U"}',
+    );
+    expect(
+      await state.bookVariable('https://a.test', 'https://a.test/book'),
+      '{"unwritten":"U"}',
+      reason: 'no row yet, so the unwritten value is the read',
+    );
+    // The space now holds the row, and its own empty text is authoritative: the
+    // unwritten value must not come back.
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value('https://a.test'),
+        sourceBookUrl: const Value('https://a.test/book'),
+      ),
+    );
+    expect(
+      await state.bookVariable('https://a.test', 'https://a.test/book'),
+      isNull,
+      reason: 'the row carries none, which is not the missing-row case',
+    );
     await workspace.close();
   });
 
-  test('a row that expired while the space was closed is not read back', () async {
-    var now = 1000;
-    var workspace = await Workspace.open(root: root);
-    var store = await workspace.openSpace();
-    final before = SourceHostState(
+  test('a stored chapter row with a null variable is authoritative', () async {
+    final workspace = await Workspace.open(root: root);
+    final store = await workspace.openSpace();
+    final state = SourceHostState(
       persistence: SpaceHostStatePersistence(store),
-      clock: () => now,
     );
-    await before.putEntry('s', 'timed', 't', saveTime: 1);
-    await workspace.close();
-
-    now = 5000;
-    workspace = await Workspace.open(root: root);
-    store = await workspace.openSpace();
-    final after = SourceHostState(
-      persistence: SpaceHostStatePersistence(store),
-      clock: () => now,
+    await store.putBook(
+      BooksCompanion.insert(
+        id: 'b1',
+        title: '书',
+        kind: const Value('network'),
+        sourceRef: const Value('https://a.test'),
+        sourceBookUrl: const Value('https://a.test/book'),
+      ),
     );
-    expect(await after.entry('s', 'timed'), isNull);
-    expect(await store.db.select(store.db.sourceEntries).get(), isEmpty);
+    await state.putChapterVariable(
+      'https://a.test',
+      'https://a.test/book',
+      'https://a.test/c/1',
+      '{"unwritten":"U"}',
+    );
+    expect(
+      await state.chapterVariable(
+        'https://a.test',
+        'https://a.test/book',
+        'https://a.test/c/1',
+      ),
+      '{"unwritten":"U"}',
+      reason: 'no chapter row yet, so the unwritten value is the read',
+    );
+    await store.putChapters('b1', [
+      BookChapter(
+        bookId: 'b1',
+        chapterKey: 'https://a.test/c/1',
+        name: '第一章',
+        url: 'https://a.test/c/1',
+        chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
+      ),
+    ]);
+    expect(
+      await state.chapterVariable(
+        'https://a.test',
+        'https://a.test/book',
+        'https://a.test/c/1',
+      ),
+      isNull,
+      reason: 'the row carries none, which is not the missing-row case',
+    );
     await workspace.close();
   });
 }
