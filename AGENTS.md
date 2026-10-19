@@ -38,22 +38,25 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 
 <!-- agents-md-author:begin lane-dispatch -->
 
-## Spec implementation and dispatch
+## Batch scope and spec dispatch
 
-- For an approved spec and its GitHub ticket graph, follow `implement-spec`; use `subagent-delegation` and
-  `pi-subagents` for Pi execution. The controller fixes the scope, starting SHA, acceptance criteria and agreed
-  test interfaces before dispatch. The migration map remains the route; decision tickets use the interactive
-  path below.
+- Define a batch by its operator-approved multi-ticket scope and dependency graph on the migration map,
+  using the existing specs and contracts. Freeze its number, starting SHA, per-ticket acceptance and test
+  interfaces; retain every graph ticket in the active task list. Components, repairs and reviews remain under
+  their original ticket and batch; changes to the number or scope return to the operator.
+- Execute approved implementation graphs with `implement-spec`; use `subagent-delegation` and
+  `pi-subagents` for Pi execution. The migration map remains the route; investigation and decision tickets
+  keep their own acceptance and execution paths, with decision tickets using the interactive path below.
 - Implementation and repair workers use `cline/cline-pass/deepseek-v4.1-flash:max`. The controller uses the
   operator-selected main-session model. Fresh Standards and Spec reviewers use that session's selected
   provider/model and thinking level, explicitly pinned at dispatch. An unavailable requested model is a
   dispatch blocker.
-- Create a short-lived `integration/<spec-ticket>` branch in a separate worktree. Run one async workflow:
-  implementers have isolated ticket worktrees based on its current tip; the controller owns both the main
+- Use one short-lived `integration/<batch>` branch in a separate worktree for the whole implementation graph.
+  Run one async workflow: implementers have isolated ticket worktrees based on its current tip; the controller owns both the main
   checkout and serial merges in the integration worktree. Incorporate the integration tip into an implementer's
   own branch before reporting ready; preserve existing work when the starting ref is wrong.
-- Dispatch the open, unblocked, unassigned implementation frontier; refill it as accepted merges unblock
-  tickets. An integrated runnable slice must pass its automated checks and the existing Windows driven-run
+- Dispatch the graph's open, unblocked, unassigned implementation frontier in parallel; accepted merges
+  automatically refill the same batch with newly unblocked graph tickets. An integrated runnable slice must pass its automated checks and the existing Windows driven-run
   requirement before starting the next slice. Merging onto the integration branch does not close a ticket.
 - Each brief points to the spec, ticket, relevant contracts, agreed test interfaces and validation. Implementers
   use `tdd` for behavioral changes, `diagnosing-bugs` for failures and `flutter-dart-mcp` for Dart/Flutter checks.
@@ -71,7 +74,9 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 - After acceptance, the controller merges `--no-ff` into `master`, verifies the final integrated tree with the
   verification matrix and claim gate in `docs/compatibility/delivery-phases.md`, pushes once and waits for every
   platform row. Then close the tickets with resolution comments, update the map, open and link follow-ups,
-  archive retired commits and remove completed ticket and integration worktrees/branches.
+  archive retired commits and remove completed ticket and integration worktrees/branches. Report batch
+  completion after the whole approved graph meets its acceptance and cleanup; unresolved blockers remain in
+  the batch until resolved or the operator approves a scope change.
 - A decision ticket gets its own interactive session with a briefing and `grilling`; it never runs as an
   implementation lane. Open that session in a Herdr pane beside the controller so the operator answers directly.
 - Briefings, evidence and resolution comments reference artifacts rather than repeat them. Continue in the

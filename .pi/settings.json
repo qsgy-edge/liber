@@ -1,0 +1,10 @@
+{
+  "subagents": {
+    "agentOverrides": {
+      "worker": {
+        "model": "cline/cline-pass/deepseek-v4.1-flash",
+        "thinking": "max"
+      }
+    }
+  }
+}
