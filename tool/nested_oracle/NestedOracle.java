@@ -8,20 +8,52 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.lang.reflect.*;
 import java.util.*;
 
 /** Calls the installed, hash-pinned APK. No Legado production class is rebuilt. */
 public final class NestedOracle extends Instrumentation {
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    private Bundle arguments;
+    @Override public void onCreate(Bundle args) { arguments = args; super.onCreate(args); start(); }
     @Override public void onStart() {
         Bundle status = new Bundle();
         try (Replay replay = new Replay()) {
-            String fixture;
-            try (InputStream input = getContext().getAssets().open("fixtures.json")) {
-                fixture = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            // The default run is unchanged. An explicit `-e corpus jslib` selects
+            // the local jsLib shared-scope corpus; nothing else may change it.
+            boolean jsLib = "jslib".equals(
+                arguments == null ? null : arguments.getString("corpus"));
+            String asset = jsLib ? "jslib-fixtures.json" : "fixtures.json";
+            byte[] fixtureBytes;
+            try (InputStream input = getContext().getAssets().open(asset)) {
+                fixtureBytes = input.readAllBytes();
             }
+            String fixture = new String(fixtureBytes, StandardCharsets.UTF_8);
             JSONObject corpus = new JSONObject(fixture);
+            // The jsLib capture is only labelled frozen after the installed
+            // target's own package and APK bytes are measured and verified
+            // against the pin the corpus carries. Nothing is written if either
+            // disagrees, so a same-package substitute build cannot be captured
+            // under the frozen label.
+            String targetPackage = null;
+            String targetApkPath = null;
+            String targetApkSha256 = null;
+            if (jsLib) {
+                JSONObject target = corpus.getJSONObject("target");
+                targetPackage = getTargetContext().getPackageName();
+                targetApkPath = getTargetContext().getApplicationInfo().sourceDir;
+                targetApkSha256 = sha256(readAll(new File(targetApkPath)));
+                if (!targetPackage.equals(target.getString("package"))) {
+                    throw new IllegalStateException(
+                        "Frozen target package mismatch: measured " + targetPackage
+                            + ", pin " + target.getString("package"));
+                }
+                if (!targetApkSha256.equals(target.getString("apkSha256"))) {
+                    throw new IllegalStateException(
+                        "Frozen target APK mismatch: measured " + targetApkSha256
+                            + ", pin " + target.getString("apkSha256"));
+                }
+            }
             ClassLoader loader = getTargetContext().getClassLoader();
             Class<?> sourceClass = loader.loadClass("io.legado.app.data.entities.BookSource");
             Class<?> urlClass = loader.loadClass("io.legado.app.model.analyzeRule.AnalyzeUrl");
@@ -58,15 +90,60 @@ public final class NestedOracle extends Instrumentation {
             JSONObject report = new JSONObject().put("baselineCommit", corpus.getString("baselineCommit"))
                 .put("fingerprint", Build.FINGERPRINT).put("entryPoint", corpus.getString("entryPoint"))
                 .put("observations", observations).put("requests", replay.requests);
-            File output = new File(getTargetContext().getExternalFilesDir(null), "nested-oracle.json");
+            if (jsLib) {
+                // The comparator refuses to compare without this identity, the
+                // corpus hash and the measured frozen-capture provenance block.
+                report.put("fixtureId", corpus.getString("fixtureId"));
+                report.put("corpusVersion", corpus.getInt("corpusVersion"));
+                report.put("corpusSha256", sha256Lf(fixtureBytes));
+                JSONObject target = corpus.getJSONObject("target");
+                report.put("provenance", new JSONObject()
+                    .put("kind", "frozen-device-capture")
+                    .put("deviceFingerprint", Build.FINGERPRINT)
+                    .put("capturedAt", new java.text.SimpleDateFormat(
+                        "yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US).format(new Date()))
+                    .put("entryPoint", corpus.getString("entryPoint"))
+                    .put("baselineCommit", corpus.getString("baselineCommit"))
+                    .put("targetPackage", targetPackage)
+                    .put("targetApkPath", targetApkPath)
+                    .put("targetApkSha256", targetApkSha256)
+                    .put("targetPin", new JSONObject()
+                        .put("package", target.getString("package"))
+                        .put("apkSha256", target.getString("apkSha256"))
+                        .put("manifest", target.optString("manifest", ""))));
+            }
+            File output = new File(getTargetContext().getExternalFilesDir(null),
+                jsLib ? "jslib-oracle.json" : "nested-oracle.json");
             try (FileOutputStream stream = new FileOutputStream(output)) {
                 stream.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
             }
-            status.putString("stream", "Nested oracle recorded " + observations.length() + " observations\n");
+            status.putString("stream", (jsLib ? "jsLib oracle" : "Nested oracle")
+                + " recorded " + observations.length() + " observations\n");
             finish(-1, status);
         } catch (Throwable error) {
             status.putString("stream", error.toString() + "\n");
             finish(1, status);
+        }
+    }
+
+    /** SHA-256 of the corpus bytes with CRLF normalized to LF, so one pin means
+     *  the same corpus on a Windows and an LF checkout. */
+    static String sha256Lf(byte[] bytes) throws Exception {
+        String text = new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        return sha256(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Raw SHA-256 of the installed target APK bytes. */
+    static String sha256(byte[] bytes) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder hex = new StringBuilder();
+        for (byte value : digest) hex.append(String.format("%02x", value));
+        return hex.toString();
+    }
+
+    static byte[] readAll(File file) throws Exception {
+        try (InputStream input = new FileInputStream(file)) {
+            return input.readAllBytes();
         }
     }
 

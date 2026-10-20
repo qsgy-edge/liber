@@ -17,6 +17,10 @@ foreach ($directory in @('classes','dex','assets')) {
 $tools = Join-Path $AndroidSdk 'build-tools/35.0.1'
 $androidJar = Join-Path $AndroidSdk 'platforms/android-35/android.jar'
 Copy-Item "$PSScriptRoot/fixtures.json" "$OutputDirectory/assets/fixtures.json"
+# The explicitly selected local jsLib shared-scope corpus (#74) travels the same
+# way: `am instrument -e corpus jslib` makes NestedOracle read it instead of the
+# default fixtures.json, and its golden records this file's hash.
+Copy-Item "$PSScriptRoot/jslib-fixtures.json" "$OutputDirectory/assets/jslib-fixtures.json"
 Copy-Item "$PSScriptRoot/state-fixtures.json" "$OutputDirectory/assets/state-fixtures.json"
 # The request-semantics corpus travels the same way: the RequestOracle drives the
 # frozen AnalyzeUrl against it, and the golden records this file's hash.
