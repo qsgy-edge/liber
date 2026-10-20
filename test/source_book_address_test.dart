@@ -374,15 +374,197 @@ void main() {
       ],
     );
   });
+
+  // The precise-search preview opens a fresh pipeline for the hit its search
+  // answered. A relative `ruleSearch.bookUrl` was resolved against the search
+  // *response* URL, so its pre-option target can sit under a source path the
+  // source's own URL does not end in. The hit keeps that resolved target in
+  // [HtmlBook.preOptionUrl]; a fresh details/TOC analysis has to reach it, not
+  // re-resolve the rule's relative text against the source URL.
+  const searchSubdirectory = 'http://source.test/exact';
+  const searchUrl = '/exact/search?key={{key}}';
+  const optionTail = ',{"method":"GET"}';
+
+  test(
+    'a fresh HTML search hit reaches its subdirectory target and TOC',
+    () async {
+      final pages = _Pages({
+        '/exact/search':
+            '<div class="item"><h3><a href="book/1?from=search">书</a></h3></div>',
+        '/exact/book/1': '<h2>书</h2><div id="toc"><a href="1/toc">目录</a></div>',
+        '/exact/book/1/toc':
+            '<ul id="list"><li><a href="c/1">第一章</a></li></ul>',
+      });
+      final source = _htmlSource(
+        searchSubdirectory,
+        tail: optionTail,
+        searchUrl: searchUrl,
+      );
+      final search = HtmlSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.rawAddress, 'book/1?from=search$optionTail');
+      expect(
+        hit.preOptionUrl.toString(),
+        '$searchSubdirectory/book/1?from=search',
+      );
+      expect(
+        hit.identityAddress,
+        '$searchSubdirectory/book/1?from=search$optionTail',
+      );
+
+      // The same analysis keeps the request its search made: it runs the hit's
+      // own pipeline cache and adds no second expansion.
+      final (sameBook, sameChapters) = await search.details(hit);
+      expect(sameBook.identityAddress, hit.identityAddress);
+      expect(sameChapters.single.name, '第一章');
+
+      // The preview's fresh pipeline has only the carrier. It reaches the
+      // resolved pre-option target, with the raw option tail parsed once. A
+      // deferred (candidate) analysis also keeps the hit's variable payload.
+      final fresh = HtmlSourcePipeline(
+        source,
+        pages,
+        deferEntityVariables: true,
+      );
+      final carried = hit.withVariable('{"seed":"S"}');
+      final (book, chapters) = await fresh.details(carried);
+      expect(book.title, '书');
+      expect(book.preOptionUrl, hit.preOptionUrl);
+      expect(book.identityAddress, hit.identityAddress);
+      expect(
+        book.variable,
+        '{"seed":"S"}',
+        reason: '新鲜分析保留命中的实体变量文本',
+      );
+      expect(chapters.single.name, '第一章');
+      expect(
+        pages.requests.map((request) => request.url.toString()),
+        [
+          '$searchSubdirectory/search?key=book',
+          '$searchSubdirectory/book/1?from=search',
+          '$searchSubdirectory/book/1/toc',
+          '$searchSubdirectory/book/1?from=search',
+          '$searchSubdirectory/book/1/toc',
+        ],
+        reason: '搜索与新鲜详情分析都到达源路径下的目标',
+      );
+      expect(
+        pages.requests.expand((request) => request.url.query.split('&')),
+        isNot(contains(contains('%7B'))),
+        reason: '原始选项尾巴没有作为查询文本到达站点',
+      );
+    },
+  );
+
+  test(
+    'a fresh JSON search hit reaches its subdirectory target and TOC',
+    () async {
+      final raw = 'book/1?from=search$optionTail';
+      final pages = _Pages({
+        '/exact/search': jsonEncode({
+          'items': [
+            {'title': '书', 'url': raw},
+          ],
+        }),
+        '/exact/book/1': jsonEncode({'title': '书', 'toc': '1/toc'}),
+        '/exact/book/1/toc': jsonEncode({
+          'list': [
+            {'name': '第一章', 'url': 'c/1'},
+          ],
+        }),
+      });
+      final source = _jsonSource(searchSubdirectory, searchUrl: searchUrl);
+      final search = JsonSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.rawAddress, raw);
+      expect(
+        hit.preOptionUrl.toString(),
+        '$searchSubdirectory/book/1?from=search',
+      );
+      expect(hit.identityAddress, '$searchSubdirectory/$raw');
+
+      final (sameBook, sameChapters) = await search.details(hit);
+      expect(sameBook.identityAddress, hit.identityAddress);
+      expect(sameChapters.single.name, '第一章');
+
+      final fresh = JsonSourcePipeline(source, pages);
+      final (book, chapters) = await fresh.details(hit);
+      expect(book.title, '书');
+      expect(book.identityAddress, hit.identityAddress);
+      expect(chapters.single.name, '第一章');
+      expect(pages.requests.map((request) => request.url.toString()), [
+        '$searchSubdirectory/search?key=book',
+        '$searchSubdirectory/book/1?from=search',
+        '$searchSubdirectory/book/1/toc',
+        '$searchSubdirectory/book/1?from=search',
+        '$searchSubdirectory/book/1/toc',
+      ]);
+    },
+  );
+
+  test(
+    'a fresh JSON search hit applies its raw tail once to the resolved pre-option target',
+    () async {
+      const raw = 'book,{"js":"result + \'/1\'"}';
+      final pages = _Pages({
+        '/exact/search': jsonEncode({
+          'items': [
+            {'title': '书', 'url': raw},
+          ],
+        }),
+        '/exact/book/1': jsonEncode({'title': '书', 'toc': '/exact/book/1/toc'}),
+        '/exact/book/1/toc': jsonEncode({
+          'list': [
+            {'name': '第一章', 'url': '/exact/book/1/c/1'},
+          ],
+        }),
+      });
+      final source = _jsonSource(searchSubdirectory, searchUrl: searchUrl);
+      final search = JsonSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.address, raw);
+      expect(hit.preOptionUrl.toString(), '$searchSubdirectory/book');
+      expect(hit.url.toString(), '$searchSubdirectory/book/1');
+      expect(hit.identityAddress, '$searchSubdirectory/$raw');
+
+      // The option script already ran for the search; the same analysis keeps
+      // the transformed target rather than running it again.
+      final (_, sameChapters) = await search.details(hit);
+      expect(sameChapters.single.name, '第一章');
+
+      // A fresh analysis starts from the pre-option identity and runs the tail
+      // once. Twice would target `/exact/book/1/1`.
+      final fresh = JsonSourcePipeline(source, pages);
+      final (book, chapters) = await fresh.details(hit);
+      expect(book.title, '书');
+      expect(book.identityAddress, hit.identityAddress);
+      expect(chapters.single.name, '第一章');
+      expect(
+        pages.requests.map((request) => request.url.toString()),
+        [
+          '$searchSubdirectory/search?key=book',
+          '$searchSubdirectory/book/1',
+          '$searchSubdirectory/book/1/toc',
+          '$searchSubdirectory/book/1',
+          '$searchSubdirectory/book/1/toc',
+        ],
+        reason: '每次分析各执行一次选项脚本，且从预选项目标解析',
+      );
+    },
+  );
 }
 
 /// A source whose search page names the address text a hit keeps: [tail] is
 /// appended by the `ruleSearch.bookUrl` rule the way an imported source writes
 /// its options (`href##$##,{…}`).
-Map<String, dynamic> _htmlSource(String origin, {String tail = ''}) => {
+Map<String, dynamic> _htmlSource(
+  String origin, {
+  String tail = '',
+  String searchUrl = '/search?key={{key}}',
+}) => {
   'bookSourceUrl': origin,
   'bookSourceName': '地址源',
-  'searchUrl': '/search?key={{key}}',
+  'searchUrl': searchUrl,
   'ruleSearch': {
     'bookList': '@CSS:.item',
     'name': '@CSS:h3 a@text',
@@ -397,10 +579,13 @@ Map<String, dynamic> _htmlSource(String origin, {String tail = ''}) => {
   },
 };
 
-Map<String, dynamic> _jsonSource(String origin) => {
+Map<String, dynamic> _jsonSource(
+  String origin, {
+  String searchUrl = '/search?key={{key}}',
+}) => {
   'bookSourceUrl': origin,
   'bookSourceName': '地址源',
-  'searchUrl': '/search?key={{key}}',
+  'searchUrl': searchUrl,
   'ruleSearch': {
     'bookList': r'$.items',
     'name': r'$.title',

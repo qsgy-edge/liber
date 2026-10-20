@@ -1,0 +1,106 @@
+{
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "fingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.4.0.XPMCNXM:user\/release-keys",
+  "entryPoint": "AnalyzeUrl.evalJS shared-jsLib scope",
+  "observations": [
+    {
+      "id": "library-eval-first",
+      "value": "1"
+    },
+    {
+      "id": "library-eval-second",
+      "value": "2"
+    },
+    {
+      "id": "library-nested-eval",
+      "value": "\"3\""
+    },
+    {
+      "id": "library-second-source",
+      "value": "4"
+    },
+    {
+      "id": "library-function-sees-no-bindings",
+      "value": "[\"undefined\",\"undefined\",\"undefined\"]"
+    },
+    {
+      "id": "library-function-nested-no-bindings",
+      "value": "\"undefined\""
+    },
+    {
+      "id": "eval-var-shadows-library-var",
+      "value": "\"eval\""
+    },
+    {
+      "id": "library-var-restored-next-eval",
+      "value": "\"library\""
+    },
+    {
+      "id": "eval-local-not-shared",
+      "value": "7"
+    },
+    {
+      "id": "eval-local-absent-next-eval",
+      "value": "\"undefined\""
+    },
+    {
+      "id": "library-object-assignment-shadows-only",
+      "value": "900"
+    },
+    {
+      "id": "library-object-restored-next-eval",
+      "value": "4"
+    },
+    {
+      "id": "library-bump-after-shadow",
+      "value": "5"
+    },
+    {
+      "id": "nested-throw-caught-shared-intact",
+      "value": "[true,5]"
+    },
+    {
+      "id": "two-level-nested-shared",
+      "value": "\"inner\""
+    },
+    {
+      "id": "xml-js-shared",
+      "value": "\"6\""
+    },
+    {
+      "id": "at-js-shared",
+      "value": "\"7\""
+    },
+    {
+      "id": "connect-shared",
+      "value": "\"8\""
+    }
+  ],
+  "requests": [
+    "GET \/value\/3",
+    "GET \/value\/undefined",
+    "GET \/value\/inner",
+    "GET \/value\/inner",
+    "GET \/value\/6",
+    "GET \/value\/7",
+    "GET \/value\/8"
+  ],
+  "fixtureId": "JSLIB-01",
+  "corpusVersion": 2,
+  "corpusSha256": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+  "provenance": {
+    "kind": "frozen-device-capture",
+    "deviceFingerprint": "Redmi\/myron\/myron:17\/CP2A.260605.016\/OS4.0.4.0.XPMCNXM:user\/release-keys",
+    "capturedAt": "2026-10-20T13:40:33+08:00",
+    "entryPoint": "AnalyzeUrl.evalJS shared-jsLib scope",
+    "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "targetPackage": "io.legado.app.debug",
+    "targetApkPath": "\/data\/app\/~~N3qtjOHydu4rSb5ImBoi2Q==\/io.legado.app.debug-UJkYUCVVhbSfikExuISXcQ==\/base.apk",
+    "targetApkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+    "targetPin": {
+      "package": "io.legado.app.debug",
+      "apkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "manifest": "tool\/nested_oracle\/evidence\/android-17-os4.0.0.31\/request-manifest.json"
+    }
+  }
+}

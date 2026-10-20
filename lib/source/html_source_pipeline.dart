@@ -1745,15 +1745,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // which resolves against the source's own URL as it does there. The frozen
     // stage binds no key and no page, so a stored address's `{{key}}`/`{{page}}`
     // bind nothing here either.
+    //
+    // A fresh analysis has no request map (#136): the search hit's
+    // [HtmlBook.identityAddress] is the resolved target its search recorded,
+    // with the rule's raw option tail, so the details stage resolves that
+    // target rather than re-resolving a relative rule text against
+    // [sourceUrl]. A carrier without a recorded target keeps its raw text.
+    final bookAddressText = bookRequest?.address ?? hit.identityAddress;
     final (bookUrl, bookOptions) = bookRequest == null
-        ? await _request(_sourceBase, hit.address, '')
+        ? await _request(_sourceBase, bookAddressText, '')
         : (hit.url, bookRequest.options);
     final bookInfo = await _loginCheck(
       await _fetch(
         bookUrl,
         BookSourceStage.bookInfo,
         options: bookOptions,
-        address: bookRequest?.address ?? hit.address,
+        address: bookAddressText,
         base: bookRequest?.base ?? _sourceBase,
       ),
     );
@@ -1791,7 +1798,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
     String tocFallbackAddress(SourcePageRequest request) {
       if (request.address.isEmpty) {
-        return bookRequest?.address ?? hit.address;
+        return bookAddressText;
       }
       final parts = splitSourceUrlOptions(request.address);
       final address = Uri.parse(parts.path);
