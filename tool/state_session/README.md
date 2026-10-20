@@ -87,9 +87,19 @@ The preference probe is how that routing is proved, not assumed: the seed requir
 the probe name to be absent on both sides, writes it once through the application
 context, keeps it in the owned set and never deletes it there; the restart only
 reads the namespace the seed recorded. A pre-existing probe is refused rather than
-overwritten or removed. Every other storage callback that would write — a
-preference handle, a database create or delete — is refused before the phase binds
-the root.
+overwritten or removed.
+
+One start-up path is allowed to arrive before the binding, and only on a background
+thread: the frozen application's own providers reach preferences before
+`Instrumentation.onCreate`. Firebase performance's `DeviceCacheManager.setContext`
+posts exactly that call to its thread pool, and the first real capture died on it.
+Such a callback waits for the binding, bounded, and then uses the same scoped store;
+it is never handed an unverified handle and it is never silently allowed. A callback
+on the main thread refuses immediately instead of waiting, because the binder itself
+starts from a main-looper post and waiting would deadlock start-up. A binding
+failure releases every waiter with that failure, and a timeout refuses with a visible
+message; nothing is retried. Every other storage callback that would write — a
+database create or delete — is still refused before the phase binds the root.
 
 ## What counts as a complete phase
 

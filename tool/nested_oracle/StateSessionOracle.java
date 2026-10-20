@@ -213,6 +213,8 @@ public final class StateSessionOracle extends Instrumentation {
             ok = true;
         } catch (Throwable error) {
             failure = describe(error);
+            // A failure before the binding must not leave a start-up callback waiting.
+            if (scratch != null) scratch.refuseWaiters(failure);
             log("phase " + phase + " failed in stage " + stage.get() + ": " + failure);
         } finally {
             stage.set("cleanup");
@@ -1500,17 +1502,36 @@ public final class StateSessionOracle extends Instrumentation {
      * the files, database and preference locations move into a task-owned root plus a
      * task-owned preference name prefix.
      *
-     * <p>Nothing touches the disk until the phase is bound, because the phase decides
-     * whether this invocation may create the root (seed) or has to validate the manifest
-     * the seed left behind (restart). A restart may only reuse the preference namespaces
-     * the seed recorded; the seed requires each namespace it meets to be empty.
+     * <p>The phase is bound on the harness worker thread after the target, the corpus and
+     * the harness have been measured, because the phase decides whether this invocation
+     * may create the root (seed) or has to validate the manifest the seed left behind
+     * (restart). A restart may only reuse the preference namespaces the seed recorded;
+     * the seed requires each namespace it meets to be empty.
+     *
+     * <p>One measured exception to "no storage before the binding": the frozen
+     * application's own start-up providers reach preferences from a background executor
+     * before {@code Instrumentation.onCreate} runs. Firebase performance's
+     * {@code DeviceCacheManager.setContext} posts exactly that call
+     * ({@code com.google.firebase.perf.config.DeviceCacheManager.lambda$setContext$0}) to
+     * its thread pool. Such a callback waits, bounded, for the binding and then uses the
+     * same scoped store; it is never handed an unverified handle and it is never silently
+     * allowed. A callback on the main thread cannot wait without deadlocking start-up -
+     * the binder is started from a main-looper post - so it is refused immediately. A
+     * binding failure releases every waiter with that failure, and a timeout refuses with
+     * a visible message; nothing is retried.
      */
     private static final class ScratchContext extends ContextWrapper {
+        private static final long BINDING_WAIT_SECONDS = 30;
+
         final File root;
         private final boolean rootExistedAtStart;
+        private final Object stateLock = new Object();
+        private final java.util.concurrent.CountDownLatch boundSignal =
+            new java.util.concurrent.CountDownLatch(1);
+        private final Set<String> preferences = new LinkedHashSet<>();
         private String phase;
         private boolean bound;
-        private final Set<String> preferences = new LinkedHashSet<>();
+        private String bindingFailure;
         private Set<String> ownedFromOwner = new LinkedHashSet<>();
         private JSONObject owner;
 
@@ -1520,15 +1541,32 @@ public final class StateSessionOracle extends Instrumentation {
             rootExistedAtStart = root.exists();
         }
 
-        boolean isBound() {
-            return bound;
-        }
-
-        boolean rootExistedAtStart() {
-            return rootExistedAtStart;
-        }
-
+        /**
+         * Runs the phase binding and releases the waiters exactly once: success only after
+         * the root and its owner manifest are published, otherwise with the failure every
+         * waiter has to see.
+         */
         void bind(String requestedPhase, JSONObject identity) throws Exception {
+            try {
+                bindInternal(requestedPhase, identity);
+            } catch (Throwable error) {
+                refuseWaiters("the phase could not bind the scratch: " + describe(error));
+                if (error instanceof Exception) throw (Exception) error;
+                if (error instanceof Error) throw (Error) error;
+                throw new IllegalStateException(error);
+            }
+        }
+
+        /** Releases every waiter with a refusal; used for bind and pre-bind failures. */
+        void refuseWaiters(String reason) {
+            synchronized (stateLock) {
+                if (bound) return;
+                if (bindingFailure == null) bindingFailure = reason;
+            }
+            boundSignal.countDown();
+        }
+
+        private void bindInternal(String requestedPhase, JSONObject identity) throws Exception {
             if ("seed".equals(requestedPhase)) {
                 // A seed needs a fresh root. Anything that is already there is left alone
                 // for inspection, never deleted and never reused.
@@ -1540,19 +1578,26 @@ public final class StateSessionOracle extends Instrumentation {
                 if (!root.mkdirs()) {
                     throw new IllegalStateException("cannot create scratch root " + root);
                 }
-                owner = new JSONObject()
-                    .put("fixtureId", identity.getString("fixtureId"))
-                    .put("corpusVersion", identity.getInt("corpusVersion"))
-                    .put("corpusSha256Lf", identity.getString("corpusSha256Lf"))
-                    .put("targetPackage", identity.getString("targetPackage"))
-                    .put("targetApkSha256", identity.getString("targetApkSha256"))
-                    .put("harnessPackage", identity.getString("harnessPackage"))
-                    .put("harnessApkSha256", identity.getString("harnessApkSha256"))
-                    .put("preferences", recordedPreferences())
-                    .put("createdAt", System.currentTimeMillis());
-                phase = "seed";
-                bound = true;
+                synchronized (stateLock) {
+                    owner = new JSONObject()
+                        .put("fixtureId", identity.getString("fixtureId"))
+                        .put("corpusVersion", identity.getInt("corpusVersion"))
+                        .put("corpusSha256Lf", identity.getString("corpusSha256Lf"))
+                        .put("targetPackage", identity.getString("targetPackage"))
+                        .put("targetApkSha256", identity.getString("targetApkSha256"))
+                        .put("harnessPackage", identity.getString("harnessPackage"))
+                        .put("harnessApkSha256", identity.getString("harnessApkSha256"))
+                        .put("preferences", new JSONArray())
+                        .put("createdAt", System.currentTimeMillis());
+                    phase = "seed";
+                }
+                // Publish the manifest before the root counts as bound: a waiter must never
+                // see a bound root whose owner file is not on disk yet.
                 writeOwner();
+                synchronized (stateLock) {
+                    bound = true;
+                }
+                boundSignal.countDown();
                 return;
             }
             if (!"restart".equals(requestedPhase)) {
@@ -1590,10 +1635,13 @@ public final class StateSessionOracle extends Instrumentation {
                         + " preference namespace " + name);
                 }
             }
-            ownedFromOwner = owned;
-            owner = declared;
-            phase = "restart";
-            bound = true;
+            synchronized (stateLock) {
+                ownedFromOwner = owned;
+                owner = declared;
+                phase = "restart";
+                bound = true;
+            }
+            boundSignal.countDown();
         }
 
         private static void requireOwner(JSONObject declared, JSONObject identity)
@@ -1612,11 +1660,25 @@ public final class StateSessionOracle extends Instrumentation {
             }
         }
 
+        boolean isBound() {
+            synchronized (stateLock) {
+                return bound;
+            }
+        }
+
+        boolean rootExistedAtStart() {
+            return rootExistedAtStart;
+        }
+
         private void writeOwner() throws Exception {
             // Only the seed owns the manifest. A restart validates and reuses it, and
-            // never rewrites it.
-            if (owner == null || !"seed".equals(phase)) return;
-            byte[] bytes = owner.toString(2).getBytes(StandardCharsets.UTF_8);
+            // never rewrites it. Serialisation happens under the state lock because a
+            // background callback can register a preference namespace at any time.
+            byte[] bytes;
+            synchronized (stateLock) {
+                if (owner == null || !"seed".equals(phase)) return;
+                bytes = owner.toString(2).getBytes(StandardCharsets.UTF_8);
+            }
             File target = new File(root, OWNER_FILE);
             File temporary = new File(root, OWNER_FILE + ".tmp");
             try (FileOutputStream stream = new FileOutputStream(temporary)) {
@@ -1629,22 +1691,27 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         void writeOwnerComplete(String seedRunId) throws Exception {
-            if (owner == null) return;
-            owner.put("seedRunId", seedRunId)
-                .put("seedPid", android.os.Process.myPid())
-                .put("complete", true)
-                .put("completedAt", System.currentTimeMillis())
-                .put("preferences", recordedPreferences());
+            synchronized (stateLock) {
+                if (owner == null) return;
+                owner.put("seedRunId", seedRunId)
+                    .put("seedPid", android.os.Process.myPid())
+                    .put("complete", true)
+                    .put("completedAt", System.currentTimeMillis())
+                    .put("preferences", recordedPreferencesLocked());
+            }
             writeOwner();
         }
 
+        /** A snapshot: the cleanup iterates it while a background callback may still write. */
         Set<String> ownedPreferences() {
-            Set<String> names = new LinkedHashSet<>(preferences);
-            names.addAll(ownedFromOwner);
-            return names;
+            synchronized (stateLock) {
+                Set<String> names = new LinkedHashSet<>(preferences);
+                names.addAll(ownedFromOwner);
+                return names;
+            }
         }
 
-        private JSONArray recordedPreferences() {
+        private JSONArray recordedPreferencesLocked() {
             JSONArray names = new JSONArray();
             for (String name : preferences) names.put(name);
             return names;
@@ -1658,16 +1725,46 @@ public final class StateSessionOracle extends Instrumentation {
          */
         private File directory(String name) {
             File file = new File(root, name);
-            if (bound && !file.isDirectory() && !file.mkdirs()) {
+            if (isBound() && !file.isDirectory() && !file.mkdirs()) {
                 throw new IllegalStateException("cannot create scratch directory " + file);
             }
             return file;
         }
 
         private void requireBound() {
-            if (!bound) {
+            if (!isBound()) {
                 throw new IllegalStateException(
                     "storage was reached before the phase bound the scratch root");
+            }
+        }
+
+        /**
+         * Waits, bounded, for the phase binding. Used only by the preference callback the
+         * frozen start-up providers make on a background executor; a main-thread caller
+         * refuses instead of waiting, because the binder runs from a main-looper post.
+         */
+        private void awaitBinding(String what) {
+            if (isBound()) return;
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                throw new IllegalStateException(what + ": a main-thread storage callback"
+                    + " cannot wait for the phase binding");
+            }
+            boolean released;
+            try {
+                released = boundSignal.await(BINDING_WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(what + ": interrupted while waiting for the"
+                    + " phase binding", interrupted);
+            }
+            if (!released) {
+                throw new IllegalStateException(what + ": the phase binding did not complete"
+                    + " within " + BINDING_WAIT_SECONDS + "s");
+            }
+            synchronized (stateLock) {
+                if (bound) return;
+                throw new IllegalStateException(what + ": the phase binding failed ("
+                    + bindingFailure + ")");
             }
         }
 
@@ -1742,47 +1839,55 @@ public final class StateSessionOracle extends Instrumentation {
             return SQLiteDatabase.deleteDatabase(getDatabasePath(name));
         }
 
+        /**
+         * The one effectful callback a start-up provider is measured to make before the
+         * binding: it waits for it and then uses the same scoped store. Registration,
+         * the freshness/ownership check and the manifest update all happen under the state
+         * lock, because this can now arrive on a background thread.
+         */
         @Override
         public SharedPreferences getSharedPreferences(String name, int mode) {
-            // A preference handle is a writable, effectful callback: before the phase owns
-            // the scratch it is refused instead of being delegated somewhere unverified.
-            requireBound();
+            awaitBinding("getSharedPreferences(" + name + ")");
             String scoped = PREFERENCE_PREFIX + name;
-            if ("restart".equals(phase)) {
-                requireOwned(scoped);
-            } else {
-                if (!preferences.contains(scoped)
-                        && !getBaseContext().getSharedPreferences(scoped, mode).getAll().isEmpty()) {
-                    throw new IllegalStateException(
-                        "seed preference namespace is not fresh: " + scoped);
-                }
-                if (preferences.add(scoped)) {
-                    try {
-                        owner.put("preferences", recordedPreferences());
-                        writeOwner();
-                    } catch (Exception error) {
-                        throw new IllegalStateException("cannot record the owned preference "
-                            + scoped, error);
+            synchronized (stateLock) {
+                if ("restart".equals(phase)) {
+                    requireOwnedLocked(scoped);
+                } else {
+                    if (!preferences.contains(scoped)
+                            && !getBaseContext().getSharedPreferences(scoped, mode)
+                                .getAll().isEmpty()) {
+                        throw new IllegalStateException(
+                            "seed preference namespace is not fresh: " + scoped);
+                    }
+                    if (preferences.add(scoped)) {
+                        try {
+                            owner.put("preferences", recordedPreferencesLocked());
+                        } catch (JSONException error) {
+                            throw new IllegalStateException("cannot record the owned preference "
+                                + scoped, error);
+                        }
+                        try {
+                            writeOwner();
+                        } catch (Exception error) {
+                            throw new IllegalStateException("cannot publish the owner manifest"
+                                + " after recording " + scoped, error);
+                        }
                     }
                 }
             }
             return getBaseContext().getSharedPreferences(scoped, mode);
         }
 
-        /** Flushes any buffered apply() write so the retained file holds the final value. */
-        boolean fence(String name) {
-            return getBaseContext().getSharedPreferences(name, 0).edit().commit();
-        }
-
-        boolean deletePreference(String name) {
-            boolean cleared = getBaseContext().getSharedPreferences(name, 0).edit().clear().commit();
-            return getBaseContext().deleteSharedPreferences(name) && cleared;
-        }
-
-        private void requireOwned(String scoped) {
+        private void requireOwnedLocked(String scoped) {
             if (!ownedFromOwner.contains(scoped)) {
                 throw new IllegalStateException("restart asked for a preference namespace"
                     + " the seed did not own: " + scoped);
+            }
+        }
+
+        private void requireOwned(String scoped) {
+            synchronized (stateLock) {
+                requireOwnedLocked(scoped);
             }
         }
 
@@ -1803,7 +1908,10 @@ public final class StateSessionOracle extends Instrumentation {
                     + ", installation file exists=" + installationFile.exists());
             }
             SharedPreferences prefs = app.getSharedPreferences(probe, 0);
-            boolean registered = preferences.contains(scoped);
+            boolean registered;
+            synchronized (stateLock) {
+                registered = preferences.contains(scoped);
+            }
             boolean committed = prefs.edit().putString("probe", "1").commit();
             return new JSONObject()
                 .put("name", scoped)
@@ -1838,6 +1946,16 @@ public final class StateSessionOracle extends Instrumentation {
                 .put("installationFile", installationFile.exists())
                 .put("value", value)
                 .put("mode", "read-only");
+        }
+
+        /** Flushes any buffered apply() write so the retained file holds the final value. */
+        boolean fence(String name) {
+            return getBaseContext().getSharedPreferences(name, 0).edit().commit();
+        }
+
+        boolean deletePreference(String name) {
+            boolean cleared = getBaseContext().getSharedPreferences(name, 0).edit().clear().commit();
+            return getBaseContext().deleteSharedPreferences(name) && cleared;
         }
 
         boolean removeRoot() {
