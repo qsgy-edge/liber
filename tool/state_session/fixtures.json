@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "fixtureId": "STATE-SESSION-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait + Book.save/bookChapterDao.delByBook+insert",
   "origin": "http://127.0.0.1:18741",
@@ -46,17 +46,17 @@
           "name": "h1@text",
           "author": ".info span.author@text",
           "intro": ".intro@text",
-          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/a/')>=0?'A':'B')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'D';})()",
+          "lastChapter": "@js:(function(){var u=String(book.bookUrl);var id=u.substring(u.lastIndexOf('/')+1);var before=String(book.getVariable('bkV'));if(before===''){book.putVariable('bkV',(u.indexOf('/a/')>=0?'A':'B')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'D';})()",
           "tocUrl": ".toc a@href"
         },
         "ruleToc": {
           "chapterList": ".chapters li a",
           "chapterName": "text",
           "chapterUrl": "href",
-          "updateTime": "@js:(function(){var u=chapter.url;var seg=u.substring(u.lastIndexOf('/')+1);var seen=chapter.getVariable('c');var bk=book.getVariable('bkV');if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
+          "updateTime": "@js:(function(){var u=String(chapter.url);var seg=u.substring(u.lastIndexOf('/')+1);var seen=String(chapter.getVariable('c'));var bk=String(book.getVariable('bkV'));if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
         },
         "ruleContent": {
-          "content": "@js:(function(){var c=chapter.getVariable('c');return 'C|'+book.bookUrl+'|bkV='+book.getVariable('bkV')+'|ch='+chapter.url+'|t='+chapter.title+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n;})()"
+          "content": "@js:(function(){var bu=String(book.bookUrl);var cu=String(chapter.url);var ct=String(chapter.title);var c=String(chapter.getVariable('c'));var bk=String(book.getVariable('bkV'));return 'C|'+bu+'|bkV='+bk+'|ch='+cu+'|t='+ct+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n;})()"
         }
       },
       "jsLib": "var stateLibA = {n: 0, src: 'A'}; function initA() { if (!stateLibA.init) { stateLibA.init = true; stateLibA.n = 1; } return stateLibA.n; }"
@@ -82,17 +82,17 @@
           "name": "$.name",
           "author": "$.author",
           "intro": "$.intro",
-          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/b/')>=0?'B':'A')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'D';})()",
+          "lastChapter": "@js:(function(){var u=String(book.bookUrl);var id=u.substring(u.lastIndexOf('/')+1);var before=String(book.getVariable('bkV'));if(before===''){book.putVariable('bkV',(u.indexOf('/b/')>=0?'B':'A')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'D';})()",
           "tocUrl": "$.toc"
         },
         "ruleToc": {
           "chapterList": "$.chapters[*]",
           "chapterName": "$.title",
           "chapterUrl": "$.url",
-          "updateTime": "@js:(function(){var u=chapter.url;var seg=u.substring(u.lastIndexOf('/')+1);var seen=chapter.getVariable('c');var bk=book.getVariable('bkV');if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
+          "updateTime": "@js:(function(){var u=String(chapter.url);var seg=u.substring(u.lastIndexOf('/')+1);var seen=String(chapter.getVariable('c'));var bk=String(book.getVariable('bkV'));if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
         },
         "ruleContent": {
-          "content": "@js:(function(){var c=chapter.getVariable('c');return 'C|'+book.bookUrl+'|bkV='+book.getVariable('bkV')+'|ch='+chapter.url+'|t='+chapter.title+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n;})()"
+          "content": "@js:(function(){var bu=String(book.bookUrl);var cu=String(chapter.url);var ct=String(chapter.title);var c=String(chapter.getVariable('c'));var bk=String(book.getVariable('bkV'));return 'C|'+bu+'|bkV='+bk+'|ch='+cu+'|t='+ct+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n;})()"
         }
       },
       "jsLib": "var stateLibB = {n: 0, src: 'B'}; function initB() { if (!stateLibB.init) { stateLibB.init = true; stateLibB.n = 1; } return stateLibB.n; }"
@@ -564,6 +564,11 @@
       "reason": "AppConfig.tocCountWords defaults to true (AppConfig.kt:384-385), so the frozen TOC reads the previous chapters rows for wordCount (BookChapterList.kt:271-285); the product store has no chapter wordCount column. Coverage gap, not a compared row."
     },
     {
+      "id": "native-return-strict-equality",
+      "status": "not-compared",
+      "reason": "The frozen document, attribute and getVariable values reach a script as Java-backed Strings, so a === comparison against a JS string literal does not hold on them. This corpus converts such a value with String(...) before comparing, so the declared writes are exercised as JS primitives. Interop between native-returned values and strict equality is left to #137 and this corpus accepts no difference on it."
+    },
+    {
       "id": "search-entity-bindings",
       "status": "not-compared",
       "reason": "The search stage binds a SearchBook in the frozen app (BookList.kt:202-207) and the product's search snapshot has no book, so this corpus calls only source.* in the search script and makes no new search-entity claim."
@@ -578,6 +583,7 @@
   "sourceDerivedNotes": {
     "basis": "Read from the frozen tree at 14dd24945b2914ce2708b8abaa4ee67ceef892af and the call sites cited in publication and policyRows. These notes are expectations read from source, never a golden; the comparator never reads them.",
     "seed": "Library n becomes 1 at the first search script that runs initA/initB (idempotent, so the number of evaluations of ruleSearch.kind cannot change it) and every later script in the same process reads 1; a genuinely fresh process reads 0 from the library text.",
+    "valueConversion": "Every value a script compares with === is first converted with String(...): the frozen book/chapter fields and getVariable results are Java-backed Strings, and this corpus measures the variable lifecycle after that explicit conversion, not native-return interop (that stays with #137).",
     "restart": "Book variables written by the details stage survive because Book.save() persisted them; chapter rows are replaced, so the retained key is rebuilt fresh and its pre-write read is empty; the replaced key's row is gone; A2 is never refreshed."
   }
 }

@@ -12,11 +12,21 @@ by a rule script the corpus declares and travels a real frozen persistence path;
 the notes in `sourceDerivedNotes` are read from the frozen source at
 `14dd24945b2914ce2708b8abaa4ee67ceef892af` and are never an expected value.
 
+Version 2 converts every compared value with `String(...)` before any `===`
+comparison: the frozen document, attribute and `getVariable` results reach a script
+as Java-backed Strings, so `x === ''` does not hold on them until they are explicit
+JS primitives. The corpus therefore measures the variable lifecycle *after* that
+conversion — the declared writes and reads of `source.*`, `book.*` and `chapter.*`.
+Interop between native-returned values and strict equality is not measured here; it
+stays with #137, and nothing here accepts or rejects a difference on it. Version 1
+had a real device capture whose comparison rows are preserved; its own observation
+ids, requests and responses are unchanged in version 2.
+
 ## Corpus shape
 
 | Item | Value |
 |---|---|
-| fixture id | `STATE-SESSION-01`, corpus version 1 |
+| fixture id | `STATE-SESSION-01`, corpus version 2 |
 | target pin | `io.legado.app.debug`, APK SHA-256 `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6` |
 | baseline | `14dd24945b2914ce2708b8abaa4ee67ceef892af` |
 | origin | `http://127.0.0.1:18741` (a busy declared port is a blocker, not an invitation to move it) |
@@ -89,17 +99,28 @@ context, keeps it in the owned set and never deletes it there; the restart only
 reads the namespace the seed recorded. A pre-existing probe is refused rather than
 overwritten or removed.
 
-One start-up path is allowed to arrive before the binding, and only on a background
-thread: the frozen application's own providers reach preferences before
-`Instrumentation.onCreate`. Firebase performance's `DeviceCacheManager.setContext`
-posts exactly that call to its thread pool, and the first real capture died on it.
-Such a callback waits for the binding, bounded, and then uses the same scoped store;
-it is never handed an unverified handle and it is never silently allowed. A callback
-on the main thread refuses immediately instead of waiting, because the binder itself
-starts from a main-looper post and waiting would deadlock start-up. A binding
-failure releases every waiter with that failure, and a timeout refuses with a visible
-message; nothing is retried. Every other storage callback that would write — a
-database create or delete — is still refused before the phase binds the root.
+One start-up path reaches storage before the binding, and only on a background
+thread: the frozen application's own providers ask for preferences before
+`Instrumentation.onCreate`, and Firebase performance's `DeviceCacheManager` makes
+that call from its thread pool. Such a callback waits, bounded, for the binding and
+then uses the same scoped store; it is never handed an unverified handle and it is
+never silently allowed. A callback on the main thread refuses immediately instead of
+waiting, because the binder itself starts from a main-looper post and waiting there
+would deadlock start-up. A binding failure releases every waiter with that failure,
+and a timeout refuses with a visible message; nothing is retried. Every other storage
+callback that would write — a database create or delete — is refused before the phase
+binds the root. The owned-name manifest is published atomically under the same lock,
+so two registrations that arrive at once cannot drop each other's name.
+
+The phase's own cleanup receipt is not a claim about the process's exit. The frozen
+provider can still write into the retained root after the restart's removal and
+before it is torn down, so the final cleanliness check belongs to the controller and
+runs after the target is force-stopped and confirmed to have no PID: it inspects the
+already-authorized scratch root, removes the authorized residue it finds there, and
+independently verifies that the root and every owner-listed preference file and
+`.xml.bak` are gone. Those receipts are recorded beside the capture
+(`<capture>/device-cleanup-verification.json` and `<capture>/post-stop-scratch-residue.txt`),
+and the native report only states what the phase itself measured.
 
 ## What counts as a complete phase
 
