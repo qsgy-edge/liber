@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "STATE-SESSION-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait + Book.save/bookChapterDao.delByBook+insert",
+  "origin": "http://127.0.0.1:18741",
+  "keyword": "state",
+  "target": {
+    "package": "io.legado.app.debug",
+    "apkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+    "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "manifest": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json"
+  },
+  "scratch": {
+    "rootName": "liber-state-session-01",
+    "databaseName": "legado.db",
+    "preferencesPrefix": "liber_state_session_01_",
+    "preferencesLocation": "task-prefixed SharedPreferences files under the target application's shared_prefs directory; only the name is namespaced, the file itself is outside the scratch root",
+    "ownerFile": "owner.json"
+  },
+  "publication": {
+    "details": "Book.save() (Book.kt:367-373; the details-page call site BookInfoViewModel.kt:400,438)",
+    "toc": "Book.save(); appDb.bookChapterDao.delByBook(oldBook.bookUrl); appDb.bookChapterDao.insert(*chapters) (BookInfoViewModel.kt:238,245-246; BookChapterDao.kt:35,41). chapters has a foreign key to books (BookChapter.kt:28-40), so the book row has to exist first.",
+    "note": "The harness performs exactly these frozen call sites after each real stage; it never writes a row directly."
+  },
+  "sources": [
+    {
+      "id": "A",
+      "bookSource": {
+        "bookSourceName": "Liber STATE-SESSION-01 A",
+        "bookSourceUrl": "http://127.0.0.1:18741/a",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "STATE-SESSION-01 controlled replay source A (HTML). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": true,
+        "searchUrl": "/a/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "kind": "@js:(function(){initA();source.setVariable('sA');source.put('sTag','Atag');return 'k|'+source.getVariable()+'|'+source.get('sTag')+'|lib='+stateLibA.n;})()",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/a/')>=0?'A':'B')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'D';})()",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href",
+          "updateTime": "@js:(function(){var u=chapter.url;var seg=u.substring(u.lastIndexOf('/')+1);var seen=chapter.getVariable('c');var bk=book.getVariable('bkV');if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
+        },
+        "ruleContent": {
+          "content": "@js:(function(){var c=chapter.getVariable('c');return 'C|'+book.bookUrl+'|bkV='+book.getVariable('bkV')+'|ch='+chapter.url+'|t='+chapter.title+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibA.n;})()"
+        }
+      },
+      "jsLib": "var stateLibA = {n: 0, src: 'A'}; function initA() { if (!stateLibA.init) { stateLibA.init = true; stateLibA.n = 1; } return stateLibA.n; }"
+    },
+    {
+      "id": "B",
+      "bookSource": {
+        "bookSourceName": "Liber STATE-SESSION-01 B",
+        "bookSourceUrl": "http://127.0.0.1:18741/b",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "STATE-SESSION-01 controlled replay source B (JSON). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": true,
+        "searchUrl": "/b/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.data[*]",
+          "name": "$.name",
+          "author": "$.author",
+          "kind": "@js:(function(){initB();source.setVariable('sB');source.put('sTag','Btag');return 'k|'+source.getVariable()+'|'+source.get('sTag')+'|lib='+stateLibB.n;})()",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.name",
+          "author": "$.author",
+          "intro": "$.intro",
+          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/b/')>=0?'A':'B')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'D';})()",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters[*]",
+          "chapterName": "$.title",
+          "chapterUrl": "$.url",
+          "updateTime": "@js:(function(){var u=chapter.url;var seg=u.substring(u.lastIndexOf('/')+1);var seen=chapter.getVariable('c');var bk=book.getVariable('bkV');if(seg==='1'){chapter.putVariable('c','c'+seg);}chapter.putVariable('obs','T|'+seg+'|pre='+(seen===''?'empty':seen)+'|bk='+(bk===''?'empty':bk)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'tag|'+seg+'|'+(seen===''?'empty':seen);})()"
+        },
+        "ruleContent": {
+          "content": "@js:(function(){var c=chapter.getVariable('c');return 'C|'+book.bookUrl+'|bkV='+book.getVariable('bkV')+'|ch='+chapter.url+'|t='+chapter.title+'|c='+(c===''?'empty':c)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n;})()"
+        }
+      },
+      "jsLib": "var stateLibB = {n: 0, src: 'B'}; function initB() { if (!stateLibB.init) { stateLibB.init = true; stateLibB.n = 1; } return stateLibB.n; }"
+    }
+  ],
+  "books": [
+    {
+      "id": "A1",
+      "source": "A",
+      "bookUrl": "http://127.0.0.1:18741/a/book/1",
+      "searchIndex": 0,
+      "chapterUrls": [
+        "http://127.0.0.1:18741/a/book/1/ch/1",
+        "http://127.0.0.1:18741/a/book/1/ch/2",
+        "http://127.0.0.1:18741/a/book/1/ch/9"
+      ]
+    },
+    {
+      "id": "A2",
+      "source": "A",
+      "bookUrl": "http://127.0.0.1:18741/a/book/2",
+      "searchIndex": 1,
+      "chapterUrls": [
+        "http://127.0.0.1:18741/a/book/2/ch/1"
+      ]
+    },
+    {
+      "id": "B1",
+      "source": "B",
+      "bookUrl": "http://127.0.0.1:18741/b/book/1",
+      "searchIndex": 0,
+      "chapterUrls": [
+        "http://127.0.0.1:18741/b/book/1/ch/1",
+        "http://127.0.0.1:18741/b/book/1/ch/2",
+        "http://127.0.0.1:18741/b/book/1/ch/9"
+      ]
+    }
+  ],
+  "cacheKeys": [
+    "sourceVariable_http://127.0.0.1:18741/a",
+    "v_http://127.0.0.1:18741/a_sTag",
+    "sourceVariable_http://127.0.0.1:18741/b",
+    "v_http://127.0.0.1:18741/b_sTag"
+  ],
+  "responses": [
+    {
+      "id": "a-search",
+      "method": "GET",
+      "path": "/a/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "query": {
+        "keyword": "state",
+        "page": "1"
+      },
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18741/a/book/1\">A1</a><span class=\"author\">AuthorA1</span></li><li><a href=\"http://127.0.0.1:18741/a/book/2\">A2</a><span class=\"author\">AuthorA2</span></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-1-info",
+      "method": "GET",
+      "path": "/a/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>A1</h1><div class=\"info\"><span class=\"author\">AuthorA1</span></div><div class=\"intro\">IntroA1</div><p class=\"toc\"><a href=\"http://127.0.0.1:18741/a/book/1/toc\">toc</a></p></body></html>"
+    },
+    {
+      "id": "a-book-1-toc-r1",
+      "phase": "seed",
+      "revision": 1,
+      "method": "GET",
+      "path": "/a/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18741/a/book/1/ch/1\">Chapter1</a></li><li><a href=\"http://127.0.0.1:18741/a/book/1/ch/2\">Chapter2</a></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-1-toc-r2",
+      "phase": "restart",
+      "revision": 2,
+      "method": "GET",
+      "path": "/a/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18741/a/book/1/ch/1\">Chapter1</a></li><li><a href=\"http://127.0.0.1:18741/a/book/1/ch/9\">Chapter9</a></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-2-info",
+      "method": "GET",
+      "path": "/a/book/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>A2</h1><div class=\"info\"><span class=\"author\">AuthorA2</span></div><div class=\"intro\">IntroA2</div><p class=\"toc\"><a href=\"http://127.0.0.1:18741/a/book/2/toc\">toc</a></p></body></html>"
+    },
+    {
+      "id": "a-book-2-toc-r1",
+      "method": "GET",
+      "path": "/a/book/2/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18741/a/book/2/ch/1\">Chapter1</a></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-1-ch-1",
+      "method": "GET",
+      "path": "/a/book/1/ch/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"c\">PageA1Ch1</div></body></html>"
+    },
+    {
+      "id": "a-book-1-ch-2",
+      "method": "GET",
+      "path": "/a/book/1/ch/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"c\">PageA1Ch2</div></body></html>"
+    },
+    {
+      "id": "a-book-2-ch-1",
+      "method": "GET",
+      "path": "/a/book/2/ch/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"c\">PageA2Ch1</div></body></html>"
+    },
+    {
+      "id": "b-search",
+      "method": "GET",
+      "path": "/b/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "query": {
+        "keyword": "state",
+        "page": "1"
+      },
+      "body": "{\"data\":[{\"name\":\"B1\",\"author\":\"AuthorB1\",\"url\":\"http://127.0.0.1:18741/b/book/1\"}]}"
+    },
+    {
+      "id": "b-book-1-info",
+      "method": "GET",
+      "path": "/b/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"name\":\"B1\",\"author\":\"AuthorB1\",\"intro\":\"IntroB1\",\"toc\":\"http://127.0.0.1:18741/b/book/1/toc\"}"
+    },
+    {
+      "id": "b-book-1-toc-r1",
+      "phase": "seed",
+      "revision": 1,
+      "method": "GET",
+      "path": "/b/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"chapters\":[{\"title\":\"Chapter1\",\"url\":\"http://127.0.0.1:18741/b/book/1/ch/1\"},{\"title\":\"Chapter2\",\"url\":\"http://127.0.0.1:18741/b/book/1/ch/2\"}]}"
+    },
+    {
+      "id": "b-book-1-toc-r2",
+      "phase": "restart",
+      "revision": 2,
+      "method": "GET",
+      "path": "/b/book/1/toc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"chapters\":[{\"title\":\"Chapter1\",\"url\":\"http://127.0.0.1:18741/b/book/1/ch/1\"},{\"title\":\"Chapter9\",\"url\":\"http://127.0.0.1:18741/b/book/1/ch/9\"}]}"
+    },
+    {
+      "id": "b-book-1-ch-1",
+      "method": "GET",
+      "path": "/b/book/1/ch/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"page\":\"PageB1Ch1\"}"
+    },
+    {
+      "id": "b-book-1-ch-2",
+      "method": "GET",
+      "path": "/b/book/1/ch/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"page\":\"PageB1Ch2\"}"
+    }
+  ],
+  "phases": {
+    "seed": {
+      "steps": [
+        {
+          "id": "seed.search.A",
+          "kind": "search",
+          "source": "A",
+          "books": [
+            "A1",
+            "A2"
+          ]
+        },
+        {
+          "id": "seed.search.B",
+          "kind": "search",
+          "source": "B",
+          "books": [
+            "B1"
+          ]
+        },
+        {
+          "id": "seed.details.A1",
+          "kind": "details",
+          "book": "A1",
+          "from": "search"
+        },
+        {
+          "id": "seed.toc.A1",
+          "kind": "toc",
+          "book": "A1",
+          "revision": 1
+        },
+        {
+          "id": "seed.details.A2",
+          "kind": "details",
+          "book": "A2",
+          "from": "search"
+        },
+        {
+          "id": "seed.toc.A2",
+          "kind": "toc",
+          "book": "A2",
+          "revision": 1
+        },
+        {
+          "id": "seed.details.B1",
+          "kind": "details",
+          "book": "B1",
+          "from": "search"
+        },
+        {
+          "id": "seed.toc.B1",
+          "kind": "toc",
+          "book": "B1",
+          "revision": 1
+        },
+        {
+          "id": "seed.content.A1.ch1",
+          "kind": "content",
+          "book": "A1",
+          "chapter": "http://127.0.0.1:18741/a/book/1/ch/1"
+        },
+        {
+          "id": "seed.content.A1.ch2",
+          "kind": "content",
+          "book": "A1",
+          "chapter": "http://127.0.0.1:18741/a/book/1/ch/2"
+        },
+        {
+          "id": "seed.content.A2.ch1",
+          "kind": "content",
+          "book": "A2",
+          "chapter": "http://127.0.0.1:18741/a/book/2/ch/1"
+        },
+        {
+          "id": "seed.content.B1.ch1",
+          "kind": "content",
+          "book": "B1",
+          "chapter": "http://127.0.0.1:18741/b/book/1/ch/1"
+        },
+        {
+          "id": "seed.content.B1.ch2",
+          "kind": "content",
+          "book": "B1",
+          "chapter": "http://127.0.0.1:18741/b/book/1/ch/2"
+        },
+        {
+          "id": "seed.state.books",
+          "kind": "state",
+          "surface": "books"
+        },
+        {
+          "id": "seed.state.chapters",
+          "kind": "state",
+          "surface": "chapters"
+        },
+        {
+          "id": "seed.state.caches",
+          "kind": "state",
+          "surface": "caches"
+        }
+      ],
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "path": "/a/search",
+          "query": {
+            "keyword": "state",
+            "page": "1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/b/search",
+          "query": {
+            "keyword": "state",
+            "page": "1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/toc"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/2"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/2/toc"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/toc"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/ch/1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/ch/2"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/2/ch/1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/ch/1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/ch/2"
+        }
+      ],
+      "cleanup": "retain",
+      "note": "fresh scratch root; each book's info and TOC run and publish in order"
+    },
+    "restart": {
+      "steps": [
+        {
+          "id": "restart.state.books",
+          "kind": "state",
+          "surface": "books"
+        },
+        {
+          "id": "restart.state.chapters",
+          "kind": "state",
+          "surface": "chapters"
+        },
+        {
+          "id": "restart.state.caches",
+          "kind": "state",
+          "surface": "caches"
+        },
+        {
+          "id": "restart.details.A1",
+          "kind": "details",
+          "book": "A1",
+          "from": "row"
+        },
+        {
+          "id": "restart.toc.A1",
+          "kind": "toc",
+          "book": "A1",
+          "revision": 2
+        },
+        {
+          "id": "restart.details.B1",
+          "kind": "details",
+          "book": "B1",
+          "from": "row"
+        },
+        {
+          "id": "restart.toc.B1",
+          "kind": "toc",
+          "book": "B1",
+          "revision": 2
+        },
+        {
+          "id": "restart.state.booksAfter",
+          "kind": "state",
+          "surface": "books"
+        },
+        {
+          "id": "restart.state.chaptersAfter",
+          "kind": "state",
+          "surface": "chapters"
+        },
+        {
+          "id": "restart.state.cachesAfter",
+          "kind": "state",
+          "surface": "caches"
+        }
+      ],
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "path": "/a/book/1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/toc"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/toc"
+        }
+      ],
+      "cleanup": "remove",
+      "note": "second instrumentation over the retained root; A2 is never refreshed"
+    }
+  },
+  "policyRows": [
+    {
+      "id": "java-get-put-entity-ladder",
+      "status": "not-compared",
+      "reason": "The frozen AnalyzeRule.put/get ladder writes the bound chapter/book entity and falls back to the per-source row only when no entity is bound (AnalyzeRule.kt:718-744), while the product's java.put/java.get address the per-source v_ row (ADR 0011 section 3, ticket #21). That accepted difference stays out of this corpus: no script here calls java.get or java.put.",
+      "owner": "consumer declares its own product-policy checks over declared keys, outside the 26 frozen observation ids"
+    },
+    {
+      "id": "chapter-wordcount-carry",
+      "status": "not-compared",
+      "reason": "AppConfig.tocCountWords defaults to true (AppConfig.kt:384-385), so the frozen TOC reads the previous chapters rows for wordCount (BookChapterList.kt:271-285); the product store has no chapter wordCount column. Coverage gap, not a compared row."
+    },
+    {
+      "id": "search-entity-bindings",
+      "status": "not-compared",
+      "reason": "The search stage binds a SearchBook in the frozen app (BookList.kt:202-207) and the product's search snapshot has no book, so this corpus calls only source.* in the search script and makes no new search-entity claim."
+    }
+  ],
+  "coverageGaps": [
+    "One HTML source and one JSON source, three books, five chapter reads: a state/session comparison boundary, not a source or platform claim.",
+    "No login, cookie-jar write, cache byte payload, TLS exception, rate limiter, WebView, Java get/put or concurrency row.",
+    "No ruleToc.nextTocUrl or ruleContent.nextContentUrl pagination; each stage fetches one page per step.",
+    "Chapter wordCount carry and search-entity bindings are declared not-compared above."
+  ],
+  "sourceDerivedNotes": {
+    "basis": "Read from the frozen tree at 14dd24945b2914ce2708b8abaa4ee67ceef892af and the call sites cited in publication and policyRows. These notes are expectations read from source, never a golden; the comparator never reads them.",
+    "seed": "Library n becomes 1 at the first search script that runs initA/initB (idempotent, so the number of evaluations of ruleSearch.kind cannot change it) and every later script in the same process reads 1; a genuinely fresh process reads 0 from the library text.",
+    "restart": "Book variables written by the details stage survive because Book.save() persisted them; chapter rows are replaced, so the retained key is rebuilt fresh and its pre-write read is empty; the replaced key's row is gone; A2 is never refreshed."
+  }
+}

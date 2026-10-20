@@ -7,4 +7,5 @@
   <instrumentation android:name="io.liber.oracle.nested.HtmlOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado HTML extraction oracle" />
   <instrumentation android:name="io.liber.oracle.nested.RequestOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado request-semantics oracle" />
   <instrumentation android:name="io.liber.oracle.nested.LimitOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado accumulate-to-the-limit probe (#79)" />
+  <instrumentation android:name="io.liber.oracle.nested.StateSessionOracle" android:targetPackage="io.legado.app.debug" android:label="Frozen Legado STATE-SESSION-01 state/session oracle (#136)" />
 </manifest>
