@@ -23,9 +23,7 @@ void main() {
   Map<String, dynamic> copy(Map<String, dynamic> value) =>
       jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
 
-  setUp(() {
-    corpus = loadStateSessionCorpus();
-    corpusLf = stateSessionCorpusSha256Lf(File(stateSessionCorpusPath));
+  void resetGoldens() {
     seedGolden = _golden(corpus, 'seed', pid: 101, runId: 'seed-run');
     restartGolden = _golden(
       corpus,
@@ -34,6 +32,9 @@ void main() {
       runId: 'restart-run',
       recordedAt: '2026-10-20T10:12:48.666Z',
     );
+  }
+
+  void resetProducts() {
     seedProduct = _product(
       corpus: corpus,
       corpusLf: corpusLf,
@@ -58,6 +59,13 @@ void main() {
       seedPid: seedProduct['pid'] as int,
       seedRunId: seedProduct['runId'] as String,
     );
+  }
+
+  setUp(() {
+    corpus = loadStateSessionCorpus();
+    corpusLf = stateSessionCorpusSha256Lf(File(stateSessionCorpusPath));
+    resetGoldens();
+    resetProducts();
   });
 
   Map<String, Object?> compare() => compareStateSessionPhases(
@@ -564,10 +572,162 @@ void main() {
     ((seedProduct['identity'] as Map)['target'] as Map)['apkSha256'] = '0' * 64;
     expect(compare()['status'], 'fail');
   });
+
+  test('an explicitly failed or unknown product status cannot pass', () {
+    for (final status in <String?>['failed', 'refused', 'unknown', null]) {
+      resetProducts();
+      if (status == null) {
+        seedProduct.remove('status');
+      } else {
+        seedProduct['status'] = status;
+      }
+      expect(compare()['status'], 'fail', reason: 'status $status');
+    }
+  });
+
+  test('the restart must name the exact retained root the seed created', () {
+    expect(compare()['status'], 'pass');
+
+    (restartProduct['isolation'] as Map)['root'] =
+        'C:/liber-unowned-counterexample/same-root-name';
+    expect(compare()['status'], 'fail');
+
+    resetProducts();
+    (restartProduct['isolation'] as Map)['database'] =
+        'C:/liber-unowned-counterexample/same-root-name/spaces/default/data.db';
+    expect(compare()['status'], 'fail');
+
+    resetProducts();
+    (restartProduct['owner'] as Map)['rootName'] = 'another-root';
+    expect(compare()['status'], 'fail');
+
+    resetProducts();
+    (restartProduct['isolation'] as Map)['validatedOwnerSha256'] = '4' * 64;
+    expect(compare()['status'], 'fail');
+
+    resetProducts();
+    (seedProduct['isolation'] as Map)['root'] = 'C:/another-seed-root';
+    expect(compare()['status'], 'fail');
+  });
+
+  test('a raw null column is not the JSON text null', () {
+    (seedProduct['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'bookUrl': 'http://127.0.0.1:18741/a/book/1',
+      'name': 'A1',
+      'variable': null,
+      'variableRaw': null,
+    };
+    (seedGolden['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'bookUrl': 'http://127.0.0.1:18741/a/book/1',
+      'name': 'A1',
+      'variable': null,
+      'variableRaw': 'null',
+    };
+    expect(
+      compare()['status'],
+      'fail',
+      reason: 'null column vs JSON null text',
+    );
+
+    resetGoldens();
+    resetProducts();
+    (seedProduct['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variable': null,
+      'variableRaw': 'null',
+    };
+    (seedGolden['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variable': null,
+      'variableRaw': null,
+    };
+    expect(
+      compare()['status'],
+      'fail',
+      reason: 'JSON null text vs null column',
+    );
+
+    resetGoldens();
+    resetProducts();
+    (seedProduct['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variableRaw': '',
+    };
+    (seedGolden['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variableRaw': '""',
+    };
+    expect(
+      compare()['status'],
+      'fail',
+      reason: 'empty text vs JSON empty string',
+    );
+
+    resetGoldens();
+    resetProducts();
+    (seedProduct['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variable': null,
+    };
+    (seedGolden['observations'] as List).firstWhere(
+      (raw) => (raw as Map)['id'] == 'seed.details.A1',
+    )['value'] = <String, Object?>{
+      'variable': null,
+      'variableRaw': null,
+    };
+    expect(
+      compare()['status'],
+      'fail',
+      reason: 'missing raw key vs present null',
+    );
+  });
+
+  test('a detected policy leak cannot keep a pass verdict on that phase', () {
+    final seedSources = (seedProduct['javaPolicy'] as Map)['sources'] as Map;
+    final seedSourceA = seedSources.values.first as Map;
+    (seedSourceA['java'] as Map)['policyJava.B'] = 'leaked';
+    final seedLeak = compare();
+    expect(seedLeak['status'], 'fail');
+    expect((seedLeak['javaPolicy'] as Map)['seed']['verdict'], 'fail');
+    expect((seedLeak['javaPolicy'] as Map)['restart']['verdict'], 'pass');
+
+    resetProducts();
+    final restartSources =
+        (restartProduct['javaPolicy'] as Map)['sources'] as Map;
+    final restartSourceA = restartSources.values.first as Map;
+    (restartSourceA['java'] as Map)['policyJava.B'] = 'leaked';
+    final restartLeak = compare();
+    expect(restartLeak['status'], 'fail');
+    expect((restartLeak['javaPolicy'] as Map)['seed']['verdict'], 'pass');
+    expect((restartLeak['javaPolicy'] as Map)['restart']['verdict'], 'fail');
+
+    resetProducts();
+    (seedProduct['javaPolicy'] as Map).remove('rows');
+    final malformed = compare();
+    expect(malformed['status'], 'fail');
+    expect((malformed['javaPolicy'] as Map)['seed']['verdict'], 'fail');
+    expect(
+      ((malformed['javaPolicy'] as Map)['seed'] as Map)['errors'],
+      isNotEmpty,
+    );
+  });
 }
 
 const _librarySha =
     '1111111111111111111111111111111111111111111111111111111111111111';
+const _ownerSha =
+    '3333333333333333333333333333333333333333333333333333333333333333';
+const _syntheticRoot = 'C:/synthetic/state-repair-root';
+const _syntheticRootName = 'state-repair-root';
 const _harnessSha =
     '2222222222222222222222222222222222222222222222222222222222222222';
 
@@ -687,6 +847,7 @@ Map<String, dynamic> _product({
     'baselineCommit': corpus['baselineCommit'],
     'entryPoint': corpus['entryPoint'],
     'phase': phase,
+    'status': 'completed',
     'pid': pid,
     'runId': runId,
     'startedAt': startedAt,
@@ -718,17 +879,24 @@ Map<String, dynamic> _product({
     },
     'observationCheck': {'match': true, 'missing': <Object?>[]},
     'isolation': {
-      'root': 'synthetic-root',
+      'root': _syntheticRoot,
+      'rootName': _syntheticRootName,
+      'database': '$_syntheticRoot/spaces/default/data.db',
+      'workspaceManifest': '$_syntheticRoot/manifest.json',
+      'ownerFile': '$_syntheticRoot/owner.json',
+      'rootExistedAtStart': phase == 'restart',
       'createdByThisRun': phase == 'seed',
       'validatedOwner': phase == 'restart',
+      'validatedOwnerSha256': phase == 'seed' ? null : _ownerSha,
+      'preferenceFilesOutsideRoot': <Object?>[],
+      'preferenceBoundary': 'synthetic: all product state is inside this root',
     },
     'cleanup': {
       'databaseClosed': true,
       'serverClosed': true,
       'nativeLibraryDisposed': true,
       'ownerWritten': phase == 'seed',
-      'ownerSha256':
-          '3333333333333333333333333333333333333333333333333333333333333333',
+      'ownerSha256': _ownerSha,
       'scratchRetained': phase == 'seed',
       'scratchRemoved': phase == 'restart',
       'rootAbsentAfter': phase == 'restart',
@@ -736,10 +904,11 @@ Map<String, dynamic> _product({
     'owner': {
       'written': phase == 'seed',
       'validated': phase == 'restart',
-      'sha256':
-          '3333333333333333333333333333333333333333333333333333333333333333',
-      'seedPid': seedPid,
-      'seedRunId': seedRunId,
+      'sha256': _ownerSha,
+      'seedPid': phase == 'seed' ? pid : seedPid,
+      'seedRunId': phase == 'seed' ? runId : seedRunId,
+      'rootName': _syntheticRootName,
+      'complete': true,
     },
     'javaPolicy': _javaPolicy(corpus, phase),
     'analysisFailure': null,
@@ -780,6 +949,7 @@ Map<String, dynamic> _javaPolicy(Map<String, dynamic> corpus, String phase) {
   }
   return {
     'phase': phase,
+    'policy': 'synthetic ADR 0011 per-source java policy receipt; product-only',
     'keys': stateSessionJavaPolicyKeys,
     'expected': expected,
     'sources': sources,

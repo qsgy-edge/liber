@@ -200,11 +200,15 @@ source reads only its own key, `source.get` sees the same row, and the restart r
 what the seed wrote. That receipt is `javaPolicy` in each phase report.
 
 The comparator refuses a capture of another fixture, corpus, baseline, target,
-harness, phase or process pairing; it requires the exact declared request trace, the
-exact ordered observation ids and complete setup/cleanup receipts, and it fails on a
-changed value or any unexpected, missing or reordered request. Valid variable JSON is
-compared semantically while the raw column is retained and any member-order or
-indentation difference is reported in `rawTextDifferences` rather than normalised.
+harness, phase or process pairing, a product report whose `status` is not
+`completed`, and a restart receipt that names another retained root or owner; it
+requires the exact declared request trace, the exact ordered observation ids and
+complete setup/cleanup receipts, and it fails on a changed value or any unexpected,
+missing or reordered request. Valid variable JSON is compared semantically while the
+raw column is retained; a null raw column, valid JSON text (member order ignored),
+invalid or empty text, and a missing raw key stay distinct observations, and any
+member-order or indentation difference is reported in `rawTextDifferences` rather than
+normalised.
 The negative controls mutate copies of the raw captures and of the product reports
 (value, request and identity), record each failing exit and re-hash the immutable
 originals after the run. Evidence lives in

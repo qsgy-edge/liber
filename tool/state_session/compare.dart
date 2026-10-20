@@ -386,6 +386,12 @@ void checkStateSessionGoldenPair({
 /// every primitive are exact, and a missing key is not an empty value.
 bool _deepEquals(Object? left, Object? right) {
   if (identical(left, right)) return true;
+  if (left is _RawColumnValue || right is _RawColumnValue) {
+    return left is _RawColumnValue &&
+        right is _RawColumnValue &&
+        left.kind == right.kind &&
+        _deepEquals(left.value, right.value);
+  }
   if (left is Map && right is Map) {
     if (left.length != right.length) return false;
     for (final key in left.keys) {
@@ -405,21 +411,46 @@ bool _deepEquals(Object? left, Object? right) {
   return left == right;
 }
 
+/// One raw column's representation kind and parsed value. A null column, valid
+/// JSON text (whatever its member order), invalid text including the empty
+/// string, and any other value are different observations; the tag keeps them
+/// distinct without rewriting the raw value in a report.
+class _RawColumnValue {
+  const _RawColumnValue(this.kind, this.value);
+  final String kind;
+  final Object? value;
+}
+
 /// A `variableRaw` is JSON text; compare its parsed value, never its member
-/// order or indentation. Text that is not JSON stays exact text.
+/// order or indentation. Text that is not JSON stays exact text, and a null
+/// column is not the JSON text `null`.
 Object? _semanticVariableRaw(Object? value) {
   if (value is Map) {
-    return {
-      for (final entry in value.entries)
-        entry.key: entry.key == 'variableRaw' && entry.value is String
-            ? _parseVariableText(entry.value as String)
-            : _semanticVariableRaw(entry.value),
-    };
+    final out = <String, Object?>{};
+    for (final entry in value.entries) {
+      final key = '${entry.key}';
+      out[key] = key == 'variableRaw'
+          ? _rawColumnValue(entry.value)
+          : _semanticVariableRaw(entry.value);
+    }
+    return out;
   }
   if (value is List) {
     return [for (final item in value) _semanticVariableRaw(item)];
   }
   return value;
+}
+
+_RawColumnValue _rawColumnValue(Object? value) {
+  if (value == null) return const _RawColumnValue('null-column', null);
+  if (value is String) {
+    try {
+      return _RawColumnValue('json-text', jsonDecode(value));
+    } on FormatException {
+      return _RawColumnValue('text', value);
+    }
+  }
+  return _RawColumnValue('other', value);
 }
 
 Object? _parseVariableText(String text) {
@@ -478,6 +509,34 @@ void _collectRawTextDifferences(
   }
 }
 
+/// The record form of a scratch path: absolute, separator-normalised and free
+/// of `.`/`..`; null when the receipt does not name one. This is a string
+/// validator only: the comparator never opens or deletes a reported path.
+String? _recordPath(Object? value) {
+  if (value is! String) return null;
+  var text = value.trim().replaceAll('\\', '/');
+  while (text.length > 1 && text.endsWith('/')) {
+    text = text.substring(0, text.length - 1);
+  }
+  if (text.isEmpty || text == '/' || RegExp(r'^[A-Za-z]:$').hasMatch(text)) {
+    return null;
+  }
+  final absolute =
+      RegExp(r'^[A-Za-z]:/').hasMatch(text) || text.startsWith('/');
+  if (!absolute) return null;
+  final segments = [
+    for (final segment in text.split('/'))
+      if (segment.isNotEmpty) segment,
+  ];
+  if (segments.length < 2 ||
+      segments.any((segment) => segment == '.' || segment == '..')) {
+    return null;
+  }
+  return text;
+}
+
+String _pathSegment(String path) => path.split('/').last;
+
 /// Compares the two real product phases with the validated frozen captures.
 /// Structural problems with a capture throw; a difference between the actual
 /// product and the capture is recorded as a failed row.
@@ -515,10 +574,15 @@ Map<String, Object?> compareStateSessionPhases({
   final rawTextDifferences = <Map<String, Object?>>[];
   final checks = <String, Object?>{};
 
-  void check(String name, bool passed, Object? detail) {
+  void check(
+    String name,
+    bool passed,
+    Object? detail, {
+    String phase = 'pair',
+  }) {
     checks[name] = {'ok': passed, 'detail': detail};
     if (!passed) {
-      mismatches.add({'phase': 'pair', 'surface': name, 'detail': detail});
+      mismatches.add({'phase': phase, 'surface': name, 'detail': detail});
     }
   }
 
@@ -565,6 +629,12 @@ Map<String, Object?> compareStateSessionPhases({
         throw FormatException('$path names another $key');
       }
     }
+    check(
+      'product-status-$phase',
+      report['status'] == 'completed',
+      'status ${report['status']}',
+      phase: phase,
+    );
     final identity = _object(report['identity'], '$path identity');
     check(
       'product-corpus-identity-$phase',
@@ -709,6 +779,7 @@ Map<String, Object?> compareStateSessionPhases({
             cleanup['scratchRemoved'] == false &&
             isolation['createdByThisRun'] == true &&
             isolation['validatedOwner'] == false &&
+            isolation['validatedOwnerSha256'] == null &&
             owner['written'] == true,
         'retained ${isolation['root']}',
       );
@@ -758,6 +829,73 @@ Map<String, Object?> compareStateSessionPhases({
         restartOwner['seedPid'] == seedProduct['pid'] &&
         restartOwner['sha256'] == seedOwner['sha256'],
     'seed run ${seedProduct['runId']} pid ${seedProduct['pid']}',
+  );
+  final seedIsolation = _object(seedProduct['isolation'], 'seed isolation');
+  final restartIsolation = _object(
+    restartProduct['isolation'],
+    'restart isolation',
+  );
+  final seedCleanup = _object(seedProduct['cleanup'], 'seed cleanup');
+  final restartCleanup = _object(restartProduct['cleanup'], 'restart cleanup');
+  final seedRoot = _recordPath(seedIsolation['root']);
+  final restartRoot = _recordPath(restartIsolation['root']);
+  final seedRootName = '${seedIsolation['rootName'] ?? ''}'.trim();
+  final restartRootName = '${restartIsolation['rootName'] ?? ''}'.trim();
+  final ownerSha = seedCleanup['ownerSha256'];
+  final rootPathsAgree =
+      seedRoot != null &&
+      restartRoot != null &&
+      seedRoot == restartRoot &&
+      seedRootName.isNotEmpty &&
+      seedRootName == restartRootName &&
+      _pathSegment(seedRoot) == seedRootName;
+  final rootPathsInside =
+      _recordPath(seedIsolation['database']) ==
+          '$seedRoot/spaces/default/data.db' &&
+      _recordPath(restartIsolation['database']) ==
+          '$restartRoot/spaces/default/data.db' &&
+      _recordPath(seedIsolation['workspaceManifest']) ==
+          '$seedRoot/manifest.json' &&
+      _recordPath(restartIsolation['workspaceManifest']) ==
+          '$restartRoot/manifest.json' &&
+      _recordPath(seedIsolation['ownerFile']) == '$seedRoot/owner.json' &&
+      _recordPath(restartIsolation['ownerFile']) == '$restartRoot/owner.json';
+  final ownerBindings =
+      seedOwner['written'] == true &&
+      restartOwner['validated'] == true &&
+      seedOwner['complete'] == true &&
+      restartOwner['complete'] == true &&
+      seedOwner['rootName'] == seedRootName &&
+      restartOwner['rootName'] == restartRootName &&
+      _isSha256(ownerSha) &&
+      seedOwner['sha256'] == ownerSha &&
+      restartOwner['sha256'] == ownerSha &&
+      restartIsolation['validatedOwnerSha256'] == ownerSha &&
+      restartCleanup['ownerSha256'] == ownerSha;
+  final preferenceBoundary =
+      seedIsolation['preferenceFilesOutsideRoot'] is List &&
+      (seedIsolation['preferenceFilesOutsideRoot'] as List).isEmpty &&
+      restartIsolation['preferenceFilesOutsideRoot'] is List &&
+      (restartIsolation['preferenceFilesOutsideRoot'] as List).isEmpty &&
+      seedIsolation['preferenceBoundary'] is String &&
+      '${seedIsolation['preferenceBoundary']}'.trim().isNotEmpty &&
+      restartIsolation['preferenceBoundary'] is String &&
+      '${restartIsolation['preferenceBoundary']}'.trim().isNotEmpty;
+  final rootExistence =
+      seedIsolation['rootExistedAtStart'] == false &&
+      restartIsolation['rootExistedAtStart'] == true &&
+      seedCleanup['rootAbsentAfter'] == false &&
+      restartCleanup['rootAbsentAfter'] == true;
+  check(
+    'product-retained-root',
+    rootPathsAgree &&
+        rootPathsInside &&
+        ownerBindings &&
+        preferenceBoundary &&
+        rootExistence,
+    'seed ${seedIsolation['root']} -> restart ${restartIsolation['root']}; '
+        'agree=$rootPathsAgree inside=$rootPathsInside owner=$ownerBindings '
+        'prefs=$preferenceBoundary existence=$rootExistence',
   );
   final seedStarted = DateTime.tryParse('${seedProduct['startedAt']}');
   final restartStarted = DateTime.tryParse('${restartProduct['startedAt']}');
@@ -873,6 +1011,10 @@ Map<String, Object?> _checkJavaPolicy({
     for (var index = 0; index < urls.length; index++)
       urls[index]: 'java-${index == 0 ? 'A' : 'B'}-seed',
   };
+  final expectedRowKeys = [
+    for (final url in urls)
+      for (final key in stateSessionJavaPolicyKeys) 'v_${url}_$key',
+  ]..sort();
   final result = <String, Object?>{};
   for (final entry in <String, Map<String, dynamic>>{
     'seed': seed,
@@ -880,77 +1022,109 @@ Map<String, Object?> _checkJavaPolicy({
   }.entries) {
     final phase = entry.key;
     final report = entry.value;
-    final policy = _object(report['javaPolicy'], '$phase javaPolicy');
-    if (policy['verdict'] != 'pass' ||
-        policy['phase'] != phase ||
-        !_deepEquals(policy['keys'], stateSessionJavaPolicyKeys)) {
+    final errors = <String>[];
+    Object? sources;
+    Object? rows;
+    Object? declaredPhase;
+    Object? declaredVerdict;
+    try {
+      final policy = _object(report['javaPolicy'], '$phase javaPolicy');
+      declaredPhase = policy['phase'];
+      declaredVerdict = policy['verdict'];
+      if (policy['phase'] != phase) {
+        errors.add('the receipt names phase ${policy['phase']}');
+      }
+      if (policy['verdict'] != 'pass') {
+        errors.add('the receipt verdict is ${policy['verdict']}');
+      }
+      if (policy['policy'] is! String || '${policy['policy']}'.trim().isEmpty) {
+        errors.add('the receipt carries no policy statement');
+      }
+      if (!_deepEquals(policy['keys'], stateSessionJavaPolicyKeys)) {
+        errors.add('the receipt keys are not the declared policy keys');
+      }
+      if (!_deepEquals(policy['expected'], expected)) {
+        errors.add('the declared policy values are not the corpus sources');
+      }
+      sources = policy['sources'];
+      rows = policy['rows'];
+      final sourceMap = _object(sources, '$phase javaPolicy.sources');
+      final actualUrls = [...sourceMap.keys]..sort();
+      final declaredUrls = [...urls]..sort();
+      if (!_deepEquals(actualUrls, declaredUrls)) {
+        errors.add('the receipt sources are ${actualUrls.join(', ')}');
+      }
+      for (var index = 0; index < urls.length; index++) {
+        final url = urls[index];
+        final own = stateSessionJavaPolicyKeys[index];
+        final other = stateSessionJavaPolicyKeys[1 - index];
+        final reads = _object(sourceMap[url], '$phase javaPolicy $url');
+        for (final surface in ['java', 'source']) {
+          final values = _object(reads[surface], '$phase $surface reads');
+          final ok = values[own] == expected[url] && values[other] == '';
+          if (!ok) {
+            errors.add('$surface reads ${jsonEncode(values)} for $url');
+          }
+        }
+      }
+      final rowList = _array(rows, '$phase javaPolicy.rows');
+      final actualRowKeys = <String>[];
+      for (final raw in rowList) {
+        final row = _object(raw, '$phase javaPolicy row');
+        if (row['source'] is! String ||
+            row['key'] is! String ||
+            row['present'] is! bool) {
+          errors.add('malformed row ${jsonEncode(row)}');
+          continue;
+        }
+        actualRowKeys.add('${row['key']}');
+      }
+      final sortedActualRows = [...actualRowKeys]..sort();
+      if (!_deepEquals(sortedActualRows, expectedRowKeys)) {
+        errors.add('the receipt rows are ${actualRowKeys.join(', ')}');
+      }
+      for (var index = 0; index < urls.length; index++) {
+        final url = urls[index];
+        final own = stateSessionJavaPolicyKeys[index];
+        final other = stateSessionJavaPolicyKeys[1 - index];
+        for (final key in [own, other]) {
+          final matching = [
+            for (final raw in rowList)
+              if ((raw as Map)['source'] == url &&
+                  raw['key'] == 'v_${url}_$key')
+                raw,
+          ];
+          final Map? row = matching.length == 1 ? matching.single : null;
+          final expectedValue = key == own ? expected[url] : null;
+          final ok =
+              row != null &&
+              row['present'] == (key == own) &&
+              row['value'] == expectedValue &&
+              (key != own || row['deadline'] == 0);
+          if (!ok) {
+            errors.add('row v_${url}_$key is ${jsonEncode(row)}');
+          }
+        }
+      }
+    } on FormatException catch (error) {
+      errors.add('malformed receipt: ${error.message}');
+    }
+    for (final error in errors) {
       mismatches.add({
         'phase': phase,
         'surface': 'javaPolicy',
-        'detail': 'the java policy receipt is incomplete',
+        'detail': error,
       });
-      continue;
-    }
-    if (!_deepEquals(policy['expected'], expected)) {
-      mismatches.add({
-        'phase': phase,
-        'surface': 'javaPolicy',
-        'detail': 'the declared policy values are not the corpus sources',
-      });
-    }
-    final sources = _object(policy['sources'], '$phase javaPolicy.sources');
-    for (var index = 0; index < urls.length; index++) {
-      final url = urls[index];
-      final own = stateSessionJavaPolicyKeys[index];
-      final other = stateSessionJavaPolicyKeys[1 - index];
-      final reads = _object(sources[url], '$phase javaPolicy $url');
-      for (final surface in ['java', 'source']) {
-        final values = _object(reads[surface], '$phase $surface reads');
-        final ok = values[own] == expected[url] && values[other] == '';
-        if (!ok) {
-          mismatches.add({
-            'phase': phase,
-            'surface': 'javaPolicy',
-            'source': url,
-            'detail': '$surface reads ${jsonEncode(values)}',
-          });
-        }
-      }
-    }
-    final rows = _array(policy['rows'], '$phase javaPolicy.rows');
-    for (var index = 0; index < urls.length; index++) {
-      final url = urls[index];
-      final own = stateSessionJavaPolicyKeys[index];
-      final other = stateSessionJavaPolicyKeys[1 - index];
-      for (final key in [own, other]) {
-        final matching = [
-          for (final raw in rows)
-            if ((raw as Map)['source'] == url && raw['key'] == 'v_${url}_$key')
-              raw,
-        ];
-        final Map? row = matching.length == 1 ? matching.single : null;
-        final expectedValue = key == own ? expected[url] : null;
-        final ok =
-            row != null &&
-            row['present'] == (key == own) &&
-            row['value'] == expectedValue &&
-            (key != own || row['deadline'] == 0);
-        if (!ok) {
-          mismatches.add({
-            'phase': phase,
-            'surface': 'javaPolicy',
-            'source': url,
-            'detail': 'row v_${url}_$key is ${jsonEncode(row)}',
-          });
-        }
-      }
     }
     result[phase] = {
       'keys': stateSessionJavaPolicyKeys,
       'expected': expected,
       'sources': sources,
       'rows': rows,
-      'verdict': 'pass',
+      'verdict': errors.isEmpty ? 'pass' : 'fail',
+      'errors': errors,
+      'declaredPhase': declaredPhase,
+      'declaredVerdict': declaredVerdict,
     };
   }
   return result;
