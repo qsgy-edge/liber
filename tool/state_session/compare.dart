@@ -79,6 +79,83 @@ List<Map<String, Object?>> _expectedRequests(
     normalizeRequest(request),
 ];
 
+/// The exact raw query bytes the frozen capture retained for each request.
+///
+/// The carrier is the ordered `stageTrace[i].path`: the resolved URL text the
+/// frozen stage actually executed. Only the bytes after its first `?` are used
+/// as the query identity; they are never decoded, re-encoded, sorted, trimmed or
+/// reconstructed from the decoded `requests[i].query` map. The decoded row is
+/// used solely to bind the trace entry to the same stage and path, so missing,
+/// malformed or mismatched carrier evidence is refused instead of becoming an
+/// empty query.
+List<String> _goldenRawQueries({
+  required Map<String, dynamic> corpus,
+  required Map<String, dynamic> golden,
+  required String phase,
+  required String goldenPath,
+}) {
+  final origin = '${corpus['origin']}';
+  final requests = _array(golden['requests'], '$goldenPath requests');
+  final traces = _array(golden['stageTrace'], '$goldenPath stageTrace');
+  if (requests.isEmpty) {
+    throw FormatException('$goldenPath holds no request trace');
+  }
+  if (traces.length != requests.length) {
+    throw FormatException(
+      '$goldenPath stageTrace has ${traces.length} entries for '
+      '${requests.length} requests',
+    );
+  }
+  final requestStages = [
+    for (final step in stateSessionSteps(corpus, phase))
+      if (const {'search', 'details', 'toc', 'content'}.contains(step['kind']))
+        '${step['id']}',
+  ];
+  final actualStages = <String>[];
+  final rawQueries = <String>[];
+  for (var index = 0; index < requests.length; index++) {
+    final request = _object(requests[index], '$goldenPath request $index');
+    final trace = _object(traces[index], '$goldenPath stageTrace $index');
+    final stage = request['stage'];
+    if (stage is! String || stage.trim().isEmpty) {
+      throw FormatException('$goldenPath request $index has no stage');
+    }
+    if (trace['stage'] != stage) {
+      throw FormatException(
+        '$goldenPath stageTrace $index is not request $index',
+      );
+    }
+    actualStages.add(stage);
+    final requestPath = request['path'];
+    if (requestPath is! String || !requestPath.startsWith('/')) {
+      throw FormatException('$goldenPath request $index has no path');
+    }
+    final tracePath = trace['path'];
+    if (tracePath is! String || !tracePath.startsWith(origin)) {
+      throw FormatException(
+        '$goldenPath stageTrace $index is not on the corpus origin',
+      );
+    }
+    final remainder = tracePath.substring(origin.length);
+    final queryStart = remainder.indexOf('?');
+    final path = queryStart < 0
+        ? remainder
+        : remainder.substring(0, queryStart);
+    if (path != requestPath) {
+      throw FormatException(
+        '$goldenPath stageTrace $index path does not bind request $index',
+      );
+    }
+    rawQueries.add(queryStart < 0 ? '' : remainder.substring(queryStart + 1));
+  }
+  if (!_deepEquals(requestStages, actualStages)) {
+    throw FormatException(
+      '$goldenPath request stages are not the corpus request stages',
+    );
+  }
+  return rawQueries;
+}
+
 /// Structural and pairwise validation of the controller's raw captures before
 /// any value is compared. A golden is only accepted when it names this corpus,
 /// this frozen target, the measured harness and exactly the declared cases.
@@ -154,6 +231,12 @@ void checkStateSessionGolden({
       '$goldenPath request trace is not this corpus phase declaration',
     );
   }
+  _goldenRawQueries(
+    corpus: corpus,
+    golden: golden,
+    phase: phase,
+    goldenPath: goldenPath,
+  );
   if (_array(
     golden['unmatchedRequests'],
     '$goldenPath unmatchedRequests',
@@ -678,6 +761,14 @@ Map<String, Object?> compareStateSessionPhases({
     final requests = _array(report['requests'], '$path requests');
     final expectedRequests = _expectedRequests(corpus, phase);
     final actualRequests = [for (final raw in requests) normalizeRequest(raw)];
+    final golden = phase == 'seed' ? seedGolden : restartGolden;
+    final goldenPath = phase == 'seed' ? seedGoldenPath : restartGoldenPath;
+    final goldenRawQueries = _goldenRawQueries(
+      corpus: corpus,
+      golden: golden,
+      phase: phase,
+      goldenPath: goldenPath,
+    );
     check(
       'product-requests-$phase',
       _deepEquals(actualRequests, expectedRequests),
@@ -709,6 +800,42 @@ Map<String, Object?> compareStateSessionPhases({
       requestCheck['mismatch'] ?? 'matched',
     );
 
+    final rawQueryMismatches = <Map<String, Object?>>[];
+    if (requests.length != goldenRawQueries.length) {
+      rawQueryMismatches.add({
+        'expectedCount': goldenRawQueries.length,
+        'actualCount': requests.length,
+      });
+    } else {
+      for (var index = 0; index < requests.length; index++) {
+        final request = _object(requests[index], '$path request $index');
+        final actual = request['rawQuery'];
+        final expected = goldenRawQueries[index];
+        if (actual is! String) {
+          rawQueryMismatches.add({
+            'index': index,
+            'expected': expected,
+            'actual': actual,
+            'detail': 'rawQuery is missing or not a string',
+          });
+        } else if (actual != expected) {
+          rawQueryMismatches.add({
+            'index': index,
+            'expected': expected,
+            'actual': actual,
+          });
+        }
+      }
+    }
+    check(
+      'product-raw-query-$phase',
+      rawQueryMismatches.isEmpty,
+      rawQueryMismatches.isEmpty
+          ? '${goldenRawQueries.length} exact raw queries'
+          : rawQueryMismatches,
+      phase: phase,
+    );
+
     final steps = stateSessionSteps(corpus, phase);
     final observations = _array(report['observations'], '$path observations');
     final actualIds = [for (final raw in observations) '${(raw as Map)['id']}'];
@@ -718,7 +845,6 @@ Map<String, Object?> compareStateSessionPhases({
       observations.isNotEmpty && _deepEquals(actualIds, declaredIds),
       '${actualIds.length} observations, ${declaredIds.length} declared',
     );
-    final golden = phase == 'seed' ? seedGolden : restartGolden;
     final goldenRows = (golden['observations'] as List)
         .map((raw) => (raw as Map))
         .toList();
@@ -1352,6 +1478,14 @@ Future<Map<String, Object?>> _runNegativeControls({
     requests[1] = first;
   }
 
+  void setRawQuery(Map<String, dynamic> report, String value) {
+    ((report['requests'] as List).first as Map)['rawQuery'] = value;
+  }
+
+  void removeRawQuery(Map<String, dynamic> report) {
+    ((report['requests'] as List).first as Map).remove('rawQuery');
+  }
+
   final goldenSeedValue = copy(seedGolden)..also(mutateObservationValue);
   final goldenSeedRequests = copy(seedGolden)..also(swapRequests);
   final goldenSeedIdentity = copy(seedGolden);
@@ -1359,6 +1493,11 @@ Future<Map<String, Object?>> _runNegativeControls({
       '0000000000000000000000000000000000000000000000000000000000000000';
   final productSeedValue = copy(seedProduct)..also(mutateObservationValue);
   final productSeedRequests = copy(seedProduct)..also(appendRequest);
+  final productSeedRawOrder = copy(seedProduct)
+    ..also((report) => setRawQuery(report, 'page=1&keyword=state'));
+  final productSeedRawEncoding = copy(seedProduct)
+    ..also((report) => setRawQuery(report, 'keyword=%73tate&page=1'));
+  final productSeedRawAbsent = copy(seedProduct)..also(removeRawQuery);
   final productRestartIdentity = copy(restartProduct);
   (productRestartIdentity['identity'] as Map)['corpusSha256Lf'] =
       '0000000000000000000000000000000000000000000000000000000000000000';
@@ -1371,6 +1510,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     required String productSeed,
     required String productRestart,
     required String mutation,
+    String? requiredSurface,
   }) async {
     final out = '${directory.path}${Platform.pathSeparator}$name-report.json';
     final log = '${directory.path}${Platform.pathSeparator}$name.log';
@@ -1386,12 +1526,32 @@ Future<Map<String, Object?>> _runNegativeControls({
       '--out=$out',
     ];
     final run = await _runProcess(args, logPath: log);
+    final output = _readJsonOrNull(out);
+    final checks = output?['checks'];
+    final failedChecks = <String>[
+      if (checks is Map)
+        for (final entry in checks.entries)
+          if (entry.value is Map && (entry.value as Map)['ok'] != true)
+            '${entry.key}',
+    ];
+    final mismatchSurfaces = <String>[
+      if (output?['mismatches'] is List)
+        for (final raw in output!['mismatches'] as List)
+          if (raw is Map && raw['surface'] is String) '${raw['surface']}',
+    ]..sort();
+    final surfaceHit =
+        requiredSurface == null ||
+        failedChecks.contains(requiredSurface) ||
+        mismatchSurfaces.contains(requiredSurface);
     controls.add({
       'name': name,
       'mutation': mutation,
       'expectedExit': expectedExit,
       'actualExit': run.exitCode,
-      'passed': run.exitCode == expectedExit,
+      'requiredSurface': requiredSurface,
+      'failedChecks': failedChecks,
+      'mismatchSurfaces': mismatchSurfaces,
+      'passed': run.exitCode == expectedExit && surfaceHit,
       'report': out,
       'log': log,
       'stdout': run.stdout.trim(),
@@ -1455,6 +1615,44 @@ Future<Map<String, Object?>> _runNegativeControls({
       productRestartIdentity,
     ),
     mutation: 'a copied product restart report named another corpus hash',
+  );
+
+  await control(
+    'product-raw-query-order',
+    1,
+    goldenSeed: seedGoldenPath,
+    goldenRestart: restartGoldenPath,
+    productSeed: writeCopy('product-seed-raw-query-order', productSeedRawOrder),
+    productRestart: restartProductPath,
+    requiredSurface: 'product-raw-query-seed',
+    mutation: 'a copied product seed report reordered the first raw query',
+  );
+  await control(
+    'product-raw-query-encoding',
+    1,
+    goldenSeed: seedGoldenPath,
+    goldenRestart: restartGoldenPath,
+    productSeed: writeCopy(
+      'product-seed-raw-query-encoding',
+      productSeedRawEncoding,
+    ),
+    productRestart: restartProductPath,
+    requiredSurface: 'product-raw-query-seed',
+    mutation:
+        'a copied product seed report percent-encoded the first raw query',
+  );
+  await control(
+    'product-raw-query-absent',
+    1,
+    goldenSeed: seedGoldenPath,
+    goldenRestart: restartGoldenPath,
+    productSeed: writeCopy(
+      'product-seed-raw-query-absent',
+      productSeedRawAbsent,
+    ),
+    productRestart: restartProductPath,
+    requiredSurface: 'product-raw-query-seed',
+    mutation: 'a copied product seed report omitted the first raw query',
   );
 
   final originalsUnchanged =
