@@ -83,6 +83,25 @@ not run, so its crash handler, file logging, cronet pre-download, default-data
 seeding, freeze monitor and `LiveEventBus` configuration are skipped; the splitties
 `AppCtxInitProvider` does run and is what the isolation check measures.
 
+The preference probe is how that routing is proved, not assumed: the seed requires
+the probe name to be absent on both sides, writes it once through the application
+context, keeps it in the owned set and never deletes it there; the restart only
+reads the namespace the seed recorded. A pre-existing probe is refused rather than
+overwritten or removed. Every other storage callback that would write — a
+preference handle, a database create or delete — is refused before the phase binds
+the root.
+
+## What counts as a complete phase
+
+A phase passes only when the actual request trace and the actual observation ids are
+exactly the declared ones, in order, without duplicates, with no request that
+matched no declared response and no replay-server error; and when the cleanup
+receipt verifies what it claims: the database and the replay server both confirmed
+closed, and either every owned preference fenced and the root retained (seed) or
+every owned preference and the root removed (restart). A cleanup that cannot verify
+those keeps the run a failure even when the stages themselves succeeded. A timeout
+still uses the same BASE64 report channel and names the stage it stalled in.
+
 Ordering is part of the protocol: the installed target, the corpus asset and the
 harness APK are measured and compared with the corpus pin first, then the phase is
 bound (a fresh root for the seed, the validated `owner.json` for the restart), then

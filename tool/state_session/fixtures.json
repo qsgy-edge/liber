@@ -82,7 +82,7 @@
           "name": "$.name",
           "author": "$.author",
           "intro": "$.intro",
-          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/b/')>=0?'A':'B')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'D';})()",
+          "lastChapter": "@js:(function(){var u=book.bookUrl;var id=u.substring(u.lastIndexOf('/')+1);var before=book.getVariable('bkV');if(before===''){book.putVariable('bkV',(u.indexOf('/b/')>=0?'B':'A')+id);}book.putVariable('obs','D|'+id+'|before='+(before===''?'empty':before)+'|sv='+source.getVariable()+'|st='+source.get('sTag')+'|lib='+stateLibB.n);return 'D';})()",
           "tocUrl": "$.toc"
         },
         "ruleToc": {

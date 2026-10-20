@@ -113,6 +113,9 @@ public final class StateSessionOracle extends Instrumentation {
     private Object database;
     private Object bookChapterDao;
     private ClassLoader loader;
+    private JSONObject requestCheckValue;
+    private JSONObject observationCheckValue;
+    private boolean cleanupOk;
 
     @Override
     public Application newApplication(ClassLoader cl, String name, Context context)
@@ -143,9 +146,11 @@ public final class StateSessionOracle extends Instrumentation {
                 return;
             }
             if (finished.compareAndSet(false, true)) {
-                log("watchdog: no result after 240s; stage=" + stage.get());
+                String where = stage.get();
+                log("watchdog: no result after 240s; stage=" + where);
                 Bundle status = new Bundle();
-                status.putString("stream", "State session oracle timed out in stage " + stage.get()
+                status.putString("stream", STREAM_KEY + "=" + base64(timeoutReport(where))
+                    + "\nState session oracle " + phase + ": timed out in stage " + where
                     + " after " + requests.length() + " requests\n");
                 finish(1, status);
             }
@@ -204,6 +209,7 @@ public final class StateSessionOracle extends Instrumentation {
             log("replay server bound to " + replay.origin());
 
             drive();
+            verifyCompleteness();
             ok = true;
         } catch (Throwable error) {
             failure = describe(error);
@@ -212,6 +218,11 @@ public final class StateSessionOracle extends Instrumentation {
             stage.set("cleanup");
             try {
                 cleanup = cleanup(ok);
+                if (!cleanupOk && failure == null) {
+                    failure = "cleanup: " + cleanup.optString("cleanupFailure",
+                        "the phase's cleanup did not verify");
+                }
+                ok = ok && cleanupOk;
             } catch (Throwable error) {
                 ok = false;
                 if (failure == null) failure = "cleanup: " + describe(error);
@@ -226,9 +237,11 @@ public final class StateSessionOracle extends Instrumentation {
                     .put("requests", requests)
                     .put("unmatchedRequests", unmatched)
                     .put("serverErrors", serverErrors)
-                    .put("requestCheck", requestCheck())
-                    .put("observations", observations)
-                    .put("observationCheck", observationCheck())
+                    .put("requestCheck",
+                        requestCheckValue != null ? requestCheckValue : requestCheck())
+                    .put("observations", snapshot(observations))
+                    .put("observationCheck",
+                        observationCheckValue != null ? observationCheckValue : observationCheck())
                     .put("inventory", inventory)
                     .put("cleanup", cleanup)
                     .put("analysisFailure", failure == null ? JSONObject.NULL : failure);
@@ -307,14 +320,21 @@ public final class StateSessionOracle extends Instrumentation {
         }
         // The frozen code reaches preferences through PreferenceManager, which asks the
         // application context by name. Two files could answer that: the task-prefixed one
-        // this harness owns, and the installation's own, which must never appear.
+        // this harness owns, and the installation's own, which must never appear. The seed
+        // writes the probe once and keeps it in the owned set; the restart only reads the
+        // namespace the seed recorded.
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
-        JSONObject probe = scratch.probePreferences(app, dataDir, "liber_state_session_probe");
+        JSONObject probe = "seed".equals(phase)
+            ? scratch.seedProbePreferences(app, dataDir, "liber_state_session_probe")
+            : scratch.restartProbePreferences(dataDir, "liber_state_session_probe");
         if (probe.getBoolean("installationFile")
-                || !probe.getBoolean("scopedRegistered")
+                || !probe.getBoolean("registered")
                 || !probe.getBoolean("scopedFile")) {
             throw new IllegalStateException("appCtx preference storage is not scratch-scoped: "
                 + probe);
+        }
+        if ("seed".equals(phase) && !probe.getBoolean("committed")) {
+            throw new IllegalStateException("the seed probe preference did not commit: " + probe);
         }
         return new JSONObject()
             .put("application", app.getClass().getName())
@@ -410,9 +430,12 @@ public final class StateSessionOracle extends Instrumentation {
         }
         List<?> results = (List<?>) result;
         JSONArray declaredBooks = step.getJSONArray("books");
-        if (results.size() < declaredBooks.length()) {
+        // This corpus declares no boundary that would allow an extra search hit, so the
+        // result count has to be the declared one exactly; a truncated extra hit would
+        // silently change what the observation covers.
+        if (results.size() != declaredBooks.length()) {
             throw new IllegalStateException("search returned " + results.size()
-                + " results for " + declaredBooks.length() + " declared books");
+                + " results, the corpus declares exactly " + declaredBooks.length());
         }
         JSONArray observed = new JSONArray();
         for (int index = 0; index < declaredBooks.length(); index++) {
@@ -423,8 +446,7 @@ public final class StateSessionOracle extends Instrumentation {
                 .put("kind", str(searchBookClass, item, "getKind"))
                 .put("bookUrl", str(searchBookClass, item, "getBookUrl")));
         }
-        observations.put(new JSONObject().put("id", step.getString("id"))
-            .put("value", new JSONObject().put("results", observed)));
+        observe(step.getString("id"), new JSONObject().put("results", observed));
         for (int index = 0; index < declaredBooks.length(); index++) {
             String bookId = declaredBooks.getString(index);
             JSONObject declared = declaredBook(bookId);
@@ -467,12 +489,9 @@ public final class StateSessionOracle extends Instrumentation {
         // BookInfoViewModel.kt:400,438: the detail page's own save.
         call(book, "save");
         books.put(bookId, book);
-        observations.put(new JSONObject().put("id", step.getString("id"))
-            .put("value", new JSONObject()
-                .put("bookUrl", bookUrl)
-                .put("name", str(bookClass, book, "getName"))
-                .put("variable", variableOf(book))
-                .put("variableRaw", variableTextOf(book))));
+        observe(step.getString("id"), withVariable(new JSONObject()
+            .put("bookUrl", bookUrl)
+            .put("name", str(bookClass, book, "getName")), book));
     }
 
     private void stepToc(JSONObject step, Map<String, Object> sources,
@@ -502,18 +521,15 @@ public final class StateSessionOracle extends Instrumentation {
         for (Object chapter : list) {
             String url = str(chapterClass, chapter, "getUrl");
             byUrl.put(url, chapter);
-            observed.put(new JSONObject()
+            observed.put(withVariable(new JSONObject()
                 .put("url", url)
                 .put("title", str(chapterClass, chapter, "getTitle"))
-                .put("tag", str(chapterClass, chapter, "getTag"))
-                .put("variable", variableOf(chapter))
-                .put("variableRaw", variableTextOf(chapter)));
+                .put("tag", str(chapterClass, chapter, "getTag")), chapter));
         }
         chapters.put(bookId, byUrl);
-        observations.put(new JSONObject().put("id", step.getString("id"))
-            .put("value", new JSONObject()
-                .put("revision", step.getInt("revision"))
-                .put("chapters", observed)));
+        observe(step.getString("id"), new JSONObject()
+            .put("revision", step.getInt("revision"))
+            .put("chapters", observed));
     }
 
     private void stepContent(JSONObject step, Map<String, Object> sources,
@@ -539,8 +555,7 @@ public final class StateSessionOracle extends Instrumentation {
         Object text = runSuspend(loader, continuation -> call(webBookClass, webBook,
             "getContentAwait", 6,
             new Object[]{source, book, chapter, null, Boolean.FALSE}, continuation));
-        observations.put(new JSONObject().put("id", step.getString("id"))
-            .put("value", text == null ? "" : text.toString()));
+        observe(step.getString("id"), text == null ? "" : text.toString());
     }
 
     private void stepState(JSONObject step) throws Exception {
@@ -560,11 +575,9 @@ public final class StateSessionOracle extends Instrumentation {
                         value.put(url, new JSONObject().put("present", false));
                         continue;
                     }
-                    value.put(url, new JSONObject()
+                    value.put(url, withVariable(new JSONObject()
                         .put("present", true)
-                        .put("name", str(bookClass, row, "getName"))
-                        .put("variable", variableOf(row))
-                        .put("variableRaw", variableTextOf(row)));
+                        .put("name", str(bookClass, row, "getName")), row));
                 }
                 rows = inventoryRows("select bookUrl from books order by bookUrl");
                 break;
@@ -579,14 +592,12 @@ public final class StateSessionOracle extends Instrumentation {
                     List<?> rowsForBook = (List<?>) call(bookChapterDao, "getChapterList", url);
                     JSONArray series = new JSONArray();
                     for (Object row : rowsForBook) {
-                        series.put(new JSONObject()
+                        series.put(withVariable(new JSONObject()
                             .put("url", str(chapterClass, row, "getUrl"))
                             .put("title", str(chapterClass, row, "getTitle"))
                             .put("index", ((Number) invokeGetter(chapterClass, row, "getIndex"))
                                 .intValue())
-                            .put("tag", str(chapterClass, row, "getTag"))
-                            .put("variable", variableOf(row))
-                            .put("variableRaw", variableTextOf(row)));
+                            .put("tag", str(chapterClass, row, "getTag")), row));
                     }
                     value.put(url, series);
                 }
@@ -618,8 +629,10 @@ public final class StateSessionOracle extends Instrumentation {
             default:
                 throw new IllegalStateException("unknown state surface " + surface);
         }
-        inventory.put(step.getString("id"), rows);
-        observations.put(new JSONObject().put("id", step.getString("id")).put("value", value));
+        synchronized (observations) {
+            inventory.put(step.getString("id"), rows);
+            observe(step.getString("id"), value);
+        }
     }
 
     /**
@@ -693,15 +706,55 @@ public final class StateSessionOracle extends Instrumentation {
         return value;
     }
 
-    /** The parsed variable column, or JSON null when the entity carries none. */
-    private static Object variableOf(Object entity) {
+    /** Records one observation; the timeout path snapshots the same array. */
+    private void observe(String id, Object value) throws JSONException {
+        synchronized (observations) {
+            observations.put(new JSONObject().put("id", id).put("value", value));
+        }
+    }
+
+    /**
+     * The entity's own variable column as explicit fields: the parsed member map, the raw
+     * text, and a parse failure when the text is not valid JSON. Both null cases are
+     * written as {@code JSONObject.NULL} rather than omitted, so a null column and an
+     * empty one stay distinguishable and a bad payload is reported instead of hidden.
+     */
+    private static JSONObject variableFields(Object entity) throws JSONException {
         String raw = variableTextOf(entity);
-        if (raw == null || raw.isEmpty()) return JSONObject.NULL;
+        JSONObject fields = new JSONObject();
+        fields.put("variable", raw == null ? JSONObject.NULL : parseVariable(raw));
+        fields.put("variableRaw", raw == null ? JSONObject.NULL : raw);
+        String parseError = parseVariableError(raw);
+        if (parseError != null) fields.put("variableParseError", parseError);
+        return fields;
+    }
+
+    private static Object parseVariable(String raw) {
         try {
             return new JSONObject(raw);
         } catch (JSONException error) {
             return JSONObject.NULL;
         }
+    }
+
+    private static String parseVariableError(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        try {
+            new JSONObject(raw);
+            return null;
+        } catch (JSONException error) {
+            return describe(error);
+        }
+    }
+
+    private static JSONObject withVariable(JSONObject target, Object entity) throws JSONException {
+        JSONObject fields = variableFields(entity);
+        Iterator<String> names = fields.keys();
+        while (names.hasNext()) {
+            String name = names.next();
+            target.put(name, fields.get(name));
+        }
+        return target;
     }
 
     private static String variableTextOf(Object entity) {
@@ -714,6 +767,40 @@ public final class StateSessionOracle extends Instrumentation {
     }
 
     // ------------------------------------------------------------------- checks
+
+    /**
+     * A phase is complete only when the actual request trace and the actual observation
+     * list are exactly the declared ones, in order and without duplicates, and the replay
+     * server answered every request and raised no error. A difference fails the phase with
+     * the raw data kept; it is never a pass with a note.
+     */
+    private void verifyCompleteness() throws Exception {
+        requestCheckValue = requestCheck();
+        observationCheckValue = observationCheck();
+        List<String> failures = new ArrayList<>();
+        if (!requestCheckValue.getBoolean("match")) {
+            failures.add("request trace differs from the corpus declaration at index "
+                + requestCheckValue.get("mismatchIndex")
+                + " (declared " + requestCheckValue.getInt("declaredCount")
+                + ", actual " + requestCheckValue.getInt("actualCount") + ")");
+        }
+        if (!observationCheckValue.getBoolean("match")) {
+            failures.add("observations differ from the corpus declaration: missing "
+                + observationCheckValue.getJSONArray("missing") + ", extra "
+                + observationCheckValue.getJSONArray("extra") + ", duplicates "
+                + observationCheckValue.getJSONArray("duplicates") + ", ordered "
+                + observationCheckValue.getBoolean("ordered"));
+        }
+        if (unmatched.length() != 0) {
+            failures.add(unmatched.length() + " request(s) matched no declared response");
+        }
+        if (serverErrors.length() != 0) {
+            failures.add(serverErrors.length() + " replay server error(s)");
+        }
+        if (!failures.isEmpty()) {
+            throw new IllegalStateException("incomplete phase: " + failures);
+        }
+    }
 
     private JSONObject requestCheck() throws JSONException {
         JSONArray expected = phaseSpec.getJSONArray("expectedRequests");
@@ -767,25 +854,31 @@ public final class StateSessionOracle extends Instrumentation {
         }
         JSONArray actual = new JSONArray();
         Set<String> actualSet = new LinkedHashSet<>();
-        for (int index = 0; index < observations.length(); index++) {
-            String id = observations.getJSONObject(index).getString("id");
-            actual.put(id);
-            actualSet.add(id);
+        JSONArray duplicates = new JSONArray();
+        synchronized (observations) {
+            for (int index = 0; index < observations.length(); index++) {
+                String id = observations.getJSONObject(index).getString("id");
+                actual.put(id);
+                if (!actualSet.add(id)) duplicates.put(id);
+            }
         }
         JSONArray missing = new JSONArray();
         JSONArray extra = new JSONArray();
         for (String id : declaredSet) if (!actualSet.contains(id)) missing.put(id);
         for (String id : actualSet) if (!declaredSet.contains(id)) extra.put(id);
-        boolean sameOrder = declared.length() == actual.length();
-        for (int index = 0; sameOrder && index < declared.length(); index++) {
-            if (!declared.getString(index).equals(actual.getString(index))) sameOrder = false;
+        boolean ordered = declared.length() == actual.length();
+        for (int index = 0; ordered && index < declared.length(); index++) {
+            if (!declared.getString(index).equals(actual.getString(index))) ordered = false;
         }
         return new JSONObject()
             .put("declared", declared)
             .put("actual", actual)
             .put("missing", missing)
             .put("extra", extra)
-            .put("match", missing.length() == 0 && extra.length() == 0 && sameOrder);
+            .put("duplicates", duplicates)
+            .put("ordered", ordered)
+            .put("match", missing.length() == 0 && extra.length() == 0
+                && ordered && duplicates.length() == 0);
     }
 
     // ------------------------------------------------------------------ cleanup
@@ -798,63 +891,96 @@ public final class StateSessionOracle extends Instrumentation {
      */
     private JSONObject cleanup(boolean succeeded) throws Exception {
         JSONObject cleanup = new JSONObject();
+        cleanupOk = false;
+        boolean databaseClosed = false;
+        boolean serverClosed = false;
         if (database != null) {
             try {
                 call(database, "close");
+                databaseClosed = true;
                 cleanup.put("databaseClosed", true);
             } catch (Throwable error) {
                 cleanup.put("databaseClosed", false).put("databaseError", describe(error));
             }
             database = null;
         } else {
-            cleanup.put("databaseClosed", JSONObject.NULL);
+            cleanup.put("databaseClosed", false)
+                .put("databaseNote", "the phase never opened the database");
         }
         if (replay != null) {
             try {
                 cleanup.put("openConnections", replay.openConnections());
                 replay.close();
+                serverClosed = true;
                 cleanup.put("serverClosed", true);
             } catch (Throwable error) {
                 cleanup.put("serverClosed", false).put("serverError", describe(error));
             }
             replay = null;
         } else {
-            cleanup.put("serverClosed", JSONObject.NULL);
+            cleanup.put("serverClosed", false)
+                .put("serverNote", "the phase never started the replay server");
         }
         if (!scratch.isBound()) {
             cleanup.put("ownership", "none: the phase never established ownership, prior state"
                 + " left intact")
                 .put("scratchRoot", scratch.root.getAbsolutePath())
+                .put("scratchRootExistedAtStart", scratch.rootExistedAtStart())
                 .put("scratchRetained", scratch.root.exists())
                 .put("scratchRemoved", false)
                 .put("preferencesRemoved", new JSONArray());
             return cleanup;
         }
         boolean seed = "seed".equals(phase);
-        cleanup.put("ownership",
-            seed ? "created-fresh-root" : "validated-seed-owner")
+        cleanup.put("ownership", seed ? "created-fresh-root" : "validated-seed-owner")
             .put("scratchRoot", scratch.root.getAbsolutePath());
         if (seed && succeeded) {
             JSONArray fenced = new JSONArray();
+            boolean allFenced = true;
             for (String name : scratch.ownedPreferences()) {
-                fenced.put(new JSONObject().put("name", name).put("ok", scratch.fence(name)));
+                boolean fencedOk = scratch.fence(name);
+                allFenced &= fencedOk;
+                fenced.put(new JSONObject().put("name", name).put("ok", fencedOk));
             }
+            boolean retained = scratch.root.isDirectory();
             cleanup.put("preferencesFenced", fenced)
                 .put("preferencesRemoved", new JSONArray())
-                .put("scratchRetained", true)
+                .put("scratchRetained", retained)
                 .put("scratchRemoved", false)
                 .put("ownerFile", new File(scratch.root, OWNER_FILE).getAbsolutePath());
-            scratch.writeOwnerComplete(runId);
+            cleanupOk = databaseClosed && serverClosed && allFenced && retained;
+            if (!allFenced) {
+                cleanup.put("cleanupFailure", "not every owned preference could be fenced;"
+                    + " the seed is not complete");
+            } else if (!retained) {
+                cleanup.put("cleanupFailure", "the retained scratch root is not there;"
+                    + " the seed is not complete");
+            } else if (!cleanupOk) {
+                cleanup.put("cleanupFailure", "the database or the replay server did not"
+                    + " confirm its close; the seed is not complete");
+            }
+            // The manifest only becomes complete once every owned file is fenced and both
+            // handles are closed, so a restart can never reuse a half-published seed.
+            if (cleanupOk) scratch.writeOwnerComplete(runId);
         } else {
             JSONArray removed = new JSONArray();
+            boolean allRemoved = true;
             for (String name : scratch.ownedPreferences()) {
-                removed.put(new JSONObject().put("name", name)
-                    .put("ok", scratch.deletePreference(name)));
+                boolean removedOk = scratch.deletePreference(name);
+                allRemoved &= removedOk;
+                removed.put(new JSONObject().put("name", name).put("ok", removedOk));
             }
+            boolean rootRemoved = scratch.removeRoot();
             cleanup.put("preferencesFenced", new JSONArray())
                 .put("preferencesRemoved", removed)
-                .put("scratchRetained", false)
-                .put("scratchRemoved", scratch.removeRoot());
+                .put("scratchRetained", !rootRemoved && scratch.root.exists())
+                .put("scratchRemoved", rootRemoved);
+            cleanupOk = databaseClosed && serverClosed && allRemoved && rootRemoved;
+            if (!cleanupOk) {
+                cleanup.put("cleanupFailure", "databaseClosed=" + databaseClosed
+                    + " serverClosed=" + serverClosed + " everyPreferenceRemoved=" + allRemoved
+                    + " rootRemoved=" + rootRemoved);
+            }
         }
         return cleanup;
     }
@@ -1280,10 +1406,12 @@ public final class StateSessionOracle extends Instrumentation {
                     .put("stage", stage.get());
                 synchronized (requests) {
                     requests.put(observed);
-                    stageTrace.put(new JSONObject()
-                        .put("stage", stage.get())
-                        .put("path", origin + path
-                            + (rawQuery.isEmpty() ? "" : "?" + rawQuery)));
+                    synchronized (stageTrace) {
+                        stageTrace.put(new JSONObject()
+                            .put("stage", stage.get())
+                            .put("path", origin + path
+                                + (rawQuery.isEmpty() ? "" : "?" + rawQuery)));
+                    }
                 }
                 OutputStream output = socket.getOutputStream();
                 JSONObject declared = match(method, path, query);
@@ -1382,9 +1510,7 @@ public final class StateSessionOracle extends Instrumentation {
         private final boolean rootExistedAtStart;
         private String phase;
         private boolean bound;
-        private boolean probing;
         private final Set<String> preferences = new LinkedHashSet<>();
-        private final Set<String> pendingBeforeBind = new LinkedHashSet<>();
         private Set<String> ownedFromOwner = new LinkedHashSet<>();
         private JSONObject owner;
 
@@ -1411,19 +1537,9 @@ public final class StateSessionOracle extends Instrumentation {
                         + " fresh one and a restart needs its owner manifest, inspect first: "
                         + root);
                 }
-                // A preference namespace the phase read before it was bound (no frozen code
-                // runs that early; the check is here so it cannot pass unnoticed) has to be
-                // empty too.
-                for (String name : pendingBeforeBind) {
-                    if (!getBaseContext().getSharedPreferences(name, 0).getAll().isEmpty()) {
-                        throw new IllegalStateException(
-                            "seed preference namespace is not fresh: " + name);
-                    }
-                }
                 if (!root.mkdirs()) {
                     throw new IllegalStateException("cannot create scratch root " + root);
                 }
-                preferences.addAll(pendingBeforeBind);
                 owner = new JSONObject()
                     .put("fixtureId", identity.getString("fixtureId"))
                     .put("corpusVersion", identity.getInt("corpusVersion"))
@@ -1456,16 +1572,22 @@ public final class StateSessionOracle extends Instrumentation {
                     + " did not complete; refusing to reuse it");
             }
             JSONArray names = declared.optJSONArray("preferences");
-            Set<String> owned = new LinkedHashSet<>();
-            if (names != null) {
-                for (int index = 0; index < names.length(); index++) {
-                    owned.add(names.getString(index));
-                }
+            if (names == null || names.length() == 0) {
+                throw new IllegalStateException("the seed owner manifest records no owned"
+                    + " preference namespaces; refusing to reuse " + root);
             }
-            for (String name : pendingBeforeBind) {
-                if (!owned.contains(name)) {
-                    throw new IllegalStateException("restart asked for a preference namespace"
-                        + " the seed did not own: " + name);
+            Set<String> owned = new LinkedHashSet<>();
+            for (int index = 0; index < names.length(); index++) {
+                String name = names.optString(index, "");
+                if (!name.startsWith(PREFERENCE_PREFIX)
+                        || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0
+                        || name.contains("..") || name.indexOf('\u0000') >= 0) {
+                    throw new IllegalStateException("the seed owner manifest names a preference"
+                        + " outside the task namespace: " + name);
+                }
+                if (!owned.add(name)) {
+                    throw new IllegalStateException("the seed owner manifest repeats the"
+                        + " preference namespace " + name);
                 }
             }
             ownedFromOwner = owned;
@@ -1616,28 +1738,18 @@ public final class StateSessionOracle extends Instrumentation {
 
         @Override
         public boolean deleteDatabase(String name) {
+            requireBound();
             return SQLiteDatabase.deleteDatabase(getDatabasePath(name));
         }
 
         @Override
         public SharedPreferences getSharedPreferences(String name, int mode) {
+            // A preference handle is a writable, effectful callback: before the phase owns
+            // the scratch it is refused instead of being delegated somewhere unverified.
+            requireBound();
             String scoped = PREFERENCE_PREFIX + name;
-            if (!bound) {
-                // No ownership yet: the name is delegated under the task prefix and
-                // remembered, so the bind check can refuse a non-fresh (seed) or an
-                // unowned (restart) namespace instead of silently using it.
-                pendingBeforeBind.add(scoped);
-                return getBaseContext().getSharedPreferences(scoped, mode);
-            }
-            if (probing) {
-                preferences.add(scoped);
-                return getBaseContext().getSharedPreferences(scoped, mode);
-            }
             if ("restart".equals(phase)) {
-                if (!ownedFromOwner.contains(scoped)) {
-                    throw new IllegalStateException("restart asked for a preference namespace"
-                        + " the seed did not own: " + scoped);
-                }
+                requireOwned(scoped);
             } else {
                 if (!preferences.contains(scoped)
                         && !getBaseContext().getSharedPreferences(scoped, mode).getAll().isEmpty()) {
@@ -1667,34 +1779,65 @@ public final class StateSessionOracle extends Instrumentation {
             return getBaseContext().deleteSharedPreferences(name) && cleared;
         }
 
-        /**
-         * Proves that the frozen application's preference storage is the scratch one: the
-         * requested name is registered under the task prefix, its file appears there, and
-         * the installation's own file for that name never appears. The probe namespace is
-         * deleted again so it leaves nothing behind, and it is never part of the owned set
-         * the restart cleans up.
-         */
-        JSONObject probePreferences(Context app, File dataDir, String probe) throws Exception {
-            String scoped = PREFERENCE_PREFIX + probe;
-            boolean installationFile = new File(dataDir, probe + ".xml").exists();
-            boolean registered;
-            boolean scopedFile;
-            probing = true;
-            try {
-                SharedPreferences prefs = app.getSharedPreferences(probe, 0);
-                registered = preferences.contains(scoped);
-                prefs.edit().putString("probe", "1").commit();
-                scopedFile = new File(dataDir, scoped + ".xml").exists();
-            } finally {
-                probing = false;
+        private void requireOwned(String scoped) {
+            if (!ownedFromOwner.contains(scoped)) {
+                throw new IllegalStateException("restart asked for a preference namespace"
+                    + " the seed did not own: " + scoped);
             }
-            deletePreference(scoped);
-            if (preferences.remove(scoped)) writeOwner();
+        }
+
+        /**
+         * Seed probe: proves the frozen application's preference storage is the task's.
+         * The name has to be absent on both sides before it is written, it is written
+         * exactly once, and it stays in the owned set the restart cleanup removes. A probe
+         * that already exists is refused, never overwritten and never deleted here.
+         */
+        JSONObject seedProbePreferences(Context app, File dataDir, String probe)
+                throws Exception {
+            String scoped = PREFERENCE_PREFIX + probe;
+            File installationFile = new File(dataDir, probe + ".xml");
+            File scopedFile = new File(dataDir, scoped + ".xml");
+            if (installationFile.exists() || scopedFile.exists()) {
+                throw new IllegalStateException("the seed probe preference is not fresh; leaving"
+                    + " it untouched: task file exists=" + scopedFile.exists()
+                    + ", installation file exists=" + installationFile.exists());
+            }
+            SharedPreferences prefs = app.getSharedPreferences(probe, 0);
+            boolean registered = preferences.contains(scoped);
+            boolean committed = prefs.edit().putString("probe", "1").commit();
             return new JSONObject()
                 .put("name", scoped)
-                .put("installationFile", installationFile)
-                .put("scopedRegistered", registered)
-                .put("scopedFile", scopedFile);
+                .put("registered", registered)
+                .put("committed", committed)
+                .put("scopedFile", scopedFile.exists())
+                .put("installationFile", installationFile.exists())
+                .put("mode", "written-once-and-retained-in-the-owned-set");
+        }
+
+        /**
+         * Restart probe: read-only. The namespace has to be one the seed recorded, its file
+         * has to exist under the task prefix, the installation's own file must still be
+         * absent, and the recorded value is read back - nothing is written or removed.
+         */
+        JSONObject restartProbePreferences(File dataDir, String probe) throws Exception {
+            String scoped = PREFERENCE_PREFIX + probe;
+            requireOwned(scoped);
+            File scopedFile = new File(dataDir, scoped + ".xml");
+            File installationFile = new File(dataDir, probe + ".xml");
+            Object value = JSONObject.NULL;
+            if (scopedFile.exists()) {
+                String stored = getBaseContext().getSharedPreferences(scoped, 0)
+                    .getString("probe", null);
+                if (stored != null) value = stored;
+            }
+            return new JSONObject()
+                .put("name", scoped)
+                .put("registered", true)
+                .put("committed", JSONObject.NULL)
+                .put("scopedFile", scopedFile.exists())
+                .put("installationFile", installationFile.exists())
+                .put("value", value)
+                .put("mode", "read-only");
         }
 
         boolean removeRoot() {
@@ -1706,6 +1849,55 @@ public final class StateSessionOracle extends Instrumentation {
             boolean ok = true;
             if (children != null) for (File child : children) ok &= remove(child);
             return file.delete() && ok;
+        }
+    }
+
+    /**
+     * The same report channel a completed phase uses: a timeout still hands back the stage
+     * it stalled in and everything recorded so far, so the host never has to guess. Nothing
+     * is retried, and the arrays are snapshotted under the same locks their writers hold.
+     */
+    private String timeoutReport(String where) {
+        JSONObject report = new JSONObject();
+        try {
+            report.put("fixtureId", corpus == null ? "" : corpus.optString("fixtureId", ""))
+                .put("corpusVersion", corpus == null
+                    ? JSONObject.NULL : Integer.valueOf(corpus.optInt("corpusVersion", -1)))
+                .put("baselineCommit", corpus == null
+                    ? "" : corpus.optString("baselineCommit", ""))
+                .put("entryPoint", corpus == null ? "" : corpus.optString("entryPoint", ""))
+                .put("platform", "android")
+                .put("fingerprint", Build.FINGERPRINT)
+                .put("recordedAt", timestamp())
+                .put("phase", phase == null ? "" : phase)
+                .put("runId", runId == null ? "" : runId)
+                .put("pid", android.os.Process.myPid())
+                .put("timedOut", true)
+                .put("timeoutStage", where)
+                .put("requests", snapshot(requests))
+                .put("stageTrace", snapshot(stageTrace))
+                .put("unmatchedRequests", snapshot(unmatched))
+                .put("serverErrors", snapshot(serverErrors))
+                .put("observations", snapshot(observations))
+                .put("analysisFailure", "timeout: no result after 240s in stage " + where);
+        } catch (Throwable error) {
+            try {
+                report.put("analysisFailure", "timeout in stage " + where
+                    + "; report assembly: " + describe(error));
+            } catch (JSONException ignored) {
+                // The human line on the stream still names the stage.
+            }
+        }
+        return report.toString();
+    }
+
+    private static JSONArray snapshot(JSONArray source) {
+        synchronized (source) {
+            try {
+                return new JSONArray(source.toString());
+            } catch (JSONException error) {
+                return new JSONArray();
+            }
         }
     }
 
