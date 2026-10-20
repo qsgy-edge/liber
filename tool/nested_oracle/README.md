@@ -28,8 +28,8 @@ hash is pinned per build in the accompanying manifest.
 |---|---|---|
 | default JS oracle | `<fjs.dll> <golden.json> <new-result.json>` | Runs `tool/nested_oracle/fixtures.json` against the product and compares with a frozen golden. Unchanged. |
 | request semantics | `--requests <fjs.dll> <golden.json> <new-report.json>` | Runs `request-fixtures.json`. Unchanged. |
-| local jsLib record | `--jslib-record <fjs.dll> <new-capture.json>` | Runs `jslib-fixtures.json` against the product and writes a **product-only** capture labelled `comparison: not-run`. No golden exists on this machine, so none is claimed. |
-| local jsLib compare | `--jslib <fjs.dll> <golden.json> <new-report.json>` | Runs the same corpus and compares with a **frozen device golden**. |
+| local jsLib record | `--jslib-record <fjs.dll> <new-capture.json>` | Runs `jslib-fixtures.json` against the product and writes a **product-only** capture labelled `comparison: not-run`; a record capture is never a golden. |
+| local jsLib compare | `--jslib <fjs.dll> <golden.json> <new-report.json>` | Runs the same corpus and compares with a **frozen device golden**; the executed golden is `evidence/android-17-os4.0.4.0/jslib-oracle.json`. |
 
 The default JS oracle, the request oracle and the jsLib modes all observe
 through the same replay server and evaluation loop, so a corpus is the only
@@ -58,10 +58,11 @@ written) when any of these is not a genuine match:
 
 Observations are compared with **semantic JSON equality**: object member order
 is ignored (the differential contract's Matching Rules -> Outputs), while array
-order and every primitive/string value are exact. A value or request-trace
-difference is reported as `status: fail` with both sides, never as a pass. There
-is no empty or vacuous pass: an empty golden and a short product run are both
-hard refusals.
+order and every primitive/string value are exact. A value difference is
+reported as `status: fail` with both sides; a request-trace difference as
+`status: fail` with `requestsMatch: false` and the product trace. Neither is
+ever a pass. There is no empty or vacuous pass: an empty golden and a short
+product run are both hard refusals.
 
 ## Local `jsLib` shared scope (corpus `JSLIB-01` v2)
 
@@ -94,10 +95,22 @@ and a second source, plus binding/local isolation. `--jslib-record` was run on
 Windows against the read-only `fjs.dll`; it is product-only evidence and its
 comparison is explicitly `not-run`.
 
-## Device capture provenance (for future promotion)
+The resumed handset produced a frozen capture of this corpus on 2026-10-20 (18
+observations and 7 requests, fingerprint `OS4.0.4.0.XPMCNXM`). It is committed
+verbatim as `evidence/android-17-os4.0.4.0/jslib-oracle.json` and compared with
+`--jslib` against the Windows product. The accompanying
+`evidence/android-17-os4.0.4.0/jslib-manifest.json` records the target pin, the
+harness and corpus bytes, the exact native library (SHA-256), the passing
+report, the negative controls and every command receipt. That comparison is
+branch-scoped pilot evidence for #136; it does not accept #136's state/session
+or policy families and promotes no aggregate status.
+
+## Device capture provenance
 
 The jsLib capture is only a frozen golden after the instrumentation measured and
-verified the installed target. Collect and record:
+verified the installed target. The executed capture's record is
+`tool/nested_oracle/evidence/android-17-os4.0.4.0/jslib-manifest.json`; a future
+capture must collect and record the same:
 
 1. **Producer (harness) APK** — the built `nested-oracle.apk` SHA-256; after
    install, `adb shell pm path io.liber.oracle.nested` and `adb pull` the
@@ -120,9 +133,12 @@ verified the installed target. Collect and record:
 6. **Instrumentation receipt** — the `am instrument -w -r` output's
    `INSTRUMENTATION_RESULT` / `INSTRUMENTATION_CODE` and the process exit.
 
-## Device resume runbook (not run by the preparation lane)
+## Device resume runbook
 
-A phone is required for the frozen golden. With the handset attached:
+A phone is required for the frozen golden. The runbook below was executed for
+`JSLIB-01` v2 on 2026-10-20, controller-run against the fingerprint
+`Redmi/myron/myron:17/CP2A.260605.016/OS4.0.4.0.XPMCNXM:user/release-keys`; the
+preparation lane itself did not run it. With the handset attached:
 
 ```bash
 adb -s <serial> install -r -t <fresh-dir>/nested-oracle.apk
@@ -148,4 +164,7 @@ dart run tool/nested_oracle_compare.dart --jslib \
 
 The device fingerprint, target APK identity and corpus hash the run must
 collect are the ones the comparator checks; record them in the accompanying
-manifest.
+manifest. The `fjs.dll` path is whichever native library that run built: the
+executed comparison loaded the lane's `cargo build --locked` debug artifact and
+records that exact path and SHA-256 in
+`evidence/android-17-os4.0.4.0/jslib-manifest.json`.
