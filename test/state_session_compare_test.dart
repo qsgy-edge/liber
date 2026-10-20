@@ -720,6 +720,112 @@ void main() {
       isNotEmpty,
     );
   });
+
+  test('raw query order, encoding and presence are compared exactly', () {
+    Map firstRequest() => (seedProduct['requests'] as List).first as Map;
+
+    firstRequest()['rawQuery'] = 'page=1&keyword=state';
+    var report = compare();
+    expect(report['status'], 'fail');
+    expect(
+      ((report['checks'] as Map)['product-raw-query-seed'] as Map)['ok'],
+      false,
+    );
+    expect(
+      ((report['checks'] as Map)['product-requests-seed'] as Map)['ok'],
+      true,
+      reason: 'the decoded query members stay equal',
+    );
+
+    resetProducts();
+    firstRequest()['rawQuery'] = 'keyword=%73tate&page=1';
+    report = compare();
+    expect(report['status'], 'fail');
+    expect(
+      ((report['checks'] as Map)['product-raw-query-seed'] as Map)['ok'],
+      false,
+    );
+    expect(
+      ((report['checks'] as Map)['product-requests-seed'] as Map)['ok'],
+      true,
+      reason: 'the decoded query members stay equal',
+    );
+
+    resetProducts();
+    firstRequest().remove('rawQuery');
+    report = compare();
+    expect(report['status'], 'fail');
+    expect(
+      ((report['checks'] as Map)['product-raw-query-seed'] as Map)['ok'],
+      false,
+    );
+    final mismatch =
+        (report['mismatches'] as List).firstWhere(
+              (raw) => (raw as Map)['surface'] == 'product-raw-query-seed',
+            )
+            as Map;
+    expect('${mismatch['detail']}', contains('missing'));
+  });
+
+  test('the golden raw query carrier is required and bound to its request', () {
+    final noTrace = copy(seedGolden)..remove('stageTrace');
+    expect(
+      () => checkStateSessionGolden(
+        corpus: corpus,
+        corpusSha256Lf: corpusLf,
+        golden: noTrace,
+        phase: 'seed',
+      ),
+      throwsFormatException,
+    );
+
+    final wrongPath = copy(seedGolden);
+    ((wrongPath['stageTrace'] as List).first as Map)['path'] =
+        'http://127.0.0.1:18741/a/other?keyword=state&page=1';
+    expect(
+      () => checkStateSessionGolden(
+        corpus: corpus,
+        corpusSha256Lf: corpusLf,
+        golden: wrongPath,
+        phase: 'seed',
+      ),
+      throwsFormatException,
+    );
+
+    final wrongStage = copy(seedGolden);
+    ((wrongStage['stageTrace'] as List).first as Map)['stage'] =
+        'seed.search.B';
+    expect(
+      () => checkStateSessionGolden(
+        corpus: corpus,
+        corpusSha256Lf: corpusLf,
+        golden: wrongStage,
+        phase: 'seed',
+      ),
+      throwsFormatException,
+    );
+
+    final reorderedGolden = copy(seedGolden);
+    ((reorderedGolden['stageTrace'] as List).first as Map)['path'] =
+        'http://127.0.0.1:18741/a/search?page=1&keyword=state';
+    final report = compareStateSessionPhases(
+      corpus: corpus,
+      corpusSha256Lf: corpusLf,
+      seedGolden: reorderedGolden,
+      restartGolden: restartGolden,
+      seedProduct: seedProduct,
+      restartProduct: restartProduct,
+      librarySha256: _librarySha,
+      seedExitCode: 0,
+      restartExitCode: 0,
+    );
+    expect(report['status'], 'fail');
+    expect(
+      ((report['checks'] as Map)['product-raw-query-seed'] as Map)['ok'],
+      false,
+      reason: 'the golden raw carrier, not the decoded map, is compared',
+    );
+  });
 }
 
 const _librarySha =
@@ -731,6 +837,15 @@ const _syntheticRootName = 'state-repair-root';
 const _harnessSha =
     '2222222222222222222222222222222222222222222222222222222222222222';
 
+String _syntheticRawQuery(Map<dynamic, dynamic> request) {
+  final query =
+      (request['query'] as Map?)?.cast<String, String>() ??
+      const <String, String>{};
+  return [
+    for (final entry in query.entries) '${entry.key}=${entry.value}',
+  ].join('&');
+}
+
 Map<String, dynamic> _golden(
   Map<String, dynamic> corpus,
   String phase, {
@@ -740,7 +855,34 @@ Map<String, dynamic> _golden(
 }) {
   final target = stateSessionTargetOf(corpus);
   final steps = stateSessionSteps(corpus, phase);
-  final requests = stateSessionExpectedRequests(corpus, phase);
+  final expected = stateSessionExpectedRequests(corpus, phase);
+  final requestStages = [
+    for (final step in steps)
+      if (const {'search', 'details', 'toc', 'content'}.contains(step['kind']))
+        '${step['id']}',
+  ];
+  if (requestStages.length != expected.length) {
+    throw StateError('synthetic fixture stages do not match its requests');
+  }
+  // The synthetic fixture writes its own raw carrier once; the production
+  // comparator only ever reads retained raw bytes and never derives them.
+  final requests = <Map<String, Object?>>[
+    for (var index = 0; index < expected.length; index++)
+      {
+        ...expected[index],
+        'stage': requestStages[index],
+        'rawQuery': _syntheticRawQuery(expected[index]),
+      },
+  ];
+  final stageTrace = [
+    for (var index = 0; index < requests.length; index++)
+      {
+        'stage': requests[index]['stage'],
+        'path':
+            '${corpus['origin']}${requests[index]['path']}'
+            '${(requests[index]['rawQuery'] as String).isEmpty ? '' : '?${requests[index]['rawQuery']}'}',
+      },
+  ];
   final ids = [for (final step in steps) step['id']];
   return {
     'fixtureId': corpus['fixtureId'],
@@ -769,6 +911,7 @@ Map<String, dynamic> _golden(
       'targetPinManifest': target['manifest'],
     },
     'requests': requests,
+    'stageTrace': stageTrace,
     'unmatchedRequests': <Object?>[],
     'serverErrors': <Object?>[],
     'observations': [
