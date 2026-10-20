@@ -1672,21 +1672,25 @@ public final class StateSessionOracle extends Instrumentation {
 
         private void writeOwner() throws Exception {
             // Only the seed owns the manifest. A restart validates and reuses it, and
-            // never rewrites it. Serialisation happens under the state lock because a
-            // background callback can register a preference namespace at any time.
-            byte[] bytes;
+            // never rewrites it.
+            //
+            // The snapshot, the temporary file and the rename all happen under the state
+            // lock. A background callback can register a preference namespace at the same
+            // moment the harness registers one, and two writers that only serialised the
+            // snapshot could publish the older manifest last, silently dropping a name the
+            // restart then refuses.
             synchronized (stateLock) {
                 if (owner == null || !"seed".equals(phase)) return;
-                bytes = owner.toString(2).getBytes(StandardCharsets.UTF_8);
-            }
-            File target = new File(root, OWNER_FILE);
-            File temporary = new File(root, OWNER_FILE + ".tmp");
-            try (FileOutputStream stream = new FileOutputStream(temporary)) {
-                stream.write(bytes);
-                stream.getFD().sync();
-            }
-            if (!temporary.renameTo(target)) {
-                throw new IllegalStateException("cannot publish the owner manifest " + target);
+                byte[] bytes = owner.toString(2).getBytes(StandardCharsets.UTF_8);
+                File target = new File(root, OWNER_FILE);
+                File temporary = new File(root, OWNER_FILE + ".tmp");
+                try (FileOutputStream stream = new FileOutputStream(temporary)) {
+                    stream.write(bytes);
+                    stream.getFD().sync();
+                }
+                if (!temporary.renameTo(target)) {
+                    throw new IllegalStateException("cannot publish the owner manifest " + target);
+                }
             }
         }
 
