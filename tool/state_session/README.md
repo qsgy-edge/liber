@@ -167,3 +167,47 @@ receipt. A seed reports `scratchRetained: true`; only a successful restart repor
 
 The corpus is frozen at the controller's handoff. A change to a source, a response,
 a script, a step or a declared request needs a new corpus version.
+
+## Product side (consumer)
+
+`runner.dart` runs one phase through the product and `compare.dart` drives the two
+terminated Dart processes, compares their actual reports with the controller's raw
+captures and runs the negative controls:
+
+```bash
+dart run tool/state_session/compare.dart \
+  --capture=<controller/state-capture-03> \
+  --evidence=<state-product> \
+  --library=<this worktree's cargo-built fjs.dll> \
+  [--handoff=<controller/state-session-handoff.json>]
+```
+
+The seed is a fresh `Workspace` root: two real searches through
+`openBookSourcePipeline`, then each corpus book's `details` (info plus TOC) and its
+publication through `ShelfService.add` in the corpus order, then the five content
+reads through carriers rebuilt from the stored rows. It records books, chapters and
+`source_entries`, writes `owner.json` and retains the root. The restart is a second
+process over that root: it validates `owner.json` before opening the database, reads
+the persisted state, refreshes A1/B1 with the revision-2 responses through
+`ShelfService.updateCatalog`, reads the state after the refresh and removes the whole
+root. The product's isolation surface is the workspace root (`manifest.json` and
+`spaces/default/data.db`); unlike the frozen capture it has no task-prefixed
+preference files outside that root, and the report says so instead of implying one.
+
+`java.put`/`java.get` stay outside the 26 frozen observation ids. The runner checks
+the approved per-source `v_<sourceKey>_<key>` rows with declared policy-only keys: a
+source reads only its own key, `source.get` sees the same row, and the restart reads
+what the seed wrote. That receipt is `javaPolicy` in each phase report.
+
+The comparator refuses a capture of another fixture, corpus, baseline, target,
+harness, phase or process pairing; it requires the exact declared request trace, the
+exact ordered observation ids and complete setup/cleanup receipts, and it fails on a
+changed value or any unexpected, missing or reordered request. Valid variable JSON is
+compared semantically while the raw column is retained and any member-order or
+indentation difference is reported in `rawTextDifferences` rather than normalised.
+The negative controls mutate copies of the raw captures and of the product reports
+(value, request and identity), record each failing exit and re-hash the immutable
+originals after the run. Evidence lives in
+`<evidence>/comparison.json`, `<evidence>/negative-controls.json` and the two phase
+reports beside them. The corpus' `policyRows` and `coverageGaps` stay listed as
+`notCompared`; nothing here closes a row, a ticket or a platform claim.
