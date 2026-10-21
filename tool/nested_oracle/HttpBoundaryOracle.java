@@ -155,6 +155,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private final Map<String, Map<String, Object>> chapters = new LinkedHashMap<>();
     private final Map<String, Owner> selectorOwners = new LinkedHashMap<>();
     private final Map<String, JSONObject> responseById = new LinkedHashMap<>();
+    private final Map<String, String> selectorResponseIds = new LinkedHashMap<>();
     private final Map<String, JSONObject> stepById = new LinkedHashMap<>();
     private final Map<String, Integer> declaredStepRequests = new LinkedHashMap<>();
     private final Map<String, Integer> derivedFamilyCounts = new LinkedHashMap<>();
@@ -455,15 +456,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
     }
 
     /**
-     * Reads the runtime configuration the selected path consumes from the isolated
-     * scratch application, never from operator preferences. The preference read is the
-     * same value {@code AppConfig.threadCount} answers, so an unavailable frozen object
-     * is recorded and resolved from the scoped default preference instead of guessing.
-     */
-    /**
-     * Reads the actual consumed configuration from the isolated scratch AppCtx. The
-     * previous fallback guessed the default after any exception; the approved repair
-     * treats an unavailable AppConfig.threadCount as an incomplete capture, not a value.
+     * Reads the actual consumed threadCount from the isolated scratch AppCtx through the
+     * frozen AppConfig member. An unavailable value makes the capture incomplete; no
+     * default or unscoped preference is substituted.
      */
     private JSONObject readRuntimeConfiguration(Context app) throws Exception {
         JSONObject runtime = corpus.getJSONObject("runtime");
@@ -923,13 +918,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private void indexCorpus() throws Exception {
         selectorOwners.clear();
         responseById.clear();
+        selectorResponseIds.clear();
         stepById.clear();
         declaredStepRequests.clear();
         derivedFamilyCounts.clear();
         JSONArray responses = corpus.getJSONArray("responses");
         for (int index = 0; index < responses.length(); index++) {
             JSONObject response = responses.getJSONObject(index);
-            responseById.put(response.getString("id"), response);
+            String responseId = response.getString("id");
+            responseById.put(responseId, response);
+            selectorResponseIds.put(selectorOf(response), responseId);
         }
         JSONArray steps = corpus.getJSONArray("steps");
         int declaredTotal = 0;
@@ -1753,7 +1751,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
         } finally {
             try {
                 requestCancel(members, job);
-                jobClosed = isInactive(members, job);
+                jobClosed = isJobComplete(members, job);
             } catch (Throwable error) {
                 evidence.put("followUpCloseError", describe(error));
             }
@@ -1945,13 +1943,17 @@ public final class HttpBoundaryOracle extends Instrumentation {
         boolean entered = replay.holdState.awaitEntered(10, TimeUnit.SECONDS);
         value.put("holdEntered", entered);
         if (!entered) {
-            requestCancel(members, job);
-            worker.join(3000);
+            try {
+                requestCancel(members, job);
+            } catch (Throwable error) {
+                evidence.put("missedEntryCancelError", describe(error));
+            }
             replay.releaseHold();
+            worker.join(3000);
             replay.holdState.awaitAbort(2, TimeUnit.SECONDS);
             boolean terminated = !worker.isAlive();
-            boolean inactive = isInactive(members, job);
-            if (terminated && inactive) {
+            boolean done = isJobComplete(members, job);
+            if (terminated && done) {
                 activeCancelJob = null;
                 activeCancelWorker = null;
             }
@@ -1964,6 +1966,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
         worker.join(10000);
         boolean terminated = !worker.isAlive();
         boolean jobInactive = isInactive(members, job);
+        boolean jobCompleted = isJobComplete(members, job);
+        boolean jobDone = jobInactive && jobCompleted;
         long quietWindow = corpus.getJSONObject("cancellation").getLong("quietWindowMs");
         Thread.sleep(quietWindow);
         Throwable workerFailure = workerError.get();
@@ -1998,10 +2002,12 @@ public final class HttpBoundaryOracle extends Instrumentation {
         boolean valuesUnchanged = deepEqual(before.portable, after.portable);
         boolean databaseUnchanged = deepEqual(before.db, after.db);
         JSONObject derived = deriveCancelOutcome(workerOutcome, aborted, terminated,
-            jobInactive, late.length(), valuesUnchanged, databaseUnchanged);
+            jobDone, late.length(), valuesUnchanged, databaseUnchanged);
         value.put("clientAborted", aborted)
             .put("workerTerminated", terminated)
             .put("jobInactive", jobInactive)
+            .put("jobCompleted", jobCompleted)
+            .put("jobDone", jobDone)
             .put("workerOutcome", workerOutcome)
             .put("lateRequests", late)
             .put("stateProbes", new JSONObject()
@@ -2017,7 +2023,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 .put("sourceKey", sourceKey)
                 .put("jobLevel", "created-parent")
                 .put("tokenPresent", true)
-                .put("jobInactive", jobInactive))
+                .put("jobInactive", jobInactive)
+                .put("jobCompleted", jobCompleted))
             .put("derivedOutcome", derived);
         evidence.put("dbProvenance", new JSONObject()
             .put("before", before.db)
@@ -2027,7 +2034,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
             .put("name", worker.getName())
             .put("id", worker.getId())
             .put("isActiveMemberUnresolved", members.isActive == null));
-        if (terminated && jobInactive) {
+        if (terminated && jobDone) {
             activeCancelJob = null;
             activeCancelWorker = null;
         }
@@ -2121,10 +2128,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
             cancel = candidate;
         }
         Method isActive = null;
+        Method isCompleted = null;
         for (Method candidate : jobClass.getMethods()) {
-            if (!candidate.getName().equals("isActive")) continue;
-            if (candidate.getParameterCount() != 0) continue;
-            isActive = candidate;
+            if (candidate.getName().equals("isActive")
+                    && candidate.getParameterCount() == 0) {
+                isActive = candidate;
+            }
+            if (candidate.getName().equals("isCompleted")
+                    && candidate.getParameterCount() == 0) {
+                isCompleted = candidate;
+            }
         }
         Method cancelDefault = null;
         if (cancel == null) {
@@ -2149,15 +2162,36 @@ public final class HttpBoundaryOracle extends Instrumentation {
             .put("cancelDefault", cancelDefault == null
                 ? JSONObject.NULL : cancelDefault.toString())
             .put("isActive", isActive == null ? JSONObject.NULL : isActive.toString())
+            .put("isCompleted", isCompleted == null
+                ? JSONObject.NULL : isCompleted.toString())
             .put("runBlocking", runBlockingMethod().toString());
         return new CancelMembers(newJob, plus, empty, cancel, cancelDefault, isActive,
-            report);
+            isCompleted, report);
     }
 
     private static boolean isInactive(CancelMembers members, Object job) {
         if (members == null || members.isActive == null || job == null) return false;
         try {
             return !((Boolean) members.isActive.invoke(job)).booleanValue();
+        } catch (Throwable error) {
+            return false;
+        }
+    }
+
+    /**
+     * A created-parent job is only complete when the frozen library reports both
+     * isActive=false and isCompleted=true; neither flag alone proves the child work
+     * finished. An unresolved member is treated as unproved, never as completion.
+     */
+    private static boolean isJobComplete(CancelMembers members, Object job) {
+        if (members == null || job == null || members.isActive == null
+                || members.isCompleted == null) {
+            return false;
+        }
+        try {
+            boolean active = ((Boolean) members.isActive.invoke(job)).booleanValue();
+            boolean completed = ((Boolean) members.isCompleted.invoke(job)).booleanValue();
+            return !active && completed;
         } catch (Throwable error) {
             return false;
         }
@@ -2198,10 +2232,10 @@ public final class HttpBoundaryOracle extends Instrumentation {
             }
             if (activeCancelWorker.isAlive()) ok = false;
         }
-        if (activeCancelJob != null && !isInactive(cancelMembers, activeCancelJob)) {
+        if (activeCancelJob != null && !isJobComplete(cancelMembers, activeCancelJob)) {
             ok = false;
         }
-        if (followUpJob != null && !isInactive(cancelMembers, followUpJob)) {
+        if (followUpJob != null && !isJobComplete(cancelMembers, followUpJob)) {
             ok = false;
         }
         if (ok) {
@@ -2513,6 +2547,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
         requireField(request, "method", String.class, problems);
         requireField(request, "path", String.class, problems);
         requireField(request, "rawQuery", String.class, problems);
+        requireField(request, "target", String.class, problems);
+        requireField(request, "query", JSONObject.class, problems);
+        requireField(request, "headerLines", JSONArray.class, problems);
         requireField(request, "body", String.class, problems);
         requireField(request, "headers", JSONObject.class, problems);
         requireField(request, "outcome", String.class, problems);
@@ -2544,12 +2581,53 @@ public final class HttpBoundaryOracle extends Instrumentation {
             problems.put("selector " + selector + " is owned by " + declaredOwner.step
                 + ", request says " + owner);
         }
+        String method = request.getString("method");
+        String path = request.getString("path");
+        String rawQuery = request.getString("rawQuery");
+        String target = request.getString("target");
+        String computedSelector = method + " " + path + "?" + rawQuery;
+        if (!selector.equals(computedSelector)) {
+            problems.put("method/path/rawQuery do not form the selector");
+        }
+        String expectedTarget = rawQuery.isEmpty() ? path : path + "?" + rawQuery;
+        if (!target.equals(expectedTarget)) {
+            problems.put("target does not match path/rawQuery");
+        }
+        JSONObject query = request.getJSONObject("query");
+        if (!deepEqual(query, new JSONObject(decodeQuery(rawQuery)))) {
+            problems.put("query does not decode the raw query");
+        }
+        JSONArray headerLines = request.getJSONArray("headerLines");
+        for (int slot = 0; slot < headerLines.length(); slot++) {
+            if (!(headerLines.opt(slot) instanceof String)) {
+                problems.put("headerLines entry " + slot + " is not a string");
+            }
+        }
         if (declaredOwner != null) {
             String cohort = declaredOwner.cohort;
             boolean cohortOk = cohort == null
                 ? request.isNull("cohort")
                 : cohort.equals(request.optString("cohort", ""));
             if (!cohortOk) problems.put("cohort does not match the declared owner");
+            if (!declaredOwner.family.equals(request.getString("family"))) {
+                problems.put("family does not match the declared owner");
+            }
+            String expectedResponse = selectorResponseIds.get(selector);
+            String selected = request.isNull("declaredResponse")
+                ? null : request.getString("declaredResponse");
+            boolean omission = negativeMode && negativeBlock != null
+                && selector.equals(negativeBlock.optString("selector", ""))
+                && "omitted-unmatched".equals(request.optString("terminal", ""))
+                && selected == null;
+            if (omission) {
+                if (expectedResponse == null
+                        || !expectedResponse.equals(negativeBlock.optString("drop", ""))) {
+                    problems.put("the native omission does not select the declared drop");
+                }
+            } else if (expectedResponse == null || !expectedResponse.equals(selected)) {
+                problems.put("declaredResponse is not the declaration selected by the"
+                    + " selector");
+            }
         }
         byte[] bodyBytes = request.getString("body").getBytes(StandardCharsets.UTF_8);
         if (request.getInt("bodyLength") != bodyBytes.length) {
@@ -2758,9 +2836,13 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 JSONObject derived = cancelValue == null ? null
                     : cancelValue.optJSONObject("derivedOutcome");
                 if (derived == null || !"cancelled".equals(
-                        derived.optString("outcome", ""))) {
+                        derived.optString("outcome", ""))
+                        || cancelValue == null
+                        || !cancelValue.optBoolean("jobCompleted", false)
+                        || !cancelValue.optBoolean("jobDone", false)) {
                     shapeMismatches.put(new JSONObject().put("id", id)
-                        .put("problem", "the measured cancellation outcome is not cancelled"));
+                        .put("problem", "the measured cancellation outcome or job"
+                            + " completion is not proved"));
                 }
             }
             if (id.equals(followUpStep)) {
@@ -2839,6 +2921,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
                     && cancelValue.optBoolean("clientAborted", false)
                     && cancelValue.optBoolean("workerTerminated", false)
                     && cancelValue.optBoolean("jobInactive", false)
+                    && cancelValue.optBoolean("jobCompleted", false)
+                    && cancelValue.optBoolean("jobDone", false)
                     && lateRequests != null && lateRequests.length() == 0
                     && stateProbes != null && stateProbes.optBoolean("unchanged", false)
                     && stateProbes.optBoolean("databaseUnchanged", false)
@@ -3035,6 +3119,57 @@ public final class HttpBoundaryOracle extends Instrumentation {
         } catch (Throwable error) {
             cleanup.put("ownedJobAwaitError", describe(error));
         }
+        if (!ownedJobsTerminatedReceipt) {
+            cleanup.put("admissionStopped", admissionStoppedReceipt)
+                .put("ownedJobsSignalled", cancellationSignalledReceipt)
+                .put("ownedJobsTerminated", false)
+                .put("gatesReleased", gatesReleasedReceipt)
+                .put("replayStarted", replay != null)
+                .put("replayOk", replayOkReceipt)
+                .put("failEndpointBound", failEndpoint != null)
+                .put("failEndpointOk", failOkReceipt)
+                .put("databaseWasOpen", databaseWasOpen)
+                .put("databaseQueried", false)
+                .put("databaseClosed", database == null)
+                .put("finalDatabaseSnapshot", database == null)
+                .put("rateLimiterCleanup", "skipped: an owned worker/job is unproved")
+                .put("preferencesFenced", new JSONArray())
+                .put("preferencesRemoved", new JSONArray())
+                .put("preservedForController", true);
+            if (scratch.isBound()) {
+                JSONObject ownership = new JSONObject()
+                    .put("ownership", "created-fresh-root")
+                    .put("scratchRoot", scratch.root.getAbsolutePath())
+                    .put("scratchRootExistedAtStart", scratch.rootExistedAtStart())
+                    .put("preferencesPrefix", scratch.preferencesPrefix());
+                JSONArray owned = new JSONArray();
+                for (String name : scratch.ownedPreferences()) owned.put(name);
+                cleanup.put("ownership", ownership)
+                    .put("ownerManifest", readOwnerManifest())
+                    .put("ownedPreferences", owned)
+                    .put("preferenceResidue", preferenceResidue(owned))
+                    .put("scratchRetained", scratch.root.exists())
+                    .put("scratchRemoved", false);
+            } else {
+                cleanup.put("ownership", "none: ownership was never established, prior"
+                        + " state left intact")
+                    .put("scratchRoot", scratch.root.getAbsolutePath())
+                    .put("scratchRootExistedAtStart", scratch.rootExistedAtStart())
+                    .put("scratchRetained", scratch.root.exists())
+                    .put("scratchRemoved", false);
+            }
+            finalTerminalSnapshot(cleanup);
+            cleanup.put("cleanupFailure", "an owned worker/job did not prove completion;"
+                    + " the database, limiter records, owned preferences and root were"
+                    + " left untouched for controller force-stop cleanup")
+                .put("ownedHandlesRetained", new JSONObject()
+                    .put("activeCancelJob", activeCancelJob != null)
+                    .put("activeCancelWorker", activeCancelWorker != null)
+                    .put("followUpJob", followUpJob != null))
+                .put("ok", false);
+            cleanupOk = false;
+            return cleanup;
+        }
         if (database == null) {
             finalDatabaseSnapshotOk = true;
             cleanup.put("finalDatabaseSnapshotNote",
@@ -3051,10 +3186,10 @@ public final class HttpBoundaryOracle extends Instrumentation {
             try {
                 call(database, "close");
                 databaseClosedReceipt = true;
+                database = null;
             } catch (Throwable error) {
                 cleanup.put("databaseError", describe(error));
             }
-            database = null;
         } else {
             cleanup.put("databaseNote", "the database was never opened");
             databaseClosedReceipt = true;
@@ -3584,9 +3719,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
     }
 
     private static JSONObject deriveCancelOutcome(String workerOutcome, boolean aborted,
-            boolean terminated, boolean jobInactive, int lateCount, boolean valuesUnchanged,
+            boolean terminated, boolean jobDone, int lateCount, boolean valuesUnchanged,
             boolean databaseUnchanged) throws JSONException {
-        boolean receipts = aborted && terminated && jobInactive && lateCount == 0
+        boolean receipts = aborted && terminated && jobDone && lateCount == 0
             && valuesUnchanged && databaseUnchanged;
         String outcome;
         String category;
@@ -3687,16 +3822,19 @@ public final class HttpBoundaryOracle extends Instrumentation {
         final Method cancel;
         final Method cancelDefault;
         final Method isActive;
+        final Method isCompleted;
         final JSONObject report;
 
         CancelMembers(Method newJob, Method plus, Object emptyContext, Method cancel,
-                Method cancelDefault, Method isActive, JSONObject report) {
+                Method cancelDefault, Method isActive, Method isCompleted,
+                JSONObject report) {
             this.newJob = newJob;
             this.plus = plus;
             this.emptyContext = emptyContext;
             this.cancel = cancel;
             this.cancelDefault = cancelDefault;
             this.isActive = isActive;
+            this.isCompleted = isCompleted;
             this.report = report;
         }
     }
@@ -3817,11 +3955,11 @@ public final class HttpBoundaryOracle extends Instrumentation {
         }
 
         void releaseHold() {
-            holdState.releaseRequested.set(true);
+            holdState.requestRelease();
         }
 
         void releaseGates() {
-            holdState.releaseRequested.set(true);
+            holdState.requestRelease();
             synchronized (cohorts) {
                 for (CohortState state : cohorts.values()) {
                     synchronized (state) {
@@ -4196,28 +4334,39 @@ public final class HttpBoundaryOracle extends Instrumentation {
             socket.setSoTimeout(100);
             long deadline = System.currentTimeMillis() + holdState.timeoutMs;
             boolean aborted = false;
+            long failureAtNanos = -1;
             while (System.currentTimeMillis() < deadline) {
                 if (holdState.releaseRequested.get()) break;
                 try {
                     int value = input.read();
                     if (value == -1) {
                         aborted = true;
+                        failureAtNanos = System.nanoTime();
                         break;
                     }
                 } catch (SocketTimeoutException timeoutError) {
                     continue;
                 } catch (SocketException closed) {
                     aborted = true;
+                    failureAtNanos = System.nanoTime();
                     break;
                 } catch (IOException failure) {
                     aborted = true;
+                    failureAtNanos = System.nanoTime();
                     break;
                 }
             }
             if (aborted) {
-                holdState.abort();
-                update(request, "terminal", "client-aborted");
-                update(request, "outcome", "client-aborted");
+                boolean teardownCaused = holdState.releaseRequested.get()
+                    && holdState.releasedAtOrBefore(failureAtNanos);
+                if (teardownCaused) {
+                    update(request, "terminal", "hold-released-at-teardown");
+                    update(request, "outcome", "hold-released-at-teardown");
+                } else {
+                    holdState.abort();
+                    update(request, "terminal", "client-aborted");
+                    update(request, "outcome", "client-aborted");
+                }
             } else if (holdState.releaseRequested.get()) {
                 update(request, "terminal", "hold-released-at-teardown");
                 update(request, "outcome", "hold-released-at-teardown");
@@ -4396,6 +4545,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
         final AtomicBoolean aborted = new AtomicBoolean();
         final AtomicBoolean expired = new AtomicBoolean();
         final AtomicBoolean releaseRequested = new AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicLong releaseRequestedAtNanos =
+            new java.util.concurrent.atomic.AtomicLong(0);
         volatile String selector;
         volatile long timeoutMs = 20000;
         volatile long enteredAtNanos;
@@ -4405,6 +4556,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
             this.selector = selector;
             this.enteredAtNanos = System.nanoTime();
             entered.countDown();
+        }
+
+        void requestRelease() {
+            releaseRequestedAtNanos.compareAndSet(0, System.nanoTime());
+            releaseRequested.set(true);
+        }
+
+        boolean releasedAtOrBefore(long nanos) {
+            long releasedAt = releaseRequestedAtNanos.get();
+            return releasedAt > 0 && releasedAt <= nanos;
         }
 
         void abort() {

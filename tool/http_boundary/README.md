@@ -11,36 +11,35 @@ connection failure, real gated cancellation and later same-source use.
 read from a real frozen API, a real `StrResponse.body()`, or the requests the frozen
 HTTP stack actually sent. No expected value is transcribed from this corpus.
 
-**Status: review-repair-01 is implemented, host-compiled, dexed, packaged, signed and
-structurally checked against the controller's eight counterexamples and valid positive
-counterparts. No handset execution has happened in this producer lane.** A report
-produced by the controller is a capture candidate; only the controller's hash-bound
-handoff (`E/controller/a2-http-session-handoff.json`) can make it evidence.
+**Status: the collector is implemented, host-compiled, dexed, packaged, signed and
+structurally checked. No handset execution has happened in this producer lane.** A
+report produced by the controller is a capture candidate; only the controller's
+hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evidence.
 
-## Review-repair-01 disposition
+## Measurement and cleanup contract
 
-The controller's eight compiled-method counterexamples are rejected by the repaired
-paths, with valid positive counterparts on the same methods:
-
-- The header-map surface is now the real rule script: one fixture-authored projection
-  per arity through `AnalyzeUrl.evalJS`/`source`. A thrown arity keeps its measured
-  `returned:false`; the Kotlin default call is explicit provenance only.
+- The header-map rows execute one fixture-authored projection per arity through
+  `AnalyzeUrl.evalJS`/`source`. A thrown arity keeps its measured `returned:false`; the
+  Kotlin default call is explicit provenance only.
 - `stepCancel` derives `cancelled`/`cancellation` from the measured cancellation and
-  validated receipts and throws a typed expected outcome; the follow-up is bound before
-  invocation to its own created-parent Job/context and the same source object/key, and
-  freshness is measured by object identity.
+  validated receipts; the follow-up is bound before invocation to its own
+  created-parent Job/context and the same source object/key, with freshness measured by
+  object identity.
 - `probeState` keeps null distinct from `"null"` and makes an unresolved getter/query
   incomplete; `dbCounts` is strict. The rate record's Java class and the native DB table
   snapshot are provenance, not compared fields.
 - The final request trace is validated as a whole: declared total, every owner, typed
-  raw fields, required headers, honest terminals, and the one declared negative
-  omission. A pending or extra ownerless shutdown request fails.
+  raw fields, required headers, coherent method/path/rawQuery/target/query/headerLines,
+  owner family and the actually selected declaration, honest terminals, and exactly the
+  one declared negative omission. A pending or extra ownerless shutdown request fails.
 - Cohort value keeps capability facts; the gate's planned release and the measured
   server send order are separated in evidence. In-flight peak is measured through each
   request's terminal.
-- Cleanup signals cancellation, releases gates, then awaits workers/executors, closes
-  the DB and removes only proven-owned state; an unproved worker/job handle keeps its
-  handle and preserves the residue for controller force-stop cleanup.
+- A held response distinguishes a peer abort from local teardown and expiry by the
+  release/abort timestamps; only a peer abort yields `client-aborted`.
+- Cleanup signals cancellation, releases gates, then awaits owned worker/job completion.
+  An unproved handle stops all database, limiter, preference and root work; the owned
+  residue and ownership metadata are preserved for controller force-stop cleanup.
 - Actual `AppConfig.threadCount` is required; a failed read is incomplete, not a guessed
   default.
 
@@ -305,14 +304,10 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/review-repair-01/`.
-- The review-repair host probe reproduces the controller's eight counterexamples on the
-  actual compiled methods and requires each to be rejected, with valid positive
-  counterparts on the same paths (typed null vs `"null"`, abort vs expiry, full terminal
-  fixtures, live vs terminated worker handles, controlled out-of-order cohort sends and
-  the dispatched-omission design). Its 19 cases all pass: every original counterexample
-  is reproduced and rejected, and every positive control passes. Host checks are never
-  device goldens.
+  receipts are under `E/a2-http-native/integration-repair-02/`.
+- The host probe executes the repaired terminal, hold and cleanup paths on the actual
+  compiled methods with valid positive counterparts; every unsafe control is rejected.
+  Host checks are never device goldens.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 
