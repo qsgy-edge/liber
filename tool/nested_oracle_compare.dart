@@ -23,6 +23,10 @@ import 'package:pointycastle/digests/sha256.dart';
 /// - the local jsLib shared-scope comparison against a frozen device golden:
 ///   `--jslib <fjs.dll> <golden.json> <new-report.json>`
 Future<void> main(List<String> args) async {
+  if (args.isNotEmpty && args.first == '--requests-compare') {
+    await _runRequestCompareOnly(args.sublist(1));
+    return;
+  }
   if (args.isNotEmpty && args.first == '--requests') {
     await _runRequestOracle(args.sublist(1));
     return;
@@ -177,6 +181,149 @@ String _sha256Bytes(Uint8List bytes) => SHA256Digest()
     .process(bytes)
     .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
     .join();
+
+/// SHA-256 of a file's raw bytes. The request corpus' manifest pin is the raw
+/// identity, so it is read in binary and never through a text decoder.
+String sha256File(File file) => _sha256Bytes(file.readAsBytesSync());
+
+/// SHA-256 of a file after CRLF is normalized to LF. It is reported beside the
+/// raw identity as evidence, never substituted for a recorded raw pin.
+String sha256FileLf(File file) =>
+    _sha256Bytes(_lfBytes(file.readAsBytesSync()));
+
+Uint8List _lfBytes(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
+  for (var index = 0; index < bytes.length; index++) {
+    if (bytes[index] == 0x0d &&
+        index + 1 < bytes.length &&
+        bytes[index + 1] == 0x0a) {
+      continue;
+    }
+    out.addByte(bytes[index]);
+  }
+  return out.takeBytes();
+}
+
+Uint8List _crlfBytes(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
+  for (final byte in bytes) {
+    if (byte == 0x0a) out.addByte(0x0d);
+    out.addByte(byte);
+  }
+  return out.takeBytes();
+}
+
+bool _isPureLf(Uint8List bytes) {
+  for (final byte in bytes) {
+    if (byte == 0x0d) return false;
+  }
+  return true;
+}
+
+bool _hasUtf8Bom(Uint8List bytes) =>
+    bytes.length >= 3 &&
+    bytes[0] == 0xef &&
+    bytes[1] == 0xbb &&
+    bytes[2] == 0xbf;
+
+bool _isPureCrlf(Uint8List bytes) {
+  for (var index = 0; index < bytes.length; index++) {
+    final byte = bytes[index];
+    if (byte == 0x0a && (index == 0 || bytes[index - 1] != 0x0d)) {
+      return false;
+    }
+    if (byte == 0x0d &&
+        (index + 1 >= bytes.length || bytes[index + 1] != 0x0a)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The request corpus' byte identity in a checkout-independent form.
+///
+/// [rawSha256] is the bytes this checkout actually has. [manifestRawPin] is the
+/// retained measured pin. A CRLF checkout matches the raw pin directly. An LF
+/// checkout is accepted only when it is a pure LF file whose CRLF reconstruction
+/// hashes exactly to the same retained pin; arbitrary content, BOM, mixed or
+/// lone-CR changes never reconstruct that pin. [lfSha256] is the canonical
+/// semantic identity used to bind a copied compare-only report across checkouts.
+class RequestCorpusIdentity {
+  const RequestCorpusIdentity({
+    required this.rawSha256,
+    required this.lfSha256,
+    required this.manifestRawPin,
+    required this.inputForm,
+    this.reconstructedRawSha256,
+  });
+
+  final String rawSha256;
+  final String lfSha256;
+  final String manifestRawPin;
+  final String inputForm;
+  final String? reconstructedRawSha256;
+
+  bool get matchesManifestPin =>
+      rawSha256 == manifestRawPin || reconstructedRawSha256 == manifestRawPin;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'rawSha256': rawSha256,
+    'lfSha256': lfSha256,
+    'manifestRawPin': manifestRawPin,
+    'inputForm': inputForm,
+    'reconstructedRawSha256': ?reconstructedRawSha256,
+    'matchesManifestPin': matchesManifestPin,
+    'rawMatchesManifestPin': rawSha256 == manifestRawPin,
+    'lfMatchesManifestPin': lfSha256 == manifestRawPin,
+  };
+}
+
+/// Binds a request-corpus file to the retained raw/bundled pin without
+/// normalizing arbitrary content. The only accepted non-raw form is the exact
+/// pure-LF conversion whose CRLF reconstruction hashes to the same pin.
+RequestCorpusIdentity requestCorpusIdentity(File file, String manifestRawPin) {
+  if (!_isSha256Text(manifestRawPin)) {
+    throw const FormatException('request corpus manifest pin is missing');
+  }
+  final bytes = file.readAsBytesSync();
+  if (_hasUtf8Bom(bytes)) {
+    throw const FormatException('request corpus carries a UTF-8 BOM');
+  }
+  final rawSha256 = _sha256Bytes(bytes);
+  final lfSha256 = _sha256Bytes(_lfBytes(bytes));
+  if (rawSha256 == manifestRawPin) {
+    return RequestCorpusIdentity(
+      rawSha256: rawSha256,
+      lfSha256: lfSha256,
+      manifestRawPin: manifestRawPin,
+      inputForm: 'raw',
+    );
+  }
+  if (!_isPureLf(bytes)) {
+    if (_isPureCrlf(bytes)) {
+      throw const FormatException(
+        'request corpus bytes differ from the manifest pin',
+      );
+    }
+    throw const FormatException(
+      'request corpus line endings are neither the recorded CRLF bytes nor a '
+      'pure LF checkout',
+    );
+  }
+  final reconstructed = _sha256Bytes(_crlfBytes(bytes));
+  if (reconstructed != manifestRawPin) {
+    throw const FormatException(
+      'request corpus bytes differ from the manifest pin',
+    );
+  }
+  return RequestCorpusIdentity(
+    rawSha256: rawSha256,
+    lfSha256: lfSha256,
+    manifestRawPin: manifestRawPin,
+    inputForm: 'lf',
+    reconstructedRawSha256: reconstructed,
+  );
+}
 
 /// SHA-256 of the corpus with CRLF normalized to LF. The device harness pins
 /// the same value, so one pin means the same corpus on a Windows checkout and
@@ -543,6 +690,1050 @@ const _declaredDivergences = <String, Map<String, String>>{
   },
 };
 
+/// The committed request corpus and the retained record that pins the frozen
+/// capture. Both paths are fixed inputs: the old CLI carries no file arguments
+/// for them and a copied golden still has to match the pins below.
+const requestCorpusPath = 'tool/nested_oracle/request-fixtures.json';
+const requestManifestPath =
+    'tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json';
+const requestComparerPath = 'tool/nested_oracle_compare.dart';
+
+/// Reads one JSON object and fails closed on every other JSON shape.
+Map<String, dynamic> _requestObject(Object? value, String what) {
+  if (value is Map) return value.cast<String, dynamic>();
+  throw FormatException('$what is not a JSON object');
+}
+
+List<dynamic> _requestList(Object? value, String what) {
+  if (value is List) return value;
+  throw FormatException('$what is not a JSON array');
+}
+
+List<Map<String, Object?>> _requestObjectList(Object? value, String what) => [
+  for (final raw in _requestList(value, what))
+    _requestObject(raw, what).cast<String, Object?>(),
+];
+
+String _requestString(Object? value, String what) {
+  if (value is String) return value;
+  throw FormatException('$what is not a string');
+}
+
+String _requestText(Object? value, String what) {
+  final text = _requestString(value, what);
+  if (text.trim().isEmpty) throw FormatException('$what is empty');
+  return text;
+}
+
+bool _isSha256Text(Object? value) =>
+    value is String && RegExp(r'^[0-9a-f]{64}$').hasMatch(value);
+
+/// A request carrier is the exact observable shape the golden and the replay
+/// server record: method, path, raw query bytes, source-controlled headers and
+/// raw body bytes. Missing, malformed or untyped carriers are refused instead
+/// of being compared as empty values.
+void _checkRequestCarrier(Map<String, dynamic> request, String what) {
+  final method = _requestText(request['method'], '$what method');
+  if (!RegExp(r'^[A-Z]+$').hasMatch(method)) {
+    throw FormatException('$what method is not an HTTP token');
+  }
+  final path = _requestText(request['path'], '$what path');
+  if (!path.startsWith('/')) {
+    throw FormatException('$what path is not an origin-form path');
+  }
+  _requestString(request['rawQuery'], '$what rawQuery');
+  _requestString(request['body'], '$what body');
+  final headers = _requestObject(request['headers'], '$what headers');
+  for (final entry in headers.entries) {
+    if (entry.key != entry.key.toLowerCase() || entry.key.isEmpty) {
+      throw FormatException('$what header name is not a lowercase token');
+    }
+    if (entry.value is! String) {
+      throw FormatException('$what header ${entry.key} is not a string');
+    }
+  }
+  final query = request['query'];
+  if (query != null) {
+    final decoded = _requestObject(query, '$what query');
+    for (final entry in decoded.entries) {
+      if (entry.value is! String) {
+        throw FormatException('$what query value is not a string');
+      }
+    }
+  }
+}
+
+/// Decodes and validates the committed request corpus before anything runs.
+Map<String, dynamic> loadRequestCorpus() {
+  final file = File(requestCorpusPath);
+  if (!file.existsSync()) {
+    throw StateError('request corpus missing: $requestCorpusPath');
+  }
+  final corpus = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  if (corpus['schemaVersion'] != 1) {
+    throw const FormatException('request corpus schemaVersion is not 1');
+  }
+  _requestText(corpus['fixtureId'], 'request corpus fixtureId');
+  if (corpus['corpusVersion'] is! int) {
+    throw const FormatException('request corpus has no corpusVersion');
+  }
+  final baseline = _requestText(
+    corpus['baselineCommit'],
+    'request corpus baselineCommit',
+  );
+  if (!RegExp(r'^[0-9a-f]{40}$').hasMatch(baseline)) {
+    throw const FormatException('request corpus baselineCommit is not a SHA-1');
+  }
+  _requestText(corpus['entryPoint'], 'request corpus entryPoint');
+  final port = corpus['port'];
+  if (port is! int || port < 1 || port > 65535) {
+    throw const FormatException('request corpus has no valid port');
+  }
+  final origin = Uri.tryParse(
+    _requestText(corpus['origin'], 'request corpus origin'),
+  );
+  final otherOrigin = Uri.tryParse(
+    _requestText(corpus['otherOrigin'], 'request corpus otherOrigin'),
+  );
+  if (origin == null ||
+      otherOrigin == null ||
+      !origin.hasAuthority ||
+      !otherOrigin.hasAuthority ||
+      origin == otherOrigin) {
+    throw const FormatException('request corpus origins are not distinct');
+  }
+
+  final rows = _requestList(corpus['rows'], 'request corpus rows');
+  if (rows.isEmpty) throw const FormatException('request corpus has no rows');
+  final ids = <String>{};
+  for (final raw in rows) {
+    final row = _requestObject(raw, 'request corpus row');
+    final id = _requestText(row['id'], 'request corpus row id');
+    if (!ids.add(id)) {
+      throw FormatException('request corpus row id is duplicated: $id');
+    }
+    final request = _requestObject(row['request'], 'request corpus row $id');
+    _requestText(request['rule'], 'request corpus row $id rule');
+    if (request['key'] != null && request['key'] is! String) {
+      throw FormatException('request corpus row $id key is not a string');
+    }
+    if (request['page'] != null && request['page'] is! int) {
+      throw FormatException('request corpus row $id page is not an integer');
+    }
+    final headers = request['headers'];
+    if (headers != null) {
+      final declared = _requestObject(
+        headers,
+        'request corpus row $id headers',
+      );
+      for (final entry in declared.entries) {
+        if (entry.key.trim().isEmpty || entry.value is! String) {
+          throw FormatException(
+            'request corpus row $id header ${entry.key} is not typed',
+          );
+        }
+      }
+    }
+  }
+
+  final responses = _requestList(
+    corpus['responses'],
+    'request corpus responses',
+  );
+  if (responses.isEmpty) {
+    throw const FormatException('request corpus has no responses');
+  }
+  final responseKeys = <String>{};
+  for (final raw in responses) {
+    final response = _requestObject(raw, 'request corpus response');
+    final method = _requestText(
+      response['method'],
+      'request corpus response method',
+    );
+    final path = _requestText(response['path'], 'request corpus response path');
+    if (!path.startsWith('/')) {
+      throw FormatException(
+        'request corpus response path is not absolute: $path',
+      );
+    }
+    if (!responseKeys.add('$method $path')) {
+      throw FormatException(
+        'request corpus response is duplicated: $method $path',
+      );
+    }
+    final status = response['status'];
+    if (status is! int || status < 100 || status > 599) {
+      throw FormatException(
+        'request corpus response $method $path has no status',
+      );
+    }
+    final body = response['body'];
+    if (body != null && body is! String) {
+      throw FormatException(
+        'request corpus response $method $path body is not a string',
+      );
+    }
+    final headers = response['headers'];
+    if (headers != null) {
+      final declared = _requestObject(
+        headers,
+        'request corpus response $method $path headers',
+      );
+      for (final entry in declared.entries) {
+        if (entry.key.trim().isEmpty || entry.value is! String) {
+          throw FormatException(
+            'request corpus response $method $path header ${entry.key} is not typed',
+          );
+        }
+      }
+    }
+  }
+  return corpus;
+}
+
+/// Decodes and validates the retained request manifest that pins the frozen
+/// capture. The manifest is the root of trust on this side: it names the
+/// corpus bytes, baseline, target/harness artifacts, golden bytes and both raw
+/// captures. Today's edited producer source is deliberately not an identity.
+Map<String, dynamic> loadRequestManifest() {
+  final file = File(requestManifestPath);
+  if (!file.existsSync()) {
+    throw StateError('request manifest missing: $requestManifestPath');
+  }
+  final manifest = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  if (manifest['kind'] != 'frozen-request-semantics-corpus') {
+    throw const FormatException('request manifest has the wrong kind');
+  }
+  _requestText(manifest['recordedAt'], 'request manifest recordedAt');
+  final device = _requestObject(manifest['device'], 'request manifest device');
+  _requestText(device['fingerprint'], 'request manifest device fingerprint');
+
+  final baseline = _requestObject(
+    manifest['baseline'],
+    'request manifest baseline',
+  );
+  final commit = _requestText(
+    baseline['commit'],
+    'request manifest baseline commit',
+  );
+  if (!RegExp(r'^[0-9a-f]{40}$').hasMatch(commit)) {
+    throw const FormatException(
+      'request manifest baseline commit is not SHA-1',
+    );
+  }
+  final application = _requestObject(
+    baseline['application'],
+    'request manifest target application',
+  );
+  _requestText(application['package'], 'request manifest target package');
+  if (!_isSha256Text(application['sha256'])) {
+    throw const FormatException('request manifest target APK pin is missing');
+  }
+  if (application['installedBytesPulledAndVerified'] != true) {
+    throw const FormatException(
+      'request manifest target APK was not verified from installed bytes',
+    );
+  }
+  _requestText(
+    application['installedPath'],
+    'request manifest target APK path',
+  );
+
+  final harness = _requestObject(
+    manifest['harness'],
+    'request manifest harness',
+  );
+  _requestText(harness['entryPoint'], 'request manifest harness entryPoint');
+  if (!_isSha256Text(harness['apkSha256']) ||
+      harness['installedApkSha256'] != harness['apkSha256']) {
+    throw const FormatException(
+      'request manifest harness APK pin is incomplete',
+    );
+  }
+  final sources = _requestList(
+    harness['sources'],
+    'request manifest harness sources',
+  );
+  if (sources.isEmpty) {
+    throw const FormatException('request manifest has no harness sources');
+  }
+  final sourcePaths = <String>{};
+  for (final raw in sources) {
+    final source = _requestObject(raw, 'request manifest harness source');
+    final path = _requestText(source['path'], 'request manifest source path');
+    sourcePaths.add(path);
+    if (!_isSha256Text(source['sha256']) ||
+        !_isSha256Text(source['gitBlobSha256AtStartingHead'])) {
+      throw FormatException('request manifest source pin is incomplete: $path');
+    }
+  }
+  if (!sourcePaths.contains('tool/nested_oracle/RequestOracle.java') ||
+      !sourcePaths.contains(requestCorpusPath)) {
+    throw const FormatException(
+      'request manifest omits a required harness source',
+    );
+  }
+
+  final corpus = _requestObject(manifest['corpus'], 'request manifest corpus');
+  if (corpus['path'] != requestCorpusPath) {
+    throw const FormatException('request manifest names another corpus path');
+  }
+  if (!_isSha256Text(corpus['sha256'])) {
+    throw const FormatException('request manifest corpus pin is missing');
+  }
+  _requestText(corpus['fixtureId'], 'request manifest corpus fixtureId');
+  if (corpus['corpusVersion'] is! int ||
+      corpus['rows'] is! int ||
+      corpus['rows'] < 1 ||
+      corpus['responses'] is! int ||
+      corpus['responses'] < 1) {
+    throw const FormatException('request manifest corpus counts are missing');
+  }
+  final bundled = _requestObject(
+    corpus['bundledAsset'],
+    'request manifest bundled corpus',
+  );
+  _requestText(bundled['path'], 'request manifest bundled corpus path');
+  if (!_isSha256Text(bundled['sha256'])) {
+    throw const FormatException(
+      'request manifest bundled corpus pin is missing',
+    );
+  }
+
+  final run = _requestObject(manifest['run'], 'request manifest run');
+  _requestText(run['result'], 'request manifest run result');
+  if (run['rows'] is! int ||
+      run['rows'] < 1 ||
+      run['requests'] is! int ||
+      run['requests'] < 1) {
+    throw const FormatException('request manifest run counts are missing');
+  }
+  if (run['analysisFailure'] != null) {
+    throw const FormatException('request manifest records an analysis failure');
+  }
+  final serverErrors = _requestList(
+    run['serverErrors'],
+    'request manifest server errors',
+  );
+  if (serverErrors.isNotEmpty) {
+    throw const FormatException(
+      'request manifest records replay-server errors',
+    );
+  }
+  final cleanup = _requestObject(run['cleanup'], 'request manifest cleanup');
+  if (cleanup['serverClosed'] != true) {
+    throw const FormatException(
+      'request manifest replay server was not closed',
+    );
+  }
+  final golden = _requestObject(run['golden'], 'request manifest golden');
+  _requestText(golden['path'], 'request manifest golden path');
+  if (!_isSha256Text(golden['sha256'])) {
+    throw const FormatException('request manifest golden pin is missing');
+  }
+  final captures = _requestList(run['captures'], 'request manifest captures');
+  if (captures.isEmpty) {
+    throw const FormatException('request manifest has no raw captures');
+  }
+  for (final raw in captures) {
+    final capture = _requestObject(raw, 'request manifest capture');
+    _requestText(capture['path'], 'request manifest capture path');
+    if (!_isSha256Text(capture['sha256'])) {
+      throw const FormatException('request manifest capture pin is missing');
+    }
+  }
+  return manifest;
+}
+
+/// Refuses a golden that is not the retained frozen capture of exactly this
+/// corpus, target and harness. Every identity, hash, target, row and request
+/// problem is a hard refusal, so no comparison can pass vacuously.
+void checkRequestGolden({
+  required Map<String, dynamic> corpus,
+  required RequestCorpusIdentity corpusIdentity,
+  required Map<String, dynamic> manifest,
+  required Map<String, dynamic> golden,
+  required String goldenSha256,
+}) {
+  if (golden['mode'] != null || golden['comparison'] != null) {
+    throw const FormatException(
+      'Not a frozen golden: the input carries a record-mode marker',
+    );
+  }
+  if (golden['platform'] != 'android') {
+    throw const FormatException('the golden is not a frozen Android capture');
+  }
+  for (final key in [
+    'fixtureId',
+    'corpusVersion',
+    'baselineCommit',
+    'entryPoint',
+  ]) {
+    if (golden[key] != corpus[key]) {
+      throw FormatException('the golden does not describe this corpus ($key)');
+    }
+  }
+
+  final device = _requestObject(manifest['device'], 'request manifest device');
+  final fingerprint = _requestText(
+    device['fingerprint'],
+    'request manifest device fingerprint',
+  );
+  if (golden['fingerprint'] != fingerprint) {
+    throw const FormatException('the golden names another target device');
+  }
+  if (golden['recordedAt'] != manifest['recordedAt']) {
+    throw const FormatException('the golden names another capture time');
+  }
+  if (golden['analysisFailure'] != null) {
+    throw const FormatException('the golden records an analysis failure');
+  }
+  final goldenServerErrors = _requestList(
+    golden['serverErrors'],
+    'the golden server errors',
+  );
+  if (goldenServerErrors.isNotEmpty) {
+    throw const FormatException('the golden records replay-server errors');
+  }
+  final cleanup = _requestObject(golden['cleanup'], 'the golden cleanup');
+  if (cleanup['serverClosed'] != true) {
+    throw const FormatException('the golden replay server was not closed');
+  }
+
+  final manifestCorpus = _requestObject(
+    manifest['corpus'],
+    'request manifest corpus',
+  );
+  if (manifestCorpus['sha256'] != corpusIdentity.manifestRawPin) {
+    throw const FormatException(
+      'the manifest corpus pin differs from the accepted identity',
+    );
+  }
+  if (!corpusIdentity.matchesManifestPin) {
+    throw const FormatException(
+      'the corpus bytes differ from the manifest pin',
+    );
+  }
+  if (manifestCorpus['fixtureId'] != corpus['fixtureId'] ||
+      manifestCorpus['corpusVersion'] != corpus['corpusVersion']) {
+    throw const FormatException('the manifest names another corpus version');
+  }
+  final bundled = _requestObject(
+    manifestCorpus['bundledAsset'],
+    'request manifest bundled corpus',
+  );
+  if (bundled['sha256'] != corpusIdentity.manifestRawPin) {
+    throw const FormatException('the bundled corpus bytes differ from the pin');
+  }
+  final baseline = _requestObject(
+    manifest['baseline'],
+    'request manifest baseline',
+  );
+  if (baseline['commit'] != corpus['baselineCommit']) {
+    throw const FormatException('the manifest names another baseline');
+  }
+  final application = _requestObject(
+    baseline['application'],
+    'request manifest target application',
+  );
+  _requestText(application['package'], 'request manifest target package');
+  if (!_isSha256Text(application['sha256'])) {
+    throw const FormatException('the manifest target APK pin is missing');
+  }
+  if (application['installedBytesPulledAndVerified'] != true) {
+    throw const FormatException(
+      'the manifest target APK was not verified from installed bytes',
+    );
+  }
+  _requestText(
+    application['installedPath'],
+    'request manifest target APK path',
+  );
+  final harness = _requestObject(
+    manifest['harness'],
+    'request manifest harness',
+  );
+  if (!_isSha256Text(harness['apkSha256']) ||
+      harness['installedApkSha256'] != harness['apkSha256']) {
+    throw const FormatException('the manifest harness APK pin is incomplete');
+  }
+  if (harness['entryPoint'] != corpus['entryPoint']) {
+    throw const FormatException(
+      'the manifest names another harness entry point',
+    );
+  }
+
+  final run = _requestObject(manifest['run'], 'request manifest run');
+  final goldenPin = _requestObject(run['golden'], 'request manifest golden');
+  if (goldenPin['sha256'] != goldenSha256) {
+    throw const FormatException(
+      'the golden bytes differ from the manifest pin',
+    );
+  }
+  final captures = _requestList(run['captures'], 'request manifest captures');
+  final captureMatched = captures.any(
+    (raw) => (raw as Map)['sha256'] == goldenSha256,
+  );
+  if (!captureMatched) {
+    throw const FormatException('the golden is not a retained raw capture');
+  }
+  if (run['analysisFailure'] != null ||
+      _requestList(
+        run['serverErrors'],
+        'request manifest server errors',
+      ).isNotEmpty) {
+    throw const FormatException('the manifest records a failed capture run');
+  }
+  final runCleanup = _requestObject(run['cleanup'], 'request manifest cleanup');
+  if (runCleanup['serverClosed'] != true) {
+    throw const FormatException('the manifest replay server was not closed');
+  }
+
+  final goldenRows = _requestList(golden['rows'], 'the golden rows');
+  final corpusRows = _requestList(corpus['rows'], 'request corpus rows');
+  if (goldenRows.isEmpty || goldenRows.length != corpusRows.length) {
+    throw FormatException(
+      'row count mismatch: golden ${goldenRows.length} vs corpus '
+      '${corpusRows.length}',
+    );
+  }
+  if (run['rows'] != goldenRows.length ||
+      manifestCorpus['rows'] != corpusRows.length) {
+    throw const FormatException('the manifest row counts disagree');
+  }
+  if (manifestCorpus['responses'] !=
+      _requestList(corpus['responses'], 'request corpus responses').length) {
+    throw const FormatException('the manifest response count disagrees');
+  }
+
+  final flattened = <Map<String, dynamic>>[];
+  final ids = <String>{};
+  for (var index = 0; index < goldenRows.length; index++) {
+    final row = _requestObject(goldenRows[index], 'the golden row $index');
+    final corpusRow = _requestObject(
+      corpusRows[index],
+      'request corpus row $index',
+    );
+    final id = _requestText(row['id'], 'the golden row $index id');
+    if (id != corpusRow['id']) {
+      throw FormatException('row identity mismatch at index $index');
+    }
+    if (!ids.add(id)) {
+      throw FormatException('the golden row id is duplicated: $id');
+    }
+    final outcome = _requestText(row['outcome'], 'the golden row $id outcome');
+    if (outcome == 'ok') {
+      if (row['status'] is! int) {
+        throw FormatException('the golden row $id has no status');
+      }
+      _requestString(row['body'], 'the golden row $id body');
+    } else if (outcome == 'error') {
+      _requestText(row['error'], 'the golden row $id error');
+    } else {
+      throw FormatException('the golden row $id has an unknown outcome');
+    }
+    final requests = _requestList(
+      row['requests'],
+      'the golden row $id requests',
+    );
+    if (requests.isEmpty) {
+      throw FormatException('the golden row $id holds no requests');
+    }
+    for (var requestIndex = 0; requestIndex < requests.length; requestIndex++) {
+      final request = _requestObject(
+        requests[requestIndex],
+        'the golden row $id request $requestIndex',
+      );
+      _checkRequestCarrier(request, 'the golden row $id request $requestIndex');
+      flattened.add(request);
+    }
+  }
+  final trace = _requestList(golden['requests'], 'the golden request trace');
+  if (trace.isEmpty) {
+    throw const FormatException('the golden holds no request trace');
+  }
+  if (run['requests'] != trace.length || run['requests'] != flattened.length) {
+    throw const FormatException('the manifest request counts disagree');
+  }
+  if (!jsonSemanticEquals(flattened, trace)) {
+    throw const FormatException(
+      'the golden request trace does not equal its ordered rows',
+    );
+  }
+}
+
+/// A recorded `--requests` report's execution envelope. Every carrier the live
+/// CLI emits is required and typed; an execution failure or failed cleanup is
+/// preserved for the comparison instead of being replaced with a success shape.
+class RequestObservationEnvelope {
+  const RequestObservationEnvelope({
+    required this.status,
+    required this.replayClosed,
+    required this.nativeDisposed,
+    required this.target,
+    required this.observations,
+    required this.serverErrors,
+    required this.analysisErrors,
+    required this.unmatchedRequests,
+    required this.serverUnmatchedRequests,
+    required this.mergedUnmatchedRequests,
+  });
+
+  final String status;
+  final bool replayClosed;
+  final bool nativeDisposed;
+  final Map<String, Object?> target;
+  final List<Map<String, Object?>> observations;
+  final List<Map<String, Object?>> serverErrors;
+  final List<Map<String, Object?>> analysisErrors;
+  final List<Map<String, Object?>> unmatchedRequests;
+  final List<Map<String, Object?>> serverUnmatchedRequests;
+  final List<Map<String, Object?>> mergedUnmatchedRequests;
+}
+
+void _checkTerminalError(Map<String, Object?> error, String what) {
+  _requestText(error['error'], '$what error');
+}
+
+/// Consumes both the live report's merged `unmatchedRequests` view and its raw
+/// server-only `serverUnmatchedRequests` receipt. The core comparison must fail
+/// for either form; duplicates are collapsed by the observable request carrier.
+List<Map<String, Object?>> _mergeUnmatchedRequests(
+  List<Map<String, Object?>> merged,
+  List<Map<String, Object?>> serverOnly,
+) {
+  final result = <Map<String, Object?>>[];
+  final seen = <String>{};
+  for (final entry in [...merged, ...serverOnly]) {
+    final key = jsonEncode({
+      'method': entry['method'],
+      'path': entry['path'],
+      'rawQuery': entry['rawQuery'],
+      'headers': entry['headers'],
+      'body': entry['body'],
+    });
+    if (seen.add(key)) result.add(entry);
+  }
+  return result;
+}
+
+/// Loads and validates the product-side observation from a prior `--requests`
+/// report. The compare-only mode never runs the product or the native library;
+/// it replays an already-recorded observation through the same comparison used
+/// by the real CLI. Identity, corpus, golden, library, target, terminal and
+/// cleanup pins are checked here; explicit execution failure is preserved for
+/// the comparison instead of being discarded.
+RequestObservationEnvelope loadRequestObservation({
+  required Map<String, dynamic> observed,
+  required Map<String, dynamic> corpus,
+  required RequestCorpusIdentity corpusIdentity,
+  required Map<String, dynamic> manifest,
+  required String goldenSha256,
+}) {
+  if (observed['mode'] != 'requests') {
+    throw const FormatException(
+      'the observed input is not a --requests report',
+    );
+  }
+  for (final key in ['fixtureId', 'corpusVersion', 'baselineCommit']) {
+    if (observed[key] != corpus[key]) {
+      throw FormatException('the observed input names another corpus ($key)');
+    }
+  }
+  final observedRaw = _requestText(
+    observed['corpusSha256'],
+    'the observed input corpusSha256',
+  );
+  final observedLf = _requestText(
+    observed['corpusSha256Lf'],
+    'the observed input corpusSha256Lf',
+  );
+  if (!_isSha256Text(observedRaw) || !_isSha256Text(observedLf)) {
+    throw const FormatException('the observed input has no corpus hash pin');
+  }
+  if (observedLf != corpusIdentity.lfSha256) {
+    throw const FormatException(
+      'the observed input names another corpus bytes',
+    );
+  }
+  final allowedRaw = {
+    corpusIdentity.rawSha256,
+    corpusIdentity.lfSha256,
+    corpusIdentity.manifestRawPin,
+  };
+  if (!allowedRaw.contains(observedRaw)) {
+    throw const FormatException(
+      'the observed input corpus form is not a valid checkout identity',
+    );
+  }
+  final observedIdentity = _requestObject(
+    observed['corpusIdentity'],
+    'the observed input corpusIdentity',
+  );
+  if (observedIdentity['manifestRawPin'] != corpusIdentity.manifestRawPin ||
+      observedIdentity['lfSha256'] != observedLf ||
+      observedIdentity['rawSha256'] != observedRaw) {
+    throw const FormatException(
+      'the observed input corpus identity is inconsistent',
+    );
+  }
+  if (observed['goldenSha256'] != goldenSha256) {
+    throw const FormatException('the observed input names another golden');
+  }
+  _requestText(observed['library'], 'the observed input library');
+  if (!_isSha256Text(observed['librarySha256'])) {
+    throw const FormatException('the observed input has no native library pin');
+  }
+
+  final status = _requestText(observed['status'], 'the observed input status');
+  if (status != 'pass' && status != 'fail') {
+    throw const FormatException('the observed input status is not pass/fail');
+  }
+  final cleanup = _requestObject(
+    observed['cleanup'],
+    'the observed input cleanup',
+  );
+  final replayClosed = cleanup['replayClosed'];
+  final nativeDisposed = cleanup['nativeDisposed'];
+  if (replayClosed is! bool || nativeDisposed is! bool) {
+    throw const FormatException(
+      'the observed input cleanup flags are not booleans',
+    );
+  }
+
+  final target = _requestObject(
+    observed['target'],
+    'the observed input target',
+  );
+  final baseline = _requestObject(
+    manifest['baseline'],
+    'request manifest baseline',
+  );
+  final application = _requestObject(
+    baseline['application'],
+    'request manifest target application',
+  );
+  final harness = _requestObject(
+    manifest['harness'],
+    'request manifest harness',
+  );
+  final expectedTarget = <String, Object?>{
+    'baselineCommit': corpus['baselineCommit'],
+    'deviceFingerprint': _requestObject(
+      manifest['device'],
+      'request manifest device',
+    )['fingerprint'],
+    'applicationPackage': application['package'],
+    'targetApkSha256': application['sha256'],
+    'harnessApkSha256': harness['apkSha256'],
+  };
+  for (final entry in expectedTarget.entries) {
+    if (target[entry.key] != entry.value) {
+      throw FormatException(
+        'the observed input target ${entry.key} differs from the retained '
+        'manifest',
+      );
+    }
+  }
+
+  final serverErrors = _requestObjectList(
+    observed['serverErrors'],
+    'the observed input serverErrors',
+  );
+  final analysisErrors = _requestObjectList(
+    observed['analysisErrors'],
+    'the observed input analysisErrors',
+  );
+  for (var index = 0; index < serverErrors.length; index++) {
+    _checkTerminalError(
+      serverErrors[index],
+      'the observed server error $index',
+    );
+  }
+  for (var index = 0; index < analysisErrors.length; index++) {
+    _checkTerminalError(
+      analysisErrors[index],
+      'the observed analysis error $index',
+    );
+  }
+  final unmatchedRequests = _requestObjectList(
+    observed['unmatchedRequests'],
+    'the observed input unmatchedRequests',
+  );
+  final serverUnmatchedRequests = _requestObjectList(
+    observed['serverUnmatchedRequests'],
+    'the observed input serverUnmatchedRequests',
+  );
+  for (var index = 0; index < unmatchedRequests.length; index++) {
+    _checkRequestCarrier(
+      unmatchedRequests[index],
+      'the observed unmatched request $index',
+    );
+  }
+  for (var index = 0; index < serverUnmatchedRequests.length; index++) {
+    _checkRequestCarrier(
+      serverUnmatchedRequests[index],
+      'the observed server unexpected request $index',
+    );
+  }
+
+  final rows = _requestList(observed['rows'], 'the observed input rows');
+  final corpusRows = _requestList(corpus['rows'], 'request corpus rows');
+  if (rows.length != corpusRows.length) {
+    throw FormatException(
+      'the observed input records ${rows.length} rows for '
+      '${corpusRows.length} corpus rows',
+    );
+  }
+  final observations = <Map<String, Object?>>[];
+  final ids = <String>{};
+  for (var index = 0; index < rows.length; index++) {
+    final row = _requestObject(rows[index], 'the observed row $index');
+    final corpusRow = _requestObject(
+      corpusRows[index],
+      'request corpus row $index',
+    );
+    final id = _requestText(row['id'], 'the observed row $index id');
+    if (id != corpusRow['id']) {
+      throw FormatException('observed row identity mismatch at index $index');
+    }
+    if (!ids.add(id)) {
+      throw FormatException('the observed row id is duplicated: $id');
+    }
+    final liber = _requestObject(row['liber'], 'the observed row $id liber');
+    observations.add(<String, Object?>{'id': id, ...liber});
+  }
+  return RequestObservationEnvelope(
+    status: status,
+    replayClosed: replayClosed,
+    nativeDisposed: nativeDisposed,
+    target: target,
+    observations: observations,
+    serverErrors: serverErrors,
+    analysisErrors: analysisErrors,
+    unmatchedRequests: unmatchedRequests,
+    serverUnmatchedRequests: serverUnmatchedRequests,
+    mergedUnmatchedRequests: _mergeUnmatchedRequests(
+      unmatchedRequests,
+      serverUnmatchedRequests,
+    ),
+  );
+}
+
+/// The corpus' replay server: every response comes from the corpus, a row is
+/// sliced out of the request log by offset, and an undeclared request is
+/// recorded as unexpected while still being answered with the corpus' 404
+/// placeholder. The comparison must fail such a run even if its 404 body happens
+/// to look usable; [unmatchedRequests] and [serverErrors] are the evidence.
+class RequestReplayServer {
+  RequestReplayServer(
+    this.corpus, {
+    required this.origin,
+    required this.otherOrigin,
+    int? port,
+  }) : _port = port ?? _requestPort;
+
+  final Map<String, dynamic> corpus;
+  final String origin;
+  final String otherOrigin;
+  final int _port;
+  final requests = <Map<String, Object?>>[];
+  final unmatchedRequests = <Map<String, Object?>>[];
+  final serverErrors = <Map<String, Object?>>[];
+  final _clients = <Socket>{};
+  late final ServerSocket _server;
+  var _closed = false;
+
+  bool get closed => _closed;
+  int get port => _server.port;
+
+  Future<RequestReplayServer> start() async {
+    _server = await ServerSocket.bind(InternetAddress.anyIPv4, _port);
+    _server.listen(_accept, onError: (Object error) => _recordError('$error'));
+    return this;
+  }
+
+  void _recordError(String error) => serverErrors.add({'error': error});
+
+  void _accept(Socket socket) {
+    _clients.add(socket);
+    var buffer = '';
+    var served = 0;
+    socket.listen(
+      (bytes) {
+        try {
+          buffer += latin1.decode(bytes);
+          while (true) {
+            final end = buffer.indexOf('\r\n\r\n');
+            if (end < 0) return;
+            final head = buffer.substring(0, end);
+            final lines = head.split('\r\n');
+            // A leading CRLF is legal before a request line.
+            while (lines.isNotEmpty && lines.first.isEmpty) {
+              lines.removeAt(0);
+            }
+            if (lines.isEmpty) return;
+            final requestLine = lines.first.split(' ');
+            if (requestLine.length < 2) {
+              _recordError('malformed replay request line');
+              socket.destroy();
+              _clients.remove(socket);
+              return;
+            }
+            final method = requestLine[0];
+            final target = requestLine[1];
+            final headers = <String, Object?>{};
+            for (final line in lines.skip(1)) {
+              final separator = line.indexOf(':');
+              if (separator <= 0) continue;
+              final name = line.substring(0, separator).trim().toLowerCase();
+              final value = line.substring(separator + 1).trim();
+              final existing = headers[name];
+              headers[name] = existing == null ? value : '$existing, $value';
+            }
+            final declaredLength = int.tryParse(
+              '${headers['content-length'] ?? ''}',
+            );
+            final chunked = '${headers['transfer-encoding'] ?? ''}'
+                .toLowerCase()
+                .contains('chunked');
+            String body;
+            int consumed;
+            if (chunked) {
+              // The platform frames a body of unknown length with chunked
+              // encoding: Dart's HttpClient does for a request whose
+              // contentLength was never set, OkHttp does not for a String body.
+              final parsed = _readChunked(buffer.substring(end + 4));
+              if (parsed == null) return;
+              body = parsed.body;
+              consumed = end + 4 + parsed.consumed;
+            } else {
+              final length = declaredLength ?? 0;
+              if (buffer.length < end + 4 + length) return;
+              body = length > 0
+                  ? buffer.substring(end + 4, end + 4 + length)
+                  : '';
+              consumed = end + 4 + length;
+            }
+            buffer = buffer.substring(consumed);
+            served++;
+            final at = target.indexOf('?');
+            final path = at < 0 ? target : target.substring(0, at);
+            final rawQuery = at < 0 ? '' : target.substring(at + 1);
+            final declared = (corpus['responses'] as List)
+                .cast<Map<String, dynamic>>()
+                .firstWhere(
+                  (entry) => entry['method'] == method && entry['path'] == path,
+                  orElse: () => <String, dynamic>{},
+                );
+            final request = <String, Object?>{
+              'method': method,
+              'path': path,
+              'rawQuery': rawQuery,
+              'headers': headers,
+              'body': body,
+              'declared': declared.isNotEmpty,
+            };
+            requests.add(request);
+            if (declared.isEmpty) {
+              unmatchedRequests.add({...request});
+            }
+            final status = declared['status'] as int?;
+            final responseBody = _substitute(
+              declared['body'] as String? ?? 'undeclared replay request',
+            );
+            final responseHeaders = <String, String>{
+              for (final entry
+                  in (declared['headers'] as Map<String, dynamic>? ??
+                          const <String, dynamic>{})
+                      .entries)
+                entry.key: _substitute('${entry.value}'),
+            };
+            final bytes = utf8.encode(responseBody);
+            final response = StringBuffer()
+              ..writeln('HTTP/1.1 ${status ?? 404} OK')
+              ..writeln('Content-Type: text/plain')
+              ..writeln('Content-Length: ${bytes.length}');
+            responseHeaders.forEach(
+              (name, value) => response.writeln('$name: $value'),
+            );
+            response.write('\r\n');
+            socket.add(latin1.encode(response.toString()));
+            socket.add(bytes);
+            unawaited(socket.flush());
+            if (served > 64) {
+              _recordError('replay request limit exceeded');
+              socket.destroy();
+              _clients.remove(socket);
+              return;
+            }
+          }
+        } on Object catch (error) {
+          _recordError('$error');
+          socket.destroy();
+          _clients.remove(socket);
+        }
+      },
+      onDone: () {
+        socket.destroy();
+        _clients.remove(socket);
+      },
+      onError: (Object error) {
+        _recordError('$error');
+        socket.destroy();
+        _clients.remove(socket);
+      },
+    );
+  }
+
+  String _substitute(String text) => text
+      .replaceAll(r'$OTHER_ORIGIN', otherOrigin)
+      .replaceAll(r'$ORIGIN', origin);
+
+  /// One chunked body, or null while the buffer does not hold all of it yet.
+  ({String body, int consumed})? _readChunked(String rest) {
+    var index = 0;
+    final body = StringBuffer();
+    while (true) {
+      final lineEnd = rest.indexOf('\r\n', index);
+      if (lineEnd < 0) return null;
+      final size = int.tryParse(
+        rest.substring(index, lineEnd).split(';').first.trim(),
+        radix: 16,
+      );
+      if (size == null) {
+        _recordError('malformed chunked replay body');
+        return null;
+      }
+      index = lineEnd + 2;
+      if (size == 0) {
+        final trailerEnd = rest.indexOf('\r\n', index);
+        if (trailerEnd < 0) return null;
+        return (body: body.toString(), consumed: trailerEnd + 2);
+      }
+      if (rest.length < index + size + 2) return null;
+      body.write(rest.substring(index, index + size));
+      index += size + 2;
+    }
+  }
+
+  List<Map<String, dynamic>> since(int offset) =>
+      requests.skip(offset).cast<Map<String, dynamic>>().toList();
+
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    try {
+      await _server.close();
+    } finally {
+      for (final socket in _clients.toList()) {
+        socket.destroy();
+      }
+      _clients.clear();
+    }
+  }
+}
+
 /// Drives `tool/nested_oracle/request-fixtures.json` through the product's
 /// request layer and compares the rows with the frozen golden.
 ///
@@ -562,71 +1753,476 @@ Future<void> _runRequestOracle(List<String> args) async {
   }
   final output = File(args[2]);
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
-  final corpus =
-      jsonDecode(
-            File('tool/nested_oracle/request-fixtures.json').readAsStringSync(),
-          )
-          as Map<String, dynamic>;
+  final corpus = loadRequestCorpus();
+  final manifest = loadRequestManifest();
+  final manifestRawPin = _requestText(
+    _requestObject(manifest['corpus'], 'request manifest corpus')['sha256'],
+    'request manifest corpus pin',
+  );
+  final corpusIdentity = requestCorpusIdentity(
+    File(requestCorpusPath),
+    manifestRawPin,
+  );
+  final manifestSha256 = sha256File(File(requestManifestPath));
+  final goldenFile = File(args[1]);
+  final goldenSha256 = sha256File(goldenFile);
   final golden =
-      jsonDecode(File(args[1]).readAsStringSync()) as Map<String, dynamic>;
-  if (golden['fixtureId'] != corpus['fixtureId'] ||
-      golden['corpusVersion'] != corpus['corpusVersion'] ||
-      golden['baselineCommit'] != corpus['baselineCommit']) {
-    throw StateError('Oracle identity mismatch');
+      jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
+  // Refuse a bad corpus/golden/manifest before loading the native library or
+  // opening the replay server, so a forged input cannot run the product.
+  checkRequestGolden(
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    golden: golden,
+    goldenSha256: goldenSha256,
+  );
+  final library = File(args[0]);
+  if (!library.existsSync()) {
+    throw StateError('the native library is missing: ${args[0]}');
   }
+  final librarySha256 = sha256File(library);
   final origin = 'http://127.0.0.2:$_requestPort';
   final otherOrigin = 'http://127.0.0.3:$_requestPort';
-  // The transport decodes each response body the frozen way, which reaches the
-  // engine for the `EncodingDetect` fallback; the corpus declares no charset.
-  await NativeLibrary.initialize(libraryPath: args[0]);
-  final replay = await _ReplayServer(
-    corpus,
-    origin: origin,
-    otherOrigin: otherOrigin,
-  ).start();
-  final transport = HttpSourceTransport();
-  final rows = <Map<String, Object?>>[];
+  RequestReplayServer? replay;
+  var nativeDisposed = false;
+  final observations = <Map<String, Object?>>[];
+  final analysisErrors = <Map<String, Object?>>[];
   try {
+    // The transport decodes each response body the frozen way, which reaches
+    // the engine for the `EncodingDetect` fallback; the corpus declares no
+    // charset.
+    await NativeLibrary.initialize(libraryPath: args[0]);
+    final server = await RequestReplayServer(
+      corpus,
+      origin: origin,
+      otherOrigin: otherOrigin,
+    ).start();
+    replay = server;
+    final transport = HttpSourceTransport();
     for (final entry in corpus['rows'] as List) {
-      final row = entry as Map<String, dynamic>;
-      final id = row['id'] as String;
-      final frozen =
-          (golden['rows'] as List).firstWhere(
-                (goldenRow) => (goldenRow as Map)['id'] == id,
-                orElse: () => throw StateError('the golden has no row $id'),
-              )
-              as Map<String, dynamic>;
-      final offset = replay.requests.length;
-      final observed = await _liberRow(
-        row,
-        transport,
-        origin: origin,
-        otherOrigin: otherOrigin,
-      );
-      rows.add(_compareRow(id, frozen, observed, replay.since(offset)));
+      final row = (entry as Map).cast<String, dynamic>();
+      final id = '${row['id']}';
+      final offset = server.requests.length;
+      Map<String, Object?> observed;
+      try {
+        observed = await _liberRow(
+          row,
+          transport,
+          origin: origin,
+          otherOrigin: otherOrigin,
+        );
+      } catch (error, stack) {
+        analysisErrors.add({'row': id, 'error': '$error', 'stack': '$stack'});
+        observed = {'outcome': 'error', 'error': '$error'};
+      }
+      observed['id'] = id;
+      observed['requests'] = server.since(offset);
+      observations.add(observed);
     }
   } finally {
-    await replay.close();
+    if (replay != null) await replay.close();
     NativeLibrary.dispose();
+    nativeDisposed = true;
   }
+  final report = compareRequestRows(
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    manifestSha256: manifestSha256,
+    golden: golden,
+    goldenSha256: goldenSha256,
+    goldenPath: args[1],
+    observations: observations,
+    serverUnmatchedRequests: replay.unmatchedRequests,
+    serverErrors: replay.serverErrors,
+    analysisErrors: analysisErrors,
+    library: args[0],
+    librarySha256: librarySha256,
+    replayClosed: replay.closed,
+    nativeDisposed: nativeDisposed,
+  );
+  report['origins'] = {'origin': origin, 'otherOrigin': otherOrigin};
+  final comparerSha256 = sha256File(File(requestComparerPath));
+  final comparerSha256Lf = sha256FileLf(File(requestComparerPath));
+  report['comparerSha256'] = comparerSha256;
+  report['comparerSha256Lf'] = comparerSha256Lf;
+  report['comparer'] = {
+    'path': requestComparerPath,
+    'sha256': comparerSha256,
+    'sha256Lf': comparerSha256Lf,
+  };
+  output.writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+  );
+  for (final row in report['rows'] as List) {
+    stdout.writeln('${(row as Map)['status']}\t${row['id']}');
+  }
+  stdout.writeln(
+    'request corpus: ${report['status']} (${(report['rows'] as List).length} '
+    'rows, ${(report['passedRows'] as List).length} pass, '
+    '${(report['failedRows'] as List).length} fail, '
+    '${(report['notComparedRows'] as List).length} notCompared)',
+  );
+  if (report['status'] != 'pass') exitCode = 1;
+}
+
+/// Replays an already-recorded `--requests` report through the same comparison
+/// without loading the native library or opening a replay server. It is a
+/// compare-only seam for copied-input negative controls; it never labels its
+/// observation as a golden.
+Future<void> _runRequestCompareOnly(List<String> args) async {
+  if (args.length != 3) {
+    throw ArgumentError(
+      'Usage: --requests-compare <observed-report.json> <golden.json> '
+      '<new-report.json>',
+    );
+  }
+  final output = File(args[2]);
+  if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
+  final corpus = loadRequestCorpus();
+  final manifest = loadRequestManifest();
+  final manifestRawPin = _requestText(
+    _requestObject(manifest['corpus'], 'request manifest corpus')['sha256'],
+    'request manifest corpus pin',
+  );
+  final corpusIdentity = requestCorpusIdentity(
+    File(requestCorpusPath),
+    manifestRawPin,
+  );
+  final manifestSha256 = sha256File(File(requestManifestPath));
+  final goldenFile = File(args[1]);
+  final goldenSha256 = sha256File(goldenFile);
+  final golden =
+      jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
+  checkRequestGolden(
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    golden: golden,
+    goldenSha256: goldenSha256,
+  );
+  final observedFile = File(args[0]);
+  final observedSha256 = sha256File(observedFile);
+  final observed =
+      jsonDecode(observedFile.readAsStringSync()) as Map<String, dynamic>;
+  final envelope = loadRequestObservation(
+    observed: observed,
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    goldenSha256: goldenSha256,
+  );
+  if (observed['manifestSha256'] != manifestSha256) {
+    throw const FormatException('the observed input names another manifest');
+  }
+  final comparerSha256 = sha256File(File(requestComparerPath));
+  final comparerSha256Lf = sha256FileLf(File(requestComparerPath));
+  // The LF identity is the semantic source identity; the raw hash is recorded
+  // as evidence and may differ after a checkout line-ending conversion.
+  if (observed['comparerSha256Lf'] != comparerSha256Lf) {
+    throw const FormatException('the observed input names another comparer');
+  }
+  final observedLibrary = File(
+    _requestText(observed['library'], 'the observed input library'),
+  );
+  if (!observedLibrary.existsSync()) {
+    throw const FormatException('the observed native library is missing');
+  }
+  if (sha256File(observedLibrary) != observed['librarySha256']) {
+    throw const FormatException(
+      'the observed native library bytes differ from their pin',
+    );
+  }
+  final report = compareRequestRows(
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    manifestSha256: manifestSha256,
+    golden: golden,
+    goldenSha256: goldenSha256,
+    goldenPath: args[1],
+    observations: envelope.observations,
+    serverUnmatchedRequests: envelope.mergedUnmatchedRequests,
+    serverErrors: envelope.serverErrors,
+    analysisErrors: envelope.analysisErrors,
+    sourceStatus: envelope.status,
+    library: _requestText(observed['library'], 'the observed input library'),
+    librarySha256: _requestText(
+      observed['librarySha256'],
+      'the observed input librarySha256',
+    ),
+    observedPath: args[0],
+    observedSha256: observedSha256,
+    replayClosed: envelope.replayClosed,
+    nativeDisposed: envelope.nativeDisposed,
+  );
+  report['mode'] = 'requests-compare';
+  report['note'] =
+      'Compare-only replay of a recorded --requests observation; no product '
+      'run, native library load or replay server is claimed.';
+  report['source'] = {
+    'status': envelope.status,
+    'cleanup': {
+      'replayClosed': envelope.replayClosed,
+      'nativeDisposed': envelope.nativeDisposed,
+    },
+    'target': envelope.target,
+    'serverErrors': envelope.serverErrors,
+    'analysisErrors': envelope.analysisErrors,
+    'unmatchedRequests': envelope.unmatchedRequests,
+    'serverUnmatchedRequests': envelope.serverUnmatchedRequests,
+    'mergedUnmatchedRequests': envelope.mergedUnmatchedRequests,
+  };
+  report['comparerSha256'] = comparerSha256;
+  report['comparerSha256Lf'] = comparerSha256Lf;
+  report['comparer'] = {
+    'path': requestComparerPath,
+    'sha256': comparerSha256,
+    'sha256Lf': comparerSha256Lf,
+  };
+  output.writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+  );
+  stdout.writeln(
+    'request comparison: ${report['status']} (${(report['rows'] as List).length} '
+    'rows, ${(report['passedRows'] as List).length} pass, '
+    '${(report['failedRows'] as List).length} fail, '
+    '${(report['notComparedRows'] as List).length} notCompared)',
+  );
+  if (report['status'] != 'pass') exitCode = 1;
+}
+
+/// Compares one recorded product observation per declared corpus row with the
+/// validated frozen golden. The caller supplies the observation from the live
+/// `--requests` run or from a copied `--requests` report; both use this exact
+/// function.
+Map<String, Object?> compareRequestRows({
+  required Map<String, dynamic> corpus,
+  required RequestCorpusIdentity corpusIdentity,
+  required Map<String, dynamic> manifest,
+  required String manifestSha256,
+  required Map<String, dynamic> golden,
+  required String goldenSha256,
+  required String goldenPath,
+  required List<Map<String, Object?>> observations,
+  required List<Map<String, Object?>> serverUnmatchedRequests,
+  required List<Map<String, Object?>> serverErrors,
+  required List<Map<String, Object?>> analysisErrors,
+  String? sourceStatus,
+  String? library,
+  String? librarySha256,
+  String? observedPath,
+  String? observedSha256,
+  bool? replayClosed,
+  bool? nativeDisposed,
+}) {
+  checkRequestGolden(
+    corpus: corpus,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
+    golden: golden,
+    goldenSha256: goldenSha256,
+  );
+  if (sourceStatus != null &&
+      sourceStatus != 'pass' &&
+      sourceStatus != 'fail') {
+    throw const FormatException('the source report status is not pass/fail');
+  }
+  final corpusRows = _requestList(corpus['rows'], 'request corpus rows');
+  final goldenRows = _requestList(golden['rows'], 'the golden rows');
+  if (observations.isEmpty) {
+    throw const FormatException('the product observation holds no rows');
+  }
+  if (observations.length != corpusRows.length) {
+    throw FormatException(
+      'the product recorded ${observations.length} rows for '
+      '${corpusRows.length} corpus rows',
+    );
+  }
+  if (library != null || librarySha256 != null) {
+    if (!_isSha256Text(librarySha256)) {
+      throw const FormatException('the native library pin is missing');
+    }
+  }
+  if (observedPath != null || observedSha256 != null) {
+    _requestText(observedPath, 'the observed report path');
+    if (!_isSha256Text(observedSha256)) {
+      throw const FormatException('the observed report pin is missing');
+    }
+  }
+  final declaredKeys = <String>{
+    for (final raw in _requestList(corpus['responses'], 'request responses'))
+      '${raw['method']} ${raw['path']}',
+  };
+  final rows = <Map<String, Object?>>[];
+  final unmatched = <Map<String, Object?>>[];
+  final ids = <String>{};
+  var observedRequests = 0;
+  for (var index = 0; index < corpusRows.length; index++) {
+    final corpusRow = _requestObject(
+      corpusRows[index],
+      'request corpus row $index',
+    );
+    final id = _requestText(corpusRow['id'], 'request corpus row $index id');
+    final observed = observations[index];
+    final observedId = _requestText(
+      observed['id'],
+      'the observed row $index id',
+    );
+    if (observedId != id) {
+      throw FormatException('observed row identity mismatch at index $index');
+    }
+    if (!ids.add(id)) {
+      throw FormatException('the observed row id is duplicated: $id');
+    }
+    final outcome = _requestText(
+      observed['outcome'],
+      'the observed row $id outcome',
+    );
+    if (outcome == 'ok') {
+      if (observed['status'] is! int) {
+        throw FormatException('the observed row $id has no status');
+      }
+      _requestString(observed['body'], 'the observed row $id body');
+    } else if (outcome == 'error') {
+      _requestText(observed['error'], 'the observed row $id error');
+    } else {
+      throw FormatException('the observed row $id has an unknown outcome');
+    }
+    final rawRequests = _requestList(
+      observed['requests'],
+      'the observed row $id requests',
+    );
+    if (rawRequests.isEmpty) {
+      throw FormatException('the observed row $id holds no requests');
+    }
+    final requests = <Map<String, dynamic>>[];
+    for (
+      var requestIndex = 0;
+      requestIndex < rawRequests.length;
+      requestIndex++
+    ) {
+      final request = _requestObject(
+        rawRequests[requestIndex],
+        'the observed row $id request $requestIndex',
+      );
+      _checkRequestCarrier(
+        request,
+        'the observed row $id request $requestIndex',
+      );
+      requests.add(request);
+      observedRequests++;
+      if (!declaredKeys.contains('${request['method']} ${request['path']}')) {
+        unmatched.add({
+          'row': id,
+          'index': requestIndex,
+          ...request,
+          'declared': false,
+        });
+      }
+    }
+    final frozen = _requestObject(goldenRows[index], 'the golden row $index');
+    rows.add(_compareRow(id, frozen, observed, requests, declaredKeys));
+  }
+
+  // A replay server can see a request that the row slice did not attribute
+  // (for example a connection-level request). Keep that actual request too and
+  // fail, rather than hiding it behind a summary.
+  for (var index = 0; index < serverUnmatchedRequests.length; index++) {
+    final raw = Map<String, dynamic>.from(serverUnmatchedRequests[index]);
+    _checkRequestCarrier(raw, 'the server unexpected request $index');
+    final duplicated = unmatched.any(
+      (entry) =>
+          entry['method'] == raw['method'] &&
+          entry['path'] == raw['path'] &&
+          entry['rawQuery'] == raw['rawQuery'] &&
+          entry['body'] == raw['body'],
+    );
+    if (!duplicated) {
+      unmatched.add({...raw, 'row': raw['row'], 'serverObserved': true});
+    }
+  }
+
   final failed = rows.where((row) => row['status'] == 'fail').toList();
   final notCompared = rows
       .where((row) => row['status'] == 'notCompared')
       .toList();
-  final report = <String, Object?>{
+  final executionFailures = <String>[
+    if (sourceStatus != null && sourceStatus != 'pass')
+      'sourceStatus=$sourceStatus',
+    if (replayClosed == false) 'replayClosed=false',
+    if (nativeDisposed == false) 'nativeDisposed=false',
+    if (serverErrors.isNotEmpty) 'serverErrors=${serverErrors.length}',
+    if (analysisErrors.isNotEmpty) 'analysisErrors=${analysisErrors.length}',
+    if (unmatched.isNotEmpty) 'unmatchedRequests=${unmatched.length}',
+  ];
+  final status = failed.isEmpty && executionFailures.isEmpty ? 'pass' : 'fail';
+  final targetApplication = _requestObject(
+    _requestObject(
+      manifest['baseline'],
+      'request manifest baseline',
+    )['application'],
+    'request manifest target application',
+  );
+  final harness = _requestObject(
+    manifest['harness'],
+    'request manifest harness',
+  );
+  final corpusSource = (harness['sources'] as List)
+      .cast<Map<String, dynamic>>()
+      .firstWhere((source) => source['path'] == requestCorpusPath);
+  final run = _requestObject(manifest['run'], 'request manifest run');
+  final goldenPin = _requestObject(run['golden'], 'request manifest golden');
+  return <String, Object?>{
     'platform': Platform.operatingSystem,
     'mode': 'requests',
     'fixtureId': corpus['fixtureId'],
     'corpusVersion': corpus['corpusVersion'],
     'baselineCommit': corpus['baselineCommit'],
-    'golden': args[1],
-    'status': failed.isEmpty ? 'pass' : 'fail',
-    'origins': {'origin': origin, 'otherOrigin': otherOrigin},
-    'library': args[0],
+    'entryPoint': corpus['entryPoint'],
+    'corpusPath': requestCorpusPath,
+    'corpusSha256': corpusIdentity.rawSha256,
+    'corpusSha256Lf': corpusIdentity.lfSha256,
+    'corpusRecordedRawSha256': corpusIdentity.manifestRawPin,
+    'corpusInputForm': corpusIdentity.inputForm,
+    'corpusIdentity': {
+      ...corpusIdentity.toJson(),
+      'manifestSourceSha256': corpusSource['sha256'],
+      'manifestGitBlobSha256AtStartingHead':
+          corpusSource['gitBlobSha256AtStartingHead'],
+    },
+    'manifest': requestManifestPath,
+    'manifestSha256': manifestSha256,
+    'golden': goldenPath,
+    'goldenSha256': goldenSha256,
+    'target': {
+      'baselineCommit': corpus['baselineCommit'],
+      'deviceFingerprint': _requestObject(
+        manifest['device'],
+        'request manifest device',
+      )['fingerprint'],
+      'applicationPackage': targetApplication['package'],
+      'targetApkSha256': targetApplication['sha256'],
+      'harnessApkSha256': harness['apkSha256'],
+    },
+    'capture': {
+      'recordedAt': manifest['recordedAt'],
+      'goldenPath': goldenPin['path'],
+      'goldenSha256': goldenPin['sha256'],
+      'captures': run['captures'],
+    },
+    'library': library,
+    'librarySha256': librarySha256,
+    'observed': ?observedPath,
+    'observedSha256': ?observedSha256,
+    'sourceStatus': ?sourceStatus,
+    'executionFailures': executionFailures,
     'ignoredHeaders': _ignoredHeaders.toList(),
     'declaredDivergences': _declaredDivergences.map(
       (row, entry) => MapEntry(row, entry['reason']!),
     ),
+    'status': status,
     'rows': rows,
     'passedRows': [
       for (final row in rows)
@@ -634,19 +2230,23 @@ Future<void> _runRequestOracle(List<String> args) async {
     ],
     'failedRows': [for (final row in failed) row['id']],
     'notComparedRows': [for (final row in notCompared) row['id']],
+    'unmatchedRequests': unmatched,
+    'serverUnmatchedRequests': serverUnmatchedRequests,
+    'serverErrors': serverErrors,
+    'analysisErrors': analysisErrors,
+    'cleanup': {
+      'replayClosed': ?replayClosed,
+      'nativeDisposed': ?nativeDisposed,
+    },
+    'counts': {
+      'corpusRows': corpusRows.length,
+      'goldenRows': goldenRows.length,
+      'observedRows': observations.length,
+      'observedRequests': observedRequests,
+      'goldenRequests': (golden['requests'] as List).length,
+      'unmatchedRequests': unmatched.length,
+    },
   };
-  output.writeAsStringSync(
-    '${const JsonEncoder.withIndent('  ').convert(report)}\n',
-  );
-  for (final row in rows) {
-    stdout.writeln('${row['status']}\t${row['id']}');
-  }
-  stdout.writeln(
-    'request corpus: ${report['status']} (${rows.length} rows, '
-    '${(report['passedRows'] as List).length} pass, '
-    '${failed.length} fail, ${notCompared.length} notCompared)',
-  );
-  if (failed.isNotEmpty) exitCode = 1;
 }
 
 /// One row's product-side run: the resolved rule text, the transport call and
@@ -732,19 +2332,31 @@ Map<String, Object?> _compareRow(
   Map<String, dynamic> frozen,
   Map<String, Object?> observed,
   List<Map<String, dynamic>> liberRequests,
+  Set<String> declaredRequestKeys,
 ) {
+  final declaredNames = <String>{};
+  if (observed['declaredHeaders'] != null) {
+    for (final name in _requestList(
+      observed['declaredHeaders'],
+      'the observed row $id declared headers',
+    )) {
+      declaredNames.add(
+        _requestText(name, 'the observed row $id header name').toLowerCase(),
+      );
+    }
+  }
   final liber = <String, Object?>{
     'requests': liberRequests,
     'outcome': observed['outcome'],
     if (observed['status'] != null) 'status': observed['status'],
     if (observed['body'] != null) 'body': observed['body'],
     if (observed['error'] != null) 'error': observed['error'],
+    if (declaredNames.isNotEmpty)
+      'declaredHeaders': declaredNames.toList()..sort(),
   };
   final mismatches = <Map<String, Object?>>[];
   final divergences = <Map<String, Object?>>[];
-  final declaredNames = {
-    for (final name in (observed['declaredHeaders'] as List)) '$name',
-  };
+  final unmatched = <Map<String, Object?>>[];
   final frozenRequests = (frozen['requests'] as List)
       .cast<Map<String, dynamic>>();
   if (frozenRequests.length != liberRequests.length) {
@@ -757,13 +2369,32 @@ Map<String, Object?> _compareRow(
       divergences,
     );
   }
-  for (var index = 0; index < frozenRequests.length; index++) {
-    final expected = frozenRequests[index];
-    if (index >= liberRequests.length) {
-      _record(id, 'requests[$index]', expected, null, mismatches, divergences);
+  for (var index = 0; index < liberRequests.length; index++) {
+    final actual = liberRequests[index];
+    if (!declaredRequestKeys.contains(
+      '${actual['method']} ${actual['path']}',
+    )) {
+      final unexpected = {
+        'row': id,
+        'index': index,
+        ...actual,
+        'declared': false,
+      };
+      unmatched.add(unexpected);
+      _record(
+        id,
+        'requests[$index].unmatched',
+        null,
+        unexpected,
+        mismatches,
+        divergences,
+      );
+    }
+    if (index >= frozenRequests.length) {
+      _record(id, 'requests[$index]', null, actual, mismatches, divergences);
       continue;
     }
-    final actual = liberRequests[index];
+    final expected = frozenRequests[index];
     for (final field in ['method', 'path', 'rawQuery', 'body']) {
       if (expected[field] != actual[field]) {
         _record(
@@ -796,6 +2427,22 @@ Map<String, Object?> _compareRow(
           divergences,
         );
       }
+    }
+  }
+  if (frozenRequests.length > liberRequests.length) {
+    for (
+      var index = liberRequests.length;
+      index < frozenRequests.length;
+      index++
+    ) {
+      _record(
+        id,
+        'requests[$index]',
+        frozenRequests[index],
+        null,
+        mismatches,
+        divergences,
+      );
     }
   }
   // The outcome is compared as its two shapes (a completed call with a status
@@ -832,13 +2479,20 @@ Map<String, Object?> _compareRow(
   return {
     'id': id,
     'status': status,
-    'frozen': {'requests': frozenRequests, 'outcome': frozen['outcome']},
+    'frozen': {
+      'requests': frozenRequests,
+      'outcome': frozen['outcome'],
+      if (frozen['status'] != null) 'status': frozen['status'],
+      if (frozen['body'] != null) 'body': frozen['body'],
+      if (frozen['error'] != null) 'error': frozen['error'],
+    },
     'liber': liber,
     'liberRule': {
       'ruleText': observed['ruleText'],
       'resolvedUrl': observed['resolvedUrl'],
       'method': observed['method'],
     },
+    if (unmatched.isNotEmpty) 'unmatchedRequests': unmatched,
     'mismatches': mismatches,
     'divergences': divergences,
   };
@@ -863,175 +2517,5 @@ void _record(
     divergences.add(entry);
   } else {
     mismatches.add(entry);
-  }
-}
-
-/// The corpus' replay server: every response comes from the corpus, a row is
-/// sliced out of the request log by offset, and an undeclared request is
-/// answered 404 (which this corpus has none of).
-class _ReplayServer {
-  _ReplayServer(this.corpus, {required this.origin, required this.otherOrigin});
-
-  final Map<String, dynamic> corpus;
-  final String origin;
-  final String otherOrigin;
-  final requests = <Map<String, Object?>>[];
-  final _clients = <Socket>{};
-  late final ServerSocket _server;
-
-  Future<_ReplayServer> start() async {
-    _server = await ServerSocket.bind(InternetAddress.anyIPv4, _requestPort);
-    _server.listen(_accept);
-    return this;
-  }
-
-  void _accept(Socket socket) {
-    _clients.add(socket);
-    var buffer = '';
-    var served = 0;
-    socket.listen(
-      (bytes) {
-        buffer += latin1.decode(bytes);
-        while (true) {
-          final end = buffer.indexOf('\r\n\r\n');
-          if (end < 0) return;
-          final head = buffer.substring(0, end);
-          final lines = head.split('\r\n');
-          // A leading CRLF is legal before a request line.
-          while (lines.isNotEmpty && lines.first.isEmpty) {
-            lines.removeAt(0);
-          }
-          if (lines.isEmpty) return;
-          final requestLine = lines.first.split(' ');
-          if (requestLine.length < 2) return;
-          final method = requestLine[0];
-          final target = requestLine[1];
-          final headers = <String, Object?>{};
-          for (final line in lines.skip(1)) {
-            final separator = line.indexOf(':');
-            if (separator <= 0) continue;
-            final name = line.substring(0, separator).trim().toLowerCase();
-            final value = line.substring(separator + 1).trim();
-            final existing = headers[name];
-            headers[name] = existing == null ? value : '$existing, $value';
-          }
-          final declaredLength = int.tryParse(
-            '${headers['content-length'] ?? ''}',
-          );
-          final chunked = '${headers['transfer-encoding'] ?? ''}'
-              .toLowerCase()
-              .contains('chunked');
-          String body;
-          int consumed;
-          if (chunked) {
-            // The platform frames a body of unknown length with chunked
-            // encoding: Dart's HttpClient does for a request whose
-            // contentLength was never set, OkHttp does not for a String body.
-            final parsed = _readChunked(buffer.substring(end + 4));
-            if (parsed == null) return;
-            body = parsed.body;
-            consumed = end + 4 + parsed.consumed;
-          } else {
-            final length = declaredLength ?? 0;
-            if (buffer.length < end + 4 + length) return;
-            body = length > 0
-                ? buffer.substring(end + 4, end + 4 + length)
-                : '';
-            consumed = end + 4 + length;
-          }
-          buffer = buffer.substring(consumed);
-          served++;
-          final at = target.indexOf('?');
-          final path = at < 0 ? target : target.substring(0, at);
-          final rawQuery = at < 0 ? '' : target.substring(at + 1);
-          final declared = (corpus['responses'] as List)
-              .cast<Map<String, dynamic>>()
-              .firstWhere(
-                (entry) => entry['method'] == method && entry['path'] == path,
-                orElse: () => <String, dynamic>{},
-              );
-          requests.add({
-            'method': method,
-            'path': path,
-            'rawQuery': rawQuery,
-            'headers': headers,
-            'body': body,
-          });
-          final status = declared['status'] as int?;
-          final responseBody = _substitute(
-            declared['body'] as String? ?? 'undeclared replay request',
-          );
-          final responseHeaders = <String, String>{
-            for (final entry
-                in (declared['headers'] as Map<String, dynamic>? ??
-                        const <String, dynamic>{})
-                    .entries)
-              entry.key: _substitute('${entry.value}'),
-          };
-          final bytes = utf8.encode(responseBody);
-          final response = StringBuffer()
-            ..writeln('HTTP/1.1 ${status ?? 404} OK')
-            ..writeln('Content-Type: text/plain')
-            ..writeln('Content-Length: ${bytes.length}');
-          responseHeaders.forEach(
-            (name, value) => response.writeln('$name: $value'),
-          );
-          response.write('\r\n');
-          socket.add(latin1.encode(response.toString()));
-          socket.add(bytes);
-          unawaited(socket.flush());
-          if (served > 64) {
-            socket.destroy();
-            return;
-          }
-        }
-      },
-      onDone: () {
-        socket.destroy();
-        _clients.remove(socket);
-      },
-      onError: (_) {
-        socket.destroy();
-        _clients.remove(socket);
-      },
-    );
-  }
-
-  String _substitute(String text) => text
-      .replaceAll(r'$OTHER_ORIGIN', otherOrigin)
-      .replaceAll(r'$ORIGIN', origin);
-
-  /// One chunked body, or null while the buffer does not hold all of it yet.
-  static ({String body, int consumed})? _readChunked(String rest) {
-    var index = 0;
-    final body = StringBuffer();
-    while (true) {
-      final lineEnd = rest.indexOf('\r\n', index);
-      if (lineEnd < 0) return null;
-      final size = int.tryParse(
-        rest.substring(index, lineEnd).split(';').first.trim(),
-        radix: 16,
-      );
-      if (size == null) return null;
-      index = lineEnd + 2;
-      if (size == 0) {
-        final trailerEnd = rest.indexOf('\r\n', index);
-        if (trailerEnd < 0) return null;
-        return (body: body.toString(), consumed: trailerEnd + 2);
-      }
-      if (rest.length < index + size + 2) return null;
-      body.write(rest.substring(index, index + size));
-      index += size + 2;
-    }
-  }
-
-  List<Map<String, dynamic>> since(int offset) =>
-      requests.skip(offset).cast<Map<String, dynamic>>().toList();
-
-  Future<void> close() async {
-    await _server.close();
-    for (final socket in _clients.toList()) {
-      socket.destroy();
-    }
   }
 }
