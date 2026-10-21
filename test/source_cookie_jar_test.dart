@@ -211,6 +211,75 @@ void main() {
     },
   );
 
+  test('the attribute predicates keep the frozen parser boundaries', () async {
+    Future<bool> persistent(List<String> response) async {
+      final jar = SourceCookieJar();
+      await jar.accept('a.test', [
+        'first=f; Max-Age=60',
+        'sess=s',
+        ...response,
+      ]);
+      final header = jar.cookiesFor('https://a.test/x');
+      if (header == 'first=f; m=1; sess=s') return true;
+      if (header == 'first=f; sess=s; m=1') return false;
+      throw StateError('unexpected header: $header');
+    }
+
+    // A JVM `Long.parseLong` reads every Unicode decimal digit, so the
+    // Arabic-Indic and fullwidth small values are max ages, alone, signed, or
+    // mixed with ASCII digits.
+    for (final value in <String>[
+      '\u0665',
+      '\uFF15',
+      '3\u0665',
+      '\u06653',
+      '+\u0665',
+      '-\u0665',
+      '\u0665\u0665',
+    ]) {
+      expect(
+        await persistent(['m=1; Max-Age=$value']),
+        isTrue,
+        reason: 'Max-Age=$value',
+      );
+    }
+    // A value too large for a long is still one only in the source's ASCII
+    // `-?\d+` retry form: Unicode digits and a plus sign have no fallback.
+    expect(await persistent(['m=1; Max-Age=${'\u0665' * 20}']), isFalse);
+    expect(await persistent(['m=1; Max-Age=${'9' * 20}']), isTrue);
+    expect(await persistent(['m=1; Max-Age=-${'9' * 20}']), isTrue);
+    expect(await persistent(['m=1; Max-Age=+${'9' * 20}']), isFalse);
+
+    // okhttp trims exactly tab, line feed, form feed, carriage return and
+    // space, around the value and around the attribute name.
+    for (final whitespace in <String>['\t', '\n', '\f', '\r', ' ']) {
+      expect(
+        await persistent(['m=1; Max-Age=${whitespace}3$whitespace']),
+        isTrue,
+        reason: 'value whitespace ${whitespace.codeUnitAt(0)}',
+      );
+      expect(
+        await persistent(['m=1; ${whitespace}Max-Age=3']),
+        isTrue,
+        reason: 'name whitespace ${whitespace.codeUnitAt(0)}',
+      );
+    }
+    // A vertical tab, a NUL, a no-break space and an em space are data, so the
+    // attribute is not the one the parser reads.
+    for (final whitespace in <String>['\u000b', '\u0000', '\u00a0', '\u2003']) {
+      expect(
+        await persistent(['m=1; Max-Age=${whitespace}3']),
+        isFalse,
+        reason: 'value control ${whitespace.codeUnitAt(0)}',
+      );
+      expect(
+        await persistent(['m=1; ${whitespace}Max-Age=3']),
+        isFalse,
+        reason: 'name control ${whitespace.codeUnitAt(0)}',
+      );
+    }
+  });
+
   test('the jar keys by registrable domain, not by host', () async {
     final jar = SourceCookieJar();
     await jar.set('https://www.example.co.uk/x', 'sid=1');

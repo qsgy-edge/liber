@@ -934,40 +934,85 @@ bool _responseCookieIsPersistent(String setCookie) {
   return persistent;
 }
 
-/// okhttp's `trimSubstring`: whitespace is every character `<= ' '`.
+/// okhttp's `trimSubstring`, whose whitespace set is exactly tab, line feed,
+/// form feed, carriage return and space (`Util.kt`'s
+/// `indexOfFirstNonAsciiWhitespace`: code units 9, 10, 12, 13 and 32). A
+/// vertical tab, a NUL or any other control character is data here, so an
+/// attribute it touches is not recognised, as in the frozen parser.
+bool _isCookieTrimWhitespace(int code) =>
+    code == 0x09 ||
+    code == 0x0a ||
+    code == 0x0c ||
+    code == 0x0d ||
+    code == 0x20;
+
 String _cookieTrim(String text) {
   var start = 0;
   var end = text.length;
-  while (start < end && text.codeUnitAt(start) <= 0x20) {
+  while (start < end && _isCookieTrimWhitespace(text.codeUnitAt(start))) {
     start++;
   }
-  while (end > start && text.codeUnitAt(end - 1) <= 0x20) {
+  while (end > start && _isCookieTrimWhitespace(text.codeUnitAt(end - 1))) {
     end--;
   }
   return text.substring(start, end);
 }
 
-/// okhttp's `parseMaxAge` (`Cookie.kt:565-580`): a value that parses as a signed
-/// 64-bit integer is a max age (whatever its sign); a *decimal* integer too large
-/// for that type is still one; anything else is not, and its
-/// `NumberFormatException` makes the parser ignore the attribute. The spelling is
-/// the JVM's `Long.parseLong`, so `+5` parses, while `0x10`, `1_0` and a
-/// `+`-prefixed overflow do not (Dart's own `int.parse` would accept the first
-/// two and must not stand in for it).
+/// One Unicode decimal digit (`Character.digit`'s `Nd` category), by its numeric
+/// value, or null for every other code point.
+///
+/// The SDK's Unicode regular-expression support classifies the code point and
+/// the value is its offset from the start of its own contiguous ten-digit block,
+/// so no maintained digit table is needed.
+int? _cookieDecimalDigit(int rune) {
+  if (!_cookieDecimalDigitPattern.hasMatch(String.fromCharCode(rune))) {
+    return null;
+  }
+  var start = rune;
+  var steps = 0;
+  while (steps < 10 &&
+      _cookieDecimalDigitPattern.hasMatch(String.fromCharCode(start - 1))) {
+    start--;
+    steps++;
+  }
+  return rune - start;
+}
+
+final _cookieDecimalDigitPattern = RegExp(r'^\p{Nd}$', unicode: true);
+final _cookieLongMax = BigInt.parse('9223372036854775807');
+final _cookieLongMinMagnitude = BigInt.parse('9223372036854775808');
+
+/// Whether the value is a JVM `Long` (`Long.parseLong`): an optional ASCII sign,
+/// then Unicode decimal digits (`Character.digit` reads every `Nd`, so an
+/// Arabic-Indic `٥` or a fullwidth `５` is a five) whose magnitude fits a signed
+/// 64-bit integer. Dart's `int.parse` reads ASCII only and must not stand in for
+/// it.
+bool _cookieMaxAgeParsesAsLong(String value) {
+  var index = 0;
+  var negative = false;
+  if (value.isNotEmpty && (value[0] == '+' || value[0] == '-')) {
+    negative = value[0] == '-';
+    index = 1;
+  }
+  if (index >= value.length) return false;
+  var magnitude = BigInt.zero;
+  for (final rune in value.substring(index).runes) {
+    final digit = _cookieDecimalDigit(rune);
+    if (digit == null) return false;
+    magnitude = magnitude * BigInt.from(10) + BigInt.from(digit);
+  }
+  return magnitude <= (negative ? _cookieLongMinMagnitude : _cookieLongMax);
+}
+
+/// okhttp's `parseMaxAge` (`Cookie.kt:565-580`): a value that parses as a JVM
+/// `Long` is a max age (whatever its sign); an integer too large for that type
+/// is still one when it has the decimal form the source retries; anything else
+/// is not, and its `NumberFormatException` makes the parser ignore the
+/// attribute. The retry's `-?\d+` is Java's ASCII `\d`, so a `+`-prefixed or
+/// non-ASCII overflowing value stays invalid.
 bool _cookieMaxAgeIsValid(String value) {
-  if (!RegExp(r'^[+-]?\d+$').hasMatch(value)) return false;
-  final negative = value.startsWith('-');
-  final magnitude = value.substring(negative || value.startsWith('+') ? 1 : 0);
-  final digits = magnitude.replaceFirst(RegExp(r'^0+'), '');
-  if (digits.isEmpty) return true;
-  final limit = negative ? '9223372036854775808' : '9223372036854775807';
-  final fits = digits.length != limit.length
-      ? digits.length < limit.length
-      : digits.compareTo(limit) <= 0;
-  if (fits) return true;
-  // An integer too big for a long is still a max age only in the decimal form
-  // `parseMaxAge` retries (`-?\d+`); a `+` sign is not in that form.
-  return !value.startsWith('+');
+  if (_cookieMaxAgeParsesAsLong(value)) return true;
+  return RegExp(r'^-?[0-9]+$').hasMatch(value);
 }
 
 final _cookieTimePattern = RegExp(r'^(\d{1,2}):(\d{1,2}):(\d{1,2})[^\d]*$');

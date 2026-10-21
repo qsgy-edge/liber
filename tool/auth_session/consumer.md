@@ -133,9 +133,13 @@ the frozen `CookieStore.getCookie` does.
   already persistent keeps its position; a session-first name written
   persistently joins the persistent block then. A response cookie is persistent
   when its `Expires` or `Max-Age` attribute is valid to the frozen okhttp 4.12.0
-  parser (the same token-date scan, two-digit-year mapping and integer rules;
-  an invalid attribute is ignored and never resets an earlier valid one), and a
-  script `setCookie`/`replaceCookie` is persistent. Nothing here enforces an
+  parser — the same token-date scan and two-digit-year mapping, the same
+  `Long.parseLong` integer rules (any Unicode decimal digit that fits a signed
+  64-bit value, and the source's ASCII `-?\d+` overflow retry), and the same
+  five-code-unit whitespace trim (tab, line feed, form feed, carriage return and
+  space; every other control character is data) — and a script
+  `setCookie`/`replaceCookie` is persistent. An invalid attribute is ignored
+  and never resets an earlier valid one. Nothing here enforces an
   expiry, rejects an input or stores a second value: the durable row is still
   the one row per pair, and every deletion path (`removeCookie`, a source
   delete, a clear) drops the ordering metadata with the value.
