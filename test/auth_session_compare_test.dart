@@ -17,14 +17,17 @@ Map<String, dynamic> copy(Map<String, dynamic> source) =>
     jsonDecode(jsonEncode(source)) as Map<String, dynamic>;
 
 /// The LF pin of the checkout's corpus bytes, as the runner computes it.
-final String corpusLf =
-    sha256Text(File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n'));
+final String corpusLf = sha256Text(
+  File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n'),
+);
 
 Map<String, String> jsonMapOf(Object? text) {
   if (text is! String) return const {};
   final decoded = jsonDecode(text);
   if (decoded is! Map) return const {};
-  return {for (final entry in decoded.entries) '${entry.key}': '${entry.value}'};
+  return {
+    for (final entry in decoded.entries) '${entry.key}': '${entry.value}',
+  };
 }
 
 /// The login header one source holds after the corpus step at [through], read
@@ -44,9 +47,7 @@ Map<String, String> loginHeaderAt(
     if (kind == 'login') {
       final source = authSessionSourceOf(corpus, '${step['source']}');
       final script = '${(source['bookSource'] as Map)['loginUrl']}';
-      final match = RegExp(
-        r"putLoginHeader\('([^']+)'\)",
-      ).firstMatch(script);
+      final match = RegExp(r"putLoginHeader\('([^']+)'\)").firstMatch(script);
       if (match != null) {
         bySource['${step['source']}'] = jsonMapOf(match.group(1));
       }
@@ -62,10 +63,7 @@ Map<String, String> loginHeaderAt(
 /// The step one declared request belongs to, by the address the step itself
 /// declares. The corpus declares its requests in step order; this recovers the
 /// same attribution the device capture records, without assuming a count.
-List<String> stagePerRequest(
-  Map<String, dynamic> corpus,
-  String phase,
-) {
+List<String> stagePerRequest(Map<String, dynamic> corpus, String phase) {
   final steps = authSessionSteps(corpus, phase);
   final requests = authSessionExpectedRequests(corpus, phase);
   final stages = <String>[];
@@ -128,9 +126,10 @@ Map<String, Object?> nativeProbe({
   required String? session,
   required String? loginHeader,
 }) {
-  final effective = [persistent, session ?? '']
-      .where((part) => part.isNotEmpty)
-      .join('; ');
+  final effective = [
+    persistent,
+    session ?? '',
+  ].where((part) => part.isNotEmpty).join('; ');
   return {
     'url': url,
     'domain': Uri.parse(url).host,
@@ -234,7 +233,9 @@ class Fixture {
       final login = loginHeaderAt(
         corpus,
         phase,
-        '${step['kind']}' == 'login' ? stepIndex[stage]! - 1 : stepIndex[stage]!,
+        '${step['kind']}' == 'login'
+            ? stepIndex[stage]! - 1
+            : stepIndex[stage]!,
       );
       final path = '${declared['path']}';
       final headers = <String, Object?>{};
@@ -272,7 +273,10 @@ class Fixture {
     }
     final observations = <Map<String, Object?>>[
       for (var index = 0; index < steps.length; index++)
-        {'id': steps[index]['id'], 'value': observation(phase, steps[index], index)},
+        {
+          'id': steps[index]['id'],
+          'value': observation(phase, steps[index], index),
+        },
     ];
     final target = corpus['target'] as Map;
     return {
@@ -466,7 +470,9 @@ class Fixture {
       final url = authSessionSourceUrl(authSessionSourceOf(corpus, id));
       return nativeProbe(
         url: url,
-        persistent: id == 'A' ? 'sidA=after; extraA=e2' : 'scriptB=loginOverride; loginCookieB=abc',
+        persistent: id == 'A'
+            ? 'sidA=after; extraA=e2'
+            : 'scriptB=loginOverride; loginCookieB=abc',
         session: null,
         loginHeader: loginHeader,
       );
@@ -589,7 +595,9 @@ class Fixture {
           'kind': 'state',
           'sessions': {
             for (final raw in step['sources'] as List)
-              '$raw': raw == 'A' ? (phase == 'seed' ? 'ssA=after; ss2=sx2' : '') : null,
+              '$raw': raw == 'A'
+                  ? (phase == 'seed' ? 'ssA=after; ss2=sx2' : '')
+                  : null,
           },
           'loginHeaders': {
             for (final raw in step['sources'] as List) '$raw': null,
@@ -821,17 +829,13 @@ void main() {
     test('the LF pin is the same for an LF and a CRLF checkout', () {
       final lf = File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n');
       final crlf = lf.replaceAll('\n', '\r\n');
-      expect(
-        sha256Text(crlf.replaceAll('\r\n', '\n')),
-        corpusLf,
-      );
+      expect(sha256Text(crlf.replaceAll('\r\n', '\n')), corpusLf);
       expect(sha256Text(lf), corpusLf);
     });
 
     test('a content edit, a lone CR and a BOM change the pin', () {
       final lf = File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n');
-      String lfHash(String text) =>
-          sha256Text(text.replaceAll('\r\n', '\n'));
+      String lfHash(String text) => sha256Text(text.replaceAll('\r\n', '\n'));
       expect(
         lfHash(lf.replaceFirst('synthetic-a-user', 'synthetic-x-user')),
         isNot(corpusLf),
@@ -855,10 +859,13 @@ void main() {
         final stages = stagePerRequest(corpus, phase);
         final requests = authSessionExpectedRequests(corpus, phase);
         expect(stages.length, requests.length);
-        expect(() => authSessionRequestStages(corpus, phase, [
-          for (var index = 0; index < requests.length; index++)
-            {...requests[index], 'stage': stages[index]},
-        ], 'requests'), returnsNormally);
+        expect(
+          () => authSessionRequestStages(corpus, phase, [
+            for (var index = 0; index < requests.length; index++)
+              {...requests[index], 'stage': stages[index]},
+          ], 'requests'),
+          returnsNormally,
+        );
       }
     });
   });
@@ -961,48 +968,50 @@ void main() {
       }
     });
 
-    test('a capture without its listener, ownership or provider receipt is refused',
-        () {
-      final listener = copy(fixture.seedGolden);
-      ((listener['cleanup'] as Map) as Map<String, dynamic>)['replay'] = {
-        'ok': false,
-        'listenersClosed': false,
-      };
-      final owner = copy(fixture.restartGolden);
-      ((owner['cleanup'] as Map) as Map<String, dynamic>)['scratchRemoved'] =
-          false;
-      final provider = copy(fixture.seedGolden);
-      final preflight = ((provider['webView'] as Map)['preflight'] as Map)
-          .cast<String, dynamic>();
-      (preflight['provider'] as Map)['versionName'] = '0.0.0.0';
-      expect(
-        () => checkAuthSessionGolden(
-          corpus: corpus,
-          corpusSha256Lf: corpusLf,
-          golden: listener,
-          phase: 'seed',
-        ),
-        throwsFormatException,
-      );
-      expect(
-        () => checkAuthSessionGolden(
-          corpus: corpus,
-          corpusSha256Lf: corpusLf,
-          golden: owner,
-          phase: 'restart',
-        ),
-        throwsFormatException,
-      );
-      expect(
-        () => checkAuthSessionGolden(
-          corpus: corpus,
-          corpusSha256Lf: corpusLf,
-          golden: provider,
-          phase: 'seed',
-        ),
-        throwsFormatException,
-      );
-    });
+    test(
+      'a capture without its listener, ownership or provider receipt is refused',
+      () {
+        final listener = copy(fixture.seedGolden);
+        ((listener['cleanup'] as Map) as Map<String, dynamic>)['replay'] = {
+          'ok': false,
+          'listenersClosed': false,
+        };
+        final owner = copy(fixture.restartGolden);
+        ((owner['cleanup'] as Map) as Map<String, dynamic>)['scratchRemoved'] =
+            false;
+        final provider = copy(fixture.seedGolden);
+        final preflight = ((provider['webView'] as Map)['preflight'] as Map)
+            .cast<String, dynamic>();
+        (preflight['provider'] as Map)['versionName'] = '0.0.0.0';
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: listener,
+            phase: 'seed',
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: owner,
+            phase: 'restart',
+          ),
+          throwsFormatException,
+        );
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: provider,
+            phase: 'seed',
+          ),
+          throwsFormatException,
+        );
+      },
+    );
   });
 
   group('product comparison', () {
@@ -1050,15 +1059,9 @@ void main() {
         orderOnly.first['expected'],
         contains('sidA=two; extraA=e1; loginSessA=t1'),
       );
-      expect(
-        orderOnly.first['observed'],
-        contains('loginSessA=t1; sidA=two'),
-      );
+      expect(orderOnly.first['observed'], contains('loginSessA=t1; sidA=two'));
       final notCompared = (report['notCompared'] as List).cast<Map>();
-      expect(
-        notCompared.any((row) => row['row'] == 'session-tier'),
-        isTrue,
-      );
+      expect(notCompared.any((row) => row['row'] == 'session-tier'), isTrue);
     });
 
     test('a product probe in the jar order fails on the raw value only', () {
@@ -1078,10 +1081,14 @@ void main() {
         'kind': 'login',
         'source': 'A',
       };
-      expect(surfacesOf(fixture.compare(seedProduct: value)), contains('observation'));
+      expect(
+        surfacesOf(fixture.compare(seedProduct: value)),
+        contains('observation'),
+      );
 
       final identity = copy(fixture.restartProduct);
-      ((identity['identity'] as Map) as Map<String, dynamic>)['corpusSha256Lf'] =
+      ((identity['identity'] as Map)
+              as Map<String, dynamic>)['corpusSha256Lf'] =
           'ff' * 32;
       expect(
         surfacesOf(fixture.compare(restartProduct: identity)),
@@ -1148,9 +1155,7 @@ void main() {
         surfacesOf(fixture.compare(seedProduct: withCookie('scriptA=mutated'))),
         contains('product-request-headers'),
       );
-      final reordered = withCookie(
-        'loginRespA=p1; scriptA=one; loginSessA=t1',
-      );
+      final reordered = withCookie('loginRespA=p1; scriptA=one; loginSessA=t1');
       final report = fixture.compare(seedProduct: reordered);
       expect(report['status'], 'fail');
       expect(surfacesOf(report), contains('product-request-headers'));
@@ -1169,7 +1174,8 @@ void main() {
       Map<String, dynamic> withXOver(String value) {
         final report = copy(fixture.seedProduct);
         final headers =
-            (((report['requests'] as List)[indexOfLoginWins()] as Map)['headers']
+            (((report['requests'] as List)[indexOfLoginWins()]
+                        as Map)['headers']
                     as Map)
                 .cast<String, Object?>();
         headers['x-over'] = value;
@@ -1195,9 +1201,11 @@ void main() {
 
     test('a product cookie probe that claims a session tier fails', () {
       final report = copy(fixture.seedProduct);
-      final row = (report['observations'] as List).firstWhere(
-        (raw) => (raw as Map)['id'] == 'seed.cookies.A.afterSearch',
-      ) as Map;
+      final row =
+          (report['observations'] as List).firstWhere(
+                (raw) => (raw as Map)['id'] == 'seed.cookies.A.afterSearch',
+              )
+              as Map;
       final value = (row['value'] as Map).cast<String, Object?>();
       final probe = (value['A'] as Map).cast<String, Object?>();
       probe['session'] = 'ssA=s2';
@@ -1208,9 +1216,11 @@ void main() {
     });
 
     Map<String, Object?> afterProbe(Map<String, dynamic> report, String id) {
-      final row = (report['observations'] as List).firstWhere(
-        (raw) => (raw as Map)['id'] == id,
-      ) as Map;
+      final row =
+          (report['observations'] as List).firstWhere(
+                (raw) => (raw as Map)['id'] == id,
+              )
+              as Map;
       return ((row['value'] as Map)['after'] as Map).cast<String, Object?>();
     }
 
@@ -1219,7 +1229,10 @@ void main() {
       final baselineKeys = (baseline['mismatchKeys'] as List)
           .cast<String>()
           .toSet();
-      if (afterProbe(fixture.seedProduct, 'seed.cookies.A.removeLoginHeader')['effective'] !=
+      if (afterProbe(
+            fixture.seedProduct,
+            'seed.cookies.A.removeLoginHeader',
+          )['effective'] !=
           '') {
         throw StateError('the fixture probe is not an empty jar');
       }
@@ -1274,11 +1287,11 @@ void main() {
       );
       staleProbe['effective'] = 'fabricated=value';
       staleProbe['persistent'] = 'fabricated=value';
-      final stale = (fixture.compare(seedProduct: inconsistent)['mismatchKeys']
-              as List)
-          .cast<String>()
-          .toSet()
-          .difference(baselineKeys);
+      final stale =
+          (fixture.compare(seedProduct: inconsistent)['mismatchKeys'] as List)
+              .cast<String>()
+              .toSet()
+              .difference(baselineKeys);
       expect(stale, contains(effectiveKey));
       expect(
         stale,
@@ -1315,22 +1328,16 @@ void main() {
       );
       // The only policy row left is the ordinary persistent/session shape one;
       // the effective/pair allowance itself never reaches a seed observation.
-      expect(
-        [
-          for (final row in (compared['notCompared'] as List).cast<Map>())
-            if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
-              '${row['path']}',
-        ],
-        isNot(contains('seed.cookies.A.removeLoginHeader.after.effective')),
-      );
-      expect(
-        [
-          for (final row in (compared['notCompared'] as List).cast<Map>())
-            if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
-              '${row['path']}',
-        ],
-        isNot(contains('seed.cookies.A.removeLoginHeader.after.keys')),
-      );
+      expect([
+        for (final row in (compared['notCompared'] as List).cast<Map>())
+          if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
+            '${row['path']}',
+      ], isNot(contains('seed.cookies.A.removeLoginHeader.after.effective')));
+      expect([
+        for (final row in (compared['notCompared'] as List).cast<Map>())
+          if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
+            '${row['path']}',
+      ], isNot(contains('seed.cookies.A.removeLoginHeader.after.keys')));
       expect(seedProbe['effective'], '');
     });
 
@@ -1340,11 +1347,12 @@ void main() {
           .cast<String>()
           .toSet();
       final report = copy(fixture.restartProduct);
-      final row = (report['observations'] as List).firstWhere(
-        (raw) => (raw as Map)['id'] == 'restart.cookies.before',
-      ) as Map;
-      final probe = ((row['value'] as Map)['A'] as Map)
-          .cast<String, Object?>();
+      final row =
+          (report['observations'] as List).firstWhere(
+                (raw) => (raw as Map)['id'] == 'restart.cookies.before',
+              )
+              as Map;
+      final probe = ((row['value'] as Map)['A'] as Map).cast<String, Object?>();
       const extended = 'sidA=after; extraA=e2; ssA=after; ss2=sx2';
       probe['effective'] = extended;
       probe['persistent'] = extended;
@@ -1374,24 +1382,29 @@ void main() {
           .toSet();
       const direct =
           'observation-cookie-tier|seed|seed.cookies.A.removeLoginHeader.after';
-      const nested =
-          'observation-cookie-tier|seed|seed.state.seed.cookies.A';
+      const nested = 'observation-cookie-tier|seed|seed.state.seed.cookies.A';
       Map<String, Object?> directProbe(Map<String, dynamic> report) =>
           afterProbe(report, 'seed.cookies.A.removeLoginHeader');
       Map<String, Object?> nestedProbe(Map<String, dynamic> report) {
-        final row = (report['observations'] as List).firstWhere(
-          (raw) => (raw as Map)['id'] == 'seed.state.seed',
-        ) as Map;
+        final row =
+            (report['observations'] as List).firstWhere(
+                  (raw) => (raw as Map)['id'] == 'seed.state.seed',
+                )
+                as Map;
         return ((row['value'] as Map)['cookies'] as Map)['A']
             as Map<String, Object?>;
       }
 
       // Both probe shapes route through the same guard.
       for (final entry
-          in <String, (String, Map<String, Object?> Function(Map<String, dynamic>))>{
-            'the direct probe without session': (direct, directProbe),
-            'the nested probe without session': (nested, nestedProbe),
-          }.entries) {
+          in <
+                String,
+                (String, Map<String, Object?> Function(Map<String, dynamic>))
+              >{
+                'the direct probe without session': (direct, directProbe),
+                'the nested probe without session': (nested, nestedProbe),
+              }
+              .entries) {
         final report = copy(fixture.seedProduct);
         entry.value.$2(report).remove('session');
         expect(
@@ -1430,8 +1443,10 @@ void main() {
         baselineKeys,
       );
       expect(
-        [for (final row in (baseline['notCompared'] as List).cast<Map>())
-          if ('${row['path']}' == 'seed.state.seed.cookies.A.keys') row],
+        [
+          for (final row in (baseline['notCompared'] as List).cast<Map>())
+            if ('${row['path']}' == 'seed.state.seed.cookies.A.keys') row,
+        ],
         isEmpty,
         reason: 'the unmutated explicit-null probe is not a policy row',
       );
@@ -1443,11 +1458,12 @@ void main() {
           .cast<String>()
           .toSet();
       final report = copy(fixture.restartProduct);
-      final row = (report['observations'] as List).firstWhere(
-        (raw) => (raw as Map)['id'] == 'restart.cookies.before',
-      ) as Map;
-      final probe = ((row['value'] as Map)['A'] as Map)
-          .cast<String, Object?>();
+      final row =
+          (report['observations'] as List).firstWhere(
+                (raw) => (raw as Map)['id'] == 'restart.cookies.before',
+              )
+              as Map;
+      final probe = ((row['value'] as Map)['A'] as Map).cast<String, Object?>();
       const extra = 'sidA=after; extraA=e2; ssA=after; ss2=sx2; evil=1';
       probe['effective'] = extra;
       probe['persistent'] = extra;
@@ -1457,7 +1473,9 @@ void main() {
             .cast<String>()
             .toSet()
             .difference(baselineKeys),
-        contains('observation-cookie|restart|restart.cookies.before.A.effective'),
+        contains(
+          'observation-cookie|restart|restart.cookies.before.A.effective',
+        ),
       );
     });
 
@@ -1539,10 +1557,7 @@ void main() {
       ]) {
         final value = handoff();
         mutate(value);
-        expect(
-          () => fixture.compare(handoff: value),
-          throwsFormatException,
-        );
+        expect(() => fixture.compare(handoff: value), throwsFormatException);
       }
     });
   });

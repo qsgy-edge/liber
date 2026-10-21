@@ -94,10 +94,7 @@ Map<String, Object?> normalizeAuthSessionRequest(Object? raw, String what) {
 /// The headers one request carries, lowercased, with the platform-generated
 /// names dropped. A repeated name keeps every value, so a duplicate the source
 /// declared is not hidden behind one.
-Map<String, List<String>> comparedAuthSessionHeaders(
-  Object? raw,
-  String what,
-) {
+Map<String, List<String>> comparedAuthSessionHeaders(Object? raw, String what) {
   final headers = _object(raw, '$what headers');
   final result = <String, List<String>>{};
   for (final entry in headers.entries) {
@@ -275,7 +272,9 @@ void checkAuthSessionGolden({
       );
     }
     if (!row.containsKey('value')) {
-      throw FormatException('$goldenPath observation ${row['id']} has no value');
+      throw FormatException(
+        '$goldenPath observation ${row['id']} has no value',
+      );
     }
     final value = _object(row['value'], '$goldenPath observation value');
     if (value.isEmpty) {
@@ -313,7 +312,9 @@ void checkAuthSessionGolden({
         requestCheck['forbiddenHeaders'] ?? const [],
         '$goldenPath requestCheck.forbiddenHeaders',
       ).isNotEmpty) {
-    throw FormatException('$goldenPath does not record a matched request trace');
+    throw FormatException(
+      '$goldenPath does not record a matched request trace',
+    );
   }
   final observationCheck = _object(
     golden['observationCheck'],
@@ -324,7 +325,9 @@ void checkAuthSessionGolden({
       _array(observationCheck['missing'], 'missing').isNotEmpty ||
       _array(observationCheck['extra'], 'extra').isNotEmpty ||
       _array(observationCheck['duplicates'], 'duplicates').isNotEmpty) {
-    throw FormatException('$goldenPath does not record a complete observation set');
+    throw FormatException(
+      '$goldenPath does not record a complete observation set',
+    );
   }
   _checkGoldenTerminal(golden, phase, goldenPath);
   _checkGoldenWebView(corpus, golden, goldenPath);
@@ -360,8 +363,10 @@ void _checkGoldenTerminal(
       replay['workersStopped'] != true ||
       _array(replay['listenerClosure'], '$goldenPath listenerClosure').length !=
           2 ||
-      _array(replay['listenerCloseErrors'], '$goldenPath closeErrors')
-          .isNotEmpty) {
+      _array(
+        replay['listenerCloseErrors'],
+        '$goldenPath closeErrors',
+      ).isNotEmpty) {
     throw FormatException('$goldenPath did not close both replay listeners');
   }
   for (final raw in _array(replay['listenerClosure'], 'listenerClosure')) {
@@ -376,7 +381,9 @@ void _checkGoldenTerminal(
       terminal['observationMatch'] != true ||
       _integer(terminal['unmatched'], 'terminal.unmatched') != 0 ||
       _integer(terminal['serverErrors'], 'terminal.serverErrors') != 0) {
-    throw FormatException('$goldenPath did not take a matched terminal snapshot');
+    throw FormatException(
+      '$goldenPath did not take a matched terminal snapshot',
+    );
   }
   if (_text(cleanup['scratchRoot'], '$goldenPath scratchRoot').isEmpty) {
     throw FormatException('$goldenPath names no scratch root');
@@ -446,10 +453,15 @@ void _checkGoldenWebView(
 ) {
   final webView = _object(golden['webView'], '$goldenPath webView');
   if (webView['suffixFailure'] != null || webView['preflightFailure'] != null) {
-    throw FormatException('$goldenPath recorded a provider containment failure');
+    throw FormatException(
+      '$goldenPath recorded a provider containment failure',
+    );
   }
   final pinned = _object(corpus['webViewProvider'], 'webViewProvider');
-  final preflight = _object(webView['preflight'], '$goldenPath webView.preflight');
+  final preflight = _object(
+    webView['preflight'],
+    '$goldenPath webView.preflight',
+  );
   final provider = _object(preflight['provider'], '$goldenPath provider');
   if (provider['package'] != pinned['package'] ||
       provider['versionName'] != pinned['versionName']) {
@@ -468,7 +480,9 @@ void _checkGoldenWebView(
     '$goldenPath webViewPathPrecheck',
   );
   if (precheck['insideRoot'] != true) {
-    throw FormatException('$goldenPath claimed a provider path outside the root');
+    throw FormatException(
+      '$goldenPath claimed a provider path outside the root',
+    );
   }
   final androidx = _object(
     preflight['androidxProcessGlobalConfig'],
@@ -684,12 +698,11 @@ List<List<String>>? _declaredPairs(Object? value) {
 }
 
 /// A pair list in the frozen harness' own rendering order: by name, then value.
-List<List<String>> _sortedPairs(List<List<String>> pairs) => [...pairs]..sort(
-  (left, right) {
-    final byName = left[0].compareTo(right[0]);
-    return byName != 0 ? byName : left[1].compareTo(right[1]);
-  },
-);
+List<List<String>> _sortedPairs(List<List<String>> pairs) =>
+    [...pairs]..sort((left, right) {
+      final byName = left[0].compareTo(right[0]);
+      return byName != 0 ? byName : left[1].compareTo(right[1]);
+    });
 
 /// Whether a map is one source's cookie probe. The identity fields decide it, so
 /// a probe whose mandatory `keys`/`persistent`/`session` field was dropped is
@@ -1391,7 +1404,12 @@ Map<String, Object?> compareAuthSessionPhases({
   final orderOnly = <Map<String, Object?>>[];
   final checks = <String, Object?>{};
 
-  void check(String name, bool passed, Object? detail, {String phase = 'pair'}) {
+  void check(
+    String name,
+    bool passed,
+    Object? detail, {
+    String phase = 'pair',
+  }) {
     checks[name] = {'ok': passed, 'detail': detail};
     if (!passed) {
       mismatches.add({'phase': phase, 'surface': name, 'detail': detail});
@@ -1813,7 +1831,8 @@ String? _recordPath(Object? value) {
   if (text.isEmpty || text == '/' || RegExp(r'^[A-Za-z]:$').hasMatch(text)) {
     return null;
   }
-  final absolute = RegExp(r'^[A-Za-z]:/').hasMatch(text) || text.startsWith('/');
+  final absolute =
+      RegExp(r'^[A-Za-z]:/').hasMatch(text) || text.startsWith('/');
   if (!absolute) return null;
   final segments = [
     for (final segment in text.split('/'))
@@ -2037,7 +2056,9 @@ Future<Map<String, Object?>> _runNegativeControls({
             )
             as Map;
     final value = (row['value'] as Map).cast<String, Object?>();
-    final field = value.containsKey('withLogin') ? 'withLogin' : value.keys.first;
+    final field = value.containsKey('withLogin')
+        ? 'withLogin'
+        : value.keys.first;
     value[field] = 'mutated:$field';
   }
 
@@ -2152,10 +2173,8 @@ Future<Map<String, Object?>> _runNegativeControls({
     ..also((report) => setRawQuery(report, 'page=1&user=synthetic-a-user'));
   final productSeedRawEncoding = copy(seedProduct)
     ..also(
-      (report) => setRawQuery(
-        report,
-        'user=synthetic-a-user&pass=synthetic-a-pass%20',
-      ),
+      (report) =>
+          setRawQuery(report, 'user=synthetic-a-user&pass=synthetic-a-pass%20'),
     );
   final productSeedRawAbsent = copy(seedProduct)..also(removeRawQuery);
   final productRestartIdentity = copy(restartProduct);
@@ -2276,7 +2295,8 @@ Future<Map<String, Object?>> _runNegativeControls({
     goldenRestart: restartGoldenPath,
     productSeed: writeCopy('product-seed-requests', productSeedRequests),
     productRestart: restartProductPath,
-    mutation: 'a copied product seed report swapped its second and third requests',
+    mutation:
+        'a copied product seed report swapped its second and third requests',
     requiredDelta: 'product-requests|seed|1',
   );
   await control(
@@ -2307,10 +2327,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     1,
     goldenSeed: seedGoldenPath,
     goldenRestart: restartGoldenPath,
-    productSeed: writeCopy(
-      'product-seed-raw-encoding',
-      productSeedRawEncoding,
-    ),
+    productSeed: writeCopy('product-seed-raw-encoding', productSeedRawEncoding),
     productRestart: restartProductPath,
     mutation: 'a copied product seed report re-encoded the first raw query',
     requiredDelta: 'product-requests|seed|0',
@@ -2477,9 +2494,7 @@ Future<int> _controlsOnly(List<String> args) async {
       restartGolden: restartGolden,
       seedProduct: _readJson(seedProductPath),
       restartProduct: _readJson(restartProductPath),
-      librarySha256: libraryPath == null
-          ? null
-          : sha256File(File(libraryPath)),
+      librarySha256: libraryPath == null ? null : sha256File(File(libraryPath)),
       handoff: handoff,
       seedGoldenSha256: seedGoldenSha,
       restartGoldenSha256: restartGoldenSha,
@@ -2556,7 +2571,9 @@ Future<int> _compareOnly(List<String> args) async {
         ? null
         : _readJson(options['handoff']!);
     final libraryPath = options['library'];
-    final librarySha = libraryPath == null ? null : sha256File(File(libraryPath));
+    final librarySha = libraryPath == null
+        ? null
+        : sha256File(File(libraryPath));
     report = compareAuthSessionPhases(
       corpus: corpus,
       corpusSha256Lf: corpusLf,
