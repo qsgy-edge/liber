@@ -1,0 +1,739 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "AUTH-SESSION-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "io.legado.app.data.entities.BaseSource.login/putLoginInfo/getLoginInfoMap/putLoginHeader/removeLoginHeader/getHeaderMap + io.legado.app.help.http.CookieStore/CookieManager + io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "origins": {
+    "A": "http://127.0.0.1:18751/a",
+    "B": "http://127.0.0.2:18751/b"
+  },
+  "target": {
+    "package": "io.legado.app.debug",
+    "apkSha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+    "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "manifest": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json"
+  },
+  "webViewProvider": {
+    "package": "com.google.android.webview",
+    "versionName": "157.0.8103.5",
+    "source": "controller dumpsys webviewupdate 2026-10-21"
+  },
+  "scratch": {
+    "rootName": "liber-auth-session-01",
+    "preferencesPrefix": "liber_auth_session_01_",
+    "databaseName": "legado.db",
+    "preferencesLocation": "task-prefixed SharedPreferences files under the target application's shared_prefs directory; only the name is namespaced, the file itself is outside the scratch root",
+    "ownerFile": "owner.json",
+    "webViewSuffix": "liber-auth-session-01",
+    "webViewDataDirectory": "dir-webview_liber-auth-session-01 inside the scratch root",
+    "webViewCacheDirectory": "cache/webview_liber-auth-session-01 inside the scratch root",
+    "webViewThumbnailDirectory": "dir-textures inside the scratch root"
+  },
+  "requestChecks": {
+    "forbiddenHeaders": [
+      "cookiejar"
+    ]
+  },
+  "nondeterministic": [
+    "recordedAt",
+    "runId",
+    "pid",
+    "isolation.scratchRoot",
+    "isolation.webView.computed.*",
+    "isolation.webView.resolvedPaths.*",
+    "isolation.webView.actual.*",
+    "isolation.webView.provider.versionCode",
+    "isolation.webView.realProfileBefore.*.length",
+    "isolation.webView.realProfileBefore.*.lastModified",
+    "isolation.webView.realProfileAfter.*.length",
+    "isolation.webView.realProfileAfter.*.lastModified",
+    "isolation.webView.listings",
+    "cleanup.replay.openConnectionsBeforeClose",
+    "cleanup.*Error"
+  ],
+  "sources": [
+    {
+      "id": "A",
+      "bookSource": {
+        "bookSourceName": "Liber AUTH-SESSION-01 A",
+        "bookSourceUrl": "http://127.0.0.1:18751/a",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "AUTH-SESSION-01 controlled replay source A (HTML, enabledCookieJar=true). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": true,
+        "header": "{\"X-Declared\":\"A-declared\",\"X-Over\":\"declared\",\"User-Agent\":\"Liber-AUTH-SESSION-01/1.0\"}",
+        "loginUrl": "@js:function login(){var info=source.getLoginInfoMap();var q='user='+encodeURIComponent(info.get('user'))+'&pass='+encodeURIComponent(info.get('pass'));source.put('checkA','');cookie.setCookie('http://127.0.0.1:18751/a','scriptA=one');var res=java.connect('http://127.0.0.1:18751/a/login?'+q);source.put('loginA','code='+res.code()+'|body='+String(res.body())+'|user='+info.get('user')+'|pass='+info.get('pass'));source.putLoginHeader('{\"X-Login\":\"A-login\"}');}",
+        "loginUi": "[{\"name\":\"user\",\"type\":\"text\"},{\"name\":\"pass\",\"type\":\"password\"},{\"name\":\"Login\",\"type\":\"button\",\"action\":\"login\"}]",
+        "loginCheckJs": "(function(){var body=String(result.body());var mark=body.indexOf('AUTH-STALE')>=0?'stale':(body.indexOf('AUTH-SELECTED')>=0?'selected':'pass');source.put('checkA','code='+result.code()+'|mark='+mark+'|body='+body);if(mark==='stale'){return java.connect('http://127.0.0.1:18751/a/search?keyword=auth&page=1&refresh=1');}return result;})()",
+        "searchUrl": "/a/search?keyword={{key}}&page={{page}},{\"headers\":{\"X-Option\":\"O1\",\"X-Over\":\"option\"}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "kind": "html",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href",
+          "updateTime": "@js:'tag|'+chapter.url"
+        },
+        "ruleContent": {
+          "content": ".c@text"
+        }
+      },
+      "jsLib": "var authLibA = {n: 0}; function initAuthA(){ if(!authLibA.n){authLibA.n=1;} return authLibA.n; }",
+      "loginInfo": "{\"user\":\"synthetic-a-user\",\"pass\":\"synthetic-a-pass\"}"
+    },
+    {
+      "id": "B",
+      "bookSource": {
+        "bookSourceName": "Liber AUTH-SESSION-01 B",
+        "bookSourceUrl": "http://127.0.0.2:18751/b",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "AUTH-SESSION-01 controlled replay source B (JSON, enabledCookieJar=false). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\":\"B-declared\",\"X-Over\":\"declared\",\"User-Agent\":\"Liber-AUTH-SESSION-01/1.0\"}",
+        "loginUrl": "@js:function login(){var info=source.getLoginInfoMap();var q='user='+encodeURIComponent(info.get('user'))+'&pass='+encodeURIComponent(info.get('pass'));source.put('checkB','');cookie.setCookie('http://127.0.0.2:18751/b','scriptB=one');var res=java.connect('http://127.0.0.2:18751/b/login?'+q);source.put('loginB','code='+res.code()+'|body='+String(res.body())+'|user='+info.get('user')+'|pass='+info.get('pass'));source.putLoginHeader('{\"X-Login\":\"B-login\"}');}",
+        "loginUi": "[{\"name\":\"user\",\"type\":\"text\"},{\"name\":\"pass\",\"type\":\"password\"},{\"name\":\"Login\",\"type\":\"button\",\"action\":\"login\"}]",
+        "loginCheckJs": "(function(){source.put('checkB','code='+result.code()+'|body='+String(result.body()));return result;})()",
+        "searchUrl": "/b/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.data[*]",
+          "name": "$.name",
+          "author": "$.author",
+          "kind": "json",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.name",
+          "author": "$.author",
+          "intro": "$.intro",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters[*]",
+          "chapterName": "$.title",
+          "chapterUrl": "$.url",
+          "updateTime": "@js:'tag|'+chapter.url"
+        },
+        "ruleContent": {
+          "content": "$.content"
+        }
+      },
+      "jsLib": "var authLibB = {n: 0}; function initAuthB(){ if(!authLibB.n){authLibB.n=1;} return authLibB.n; }",
+      "loginInfo": "{\"user\":\"synthetic-b-user\",\"pass\":\"synthetic-b-pass\"}"
+    }
+  ],
+  "books": [
+    {
+      "id": "A1",
+      "source": "A",
+      "bookUrl": "http://127.0.0.1:18751/a/book/1"
+    },
+    {
+      "id": "A3",
+      "source": "A",
+      "bookUrl": "http://127.0.0.1:18751/a/book/3"
+    },
+    {
+      "id": "A9",
+      "source": "A",
+      "bookUrl": "http://127.0.0.1:18751/a/book/9"
+    },
+    {
+      "id": "B1",
+      "source": "B",
+      "bookUrl": "http://127.0.0.2:18751/b/book/1"
+    },
+    {
+      "id": "B2",
+      "source": "B",
+      "bookUrl": "http://127.0.0.2:18751/b/book/2"
+    },
+    {
+      "id": "B3",
+      "source": "B",
+      "bookUrl": "http://127.0.0.2:18751/b/book/3"
+    }
+  ],
+  "responses": [
+    {
+      "id": "a-login",
+      "method": "GET",
+      "path": "/a/login",
+      "rawQuery": "user=synthetic-a-user&pass=synthetic-a-pass",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "setCookies": [
+        "loginRespA=p1; Max-Age=3600; Path=/",
+        "loginSessA=t1; Path=/"
+      ],
+      "body": "{\"ok\":true,\"token\":\"synthetic-a\"}"
+    },
+    {
+      "id": "a-search-stale",
+      "method": "GET",
+      "path": "/a/search",
+      "rawQuery": "keyword=auth&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "setCookies": [
+        "sidA=one; Max-Age=3600; Path=/",
+        "extraA=e1; Max-Age=3600; Path=/",
+        "ssA=s1; Path=/",
+        "ss2=sx; Path=/"
+      ],
+      "body": "<html><body><div class=\"mark\">AUTH-STALE</div><ul class=\"result\"><li><a href=\"http://127.0.0.1:18751/a/book/8\">STALE</a><span class=\"author\">StaleAuthor</span></li></ul></body></html>"
+    },
+    {
+      "id": "a-search-selected",
+      "method": "GET",
+      "path": "/a/search",
+      "rawQuery": "keyword=auth&page=1&refresh=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "setCookies": [
+        "sidA=two; Max-Age=3600; Path=/",
+        "ssA=s2; Path=/"
+      ],
+      "body": "<html><body><div class=\"mark\">AUTH-SELECTED</div><ul class=\"result\"><li><a href=\"http://127.0.0.1:18751/a/book/1\">A1</a><span class=\"author\">AuthorA1</span></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-1-info",
+      "method": "GET",
+      "path": "/a/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>A1</h1><div class=\"info\"><span class=\"author\">AuthorA1</span></div><div class=\"intro\">Intro1</div><p class=\"toc\"><a href=\"http://127.0.0.1:18751/a/book/1/toc\">toc</a></p></body></html>"
+    },
+    {
+      "id": "a-book-1-toc",
+      "method": "GET",
+      "path": "/a/book/1/toc",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18751/a/book/1/ch/1\">Chapter1</a></li><li><a href=\"http://127.0.0.1:18751/a/book/1/ch/2\">Chapter2</a></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-1-ch-1",
+      "method": "GET",
+      "path": "/a/book/1/ch/1",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"c\">PageA1Ch1</div></body></html>"
+    },
+    {
+      "id": "a-search-after-removal",
+      "method": "GET",
+      "path": "/a/search",
+      "rawQuery": "keyword=auth-after&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "setCookies": [
+        "sidA=after; Max-Age=3600; Path=/",
+        "extraA=e2; Max-Age=3600; Path=/",
+        "ssA=after; Path=/",
+        "ss2=sx2; Path=/"
+      ],
+      "body": "<html><body><div class=\"mark\">AUTH-AFTER</div><ul class=\"result\"><li><a href=\"http://127.0.0.1:18751/a/book/3\">A3</a><span class=\"author\">AuthorA3</span></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-3-info",
+      "method": "GET",
+      "path": "/a/book/3",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>A3</h1><div class=\"info\"><span class=\"author\">AuthorA3</span></div><div class=\"intro\">Intro3</div><p class=\"toc\"><a href=\"http://127.0.0.1:18751/a/book/3/toc\">toc</a></p></body></html>"
+    },
+    {
+      "id": "b-login",
+      "method": "GET",
+      "path": "/b/login",
+      "rawQuery": "user=synthetic-b-user&pass=synthetic-b-pass",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "setCookies": [
+        "bresp=ignored; Max-Age=3600; Path=/"
+      ],
+      "body": "{\"ok\":true,\"token\":\"synthetic-b\"}"
+    },
+    {
+      "id": "b-search",
+      "method": "GET",
+      "path": "/b/search",
+      "rawQuery": "keyword=beta&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "setCookies": [
+        "bresp=ignored; Max-Age=3600; Path=/"
+      ],
+      "body": "{\"mark\":\"AUTH-B\",\"data\":[{\"name\":\"B1\",\"author\":\"AuthorB1\",\"url\":\"http://127.0.0.2:18751/b/book/1\"}]}"
+    },
+    {
+      "id": "b-book-1-info",
+      "method": "GET",
+      "path": "/b/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"name\":\"B1\",\"author\":\"AuthorB1\",\"intro\":\"IntroB1\",\"toc\":\"http://127.0.0.2:18751/b/book/1/toc\"}"
+    },
+    {
+      "id": "b-book-1-toc",
+      "method": "GET",
+      "path": "/b/book/1/toc",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"chapters\":[{\"title\":\"Chapter1\",\"url\":\"http://127.0.0.2:18751/b/book/1/ch/1\"},{\"title\":\"Chapter2\",\"url\":\"http://127.0.0.2:18751/b/book/1/ch/2\"}]}"
+    },
+    {
+      "id": "b-book-1-ch-1",
+      "method": "GET",
+      "path": "/b/book/1/ch/1",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"content\":\"PageB1Ch1\"}"
+    },
+    {
+      "id": "a-search-restart",
+      "method": "GET",
+      "path": "/a/search",
+      "rawQuery": "keyword=restart&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"mark\">AUTH-RESTART</div><ul class=\"result\"><li><a href=\"http://127.0.0.1:18751/a/book/9\">A9</a><span class=\"author\">AuthorA9</span></li></ul></body></html>"
+    },
+    {
+      "id": "a-book-9-info",
+      "method": "GET",
+      "path": "/a/book/9",
+      "rawQuery": "",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>A9</h1><div class=\"info\"><span class=\"author\">AuthorA9</span></div><div class=\"intro\">Intro9</div><p class=\"toc\"><a href=\"http://127.0.0.1:18751/a/book/9/toc\">toc</a></p></body></html>"
+    },
+    {
+      "id": "b-search-restart",
+      "method": "GET",
+      "path": "/b/search",
+      "rawQuery": "keyword=restart-b&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "setCookies": [
+        "bresp2=ignored; Max-Age=3600; Path=/"
+      ],
+      "body": "{\"mark\":\"AUTH-B-RESTART\",\"data\":[{\"name\":\"B2\",\"author\":\"AuthorB2\",\"url\":\"http://127.0.0.2:18751/b/book/2\"}]}"
+    },
+    {
+      "id": "b-search-after-removal",
+      "method": "GET",
+      "path": "/b/search",
+      "rawQuery": "keyword=restart-b-after&page=1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "setCookies": [
+        "bresp3=ignored; Max-Age=3600; Path=/"
+      ],
+      "body": "{\"mark\":\"AUTH-B-AFTER\",\"data\":[{\"name\":\"B3\",\"author\":\"AuthorB3\",\"url\":\"http://127.0.0.2:18751/b/book/3\"}]}"
+    }
+  ],
+  "phases": {
+    "seed": {
+      "steps": [
+        {
+          "id": "seed.login.A",
+          "kind": "login",
+          "source": "A",
+          "probeKey": "loginA",
+          "loginInfo": "{\"user\":\"synthetic-a-user\",\"pass\":\"synthetic-a-pass\"}"
+        },
+        {
+          "id": "seed.headers.A",
+          "kind": "headerMap",
+          "source": "A"
+        },
+        {
+          "id": "seed.search.A",
+          "kind": "stage",
+          "stage": "search",
+          "source": "A",
+          "keyword": "auth",
+          "checkKey": "checkA",
+          "books": [
+            "A1"
+          ]
+        },
+        {
+          "id": "seed.details.A",
+          "kind": "stage",
+          "stage": "details",
+          "source": "A",
+          "book": "A1",
+          "checkKey": "checkA"
+        },
+        {
+          "id": "seed.toc.A",
+          "kind": "stage",
+          "stage": "toc",
+          "source": "A",
+          "book": "A1",
+          "checkKey": "checkA"
+        },
+        {
+          "id": "seed.content.A",
+          "kind": "stage",
+          "stage": "content",
+          "source": "A",
+          "book": "A1",
+          "chapter": "http://127.0.0.1:18751/a/book/1/ch/1",
+          "checkKey": "checkA"
+        },
+        {
+          "id": "seed.cookies.A.afterSearch",
+          "kind": "cookieState",
+          "sources": [
+            "A"
+          ]
+        },
+        {
+          "id": "seed.cookies.A.keyRemoval",
+          "kind": "cookieKeyRemoval",
+          "source": "A",
+          "keys": [
+            "extraA",
+            "ss2"
+          ]
+        },
+        {
+          "id": "seed.cookies.A.removeLoginHeader",
+          "kind": "removeLoginHeader",
+          "source": "A"
+        },
+        {
+          "id": "seed.search.A.afterRemoval",
+          "kind": "stage",
+          "stage": "search",
+          "source": "A",
+          "keyword": "auth-after",
+          "checkKey": "checkA",
+          "books": [
+            "A3"
+          ]
+        },
+        {
+          "id": "seed.details.A.afterRemoval",
+          "kind": "stage",
+          "stage": "details",
+          "source": "A",
+          "book": "A3",
+          "checkKey": "checkA"
+        },
+        {
+          "id": "seed.login.B",
+          "kind": "login",
+          "source": "B",
+          "probeKey": "loginB",
+          "loginInfo": "{\"user\":\"synthetic-b-user\",\"pass\":\"synthetic-b-pass\"}"
+        },
+        {
+          "id": "seed.headers.B",
+          "kind": "headerMap",
+          "source": "B"
+        },
+        {
+          "id": "seed.search.B",
+          "kind": "stage",
+          "stage": "search",
+          "source": "B",
+          "keyword": "beta",
+          "checkKey": "checkB",
+          "books": [
+            "B1"
+          ]
+        },
+        {
+          "id": "seed.details.B",
+          "kind": "stage",
+          "stage": "details",
+          "source": "B",
+          "book": "B1",
+          "checkKey": "checkB"
+        },
+        {
+          "id": "seed.loginHeader.B.cookie",
+          "kind": "loginHeaderPut",
+          "source": "B",
+          "header": "{\"X-Login\":\"B-login\",\"X-Over\":\"login\",\"Cookie\":\"scriptB=loginOverride; loginCookieB=abc\"}"
+        },
+        {
+          "id": "seed.toc.B",
+          "kind": "stage",
+          "stage": "toc",
+          "source": "B",
+          "book": "B1",
+          "checkKey": "checkB"
+        },
+        {
+          "id": "seed.content.B",
+          "kind": "stage",
+          "stage": "content",
+          "source": "B",
+          "book": "B1",
+          "chapter": "http://127.0.0.2:18751/b/book/1/ch/1",
+          "checkKey": "checkB"
+        },
+        {
+          "id": "seed.cookies.B.afterLoginHeader",
+          "kind": "cookieState",
+          "sources": [
+            "B"
+          ]
+        },
+        {
+          "id": "seed.state.seed",
+          "kind": "state",
+          "sources": [
+            "A",
+            "B"
+          ]
+        }
+      ],
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "path": "/a/login",
+          "rawQuery": "user=synthetic-a-user&pass=synthetic-a-pass"
+        },
+        {
+          "method": "GET",
+          "path": "/a/search",
+          "rawQuery": "keyword=auth&page=1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/search",
+          "rawQuery": "keyword=auth&page=1&refresh=1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/toc",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/1/ch/1",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/a/search",
+          "rawQuery": "keyword=auth-after&page=1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/3",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/b/login",
+          "rawQuery": "user=synthetic-b-user&pass=synthetic-b-pass"
+        },
+        {
+          "method": "GET",
+          "path": "/b/search",
+          "rawQuery": "keyword=beta&page=1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/toc",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/b/book/1/ch/1",
+          "rawQuery": ""
+        }
+      ],
+      "cleanup": "retain"
+    },
+    "restart": {
+      "steps": [
+        {
+          "id": "restart.cookies.before",
+          "kind": "cookieState",
+          "sources": [
+            "A",
+            "B"
+          ]
+        },
+        {
+          "id": "restart.search.A",
+          "kind": "stage",
+          "stage": "search",
+          "source": "A",
+          "keyword": "restart",
+          "checkKey": "checkA",
+          "books": [
+            "A9"
+          ]
+        },
+        {
+          "id": "restart.headers.A",
+          "kind": "headerMap",
+          "source": "A"
+        },
+        {
+          "id": "restart.details.A",
+          "kind": "stage",
+          "stage": "details",
+          "source": "A",
+          "book": "A9",
+          "checkKey": "checkA"
+        },
+        {
+          "id": "restart.search.B",
+          "kind": "stage",
+          "stage": "search",
+          "source": "B",
+          "keyword": "restart-b",
+          "checkKey": "checkB",
+          "books": [
+            "B2"
+          ]
+        },
+        {
+          "id": "restart.cookies.B.beforeRemoval",
+          "kind": "cookieState",
+          "sources": [
+            "B"
+          ]
+        },
+        {
+          "id": "restart.removeLoginHeader.B",
+          "kind": "removeLoginHeader",
+          "source": "B"
+        },
+        {
+          "id": "restart.search.B.afterRemoval",
+          "kind": "stage",
+          "stage": "search",
+          "source": "B",
+          "keyword": "restart-b-after",
+          "checkKey": "checkB",
+          "books": [
+            "B3"
+          ]
+        },
+        {
+          "id": "restart.state.final",
+          "kind": "state",
+          "sources": [
+            "A",
+            "B"
+          ]
+        }
+      ],
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "path": "/a/search",
+          "rawQuery": "keyword=restart&page=1"
+        },
+        {
+          "method": "GET",
+          "path": "/a/book/9",
+          "rawQuery": ""
+        },
+        {
+          "method": "GET",
+          "path": "/b/search",
+          "rawQuery": "keyword=restart-b&page=1"
+        },
+        {
+          "method": "GET",
+          "path": "/b/search",
+          "rawQuery": "keyword=restart-b-after&page=1"
+        }
+      ],
+      "cleanup": "remove"
+    }
+  },
+  "coverageGaps": [
+    "No WebView cookie contents, browser navigation, TLS or captcha behavior; this is the ordinary HTTP/login helper boundary, not Spec B.",
+    "No ajaxAll, header-string connect, full getHeaderMap argument matrix, concurrent/rate, retry/non-2xx/empty/cancellation or multi-URL pagination; those stay in #137.",
+    "No real credentials or private-site access; both sources are synthetic loopback hosts with distinct 127.0.0.1/127.0.0.2 cookie domains.",
+    "No login-UI Android view interaction; the harness calls loginUi(), putLoginInfo() then login() exactly as SourceLoginDialog does, and records the declared rows.",
+    "No java.get/head/post Jsoup path: the storage-only application skips frozen App.onCreate's URLStreamHandlerFactory, so login scripts use java.connect through AnalyzeUrl/OkHttp, the path CookieStore/CookieManager own.",
+    "Raw cookieDao rows and cache-key inventories are isolation/provenance receipts, not portable compared schema."
+  ],
+  "sourceDerivedNotes": {
+    "login": "BaseSource.kt:85-101 login() evals the loginUrl @js function with java/source/baseUrl/cookie/cache bindings; :175-191 getLoginInfoMap/putLoginInfo use AppConst.androidId AES; :146-158 putLoginHeader/removeLoginHeader.",
+    "headers": "BaseSource.kt:103-131 getHeaderMap: declared header, default UA when absent, login header map last; AnalyzeUrl.kt:119-131 takes that map, :212-246 puts option headers last; HttpHelper.kt:85-99 strips the CookieJar marker, loads and saves cookies on the OkHttp network path.",
+    "cookies": "CookieStore.kt:25-85 set/replace/get/remove; CookieManager.kt:29-74 saveResponse/loadRequest, :81 getSessionCookie, :112-129 key removal, :131 getCookieNoSession. Persistent cookies live in the frozen cookie DAO; session cookies live only in CacheManager memory.",
+    "stages": "WebBook.kt:48-88 searchBookAwait, :152-198 getBookInfoAwait, :224-270 getChapterListAwait, :296-355 getContentAwait; each applies loginCheckJs at :71/:178/:253/:336 to the response the rules then consume.",
+    "loginUi": "SourceLoginDialog.kt:58-70 renders loginUi(), :149-163 collects text/password rows, :164-184 calls putLoginInfo then login(). The harness reproduces that call sequence without Android views.",
+    "webViewContainment": "CookieStore.kt:79-85 calls android.webkit.CookieManager.getInstance().removeCookie(url). Chromium tag 157.0.8103.5 AwBrowserProcess.java:26,70-75 turns a non-null suffix into data dir name webview_<suffix>; PathUtils.java:108-140 resolves appContext.getDir(that name), getDir(textures), and getCacheDir()/that name; ContextUtils.java:55-84 holds the wrapper context set at WebViewChromiumFactoryProvider.java:436-438,537-538; WebViewFactory.java:236-248 is the pre-init suffix API. Exact provider version and selected paths are measured at runtime before the first remove; AndroidX ProcessGlobalConfig data/cache base-path overrides and a device-protected context are refused before initialization.",
+    "appOnCreate": "The storage-only android.app.Application over ScratchContext skips frozen App.onCreate (crash handler, file logging, Cronet pre-download, DefaultData.upVersion, freeze monitor, LiveEventBus, URLStreamHandlerFactory); AppCtxInitProvider still runs and is checked."
+  }
+}

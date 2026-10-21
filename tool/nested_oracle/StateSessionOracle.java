@@ -1520,10 +1520,11 @@ public final class StateSessionOracle extends Instrumentation {
      * binding failure releases every waiter with that failure, and a timeout refuses with
      * a visible message; nothing is retried.
      */
-    private static final class ScratchContext extends ContextWrapper {
+    static final class ScratchContext extends ContextWrapper {
         private static final long BINDING_WAIT_SECONDS = 30;
 
         final File root;
+        private final String preferencesPrefix;
         private final boolean rootExistedAtStart;
         private final Object stateLock = new Object();
         private final java.util.concurrent.CountDownLatch boundSignal =
@@ -1536,8 +1537,13 @@ public final class StateSessionOracle extends Instrumentation {
         private JSONObject owner;
 
         ScratchContext(Context base) {
+            this(base, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
+        }
+
+        ScratchContext(Context base, String rootName, String preferencesPrefix) {
             super(base);
-            root = new File(base.getCacheDir(), SCRATCH_ROOT_NAME);
+            this.preferencesPrefix = preferencesPrefix;
+            root = new File(base.getCacheDir(), rootName);
             rootExistedAtStart = root.exists();
         }
 
@@ -1624,7 +1630,7 @@ public final class StateSessionOracle extends Instrumentation {
             Set<String> owned = new LinkedHashSet<>();
             for (int index = 0; index < names.length(); index++) {
                 String name = names.optString(index, "");
-                if (!name.startsWith(PREFERENCE_PREFIX)
+                if (!name.startsWith(preferencesPrefix)
                         || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0
                         || name.contains("..") || name.indexOf('\u0000') >= 0) {
                     throw new IllegalStateException("the seed owner manifest names a preference"
@@ -1664,6 +1670,10 @@ public final class StateSessionOracle extends Instrumentation {
             synchronized (stateLock) {
                 return bound;
             }
+        }
+
+        String preferencesPrefix() {
+            return preferencesPrefix;
         }
 
         boolean rootExistedAtStart() {
@@ -1852,7 +1862,7 @@ public final class StateSessionOracle extends Instrumentation {
         @Override
         public SharedPreferences getSharedPreferences(String name, int mode) {
             awaitBinding("getSharedPreferences(" + name + ")");
-            String scoped = PREFERENCE_PREFIX + name;
+            String scoped = preferencesPrefix + name;
             synchronized (stateLock) {
                 if ("restart".equals(phase)) {
                     requireOwnedLocked(scoped);
@@ -1903,7 +1913,7 @@ public final class StateSessionOracle extends Instrumentation {
          */
         JSONObject seedProbePreferences(Context app, File dataDir, String probe)
                 throws Exception {
-            String scoped = PREFERENCE_PREFIX + probe;
+            String scoped = preferencesPrefix + probe;
             File installationFile = new File(dataDir, probe + ".xml");
             File scopedFile = new File(dataDir, scoped + ".xml");
             if (installationFile.exists() || scopedFile.exists()) {
@@ -1932,7 +1942,7 @@ public final class StateSessionOracle extends Instrumentation {
          * absent, and the recorded value is read back - nothing is written or removed.
          */
         JSONObject restartProbePreferences(File dataDir, String probe) throws Exception {
-            String scoped = PREFERENCE_PREFIX + probe;
+            String scoped = preferencesPrefix + probe;
             requireOwned(scoped);
             File scopedFile = new File(dataDir, scoped + ".xml");
             File installationFile = new File(dataDir, probe + ".xml");

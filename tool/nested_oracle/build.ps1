@@ -39,7 +39,10 @@ Copy-Item "$PSScriptRoot/limit-fixtures.json" "$OutputDirectory/assets/limit-fix
 # The #136 STATE-SESSION-01 corpus travels the same way: StateSessionOracle serves
 # it from the device process, and its report pins this file's LF-normalised hash.
 Copy-Item "$PSScriptRoot/../state_session/fixtures.json" "$OutputDirectory/assets/state-session-fixtures.json"
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java")
+# The #137 AUTH-SESSION-01 corpus is served by AuthSessionOracle from the target
+# process; the report pins both the raw asset hash and the LF-normalised hash.
+Copy-Item "$PSScriptRoot/../auth_session/fixtures.json" "$OutputDirectory/assets/auth-session-fixtures.json"
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java","$PSScriptRoot/AuthSessionOracle.java")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
 Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")
