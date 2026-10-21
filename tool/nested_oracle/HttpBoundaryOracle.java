@@ -2543,6 +2543,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
         requireField(request, "index", Number.class, problems);
         requireField(request, "owner", String.class, problems);
         requireField(request, "family", String.class, problems);
+        requireField(request, "listener", String.class, problems);
+        requireField(request, "stage", String.class, problems);
         requireField(request, "selector", String.class, problems);
         requireField(request, "method", String.class, problems);
         requireField(request, "path", String.class, problems);
@@ -2565,6 +2567,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
         requireField(request, "bodySha256", String.class, problems);
         if (!request.has("declaredResponse")) {
             problems.put("declaredResponse is missing");
+        } else if (!request.isNull("declaredResponse")
+                && !(request.get("declaredResponse") instanceof String)) {
+            problems.put("declaredResponse has an invalid type");
         }
         if (problems.length() > 0) return problems;
         String selector = request.getString("selector");
@@ -2603,12 +2608,24 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 problems.put("headerLines entry " + slot + " is not a string");
             }
         }
-        if (declaredOwner != null) {
+        if (!request.has("cohort")) {
+            problems.put("cohort is missing");
+        } else if (declaredOwner != null) {
             String cohort = declaredOwner.cohort;
-            boolean cohortOk = cohort == null
-                ? request.isNull("cohort")
-                : cohort.equals(request.optString("cohort", ""));
-            if (!cohortOk) problems.put("cohort does not match the declared owner");
+            if (cohort == null) {
+                if (!request.isNull("cohort")) {
+                    problems.put("cohort must be explicit null for a singleton owner");
+                }
+            } else if (request.isNull("cohort")
+                    || !(request.get("cohort") instanceof String)
+                    || !cohort.equals(request.getString("cohort"))) {
+                problems.put("cohort does not match the declared owner");
+            }
+        } else if (!request.isNull("cohort")
+                && !(request.get("cohort") instanceof String)) {
+            problems.put("cohort has an invalid type");
+        }
+        if (declaredOwner != null) {
             if (!declaredOwner.family.equals(request.getString("family"))) {
                 problems.put("family does not match the declared owner");
             }

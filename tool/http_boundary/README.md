@@ -28,10 +28,13 @@ hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evi
 - `probeState` keeps null distinct from `"null"` and makes an unresolved getter/query
   incomplete; `dbCounts` is strict. The rate record's Java class and the native DB table
   snapshot are provenance, not compared fields.
-- The final request trace is validated as a whole: declared total, every owner, typed
-  raw fields, required headers, coherent method/path/rawQuery/target/query/headerLines,
-  owner family and the actually selected declaration, honest terminals, and exactly the
-  one declared negative omission. A pending or extra ownerless shutdown request fails.
+- The final request trace is validated as a whole against the actual emitted raw
+  record: declared total, every owner, typed `listener`/`stage` and all other required
+  fields, required headers, coherent method/path/rawQuery/target/query/headerLines, owner
+  family and the actually selected declaration, honest terminals, and exactly the one
+  declared negative omission. A singleton's `cohort` must be present as explicit null
+  while a batch member's is a declared string; `declaredResponse` is a string except for
+  the native omission. A pending or extra ownerless shutdown request fails.
 - Cohort value keeps capability facts; the gate's planned release and the measured
   server send order are separated in evidence. In-flight peak is measured through each
   request's terminal.
@@ -304,10 +307,11 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/integration-repair-02/`.
-- The host probe executes the repaired terminal, hold and cleanup paths on the actual
-  compiled methods with valid positive counterparts; every unsafe control is rejected.
-  Host checks are never device goldens.
+  receipts are under `E/a2-http-native/presence-repair-03/`.
+- The host probes execute the terminal, hold, cleanup and full raw-record presence/type
+  sweep on the actual compiled methods with complete positive counterparts; every
+  missing/null/wrong-type control is rejected and the allowed nullable cases pass. Host
+  checks are never device goldens.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 
