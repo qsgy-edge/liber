@@ -429,6 +429,7 @@
       "rate.record.3"
     ],
     "recordClass": "io.legado.app.model.analyzeRule.AnalyzeUrl$ConcurrentRecord",
+    "recordClassProvenanceOnly": true,
     "mapField": "concurrentRecordMap",
     "mapOwnerCandidates": [
       "io.legado.app.help.ConcurrentRateLimiter",
@@ -467,15 +468,32 @@
       "cookies"
     ],
     "quietWindowMs": 750,
-    "followUpStep": "s6.search-after-cancel"
+    "followUpStep": "s6.search-after-cancel",
+    "followUp": {
+      "step": "s6.search-after-cancel",
+      "jobLevel": "created-parent",
+      "requiresCreatedParentJob": true,
+      "requiresSameSourceObject": true,
+      "requiresSameSourceKey": true
+    }
   },
   "negative": {
     "mode": "replay-omission",
     "drop": "h1-single",
     "selector": "GET /h1/single?",
     "step": "helper.ajax",
-    "requirement": "validate and hash the immutable corpus first, drop one declared ordinary helper response at load time only, let the request reach replay, and require a non-empty unmatchedRequests; the report is never promotable"
+    "expectedOwner": "helper.ajax",
+    "expectedTerminal": "omitted-unmatched",
+    "expectedStatus": 404,
+    "expectedUnmatchedEntries": 1,
+    "requirement": "validate and hash the immutable corpus first, drop one declared ordinary helper response at load time only, let the request reach replay, require exactly the intended unmatched terminal named here, and never promote the report"
   },
+  "schemaNotes": [
+    "review-repair-01: helper.header-map rows measure three source-script arities; a thrown arity is a real typed outcome and the Kotlin default call is provenance only.",
+    "review-repair-01: cancellation rows derive outcome/category from the measured cancellation and record created-parent job/context/source identities; the follow-up execution is bound before invocation.",
+    "review-repair-01: request records carry explicit terminals and sendSequence; batch capability facts stay in value while planned release and measured send order are provenance.",
+    "review-repair-01: native database table snapshots and the AnalyzeUrl$ConcurrentRecord Java class name are provenance; portable unchanged/record fields stay compared."
+  ],
   "requestChecks": {
     "forbiddenHeaders": [
       "cookie"
@@ -611,6 +629,11 @@
       "family": "helper",
       "source": "H2",
       "action": "headerMap",
+      "scripts": {
+        "zero": "(function(){var m=source.getHeaderMap();var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "falseArity": "(function(){var m=source.getHeaderMap(false);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "trueArity": "(function(){var m=source.getHeaderMap(true);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()"
+      },
       "requests": {
         "ordered": []
       },
@@ -622,6 +645,11 @@
       "family": "helper",
       "source": "H3",
       "action": "headerMap",
+      "scripts": {
+        "zero": "(function(){var m=source.getHeaderMap();var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "falseArity": "(function(){var m=source.getHeaderMap(false);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "trueArity": "(function(){var m=source.getHeaderMap(true);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()"
+      },
       "requests": {
         "ordered": []
       },
@@ -902,7 +930,8 @@
         "x-declared": "s"
       },
       "expectedOutcome": "ok",
-      "freshToken": true
+      "executionBound": true,
+      "followUpOf": "s5.search-cancelled"
     }
   ],
   "structural": {
@@ -935,8 +964,14 @@
     "requests[].receivedAtNanos",
     "requests[].respondedAtNanos",
     "requests[].stage",
+    "requests[].sendSequence",
     "observations[].evidence",
-    "observations[].value.batch.releaseOrder",
+    "observations[].evidence.arityProvenance",
+    "observations[].evidence.execution",
+    "observations[].evidence.followUpExecution",
+    "observations[].evidence.dbProvenance",
+    "observations[].evidence.batch",
+    "observations[].evidence.rate",
     "rate.record.*.value.recordBefore.time (relation only)",
     "rate.record.*.value.recordAfter.time (relation only)",
     "failEndpoint.assignedPort",
@@ -959,6 +994,7 @@
     "productAjaxAllWidthStatus": "source-derived, not observed by the native producer; the product consumer records its own real peak",
     "tocPagination": "BookChapterList.kt:89-113 batches only the declared next URLs after the ordered initial page.",
     "contentPagination": "BookContent.kt:110-135 batches only the declared next URLs after the first page.",
-    "retry": "OkHttpUtils.kt:29-43 returns the first successful response and otherwise the last one, so retry=2 is 1 attempt on 2xx and 3 on non-2xx."
+    "retry": "OkHttpUtils.kt:29-43 returns the first successful response and otherwise the last one, so retry=2 is 1 attempt on 2xx and 3 on non-2xx.",
+    "headerMapScriptArity": "The pinned Rhino host probe dispatches source.getHeaderMap(false) on a source-signature carrier and rejects the zero-argument call; that is host carrier provenance, not Android execution. The collector measures the actual Android script outcomes for all three arities."
   }
 }

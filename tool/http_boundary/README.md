@@ -2,19 +2,47 @@
 
 One controlled corpus for the frozen `io.legado.app.debug` ordinary HTTP boundary that
 AUTH-SESSION-01 and REQUEST-01 deliberately left to #137: `JsExtensions.ajax` /
-`ajaxAll` / `connect`, the four `getHeaderMap` arities, the real source-keyed
-`ConcurrentRateLimiter` record, non-2xx retry, declared multi-URL pagination, empty
-required results, a task-owned connection failure, real gated cancellation and later
-same-source use.
+`ajaxAll` / `connect`, the three source-script `getHeaderMap` arities (with the Kotlin
+default call kept as provenance), the real source-keyed `ConcurrentRateLimiter` record,
+non-2xx retry, declared multi-URL pagination, empty required results, a task-owned
+connection failure, real gated cancellation and later same-source use.
 
 `fixtures.json` is data, not a golden. Every compared value in a produced report is
 read from a real frozen API, a real `StrResponse.body()`, or the requests the frozen
 HTTP stack actually sent. No expected value is transcribed from this corpus.
 
-**Status: the collector is implemented, host-compiled, dexed, packaged, signed and
-structurally checked. No handset execution has happened in this producer lane.** A
-report produced by the controller is a capture candidate; only the controller's
-hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evidence.
+**Status: review-repair-01 is implemented, host-compiled, dexed, packaged, signed and
+structurally checked against the controller's eight counterexamples and valid positive
+counterparts. No handset execution has happened in this producer lane.** A report
+produced by the controller is a capture candidate; only the controller's hash-bound
+handoff (`E/controller/a2-http-session-handoff.json`) can make it evidence.
+
+## Review-repair-01 disposition
+
+The controller's eight compiled-method counterexamples are rejected by the repaired
+paths, with valid positive counterparts on the same methods:
+
+- The header-map surface is now the real rule script: one fixture-authored projection
+  per arity through `AnalyzeUrl.evalJS`/`source`. A thrown arity keeps its measured
+  `returned:false`; the Kotlin default call is explicit provenance only.
+- `stepCancel` derives `cancelled`/`cancellation` from the measured cancellation and
+  validated receipts and throws a typed expected outcome; the follow-up is bound before
+  invocation to its own created-parent Job/context and the same source object/key, and
+  freshness is measured by object identity.
+- `probeState` keeps null distinct from `"null"` and makes an unresolved getter/query
+  incomplete; `dbCounts` is strict. The rate record's Java class and the native DB table
+  snapshot are provenance, not compared fields.
+- The final request trace is validated as a whole: declared total, every owner, typed
+  raw fields, required headers, honest terminals, and the one declared negative
+  omission. A pending or extra ownerless shutdown request fails.
+- Cohort value keeps capability facts; the gate's planned release and the measured
+  server send order are separated in evidence. In-flight peak is measured through each
+  request's terminal.
+- Cleanup signals cancellation, releases gates, then awaits workers/executors, closes
+  the DB and removes only proven-owned state; an unproved worker/job handle keeps its
+  handle and preserves the residue for controller force-stop cleanup.
+- Actual `AppConfig.threadCount` is required; a failed read is incomplete, not a guessed
+  default.
 
 ## Corpus shape
 
@@ -59,8 +87,8 @@ Helper (8 observations, no stage involved):
 | `helper.ajaxAll-width` | `java.ajaxAll([5 urls])` | ordered joined bodies, cohort 5, exact peak |
 | `helper.connect-header-string` | `java.connect(url, headerJson)` | `x-from-header`/`user-agent` replaced, `x-declared` forbidden |
 | `helper.connect-source-header` | `java.connect(url)` | source `x-declared`/`user-agent` |
-| `helper.header-map-js` | `getHeaderMap()` (default-argument arity), `(false)`, `(true)` on `@js:` | three real maps |
-| `helper.header-map-ltjs` | same on `<js>` spelling | three real maps |
+| `helper.header-map-js` | three fixture-authored scripts through `AnalyzeUrl.evalJS` calling `source.getHeaderMap()`, `(false)`, `(true)` on `@js:` | one typed `returned` record per arity plus the actual primitive map; a thrown arity keeps its real outcome; the Kotlin `$default` call is provenance only |
+| `helper.header-map-ltjs` | same on `<js>` spelling | same shape |
 
 Rate (3 observations). The corpus value `1/2000` is a **synthetic fixture input**; the
 frozen `ConcurrentRateLimiter` semantics are preserved. Each row reads
@@ -111,19 +139,32 @@ Stages (11 observations):
 - Sequential prefixes are ordered; declared concurrent tails are compared as
   multisets, while the returned chapter/content order is the frozen `mapAsync` emission
   order (declared order) and is compared exactly.
-- `requestCheck` is the collector's own structural gate: per step count, ordered
-  prefix, batch multiset, required source-controlled header values and per-step/global
-  forbidden headers (`cookie` globally; `x-declared` on the header-string row).
+- `requestCheck` is the collector's own structural gate over the whole final trace: the
+  declared total (31), every causal owner (no ownerless or unknown-owner record), per
+  step count, ordered prefix, batch multiset, required raw fields/types, required
+  source-controlled header values (a missing header object is a failure, not a skip) and
+  per-step/global forbidden headers (`cookie` globally; `x-declared` on the
+  header-string row).
+- Every request carries an explicit honest terminal: `responded` (successful server
+  flush with `sentAtNanos`/`sendSequence`/status), `client-aborted` (only the held
+  cancel request, no response fact), `omitted-unmatched` (only the one declared negative
+  omission) or `rejected-after-shutdown`. `received`, `held`,
+  `hold-released-at-teardown`, `hold-window-expired` and any shutdown rejection are
+  non-success terminals; an extra ownerless shutdown request fails the total and owner
+  accounting.
 
 ## Cohorts, holds and the failure endpoint
 
 - A cohort member is held until every declared member is in flight or the 5 s cohort
-  window expires. The batch block records `cohortSize`, `cohortTimeoutMs`,
+  window expires. The compared batch block records `cohortSize`, `cohortTimeoutMs`,
   `cohortComplete`, `releaseReason` (`complete` or `cohort-window`), the exact
-  `inFlightPeak` (requests fully read but unanswered, not sockets), the sorted
-  `membership`, the evidence-only release order, and the real `threadCount` read from
-  the scratch `AppCtx`. A window release is a measurement outcome, not an
-  infrastructure timeout.
+  `inFlightPeak` (requests fully read but unanswered until their own response flush, not
+  sockets), the sorted `membership`, and the real `threadCount` read from the scratch
+  `AppCtx`. A window release is a measurement outcome, not an infrastructure timeout.
+  `evidence.batch` separately records the gate's `plannedReleaseOrder` (a decision made
+  before any send), the measured `actualSendOrder` from response flush completions, the
+  arrival order and `clientCompletionUnobserved: true`. A planned reverse index is never
+  named the actual send order.
 - The connection-failure row uses a task-owned listener bound to `127.0.0.1:0`. It is
   bound before sources load and armed for the failure step; every accepted connection is
   read, recorded and closed without a response. Only that listener may be reached, and
@@ -133,10 +174,17 @@ Stages (11 observations):
   **not** part of the 31 ordinary HTTP requests.
 - Cancellation is triggered only after the replay confirms the hold was entered. It uses
   the real `JobKt.Job(null)` + `CoroutineContext.plus` + two-argument `runBlocking` +
-  `Job.cancel` entry, records the abort, the worker termination, an empty late-request
-  set, unchanged declared state probes and a later same-source search with a fresh
-  token. An unresolvable entry or a missing receipt makes the row `incomplete`; it is
-  never replaced by a fake success.
+  `Job.cancel` entry and derives the row outcome/category from the measured cancellation
+  and validated receipts (`clientAborted`, `workerTerminated`, `jobInactive`, empty
+  `lateRequests`, unchanged portable state probes, unchanged raw database snapshot). An
+  expiry or a teardown-only release is never accepted as an abort. The created parent
+  job/context/source identities are recorded; an unresolvable entry or a missing receipt
+  makes the row `incomplete`, never an `ok` row and never a fake success.
+- The post-cancellation search is bound **before invocation** to its own created-parent
+  `Job`/context, and to the same source object/key. `value.followUp` compares measured
+  `jobIdentityFresh`, `contextIdentityFresh`, `sameSourceObject`, `sameSourceKey` and
+  `jobClosed`; the UUIDs and identity hashes are provenance only. A parent Job is
+  compared with a parent Job, never with its child coroutine.
 
 ## Containment, startup and cleanup
 
@@ -147,17 +195,23 @@ Stages (11 observations):
   data-directory suffix is touched anywhere in the collector.
 - `scratch.bind("seed", identity)` runs before the database or any preference read. The
   seed probe and the scoped preference namespace prove the storage belongs to the task.
-  `threadCount` (and therefore `ajaxAll` / pagination concurrency) is read from the
-  isolated scratch `AppCtx`, never from operator preferences. The database is opened
-  because `BookContent` queries chapter rows even with save disabled.
+  `threadCount` (and therefore `ajaxAll` / pagination concurrency) is read from the real
+  `AppConfig.getThreadCount()` on the isolated scratch `AppCtx`, never from operator
+  preferences; an unavailable actual configuration makes the capture incomplete and is
+  never replaced with a guessed default. The database is opened because `BookContent`
+  queries chapter rows even with save disabled.
 - One cleanup order, on success or failure: stop admission → cancel unfinished owned
   jobs → release/abort every hold and cohort → close listeners and await owned
   worker/executor termination → close the database → final terminal snapshot → fence
   every owned preference so a background `apply()` write cannot outlive the run →
   remove only the proven owned preference union → remove the root → assemble the report.
-  Gates are freed before workers are joined. The owner manifest, owned preference names
-  and pre/post XML+BAK residue metadata are copied into the report **before** root
-  removal, so the controller can check late residue after force-stop.
+  Gates are freed before workers are joined. A worker/job handle whose termination is
+  not proved keeps its handle; when any owned resource is uncertain the collector
+  preserves the owned root and preferences (`cleanup.preservedForController: true`) for
+  controller force-stop cleanup instead of deleting beneath it. The owner manifest,
+  owned preference names and pre/post XML+BAK residue metadata are copied into the
+  report **before** any removal, so the controller can check late residue after
+  force-stop.
 - The report leaves the device only on the instrumentation stream
   (`HTTP_BOUNDARY_ORACLE_BASE64=<base64 JSON>`). A watchdog expiry emits an explicitly
   `incomplete` diagnostic, never a golden.
@@ -180,15 +234,22 @@ Top level: `fixtureId`, `schemaVersion`, `corpusVersion`, `baselineCommit`, `ent
 - `requests[]` = the exact arrival trace: `index`, `owner`, `family`, `cohort`,
   `attempt`, `attemptKind`, `selector`, `method`, `target`, `path`, `rawQuery`, `query`,
   `headers`, `headerLines`, `body`, `bodyLength`, `bodySha256`, `receivedAtNanos`,
-  `respondedAtNanos`, `status`, `declaredResponse`, `outcome`, `stage`.
-- `requestCheck` = derived vs actual per step, unmatched/server-error counts and the
-  forbidden-header result.
+  `sentAtNanos`, `sendSequence`, `respondedAtNanos`, `status`, `terminal`,
+  `declaredResponse`, `outcome`, `stage`.
+- `requestCheck` = per-step derived/actual, `totalMatch`, `ownerless`,
+  `unknownOwners`, `duplicateIndices`, `fieldProblems`, `terminalProblems`,
+  `intendedOmission`, `otherUnmatched`, `unmatchedPolicyOk`, server errors and the
+  forbidden-header result. `match` is the full integrity predicate.
 - `cleanup` = admission/jobs/gates/replay/fail-endpoint/database/terminal receipts,
-  owner manifest, owned preferences, residue and removal result.
+  `preservedForController`, owner manifest, owned preferences, residue and removal
+  result. `terminal.resources` is the final listener/worker/executor/connection/database
+  snapshot; `terminal.integrityOk` is the exact success gate.
 - Compare every `value`/row/request field except the list in
   `nondeterministic` (`recordedAt`, `runId`, `pid`, `stageTrace`, arrival/response
-  nanoseconds, `stage`, `evidence`, batch `releaseOrder`, the rate `time` values used
-  only through their relations, the fail endpoint's ephemeral port/connection
+  nanoseconds, `sendSequence`, `stage`, `evidence` (including `evidence.batch` planned
+  and actual send order, `evidence.dbProvenance`, `evidence.rate` class names,
+  `evidence.arityProvenance` and `evidence.followUpExecution`), the rate `time` values
+  used only through their relations, the fail endpoint's ephemeral port/connection
   timestamps/host header, and the owner manifest timestamp). Every capability field is
   compared; nothing is dropped silently. `not-run` or unknown is never promoted.
 - On `rate.record.*`, compare `isConcurrent` and `frequency` exactly, and `time` only
@@ -217,13 +278,16 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 
 - The negative control validates the immutable corpus first and then omits
   `GET /h1/single?` from the in-memory active set, so `helper.ajax` really reaches
-  replay, gets the 404 placeholder and appears in `unmatchedRequests`. Merely failing
-  corpus validation before any request is **not** this control. The negative report has
-  `negativeMode:true`, `status:"incomplete"`, `promotable:false` and must never become a
-  golden.
+  replay, gets the 404 placeholder and appears as exactly one `omitted-unmatched`
+  terminal in `unmatchedRequests`. Merely failing corpus validation before any request is
+  **not** this control. The negative report has `negativeMode:true`,
+  `status:"incomplete"`, `promotable:false` and must never become a golden. Its
+  `negative.integrityOk` must still be true: the omission may not excuse another
+  malformed, extra or error row.
 - A positive capture is promotable only with `status:"ok"`, zero unmatched requests and
-  server errors, all 22 rows matching their expected outcome/category and request
-  counts, complete receipts, and a true cleanup. A cohort-window release or a real
+  server errors, all 22 rows matching their expected outcome/category/request counts,
+  the follow-up execution proven fresh/same-source, complete resource receipts,
+  `terminal.integrityOk:true` and a true cleanup. A cohort-window release or a real
   frozen/product difference is a measurement, not a harness failure; a step/watchdog
   deadline, wrong reflection, replay error or cleanup failure is.
 - After each run the controller force-stops the target, verifies no `pidof` process,
@@ -241,15 +305,22 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/`. Host checks are never device goldens.
+  receipts are under `E/a2-http-native/review-repair-01/`.
+- The review-repair host probe reproduces the controller's eight counterexamples on the
+  actual compiled methods and requires each to be rejected, with valid positive
+  counterparts on the same paths (typed null vs `"null"`, abort vs expiry, full terminal
+  fixtures, live vs terminated worker handles, controlled out-of-order cohort sends and
+  the dispatched-omission design). Its 19 cases all pass: every original counterexample
+  is reproduced and rejected, and every positive control passes. Host checks are never
+  device goldens.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  64ba6d3004a6ae2f7e8f35eaef854fefb3ada43148436776dbf52966c37740a7
-LF-normalised sha256 9172b8008cd8e81487dbbf949b5087a9bb52bbf3b2cfa05b3edd0f666d81eb16
+raw (CRLF) sha256  63e5702878a413ad2f8e4fa760dae6e6ebcb95043d94390882e62699668a2db5
+LF-normalised sha256 12e58825243434a42a0741f6a0d02d014efec48ae2334c352962ef1ed7a22d54
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is
