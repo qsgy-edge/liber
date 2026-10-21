@@ -515,6 +515,95 @@ JSON.stringify([source.getHeaderMap()['X-Login'], source.getHeaderMap(true)['X-L
         isNull,
       );
     });
+
+    test('the login maps answer the frozen Java Map get() and keep brackets', () async {
+      final runtime = InProcessSourceScriptRuntime(androidId: _installationId);
+      const input = <String, Object?>{
+        'sourceKey': 'http://a.test',
+        'source': <String, Object?>{
+          'bookSourceUrl': 'http://a.test',
+          'header': '{"X-Static":"s"}',
+        },
+      };
+      final before = await runtime.evaluate(
+        source: 'JSON.stringify([source.getLoginInfoMap(), '
+            'source.getLoginHeaderMap()])',
+        input: input,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(before, jsonEncode([null, null]));
+      final value = await runtime.evaluate(
+        source: '''
+source.putLoginInfo(JSON.stringify({user:'alice',pass:'pw'}));
+source.putLoginHeader(JSON.stringify({'X-Login':'yes'}));
+JSON.stringify([
+  source.getLoginInfoMap().get('user'),
+  source.getLoginInfoMap()['user'],
+  source.getLoginInfoMap().get('absent'),
+  source.getLoginHeaderMap().get('X-Login'),
+  source.getLoginHeaderMap()['X-Login'],
+  source.getHeaderMap(true).get('X-Login'),
+  source.getHeaderMap()['X-Login'],
+  typeof source.getLoginInfoMap().get,
+  JSON.stringify(source.getLoginInfoMap()),
+  JSON.stringify(source.getHeaderMap(true))
+])
+''',
+        input: input,
+        timeout: const Duration(seconds: 15),
+      );
+      expect(
+        jsonDecode(value as String),
+        [
+          'alice',
+          'alice',
+          null,
+          'yes',
+          'yes',
+          'yes',
+          null,
+          'function',
+          '{"user":"alice","pass":"pw"}',
+          '{"X-Static":"s","User-Agent":'
+              '"${sourceDefaultUserAgent}","X-Login":"yes"}',
+        ],
+      );
+    });
+
+    test('a map data key named get is not overwritten by the lookup', () async {
+      final runtime = InProcessSourceScriptRuntime(androidId: _installationId);
+      final value = await runtime.evaluate(
+        source: '''
+source.putLoginHeader(JSON.stringify({get:'data', 'X-Login':'yes'}));
+JSON.stringify([
+  source.getLoginHeaderMap()['get'],
+  source.getLoginHeaderMap()['X-Login']
+])
+''',
+        input: const {
+          'sourceKey': 'http://a.test',
+          'source': <String, Object?>{'bookSourceUrl': 'http://a.test'},
+        },
+        timeout: const Duration(seconds: 15),
+      );
+      expect(jsonDecode(value as String), ['data', 'yes']);
+    });
+
+    test('the frozen login seed script reads the login map with get()', () async {
+      final state = SourceHostState();
+      final source = _source(
+        'http://a.test',
+        loginUrl:
+            '@js:function login(){var info=source.getLoginInfoMap();'
+            "source.put('probe','user='+info.get('user')+'&pass='+info.get('pass'));}",
+      );
+      final session = _session(source, state: state);
+      expect(await session.submit({'user': 'alice', 'pass': 'pw'}), isTrue);
+      expect(
+        await state.entry('http://a.test', 'v_http://a.test_probe'),
+        'user=alice&pass=pw',
+      );
+    });
   });
 }
 

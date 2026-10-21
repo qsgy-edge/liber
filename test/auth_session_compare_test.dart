@@ -1,0 +1,1295 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import '../tool/auth_session/compare.dart';
+import '../tool/auth_session/runner.dart';
+
+/// The corpus the comparator is written against. It is read from the checkout,
+/// so a corpus the comparator cannot load fails here first.
+const corpusPath = authSessionCorpusPath;
+
+Map<String, dynamic> readCorpus() =>
+    jsonDecode(File(corpusPath).readAsStringSync()) as Map<String, dynamic>;
+
+Map<String, dynamic> copy(Map<String, dynamic> source) =>
+    jsonDecode(jsonEncode(source)) as Map<String, dynamic>;
+
+/// The LF pin of the checkout's corpus bytes, as the runner computes it.
+final String corpusLf =
+    sha256Text(File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n'));
+
+Map<String, String> jsonMapOf(Object? text) {
+  if (text is! String) return const {};
+  final decoded = jsonDecode(text);
+  if (decoded is! Map) return const {};
+  return {for (final entry in decoded.entries) '${entry.key}': '${entry.value}'};
+}
+
+/// The login header one source holds after the corpus step at [through], read
+/// from the corpus' own scripts: a login step stores it last, and a
+/// `loginHeaderPut` step replaces it.
+Map<String, String> loginHeaderAt(
+  Map<String, dynamic> corpus,
+  String phase,
+  int through,
+) {
+  final steps = authSessionSteps(corpus, phase);
+  final bySource = <String, Map<String, String>>{};
+  if (through < 0) return const {};
+  for (var index = 0; index <= through && index < steps.length; index++) {
+    final step = steps[index];
+    final kind = '${step['kind']}';
+    if (kind == 'login') {
+      final source = authSessionSourceOf(corpus, '${step['source']}');
+      final script = '${(source['bookSource'] as Map)['loginUrl']}';
+      final match = RegExp(
+        r"putLoginHeader\('([^']+)'\)",
+      ).firstMatch(script);
+      if (match != null) {
+        bySource['${step['source']}'] = jsonMapOf(match.group(1));
+      }
+    } else if (kind == 'loginHeaderPut') {
+      bySource['${step['source']}'] = jsonMapOf(step['header']);
+    } else if (kind == 'removeLoginHeader') {
+      bySource.remove('${step['source']}');
+    }
+  }
+  return bySource['${steps[through]['source']}'] ?? const {};
+}
+
+/// The step one declared request belongs to, by the address the step itself
+/// declares. The corpus declares its requests in step order; this recovers the
+/// same attribution the device capture records, without assuming a count.
+List<String> stagePerRequest(
+  Map<String, dynamic> corpus,
+  String phase,
+) {
+  final steps = authSessionSteps(corpus, phase);
+  final requests = authSessionExpectedRequests(corpus, phase);
+  final stages = <String>[];
+  var stepIndex = 0;
+  for (final request in requests) {
+    final path = '${request['path']}';
+    final rawQuery = '${request['rawQuery']}';
+    var found = -1;
+    for (var index = stepIndex; index < steps.length; index++) {
+      if (_stepMatches(corpus, steps[index], path, rawQuery)) {
+        found = index;
+        break;
+      }
+    }
+    if (found < 0) {
+      throw StateError('no step declares $path?$rawQuery');
+    }
+    stepIndex = found;
+    stages.add('${steps[found]['id']}');
+  }
+  return stages;
+}
+
+bool _stepMatches(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+  String path,
+  String rawQuery,
+) {
+  final kind = '${step['kind']}';
+  if (kind == 'login') {
+    final source = authSessionSourceOf(corpus, '${step['source']}');
+    final origin = Uri.parse(authSessionSourceUrl(source));
+    return path == '${origin.path}/login';
+  }
+  if (kind != 'stage') return false;
+  final source = authSessionSourceOf(corpus, '${step['source']}');
+  final origin = Uri.parse(authSessionSourceUrl(source));
+  switch ('${step['stage']}') {
+    case 'search':
+      return path == '${origin.path}/search' &&
+          rawQuery.contains('keyword=${step['keyword']}');
+    case 'details':
+      final book = authSessionBookOf(corpus, '${step['book']}');
+      return path == Uri.parse('${book['bookUrl']}').path;
+    case 'toc':
+      final book = authSessionBookOf(corpus, '${step['book']}');
+      return path == '${Uri.parse('${book['bookUrl']}').path}/toc';
+    case 'content':
+      return path == Uri.parse('${step['chapter']}').path;
+  }
+  return false;
+}
+
+/// One cookie probe as the frozen capture records it: the two storage tiers and
+/// the effective value the frozen `CookieStore.getCookie` merges from them.
+Map<String, Object?> nativeProbe({
+  required String url,
+  required String persistent,
+  required String? session,
+  required String? loginHeader,
+}) {
+  final effective = [persistent, session ?? '']
+      .where((part) => part.isNotEmpty)
+      .join('; ');
+  return {
+    'url': url,
+    'domain': Uri.parse(url).host,
+    'persistent': persistent,
+    'session': session,
+    'effective': effective,
+    'keys': authSessionCookiePairs(effective),
+    'loginHeader': loginHeader,
+    'loginHeaderMap': loginHeader == null
+        ? null
+        : authSessionMapPairs(jsonMapOf(loginHeader)),
+  };
+}
+
+/// The product's own cookie probe: one storage shape, so its persistent map is
+/// the effective value and it has no session map.
+Map<String, Object?> productProbe(Map<dynamic, dynamic> native) {
+  final effective = '${native['effective']}';
+  return {
+    'url': native['url'],
+    'domain': native['domain'],
+    'persistent': effective,
+    'session': null,
+    'effective': effective,
+    'keys': authSessionCookiePairs(effective),
+    'loginHeader': native['loginHeader'],
+    'loginHeaderMap': native['loginHeaderMap'],
+  };
+}
+
+/// The same pairs with the last one moved to the front, so a value that is
+/// already its own reverse still changes.
+String rotateCookie(String value) {
+  final pairs = [
+    for (final part in value.split('; '))
+      if (part.isNotEmpty) part,
+  ];
+  if (pairs.length < 2) return value;
+  return [...pairs.skip(1), pairs.first].join('; ');
+}
+
+const ownerSha =
+    '2b7e151628aed2a6abf7158809cf4f3c2b7e151628aed2a6abf7158809cf4f3c';
+
+/// The frozen cookie value each source's requests carry in this fixture. The
+/// product's jar keeps the same pairs; only their order can differ.
+String cookieFor(String path) {
+  if (path.startsWith('/a/')) {
+    if (path == '/a/login') return 'scriptA=one';
+    return 'scriptA=one; loginRespA=p1; sidA=two; extraA=e1; '
+        'loginSessA=t1; ssA=s2; ss2=sx';
+  }
+  if (path == '/b/login') return 'scriptB=one';
+  return 'scriptB=loginOverride; loginCookieB=abc';
+}
+
+/// The same pairs in the product jar's own insertion order.
+String jarOrderCookie(String path) {
+  if (path == '/a/login') return 'scriptA=one';
+  return 'scriptA=one; loginRespA=p1; loginSessA=t1; sidA=two; extraA=e1; '
+      'ssA=s2; ss2=sx';
+}
+
+/// A synthetic but complete pair of frozen captures and product reports for one
+/// corpus: the golden is shaped the way the device harness records it, and the
+/// product report the way the runner does.
+class Fixture {
+  Fixture(this.corpus, {this.jarOrder = false, this.probeOrder = false});
+
+  final Map<String, dynamic> corpus;
+
+  /// When set, the product's outbound cookie carries the jar's own insertion
+  /// order, which is the real single-tier behaviour this corpus observes.
+  final bool jarOrder;
+
+  /// When set, a product cookie probe's effective value is in jar order too.
+  final bool probeOrder;
+
+  late final Map<String, dynamic> seedGolden = golden('seed');
+  late final Map<String, dynamic> restartGolden = golden('restart');
+  late final Map<String, dynamic> seedProduct = product('seed');
+  late final Map<String, dynamic> restartProduct = product('restart');
+
+  Map<String, dynamic> golden(String phase) {
+    final requests = authSessionExpectedRequests(corpus, phase);
+    final stages = stagePerRequest(corpus, phase);
+    final steps = authSessionSteps(corpus, phase);
+    final stepIndex = {
+      for (var index = 0; index < steps.length; index++)
+        '${steps[index]['id']}': index,
+    };
+    final rows = <Map<String, Object?>>[];
+    for (var index = 0; index < requests.length; index++) {
+      final declared = requests[index];
+      final stage = stages[index];
+      final step = steps[stepIndex[stage]!];
+      final source = authSessionSourceOf(corpus, '${step['source']}');
+      final staticHeaders = jsonMapOf((source['bookSource'] as Map)['header']);
+      // A request of the login step itself runs before that step's script
+      // stores the header, so it sees the state the step before it left.
+      final login = loginHeaderAt(
+        corpus,
+        phase,
+        '${step['kind']}' == 'login' ? stepIndex[stage]! - 1 : stepIndex[stage]!,
+      );
+      final path = '${declared['path']}';
+      final headers = <String, Object?>{};
+      for (final entry in staticHeaders.entries) {
+        headers[entry.key.toLowerCase()] = entry.value;
+      }
+      headers['user-agent'] = 'Liber-AUTH-SESSION-01/1.0';
+      // The frozen `getHeaderMap(true)` merges the stored login header last.
+      for (final entry in login.entries) {
+        headers[entry.key.toLowerCase()] = entry.value;
+      }
+      final cookie = cookieFor(path);
+      if (cookie.isNotEmpty) headers['cookie'] = cookie;
+      headers['keep-alive'] = '300';
+      headers['cache-control'] = 'no-cache';
+      headers['accept-encoding'] = 'gzip, deflate';
+      headers['host'] = Uri.parse(authSessionSourceUrl(source)).authority;
+      rows.add({
+        'listener': Uri.parse(authSessionSourceUrl(source)).host,
+        'method': declared['method'],
+        'target': '${declared['path']}?${declared['rawQuery']}',
+        'path': declared['path'],
+        'rawQuery': declared['rawQuery'],
+        'query': <String, Object?>{},
+        'headers': headers,
+        'headerLines': [
+          for (final entry in headers.entries) '${entry.key}: ${entry.value}',
+        ],
+        'body': '',
+        'bodyLength': 0,
+        'bodySha256':
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'stage': stage,
+      });
+    }
+    final observations = <Map<String, Object?>>[
+      for (var index = 0; index < steps.length; index++)
+        {'id': steps[index]['id'], 'value': observation(phase, steps[index], index)},
+    ];
+    final target = corpus['target'] as Map;
+    return {
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'schemaVersion': 1,
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'platform': 'android',
+      'fingerprint': 'Redmi/myron/myron:17/CP2A.260605.016',
+      'recordedAt': phase == 'seed'
+          ? '2026-10-21T06:44:56.171Z'
+          : '2026-10-21T06:46:56.171Z',
+      'phase': phase,
+      'runId': 'golden-$phase',
+      'pid': phase == 'seed' ? 20071 : 23718,
+      'identity': {
+        'fixtureId': corpus['fixtureId'],
+        'corpusVersion': corpus['corpusVersion'],
+        'targetPackage': target['package'],
+        'targetApkSha256': target['apkSha256'],
+        'targetBaselineCommit': target['baselineCommit'],
+        'targetPinManifest': target['manifest'],
+        'harnessPackage': 'io.liber.oracle.nested',
+        'harnessApkSha256':
+            '54695a2bee29ba7ae69ab08b79276e3cf548ff526c20eea2b76a5a53c8ddce0f',
+        'corpusAsset': 'auth-session-fixtures.json',
+        'corpusAssetSha256': corpusLf,
+        'corpusSha256Lf': corpusLf,
+      },
+      'isolation': {
+        'application': 'android.app.Application',
+        'scratchRoot':
+            '/data/user/0/io.legado.app.debug/cache/liber-auth-session-01',
+        'scratchRootExistedAtStart': phase != 'seed',
+        'scratchCreatedByThisRun': phase == 'seed',
+        'scratchRetainedFromSeed': phase != 'seed',
+        'deviceProtected': false,
+        'webViewPathPrecheck': {'insideRoot': true},
+      },
+      'stageTrace': [
+        for (final row in rows)
+          {
+            'stage': row['stage'],
+            'listener': row['listener'],
+            'target': row['target'],
+          },
+      ],
+      'requests': rows,
+      'unmatchedRequests': <Object?>[],
+      'serverErrors': <Object?>[],
+      'requestCheck': {
+        'declared': [
+          for (final row in rows)
+            {
+              'method': row['method'],
+              'path': row['path'],
+              'rawQuery': row['rawQuery'],
+            },
+        ],
+        'actual': [
+          for (final row in rows)
+            {
+              'method': row['method'],
+              'path': row['path'],
+              'rawQuery': row['rawQuery'],
+            },
+        ],
+        'mismatches': <Object?>[],
+        'orderMatch': true,
+        'bodyMatch': true,
+        'unmatched': 0,
+        'serverErrors': 0,
+        'forbiddenHeaders': <Object?>[],
+        'match': true,
+      },
+      'observations': observations,
+      'observationCheck': {
+        'declared': [for (final step in steps) step['id']],
+        'actual': [for (final step in steps) step['id']],
+        'missing': <Object?>[],
+        'extra': <Object?>[],
+        'duplicates': <Object?>[],
+        'ordered': true,
+        'match': true,
+      },
+      'inventory': const <String, Object?>{},
+      'webView': {
+        'suffix': 'liber-auth-session-01',
+        'suffixStatus': 'set-in-Instrumentation.newApplication',
+        'suffixFailure': null,
+        'preflightFailure': null,
+        'preflight': {
+          'provider': {
+            'package': 'com.google.android.webview',
+            'versionName': '157.0.8103.5',
+            'versionCode': 810300513,
+          },
+          'computed': {
+            'data': '/data/data/x/dir-webview_liber-auth-session-01',
+            'cache': '/data/data/x/cache/webview_liber-auth-session-01',
+            'textures': '/data/data/x/dir-textures',
+          },
+          'actual': {
+            'data': '/data/data/x/dir-webview_liber-auth-session-01',
+            'cache': '/data/data/x/cache/webview_liber-auth-session-01',
+            'textures': '/data/data/x/dir-textures',
+          },
+          'androidxProcessGlobalConfig': {
+            'classPresent': true,
+            'configSet': false,
+            'dataDirectoryBasePath': null,
+            'cacheDirectoryBasePath': null,
+            'dataDirectorySuffixKey': false,
+          },
+          'deviceProtected': false,
+        },
+      },
+      'cleanup': {
+        'databaseClosed': true,
+        'replay': {
+          'openConnectionsBeforeClose': 2,
+          'openConnectionsAfterClose': 0,
+          'listenersClosed': true,
+          'listenerClosure': [
+            {
+              'host': '127.0.0.1',
+              'port': 18751,
+              'created': true,
+              'closed': true,
+            },
+            {
+              'host': '127.0.0.2',
+              'port': 18751,
+              'created': true,
+              'closed': true,
+            },
+          ],
+          'listenerCloseErrors': <Object?>[],
+          'workersStopped': true,
+          'executorTerminated': true,
+          'serverErrors': <Object?>[],
+          'failures': <Object?>[],
+          'ok': true,
+        },
+        'terminal': {
+          'requests': rows.length,
+          'unmatched': 0,
+          'serverErrors': 0,
+          'requestMatch': true,
+          'observationMatch': true,
+          'ok': true,
+        },
+        'ownership': phase == 'seed'
+            ? 'created-fresh-root'
+            : 'validated-seed-owner',
+        'scratchRoot':
+            '/data/user/0/io.legado.app.debug/cache/liber-auth-session-01',
+        'preferencesFenced': phase == 'seed'
+            ? [
+                {'name': 'liber_auth_session_01_probe', 'ok': true},
+              ]
+            : <Object?>[],
+        'preferencesRemoved': phase == 'seed'
+            ? <Object?>[]
+            : [
+                {'name': 'liber_auth_session_01_probe', 'ok': true},
+              ],
+        'scratchRetained': phase == 'seed',
+        'scratchRemoved': phase != 'seed',
+        'ownerFile':
+            '/data/user/0/io.legado.app.debug/cache/liber-auth-session-01/owner.json',
+      },
+      'analysisFailure': null,
+    };
+  }
+
+  Map<String, Object?> observation(
+    String phase,
+    Map<String, dynamic> step,
+    int index,
+  ) {
+    final kind = '${step['kind']}';
+    final sourceId = step['source'];
+    final loginHeader = sourceId == null
+        ? null
+        : (loginHeaderAt(corpus, phase, index).isEmpty
+              ? null
+              : jsonEncode(loginHeaderAt(corpus, phase, index)));
+    Map<String, Object?> probe(String id) {
+      final url = authSessionSourceUrl(authSessionSourceOf(corpus, id));
+      return nativeProbe(
+        url: url,
+        persistent: id == 'A' ? 'sidA=after; extraA=e2' : 'scriptB=loginOverride; loginCookieB=abc',
+        session: null,
+        loginHeader: loginHeader,
+      );
+    }
+
+    switch (kind) {
+      case 'login':
+        return {
+          'kind': 'login',
+          'source': sourceId,
+          'loginUi': [
+            {'name': 'user', 'type': 'text', 'action': null},
+            {'name': 'pass', 'type': 'password', 'action': null},
+            {'name': 'Login', 'type': 'button', 'action': 'login'},
+          ],
+          'putLoginInfo': true,
+          'loginInfo': [
+            ['pass', 'synthetic-a-pass'],
+            ['user', 'synthetic-a-user'],
+          ],
+          'loginOutcome': 'code=200|body={}|user=synthetic-a-user',
+          'loginHeader': loginHeader,
+          'loginHeaderMap': loginHeader == null
+              ? null
+              : authSessionMapPairs(jsonMapOf(loginHeader)),
+        };
+      case 'headerMap':
+        return {
+          'kind': 'headerMap',
+          'source': sourceId,
+          'noLogin': [
+            ['User-Agent', 'Liber-AUTH-SESSION-01/1.0'],
+          ],
+          'withLogin': [
+            ['User-Agent', 'Liber-AUTH-SESSION-01/1.0'],
+            ['X-Login', 'A-login'],
+          ],
+          'loginHeader': loginHeader,
+          'loginHeaderMap': loginHeader == null
+              ? null
+              : authSessionMapPairs(jsonMapOf(loginHeader)),
+        };
+      case 'stage':
+        final stage = '${step['stage']}';
+        final book = step['book'] == null
+            ? null
+            : authSessionBookOf(corpus, '${step['book']}');
+        return {
+          'kind': 'stage',
+          'stage': stage,
+          'source': sourceId,
+          if (stage == 'search')
+            'results': [
+              {
+                'id': (step['books'] as List).first,
+                'name': 'x',
+                'author': 'y',
+                'kind': '',
+                'bookUrl': 'z',
+              },
+            ],
+          if (stage == 'details') 'book': step['book'],
+          if (stage == 'details') 'bookUrl': book!['bookUrl'],
+          if (stage == 'details') 'name': 'n',
+          if (stage == 'details') 'author': 'a',
+          if (stage == 'details') 'intro': 'i',
+          if (stage == 'details') 'latestChapterTitle': '',
+          if (stage == 'details') 'tocUrl': '${book!['bookUrl']}/toc',
+          if (stage == 'toc')
+            'chapters': [
+              {'url': 'c1', 'title': 't1', 'tag': 'tag|c1'},
+            ],
+          if (stage == 'content') 'book': step['book'],
+          if (stage == 'content') 'chapter': step['chapter'],
+          if (stage == 'content') 'text': 'PageA1Ch1',
+          'check': 'code=200|mark=pass',
+        };
+      case 'cookieState':
+        return {
+          'kind': 'cookieState',
+          for (final raw in step['sources'] as List) '$raw': probe('$raw'),
+        };
+      case 'cookieKeyRemoval':
+        return {
+          'kind': 'cookieKeyRemoval',
+          'source': sourceId,
+          'removed': step['keys'],
+          'before': probe('$sourceId'),
+          'after': probe('$sourceId'),
+        };
+      case 'removeLoginHeader':
+        return {
+          'kind': 'removeLoginHeader',
+          'source': sourceId,
+          'before': probe('$sourceId'),
+          'after': {
+            ...probe('$sourceId'),
+            'persistent': '',
+            'effective': '',
+            'keys': <Object?>[],
+            'loginHeader': null,
+            'loginHeaderMap': null,
+          },
+          'webViewInitialized': true,
+        };
+      case 'loginHeaderPut':
+        return {
+          'kind': 'loginHeaderPut',
+          'source': sourceId,
+          'before': probe('$sourceId'),
+          'after': probe('$sourceId'),
+          'withLogin': [
+            ['User-Agent', 'Liber-AUTH-SESSION-01/1.0'],
+            ['X-Login', 'B-login'],
+            ['X-Over', 'login'],
+          ],
+        };
+      case 'state':
+        return {
+          'kind': 'state',
+          'sessions': {
+            for (final raw in step['sources'] as List)
+              '$raw': raw == 'A' ? (phase == 'seed' ? 'ssA=after; ss2=sx2' : '') : null,
+          },
+          'loginHeaders': {
+            for (final raw in step['sources'] as List) '$raw': null,
+          },
+          'loginInfo': {
+            for (final raw in step['sources'] as List) '$raw': <Object?>[],
+          },
+          'cookies': {
+            for (final raw in step['sources'] as List) '$raw': probe('$raw'),
+          },
+        };
+      default:
+        throw StateError('unknown step kind $kind');
+    }
+  }
+
+  Map<String, dynamic> product(String phase) {
+    final report = copy(phase == 'seed' ? seedGolden : restartGolden);
+    report['product'] = 'liber-auth-session-runner';
+    report['platform'] = 'windows';
+    report['pid'] = phase == 'seed' ? 56176 : 22296;
+    report['runId'] = 'product-$phase';
+    report['startedAt'] = phase == 'seed'
+        ? '2026-10-21T07:00:00.000Z'
+        : '2026-10-21T07:00:20.000Z';
+    report['completedAt'] = phase == 'seed'
+        ? '2026-10-21T07:00:10.000Z'
+        : '2026-10-21T07:00:30.000Z';
+    report['status'] = 'completed';
+    final identity = (report['identity'] as Map).cast<String, dynamic>();
+    identity['corpusPath'] = corpusPath;
+    identity['corpusRawSha256'] = corpusLf;
+    for (final key in [
+      'targetPackage',
+      'targetApkSha256',
+      'targetBaselineCommit',
+      'targetPinManifest',
+      'harnessPackage',
+      'harnessApkSha256',
+      'corpusAsset',
+      'corpusAssetSha256',
+    ]) {
+      identity.remove(key);
+    }
+    identity['target'] = {
+      'package': (corpus['target'] as Map)['package'],
+      'apkSha256': (corpus['target'] as Map)['apkSha256'],
+      'baselineCommit': (corpus['target'] as Map)['baselineCommit'],
+      'manifest': (corpus['target'] as Map)['manifest'],
+    };
+    identity['library'] = {
+      'path': 'packages/fjs/libfjs/target/debug/fjs.dll',
+      'sha256':
+          '51b5097c15c14f9564261df5fde12206447e29d77f79d71fe2bf9026cadd1d9b',
+    };
+    identity['runner'] = {
+      'path': 'tool/auth_session/runner.dart',
+      'sha256':
+          '838cf80767c8e3d0449480022dedebde07199673a5aaf5fdf312536882d9cda8',
+    };
+    report['steps'] = [
+      for (final step in authSessionSteps(corpus, phase)) step['id'],
+    ];
+    // The product merges the login header *under* the request's own headers, so
+    // a key the static header rule also declares keeps the static value.
+    for (final raw in report['requests'] as List) {
+      final request = raw as Map;
+      final headers = (request['headers'] as Map).cast<String, Object?>();
+      final stage = '${request['stage']}';
+      final step = authSessionSteps(
+        corpus,
+        phase,
+      ).firstWhere((candidate) => '${candidate['id']}' == stage);
+      final source = authSessionSourceOf(corpus, '${step['source']}');
+      for (final entry in jsonMapOf(
+        (source['bookSource'] as Map)['header'],
+      ).entries) {
+        headers[entry.key.toLowerCase()] = entry.value;
+      }
+      if (jarOrder) {
+        headers['cookie'] = jarOrderCookie('${request['path']}');
+        request['headerLines'] = [
+          for (final entry in headers.entries) '${entry.key}: ${entry.value}',
+        ];
+      }
+    }
+    final observations = report['observations'] as List;
+    for (final raw in observations) {
+      final value = (raw as Map)['value'];
+      if (value is! Map) continue;
+      for (final key in value.keys.toList()) {
+        final probe = value[key];
+        if (probe is Map && probe.containsKey('effective')) {
+          final replacement = productProbe(probe);
+          if (probeOrder) {
+            final reordered = rotateCookie('${replacement['effective']}');
+            replacement['effective'] = reordered;
+            replacement['persistent'] = reordered;
+            replacement['keys'] = authSessionCookiePairs(reordered);
+          }
+          value[key] = replacement;
+        }
+      }
+      if (value.containsKey('effective')) {
+        final replacement = productProbe(value);
+        value.clear();
+        value.addAll(replacement);
+        if (probeOrder) {
+          final reordered = rotateCookie('${replacement['effective']}');
+          replacement['effective'] = reordered;
+          replacement['persistent'] = reordered;
+          replacement['keys'] = authSessionCookiePairs(reordered);
+        }
+      }
+      value.remove('webViewInitialized');
+      value.remove('sessions');
+    }
+    report['sessionTier'] = {
+      'tier': 'single',
+      'sessions': {'A': null, 'B': null},
+      'persistent': {'A': 'sidA=after; extraA=e2', 'B': ''},
+      'note': 'one storage shape',
+    };
+    report['isolation'] = {
+      'root': 'C:/evidence/a2-auth-product/scratch/run/root',
+      'rootName': 'root',
+      'database':
+          'C:/evidence/a2-auth-product/scratch/run/root/spaces/default/data.db',
+      'workspaceManifest':
+          'C:/evidence/a2-auth-product/scratch/run/root/manifest.json',
+      'ownerFile': 'C:/evidence/a2-auth-product/scratch/run/root/owner.json',
+      'rootExistedAtStart': phase != 'seed',
+      'createdByThisRun': phase == 'seed',
+      'validatedOwner': phase != 'seed',
+      'validatedOwnerSha256': phase == 'seed' ? null : ownerSha,
+      'preferenceFilesOutsideRoot': <Object?>[],
+      'preferenceBoundary': 'the product keeps its state in this one root',
+      'sessionTier': 'the product jar has one storage shape',
+    };
+    report['owner'] = {
+      'validated': phase != 'seed',
+      'written': phase == 'seed',
+      'sha256': ownerSha,
+      'seedRunId': 'product-seed',
+      'seedPid': 56176,
+      'rootName': 'root',
+      'complete': true,
+    };
+    report['cleanup'] = {
+      'databaseClosed': true,
+      'serversClosed': true,
+      'nativeLibraryDisposed': true,
+      'ownerWritten': phase == 'seed',
+      'ownerSha256': ownerSha,
+      'scratchRetained': phase == 'seed',
+      'scratchRemoved': phase != 'seed',
+      'rootAbsentAfter': phase != 'seed',
+      'removalSkipped': '',
+      'startedAt': report['startedAt'],
+    };
+    report.remove('inventory');
+    report.remove('webView');
+    report.remove('fingerprint');
+    report['unmatchedRequests'] = <Object?>[];
+    report['serverErrors'] = <Object?>[];
+    report['requestCheck'] = {
+      'declared': [
+        for (final request in authSessionExpectedRequests(corpus, phase))
+          {
+            'method': request['method'],
+            'path': request['path'],
+            'rawQuery': request['rawQuery'],
+          },
+      ],
+      'declaredCount': authSessionExpectedRequests(corpus, phase).length,
+      'actualCount': authSessionExpectedRequests(corpus, phase).length,
+      'orderMatch': true,
+      'match': true,
+      'mismatchIndex': null,
+      'mismatch': null,
+    };
+    report['observationCheck'] = {
+      'declared': [
+        for (final step in authSessionSteps(corpus, phase)) step['id'],
+      ],
+      'actual': [
+        for (final step in authSessionSteps(corpus, phase)) step['id'],
+      ],
+      'missing': <Object?>[],
+      'extra': <Object?>[],
+      'duplicates': <Object?>[],
+      'ordered': true,
+      'match': true,
+    };
+    report['analysisFailure'] = null;
+    return report;
+  }
+
+  Map<String, Object?> compare({
+    Map<String, dynamic>? seedGolden,
+    Map<String, dynamic>? restartGolden,
+    Map<String, dynamic>? seedProduct,
+    Map<String, dynamic>? restartProduct,
+    Map<String, dynamic>? handoff,
+    String? librarySha256,
+  }) => compareAuthSessionPhases(
+    corpus: corpus,
+    corpusSha256Lf: corpusLf,
+    seedGolden: seedGolden ?? this.seedGolden,
+    restartGolden: restartGolden ?? this.restartGolden,
+    seedProduct: seedProduct ?? this.seedProduct,
+    restartProduct: restartProduct ?? this.restartProduct,
+    handoff: handoff,
+    librarySha256: librarySha256,
+    seedExitCode: 0,
+    restartExitCode: 0,
+  );
+}
+
+List<String> surfacesOf(Map<String, Object?> report) => [
+  for (final row in (report['mismatches'] as List? ?? const []))
+    '${(row as Map)['surface']}',
+];
+
+void main() {
+  final corpus = readCorpus();
+
+  group('corpus pin', () {
+    test('the LF pin is the same for an LF and a CRLF checkout', () {
+      final lf = File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n');
+      final crlf = lf.replaceAll('\n', '\r\n');
+      expect(
+        sha256Text(crlf.replaceAll('\r\n', '\n')),
+        corpusLf,
+      );
+      expect(sha256Text(lf), corpusLf);
+    });
+
+    test('a content edit, a lone CR and a BOM change the pin', () {
+      final lf = File(corpusPath).readAsStringSync().replaceAll('\r\n', '\n');
+      String lfHash(String text) =>
+          sha256Text(text.replaceAll('\r\n', '\n'));
+      expect(
+        lfHash(lf.replaceFirst('synthetic-a-user', 'synthetic-x-user')),
+        isNot(corpusLf),
+      );
+      expect(lfHash('$lf\n'), isNot(corpusLf));
+      expect(lfHash(lf.replaceFirst('\n', '\r')), isNot(corpusLf));
+      expect(lfHash('\ufeff$lf'), isNot(corpusLf));
+    });
+
+    test('the corpus validates and names the two cookie-jar states', () {
+      expect(() => validateAuthSessionCorpus(corpus), returnsNormally);
+      final flags = [
+        for (final source in corpus['sources'] as List)
+          (source['bookSource'] as Map)['enabledCookieJar'],
+      ];
+      expect(flags, [true, false]);
+    });
+
+    test('the request stages the corpus declares are its own step order', () {
+      for (final phase in ['seed', 'restart']) {
+        final stages = stagePerRequest(corpus, phase);
+        final requests = authSessionExpectedRequests(corpus, phase);
+        expect(stages.length, requests.length);
+        expect(() => authSessionRequestStages(corpus, phase, [
+          for (var index = 0; index < requests.length; index++)
+            {...requests[index], 'stage': stages[index]},
+        ], 'requests'), returnsNormally);
+      }
+    });
+  });
+
+  group('frozen capture validation', () {
+    late Fixture fixture;
+    setUpAll(() => fixture = Fixture(corpus));
+
+    test('a well-formed pair is accepted', () {
+      expect(
+        () => checkAuthSessionGoldenPair(
+          corpus: corpus,
+          corpusSha256Lf: corpusLf,
+          seed: fixture.seedGolden,
+          restart: fixture.restartGolden,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('another target APK, corpus hash, harness or phase is refused', () {
+      Map<String, dynamic> withIdentity(String key, Object? value) {
+        final golden = copy(fixture.seedGolden);
+        ((golden['identity'] as Map) as Map<String, dynamic>)[key] = value;
+        return golden;
+      }
+
+      for (final golden in [
+        withIdentity('targetApkSha256', 'ff' * 32),
+        withIdentity('corpusSha256Lf', 'ff' * 32),
+        withIdentity('targetPinManifest', 'other.json'),
+      ]) {
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: golden,
+            phase: 'seed',
+          ),
+          throwsFormatException,
+        );
+      }
+      expect(
+        () => checkAuthSessionGolden(
+          corpus: corpus,
+          corpusSha256Lf: corpusLf,
+          golden: fixture.restartGolden,
+          phase: 'seed',
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('a reordered, extra or re-encoded request is refused', () {
+      final swapped = copy(fixture.seedGolden);
+      final requests = swapped['requests'] as List;
+      final first = requests[0];
+      requests[0] = requests[1];
+      requests[1] = first;
+      final encoded = copy(fixture.seedGolden);
+      ((encoded['requests'] as List).first as Map)['rawQuery'] =
+          'user=synthetic-a-user&pass=synthetic-a-pass%20';
+      final extra = copy(fixture.seedGolden);
+      (extra['requests'] as List).add(
+        copy((extra['requests'] as List).first as Map<String, dynamic>),
+      );
+      for (final golden in [swapped, encoded, extra]) {
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: golden,
+            phase: 'seed',
+          ),
+          throwsFormatException,
+        );
+      }
+    });
+
+    test('a trace or observation set that is not the corpus is refused', () {
+      final noTrace = copy(fixture.seedGolden);
+      (noTrace['stageTrace'] as List).removeLast();
+      final swapped = copy(fixture.seedGolden);
+      final observations = swapped['observations'] as List;
+      final first = observations[0];
+      observations[0] = observations[1];
+      observations[1] = first;
+      final unmatched = copy(fixture.seedGolden);
+      (unmatched['unmatchedRequests'] as List).add({'path': '/x'});
+      for (final golden in [noTrace, swapped, unmatched]) {
+        expect(
+          () => checkAuthSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: golden,
+            phase: 'seed',
+          ),
+          throwsFormatException,
+        );
+      }
+    });
+
+    test('a capture without its listener, ownership or provider receipt is refused',
+        () {
+      final listener = copy(fixture.seedGolden);
+      ((listener['cleanup'] as Map) as Map<String, dynamic>)['replay'] = {
+        'ok': false,
+        'listenersClosed': false,
+      };
+      final owner = copy(fixture.restartGolden);
+      ((owner['cleanup'] as Map) as Map<String, dynamic>)['scratchRemoved'] =
+          false;
+      final provider = copy(fixture.seedGolden);
+      final preflight = ((provider['webView'] as Map)['preflight'] as Map)
+          .cast<String, dynamic>();
+      (preflight['provider'] as Map)['versionName'] = '0.0.0.0';
+      expect(
+        () => checkAuthSessionGolden(
+          corpus: corpus,
+          corpusSha256Lf: corpusLf,
+          golden: listener,
+          phase: 'seed',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => checkAuthSessionGolden(
+          corpus: corpus,
+          corpusSha256Lf: corpusLf,
+          golden: owner,
+          phase: 'restart',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => checkAuthSessionGolden(
+          corpus: corpus,
+          corpusSha256Lf: corpusLf,
+          golden: provider,
+          phase: 'seed',
+        ),
+        throwsFormatException,
+      );
+    });
+  });
+
+  group('product comparison', () {
+    late Fixture fixture;
+    setUpAll(() => fixture = Fixture(corpus));
+
+    test('the product pair passes when its cookie order is the frozen one', () {
+      final report = fixture.compare();
+      expect(report['status'], 'pass', reason: '${report['mismatches']}');
+      expect(report['mismatches'], isEmpty);
+      final notCompared = (report['notCompared'] as List).cast<Map>();
+      expect(
+        notCompared.every((row) => row['row'] != null),
+        isTrue,
+        reason: 'every carried difference names its approved row',
+      );
+      expect(
+        [
+          for (final row in notCompared)
+            if (row['row'] == 'login-header-precedence') row,
+        ],
+        isNotEmpty,
+        reason: 'source B declares X-Over in both maps',
+      );
+      expect(
+        [
+          for (final row in notCompared)
+            if (row['row'] == 'session-tier') row,
+        ],
+        isNotEmpty,
+        reason: 'the frozen probes carry two storage tiers',
+      );
+    });
+
+    test('a product pair in the jar order fails on the raw cookie only', () {
+      final jar = Fixture(corpus, jarOrder: true);
+      final report = jar.compare();
+      expect(report['status'], 'fail');
+      final surfaces = surfacesOf(report).toSet();
+      expect(surfaces, {'product-request-headers'});
+      final orderOnly = (report['cookieOrderDifferences'] as List).cast<Map>();
+      expect(orderOnly, isNotEmpty);
+      expect(orderOnly.every((row) => row['pairsEqual'] == true), isTrue);
+      expect(
+        orderOnly.first['expected'],
+        contains('sidA=two; extraA=e1; loginSessA=t1'),
+      );
+      expect(
+        orderOnly.first['observed'],
+        contains('loginSessA=t1; sidA=two'),
+      );
+      final notCompared = (report['notCompared'] as List).cast<Map>();
+      expect(
+        notCompared.any((row) => row['row'] == 'session-tier'),
+        isTrue,
+      );
+    });
+
+    test('a product probe in the jar order fails on the raw value only', () {
+      final jar = Fixture(corpus, probeOrder: true);
+      final report = jar.compare();
+      expect(report['status'], 'fail');
+      expect(surfacesOf(report).toSet(), {'observation-cookie-order'});
+      final orderOnly = (report['cookieOrderDifferences'] as List).cast<Map>();
+      expect(orderOnly, isNotEmpty);
+      expect(orderOnly.every((row) => row['pairsEqual'] == true), isTrue);
+    });
+
+    test('a changed product value, identity, request or receipt fails', () {
+      final value = copy(fixture.seedProduct);
+      final observations = value['observations'] as List;
+      ((observations.first as Map) as Map<String, dynamic>)['value'] = {
+        'kind': 'login',
+        'source': 'A',
+      };
+      expect(surfacesOf(fixture.compare(seedProduct: value)), contains('observation'));
+
+      final identity = copy(fixture.restartProduct);
+      ((identity['identity'] as Map) as Map<String, dynamic>)['corpusSha256Lf'] =
+          'ff' * 32;
+      expect(
+        surfacesOf(fixture.compare(restartProduct: identity)),
+        contains('product-corpus-identity-restart'),
+      );
+
+      final extra = copy(fixture.seedProduct);
+      (extra['requests'] as List).add({
+        'method': 'GET',
+        'path': '/a/mutated',
+        'rawQuery': '',
+        'headers': <String, String>{},
+        'body': '',
+      });
+      expect(
+        surfacesOf(fixture.compare(seedProduct: extra)),
+        contains('product-request-count-seed'),
+      );
+
+      final cleanup = copy(fixture.restartProduct);
+      ((cleanup['cleanup'] as Map) as Map<String, dynamic>)['scratchRemoved'] =
+          false;
+      expect(
+        surfacesOf(fixture.compare(restartProduct: cleanup)),
+        contains('product-restart-cleanup'),
+      );
+    });
+
+    test('a reordered, re-encoded or absent raw query fails', () {
+      for (final rawQuery in [
+        'pass=synthetic-a-pass&user=synthetic-a-user',
+        'user=synthetic-a-user&pass=synthetic-a-pass%20',
+      ]) {
+        final report = copy(fixture.seedProduct);
+        ((report['requests'] as List).first as Map)['rawQuery'] = rawQuery;
+        expect(
+          surfacesOf(fixture.compare(seedProduct: report)),
+          contains('product-requests'),
+        );
+      }
+      final absent = copy(fixture.seedProduct);
+      ((absent['requests'] as List).first as Map).remove('rawQuery');
+      expect(
+        surfacesOf(fixture.compare(seedProduct: absent)),
+        contains('product-requests'),
+      );
+    });
+
+    test('a changed cookie value or a reordered cookie header fails', () {
+      Map<String, dynamic> withCookie(String value) {
+        final report = copy(fixture.seedProduct);
+        for (final raw in report['requests'] as List) {
+          final headers = ((raw as Map)['headers'] as Map)
+              .cast<String, Object?>();
+          if (headers['cookie'] is String) {
+            headers['cookie'] = value;
+            return report;
+          }
+        }
+        throw StateError('no request carries a cookie');
+      }
+
+      expect(
+        surfacesOf(fixture.compare(seedProduct: withCookie('scriptA=mutated'))),
+        contains('product-request-headers'),
+      );
+      final reordered = withCookie(
+        'loginRespA=p1; scriptA=one; loginSessA=t1',
+      );
+      final report = fixture.compare(seedProduct: reordered);
+      expect(report['status'], 'fail');
+      expect(surfacesOf(report), contains('product-request-headers'));
+    });
+
+    test('the login-header precedence row accepts only the static value', () {
+      int indexOfLoginWins() {
+        final rows = fixture.seedGolden['requests'] as List;
+        for (var index = 0; index < rows.length; index++) {
+          final headers = ((rows[index] as Map)['headers'] as Map);
+          if (headers['x-over'] == 'login') return index;
+        }
+        throw StateError('no frozen request shows the login header winning');
+      }
+
+      Map<String, dynamic> withXOver(String value) {
+        final report = copy(fixture.seedProduct);
+        final headers =
+            (((report['requests'] as List)[indexOfLoginWins()] as Map)['headers']
+                    as Map)
+                .cast<String, Object?>();
+        headers['x-over'] = value;
+        return report;
+      }
+
+      expect(
+        surfacesOf(fixture.compare(seedProduct: withXOver('other'))),
+        contains('product-request-headers'),
+      );
+      final matched = fixture.compare();
+      expect(matched['status'], 'pass', reason: '${matched['mismatches']}');
+      final precedence = [
+        for (final row in (matched['notCompared'] as List).cast<Map>())
+          if (row['row'] == 'login-header-precedence' &&
+              row['header'] == 'x-over')
+            row,
+      ];
+      expect(precedence, isNotEmpty);
+      expect(precedence.first['expected'], 'login');
+      expect(precedence.first['observed'], 'declared');
+    });
+
+    test('a product cookie probe that claims a session tier fails', () {
+      final report = copy(fixture.seedProduct);
+      final row = (report['observations'] as List).firstWhere(
+        (raw) => (raw as Map)['id'] == 'seed.cookies.A.afterSearch',
+      ) as Map;
+      final value = (row['value'] as Map).cast<String, Object?>();
+      final probe = (value['A'] as Map).cast<String, Object?>();
+      probe['session'] = 'ssA=s2';
+      expect(
+        surfacesOf(fixture.compare(seedProduct: report)),
+        contains('observation-cookie-tier'),
+      );
+    });
+
+    test('the restart of another seed is refused', () {
+      final report = copy(fixture.restartProduct);
+      ((report['owner'] as Map) as Map<String, dynamic>)['seedRunId'] =
+          'another-run';
+      expect(
+        surfacesOf(fixture.compare(restartProduct: report)),
+        contains('restart-read-this-seed'),
+      );
+    });
+  });
+
+  group('handoff binding', () {
+    late Fixture fixture;
+    setUpAll(() => fixture = Fixture(corpus));
+
+    Map<String, dynamic> handoff() => {
+      'status': 'captured',
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'corpus': {'path': corpusPath, 'sha256Lf': corpusLf},
+      'harness': {
+        'sha256':
+            '54695a2bee29ba7ae69ab08b79276e3cf548ff526c20eea2b76a5a53c8ddce0f',
+        'targetPackage': (corpus['target'] as Map)['package'],
+        'targetApkSha256': (corpus['target'] as Map)['apkSha256'],
+      },
+      'device': {
+        'serial': '5615f742',
+        'fingerprint': fixture.seedGolden['fingerprint'],
+        'provider': {
+          'package': 'com.google.android.webview',
+          'version': '157.0.8103.5',
+        },
+      },
+      'captures': [
+        {
+          'seed': {
+            'pid': fixture.seedGolden['pid'],
+            'runId': fixture.seedGolden['runId'],
+            'report': {'sha256': sha256Text('seed')},
+          },
+          'restart': {
+            'pid': fixture.restartGolden['pid'],
+            'runId': fixture.restartGolden['runId'],
+            'report': {'sha256': sha256Text('restart')},
+          },
+        },
+      ],
+    };
+
+    test('a handoff that pins this corpus, harness and device is accepted', () {
+      final report = compareAuthSessionPhases(
+        corpus: corpus,
+        corpusSha256Lf: corpusLf,
+        seedGolden: fixture.seedGolden,
+        restartGolden: fixture.restartGolden,
+        seedProduct: fixture.seedProduct,
+        restartProduct: fixture.restartProduct,
+        handoff: handoff(),
+        seedGoldenSha256: sha256Text('seed'),
+        restartGoldenSha256: sha256Text('restart'),
+      );
+      expect(report['status'], 'pass', reason: '${report['mismatches']}');
+    });
+
+    test('another corpus, harness, device or captured process is refused', () {
+      for (final mutate in <void Function(Map<String, dynamic>)>[
+        (value) => (value['corpus'] as Map)['sha256Lf'] = 'ff' * 32,
+        (value) => (value['harness'] as Map)['sha256'] = 'ff' * 32,
+        (value) => (value['device'] as Map)['fingerprint'] = 'other',
+        (value) =>
+            (((value['captures'] as List).first as Map)['seed'] as Map)['pid'] =
+                1,
+      ]) {
+        final value = handoff();
+        mutate(value);
+        expect(
+          () => fixture.compare(handoff: value),
+          throwsFormatException,
+        );
+      }
+    });
+  });
+}
