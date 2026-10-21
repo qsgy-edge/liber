@@ -1367,6 +1367,76 @@ void main() {
       expect(policy, contains('restart.cookies.before.A.effective'));
     });
 
+    test('the one-tier claim requires both mandatory fields to be present', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      const direct =
+          'observation-cookie-tier|seed|seed.cookies.A.removeLoginHeader.after';
+      const nested =
+          'observation-cookie-tier|seed|seed.state.seed.cookies.A';
+      Map<String, Object?> directProbe(Map<String, dynamic> report) =>
+          afterProbe(report, 'seed.cookies.A.removeLoginHeader');
+      Map<String, Object?> nestedProbe(Map<String, dynamic> report) {
+        final row = (report['observations'] as List).firstWhere(
+          (raw) => (raw as Map)['id'] == 'seed.state.seed',
+        ) as Map;
+        return ((row['value'] as Map)['cookies'] as Map)['A']
+            as Map<String, Object?>;
+      }
+
+      // Both probe shapes route through the same guard.
+      for (final entry
+          in <String, (String, Map<String, Object?> Function(Map<String, dynamic>))>{
+            'the direct probe without session': (direct, directProbe),
+            'the nested probe without session': (nested, nestedProbe),
+          }.entries) {
+        final report = copy(fixture.seedProduct);
+        entry.value.$2(report).remove('session');
+        expect(
+          (fixture.compare(seedProduct: report)['mismatchKeys'] as List)
+              .cast<String>()
+              .toSet()
+              .difference(baselineKeys),
+          contains(entry.value.$1),
+          reason: entry.key,
+        );
+      }
+
+      // The other two mandatory-field failures keep their key.
+      final nonNull = copy(fixture.seedProduct);
+      directProbe(nonNull)['session'] = 'invented=value';
+      expect(
+        (fixture.compare(seedProduct: nonNull)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        contains(direct),
+      );
+      final noPersistent = copy(fixture.seedProduct);
+      directProbe(noPersistent).remove('persistent');
+      expect(
+        (fixture.compare(seedProduct: noPersistent)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        contains(direct),
+      );
+
+      // An explicit null session is the ordinary shape and adds nothing.
+      expect(
+        (baseline['mismatchKeys'] as List).cast<String>().toSet(),
+        baselineKeys,
+      );
+      expect(
+        [for (final row in (baseline['notCompared'] as List).cast<Map>())
+          if ('${row['path']}' == 'seed.state.seed.cookies.A.keys') row],
+        isEmpty,
+        reason: 'the unmutated explicit-null probe is not a policy row',
+      );
+    });
+
     test('an unknown restart cookie addition still fails', () {
       final baseline = fixture.compare();
       final baselineKeys = (baseline['mismatchKeys'] as List)

@@ -691,11 +691,12 @@ List<List<String>> _sortedPairs(List<List<String>> pairs) => [...pairs]..sort(
   },
 );
 
+/// Whether a map is one source's cookie probe. The identity fields decide it, so
+/// a probe whose mandatory `keys`/`persistent`/`session` field was dropped is
+/// still compared as a probe and fails on that field instead of falling out of
+/// the probe comparison entirely.
 bool _looksLikeCookieProbe(Map value) =>
-    value.containsKey('effective') &&
-    value.containsKey('keys') &&
-    value.containsKey('persistent') &&
-    value.containsKey('session');
+    value.containsKey('url') && value.containsKey('domain');
 
 /// Compares one cookie probe and, where the frozen and product effective cookie
 /// values differ only in the order of the same pairs, records that as a named
@@ -886,18 +887,32 @@ void _compareCookieProbe({
     });
   }
   // The product's own tier claim: one storage shape, so its persistent map is
-  // the effective value and it has no session map. A product that claimed a
-  // session tier it does not have fails here.
-  if (actual['persistent'] != actual['effective'] || actual['session'] != null) {
+  // the effective value and it has no session map. Both fields are mandatory
+  // measurements, so a dropped field cannot pass as an explicit null: the
+  // product must carry `persistent` equal to its string `effective` and
+  // `session` present and null.
+  final claimsOneTier =
+      actual.containsKey('persistent') &&
+      actual.containsKey('session') &&
+      actual['persistent'] == actual['effective'] &&
+      actual['session'] == null;
+  if (!claimsOneTier) {
     mismatches.add({
       'phase': phase,
       'surface': 'observation-cookie-tier',
       'path': path,
-      'expected': 'persistent == effective and session == null',
+      'expected':
+          'persistent present and equal to effective, session present and null',
       'observed': {
-        'persistent': actual['persistent'],
-        'session': actual['session'],
-        'effective': actual['effective'],
+        'persistent': actual.containsKey('persistent')
+            ? actual['persistent']
+            : '<absent>',
+        'session': actual.containsKey('session')
+            ? actual['session']
+            : '<absent>',
+        'effective': actual.containsKey('effective')
+            ? actual['effective']
+            : '<absent>',
       },
     });
   }
