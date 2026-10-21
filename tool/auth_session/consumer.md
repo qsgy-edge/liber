@@ -6,9 +6,10 @@ product lane. Nothing here is a compatibility claim: it runs the corpus through
 the product as two real OS processes, compares every portable value and wire
 value with the controller's raw captures, and reports what still differs.
 
-Status: **partial**. The measurement runs as far as the corpus allows and the
-comparison fails on the rows listed under [What still fails](#what-still-fails).
-Those rows are open work, not accepted differences.
+Status: **measured, not accepted**. Both phases run to completion and every
+structural check passes; the comparison fails only on the Cookie rows listed
+under [What still fails](#what-still-fails). Those rows are open work, not
+accepted differences.
 
 ## What runs
 
@@ -19,6 +20,20 @@ dart run tool/auth_session/compare.dart \
   --library=<this worktree's fjs.dll> \
   [--handoff=<controller/a2-auth-session-handoff.json>]
 ```
+
+Two replay forms compare reports that already exist, without touching the
+device or starting a product process:
+
+```bash
+dart run tool/auth_session/compare.dart --compare-only <seed.json> <restart.json>   --golden-seed=<capture>/seed-report.json   --golden-restart=<capture>/restart-report.json [--out=<report.json>]
+
+dart run tool/auth_session/compare.dart --controls-only   --capture=<capture>   --seed-product=<seed.json>   --restart-product=<restart.json>   --evidence=<dir> [--handoff=<json>] [--library=<fjs.dll>]
+```
+
+`--compare-only` is what the controls invoke for each copy; `--controls-only`
+runs the whole control set against a pair of already-completed product reports,
+so a comparator-only change can be replayed on bound reports without repeating
+the HTTP phases.
 
 The comparator first validates the frozen captures (identity, corpus LF pin,
 target, harness, provider containment, request trace against the corpus, ordered
@@ -106,25 +121,34 @@ actual expected and observed values and the row it belongs to:
 
 ## What still fails
 
-The comparison is **red** and stays red until the open items are resolved:
+The comparison is **red** on the Cookie rows and stays red until the controller
+decides the policy. Ten rows, in two classes:
 
-1. The raw effective cookie order. The product jar keeps one insertion-ordered
-   map, so a session pair written before a persistent pair keeps that position
-   where the frozen `CookieStore.getCookie` merges the persistent map first. The
-   pairs are identical; the raw strings are not, and the decision keeps the raw
-   string strict. Four probe rows and four wire rows in the seed phase.
-The stage-boundary items of the previous checkpoint are resolved: a details
-step makes only its information request, its `loginCheckJs` probe is the
-information marker, and the TOC stage makes its own request and changes it.
+1. **Eight pure-order rows.** Four seed outbound Cookie headers (request
+   indexes 2–5) and four seed Cookie-probe effective values
+   (`seed.cookies.A.afterSearch`, `.keyRemoval.before`, `.keyRemoval.after`,
+   `.removeLoginHeader.before`). Names and values are identical in each pair;
+   the product jar keeps one insertion-ordered map, so a session pair written
+   before a persistent pair keeps that position where the frozen
+   `CookieStore.getCookie` merges the persistent map first. Both raw strings are
+   retained in `cookieOrderDifferences` and the rows fail.
+2. **Two session-retention rows.** Restart request indexes 0 and 1: the frozen
+   header is `sidA=after; extraA=e2`, the product's also carries
+   `ssA=after; ss2=sx2` — the session pairs that survived the restart in the
+   product's one tier. These are pair-content differences, not order-only rows,
+   and they fail strictly.
 
-The JSON bare-property item is resolved too: a simple bare property name is
-json-path's canonical root property (`$.name`), so source B's
-`ruleSearch.kind = "json"` reads the document's `json` property and answers the
-frozen empty value when the document has none. The shared reader (`validate`
-and `extract`) treats that one supported form as a path — a merge whose branches
-are all supported forms included — while `$` paths, the dot-leading recursive
-form, mode prefixes, scripts, templates, replacements and every documented
-refusal are unchanged.
+The approved `session-tier` and `login-header-precedence` rows are carried with
+their exact expected and observed values; the program does not turn any of the
+ten rows into a policy row.
+
+The product's stage API and JSON reader are implemented as follows:
+`BookSourcePipeline.bookInfo` returns the `SourceBookInfo` carrier
+(book, declared TOC address, TOC base, book request), `tableOfContents` continues
+from it, `details` is their composition; the JSON reader reads a simple bare
+property name as its canonical `$.name`, keeps the dot-leading recursive form and
+every documented refusal, and treats an explicit interpolation or script as the
+literal value it resolved to.
 
 ## Negative controls
 
@@ -148,7 +172,11 @@ afterwards and must be byte-identical.
 ## Limits
 
 One product session is compared with both independently captured native pairs;
-compare-only replay is never called another product run. No phone, ADB, corpus
-or capture mutation, golden edit, runtime/persistence redesign or public-API
-addition is part of this lane. `coverageGaps` from the corpus stay listed as
-coverage gaps; nothing here closes a capability row, #137 or Spec A #133.
+compare-only replay is never called another product run. No phone, ADB, corpus or
+capture mutation, golden edit or runtime/persistence change is part of this lane.
+The stage entries and the JSON bare-property reading are product API/behaviour
+that earlier decisions approved and that this lane implements; `@@`-prefixed
+rules are still refused by the JSON pipeline's rule validation, so the literal
+form here is an interpolation or a script, never `@@`. `coverageGaps` from the
+corpus stay listed as coverage gaps; nothing here closes a capability row, #137
+or Spec A #133.

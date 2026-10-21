@@ -1207,6 +1207,190 @@ void main() {
       );
     });
 
+    Map<String, Object?> afterProbe(Map<String, dynamic> report, String id) {
+      final row = (report['observations'] as List).firstWhere(
+        (raw) => (raw as Map)['id'] == id,
+      ) as Map;
+      return ((row['value'] as Map)['after'] as Map).cast<String, Object?>();
+    }
+
+    test('the declared keys field is compared exactly, not re-derived', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      if (afterProbe(fixture.seedProduct, 'seed.cookies.A.removeLoginHeader')['effective'] !=
+          '') {
+        throw StateError('the fixture probe is not an empty jar');
+      }
+      const key =
+          'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.keys';
+      for (final mutation in <String, void Function(Map<String, Object?>)>{
+        'a fabricated pair list': (probe) => probe['keys'] = [
+          ['fabricated', 'cookie'],
+        ],
+        'a null field': (probe) => probe['keys'] = null,
+        'an absent field': (probe) => probe.remove('keys'),
+      }.entries) {
+        final report = copy(fixture.seedProduct);
+        mutation.value(afterProbe(report, 'seed.cookies.A.removeLoginHeader'));
+        final compared = fixture.compare(seedProduct: report);
+        expect(
+          (compared['mismatchKeys'] as List).cast<String>().toSet().difference(
+            baselineKeys,
+          ),
+          contains(key),
+          reason: mutation.key,
+        );
+      }
+    });
+
+    test('the effective value keeps its type, including the empty case', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      const effectiveKey =
+          'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.effective';
+      const keysKey =
+          'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.keys';
+
+      final nulled = copy(fixture.seedProduct);
+      final nullProbe = afterProbe(nulled, 'seed.cookies.A.removeLoginHeader');
+      nullProbe['effective'] = null;
+      nullProbe['persistent'] = null;
+      expect(
+        (fixture.compare(seedProduct: nulled)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        contains(effectiveKey),
+      );
+
+      final inconsistent = copy(fixture.seedProduct);
+      final staleProbe = afterProbe(
+        inconsistent,
+        'seed.cookies.A.removeLoginHeader',
+      );
+      staleProbe['effective'] = 'fabricated=value';
+      staleProbe['persistent'] = 'fabricated=value';
+      final stale = (fixture.compare(seedProduct: inconsistent)['mismatchKeys']
+              as List)
+          .cast<String>()
+          .toSet()
+          .difference(baselineKeys);
+      expect(stale, contains(effectiveKey));
+      expect(
+        stale,
+        contains(keysKey),
+        reason: 'the declared pairs no longer agree with the effective value',
+      );
+    });
+
+    test('the session-pair allowance is restart-only', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      final seedProbe = afterProbe(
+        fixture.seedProduct,
+        'seed.cookies.A.removeLoginHeader',
+      );
+      final future = 'ssA=after; ss2=sx2';
+      final mutated = copy(fixture.seedProduct);
+      final probe = afterProbe(mutated, 'seed.cookies.A.removeLoginHeader');
+      probe['effective'] = future;
+      probe['persistent'] = future;
+      probe['keys'] = authSessionCookiePairs(future);
+      final compared = fixture.compare(seedProduct: mutated);
+      final newKeys = (compared['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet()
+          .difference(baselineKeys);
+      expect(
+        newKeys,
+        contains(
+          'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.effective',
+        ),
+      );
+      // The only policy row left is the ordinary persistent/session shape one;
+      // the effective/pair allowance itself never reaches a seed observation.
+      expect(
+        [
+          for (final row in (compared['notCompared'] as List).cast<Map>())
+            if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
+              '${row['path']}',
+        ],
+        isNot(contains('seed.cookies.A.removeLoginHeader.after.effective')),
+      );
+      expect(
+        [
+          for (final row in (compared['notCompared'] as List).cast<Map>())
+            if ('${row['path']}'.startsWith('seed.cookies.A.removeLoginHeader'))
+              '${row['path']}',
+        ],
+        isNot(contains('seed.cookies.A.removeLoginHeader.after.keys')),
+      );
+      expect(seedProbe['effective'], '');
+    });
+
+    test('the restart keeps its bounded session-pair extension', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      final report = copy(fixture.restartProduct);
+      final row = (report['observations'] as List).firstWhere(
+        (raw) => (raw as Map)['id'] == 'restart.cookies.before',
+      ) as Map;
+      final probe = ((row['value'] as Map)['A'] as Map)
+          .cast<String, Object?>();
+      const extended = 'sidA=after; extraA=e2; ssA=after; ss2=sx2';
+      probe['effective'] = extended;
+      probe['persistent'] = extended;
+      probe['keys'] = authSessionCookiePairs(extended);
+      final compared = fixture.compare(restartProduct: report);
+      expect(
+        (compared['mismatchKeys'] as List).cast<String>().toSet().difference(
+          baselineKeys,
+        ),
+        isEmpty,
+        reason: 'the recorded seed session pairs are the authorized extension',
+      );
+      final policy = [
+        for (final entry in (compared['notCompared'] as List).cast<Map>())
+          if (entry['row'] == 'session-tier' &&
+              '${entry['path']}'.startsWith('restart.cookies.before'))
+            '${entry['path']}',
+      ];
+      expect(policy, contains('restart.cookies.before.A.keys'));
+      expect(policy, contains('restart.cookies.before.A.effective'));
+    });
+
+    test('an unknown restart cookie addition still fails', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      final report = copy(fixture.restartProduct);
+      final row = (report['observations'] as List).firstWhere(
+        (raw) => (raw as Map)['id'] == 'restart.cookies.before',
+      ) as Map;
+      final probe = ((row['value'] as Map)['A'] as Map)
+          .cast<String, Object?>();
+      const extra = 'sidA=after; extraA=e2; ssA=after; ss2=sx2; evil=1';
+      probe['effective'] = extra;
+      probe['persistent'] = extra;
+      probe['keys'] = authSessionCookiePairs(extra);
+      expect(
+        (fixture.compare(restartProduct: report)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        contains('observation-cookie|restart|restart.cookies.before.A.effective'),
+      );
+    });
+
     test('the restart of another seed is refused', () {
       final report = copy(fixture.restartProduct);
       ((report['owner'] as Map) as Map<String, dynamic>)['seedRunId'] =

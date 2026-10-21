@@ -443,8 +443,11 @@ void main() {
     });
 
     test('a literal template is not a property, and named refusals stay', () {
-      // `@@name` is the literal-value form; the reader answers a rule it does
-      // not execute as text, exactly as before.
+      // The reader answers a rule it does not execute as its own text, exactly
+      // as before. The pipeline's literal-value form is an interpolation or a
+      // script, resolved before this reader; `@@json` is refused by the
+      // pipeline's rule validation (pre-existing) and is only pinned here as
+      // the reader's non-path answer.
       expect(JsonSourceRules.extract(root, '@@json'), '@@json');
       for (final rule in [
         'a b',

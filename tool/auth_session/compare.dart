@@ -27,6 +27,10 @@ Future<void> main(List<String> args) async {
     exitCode = await _compareOnly(args);
     return;
   }
+  if (args.contains('--controls-only')) {
+    exitCode = await _controlsOnly(args);
+    return;
+  }
   exitCode = await _runAndCompare(args);
 }
 
@@ -665,10 +669,27 @@ Map<String, Map<String, Object?>> _changedFields(Map expected, Map actual) => {
       '$key': {'expected': expected[key], 'observed': actual[key]},
 };
 
-/// The fields of one cookie probe that are compared strictly. `persistent` and
-/// `session` are the frozen `CookieManager`'s two storage tiers; the product
-/// jar has one shape, so they are carried as the recorded ADR 0011 §3
-/// divergence instead of compared.
+/// A declared `[name, value]` pair list, or null when the field is absent or
+/// has another shape. The list order is kept: the frozen harness records the
+/// pairs sorted, so a different order is a different observation.
+List<List<String>>? _declaredPairs(Object? value) {
+  if (value is! List) return null;
+  final pairs = <List<String>>[];
+  for (final entry in value) {
+    if (entry is! List || entry.length != 2) return null;
+    if (entry[0] is! String || entry[1] is! String) return null;
+    pairs.add(['${entry[0]}', '${entry[1]}']);
+  }
+  return pairs;
+}
+
+/// A pair list in the frozen harness' own rendering order: by name, then value.
+List<List<String>> _sortedPairs(List<List<String>> pairs) => [...pairs]..sort(
+  (left, right) {
+    final byName = left[0].compareTo(right[0]);
+    return byName != 0 ? byName : left[1].compareTo(right[1]);
+  },
+);
 
 bool _looksLikeCookieProbe(Map value) =>
     value.containsKey('effective') &&
@@ -711,88 +732,157 @@ void _compareCookieProbe({
       'observed': changed[key]!['observed'],
     });
   }
-  // The effective value and its pair map. The frozen probe's own value is the
-  // strict reading; the product's single tier also keeps the session pairs the
-  // seed recorded for this source (the approved session-cookie restart row), so
-  // its value may carry exactly those extras and nothing else.
+  // The declared `keys` field and the effective value, read exactly as the
+  // capture records them. The product jar has one storage shape, so a *restart*
+  // probe may carry exactly the session pairs the seed recorded for that source
+  // — the approved session-cookie restart row — and nothing else. No seed
+  // observation gets that allowance.
+  final restart = phase == 'restart';
+  final seedSession = restart
+      ? (seedSessionPairs[sourceId] ?? const <List<String>>[])
+      : const <List<String>>[];
+  final expectedKeys = expected.containsKey('keys')
+      ? _declaredPairs(expected['keys'])
+      : null;
+  final actualKeys = actual.containsKey('keys')
+      ? _declaredPairs(actual['keys'])
+      : null;
   final expectedEffective = expected['effective'];
   final actualEffective = actual['effective'];
-  final expectedPairs = authSessionCookiePairs('$expectedEffective');
-  final frozenSession = authSessionCookiePairs('${expected['session'] ?? ''}');
-  final seedSession = seedSessionPairs[sourceId] ?? const <List<String>>[];
-  final allowed = <String, String>{
-    for (final pair in [...expectedPairs, ...frozenSession, ...seedSession])
-      pair[0]: pair[1],
-  };
-  final allowedPairs = [
-    for (final key in allowed.keys.toList()..sort()) [key, allowed[key]!],
-  ];
-  final actualPairs = authSessionCookiePairs('$actualEffective');
-  if (expectedEffective is String && actualEffective is String) {
-    if (expectedEffective == actualEffective) {
-      // The strict answer: identical bytes carry identical pairs.
-    } else if (_deepEquals(expectedPairs, actualPairs)) {
-      orderOnly.add({
-        'phase': phase,
-        'path': '$path.effective',
-        'expected': expectedEffective,
-        'observed': actualEffective,
-        'pairsEqual': true,
-        'note':
-            'the same name/value pairs in another order: the frozen '
-            'CookieStore.getCookie merges the persistent map before the '
-            'session map, and the product jar keeps one insertion-ordered map '
-            '(the recorded ADR 0011 §3 single-storage-shape divergence)',
-      });
-      mismatches.add({
-        'phase': phase,
-        'surface': 'observation-cookie-order',
-        'path': '$path.effective',
-        'expected': expectedEffective,
-        'observed': actualEffective,
-      });
-    } else if (_deepEquals(allowedPairs, actualPairs)) {
-      notCompared.add({
-        'phase': phase,
-        'row': 'session-tier',
-        'path': '$path.effective',
-        'expected': expectedEffective,
-        'observed': actualEffective,
-        'reason':
-            'the approved session-cookie restart row: the frozen session pair '
-            'is gone from its own storage at this point, and the product jar '
-            'keeps the seed-recorded session pairs in its one map. The extras '
-            'must be exactly the recorded seed session pairs for this source.',
-      });
-    } else {
-      mismatches.add({
-        'phase': phase,
-        'surface': 'observation-cookie',
-        'path': '$path.effective',
-        'expected': expectedEffective,
-        'observed': actualEffective,
-      });
-    }
-  }
-  if (!_deepEquals(expectedPairs, actualPairs) &&
-      _deepEquals(allowedPairs, actualPairs)) {
-    notCompared.add({
-      'phase': phase,
-      'row': 'session-tier',
-      'path': '$path.keys',
-      'expected': expectedPairs,
-      'observed': actualPairs,
-      'reason':
-          'the same session-cookie restart row, on the pair map the probe '
-          'carries',
-    });
-  } else if (!_deepEquals(expectedPairs, actualPairs)) {
+  final expectedPairs = expectedEffective is String
+      ? authSessionCookiePairs(expectedEffective)
+      : null;
+  final actualPairs = actualEffective is String
+      ? authSessionCookiePairs(actualEffective)
+      : null;
+  final allowedPairs = expectedPairs == null
+      ? null
+      : _sortedPairs([
+          for (final pair in [...expectedPairs, ...seedSession]) pair,
+        ]);
+
+  // 1. `keys` is a declared observation of its own: presence, type, order and
+  //    contents. A missing, null or malformed side fails by name.
+  if (expectedKeys == null || actualKeys == null) {
     mismatches.add({
       'phase': phase,
       'surface': 'observation-cookie',
       'path': '$path.keys',
-      'expected': expectedPairs,
-      'observed': actualPairs,
+      'expected': expected.containsKey('keys') ? expected['keys'] : '<absent>',
+      'observed': actual.containsKey('keys') ? actual['keys'] : '<absent>',
+      'detail':
+          'the declared keys field must be a list of [name, value] string '
+          'pairs on both sides',
+    });
+  } else {
+    // 2. Each side's declared pairs must agree with its own effective value:
+    //    recomputing one from the other cannot stand in for the field.
+    for (final entry in <String, (List<List<String>>, List<List<String>>)>{
+      'expected': (expectedKeys, expectedPairs ?? const <List<String>>[]),
+      'observed': (actualKeys, actualPairs ?? const <List<String>>[]),
+    }.entries) {
+      final declared = _sortedPairs(entry.value.$1);
+      final fromEffective = _sortedPairs(entry.value.$2);
+      if (!_deepEquals(declared, fromEffective)) {
+        mismatches.add({
+          'phase': phase,
+          'surface': 'observation-cookie',
+          'path': '$path.keys',
+          'expected': expectedKeys,
+          'observed': actualKeys,
+          'detail':
+              'the ${entry.key} declared keys disagree with its own effective '
+              'value: $declared vs $fromEffective',
+        });
+      }
+    }
+    // 3. The two sides' declared pair maps, in their declared order.
+    if (!_deepEquals(expectedKeys, actualKeys)) {
+      if (restart &&
+          _deepEquals(_sortedPairs(actualKeys), allowedPairs) &&
+          _deepEquals(actualKeys, _sortedPairs(actualKeys))) {
+        notCompared.add({
+          'phase': phase,
+          'row': 'session-tier',
+          'path': '$path.keys',
+          'expected': expectedKeys,
+          'observed': actualKeys,
+          'reason':
+              'the approved session-cookie restart row: the frozen session '
+              'pair is gone from its own storage at this point, and the product '
+              'jar keeps the seed-recorded session pairs in its one map. The '
+              'extras must be exactly the recorded seed session pairs for this '
+              'source.',
+        });
+      } else {
+        mismatches.add({
+          'phase': phase,
+          'surface': 'observation-cookie',
+          'path': '$path.keys',
+          'expected': expectedKeys,
+          'observed': actualKeys,
+        });
+      }
+    }
+  }
+
+  // 4. The effective value keeps its observable string type. Null, absent or
+  //    non-string evidence is a failure of the field, never an empty pair set.
+  if (expectedEffective is! String || actualEffective is! String) {
+    mismatches.add({
+      'phase': phase,
+      'surface': 'observation-cookie',
+      'path': '$path.effective',
+      'expected': expected.containsKey('effective')
+          ? expectedEffective
+          : '<absent>',
+      'observed': actual.containsKey('effective')
+          ? actualEffective
+          : '<absent>',
+      'detail': 'the effective value must be a string on both sides',
+    });
+  } else if (expectedEffective == actualEffective) {
+    // The strict answer: identical bytes carry identical pairs.
+  } else if (_deepEquals(expectedPairs, actualPairs)) {
+    orderOnly.add({
+      'phase': phase,
+      'path': '$path.effective',
+      'expected': expectedEffective,
+      'observed': actualEffective,
+      'pairsEqual': true,
+      'note':
+          'the same name/value pairs in another order: the frozen '
+          'CookieStore.getCookie merges the persistent map before the '
+          'session map, and the product jar keeps one insertion-ordered map '
+          '(the recorded ADR 0011 §3 single-storage-shape divergence)',
+    });
+    mismatches.add({
+      'phase': phase,
+      'surface': 'observation-cookie-order',
+      'path': '$path.effective',
+      'expected': expectedEffective,
+      'observed': actualEffective,
+    });
+  } else if (restart && _deepEquals(allowedPairs, actualPairs)) {
+    notCompared.add({
+      'phase': phase,
+      'row': 'session-tier',
+      'path': '$path.effective',
+      'expected': expectedEffective,
+      'observed': actualEffective,
+      'reason':
+          'the approved session-cookie restart row: the frozen session pair '
+          'is gone from its own storage at this point, and the product jar '
+          'keeps the seed-recorded session pairs in its one map. The extras '
+          'must be exactly the recorded seed session pairs for this source.',
+    });
+  } else {
+    mismatches.add({
+      'phase': phase,
+      'surface': 'observation-cookie',
+      'path': '$path.effective',
+      'expected': expectedEffective,
+      'observed': actualEffective,
     });
   }
   // The product's own tier claim: one storage shape, so its persistent map is
@@ -1731,7 +1821,7 @@ Map<String, String> _namedOptions(List<String> args) {
   final options = <String, String>{};
   for (final arg in args) {
     if (!arg.startsWith('--')) continue;
-    if (arg == '--compare-only') continue;
+    if (arg == '--compare-only' || arg == '--controls-only') continue;
     if (!arg.contains('=')) {
       throw FormatException('expected --name=value, got $arg');
     }
@@ -1892,7 +1982,7 @@ Future<int> _runAndCompare(List<String> args) async {
 /// written and are hashed again after the run.
 Future<Map<String, Object?>> _runNegativeControls({
   required Directory evidence,
-  required String libraryPath,
+  required String? libraryPath,
   required String seedGoldenPath,
   required String restartGoldenPath,
   required String seedProductPath,
@@ -2079,7 +2169,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       productRestart,
       '--golden-seed=$goldenSeed',
       '--golden-restart=$goldenRestart',
-      '--library=$libraryPath',
+      if (libraryPath != null) '--library=$libraryPath',
       '--out=$out',
     ];
     final run = await _runProcess(args, logPath: log);
@@ -2337,6 +2427,87 @@ Future<Map<String, Object?>> _runNegativeControls({
     'failedControls': [for (final control in failed) control['name']],
     'notApplicableControls': notApplicable,
   };
+}
+
+/// Runs the whole negative-control set against a pair of product reports that
+/// already exist, comparing them with the capture first. This is the replay the
+/// controls need for a comparator-only change: no phase runs, so no HTTP, phone
+/// or product process is repeated.
+Future<int> _controlsOnly(List<String> args) async {
+  final options = _namedOptions(args);
+  final capture = Directory(_required(options, 'capture'));
+  final evidence = Directory(_required(options, 'evidence'));
+  final seedProductPath = _required(options, 'seed-product');
+  final restartProductPath = _required(options, 'restart-product');
+  final libraryPath = options['library'];
+  final corpus = loadAuthSessionCorpus(authSessionCorpusPath);
+  final corpusLf = authSessionCorpusSha256Lf(File(authSessionCorpusPath));
+  final seedGoldenPath =
+      '${capture.path}${Platform.pathSeparator}seed-report.json';
+  final restartGoldenPath =
+      '${capture.path}${Platform.pathSeparator}restart-report.json';
+  final seedGoldenSha = sha256File(File(seedGoldenPath));
+  final restartGoldenSha = sha256File(File(restartGoldenPath));
+  final seedGolden = _readJson(seedGoldenPath);
+  final restartGolden = _readJson(restartGoldenPath);
+  final handoff = options['handoff'] == null
+      ? null
+      : _readJson(options['handoff']!);
+  final Map<String, Object?> baseline;
+  try {
+    baseline = compareAuthSessionPhases(
+      corpus: corpus,
+      corpusSha256Lf: corpusLf,
+      seedGolden: seedGolden,
+      restartGolden: restartGolden,
+      seedProduct: _readJson(seedProductPath),
+      restartProduct: _readJson(restartProductPath),
+      librarySha256: libraryPath == null
+          ? null
+          : sha256File(File(libraryPath)),
+      handoff: handoff,
+      seedGoldenSha256: seedGoldenSha,
+      restartGoldenSha256: restartGoldenSha,
+      seedGoldenPath: seedGoldenPath,
+      restartGoldenPath: restartGoldenPath,
+      seedProductPath: seedProductPath,
+      restartProductPath: restartProductPath,
+    );
+  } on FormatException catch (error) {
+    _writeJson('${evidence.path}${Platform.pathSeparator}comparison.json', {
+      'status': 'refused',
+      'mode': 'auth-session-controls',
+      'analysisFailure': error.message,
+    });
+    stdout.writeln('refused: ${error.message}');
+    return 2;
+  }
+  evidence.createSync(recursive: true);
+  _writeJson(
+    '${evidence.path}${Platform.pathSeparator}comparison.json',
+    baseline,
+  );
+  stdout.writeln(
+    'auth-session comparison: ${baseline['status']} '
+    '(${(baseline['mismatches'] as List).length} mismatches)',
+  );
+  final controls = await _runNegativeControls(
+    evidence: evidence,
+    libraryPath: libraryPath,
+    seedGoldenPath: seedGoldenPath,
+    restartGoldenPath: restartGoldenPath,
+    seedProductPath: seedProductPath,
+    restartProductPath: restartProductPath,
+    seedGoldenSha: seedGoldenSha,
+    restartGoldenSha: restartGoldenSha,
+    baseline: baseline,
+  );
+  _writeJson(
+    '${evidence.path}${Platform.pathSeparator}negative-controls.json',
+    controls,
+  );
+  stdout.writeln('negative controls: ${controls['status']}');
+  return controls['status'] == 'pass' ? 0 : 1;
 }
 
 /// Compares two captures that already exist. This mode never runs the product,

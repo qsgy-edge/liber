@@ -230,9 +230,10 @@ void main() {
       () async {
     // The AUTH corpus' source B declares `ruleSearch.kind = "json"`; json-path
     // compiles a bare name as `$.json`, so the field reads the root property
-    // (empty when the document has none) instead of carrying its own text.
-    // `@@json` is the literal-value form RuleField resolves before the reader,
-    // and it keeps its text even when the document has that property.
+    // (empty when the document has none) instead of carrying its own text. An
+    // explicit `{{...}}` expression is the literal-value form RuleField
+    // resolves before the reader, so its text stays `json` even though this
+    // document has a `json` property.
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     server.listen((request) async {
@@ -266,6 +267,11 @@ void main() {
     expect(await kindOf('json'), 'present');
     expect(await kindOf(r'$.json'), 'present');
     expect(await kindOf('missing'), '');
+    expect(
+      await kindOf('{{"json"}}'),
+      'json',
+      reason: 'an explicit literal template stays its text, not the property',
+    );
     expect(await kindOf('@js:"json"'), 'json');
     expect(await kindOf(r'$' '.json'), 'present');
   });
