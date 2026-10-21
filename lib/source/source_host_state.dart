@@ -365,6 +365,14 @@ class SourceHostState implements SourceEntityVariableStore {
 
   /// Pairs per registrable domain, and the source that wrote each pair.
   final Map<String, Map<String, String>> _cookies = {};
+
+  /// Per domain, the cookie names that have a persistent position, in the order
+  /// of their first persistent write: a script `setCookie`/`replaceCookie`, a
+  /// `Set-Cookie` whose attributes make it persistent, or a durable row loaded
+  /// at start-up. It is process-only ordering metadata — no value lives here and
+  /// nothing is persisted — and it reproduces the frozen `CookieStore.getCookie`
+  /// order: the persistent map first, then the session map.
+  final Map<String, Set<String>> _persistentNames = {};
   final Map<String, Map<String, String>> _writers = {};
 
   /// Entries per source, then per key.
@@ -402,6 +410,9 @@ class SourceHostState implements SourceEntityVariableStore {
     if (persistence == null) return;
     for (final cookie in await persistence.loadCookies()) {
       _cookies.putIfAbsent(cookie.domain, () => {})[cookie.name] = cookie.value;
+      // A stored row is durable, so it holds a persistent position in the order
+      // the store returns it.
+      _persistentNames.putIfAbsent(cookie.domain, () => {}).add(cookie.name);
       final writer = cookie.writerRef;
       if (writer != null && writer.isNotEmpty) {
         _writers.putIfAbsent(cookie.domain, () => {})[cookie.name] = writer;
@@ -635,6 +646,9 @@ class SourceHostState implements SourceEntityVariableStore {
         writers.remove(name);
         final pairs = _cookies[domain];
         pairs?.remove(name);
+        final ordered = _persistentNames[domain];
+        ordered?.remove(name);
+        if (ordered != null && ordered.isEmpty) _persistentNames.remove(domain);
         if (pairs != null && pairs.isEmpty) _cookies.remove(domain);
       }
       if (writers.isEmpty) _writers.remove(domain);
@@ -743,7 +757,12 @@ class SourceCookieJar {
     for (final raw in values) {
       final pair = _pairOf(raw);
       if (pair == null) continue;
-      await _put(domain, pair.$1, pair.$2);
+      await _put(
+        domain,
+        pair.$1,
+        pair.$2,
+        persistent: _responseCookieIsPersistent(raw),
+      );
     }
   }
 
@@ -780,13 +799,28 @@ class SourceCookieJar {
       if (_visible(domain, name)) name,
   ];
 
+  /// The frozen `CookieStore.getCookie` order: the persistent names first, in
+  /// the order they first became persistent, then the session names in their own
+  /// insertion order. Both blocks read the one value map.
   String _serialize(String domain) {
     final pairs = _state._cookies[domain];
     if (pairs == null) return '';
-    return [
-      for (final entry in pairs.entries)
-        if (_visible(domain, entry.key)) '${entry.key}=${entry.value}',
-    ].join('; ');
+    final persistent = _state._persistentNames[domain];
+    final rendered = <String>[];
+    if (persistent != null) {
+      for (final name in persistent) {
+        if (!_visible(domain, name)) continue;
+        final value = pairs[name];
+        if (value == null) continue;
+        rendered.add('$name=$value');
+      }
+    }
+    for (final entry in pairs.entries) {
+      if (persistent != null && persistent.contains(entry.key)) continue;
+      if (!_visible(domain, entry.key)) continue;
+      rendered.add('${entry.key}=${entry.value}');
+    }
+    return rendered.join('; ');
   }
 
   Future<void> _write(
@@ -800,7 +834,8 @@ class SourceCookieJar {
       }
     }
     for (final pair in _pairsOf(cookie)) {
-      await _put(domain, pair.$1, pair.$2);
+      // A script `setCookie`/`replaceCookie` writes the persistent store.
+      await _put(domain, pair.$1, pair.$2, persistent: true);
     }
   }
 
@@ -819,7 +854,12 @@ class SourceCookieJar {
     return (parts.first.trim(), parts.sublist(1).join('=').trim());
   }
 
-  Future<void> _put(String domain, String name, String value) async {
+  Future<void> _put(
+    String domain,
+    String name,
+    String value, {
+    bool persistent = false,
+  }) async {
     if (name.isEmpty) return;
     final pairs = _state._cookies.putIfAbsent(domain, () => {});
     if (value.isEmpty) {
@@ -830,6 +870,11 @@ class SourceCookieJar {
       return;
     }
     pairs[name] = value;
+    if (persistent) {
+      // A name keeps its first persistent position; a later session write does
+      // not move it out of the persistent block.
+      _state._persistentNames.putIfAbsent(domain, () => {}).add(name);
+    }
     final writer = _sourceRef.isEmpty ? null : _sourceRef;
     if (writer == null) {
       _state._writers[domain]?.remove(name);
@@ -851,9 +896,195 @@ class SourceCookieJar {
     if (pairs == null) return;
     pairs.remove(name);
     _state._writers[domain]?.remove(name);
+    final ordered = _state._persistentNames[domain];
+    ordered?.remove(name);
+    if (ordered != null && ordered.isEmpty) {
+      _state._persistentNames.remove(domain);
+    }
     if (pairs.isEmpty) _state._cookies.remove(domain);
     await _state._persistence?.deleteCookie(domain, name);
   }
+}
+
+/// Whether one `Set-Cookie` value is persistent in the frozen baseline's terms.
+///
+/// The frozen `okhttp3.Cookie.parse` (4.12.0, `Cookie.kt:380-470`) starts with
+/// `persistent = false` and sets it only when an `Expires` attribute parses as a
+/// cookie date or a `Max-Age` attribute parses as a max age; an attribute that
+/// does not parse is ignored and never resets an earlier one. This is a validity
+/// classification for ordering only: it reads neither the cookie's name/value
+/// nor its expiry, and it rejects nothing.
+bool _responseCookieIsPersistent(String setCookie) {
+  var persistent = false;
+  // The first `;`-segment is the cookie pair; every later one is an attribute.
+  final segments = setCookie.split(';');
+  for (var index = 1; index < segments.length; index++) {
+    final segment = segments[index];
+    final equals = segment.indexOf('=');
+    final name = _cookieTrim(
+      equals < 0 ? segment : segment.substring(0, equals),
+    ).toLowerCase();
+    final value = equals < 0 ? '' : _cookieTrim(segment.substring(equals + 1));
+    if (name == 'expires') {
+      if (_cookieDateIsValid(value)) persistent = true;
+    } else if (name == 'max-age') {
+      if (_cookieMaxAgeIsValid(value)) persistent = true;
+    }
+  }
+  return persistent;
+}
+
+/// okhttp's `trimSubstring`: whitespace is every character `<= ' '`.
+String _cookieTrim(String text) {
+  var start = 0;
+  var end = text.length;
+  while (start < end && text.codeUnitAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && text.codeUnitAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return text.substring(start, end);
+}
+
+/// okhttp's `parseMaxAge` (`Cookie.kt:565-580`): a value that parses as a signed
+/// 64-bit integer is a max age (whatever its sign); a *decimal* integer too large
+/// for that type is still one; anything else is not, and its
+/// `NumberFormatException` makes the parser ignore the attribute. The spelling is
+/// the JVM's `Long.parseLong`, so `+5` parses, while `0x10`, `1_0` and a
+/// `+`-prefixed overflow do not (Dart's own `int.parse` would accept the first
+/// two and must not stand in for it).
+bool _cookieMaxAgeIsValid(String value) {
+  if (!RegExp(r'^[+-]?\d+$').hasMatch(value)) return false;
+  final negative = value.startsWith('-');
+  final magnitude = value.substring(negative || value.startsWith('+') ? 1 : 0);
+  final digits = magnitude.replaceFirst(RegExp(r'^0+'), '');
+  if (digits.isEmpty) return true;
+  final limit = negative ? '9223372036854775808' : '9223372036854775807';
+  final fits = digits.length != limit.length
+      ? digits.length < limit.length
+      : digits.compareTo(limit) <= 0;
+  if (fits) return true;
+  // An integer too big for a long is still a max age only in the decimal form
+  // `parseMaxAge` retries (`-?\d+`); a `+` sign is not in that form.
+  return !value.startsWith('+');
+}
+
+final _cookieTimePattern = RegExp(r'^(\d{1,2}):(\d{1,2}):(\d{1,2})[^\d]*$');
+final _cookieDayPattern = RegExp(r'^(\d{1,2})[^\d]*$');
+final _cookieMonthPattern = RegExp(
+  r'^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*$',
+  caseSensitive: false,
+);
+final _cookieYearPattern = RegExp(r'^(\d{2,4})[^\d]*$');
+const _cookieMonths = [
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+];
+
+/// okhttp's `dateCharacterOffset` (`Cookie.kt:548-563`): the first date or
+/// non-date character from [pos], or [limit].
+bool _isCookieDateCharacter(int code) =>
+    (code < 0x20 && code != 0x09) ||
+    code >= 0x7f ||
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a) ||
+    code == 0x3a;
+
+int _cookieDateCharacterOffset(String input, int pos, int limit, bool invert) {
+  for (var index = pos; index < limit; index++) {
+    if (_isCookieDateCharacter(input.codeUnitAt(index)) != invert) return index;
+  }
+  return limit;
+}
+
+/// okhttp's `parseExpires` (`Cookie.kt:487-538`): a token date scan that accepts
+/// the RFC 1123, RFC 850 and asctime shapes (and any other order of the same
+/// tokens), maps a two-digit year, requires a real calendar date, and treats an
+/// impossible date as an invalid attribute. True means "the frozen parser would
+/// set `persistent` for this value"; the instant itself is never used here.
+bool _cookieDateIsValid(String value) {
+  var hour = -1;
+  var minute = -1;
+  var second = -1;
+  var day = -1;
+  var month = -1;
+  var year = -1;
+  var pos = _cookieDateCharacterOffset(value, 0, value.length, false);
+  while (pos < value.length) {
+    final end = _cookieDateCharacterOffset(value, pos + 1, value.length, true);
+    final run = value.substring(pos, end);
+    if (hour == -1) {
+      final match = _cookieTimePattern.firstMatch(run);
+      if (match != null) {
+        hour = int.parse(match[1]!);
+        minute = int.parse(match[2]!);
+        second = int.parse(match[3]!);
+        pos = _cookieDateCharacterOffset(value, end + 1, value.length, false);
+        continue;
+      }
+    }
+    if (day == -1) {
+      final match = _cookieDayPattern.firstMatch(run);
+      if (match != null) {
+        day = int.parse(match[1]!);
+        pos = _cookieDateCharacterOffset(value, end + 1, value.length, false);
+        continue;
+      }
+    }
+    if (month == -1) {
+      final match = _cookieMonthPattern.firstMatch(run);
+      if (match != null) {
+        month = _cookieMonths.indexOf(match[1]!.toLowerCase()) + 1;
+        pos = _cookieDateCharacterOffset(value, end + 1, value.length, false);
+        continue;
+      }
+    }
+    if (year == -1) {
+      final match = _cookieYearPattern.firstMatch(run);
+      if (match != null) {
+        year = int.parse(match[1]!);
+        pos = _cookieDateCharacterOffset(value, end + 1, value.length, false);
+        continue;
+      }
+    }
+    pos = _cookieDateCharacterOffset(value, end + 1, value.length, false);
+  }
+  if (year >= 70 && year <= 99) year += 1900;
+  if (year >= 0 && year <= 69) year += 2000;
+  if (year < 1601 ||
+      month == -1 ||
+      day < 1 ||
+      day > 31 ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59 ||
+      second < 0 ||
+      second > 59) {
+    return false;
+  }
+  // The frozen parser sets a non-lenient Gregorian calendar, so an impossible
+  // calendar date (31 April, 29 February in a common year) rejects the
+  // attribute; a round-trip is that same check.
+  final date = DateTime.utc(year, month, day, hour, minute, second);
+  return date.year == year &&
+      date.month == month &&
+      date.day == day &&
+      date.hour == hour &&
+      date.minute == minute &&
+      date.second == second;
 }
 
 /// The host a URL or a host argument names: a URL's host, or the argument itself

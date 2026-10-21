@@ -119,38 +119,43 @@ actual expected and observed values and the row it belongs to:
   values: the observed value must be the corpus' static header value and the
   expected value must differ from it; anything else is a mismatch.
 
-## What still fails, and what the existing contract already covers
+## The Cookie result and what the existing contract already covers
 
-The comparison is **red** on eight Cookie rows and stays red:
+The comparison passes with **no unapproved mismatch**: the eight raw Cookie-order
+rows that used to fail are gone because the product jar now serializes the way
+the frozen `CookieStore.getCookie` does.
 
-1. **Eight pure-order rows (strict failures).** Four seed outbound Cookie headers
-   (request indexes 2-5) and four seed Cookie-probe effective values
-   (`seed.cookies.A.afterSearch`, `.keyRemoval.before`, `.keyRemoval.after`,
-   `.removeLoginHeader.before`). Names and values are identical in each pair; the
-   product jar keeps one insertion-ordered map, so a session pair written before
-   a persistent pair keeps that position where the frozen
-   `CookieStore.getCookie` merges the persistent map first. Both raw strings are
-   retained in `cookieOrderDifferences` and the rows fail.
-2. **Two restart session-cookie wire rows, under the contract's existing
-   divergence.** Restart request indexes 0 and 1: the frozen header is
-   `sidA=after; extraA=e2`, the product's also carries `ssA=after; ss2=sx2` - the
-   session pairs the same source's validated seed capture recorded, kept across
-   the restart in the product's one tier.
-   `book-source-differential-contract.md:132` already names session-cookie
-   survival across a restart as a divergence and requires a fixture that observes
-   it to report expected and observed values in `notCompared`. Those two rows are
-   reported that way (`row: session-tier`, `kind: restart-session-cookie-wire`,
-   the attributed pairs, the raw attributed segments and both full raw strings).
-   The attribution is bounded to the raw wire text: restart phase only, the
-   seeded source only, and a whole `;`-separated segment whose text is exactly
-   one recorded session `name=value`. Removing only those segments must leave
-   the native expected header byte for byte; nothing is trimmed, re-rendered or
-   skipped, so a wrong value, a missing or duplicated pair, an unknown cookie, an
-   empty segment, a changed separator or spacing, a reordered frozen pair or a
-   seed-phase use stays a strict failure.
-
-No other Cookie row is attributed, and the eight order rows above are not
-accepted: the program's exit stays non-zero on them.
+- **Ordering.** The jar keeps one value map and one private, process-only set of
+  the names that have a persistent position, ordered by each name's first
+  persistent or script write. A serialized header is those names in that order,
+  then the never-persistent names in their own arrival order — the frozen
+  persistent map followed by the session map. A later session write to a name
+  already persistent keeps its position; a session-first name written
+  persistently joins the persistent block then. A response cookie is persistent
+  when its `Expires` or `Max-Age` attribute is valid to the frozen okhttp 4.12.0
+  parser (the same token-date scan, two-digit-year mapping and integer rules;
+  an invalid attribute is ignored and never resets an earlier valid one), and a
+  script `setCookie`/`replaceCookie` is persistent. Nothing here enforces an
+  expiry, rejects an input or stores a second value: the durable row is still
+  the one row per pair, and every deletion path (`removeCookie`, a source
+  delete, a clear) drops the ordering metadata with the value.
+- **Two restart session-cookie wire rows, under the contract's existing
+  divergence.** Restart request indexes 0 and 1: the frozen header is
+  `sidA=after; extraA=e2`, the product's also carries `ssA=after; ss2=sx2` - the
+  session pairs the same source's validated seed capture recorded, kept across
+  the restart in the product's one tier.
+  `book-source-differential-contract.md:132` already names session-cookie
+  survival across a restart as a divergence and requires a fixture that observes
+  it to report expected and observed values in `notCompared`. Those two rows are
+  reported that way (`row: session-tier`, `kind: restart-session-cookie-wire`,
+  the attributed pairs, the raw attributed segments and both full raw strings).
+  The attribution is bounded to the raw wire text: restart phase only, the
+  seeded source only, and a whole `;`-separated segment whose text is exactly one
+  recorded session `name=value`. Removing only those segments must leave the
+  native expected header byte for byte; nothing is trimmed, re-rendered or
+  skipped, so a wrong value, a missing or duplicated pair, an unknown cookie, an
+  empty segment, a changed separator or spacing, a reordered frozen pair or a
+  seed-phase use stays a strict failure.
 
 The approved `session-tier` and `login-header-precedence` rows carry their exact
 expected and observed values, and every compared map keeps presence: an absent
