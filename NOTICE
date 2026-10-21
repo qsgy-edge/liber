@@ -25,6 +25,11 @@ Third-party components
   packages/fjs/liber_text/src/convert.rs as behavioural data: the words the frozen
   reader keeps verbatim. The list was reduced to the words where conversion is
   wrong rather than merely different (see ADR 0009's revision note).
+- The Cookie persistence-attribute classification in
+  lib/source/source_host_state.dart adapts OkHttp 4.12.0's `okhttp3.Cookie`
+  parsing (its attribute scan, `Expires`/`Max-Age` validity rules, JVM integer
+  handling and `trimSubstring` ASCII-whitespace set): the Apache License,
+  Version 2.0, copyright (C) 2015 Square, Inc.
 - The phrase tables in packages/fjs/liber_text/assets/phrases: derived from
   OpenCC's `TWPhrasesRev.txt` / `HKPhrasesRev.txt` (Apache-2.0, copyright
   BYVoid and contributors) with the corpus audit's corrections and additions

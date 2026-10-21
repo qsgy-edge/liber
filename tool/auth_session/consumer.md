@@ -6,10 +6,11 @@ product lane. Nothing here is a compatibility claim: it runs the corpus through
 the product as two real OS processes, compares every portable value and wire
 value with the controller's raw captures, and reports what still differs.
 
-Status: **measured, not accepted**. Both phases run to completion and every
-structural check passes; the comparison fails only on the Cookie rows listed
-under [What still fails](#what-still-fails). Those rows are open work, not
-accepted differences.
+Status: **measured, not accepted**. Both phases run to completion, every
+structural check passes, and the comparison has no unapproved mismatch: only the
+bounded rows under [the Cookie result](#the-cookie-result-and-what-the-existing-contract-already-covers)
+are carried as `notCompared`. Integration, the Windows driven run and full
+ticket acceptance are still pending, so nothing here is a compatibility claim.
 
 ## What runs
 
@@ -98,9 +99,9 @@ never as a portable compared schema.
 The effective cookie **pair map** (`keys`) is compared strictly, and the raw
 **effective string** — on a probe and on the wire — is compared strictly too.
 When the strings differ only in pair order both strings and the pair-map
-equality are recorded in `cookieOrderDifferences`, and the comparison still
-fails: an unexplained raw difference is never a `notCompared` row, a
-`policy-rejected` row or a pass.
+equality are recorded in `cookieOrderDifferences`, and such a row is a strict
+failure: an unexplained raw difference is never a `notCompared` row, a
+`policy-rejected` row or a pass. The measured session has no such row.
 
 ## Approved differences carried with evidence
 
@@ -194,20 +195,22 @@ header.
 Each control is compared with **its own baseline**, the real comparison of the
 unmutated inputs: the difference it introduces must appear as a mismatch key
 (surface + phase + request index/header or observation id/field) that the
-baseline does not already report. A row the run already fails — the Cookie order
-rows today — therefore cannot satisfy a control, and a control whose
-otherwise-matching target does not exist in the reached trace is reported as
-`not-applicable` with its reason instead of passing. The originals are re-hashed
-afterwards and must be byte-identical.
+baseline does not already report, so a row the baseline already carries cannot
+satisfy a control. A control whose otherwise-matching target does not exist in
+the reached trace is reported as `not-applicable` with its reason instead of
+passing. The originals are re-hashed afterwards and must be byte-identical.
 
 ## Limits
 
 One product session is compared with both independently captured native pairs;
 compare-only replay is never called another product run. No phone, ADB, corpus or
-capture mutation, golden edit or runtime/persistence change is part of this lane.
-The stage entries and the JSON bare-property reading are product API/behaviour
-that earlier decisions approved and that this lane implements; `@@`-prefixed
-rules are still refused by the JSON pipeline's rule validation, so the literal
-form here is an interpolation or a script, never `@@`. `coverageGaps` from the
-corpus stay listed as coverage gaps; nothing here closes a capability row, #137
-or Spec A #133.
+capture mutation or golden edit is part of this lane, and the product's stored
+cookie schema and persistence surface are unchanged: the jar's ordering metadata
+is process-only, so a restart loads the durable rows in their stored order. The
+runtime features this lane implements are the jar's persistent-first
+serialization described above, the `BookSourcePipeline` stage entries, the JSON
+bare-property reading and the source map lookup; `@@`-prefixed rules are still
+refused by the JSON pipeline's rule validation, so the literal form here is an
+interpolation or a script, never `@@`. `coverageGaps` from the corpus stay
+listed as coverage gaps; nothing here closes a capability row, #137 or Spec A
+#133.

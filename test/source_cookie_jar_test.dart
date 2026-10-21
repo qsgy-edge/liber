@@ -277,6 +277,45 @@ void main() {
       isFalse,
     );
 
+    // The month token is matched the way Java's `(?i)(jan|...).*` matches a
+    // whole run: a Java line terminator inside it fails the token, while the
+    // same character in a time field's `[^\d]*` tail does not.
+    for (final terminator in <String>[
+      '\n',
+      '\r',
+      '\u0085',
+      '\u2028',
+      '\u2029',
+    ]) {
+      expect(
+        await persistent(['m=1; Expires=09 Jun$terminator 2021 10:18:14 GMT']),
+        isFalse,
+        reason: 'month terminator ${terminator.codeUnitAt(0)}',
+      );
+    }
+    expect(
+      await persistent(['m=1; Expires=09 Jun 2021 10:18:14\u0085 GMT']),
+      isTrue,
+      reason: 'a terminator in the time field is in a negated class',
+    );
+    // The attribute name follows the JVM's ignore-case equivalence, not a
+    // one-way lowercase: `ſ` uppercases to `S`, `ı` to `I`, `İ` lowercases to
+    // `i`, and an ordinary or lowercase name is unchanged.
+    for (final name in <String>[
+      'Expires',
+      'expires',
+      'Expire\u017f',
+      'Exp\u0131res',
+      'Exp\u0130res',
+      'EXP\u0130RES',
+    ]) {
+      expect(
+        await persistent(['m=1; $name=09 Jun 2021 10:18:14 GMT']),
+        isTrue,
+        reason: 'attribute $name',
+      );
+    }
+
     // okhttp trims exactly tab, line feed, form feed, carriage return and
     // space, around the value and around the attribute name.
     for (final whitespace in <String>['\t', '\n', '\f', '\r', ' ']) {

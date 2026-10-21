@@ -908,6 +908,13 @@ class SourceCookieJar {
 
 /// Whether one `Set-Cookie` value is persistent in the frozen baseline's terms.
 ///
+/// The scanner below is adapted from OkHttp 4.12.0's `okhttp3.Cookie`
+/// (`Cookie.kt:380-470,487-580` and `Util.kt`'s `trimSubstring`), copyright (C)
+/// 2015 Square, Inc., licensed under the Apache License, Version 2.0: its
+/// attribute scan, `Expires`/`Max-Age` validity rules, JVM integer handling and
+/// ASCII-whitespace trim are translated to Dart for classification here. See
+/// the repository `NOTICE`.
+///
 /// The frozen `okhttp3.Cookie.parse` (4.12.0, `Cookie.kt:380-470`) starts with
 /// `persistent = false` and sets it only when an `Expires` attribute parses as a
 /// cookie date or a `Max-Age` attribute parses as a max age; an attribute that
@@ -923,15 +930,36 @@ bool _responseCookieIsPersistent(String setCookie) {
     final equals = segment.indexOf('=');
     final name = _cookieTrim(
       equals < 0 ? segment : segment.substring(0, equals),
-    ).toLowerCase();
+    );
     final value = equals < 0 ? '' : _cookieTrim(segment.substring(equals + 1));
-    if (name == 'expires') {
+    if (_cookieAttributeNameEquals(name, 'expires')) {
       if (_cookieDateIsValid(value)) persistent = true;
-    } else if (name == 'max-age') {
+    } else if (_cookieAttributeNameEquals(name, 'max-age')) {
       if (_cookieMaxAgeIsValid(value)) persistent = true;
     }
   }
   return persistent;
+}
+
+/// The attribute name compared the way the JVM's `String.equalsIgnoreCase`
+/// compares it: equal code units, or equal simple uppercase forms, or equal
+/// simple lowercase forms. The frozen parser therefore reads an attribute
+/// spelled with a character whose simple case maps onto the ASCII name — `ſ`
+/// uppercases to `S`, `ı` to `I`, `İ` lowercases to `i` — and neither locale
+/// nor a maintained table takes part. The original name text is kept as it is.
+bool _cookieAttributeNameEquals(String name, String expected) {
+  if (name.length != expected.length) return false;
+  for (var index = 0; index < name.length; index++) {
+    final actual = name.codeUnitAt(index);
+    final wanted = expected.codeUnitAt(index);
+    if (actual == wanted) continue;
+    final actualChar = String.fromCharCode(actual);
+    final wantedChar = String.fromCharCode(wanted);
+    if (actualChar.toUpperCase() == wantedChar.toUpperCase()) continue;
+    if (actualChar.toLowerCase() == wantedChar.toLowerCase()) continue;
+    return false;
+  }
+  return true;
 }
 
 /// okhttp's `trimSubstring`, whose whitespace set is exactly tab, line feed,
@@ -1031,8 +1059,13 @@ bool _cookieMaxAgeIsValid(String value) {
 
 final _cookieTimePattern = RegExp(r'^(\d{1,2}):(\d{1,2}):(\d{1,2})[^\d]*$');
 final _cookieDayPattern = RegExp(r'^(\d{1,2})[^\d]*$');
+// Java's `(?i)(jan|feb|...|dec).*`, matched against the whole run as
+// `Matcher.matches()` does. The tail is Java's default dot, which excludes every
+// line terminator — `\u0085` included, unlike ECMAScript's dot — so a run such as
+// `Jun\u0085` does not match the month token. `lib/source/java_regex.dart` keeps
+// the same Java dot set for the rule translator.
 final _cookieMonthPattern = RegExp(
-  r'^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*$',
+  r'^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[^\n\r\u0085\u2028\u2029]*$',
   caseSensitive: false,
 );
 final _cookieYearPattern = RegExp(r'^(\d{2,4})[^\d]*$');
