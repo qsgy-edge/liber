@@ -134,8 +134,11 @@ the frozen `CookieStore.getCookie` does.
   persistently joins the persistent block then. A response cookie is persistent
   when its `Expires` or `Max-Age` attribute is valid to the frozen okhttp 4.12.0
   parser — the same token-date scan and two-digit-year mapping, the same
-  `Long.parseLong` integer rules (any Unicode decimal digit that fits a signed
-  64-bit value, and the source's ASCII `-?\d+` overflow retry), and the same
+  `Long.parseLong` integer rules (the JVM reads UTF-16 code units, so a BMP
+  decimal digit such as an Arabic-Indic `٥` or a fullwidth `５` is a digit while
+  a supplementary-plane digit is a surrogate pair and is not; the magnitude is
+  bounded at the signed 64-bit limit, and only the source's ASCII `-?\d+`
+  retry covers an overflow), and the same
   five-code-unit whitespace trim (tab, line feed, form feed, carriage return and
   space; every other control character is data) — and a script
   `setCookie`/`replaceCookie` is persistent. An invalid attribute is ignored

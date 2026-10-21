@@ -964,18 +964,25 @@ String _cookieTrim(String text) {
 /// The SDK's Unicode regular-expression support classifies the code point and
 /// the value is its offset from the start of its own contiguous ten-digit block,
 /// so no maintained digit table is needed.
-int? _cookieDecimalDigit(int rune) {
-  if (!_cookieDecimalDigitPattern.hasMatch(String.fromCharCode(rune))) {
+int? _cookieDecimalDigit(int unit) {
+  // A JVM `char` is one UTF-16 code unit: a surrogate half is not a digit, so a
+  // supplementary-plane digit (two surrogate code units) never parses, exactly
+  // as `Character.digit(char, 10)` answers -1 for each half.
+  if (unit >= 0xd800 && unit <= 0xdfff) return null;
+  if (!_cookieDecimalDigitPattern.hasMatch(String.fromCharCode(unit))) {
     return null;
   }
-  var start = rune;
+  // `Character.digit` reads the character's own digit value; a BMP decimal
+  // block is ten consecutive code units, so its offset is that value. Nine
+  // steps stay inside one block (BMP digit blocks are never adjacent).
+  var start = unit;
   var steps = 0;
-  while (steps < 10 &&
+  while (steps < 9 &&
       _cookieDecimalDigitPattern.hasMatch(String.fromCharCode(start - 1))) {
     start--;
     steps++;
   }
-  return rune - start;
+  return unit - start;
 }
 
 final _cookieDecimalDigitPattern = RegExp(r'^\p{Nd}$', unicode: true);
@@ -983,10 +990,10 @@ final _cookieLongMax = BigInt.parse('9223372036854775807');
 final _cookieLongMinMagnitude = BigInt.parse('9223372036854775808');
 
 /// Whether the value is a JVM `Long` (`Long.parseLong`): an optional ASCII sign,
-/// then Unicode decimal digits (`Character.digit` reads every `Nd`, so an
-/// Arabic-Indic `٥` or a fullwidth `５` is a five) whose magnitude fits a signed
-/// 64-bit integer. Dart's `int.parse` reads ASCII only and must not stand in for
-/// it.
+/// then `Character.digit(char, 10)` digits in **UTF-16 code units** — an
+/// Arabic-Indic `٥` or a fullwidth `５` is a five, while a supplementary-plane
+/// digit is a surrogate pair and fails — whose magnitude fits a signed 64-bit
+/// integer. Dart's `int.parse` reads ASCII only and must not stand in for it.
 bool _cookieMaxAgeParsesAsLong(String value) {
   var index = 0;
   var negative = false;
@@ -995,13 +1002,20 @@ bool _cookieMaxAgeParsesAsLong(String value) {
     index = 1;
   }
   if (index >= value.length) return false;
+  final limit = negative ? _cookieLongMinMagnitude : _cookieLongMax;
   var magnitude = BigInt.zero;
-  for (final rune in value.substring(index).runes) {
-    final digit = _cookieDecimalDigit(rune);
+  final ten = BigInt.from(10);
+  for (final unit in value.substring(index).codeUnits) {
+    final digit = _cookieDecimalDigit(unit);
     if (digit == null) return false;
-    magnitude = magnitude * BigInt.from(10) + BigInt.from(digit);
+    // Stop as soon as the magnitude would pass the signed 64-bit bound, as the
+    // source's own scan does; the value is not a Long and there is nothing to
+    // accumulate further.
+    final next = BigInt.from(digit);
+    if (magnitude > (limit - next) ~/ ten) return false;
+    magnitude = magnitude * ten + next;
   }
-  return magnitude <= (negative ? _cookieLongMinMagnitude : _cookieLongMax);
+  return true;
 }
 
 /// okhttp's `parseMaxAge` (`Cookie.kt:565-580`): a value that parses as a JVM

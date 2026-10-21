@@ -250,6 +250,33 @@ void main() {
     expect(await persistent(['m=1; Max-Age=-${'9' * 20}']), isTrue);
     expect(await persistent(['m=1; Max-Age=+${'9' * 20}']), isFalse);
 
+    // A supplementary-plane digit is a surrogate pair in UTF-16, so the JVM
+    // parser reads two non-digits and ignores the attribute; a BMP digit after
+    // or before it changes nothing.
+    for (final value in <String>[
+      '\u{1D7D3}',
+      '\u{1D7D8}',
+      '\u{1E955}',
+      '3\u{1D7D3}',
+      '\u{1D7D3}3',
+    ]) {
+      expect(
+        await persistent(['m=1; Max-Age=$value']),
+        isFalse,
+        reason: 'supplementary Max-Age=${value.runes}',
+      );
+    }
+    // Leading zeros keep the value small, and an overflowing run still follows
+    // the ASCII-only retry.
+    expect(await persistent(['m=1; Max-Age=${'0' * 40}5']), isTrue);
+    expect(await persistent(['m=1; Max-Age=-${'0' * 40}5']), isTrue);
+    expect(await persistent(['m=1; Max-Age=${'0' * 40}${'9' * 20}']), isTrue);
+    expect(await persistent(['m=1; Max-Age=+${'0' * 40}${'9' * 20}']), isFalse);
+    expect(
+      await persistent(['m=1; Max-Age=${'0' * 40}${'\u0665' * 20}']),
+      isFalse,
+    );
+
     // okhttp trims exactly tab, line feed, form feed, carriage return and
     // space, around the value and around the attribute name.
     for (final whitespace in <String>['\t', '\n', '\f', '\r', ' ']) {
