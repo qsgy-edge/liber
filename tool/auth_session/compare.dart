@@ -676,11 +676,23 @@ bool _deepEquals(Object? left, Object? right) {
   return left == right;
 }
 
-/// Whether two maps hold the same keys with different values only.
+/// One field's difference between two compared maps, with each side's presence
+/// kept: an explicit `null` and an absent key are different observations, so a
+/// dropped nullable field fails instead of matching a null.
+const absentField = '<absent>';
+
 Map<String, Map<String, Object?>> _changedFields(Map expected, Map actual) => {
   for (final key in {...expected.keys, ...actual.keys})
-    if (!_deepEquals(expected[key], actual[key]))
-      '$key': {'expected': expected[key], 'observed': actual[key]},
+    if (expected.containsKey(key) != actual.containsKey(key) ||
+        !_deepEquals(expected[key], actual[key]))
+      '$key': {
+        'expected': expected.containsKey(key) ? expected[key] : absentField,
+        'observed': actual.containsKey(key) ? actual[key] : absentField,
+        if (expected.containsKey(key) != actual.containsKey(key))
+          'presence': expected.containsKey(key)
+              ? 'expected-only'
+              : 'observed-only',
+      },
 };
 
 /// A declared `[name, value]` pair list, or null when the field is absent or
@@ -1151,6 +1163,139 @@ Map<String, Object?>? _approvedLoginHeaderPrecedence({
   };
 }
 
+/// Compares the product's ordered `stageTrace` with the validated capture's and
+/// with the product's own requests: every entry is a map with exactly the three
+/// causal keys, and its stage, listener and raw target are the same ones the
+/// capture recorded and the request at that position actually made. A forged or
+/// reordered trace of the same length fails here.
+void _compareStageTrace({
+  required Map<String, dynamic> golden,
+  required Map<String, dynamic> product,
+  required String phase,
+  required List<Map<String, Object?>> mismatches,
+  required String productPath,
+}) {
+  const keys = {'stage', 'listener', 'target'};
+  final goldenTrace = _array(golden['stageTrace'], 'golden stageTrace');
+  final actualTrace = product['stageTrace'];
+  final requests = product['requests'];
+  if (actualTrace is! List ||
+      requests is! List ||
+      actualTrace.length != goldenTrace.length ||
+      actualTrace.length != requests.length) {
+    mismatches.add({
+      'phase': phase,
+      'surface': 'product-stage-trace',
+      'expected': '${goldenTrace.length} causal entries',
+      'observed': actualTrace is List
+          ? '${actualTrace.length} entries for ${requests is List ? requests.length : '?'} requests'
+          : absentField,
+    });
+    return;
+  }
+  for (var index = 0; index < actualTrace.length; index++) {
+    final entry = actualTrace[index];
+    final expected = _object(goldenTrace[index], 'golden stageTrace $index');
+    final request = _object(requests[index], '$productPath request $index');
+    String? failure;
+    if (entry is! Map) {
+      failure = 'the entry is not a map';
+    } else if (entry.keys.toSet().length != keys.length ||
+        !keys.containsAll(entry.keys.cast<String>())) {
+      failure = 'the entry does not carry exactly stage, listener and target';
+    } else if (entry['stage'] is! String ||
+        entry['listener'] is! String ||
+        entry['target'] is! String) {
+      failure = 'the entry values are not strings';
+    } else if (entry['stage'] != expected['stage'] ||
+        entry['listener'] != expected['listener'] ||
+        entry['target'] != expected['target']) {
+      failure = 'the entry is not the captured causal entry';
+    } else if (entry['stage'] != request['stage'] ||
+        entry['listener'] != request['listener'] ||
+        entry['target'] != request['target']) {
+      failure = 'the entry does not belong to its own request';
+    }
+    if (failure != null) {
+      mismatches.add({
+        'phase': phase,
+        'surface': 'product-stage-trace',
+        'index': index,
+        'expected': expected,
+        'observed': entry is Map
+            ? {for (final key in entry.keys) '$key': entry[key]}
+            : entry,
+        'detail': failure,
+      });
+    }
+  }
+}
+
+/// One outbound `Cookie` header's ordered pairs, as the wire carries them.
+List<List<String>> _wireCookiePairs(String header) {
+  final pairs = <List<String>>[];
+  for (final raw in header.split(';')) {
+    final text = raw.trim();
+    if (text.isEmpty) continue;
+    final index = text.indexOf('=');
+    if (index <= 0) continue;
+    pairs.add([text.substring(0, index), text.substring(index + 1)]);
+  }
+  return pairs;
+}
+
+/// The bounded restart-session wire attribution: null unless the actual header
+/// is the frozen pairs, unchanged and in their own order, plus exactly the
+/// recorded session-only pairs for the same source.
+Map<String, Object?>? _restartSessionWireRow({
+  required String expectedHeader,
+  required String actualHeader,
+  required List<List<String>> sessionPairs,
+}) {
+  if (sessionPairs.isEmpty) return null;
+  final expected = _wireCookiePairs(expectedHeader);
+  final actual = _wireCookiePairs(actualHeader);
+  // Read the actual header in its own order: a pair is either the next frozen
+  // pair (same name and value, frozen order kept) or one recorded session pair,
+  // which is attributed where it actually appears. Anything else — a changed or
+  // missing frozen pair, an unknown or duplicated cookie, a reordered frozen
+  // pair — is not this row.
+  final frozen = [
+    for (final pair in expected) [...pair],
+  ];
+  final sessionPool = [
+    for (final pair in sessionPairs) [...pair],
+  ];
+  final attributed = <List<String>>[];
+  for (final pair in actual) {
+    if (frozen.isNotEmpty &&
+        frozen.first[0] == pair[0] &&
+        frozen.first[1] == pair[1]) {
+      frozen.removeAt(0);
+      continue;
+    }
+    final index = sessionPool.indexWhere(
+      (session) => session[0] == pair[0] && session[1] == pair[1],
+    );
+    if (index < 0) return null;
+    attributed.add([...sessionPool.removeAt(index)]);
+  }
+  if (frozen.isNotEmpty || sessionPool.isNotEmpty) return null;
+  return {
+    'row': 'session-tier',
+    'kind': 'restart-session-cookie-wire',
+    'attributed': attributed,
+    'frozenPairs': expected,
+    'reason':
+        'the existing session-cookie restart divergence '
+        '(book-source-differential-contract.md:132): the frozen baseline keeps a '
+        'non-persistent Set-Cookie in process memory only, so it is gone after '
+        'the restart, while the product jar keeps the seed-recorded session '
+        'pairs in its one map. Only those exact pairs are attributed; every '
+        'frozen pair keeps its value and order.',
+  };
+}
+
 /// Compares one phase's request trace: the causal order, the method, the raw
 /// target and the source-controlled headers. The corpus declares the method,
 /// path and raw query bytes of every request in order, so a reordered,
@@ -1164,6 +1309,7 @@ void _compareRequests({
   required List<Map<String, Object?>> notCompared,
   required List<Map<String, Object?>> orderOnly,
   required String productPath,
+  required Map<String, List<List<String>>> seedSessionPairs,
 }) {
   final expected = authSessionExpectedRequests(corpus, phase);
   final productRequests = _array(product['requests'], '$productPath requests');
@@ -1292,6 +1438,35 @@ void _compareRequests({
         });
       }
       final step = stepById['${productRequest['stage']}'];
+      // The existing session-cookie restart divergence
+      // (`book-source-differential-contract.md:132`): a genuine restart wire
+      // header may carry exactly the session-only pairs the validated native
+      // seed capture recorded for that same source, with every frozen pair kept
+      // at its own value and order. Everything else stays strict.
+      if (entry.key == 'cookie' &&
+          phase == 'restart' &&
+          entry.value.length == 1 &&
+          actual.length == 1 &&
+          step != null) {
+        final sourceId = '${step['source']}';
+        final attribution = _restartSessionWireRow(
+          expectedHeader: entry.value.single,
+          actualHeader: actual.single,
+          sessionPairs: seedSessionPairs[sourceId] ?? const <List<String>>[],
+        );
+        if (attribution != null) {
+          notCompared.add({
+            ...attribution,
+            'phase': phase,
+            'index': index,
+            'source': sourceId,
+            'request': '${productRequest['target']}',
+            'expected': entry.value.single,
+            'observed': actual.single,
+          });
+          continue;
+        }
+      }
       final approved = step == null
           ? null
           : _approvedLoginHeaderPrecedence(
@@ -1466,6 +1641,26 @@ Map<String, Object?> compareAuthSessionPhases({
       'status ${report['status']}${report['analysisFailure'] == null ? '' : ': ${report['analysisFailure']}'}',
       phase: phase,
     );
+    // A completed phase carries a clean terminal receipt: `serverErrors` present
+    // and empty, `analysisFailure` present and explicitly null.
+    final serverErrors = report['serverErrors'];
+    check(
+      'product-terminal-$phase',
+      report.containsKey('serverErrors') &&
+          serverErrors is List &&
+          serverErrors.isEmpty &&
+          report.containsKey('analysisFailure') &&
+          report['analysisFailure'] == null,
+      {
+        'serverErrors': report.containsKey('serverErrors')
+            ? serverErrors
+            : absentField,
+        'analysisFailure': report.containsKey('analysisFailure')
+            ? report['analysisFailure']
+            : absentField,
+      },
+      phase: phase,
+    );
     final identity = _object(report['identity'], '$path identity');
     check(
       'product-corpus-identity-$phase',
@@ -1541,15 +1736,14 @@ Map<String, Object?> compareAuthSessionPhases({
       notCompared: notCompared,
       orderOnly: orderOnly,
       productPath: path,
+      seedSessionPairs: seedSessionPairs,
     );
-    final stageTrace = _array(report['stageTrace'], '$path stageTrace');
-    check(
-      'product-stage-trace-$phase',
-      stageTrace.length == requests.length &&
-          authSessionRequestStages(corpus, phase, requests, path).length ==
-              requests.length,
-      '${stageTrace.length} traced requests',
+    _compareStageTrace(
+      golden: golden,
+      product: report,
       phase: phase,
+      mismatches: mismatches,
+      productPath: path,
     );
 
     final steps = authSessionSteps(corpus, phase);

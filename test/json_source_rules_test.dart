@@ -387,42 +387,58 @@ void main() {
       expect(JsonSourceRules.list(root, 'json'), ['present']);
     });
 
-    test('a missing property and an explicit null match the canonical path', () {
-      for (final rule in ['json', r'$.json']) {
-        expect(JsonSourceRules.extract({'name': 'B'}, rule), '', reason: rule);
-        expect(JsonSourceRules.extract({'json': null}, rule), '', reason: rule);
-        expect(JsonSourceRules.read({'name': 'B'}, rule), isNull, reason: rule);
-        expect(JsonSourceRules.read({'json': null}, rule), isNull, reason: rule);
-        expect(
-          JsonSourceRules.values({'json': null}, rule),
-          [null],
-          reason: rule,
-        );
-        expect(
-          () => JsonSourceRules.text({'name': 'B'}, rule),
-          throwsFormatException,
-          reason: rule,
-        );
-      }
-    });
+    test(
+      'a missing property and an explicit null match the canonical path',
+      () {
+        for (final rule in ['json', r'$.json']) {
+          expect(
+            JsonSourceRules.extract({'name': 'B'}, rule),
+            '',
+            reason: rule,
+          );
+          expect(
+            JsonSourceRules.extract({'json': null}, rule),
+            '',
+            reason: rule,
+          );
+          expect(
+            JsonSourceRules.read({'name': 'B'}, rule),
+            isNull,
+            reason: rule,
+          );
+          expect(
+            JsonSourceRules.read({'json': null}, rule),
+            isNull,
+            reason: rule,
+          );
+          expect(JsonSourceRules.values({'json': null}, rule), [
+            null,
+          ], reason: rule);
+          expect(
+            () => JsonSourceRules.text({'name': 'B'}, rule),
+            throwsFormatException,
+            reason: rule,
+          );
+        }
+      },
+    );
 
-    test('names the root property, where the dot-leading form is recursive', () {
-      expect(JsonSourceRules.values(root, 'json'), ['present']);
-      expect(JsonSourceRules.values(root, '.json'), [
-        'present',
-        'nested',
-        'deep',
-      ]);
-      expect(JsonSourceRules.extract(root, '.json'), 'present\nnested\ndeep');
-      expect(JsonSourceRules.extract(root, 'json'), 'present');
-    });
+    test(
+      'names the root property, where the dot-leading form is recursive',
+      () {
+        expect(JsonSourceRules.values(root, 'json'), ['present']);
+        expect(JsonSourceRules.values(root, '.json'), [
+          'present',
+          'nested',
+          'deep',
+        ]);
+        expect(JsonSourceRules.extract(root, '.json'), 'present\nnested\ndeep');
+        expect(JsonSourceRules.extract(root, 'json'), 'present');
+      },
+    );
 
     test('a merge branch that is a bare name is evaluated, not echoed', () {
-      for (final rule in [
-        'missing||json',
-        r'$.absent&&json',
-        'json||name',
-      ]) {
+      for (final rule in ['missing||json', r'$.absent&&json', 'json||name']) {
         expect(
           () => JsonSourceRules.validate(rule),
           returnsNormally,
@@ -439,6 +455,46 @@ void main() {
         JsonSourceRules.extract(root, 'missing||nul'),
         '',
         reason: 'no branch matches: the canonical empty answer',
+      );
+    });
+
+    test('an accepted merge branch may carry whitespace around its operator', () {
+      // The parser trims each branch before it reads it, so a merge a source
+      // wrote with spaces or tabs is the same merge — and must be evaluated,
+      // never answered with its own rule text.
+      for (final rule in <String>[
+        'missing || json',
+        'missing|| json',
+        'json || missing',
+        'missing\t||\tjson',
+      ]) {
+        expect(
+          () => JsonSourceRules.validate(rule),
+          returnsNormally,
+          reason: rule,
+        );
+        expect(JsonSourceRules.extract(root, rule), 'present', reason: rule);
+      }
+      // A merge whose branches do not match is still the empty answer, and both
+      // operators keep their meaning.
+      expect(JsonSourceRules.extract(root, 'missing || nul'), '');
+      expect(JsonSourceRules.extract(root, 'missing && absent'), '');
+      // `&&` joins every branch that matched; only the matching one contributes.
+      expect(JsonSourceRules.extract(root, 'missing && json'), 'present');
+      expect(JsonSourceRules.extract(root, 'json && name'), 'present\nB');
+      // The same normalization reaches the list consumers.
+      expect(
+        JsonSourceRules.list({
+          'plain': ['p1', 'p2'],
+        }, 'absent || plain'),
+        ['p1', 'p2'],
+      );
+      expect(
+        JsonSourceRules.list({
+          'plain': ['p1'],
+          'other': ['p2'],
+        }, 'plain %% other'),
+        ['p1', 'p2'],
       );
     });
 
@@ -699,27 +755,24 @@ void main() {
     },
   );
 
-  test(
-    'a field whose text has nothing left to parse validates (#83)',
-    () {
-      // A `##…`-only field carries only a replacement and an `@get:`-only field
-      // is supplied by its substitution before the extraction runs, so the parse
-      // gate belongs to what is left to parse — nothing here. Validating the
-      // parse against the empty remainder refused fields this tree's runtime
-      // reads (the frozen blank-rule branch, `AnalyzeRule.kt:259-300`).
-      for (final rule in <String>[
-        r'##regex##replacement',
-        '##regex',
-        '@get:token',
-        '@get:{token}',
-        '',
-      ]) {
-        expect(
-          () => JsonSourceRules.validate(rule),
-          returnsNormally,
-          reason: rule,
-        );
-      }
-    },
-  );
+  test('a field whose text has nothing left to parse validates (#83)', () {
+    // A `##…`-only field carries only a replacement and an `@get:`-only field
+    // is supplied by its substitution before the extraction runs, so the parse
+    // gate belongs to what is left to parse — nothing here. Validating the
+    // parse against the empty remainder refused fields this tree's runtime
+    // reads (the frozen blank-rule branch, `AnalyzeRule.kt:259-300`).
+    for (final rule in <String>[
+      r'##regex##replacement',
+      '##regex',
+      '@get:token',
+      '@get:{token}',
+      '',
+    ]) {
+      expect(
+        () => JsonSourceRules.validate(rule),
+        returnsNormally,
+        reason: rule,
+      );
+    }
+  });
 }

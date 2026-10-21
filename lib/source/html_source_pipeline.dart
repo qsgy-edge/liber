@@ -1774,6 +1774,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: bookAddressText,
+      keyword: _keyword,
+      page: _page,
     );
   }
 
@@ -1788,6 +1790,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _tocChapterAddress = null;
+    // The TOC stage continues the information analysis it was handed, so its
+    // rules see that analysis's own `key`/`page` bindings — not a later search
+    // on this pipeline.
+    _keyword = info.keyword;
+    _page = info.page;
     final book = info.book;
     final bookUrl = info.bookUrl;
     final bookOptions = info.bookOptions;

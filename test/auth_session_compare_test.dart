@@ -1479,6 +1479,303 @@ void main() {
       );
     });
 
+    test('nullable presence is compared, not only its null value', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      Map<String, Object?> probeOf(Map<String, dynamic> report, String id) {
+        final row =
+            (report['observations'] as List).firstWhere(
+                  (raw) => (raw as Map)['id'] == id,
+                )
+                as Map;
+        return ((row['value'] as Map)['after'] as Map).cast<String, Object?>();
+      }
+
+      void expectNewKey(
+        String name,
+        String key,
+        void Function(Map<String, dynamic>) mutate, {
+        bool restart = false,
+      }) {
+        final report = restart
+            ? copy(fixture.restartProduct)
+            : copy(fixture.seedProduct);
+        mutate(report);
+        final compared = restart
+            ? fixture.compare(restartProduct: report)
+            : fixture.compare(seedProduct: report);
+        expect(
+          (compared['mismatchKeys'] as List).cast<String>().toSet().difference(
+            baselineKeys,
+          ),
+          contains(key),
+          reason: name,
+        );
+      }
+
+      for (final entry in <String, String>{
+        'the seed probe loses loginHeader':
+            'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.loginHeader',
+        'the seed probe loses loginHeaderMap':
+            'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.loginHeaderMap',
+      }.entries) {
+        final field = entry.value.split('.').last;
+        expectNewKey(entry.key, entry.value, (report) {
+          probeOf(report, 'seed.cookies.A.removeLoginHeader').remove(field);
+        });
+      }
+      for (final entry in <String, (String, String)>{
+        'the ordinary restart observation loses loginHeader': (
+          'loginHeader',
+          'observation|restart|loginHeader|restart.headers.A',
+        ),
+        'the ordinary restart observation loses loginHeaderMap': (
+          'loginHeaderMap',
+          'observation|restart|loginHeaderMap|restart.headers.A',
+        ),
+      }.entries) {
+        final field = entry.value.$1;
+        expectNewKey(entry.key, entry.value.$2, (report) {
+          final row =
+              (report['observations'] as List).firstWhere(
+                    (raw) => (raw as Map)['id'] == 'restart.headers.A',
+                  )
+                  as Map;
+          (row['value'] as Map).remove(field);
+        }, restart: true);
+      }
+
+      // A nested probe's nullable field, an extra null field only the product
+      // carries, and a changed non-null value.
+      final nested = copy(fixture.seedProduct);
+      final stateRow =
+          (nested['observations'] as List).firstWhere(
+                (raw) => (raw as Map)['id'] == 'seed.state.seed',
+              )
+              as Map;
+      (((stateRow['value'] as Map)['cookies'] as Map)['A'] as Map).remove(
+        'loginHeaderMap',
+      );
+      expect(
+        (fixture.compare(seedProduct: nested)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        contains(
+          'observation-cookie|seed|seed.state.seed.cookies.A.loginHeaderMap',
+        ),
+      );
+      expectNewKey(
+        'an extra null field',
+        'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.extraNull',
+        (report) =>
+            probeOf(report, 'seed.cookies.A.removeLoginHeader')['extraNull'] =
+                null,
+      );
+      expectNewKey(
+        'a changed non-null value',
+        'observation-cookie|seed|seed.cookies.A.removeLoginHeader.after.loginHeader',
+        (report) =>
+            probeOf(report, 'seed.cookies.A.removeLoginHeader')['loginHeader'] =
+                '{"X":"changed"}',
+      );
+    });
+
+    test('a completed phase needs a clean terminal receipt', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      for (final entry in <String, void Function(Map<String, dynamic>)>{
+        'serverErrors removed': (report) => report.remove('serverErrors'),
+        'serverErrors not a list': (report) => report['serverErrors'] = 'none',
+        'serverErrors carrying an error': (report) => report['serverErrors'] = [
+          {'error': 'late'},
+        ],
+        'analysisFailure not null': (report) =>
+            report['analysisFailure'] = 'boom',
+        'analysisFailure removed': (report) => report.remove('analysisFailure'),
+      }.entries) {
+        final report = copy(fixture.seedProduct);
+        entry.value(report);
+        expect(
+          (fixture.compare(seedProduct: report)['mismatchKeys'] as List)
+              .cast<String>()
+              .toSet()
+              .difference(baselineKeys),
+          contains('product-terminal-seed|seed'),
+          reason: entry.key,
+        );
+      }
+    });
+
+    test(
+      'each stage trace entry is the captured causal entry for its request',
+      () {
+        final baseline = fixture.compare();
+        final baselineKeys = (baseline['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet();
+        void expectTraceFailure(
+          String name,
+          void Function(List<dynamic>) change,
+        ) {
+          final report = copy(fixture.seedProduct);
+          change(report['stageTrace'] as List);
+          expect(
+            (fixture.compare(seedProduct: report)['mismatchKeys'] as List)
+                .cast<String>()
+                .toSet()
+                .difference(baselineKeys),
+            contains('product-stage-trace|seed|0'),
+            reason: name,
+          );
+        }
+
+        expectTraceFailure('stage changed', (trace) {
+          (trace[0] as Map)['stage'] = 'seed.content.A';
+        });
+        expectTraceFailure('target changed', (trace) {
+          (trace[0] as Map)['target'] = '/a/forged?x=1';
+        });
+        expectTraceFailure('listener changed', (trace) {
+          (trace[0] as Map)['listener'] = '127.0.0.2';
+        });
+        expectTraceFailure('entry is not a map', (trace) {
+          trace[0] = 'seed.login.A';
+        });
+        expectTraceFailure('entry carries an extra field', (trace) {
+          (trace[0] as Map)['note'] = 'forged';
+        });
+        expectTraceFailure('every entry forged at the same length', (trace) {
+          for (final entry in trace.cast<Map>()) {
+            entry['target'] = '/a/forged';
+          }
+        });
+      },
+    );
+
+    Map<String, dynamic> withRestartSessionPairs({
+      String extra = 'ssA=after; ss2=sx2',
+    }) {
+      final report = copy(fixture.restartProduct);
+      for (final raw in report['requests'] as List) {
+        final request = raw as Map;
+        if (!'${request['path']}'.startsWith('/a/')) continue;
+        final headers = (request['headers'] as Map).cast<String, Object?>();
+        headers['cookie'] = '${headers['cookie']}; $extra';
+      }
+      return report;
+    }
+
+    test('the restart session-only wire pairs are the existing divergence', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      final compared = fixture.compare(
+        restartProduct: withRestartSessionPairs(),
+      );
+      expect(
+        (compared['mismatchKeys'] as List).cast<String>().toSet().difference(
+          baselineKeys,
+        ),
+        isEmpty,
+        reason: 'the recorded seed session pairs are the existing row',
+      );
+      final rows = [
+        for (final entry in (compared['notCompared'] as List).cast<Map>())
+          if (entry['kind'] == 'restart-session-cookie-wire') entry,
+      ];
+      expect(rows, isNotEmpty);
+      expect(
+        rows.every(
+          (row) => row['row'] == 'session-tier' && row['phase'] == 'restart',
+        ),
+        isTrue,
+      );
+      expect(rows.first['attributed'], [
+        ['ssA', 'after'],
+        ['ss2', 'sx2'],
+      ]);
+      expect('${rows.first['expected']}', contains('sidA='));
+      expect('${rows.first['observed']}', contains('ssA=after'));
+      expect('${rows.first['reason']}', contains(':132'));
+    });
+
+    test('the restart attribution rejects every other change', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      Map<String, dynamic> mutated(void Function(List<dynamic>) change) {
+        final report = withRestartSessionPairs();
+        change(report['requests'] as List);
+        return report;
+      }
+
+      final cases = <String, Map<String, dynamic>>{
+        'a wrong session value': withRestartSessionPairs(
+          extra: 'ssA=after; ss2=other',
+        ),
+        'a missing session pair': withRestartSessionPairs(extra: 'ssA=after'),
+        'an unknown extra cookie': withRestartSessionPairs(
+          extra: 'ssA=after; ss2=sx2; evil=1',
+        ),
+        'a duplicated session pair': withRestartSessionPairs(
+          extra: 'ssA=after; ss2=sx2; ssA=after',
+        ),
+        'reordered frozen pairs': mutated((requests) {
+          for (final raw in requests) {
+            final request = raw as Map;
+            if (!'${request['path']}'.startsWith('/a/')) continue;
+            final headers = (request['headers'] as Map).cast<String, Object?>();
+            headers['cookie'] = 'extraA=e2; sidA=after; ssA=after; ss2=sx2';
+          }
+        }),
+        'a changed frozen value': mutated((requests) {
+          for (final raw in requests) {
+            final request = raw as Map;
+            if (!'${request['path']}'.startsWith('/a/')) continue;
+            final headers = (request['headers'] as Map).cast<String, Object?>();
+            headers['cookie'] = 'sidA=changed; ssA=after; ss2=sx2';
+          }
+        }),
+      };
+      for (final entry in cases.entries) {
+        final added =
+            (fixture.compare(restartProduct: entry.value)['mismatchKeys']
+                    as List)
+                .cast<String>()
+                .toSet()
+                .difference(baselineKeys);
+        expect(
+          added.any((key) => key.startsWith('product-request-headers|restart')),
+          isTrue,
+          reason: '${entry.key}: $added',
+        );
+      }
+
+      // The seed phase never gets the restart attribution.
+      final seed = copy(fixture.seedProduct);
+      for (final raw in seed['requests'] as List) {
+        final request = raw as Map;
+        if (!'${request['path']}'.startsWith('/a/')) continue;
+        final headers = (request['headers'] as Map).cast<String, Object?>();
+        headers['cookie'] = '${headers['cookie']}; ssA=after; ss2=sx2';
+      }
+      expect(
+        (fixture.compare(seedProduct: seed)['mismatchKeys'] as List)
+            .cast<String>()
+            .toSet()
+            .difference(baselineKeys),
+        isNotEmpty,
+        reason: 'a seed phase keeps the wire value strict',
+      );
+    });
+
     test('the restart of another seed is refused', () {
       final report = copy(fixture.restartProduct);
       ((report['owner'] as Map) as Map<String, dynamic>)['seedRunId'] =

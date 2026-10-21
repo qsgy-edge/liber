@@ -1094,6 +1094,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
+    final info = await _beginInformation(hit);
+    return _fetchInformation(hit, info);
+  }
+
+  /// The information stage's pre-request setup, in the frozen composed order:
+  /// source validation, the entity state the candidate carries, header
+  /// evaluation, then the information rule group.
+  Future<Map<String, String>> _beginInformation(HtmlBook hit) async {
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1109,7 +1117,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
-    final info = _rules('ruleBookInfo', const []);
+    return _rules('ruleBookInfo', const []);
+  }
+
+  /// The information request, its check and its rules, over the setup a caller
+  /// already ran.
+  Future<SourceBookInfo> _fetchInformation(
+    HtmlBook hit,
+    Map<String, String> info,
+  ) async {
     final bookRequest = _bookRequests.remove(hit.url);
     // The book's own address text is what this request analyzes, the way the
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
@@ -1149,6 +1165,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: bookAddressText,
+      keyword: _keyword,
+      page: _page,
     );
   }
 
@@ -1163,6 +1181,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _chapter = null;
     _chapterTitle = null;
     _tocChapterAddress = null;
+    // The TOC stage continues the information analysis it was handed, so its
+    // rules see that analysis's own `key`/`page` bindings — not a later search
+    // on this pipeline.
+    _keyword = info.keyword;
+    _page = info.page;
     final book = info.book;
     final bookUrl = info.bookUrl;
     final bookOptions = info.bookOptions;
@@ -1417,8 +1440,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// when it runs.
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    // The composed entry keeps the order current callers already see: source
+    // validation, entity state, header evaluation and the information rule
+    // group first, then the TOC rule group, all before any request. A bad
+    // source, header or information rule is never replaced by a later TOC
+    // group error.
+    final info = await _beginInformation(hit);
     _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
-    return tableOfContents(await bookInfo(hit));
+    return tableOfContents(await _fetchInformation(hit, info));
   }
 
   /// The single book a response that is a book detail page describes, or an

@@ -267,6 +267,8 @@ class SourceBookInfo {
     required this.bookUrl,
     required this.bookOptions,
     required this.bookAddress,
+    required this.keyword,
+    required this.page,
   });
 
   /// The book the information stage produced, with the variable text its
@@ -288,6 +290,13 @@ class SourceBookInfo {
   final Uri bookUrl;
   final SourceUrlOptions bookOptions;
   final String bookAddress;
+
+  /// The `key`/`page` bindings the information stage ran with. A rule field of
+  /// the TOC stage sees this context, never a later search on the same
+  /// pipeline: the frozen `AnalyzeUrl` a details stage builds carries the
+  /// search's key and no page, and the TOC stage it starts keeps them.
+  final String keyword;
+  final int? page;
 
   /// The frozen `Book.tocUrl` value: the declared address, or the book's own
   /// address text when the page declared none (`BookInfo.kt:150-152`).

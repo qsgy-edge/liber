@@ -351,13 +351,19 @@ final _barePropertyName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
 /// the shared validation accepts is therefore one this reader actually
 /// evaluates, instead of returning its own rule text.
 bool _isPathRule(String rule, {bool includeInterleave = false}) {
-  if (rule.startsWith(r'$') || rule.startsWith('.')) return true;
-  if (_barePropertyName.hasMatch(rule)) return true;
-  final parts = _splitMerge(rule, includeInterleave: includeInterleave);
+  // A merge branch may carry the spaces or tabs a source wrote around its
+  // operator, and the parser trims each branch before it reads it. Recognize and
+  // evaluate a branch the same way `_parseRule` does, so an accepted merge is
+  // never answered with its own rule text.
+  final text = rule.trim();
+  if (text.startsWith(r'$') || text.startsWith('.')) return true;
+  if (_barePropertyName.hasMatch(text)) return true;
+  final parts = _splitMerge(text, includeInterleave: includeInterleave);
   if (parts == null) return false;
   return parts.rules.every(
     (part) =>
-        part.isEmpty || _isPathRule(part, includeInterleave: includeInterleave),
+        part.trim().isEmpty ||
+        _isPathRule(part, includeInterleave: includeInterleave),
   );
 }
 
@@ -1765,7 +1771,8 @@ String _jsonValueText(Object? value) {
 String _jsonMapText(Map<Object?, Object?> map) {
   if (map.isEmpty) return '{}';
   final entries = map.entries.map(
-    (entry) => '"${_jsonEscape('${entry.key}')}":${_jsonValueText(entry.value)}',
+    (entry) =>
+        '"${_jsonEscape('${entry.key}')}":${_jsonValueText(entry.value)}',
   );
   return '{${entries.join(',')}}';
 }
