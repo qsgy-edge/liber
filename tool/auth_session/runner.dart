@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:liber/domain/contracts.dart' show BookSourceStage;
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart'
@@ -590,9 +589,14 @@ Future<void> main(List<String> args) async {
         'headers': 'the source.getHeaderMap binding over the real getHeaderMap',
         'stages': const [
           'openBookSourcePipeline.search',
-          'openBookSourcePipeline.details',
+          'openBookSourcePipeline.bookInfo',
+          'openBookSourcePipeline.tableOfContents',
           'openBookSourcePipeline.chapter',
         ],
+        'tocUrl':
+            'the declared ruleBookInfo.tocUrl value the information stage '
+            'carried (the frozen Book.tocUrl, BookInfo.kt:150-152 fallback), '
+            'never a request of a later stage',
         'replay':
             'authSessionReplayServer, one listener per declared origin, '
             'selected by method, path and the exact raw query bytes',
@@ -678,13 +682,13 @@ void _writeReport(String path, Map<String, Object?> report) {
 class _PhaseEvidence {
   final observations = <Map<String, Object?>>[];
   final searchHits = <String, HtmlBook>{};
-  final pending = <String, (HtmlBook, List<SourceChapter>)>{};
+  final pendingInfo = <String, SourceBookInfo>{};
+  final pendingChapters = <String, (HtmlBook, List<SourceChapter>)>{};
   final pipelines = <String, BookSourcePipeline>{};
   final isolation = <String, Object?>{};
   final cleanup = <String, Object?>{};
   final owner = <String, Object?>{};
   List<Map<String, Object?>> requests = const [];
-  final projections = <Map<String, Object?>>[];
   List<Map<String, Object?>> unmatched = const [];
   List<Map<String, Object?>> stageTrace = const [];
   Map<String, Object?> requestCheck = const {};
@@ -703,7 +707,6 @@ class _PhaseEvidence {
     'owner': owner,
     'cleanup': cleanup,
     'sessionTier': sessionTier,
-    'projections': projections,
   };
 }
 
@@ -1182,31 +1185,34 @@ class _PhaseContext {
         if (hit == null) {
           throw StateError('details $id has no preceding search hit');
         }
-        final traceBefore = pipeline.trace.length;
-        final (carrier, chapters) = await pipeline.details(hit);
-        evidence.pending[bookId] = (carrier, chapters);
+        // The frozen `getBookInfoAwait` stage on its own: the information
+        // request, its `loginCheckJs` and its rules. A details-only book (A3,
+        // A9) stops here, exactly as the frozen scenario does, and the TOC
+        // address is the value that stage carried.
+        final info = await pipeline.bookInfo(hit);
+        evidence.pendingInfo[bookId] = info;
+        final carrier = info.book;
         value['book'] = bookId;
         value['bookUrl'] = carrier.identityAddress;
         value['name'] = carrier.title;
         value['author'] = carrier.author;
         value['intro'] = carrier.intro;
         value['latestChapterTitle'] = carrier.lastChapter;
-        value['tocUrl'] = _tocRequestPath(
-          pipeline,
-          traceBefore,
-          id: id,
-          bookId: bookId,
-          bookUrl: carrier.identityAddress,
-        );
+        value['tocUrl'] = info.tocUrl;
       case 'toc':
         final bookId = '${step['book']}';
-        final pending = evidence.pending[bookId];
-        if (pending == null) {
+        final info = evidence.pendingInfo[bookId];
+        if (info == null) {
           throw StateError('toc $id has no preceding details step');
         }
+        // The frozen `getChapterListAwait` stage: its own request, its own
+        // `loginCheckJs` and its own rules, continued from the information
+        // result. It never repeats the information request.
+        final (book, chapters) = await pipeline.tableOfContents(info);
+        evidence.pendingChapters[bookId] = (book, chapters);
         value['book'] = bookId;
         value['chapters'] = [
-          for (final chapter in pending.$2)
+          for (final chapter in chapters)
             {
               'url': chapter.address,
               'title': chapter.name,
@@ -1215,9 +1221,9 @@ class _PhaseContext {
         ];
       case 'content':
         final bookId = '${step['book']}';
-        final pending = evidence.pending[bookId];
+        final pending = evidence.pendingChapters[bookId];
         if (pending == null) {
-          throw StateError('content $id has no preceding details step');
+          throw StateError('content $id has no preceding toc step');
         }
         final chapterAddress = '${step['chapter']}';
         final chapter = pending.$2.firstWhere(
@@ -1235,58 +1241,6 @@ class _PhaseContext {
     }
     value['check'] = await _probe(sourceRef, '${step['checkKey']}');
     evidence.observations.add({'id': id, 'value': value});
-  }
-
-  /// The TOC URL this details call actually fetched: a labelled projection of
-  /// the frozen `getTocUrl` value for a non-redirected, non-retained-body
-  /// details path.
-  ///
-  /// The product's `details` runs the frozen `getBookInfoAwait` and
-  /// `getChapterListAwait` as one call and exposes no stored `getTocUrl`
-  /// member, so the value is the TOC request this call emitted. The projection
-  /// is bound to the current call: only the trace entries appended after
-  /// [traceBefore] are read, exactly one of them must be the TOC request, and a
-  /// missing or ambiguous one fails instead of falling back to an earlier
-  /// entry or a corpus constant.
-  String _tocRequestPath(
-    BookSourcePipeline pipeline,
-    int traceBefore, {
-    required String id,
-    required String bookId,
-    required String bookUrl,
-  }) {
-    if (traceBefore < 0 || traceBefore > pipeline.trace.length) {
-      throw StateError('details $id has no valid trace window');
-    }
-    final emitted = pipeline.trace.sublist(traceBefore);
-    final toc = [
-      for (final entry in emitted)
-        if (entry.stage == BookSourceStage.tableOfContents) entry,
-    ];
-    if (toc.length != 1) {
-      throw StateError(
-        'details $id emitted ${toc.length} table-of-contents requests for '
-        '$bookId ($bookUrl); exactly one is required',
-      );
-    }
-    final path = toc.single.path;
-    if (path.isEmpty) {
-      throw StateError('details $id emitted an empty TOC request path');
-    }
-    evidence.projections.add({
-      'step': id,
-      'book': bookId,
-      'bookUrl': bookUrl,
-      'field': 'tocUrl',
-      'source': 'BookSourceTraceEntry.path of the current details call',
-      'traceIndex': traceBefore + emitted.indexOf(toc.single),
-      'path': path,
-      'note':
-          'labelled projection for the frozen getTocUrl value; this is a '
-          'request provenance, not a stored getter, retained-body, redirect or '
-          'final-model claim',
-    });
-    return path;
   }
 
   Future<Map<String, Object?>> _cookieProbe(String sourceId) async {

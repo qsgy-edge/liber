@@ -6,6 +6,7 @@ import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_host_state.dart';
+import 'source_url_rules.dart';
 
 /// The shapes the pages hold come with the interface, so a caller that runs a
 /// source needs one import for them: [HtmlBook] and [HtmlChapterBody] from the
@@ -247,6 +248,52 @@ SourceImageStyle sourceImageStyle(Map<String, dynamic> source) {
   }
 }
 
+/// The book-information stage's own result: the book `ruleBookInfo` produced,
+/// the TOC address its page declared, and the request context the TOC stage
+/// continues from.
+///
+/// The two frozen stages are separate calls — `WebBook.getBookInfoAwait` then
+/// `WebBook.getChapterListAwait` (`WebBook.kt:152-198,224-270`) — so a caller
+/// that must observe the information stage on its own (the AUTH runner's
+/// details-only step, a page that shows the information before its chapter
+/// list) runs [BookSourcePipeline.bookInfo] and stops. The frozen
+/// `Book.tocUrl` is the declared address with the `BookInfo.kt:150-152`
+/// fallback, which [tocUrl] answers.
+class SourceBookInfo {
+  const SourceBookInfo({
+    required this.book,
+    required this.tocAddress,
+    required this.tocBase,
+    required this.bookUrl,
+    required this.bookOptions,
+    required this.bookAddress,
+  });
+
+  /// The book the information stage produced, with the variable text its
+  /// carrier was handed.
+  final HtmlBook book;
+
+  /// The address text `ruleBookInfo.tocUrl` produced, empty when the page
+  /// declared none.
+  final String tocAddress;
+
+  /// The base [tocAddress] resolves against: the response the information stage
+  /// actually read (HTML) or the book's own URL (JSON), as that adapter's TOC
+  /// walk has always resolved it.
+  final Uri tocBase;
+
+  /// The book request's own target, options and address text. The frozen TOC
+  /// falls back to the book's own address when the information page declares
+  /// none (`BookInfo.kt:150-152`), and that fallback reuses this request.
+  final Uri bookUrl;
+  final SourceUrlOptions bookOptions;
+  final String bookAddress;
+
+  /// The frozen `Book.tocUrl` value: the declared address, or the book's own
+  /// address text when the page declared none (`BookInfo.kt:150-152`).
+  String get tocUrl => tocAddress.isEmpty ? bookAddress : tocAddress;
+}
+
 /// One analysis of one Book Source, as the pages that run a source hold it.
 ///
 /// A source's rules decide which adapter actually runs: [HtmlSourcePipeline]
@@ -282,7 +329,29 @@ abstract interface class BookSourcePipeline {
   /// `ruleSearch`: the books one keyword search returns.
   Future<List<HtmlBook>> search(String keyword, {int page = 1});
 
+  /// `ruleBookInfo` alone: the book's own page and the TOC address it declares.
+  ///
+  /// This is the frozen `WebBook.getBookInfoAwait` stage on its own: it fetches,
+  /// runs the source's `loginCheckJs` on that response and parses the
+  /// information rules, and it makes no TOC request. [tableOfContents] continues
+  /// from its result. The hit's variable text is the candidate a deferred
+  /// analysis reads and writes; nothing is stored by this stage.
+  Future<SourceBookInfo> bookInfo(HtmlBook hit);
+
+  /// `ruleToc` alone: the chapter list, continued from [info].
+  ///
+  /// This is the frozen `WebBook.getChapterListAwait` stage: it fetches the
+  /// declared TOC address (or the book's own address when the page declared
+  /// none), runs the `loginCheckJs` on its first response, walks the declared
+  /// pages and returns the resulting book and chapter list. It does not repeat
+  /// the information request, its check or its URL-option evaluation.
+  Future<(HtmlBook, List<SourceChapter>)> tableOfContents(SourceBookInfo info);
+
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
+  ///
+  /// The composition of [bookInfo] and [tableOfContents], which is what the
+  /// shelf, the browser and the reader run: one call, the information request
+  /// then the TOC request, exactly as before the stages were separated.
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit);
 
   /// `ruleContent`: one chapter's text. A reader supplies its selected [book]

@@ -1720,7 +1720,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }
 
   @override
-  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+  Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1767,16 +1767,42 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
     final (book, tocText) = await _readBookInfo(html, infoUrl, hit);
+    return SourceBookInfo(
+      book: book,
+      tocAddress: tocText,
+      tocBase: infoUrl,
+      bookUrl: bookUrl,
+      bookOptions: bookOptions,
+      bookAddress: bookAddressText,
+    );
+  }
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> tableOfContents(
+    SourceBookInfo info,
+  ) async {
+    // The information stage's book is the one this stage's rules and scripts
+    // read (`book.*`), so a TOC run that follows another analysis still names
+    // the book its own information result carries.
+    _book = info.book;
+    _chapter = null;
+    _chapterTitle = null;
+    _tocChapterAddress = null;
+    final book = info.book;
+    final bookUrl = info.bookUrl;
+    final bookOptions = info.bookOptions;
+    final bookAddressText = info.bookAddress;
     // The frozen falls back to the book's own address when the detail page
     // declares no TOC address — `BookInfo.kt:150-152` reads `infoRule.tocUrl`,
     // then `if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl`, where `baseUrl`
     // is the book's URL, option tail and all (`WebBook.kt` passes
     // `book.bookUrl`). The detail page is usually the TOC page, so an empty
-    // rule means "this page": the request the details stage just made, whose
-    // options the TOC fetch parses again.
-    final (tocTarget, tocOptions) = tocText.isEmpty
+    // rule means "this page": the request the information stage made, whose
+    // options the TOC fetch parses again. The declared address's own options
+    // are evaluated now, at the TOC stage, and never in the information stage.
+    final (tocTarget, tocOptions) = info.tocAddress.isEmpty
         ? (bookUrl, bookOptions)
-        : await _extracted(infoUrl, tocText);
+        : await _extracted(info.tocBase, info.tocAddress);
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
     SourceStageResponse? finalTocResponse;
@@ -1812,8 +1838,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       first: (
         url: tocTarget,
         options: tocOptions,
-        address: tocText,
-        base: infoUrl,
+        address: info.tocAddress,
+        base: info.tocBase,
       ),
       maxPages: 30,
       cycleError: '目录分页循环或超出 30 页',
@@ -2114,6 +2140,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       chapters,
     );
   }
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async =>
+      tableOfContents(await bookInfo(hit));
 
   /// The single book a response that is a book detail page describes, or an
   /// empty list when that page carries no name — the frozen `getInfoItem`

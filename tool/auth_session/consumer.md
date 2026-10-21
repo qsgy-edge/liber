@@ -44,19 +44,17 @@ single-tier cookie receipt (`sessionTier`).
 |---|---|
 | `login` | `SourceLoginSession.submit` — `putSourceLoginInfo` + the real `loginUrl` script through `InProcessSourceScriptRuntime`, with `java.connect`, `cookie.setCookie` and `source.putLoginHeader`; then `loginInfo()`/`loginHeader()`/`loginHeaderMap()` and the script's `source.put` probe |
 | `headerMap` | the `source.getHeaderMap(false|true)` binding over the real `_headers` path (there is no Dart-level member for the map) |
-| `stage` | `openBookSourcePipeline(...).search/details/chapter` over `HttpSourceTransport`, one pipeline per source, with the space's `SourceHostState` and the installation `androidId` |
+| `stage` | `openBookSourcePipeline(...).search`, `.bookInfo`, `.tableOfContents`, `.chapter` over `HttpSourceTransport`, one pipeline per source, with the space's `SourceHostState` and the installation `androidId`. A details step runs the frozen `getBookInfoAwait` stage alone and a TOC step runs `getChapterListAwait` alone; a details-only book (A3, A9) therefore stops after its information response |
 | `cookieState` | `SourceHostState.cookiesFor(...)` after `ready()`: `effective`, sorted `keys`, `loginHeader`, `loginHeaderMap` |
 | `cookieKeyRemoval` | a declared fixture action: read the jar's live header, drop the declared keys, `SourceCookieJar.set` the remaining pairs in the same order (the product exposes no per-key removal member; the frozen `CookieManager.removeCookie(url, key)` removes one key of the same site's jar and rewrites the persistent remainder through `CookieStore.setCookie`) |
 | `removeLoginHeader` / `loginHeaderPut` | `SourceLoginSession.removeLoginHeader` / `putSourceLoginHeader` over the same jar |
 | `state` | the login header, login info map and cookie probe per source |
 
-`tocUrl` on a details observation is a **labelled projection**: the product's
-`details` call runs the frozen `getBookInfoAwait` and `getChapterListAwait`
-together and exposes no stored `getTocUrl` member, so the value is the TOC
-request that current call emitted. The projection snapshots the pipeline trace
-length before the call and accepts exactly one newly emitted TOC request for
-that book; a missing or ambiguous one fails. It is a request provenance, not a
-stored-getter, retained-body, redirect or final-model claim.
+`tocUrl` on a details observation is the value the information stage itself
+carried: `SourceBookInfo.tocUrl`, the declared `ruleBookInfo.tocUrl` text with
+the frozen `BookInfo.kt:150-152` empty-rule fallback to the book's own address.
+It is read before any TOC request exists — no request of a later stage stands in
+for it, and no trace scan is involved.
 
 The product's isolation surface is the workspace root (`manifest.json` and
 `spaces/default/data.db`); unlike the frozen capture it has no task-prefixed
@@ -110,38 +108,42 @@ actual expected and observed values and the row it belongs to:
 
 The comparison is **red** and stays red until the open items are resolved:
 
-1. A details step with no following toc step. The product's `details` call
-   always runs the TOC stage, so `seed.details.A.afterRemoval` (A3) and
-   `restart.details.A` (A9) emit a TOC request the corpus declares no response
-   for. The phase fails on that request.
-2. The `loginCheckJs` probe of a details step. The product's one call runs both
-   frozen stages before the probe is read, so `seed.details.*.check` carries the
-   TOC-stage response body where the frozen capture carries the info-stage body.
-3. The raw effective cookie order. The product jar keeps one insertion-ordered
+1. The raw effective cookie order. The product jar keeps one insertion-ordered
    map, so a session pair written before a persistent pair keeps that position
-   where the frozen `CookieStore.getCookie` merges the persistent map first.
-   The pairs are identical; the raw strings are not, and the decision keeps the
-   raw string strict.
+   where the frozen `CookieStore.getCookie` merges the persistent map first. The
+   pairs are identical; the raw strings are not, and the decision keeps the raw
+   string strict. Four probe rows and four wire rows in the seed phase.
+2. Source B's search cannot run. The corpus declares source B
+   `ruleSearch.kind = "json"`; the frozen answer is `""`, but the product's JSON
+   adapter refuses a rule that is not a JSONPath
+   (`Unsupported operation: ruleSearch.kind: Unsupported operation: Unsupported
+   JSON rule: json`), so the phase stops after `seed.headers.B` (9 of 13
+   requests, 13 of 20 observations) and the restart has no root to continue
+   from. This is with the controller for a bounded decision; it is a pre-existing
+   product rule-shape gap that the earlier A3 TOC failure used to hide.
 
-Items 1 and 2 are the same product-stage-boundary question (one composite
-`details` call against two frozen stages); they are with the controller and are
-not repaired or normalized here.
+The stage-boundary items of the previous checkpoint are resolved: a details
+step makes only its information request, its `loginCheckJs` probe is the
+information marker, and the TOC stage makes its own request and changes it.
 
 ## Negative controls
 
-The comparator runs thirteen controls on copies of the immutable captures and of
+The comparator runs fifteen controls on copies of the immutable captures and of
 the product reports: a changed golden value, swapped golden requests, swapped
-golden observation ids, a changed golden target, a changed product value, an
-added product request, a changed product identity, a reordered, a re-encoded and
-an absent raw query, a changed cookie value, a reordered cookie header, and a
-false restart-cleanup receipt. Each must fail with its intended exit code and,
-where declared, at its intended comparison surface; the originals are re-hashed
-afterwards and must be byte-identical.
+golden observation ids, a changed golden target, a broken golden replay receipt,
+a changed product value, swapped product requests, a changed product identity, a
+reordered, a re-encoded and an absent raw query, a false product start time, a
+changed non-cookie request header, a changed cookie value and a reordered cookie
+header.
 
-A control whose intended surface is a request header can only reach that surface
-once a phase completes its declared request trace, so while item 1 keeps the
-seed phase short the two cookie-header controls fail their surface requirement
-instead of passing silently.
+Each control is compared with **its own baseline**, the real comparison of the
+unmutated inputs: the difference it introduces must appear as a mismatch key
+(surface + phase + request index/header or observation id/field) that the
+baseline does not already report. A row the run already fails — the Cookie order
+rows today — therefore cannot satisfy a control, and a control whose
+otherwise-matching target does not exist in the reached trace is reported as
+`not-applicable` with its reason instead of passing. The originals are re-hashed
+afterwards and must be byte-identical.
 
 ## Limits
 

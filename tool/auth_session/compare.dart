@@ -622,6 +622,19 @@ void checkAuthSessionGoldenPair({
 // Comparison
 // --------------------------------------------------------------------------
 
+/// One mismatch row's identity: its surface plus the row, index, header, field
+/// or path that says which request, observation or receipt it is. A control
+/// compares these keys with its own baseline, so a difference that already
+/// existed cannot stand in for the difference the control introduced.
+String mismatchKey(Map<dynamic, dynamic> mismatch) {
+  final parts = <String>['${mismatch['surface']}'];
+  for (final field in ['phase', 'index', 'header', 'field', 'id', 'path']) {
+    final value = mismatch[field];
+    if (value != null) parts.add('$value');
+  }
+  return parts.join('|');
+}
+
 /// Semantic JSON equality: object member order is ignored, array order and every
 /// primitive are exact, and a missing key is not an empty value.
 bool _deepEquals(Object? left, Object? right) {
@@ -912,12 +925,18 @@ void _compareRequests({
       'detail':
           '${productRequests.length} requests, ${expected.length} declared',
     });
-    return;
   }
+  // The requests the product did make are always compared index by index: a
+  // phase that stopped early still reports which of its requests differ, so a
+  // control can show a difference from its own baseline rather than hiding
+  // behind the count.
+  final compared = productRequests.length < expected.length
+      ? productRequests.length
+      : expected.length;
   final steps = authSessionSteps(corpus, phase);
   final stepById = {for (final step in steps) '${step['id']}': step};
   final goldenRequests = _array(golden['requests'], 'golden requests');
-  for (var index = 0; index < expected.length; index++) {
+  for (var index = 0; index < compared; index++) {
     final declared = normalizeAuthSessionRequest(
       expected[index],
       'declared request $index',
@@ -1522,6 +1541,7 @@ Map<String, Object?> compareAuthSessionPhases({
       },
     },
     'mismatches': mismatches,
+    'mismatchKeys': [for (final mismatch in mismatches) mismatchKey(mismatch)],
     'failedSurfaces': failedSurfaces,
     'notCompared': notCompared,
     'cookieOrderDifferences': orderOnly,
@@ -1710,6 +1730,7 @@ Future<int> _runAndCompare(List<String> args) async {
     restartProductPath: restartReport,
     seedGoldenSha: seedGoldenSha,
     restartGoldenSha: restartGoldenSha,
+    baseline: report,
   );
   _writeJson(
     '${evidence.path}${Platform.pathSeparator}negative-controls.json',
@@ -1742,6 +1763,7 @@ Future<Map<String, Object?>> _runNegativeControls({
   required String restartProductPath,
   required String seedGoldenSha,
   required String restartGoldenSha,
+  required Map<String, Object?> baseline,
 }) async {
   final directory = Directory(
     '${evidence.path}${Platform.pathSeparator}negative-controls',
@@ -1759,13 +1781,23 @@ Future<Map<String, Object?>> _runNegativeControls({
     return path;
   }
 
-  void mutateObservationValue(Map<String, dynamic> report) {
+  /// The mismatch keys this run's own comparison already reports: a control's
+  /// difference must be new relative to them, never one of theirs.
+  final baselineKeys = {
+    for (final raw in (baseline['mismatchKeys'] as List? ?? const [])) '$raw',
+  };
+
+  void mutateObservationValue(Map<String, dynamic> report, String id) {
     final observations = report['observations'] as List;
-    final first = (observations.first as Map).cast<String, dynamic>();
-    final value = first['value'];
-    first['value'] = value is Map
-        ? {...value, '__mutationControl': 'changed-actual-value'}
-        : 'mutated:${'$value'}';
+    final row =
+        observations.firstWhere(
+              (raw) => (raw as Map)['id'] == id,
+              orElse: () => throw StateError('no observation $id to mutate'),
+            )
+            as Map;
+    final value = (row['value'] as Map).cast<String, Object?>();
+    final field = value.containsKey('withLogin') ? 'withLogin' : value.keys.first;
+    value[field] = 'mutated:$field';
   }
 
   void appendRequest(Map<String, dynamic> report) {
@@ -1784,13 +1816,25 @@ Future<Map<String, Object?>> _runNegativeControls({
 
   void swapRequests(Map<String, dynamic> report) {
     final requests = report['requests'] as List;
-    if (requests.length < 2) {
+    if (requests.length < 3) {
       appendRequest(report);
       return;
     }
-    final first = requests[0];
-    requests[0] = requests[1];
-    requests[1] = first;
+    // Two requests of the same declared stage, so the trace stays a declared
+    // stage sequence and the difference is the request itself.
+    final first = requests[1];
+    requests[1] = requests[2];
+    requests[2] = first;
+  }
+
+  void swapOrders(Map<String, dynamic> report) {
+    final observations = report['observations'] as List;
+    if (observations.length < 2) return;
+    final first = observations[0];
+    observations[0] = observations[1];
+    observations[1] = first;
+    final check = report['observationCheck'];
+    if (check is Map) check['ordered'] = false;
   }
 
   void setRawQuery(Map<String, dynamic> report, String value) {
@@ -1803,55 +1847,81 @@ Future<Map<String, Object?>> _runNegativeControls({
     ((report['requests'] as List).first as Map).remove('rawQuery');
   }
 
-  void mutateHeader(Map<String, dynamic> report, String name, String value) {
-    for (final raw in report['requests'] as List) {
-      final request = raw as Map;
-      final headers = (request['headers'] as Map).cast<String, Object?>();
-      if (!headers.containsKey(name)) continue;
-      headers[name] = value;
-      return;
+  /// The first request whose [name] header is present and whose comparison key
+  /// this run does not already report, so the control's difference is its own.
+  int? otherwiseMatchingHeaderIndex(
+    Map<String, dynamic> report,
+    String name, {
+    bool multiPairCookie = false,
+  }) {
+    final requests = report['requests'] as List;
+    for (var index = 0; index < requests.length; index++) {
+      final headers = ((requests[index] as Map)['headers'] as Map)
+          .cast<String, Object?>();
+      final value = headers[name];
+      if (value is! String) continue;
+      if (multiPairCookie && !value.contains('; ')) continue;
+      if (baselineKeys.contains('product-request-headers|seed|$index|$name')) {
+        continue;
+      }
+      return index;
     }
-    throw StateError('no request carries $name');
+    return null;
   }
 
-  void reorderCookieHeader(Map<String, dynamic> report) {
-    for (final raw in report['requests'] as List) {
-      final request = raw as Map;
-      final headers = (request['headers'] as Map).cast<String, Object?>();
-      final cookie = headers['cookie'];
-      if (cookie is! String || !cookie.contains('; ')) continue;
-      final pairs = cookie.split('; ');
-      if (pairs.length < 3) continue;
-      final reordered = [...pairs]..insert(1, pairs.removeLast());
-      headers['cookie'] = reordered.join('; ');
-      return;
-    }
-    throw StateError('no request carries a multi-pair cookie header');
+  void setHeader(
+    Map<String, dynamic> report,
+    int index,
+    String name,
+    String value,
+  ) {
+    final headers =
+        (((report['requests'] as List)[index] as Map)['headers'] as Map)
+            .cast<String, Object?>();
+    headers[name] = value;
   }
 
-  final goldenSeedValue = copy(seedGolden)..also(mutateObservationValue);
+  void reorderCookie(Map<String, dynamic> report, int index) {
+    final headers =
+        (((report['requests'] as List)[index] as Map)['headers'] as Map)
+            .cast<String, Object?>();
+    final pairs = '${headers['cookie']}'.split('; ');
+    if (pairs.length < 2) {
+      throw StateError('request $index carries no multi-pair cookie');
+    }
+    headers['cookie'] = [...pairs.skip(1), pairs.first].join('; ');
+  }
+
+  final goldenSeedValue = copy(seedGolden)
+    ..also((report) => mutateObservationValue(report, 'seed.headers.A'));
   final goldenSeedRequests = copy(seedGolden)..also(swapRequests);
   final goldenSeedOrders = copy(seedGolden)..also(swapOrders);
   final goldenSeedIdentity = copy(seedGolden);
   (goldenSeedIdentity['identity'] as Map)['targetApkSha256'] =
       '0000000000000000000000000000000000000000000000000000000000000000';
-  final productSeedValue = copy(seedProduct)..also(mutateObservationValue);
-  final productSeedRequests = copy(seedProduct)..also(appendRequest);
+  final goldenSeedReceipt = copy(seedGolden);
+  ((goldenSeedReceipt['cleanup'] as Map) as Map<String, dynamic>)['replay'] = {
+    'ok': false,
+    'listenersClosed': false,
+  };
+  final productSeedValue = copy(seedProduct)
+    ..also((report) => mutateObservationValue(report, 'seed.headers.A'));
+  final productSeedRequests = copy(seedProduct)..also(swapRequests);
   final productSeedRawOrder = copy(seedProduct)
     ..also((report) => setRawQuery(report, 'page=1&user=synthetic-a-user'));
   final productSeedRawEncoding = copy(seedProduct)
-    ..also((report) => setRawQuery(report, 'user=synthetic-a-user&pass=synthetic-a-pass%20'));
+    ..also(
+      (report) => setRawQuery(
+        report,
+        'user=synthetic-a-user&pass=synthetic-a-pass%20',
+      ),
+    );
   final productSeedRawAbsent = copy(seedProduct)..also(removeRawQuery);
-  final productSeedCookieValue = copy(seedProduct)
-    ..also((report) => mutateHeader(report, 'cookie', 'scriptA=mutated'));
-  final productSeedCookieOrder = copy(seedProduct)..also(reorderCookieHeader);
   final productRestartIdentity = copy(restartProduct);
   (productRestartIdentity['identity'] as Map)['corpusSha256Lf'] =
       '0000000000000000000000000000000000000000000000000000000000000000';
-  final productRestartCleanup = copy(restartProduct);
-  ((productRestartCleanup['cleanup'] as Map) as Map<String, dynamic>)[
-    'scratchRemoved'
-  ] = false;
+  final productSeedTiming = copy(seedProduct)
+    ..['startedAt'] = '2999-01-01T00:00:00.000Z';
 
   Future<void> control(
     String name,
@@ -1861,7 +1931,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     required String productSeed,
     required String productRestart,
     required String mutation,
-    String? requiredSurface,
+    String? requiredDelta,
   }) async {
     final out = '${directory.path}${Platform.pathSeparator}$name-report.json';
     final log = '${directory.path}${Platform.pathSeparator}$name.log';
@@ -1878,31 +1948,23 @@ Future<Map<String, Object?>> _runNegativeControls({
     ];
     final run = await _runProcess(args, logPath: log);
     final output = _readJsonOrNull(out);
-    final checks = output?['checks'];
-    final failedChecks = <String>[
-      if (checks is Map)
-        for (final entry in checks.entries)
-          if (entry.value is Map && (entry.value as Map)['ok'] != true)
-            '${entry.key}',
+    final keys = <String>[
+      for (final raw in (output?['mismatchKeys'] as List? ?? const [])) '$raw',
     ];
-    final mismatchSurfaces = <String>[
-      if (output?['mismatches'] is List)
-        for (final raw in output!['mismatches'] as List)
-          if (raw is Map && raw['surface'] is String) '${raw['surface']}',
+    final delta = <String>[
+      for (final key in keys)
+        if (!baselineKeys.contains(key)) key,
     ]..sort();
-    final surfaceHit =
-        requiredSurface == null ||
-        failedChecks.contains(requiredSurface) ||
-        mismatchSurfaces.contains(requiredSurface);
+    final deltaHit = requiredDelta == null || delta.contains(requiredDelta);
     controls.add({
       'name': name,
       'mutation': mutation,
       'expectedExit': expectedExit,
       'actualExit': run.exitCode,
-      'requiredSurface': requiredSurface,
-      'failedChecks': failedChecks,
-      'mismatchSurfaces': mismatchSurfaces,
-      'passed': run.exitCode == expectedExit && surfaceHit,
+      'requiredDelta': requiredDelta,
+      'baselineKeysConsidered': baselineKeys.length,
+      'newMismatchKeys': delta,
+      'passed': run.exitCode == expectedExit && deltaHit,
       'report': out,
       'log': log,
       'stdout': run.stdout.trim(),
@@ -1917,7 +1979,8 @@ Future<Map<String, Object?>> _runNegativeControls({
     goldenRestart: restartGoldenPath,
     productSeed: seedProductPath,
     productRestart: restartProductPath,
-    mutation: 'a copied seed capture changed one observed value',
+    mutation: 'a copied seed capture changed seed.headers.A first field',
+    requiredDelta: 'observation|seed|withLogin|seed.headers.A',
   );
   await control(
     'golden-request-mutation',
@@ -1947,13 +2010,23 @@ Future<Map<String, Object?>> _runNegativeControls({
     mutation: 'a copied seed capture named another target APK',
   );
   await control(
+    'golden-receipt-mutation',
+    2,
+    goldenSeed: writeCopy('golden-seed-receipt', goldenSeedReceipt),
+    goldenRestart: restartGoldenPath,
+    productSeed: seedProductPath,
+    productRestart: restartProductPath,
+    mutation: 'a copied seed capture claimed its replay listeners were open',
+  );
+  await control(
     'product-value-mutation',
     1,
     goldenSeed: seedGoldenPath,
     goldenRestart: restartGoldenPath,
     productSeed: writeCopy('product-seed-value', productSeedValue),
     productRestart: restartProductPath,
-    mutation: 'a copied product seed report changed one observed value',
+    mutation: 'a copied product seed report changed seed.headers.A withLogin',
+    requiredDelta: 'observation|seed|withLogin|seed.headers.A',
   );
   await control(
     'product-request-mutation',
@@ -1962,7 +2035,8 @@ Future<Map<String, Object?>> _runNegativeControls({
     goldenRestart: restartGoldenPath,
     productSeed: writeCopy('product-seed-requests', productSeedRequests),
     productRestart: restartProductPath,
-    mutation: 'a copied product seed report added an undeclared request',
+    mutation: 'a copied product seed report swapped its second and third requests',
+    requiredDelta: 'product-requests|seed|1',
   );
   await control(
     'product-identity-mutation',
@@ -1975,6 +2049,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       productRestartIdentity,
     ),
     mutation: 'a copied product restart report named another corpus hash',
+    requiredDelta: 'product-corpus-identity-restart|restart',
   );
   await control(
     'product-raw-query-order',
@@ -1983,8 +2058,8 @@ Future<Map<String, Object?>> _runNegativeControls({
     goldenRestart: restartGoldenPath,
     productSeed: writeCopy('product-seed-raw-order', productSeedRawOrder),
     productRestart: restartProductPath,
-    requiredSurface: 'product-requests',
     mutation: 'a copied product seed report reordered the first raw query',
+    requiredDelta: 'product-requests|seed|0',
   );
   await control(
     'product-raw-query-encoding',
@@ -1996,8 +2071,8 @@ Future<Map<String, Object?>> _runNegativeControls({
       productSeedRawEncoding,
     ),
     productRestart: restartProductPath,
-    requiredSurface: 'product-requests',
     mutation: 'a copied product seed report re-encoded the first raw query',
+    requiredDelta: 'product-requests|seed|0',
   );
   await control(
     'product-raw-query-absent',
@@ -2007,40 +2082,106 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: writeCopy('product-seed-raw-absent', productSeedRawAbsent),
     productRestart: restartProductPath,
     mutation: 'a copied product seed report omitted the first raw query',
+    requiredDelta: 'product-requests|seed|0',
   );
   await control(
-    'product-cookie-value',
+    'product-timing-receipt',
     1,
     goldenSeed: seedGoldenPath,
     goldenRestart: restartGoldenPath,
-    productSeed: writeCopy('product-seed-cookie-value', productSeedCookieValue),
+    productSeed: writeCopy('product-seed-timing', productSeedTiming),
     productRestart: restartProductPath,
-    requiredSurface: 'product-request-headers',
-    mutation: 'a copied product seed report changed one outbound cookie value',
+    mutation: 'a copied product seed report started after it completed',
+    requiredDelta: 'product-timing-seed|seed',
   );
-  await control(
-    'product-cookie-order',
-    1,
-    goldenSeed: seedGoldenPath,
-    goldenRestart: restartGoldenPath,
-    productSeed: writeCopy('product-seed-cookie-order', productSeedCookieOrder),
-    productRestart: restartProductPath,
-    requiredSurface: 'product-request-headers',
-    mutation: 'a copied product seed report reordered one cookie header',
+
+  // A header control on a request and a header this run already compares
+  // successfully: the difference is the control's own, never an inherited
+  // Cookie row.
+  final headerIndex = otherwiseMatchingHeaderIndex(seedProduct, 'x-declared');
+  if (headerIndex == null) {
+    controls.add({
+      'name': 'product-header-value',
+      'status': 'not-applicable',
+      'reason': 'no otherwise-matching x-declared request in this run',
+      'passed': false,
+    });
+  } else {
+    final mutated = copy(seedProduct)
+      ..also(
+        (report) => setHeader(report, headerIndex, 'x-declared', 'mutated'),
+      );
+    await control(
+      'product-header-value',
+      1,
+      goldenSeed: seedGoldenPath,
+      goldenRestart: restartGoldenPath,
+      productSeed: writeCopy('product-seed-header', mutated),
+      productRestart: restartProductPath,
+      mutation:
+          'a copied product seed report changed x-declared on request '
+          '$headerIndex, a request this run otherwise matches',
+      requiredDelta: 'product-request-headers|seed|$headerIndex|x-declared',
+    );
+  }
+
+  final cookieIndex = otherwiseMatchingHeaderIndex(seedProduct, 'cookie');
+  if (cookieIndex == null) {
+    controls.add({
+      'name': 'product-cookie-value',
+      'status': 'not-applicable',
+      'reason': 'no otherwise-matching cookie request in this run',
+      'passed': false,
+    });
+  } else {
+    final mutated = copy(seedProduct)
+      ..also(
+        (report) => setHeader(report, cookieIndex, 'cookie', 'scriptB=mutated'),
+      );
+    await control(
+      'product-cookie-value',
+      1,
+      goldenSeed: seedGoldenPath,
+      goldenRestart: restartGoldenPath,
+      productSeed: writeCopy('product-seed-cookie-value', mutated),
+      productRestart: restartProductPath,
+      mutation:
+          'a copied product seed report changed the cookie value on request '
+          '$cookieIndex, a request this run otherwise matches',
+      requiredDelta: 'product-request-headers|seed|$cookieIndex|cookie',
+    );
+  }
+
+  final orderIndex = otherwiseMatchingHeaderIndex(
+    seedProduct,
+    'cookie',
+    multiPairCookie: true,
   );
-  await control(
-    'product-cleanup-receipt',
-    1,
-    goldenSeed: seedGoldenPath,
-    goldenRestart: restartGoldenPath,
-    productSeed: seedProductPath,
-    productRestart: writeCopy(
-      'product-restart-cleanup',
-      productRestartCleanup,
-    ),
-    requiredSurface: 'product-restart-cleanup',
-    mutation: 'a copied product restart report claimed its root was not removed',
-  );
+  if (orderIndex == null) {
+    controls.add({
+      'name': 'product-cookie-order',
+      'status': 'not-applicable',
+      'reason':
+          'no otherwise-matching multi-pair cookie in this run: the Cookie '
+          'rows this run already fails must not stand in for the control',
+      'passed': false,
+    });
+  } else {
+    final mutated = copy(seedProduct)
+      ..also((report) => reorderCookie(report, orderIndex));
+    await control(
+      'product-cookie-order',
+      1,
+      goldenSeed: seedGoldenPath,
+      goldenRestart: restartGoldenPath,
+      productSeed: writeCopy('product-seed-cookie-order', mutated),
+      productRestart: restartProductPath,
+      mutation:
+          'a copied product seed report reordered the cookie pairs on request '
+          '$orderIndex, a request this run otherwise matches',
+      requiredDelta: 'product-request-headers|seed|$orderIndex|cookie',
+    );
+  }
 
   final originalsUnchanged =
       sha256File(File(seedGoldenPath)) == seedGoldenSha &&
@@ -2048,22 +2189,18 @@ Future<Map<String, Object?>> _runNegativeControls({
   final failed = controls
       .where((control) => control['passed'] != true)
       .toList();
+  final notApplicable = [
+    for (final control in controls)
+      if (control['status'] == 'not-applicable') control['name'],
+  ];
   return {
     'status': failed.isEmpty && originalsUnchanged ? 'pass' : 'fail',
     'immutableCapturesUnchanged': originalsUnchanged,
+    'baselineMismatchKeys': baselineKeys.toList()..sort(),
     'controls': controls,
     'failedControls': [for (final control in failed) control['name']],
+    'notApplicableControls': notApplicable,
   };
-}
-
-void swapOrders(Map<String, dynamic> report) {
-  final observations = report['observations'] as List;
-  if (observations.length < 2) return;
-  final first = observations[0];
-  observations[0] = observations[1];
-  observations[1] = first;
-  final check = report['observationCheck'];
-  if (check is Map) check['ordered'] = false;
 }
 
 /// Compares two captures that already exist. This mode never runs the product,
