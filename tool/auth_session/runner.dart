@@ -908,6 +908,7 @@ Future<void> _runPhase({
       try {
         root.deleteSync(recursive: true);
         rootRemoved = !root.existsSync();
+        rootAbsentAfter = !root.existsSync();
       } on Object {
         removalSkipped = 'failed to remove the fresh seed root';
       }
