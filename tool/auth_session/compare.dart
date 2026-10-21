@@ -669,14 +669,6 @@ Map<String, Map<String, Object?>> _changedFields(Map expected, Map actual) => {
 /// `session` are the frozen `CookieManager`'s two storage tiers; the product
 /// jar has one shape, so they are carried as the recorded ADR 0011 §3
 /// divergence instead of compared.
-const _cookieProbeComparedFields = <String>[
-  'url',
-  'domain',
-  'effective',
-  'keys',
-  'loginHeader',
-  'loginHeaderMap',
-];
 
 bool _looksLikeCookieProbe(Map value) =>
     value.containsKey('effective') &&
@@ -696,28 +688,50 @@ void _compareCookieProbe({
   required List<Map<String, Object?>> notCompared,
   required List<Map<String, Object?>> orderOnly,
   required String phase,
+  required Map<String, List<List<String>>> seedSessionPairs,
+  String? sourceId,
 }) {
   final changed = _changedFields(expected, actual);
   for (final key in changed.keys) {
-    if (_cookieProbeComparedFields.contains(key)) continue;
-    if (key != 'persistent' && key != 'session') {
-      mismatches.add({
-        'phase': phase,
-        'surface': 'observation-cookie',
-        'path': '$path.$key',
-        'expected': changed[key]!['expected'],
-        'observed': changed[key]!['observed'],
-      });
+    // `effective` has its own order-aware comparison below, `keys` is compared
+    // against the frozen pair map below, and `persistent`/`session` are the
+    // carried tier divergence. Every other declared field of a probe — the URL,
+    // the domain key and both login-header values — is compared strictly.
+    if (key == 'effective' ||
+        key == 'keys' ||
+        key == 'persistent' ||
+        key == 'session') {
+      continue;
     }
+    mismatches.add({
+      'phase': phase,
+      'surface': 'observation-cookie',
+      'path': '$path.$key',
+      'expected': changed[key]!['expected'],
+      'observed': changed[key]!['observed'],
+    });
   }
+  // The effective value and its pair map. The frozen probe's own value is the
+  // strict reading; the product's single tier also keeps the session pairs the
+  // seed recorded for this source (the approved session-cookie restart row), so
+  // its value may carry exactly those extras and nothing else.
   final expectedEffective = expected['effective'];
   final actualEffective = actual['effective'];
+  final expectedPairs = authSessionCookiePairs('$expectedEffective');
+  final frozenSession = authSessionCookiePairs('${expected['session'] ?? ''}');
+  final seedSession = seedSessionPairs[sourceId] ?? const <List<String>>[];
+  final allowed = <String, String>{
+    for (final pair in [...expectedPairs, ...frozenSession, ...seedSession])
+      pair[0]: pair[1],
+  };
+  final allowedPairs = [
+    for (final key in allowed.keys.toList()..sort()) [key, allowed[key]!],
+  ];
+  final actualPairs = authSessionCookiePairs('$actualEffective');
   if (expectedEffective is String && actualEffective is String) {
-    if (expectedEffective != actualEffective &&
-        _deepEquals(
-          authSessionCookiePairs(expectedEffective),
-          authSessionCookiePairs(actualEffective),
-        )) {
+    if (expectedEffective == actualEffective) {
+      // The strict answer: identical bytes carry identical pairs.
+    } else if (_deepEquals(expectedPairs, actualPairs)) {
       orderOnly.add({
         'phase': phase,
         'path': '$path.effective',
@@ -737,7 +751,49 @@ void _compareCookieProbe({
         'expected': expectedEffective,
         'observed': actualEffective,
       });
+    } else if (_deepEquals(allowedPairs, actualPairs)) {
+      notCompared.add({
+        'phase': phase,
+        'row': 'session-tier',
+        'path': '$path.effective',
+        'expected': expectedEffective,
+        'observed': actualEffective,
+        'reason':
+            'the approved session-cookie restart row: the frozen session pair '
+            'is gone from its own storage at this point, and the product jar '
+            'keeps the seed-recorded session pairs in its one map. The extras '
+            'must be exactly the recorded seed session pairs for this source.',
+      });
+    } else {
+      mismatches.add({
+        'phase': phase,
+        'surface': 'observation-cookie',
+        'path': '$path.effective',
+        'expected': expectedEffective,
+        'observed': actualEffective,
+      });
     }
+  }
+  if (!_deepEquals(expectedPairs, actualPairs) &&
+      _deepEquals(allowedPairs, actualPairs)) {
+    notCompared.add({
+      'phase': phase,
+      'row': 'session-tier',
+      'path': '$path.keys',
+      'expected': expectedPairs,
+      'observed': actualPairs,
+      'reason':
+          'the same session-cookie restart row, on the pair map the probe '
+          'carries',
+    });
+  } else if (!_deepEquals(expectedPairs, actualPairs)) {
+    mismatches.add({
+      'phase': phase,
+      'surface': 'observation-cookie',
+      'path': '$path.keys',
+      'expected': expectedPairs,
+      'observed': actualPairs,
+    });
   }
   // The product's own tier claim: one storage shape, so its persistent map is
   // the effective value and it has no session map. A product that claimed a
@@ -778,6 +834,26 @@ void _compareCookieProbe({
   }
 }
 
+/// The session pairs the seed capture recorded per source, from its final state
+/// observation. Empty when the seed kept none, which makes the restart
+/// comparison strict again for that source.
+Map<String, List<List<String>>> _seedSessionPairs(Map<String, dynamic> seed) {
+  final result = <String, List<List<String>>>{};
+  for (final raw in (seed['observations'] as List? ?? const [])) {
+    if (raw is! Map || raw['id'] != 'seed.state.seed') continue;
+    final value = raw['value'];
+    if (value is! Map) continue;
+    final sessions = value['sessions'];
+    if (sessions is! Map) continue;
+    for (final entry in sessions.entries) {
+      final text = entry.value;
+      if (text is! String || text.isEmpty) continue;
+      result['${entry.key}'] = authSessionCookiePairs(text);
+    }
+  }
+  return result;
+}
+
 /// Compares one observation's declared fields. A cookie probe's tiers are the
 /// recorded divergence; every other field, type and order is strict.
 void _compareObservation({
@@ -789,6 +865,7 @@ void _compareObservation({
   required List<Map<String, Object?>> mismatches,
   required List<Map<String, Object?>> notCompared,
   required List<Map<String, Object?>> orderOnly,
+  required Map<String, List<List<String>>> seedSessionPairs,
 }) {
   if (!_deepEquals(expected['kind'], actual['kind'])) {
     mismatches.add({
@@ -807,18 +884,72 @@ void _compareObservation({
     final value = expectedRest[key];
     if (value is Map && _looksLikeCookieProbe(value)) probes.add(key);
   }
+  // A probe's own source: the observation's `source`, or the key a cookie-state
+  // or state map files it under.
+  final observationSource = expected['source'] is String
+      ? '${expected['source']}'
+      : null;
   for (final key in probes) {
     final expectedProbe = _object(expectedRest.remove(key), 'probe');
     final actualProbe = _object(actualRest.remove(key), 'probe');
     _compareCookieProbe(
       expected: expectedProbe,
       actual: actualProbe,
+      sourceId: observationSource ?? (probes.length == 1 ? null : key),
       path: '$id.$key',
       mismatches: mismatches,
       notCompared: notCompared,
       orderOnly: orderOnly,
       phase: phase,
+      seedSessionPairs: seedSessionPairs,
     );
+  }
+  // A state observation carries one cookie probe per source; each is compared
+  // with the probe rules instead of as an opaque nested map.
+  final stateCrumbs = expectedRest['cookies'];
+  if (stateCrumbs is Map && actualRest['cookies'] is Map) {
+    final expectedProbes = _object(expectedRest.remove('cookies'), 'cookies');
+    final actualProbes = _object(actualRest.remove('cookies'), 'cookies');
+    for (final key in expectedProbes.keys) {
+      final expectedProbe = expectedProbes[key];
+      final actualProbe = actualProbes[key];
+      if (expectedProbe is Map &&
+          actualProbe is Map &&
+          _looksLikeCookieProbe(expectedProbe) &&
+          _looksLikeCookieProbe(actualProbe)) {
+        _compareCookieProbe(
+          expected: expectedProbe,
+          actual: actualProbe,
+          path: '$id.cookies.$key',
+          sourceId: key,
+          mismatches: mismatches,
+          notCompared: notCompared,
+          orderOnly: orderOnly,
+          phase: phase,
+          seedSessionPairs: seedSessionPairs,
+        );
+      } else {
+        mismatches.add({
+          'phase': phase,
+          'surface': 'observation',
+          'id': id,
+          'field': 'cookies.$key',
+          'expected': expectedProbe,
+          'observed': actualProbe,
+        });
+      }
+    }
+    for (final key in actualProbes.keys) {
+      if (expectedProbes.containsKey(key)) continue;
+      mismatches.add({
+        'phase': phase,
+        'surface': 'observation',
+        'id': id,
+        'field': 'cookies.$key',
+        'expected': null,
+        'observed': actualProbes[key],
+      });
+    }
   }
   // `sessions` is the frozen CookieManager's process-memory map, which the
   // product has no counterpart for: the same divergence row as a probe's tiers.
@@ -1146,6 +1277,10 @@ Map<String, Object?> compareAuthSessionPhases({
     restartPath: restartGoldenPath,
   );
   final target = authSessionTargetOf(corpus);
+  // The session pairs the frozen seed capture recorded for each source: the
+  // product's single tier keeps exactly these across the restart, which is the
+  // approved session-cookie restart row.
+  final seedSessionPairs = _seedSessionPairs(seedGolden);
   final mismatches = <Map<String, Object?>>[];
   final notCompared = <Map<String, Object?>>[];
   final orderOnly = <Map<String, Object?>>[];
@@ -1332,6 +1467,7 @@ Map<String, Object?> compareAuthSessionPhases({
         mismatches: mismatches,
         notCompared: notCompared,
         orderOnly: orderOnly,
+        seedSessionPairs: seedSessionPairs,
       );
     }
     check(

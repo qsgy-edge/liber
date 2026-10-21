@@ -113,18 +113,18 @@ The comparison is **red** and stays red until the open items are resolved:
    where the frozen `CookieStore.getCookie` merges the persistent map first. The
    pairs are identical; the raw strings are not, and the decision keeps the raw
    string strict. Four probe rows and four wire rows in the seed phase.
-2. Source B's search cannot run. The corpus declares source B
-   `ruleSearch.kind = "json"`; the frozen answer is `""`, but the product's JSON
-   adapter refuses a rule that is not a JSONPath
-   (`Unsupported operation: ruleSearch.kind: Unsupported operation: Unsupported
-   JSON rule: json`), so the phase stops after `seed.headers.B` (9 of 13
-   requests, 13 of 20 observations) and the restart has no root to continue
-   from. This is with the controller for a bounded decision; it is a pre-existing
-   product rule-shape gap that the earlier A3 TOC failure used to hide.
-
 The stage-boundary items of the previous checkpoint are resolved: a details
 step makes only its information request, its `loginCheckJs` probe is the
 information marker, and the TOC stage makes its own request and changes it.
+
+The JSON bare-property item is resolved too: a simple bare property name is
+json-path's canonical root property (`$.name`), so source B's
+`ruleSearch.kind = "json"` reads the document's `json` property and answers the
+frozen empty value when the document has none. The shared reader (`validate`
+and `extract`) treats that one supported form as a path — a merge whose branches
+are all supported forms included — while `$` paths, the dot-leading recursive
+form, mode prefixes, scripts, templates, replacements and every documented
+refusal are unchanged.
 
 ## Negative controls
 

@@ -164,7 +164,7 @@ class JsonSourceRules {
     final String? result;
     if (trimmed.isEmpty) {
       result = value?.toString() ?? '';
-    } else if (trimmed.startsWith(r'$') || trimmed.startsWith('.')) {
+    } else if (_isPathRule(trimmed)) {
       result = _mergedText(value, trimmed);
     } else {
       result = part;
@@ -337,6 +337,30 @@ extension<T> on Iterable<T> {
 Never _refuse(String rule) =>
     throw UnsupportedError('Unsupported JSON rule: $rule');
 
+/// A simple bare property name: the name token the parser already reads
+/// (`_parseToken`'s `[A-Za-z_][A-Za-z0-9_]*`). json-path's
+/// `PathCompiler.compile` prefixes `$.` to a rule that starts with neither `$`
+/// nor `@`, so a bare name the frozen reader is handed names the root property
+/// — `json` is `$.json`, never the recursive `.json` form.
+final _barePropertyName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+/// Whether the reader executes [rule] as a path rather than answering with the
+/// literal text the field carried: a `$`-leading path, the dot-leading form
+/// json-path compiles as `$..`, a simple bare property name (its canonical
+/// `$.name`), or a merge whose every non-empty branch is one of those. A merge
+/// the shared validation accepts is therefore one this reader actually
+/// evaluates, instead of returning its own rule text.
+bool _isPathRule(String rule, {bool includeInterleave = false}) {
+  if (rule.startsWith(r'$') || rule.startsWith('.')) return true;
+  if (_barePropertyName.hasMatch(rule)) return true;
+  final parts = _splitMerge(rule, includeInterleave: includeInterleave);
+  if (parts == null) return false;
+  return parts.rules.every(
+    (part) =>
+        part.isEmpty || _isPathRule(part, includeInterleave: includeInterleave),
+  );
+}
+
 /// One parsed rule: the steps after the context token.
 class _JsonPath {
   const _JsonPath(this.steps);
@@ -358,7 +382,11 @@ class _JsonPath {
 /// slice spellings json-path itself refuses.
 _JsonPath _parseRule(String rule) {
   final text = rule.trim();
-  if (!text.startsWith(r'$') && !text.startsWith('.')) _refuse(rule);
+  if (!text.startsWith(r'$') &&
+      !text.startsWith('.') &&
+      !_barePropertyName.hasMatch(text)) {
+    _refuse(rule);
+  }
   // json-path's `PathCompiler.compile` prefixes `$.` to a path that starts with
   // neither `$` nor `@`, so `.[?(@.title)]` reads as `$..[?(@.title)]` — through
   // the root and a scan, which is why the used form matches nested objects.

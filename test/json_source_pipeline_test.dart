@@ -226,6 +226,50 @@ void main() {
     },
   );
 
+  test('a static bare property reads the property; a literal stays literal',
+      () async {
+    // The AUTH corpus' source B declares `ruleSearch.kind = "json"`; json-path
+    // compiles a bare name as `$.json`, so the field reads the root property
+    // (empty when the document has none) instead of carrying its own text.
+    // `@@json` is the literal-value form RuleField resolves before the reader,
+    // and it keeps its text even when the document has that property.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.write(
+        jsonEncode({
+          'items': [
+            {'name': 'B1', 'url': '/details/1', 'json': 'present'},
+          ],
+        }),
+      );
+      await request.response.close();
+    });
+    Future<String> kindOf(Object? kind) async {
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://127.0.0.1:${server.port}',
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': r'$.items',
+          'name': r'$.name',
+          'bookUrl': r'$.url',
+          'kind': ?kind,
+        },
+      };
+      final hits = await JsonSourcePipeline(
+        source,
+        HttpSourceTransport(),
+      ).search('书');
+      return hits.single.kind;
+    }
+
+    expect(await kindOf('json'), 'present');
+    expect(await kindOf(r'$.json'), 'present');
+    expect(await kindOf('missing'), '');
+    expect(await kindOf('@js:"json"'), 'json');
+    expect(await kindOf(r'$' '.json'), 'present');
+  });
+
   test('run reads one book end to end with the stage stream', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

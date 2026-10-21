@@ -790,7 +790,7 @@ Future<void> _runPhase({
         throw StateError('seed root is not empty');
       }
     } else {
-      await _verifyRestoredRoot(store: store, corpus: corpus, owner: owner!);
+      await _verifyRestoredRoot(store: store, owner: owner!);
     }
     evidence.isolation.addAll({
       'root': root.path,
@@ -1111,10 +1111,14 @@ class _PhaseContext {
             {'name': row.name, 'type': row.type, 'action': row.action},
         ],
         'putLoginInfo': put,
-        'loginInfo': authSessionMapPairs(loginInfo),
+        // The frozen harness records a null map as JSON null and a present one
+        // as its sorted pairs; an empty list is not the same observation.
+        'loginInfo': loginInfo == null ? null : authSessionMapPairs(loginInfo),
         'loginOutcome': await _probe(sourceRef, '${step['probeKey']}'),
         'loginHeader': header,
-        'loginHeaderMap': authSessionMapPairs(headerMap),
+        'loginHeaderMap': headerMap == null
+            ? null
+            : authSessionMapPairs(headerMap),
       },
     });
   }
@@ -1132,7 +1136,9 @@ class _PhaseContext {
         'noLogin': authSessionMapPairs(noLogin),
         'withLogin': authSessionMapPairs(withLogin),
         'loginHeader': header,
-        'loginHeaderMap': authSessionMapPairs(headerMap),
+        'loginHeaderMap': headerMap == null
+            ? null
+            : authSessionMapPairs(headerMap),
       },
     });
   }
@@ -1245,6 +1251,10 @@ class _PhaseContext {
 
   Future<Map<String, Object?>> _cookieProbe(String sourceId) async {
     final sourceRef = _sourceUrlOf(sourceId);
+    // A fresh process reads what the store already holds first: this is the
+    // restart probe's whole point, so it must happen before any request and
+    // must not depend on one having loaded the state.
+    await hostState.ready();
     final jar = hostState.cookiesFor(sourceRef);
     final effective = jar.cookiesFor(sourceRef);
     final (header, headerMap) = await _loginHeader(sourceRef);
@@ -1256,7 +1266,9 @@ class _PhaseContext {
       'effective': effective,
       'keys': authSessionCookiePairs(effective),
       'loginHeader': header,
-      'loginHeaderMap': authSessionMapPairs(headerMap),
+      'loginHeaderMap': headerMap == null
+          ? null
+          : authSessionMapPairs(headerMap),
     };
   }
 
@@ -1347,9 +1359,8 @@ class _PhaseContext {
       final sourceRef = _sourceUrlOf(sourceId);
       final (header, _) = await _loginHeader(sourceRef);
       loginHeaders[sourceId] = header;
-      loginInfo[sourceId] = authSessionMapPairs(
-        await getSourceLoginInfoMap(hostState, sourceRef, androidId),
-      );
+      final info = await getSourceLoginInfoMap(hostState, sourceRef, androidId);
+      loginInfo[sourceId] = info == null ? null : authSessionMapPairs(info);
       cookies[sourceId] = await _cookieProbe(sourceId);
     }
     return {
@@ -1599,23 +1610,47 @@ Map<String, dynamic> _validateOwner(
   return owner;
 }
 
-/// The root's own source rows must be the seed's login run, not a leftover
+/// The root's own host-surface rows must be the seed's run, not a leftover
 /// another run left at this path.
+///
+/// The AUTH scenario opens its two sources as objects the corpus declares; it
+/// imports no source into the space, so the root holds the seed's cookies and
+/// cache entries keyed by those two source references and no `sources` row. The
+/// check is that every persisted row belongs to one of the declared sources and
+/// that each declared source left its own state behind.
 Future<void> _verifyRestoredRoot({
   required SpaceStore store,
-  required Map<String, dynamic> corpus,
   required Map<String, dynamic> owner,
 }) async {
-  final sources = await store.allSources();
   final declared = {
     for (final raw in owner['sources'] as List)
       '${(raw as Map)['bookSourceUrl']}',
   };
-  final actual = [for (final source in sources) source.bookSourceUrl]..sort();
-  final expected = declared.toList()..sort();
-  if (_canonicalJson(actual) != _canonicalJson(expected)) {
+  final persistence = SpaceHostStatePersistence(store);
+  final entries = await persistence.loadCache();
+  final cookies = await persistence.loadCookies();
+  final refs = <String>{
+    for (final entry in entries) entry.sourceRef,
+    for (final cookie in cookies)
+      if (cookie.writerRef != null && cookie.writerRef!.isNotEmpty)
+        cookie.writerRef!,
+  };
+  if (refs.isEmpty) {
     throw const AuthSessionRefusal(
-      'the owned root holds other sources than its owner.json names',
+      'the owned root holds no host-surface rows to continue from',
+    );
+  }
+  final foreign = refs.difference(declared).toList()..sort();
+  if (foreign.isNotEmpty) {
+    throw AuthSessionRefusal(
+      'the owned root holds rows of other sources than its owner.json names: '
+      '${foreign.join(', ')}',
+    );
+  }
+  final missing = declared.difference(refs).toList()..sort();
+  if (missing.isNotEmpty) {
+    throw AuthSessionRefusal(
+      'the owned root has no host-surface rows for ${missing.join(', ')}',
     );
   }
 }
