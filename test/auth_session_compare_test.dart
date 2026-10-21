@@ -1776,6 +1776,95 @@ void main() {
       );
     });
 
+    test('the restart attribution keeps the raw wire text exact', () {
+      final baseline = fixture.compare();
+      final baselineKeys = (baseline['mismatchKeys'] as List)
+          .cast<String>()
+          .toSet();
+      final valid = withRestartSessionPairs();
+      Map<String, dynamic> withCookie(String cookie) {
+        final report = copy(valid);
+        final request = (report['requests'] as List).first as Map;
+        (request['headers'] as Map).cast<String, Object?>()['cookie'] = cookie;
+        return report;
+      }
+
+      String firstCookie(Map<String, dynamic> report) {
+        final request = (report['requests'] as List).first as Map;
+        return '${(request['headers'] as Map)['cookie']}';
+      }
+
+      final baselineCookie = firstCookie(valid);
+      // The recorded session pairs, and the frozen header they were added to.
+      expect(baselineCookie, endsWith('; ssA=after; ss2=sx2'));
+
+      final cases = <String, String>{
+        // The five controller counterexamples: each changes wire text outside
+        // the exact permitted addition.
+        'a bare fragment appended': '$baselineCookie; controller-unparsed',
+        'an empty name appended': '$baselineCookie; =controller-unparsed',
+        'an empty segment inserted': baselineCookie.replaceFirst('; ', ';; '),
+        'a separator without its space': baselineCookie.replaceFirst('; ', ';'),
+        'a trailing space on a frozen value': baselineCookie.replaceFirst(
+          'sidA=two;',
+          'sidA=two ;',
+        ),
+        // The same boundary at the head, in the middle and with other spelling
+        // changes.
+        'a bare fragment prepended': 'controller-unparsed; $baselineCookie',
+        'a bare fragment in the middle': baselineCookie.replaceFirst(
+          '; extraA=',
+          '; controller-unparsed; extraA=',
+        ),
+        'a tab separator': baselineCookie.replaceFirst('; ', ';\t'),
+        'a dropped separator': baselineCookie.replaceFirst(
+          '; extraA=',
+          ' extraA=',
+        ),
+        'a duplicated session pair': '$baselineCookie; ssA=after',
+        'a changed session value': baselineCookie.replaceFirst(
+          'ssA=after',
+          'ssA=bad',
+        ),
+        'an unknown cookie pair': '$baselineCookie; evil=1',
+        'a truncated trailing session pair': baselineCookie.replaceFirst(
+          '; ss2=sx2',
+          '; ss2',
+        ),
+      };
+      for (final entry in cases.entries) {
+        final added =
+            (fixture.compare(
+                      restartProduct: withCookie(entry.value),
+                    )['mismatchKeys']
+                    as List)
+                .cast<String>()
+                .toSet()
+                .difference(baselineKeys);
+        expect(
+          added,
+          contains('product-request-headers|restart|0|cookie'),
+          reason: entry.key,
+        );
+      }
+
+      // The permitted attribution itself adds nothing and keeps its evidence.
+      final permitted = fixture.compare(restartProduct: valid);
+      expect(
+        (permitted['mismatchKeys'] as List).cast<String>().toSet().difference(
+          baselineKeys,
+        ),
+        isEmpty,
+      );
+      final rows = [
+        for (final row in (permitted['notCompared'] as List).cast<Map>())
+          if (row['kind'] == 'restart-session-cookie-wire') row,
+      ];
+      expect(rows, isNotEmpty);
+      expect(rows.first['attributedSegments'], [' ssA=after', ' ss2=sx2']);
+      expect('${rows.first['frozenHeader']}', isNot(contains('ssA=after')));
+    });
+
     test('the restart of another seed is refused', () {
       final report = copy(fixture.restartProduct);
       ((report['owner'] as Map) as Map<String, dynamic>)['seedRunId'] =

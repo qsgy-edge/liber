@@ -140,10 +140,13 @@ The comparison is **red** on eight Cookie rows and stays red:
    survival across a restart as a divergence and requires a fixture that observes
    it to report expected and observed values in `notCompared`. Those two rows are
    reported that way (`row: session-tier`, `kind: restart-session-cookie-wire`,
-   the attributed pairs and both full raw strings). The attribution is bounded:
-   restart phase only, the seeded source only, exactly those recorded session
-   names and values, every frozen pair at its own value and order; a wrong value,
-   a missing pair, an unknown or duplicated cookie, a reordered frozen pair or a
+   the attributed pairs, the raw attributed segments and both full raw strings).
+   The attribution is bounded to the raw wire text: restart phase only, the
+   seeded source only, and a whole `;`-separated segment whose text is exactly
+   one recorded session `name=value`. Removing only those segments must leave
+   the native expected header byte for byte; nothing is trimmed, re-rendered or
+   skipped, so a wrong value, a missing or duplicated pair, an unknown cookie, an
+   empty segment, a changed separator or spacing, a reordered frozen pair or a
    seed-phase use stays a strict failure.
 
 No other Cookie row is attributed, and the eight order rows above are not

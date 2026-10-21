@@ -1231,68 +1231,63 @@ void _compareStageTrace({
   }
 }
 
-/// One outbound `Cookie` header's ordered pairs, as the wire carries them.
-List<List<String>> _wireCookiePairs(String header) {
-  final pairs = <List<String>>[];
-  for (final raw in header.split(';')) {
-    final text = raw.trim();
-    if (text.isEmpty) continue;
-    final index = text.indexOf('=');
-    if (index <= 0) continue;
-    pairs.add([text.substring(0, index), text.substring(index + 1)]);
-  }
-  return pairs;
-}
-
-/// The bounded restart-session wire attribution: null unless the actual header
-/// is the frozen pairs, unchanged and in their own order, plus exactly the
-/// recorded session-only pairs for the same source.
+/// The bounded restart-session wire attribution: null unless removing the
+/// exact, wholly recognised session-only segments from the actual header leaves
+/// the native expected header byte for byte.
+///
+/// The segments here are raw wire text, never parsed and re-rendered: the split
+/// keeps every segment's own spelling (an empty one, a leading space, a value
+/// with a trailing space included) and nothing is trimmed or skipped. An
+/// attributable addition is one whole `;`-separated segment whose text is
+/// exactly `<name>=<value>` for a recorded session pair — a leading segment
+/// carries no separator of its own, so it is matched without the leading space.
+/// Each recorded pair may be attributed once. Any other segment, a changed
+/// separator, an empty segment or an unattributed session pair leaves the
+/// remainder different from the expected header, so the row stays a mismatch.
 Map<String, Object?>? _restartSessionWireRow({
   required String expectedHeader,
   required String actualHeader,
   required List<List<String>> sessionPairs,
 }) {
   if (sessionPairs.isEmpty) return null;
-  final expected = _wireCookiePairs(expectedHeader);
-  final actual = _wireCookiePairs(actualHeader);
-  // Read the actual header in its own order: a pair is either the next frozen
-  // pair (same name and value, frozen order kept) or one recorded session pair,
-  // which is attributed where it actually appears. Anything else — a changed or
-  // missing frozen pair, an unknown or duplicated cookie, a reordered frozen
-  // pair — is not this row.
-  final frozen = [
-    for (final pair in expected) [...pair],
+  final pool = <String>[
+    for (final pair in sessionPairs) '${pair[0]}=${pair[1]}',
   ];
-  final sessionPool = [
-    for (final pair in sessionPairs) [...pair],
-  ];
+  final actualSegments = actualHeader.split(';');
   final attributed = <List<String>>[];
-  for (final pair in actual) {
-    if (frozen.isNotEmpty &&
-        frozen.first[0] == pair[0] &&
-        frozen.first[1] == pair[1]) {
-      frozen.removeAt(0);
+  final attributedSegments = <String>[];
+  final remainingSegments = <String>[];
+  for (var index = 0; index < actualSegments.length; index++) {
+    final segment = actualSegments[index];
+    final bare = index == 0
+        ? segment
+        : (segment.startsWith(' ') ? segment.substring(1) : null);
+    final poolIndex = bare == null ? -1 : pool.indexOf(bare);
+    if (poolIndex >= 0) {
+      final pair = pool.removeAt(poolIndex);
+      final split = pair.indexOf('=');
+      attributed.add([pair.substring(0, split), pair.substring(split + 1)]);
+      attributedSegments.add(segment);
       continue;
     }
-    final index = sessionPool.indexWhere(
-      (session) => session[0] == pair[0] && session[1] == pair[1],
-    );
-    if (index < 0) return null;
-    attributed.add([...sessionPool.removeAt(index)]);
+    remainingSegments.add(segment);
   }
-  if (frozen.isNotEmpty || sessionPool.isNotEmpty) return null;
+  if (pool.isNotEmpty) return null;
+  if (remainingSegments.join(';') != expectedHeader) return null;
   return {
     'row': 'session-tier',
     'kind': 'restart-session-cookie-wire',
     'attributed': attributed,
-    'frozenPairs': expected,
+    'attributedSegments': attributedSegments,
+    'frozenHeader': expectedHeader,
     'reason':
         'the existing session-cookie restart divergence '
         '(book-source-differential-contract.md:132): the frozen baseline keeps a '
         'non-persistent Set-Cookie in process memory only, so it is gone after '
         'the restart, while the product jar keeps the seed-recorded session '
         'pairs in its one map. Only those exact pairs are attributed; every '
-        'frozen pair keeps its value and order.',
+        'frozen byte, separator and order is kept, and no other wire text is '
+        'normalised away.',
   };
 }
 
