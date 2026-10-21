@@ -27,13 +27,69 @@ hash is pinned per build in the accompanying manifest.
 | Mode | Command | What it does |
 |---|---|---|
 | default JS oracle | `<fjs.dll> <golden.json> <new-result.json>` | Runs `tool/nested_oracle/fixtures.json` against the product and compares with a frozen golden. Unchanged. |
-| request semantics | `--requests <fjs.dll> <golden.json> <new-report.json>` | Runs `request-fixtures.json`. Unchanged. |
+| request semantics | `--requests <fjs.dll> <golden.json> <new-report.json>` | Runs `request-fixtures.json` through the product, then compares with the retained frozen request golden under the fail-closed rules below. |
+| request compare-only | `--requests-compare <observed-report.json> <golden.json> <new-report.json>` | Replays an already-recorded `--requests` report through the same comparison. It never runs the product or claims a new observation. |
 | local jsLib record | `--jslib-record <fjs.dll> <new-capture.json>` | Runs `jslib-fixtures.json` against the product and writes a **product-only** capture labelled `comparison: not-run`; a record capture is never a golden. |
 | local jsLib compare | `--jslib <fjs.dll> <golden.json> <new-report.json>` | Runs the same corpus and compares with a **frozen device golden**; the executed golden is `evidence/android-17-os4.0.4.0/jslib-oracle.json`. |
 
-The default JS oracle, the request oracle and the jsLib modes all observe
-through the same replay server and evaluation loop, so a corpus is the only
-difference between them.
+The default JS oracle and the jsLib modes share one observation loop. The
+request oracle uses its own corpus replay server with the same
+declared-response/404 behavior; its comparison remains the existing
+request-mode path, not a second framework.
+
+### Fail-closed rules for `--requests`
+
+`--requests` refuses to compare (a `FormatException`, non-zero exit, no report
+written) before loading the native library or opening the replay server when
+the committed corpus, the retained manifest and the golden do not describe the
+same frozen capture:
+
+- the corpus is missing, malformed, has no rows/responses, a duplicate row id
+  or response, an untyped rule/header/status, or non-distinct origins;
+- the corpus' **raw** SHA-256 is not `request-manifest.json` ->
+  `corpus.sha256`/`corpus.bundledAsset.sha256`. The raw and CRLF-to-LF hashes
+  are both recorded in the report; the LF hash is evidence, not a substitute
+  for the recorded pin. The manifest's `gitBlobSha256AtStartingHead` is the
+  capture branch's historical blob, not today's checkout, so it is reported
+  but not silently used to normalize another checkout;
+- the manifest names another baseline commit, target package/APK pin,
+  installed-bytes verification, harness entry point, harness APK pin, device
+  fingerprint, capture time, golden hash or retained raw capture;
+- the golden names another `fixtureId`, `corpusVersion`, `baselineCommit`,
+  `entryPoint`, platform, device fingerprint or capture time, or it carries a
+  product-only record marker, an analysis failure, a replay-server error or a
+  server that was not closed;
+- the golden row order/count is not exactly the corpus row order/count, a row
+  id is missing/extra/duplicated, a row has no requests, an outcome is not
+  `ok`/`error`, a request carrier is missing/untyped, or the top-level
+  `requests` trace is not the exact concatenation of the ordered rows in the
+  manifest's recorded count;
+- the product records a different row count/order, or a row's request list,
+  outcome, status, body or typed request carrier is missing or malformed.
+
+Every product request must be declared by the corpus' `responses` for its
+method and path. An undeclared request is retained in `unmatchedRequests` (and
+in the row's `unmatchedRequests` evidence), still receives the corpus' 404
+placeholder so the source can finish, and fails the run even when that 404 body
+and every row value otherwise match. Declared redirect and retry-to-limit
+traces are unchanged: all 21 `/loop` attempts are declared by the corpus.
+Replay-server errors, per-row analysis exceptions and a non-empty unmatched
+list also fail the report; the report records `cleanup.replayClosed` and
+`cleanup.nativeDisposed`.
+
+`--requests-compare` refuses a copied observation whose `fixtureId`,
+`corpusVersion`, `baselineCommit`, `corpusSha256`, `goldenSha256`,
+`manifestSha256`, comparer source LF identity (the raw hash is recorded as
+evidence) or native library path/hash differs from this checkout and the
+retained inputs. It runs the same `compareRequestRows`
+function as `--requests`; the rows are then subject to the same value, request,
+unmatched-request and declared-divergence rules. A compare-only report is
+labelled `requests-compare` and claims no product execution.
+
+The executed REQUEST-01 v2 run remains **23 rows: 20 pass / 0 fail / 3
+notCompared** (`defaults-user-agent-null`, `redirect-cross-origin`,
+`query-exact-bytes`). The three names are the differential contract's existing
+declared divergences; no policy was expanded.
 
 ### Fail-closed rules for `--jslib`
 
