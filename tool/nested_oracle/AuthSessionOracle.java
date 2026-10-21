@@ -1233,6 +1233,7 @@ public final class AuthSessionOracle extends Instrumentation {
             cleanup.put("serverClosed", false)
                 .put("serverNote", "the phase never started the replay listeners");
         }
+        boolean terminalOk = finalTerminalSnapshot(cleanup);
         if (!scratch.isBound()) {
             cleanup.put("ownership", "none: the phase never established ownership, prior state"
                 + " left intact")
@@ -1260,7 +1261,7 @@ public final class AuthSessionOracle extends Instrumentation {
                 .put("scratchRetained", retained)
                 .put("scratchRemoved", false)
                 .put("ownerFile", new File(scratch.root, OWNER_FILE).getAbsolutePath());
-            cleanupOk = databaseClosed && replayOk && allFenced && retained;
+            cleanupOk = databaseClosed && replayOk && terminalOk && allFenced && retained;
             if (!allFenced) {
                 cleanup.put("cleanupFailure", "not every owned preference could be fenced;"
                     + " the seed is not complete");
@@ -1269,7 +1270,7 @@ public final class AuthSessionOracle extends Instrumentation {
                     + " the seed is not complete");
             } else if (!cleanupOk) {
                 cleanup.put("cleanupFailure", "databaseClosed=" + databaseClosed
-                    + " replayOk=" + replayOk);
+                    + " replayOk=" + replayOk + " terminalOk=" + terminalOk);
             }
             if (cleanupOk) scratch.writeOwnerComplete(runId);
         } else {
@@ -1285,14 +1286,54 @@ public final class AuthSessionOracle extends Instrumentation {
                 .put("preferencesRemoved", removed)
                 .put("scratchRetained", !rootRemoved && scratch.root.exists())
                 .put("scratchRemoved", rootRemoved);
-            cleanupOk = databaseClosed && replayOk && allRemoved && rootRemoved;
+            cleanupOk = databaseClosed && replayOk && terminalOk && allRemoved && rootRemoved;
             if (!cleanupOk) {
                 cleanup.put("cleanupFailure", "databaseClosed=" + databaseClosed
-                    + " replayOk=" + replayOk + " everyPreferenceRemoved=" + allRemoved
+                    + " replayOk=" + replayOk + " terminalOk=" + terminalOk
+                    + " everyPreferenceRemoved=" + allRemoved
                     + " rootRemoved=" + rootRemoved);
             }
         }
         return cleanup;
+    }
+
+    /**
+     * Takes the final request/observation/error snapshot after the listeners, workers
+     * and clients have stopped. This is the phase's terminal correctness gate: a late
+     * server error, an undeclared request or an incomplete/reordered request set cannot
+     * pass a previously cached check, and the report keeps this final snapshot.
+     */
+    private boolean finalTerminalSnapshot(JSONObject cleanup) {
+        JSONObject terminal = new JSONObject();
+        try {
+            requestCheckValue = requestCheck();
+            observationCheckValue = observationCheck();
+            boolean requestOk = requestCheckValue.optBoolean("match", false);
+            boolean observationOk = observationCheckValue.optBoolean("match", false);
+            boolean errorsEmpty = serverErrors.length() == 0;
+            boolean unmatchedEmpty = unmatched.length() == 0;
+            boolean ok = requestOk && observationOk && errorsEmpty && unmatchedEmpty;
+            terminal.put("requests", requests.length())
+                .put("unmatched", unmatched.length())
+                .put("serverErrors", serverErrors.length())
+                .put("requestMatch", requestOk)
+                .put("observationMatch", observationOk)
+                .put("ok", ok);
+            cleanup.put("terminal", terminal);
+            return ok;
+        } catch (Throwable error) {
+            try {
+                requestCheckValue = new JSONObject().put("match", false)
+                    .put("error", describe(error));
+                observationCheckValue = new JSONObject().put("match", false)
+                    .put("error", describe(error));
+                terminal.put("ok", false).put("error", describe(error));
+                cleanup.put("terminal", terminal);
+            } catch (JSONException ignored) {
+                // The failure is already visible through cleanupOk and the phase failure.
+            }
+            return false;
+        }
     }
 
     private JSONArray queryRows(String sql) throws Exception {
@@ -1776,6 +1817,7 @@ public final class AuthSessionOracle extends Instrumentation {
         private final Set<Socket> openSockets = new java.util.HashSet<>();
         private final AtomicInteger open = new AtomicInteger();
         private final AtomicBoolean closing = new AtomicBoolean();
+        private final JSONArray listenerCloseErrors = new JSONArray();
         private volatile boolean listenersClosed;
         private volatile boolean workersStopped;
         private volatile boolean executorTerminated;
@@ -1831,18 +1873,19 @@ public final class AuthSessionOracle extends Instrumentation {
         }
 
         void start() throws Exception {
-            List<Listener> bound = new ArrayList<>();
             try {
                 for (Listener listener : listeners) {
                     ServerSocket server = new ServerSocket();
+                    // Register the local resource before bind, so a failed bind is also
+                    // closed and reported instead of leaking an unassigned socket.
+                    listener.server = server;
+                    listener.created = true;
                     server.setReuseAddress(true);
                     server.bind(new InetSocketAddress(InetAddress.getByName(listener.host),
                         listener.port), 16);
-                    listener.server = server;
-                    bound.add(listener);
                 }
             } catch (Throwable error) {
-                for (Listener listener : bound) closeQuietly(listener.server);
+                for (Listener listener : listeners) closeListener(listener);
                 throw new IllegalStateException("replay listener bind failed: " + describe(error),
                     error);
             }
@@ -1861,7 +1904,9 @@ public final class AuthSessionOracle extends Instrumentation {
         JSONObject closeAndReport() throws Exception {
             openBeforeClose = open.get();
             closing.set(true);
-            for (Listener listener : listeners) closeQuietly(listener.server);
+            boolean listenersOk = true;
+            for (Listener listener : listeners) listenersOk &= closeListener(listener);
+            listenersClosed = listenersOk;
             boolean workers = true;
             for (Listener listener : listeners) {
                 if (listener.worker == null) continue;
@@ -1879,16 +1924,25 @@ public final class AuthSessionOracle extends Instrumentation {
                 Thread.sleep(20);
             }
             openAfterClose = open.get();
-            listenersClosed = true;
             workersStopped = workers;
+            JSONArray closeErrors = snapshot(listenerCloseErrors);
             JSONArray failures = new JSONArray();
+            for (int index = 0; index < closeErrors.length(); index++) {
+                failures.put(closeErrors.get(index));
+            }
+            if (!listenersClosed) failures.put("one or more replay listeners are still open");
             if (openAfterClose != 0) failures.put("connections still open: " + openAfterClose);
             if (!workersStopped) failures.put("replay workers did not stop");
             if (!executorTerminated) failures.put("replay client executor did not terminate");
+            if (serverErrors.length() != 0) {
+                failures.put("server errors during the phase: " + serverErrors.length());
+            }
             return new JSONObject()
                 .put("openConnectionsBeforeClose", openBeforeClose)
                 .put("openConnectionsAfterClose", openAfterClose)
                 .put("listenersClosed", listenersClosed)
+                .put("listenerClosure", listenerClosure())
+                .put("listenerCloseErrors", closeErrors)
                 .put("workersStopped", workersStopped)
                 .put("executorTerminated", executorTerminated)
                 .put("serverErrors", snapshot(serverErrors))
@@ -1897,8 +1951,46 @@ public final class AuthSessionOracle extends Instrumentation {
         }
 
         boolean cleanupOk() {
-            return listenersClosed && workersStopped && executorTerminated
+            return listenersClosed && listenerCloseErrors.length() == 0
+                && serverErrors.length() == 0 && workersStopped && executorTerminated
                 && openAfterClose == 0;
+        }
+
+        private boolean closeListener(Listener listener) {
+            ServerSocket server = listener.server;
+            if (server == null) {
+                listener.closed = true;
+                return true;
+            }
+            try {
+                server.close();
+            } catch (IOException error) {
+                synchronized (listenerCloseErrors) {
+                    listenerCloseErrors.put(listener.host + ":" + listener.port
+                        + " close failed: " + error);
+                }
+            }
+            boolean closed = server.isClosed();
+            if (!closed) {
+                synchronized (listenerCloseErrors) {
+                    listenerCloseErrors.put(listener.host + ":" + listener.port
+                        + " is still open after close");
+                }
+            }
+            listener.closed = closed;
+            return closed;
+        }
+
+        private JSONArray listenerClosure() throws JSONException {
+            JSONArray closure = new JSONArray();
+            for (Listener listener : listeners) {
+                closure.put(new JSONObject()
+                    .put("host", listener.host)
+                    .put("port", listener.port)
+                    .put("created", listener.created)
+                    .put("closed", listener.closed));
+            }
+            return closure;
         }
 
         private void accept(Listener listener) {
@@ -2093,15 +2185,6 @@ public final class AuthSessionOracle extends Instrumentation {
             return query;
         }
 
-        private static void closeQuietly(ServerSocket server) {
-            if (server == null) return;
-            try {
-                server.close();
-            } catch (IOException ignored) {
-                // Already closed.
-            }
-        }
-
         private static void closeQuietly(Socket socket) {
             if (socket == null) return;
             try {
@@ -2116,6 +2199,8 @@ public final class AuthSessionOracle extends Instrumentation {
             final int port;
             ServerSocket server;
             Thread worker;
+            boolean created;
+            boolean closed;
 
             Listener(String host, int port) {
                 this.host = host;

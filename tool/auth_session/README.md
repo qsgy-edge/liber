@@ -162,6 +162,14 @@ producer commit and integration head.
 
 ## Verification
 
+A phase passes only after the terminal snapshot is taken with listeners, workers
+and clients stopped: the final actual request/observation set must still
+match the corpus, and `unmatchedRequests`/`serverErrors` and listener closure
+errors must be empty. A late error or a listener whose measured `isClosed()` is
+false fails the phase, keeps it out of seed-owner completion and remains in the
+report; cleanup failures are terminal evidence, not nondeterministic equality
+exemptions.
+
 `javac -source 8 -target 8` against `android-35/android.jar`, the existing
 `build.ps1` into a fresh output directory, `apksigner verify --print-certs`, the
 bundled asset hash, and a host structural check of the corpus

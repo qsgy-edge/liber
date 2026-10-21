@@ -49,8 +49,7 @@
     "isolation.webView.realProfileAfter.*.length",
     "isolation.webView.realProfileAfter.*.lastModified",
     "isolation.webView.listings",
-    "cleanup.replay.openConnectionsBeforeClose",
-    "cleanup.*Error"
+    "cleanup.replay.openConnectionsBeforeClose"
   ],
   "sources": [
     {
