@@ -46,12 +46,16 @@ same frozen capture:
 
 - the corpus is missing, malformed, has no rows/responses, a duplicate row id
   or response, an untyped rule/header/status, or non-distinct origins;
-- the corpus' **raw** SHA-256 is not `request-manifest.json` ->
-  `corpus.sha256`/`corpus.bundledAsset.sha256`. The raw and CRLF-to-LF hashes
-  are both recorded in the report; the LF hash is evidence, not a substitute
-  for the recorded pin. The manifest's `gitBlobSha256AtStartingHead` is the
-  capture branch's historical blob, not today's checkout, so it is reported
-  but not silently used to normalize another checkout;
+- the corpus bytes do not match `request-manifest.json` ->
+  `corpus.sha256`/`corpus.bundledAsset.sha256`. The recorded raw pin is always
+  authoritative. A pure-LF checkout is accepted only when its exact CRLF
+  reconstruction hashes to that same raw/bundled pin; the report records the
+  actual raw hash, the LF hash, the reconstructed raw hash and
+  `inputForm: raw|lf`. A BOM, mixed or lone-CR file, a content edit, or any
+  other whitespace/JSON change is refused. The manifest's
+  `gitBlobSha256AtStartingHead` is the capture branch's historical blob, not
+  today's checkout, so it is reported but never used as a content identity or
+  generic normalizer;
 - the manifest names another baseline commit, target package/APK pin,
   installed-bytes verification, harness entry point, harness APK pin, device
   fingerprint, capture time, golden hash or retained raw capture;
@@ -78,13 +82,19 @@ list also fail the report; the report records `cleanup.replayClosed` and
 `cleanup.nativeDisposed`.
 
 `--requests-compare` refuses a copied observation whose `fixtureId`,
-`corpusVersion`, `baselineCommit`, `corpusSha256`, `goldenSha256`,
-`manifestSha256`, comparer source LF identity (the raw hash is recorded as
-evidence) or native library path/hash differs from this checkout and the
-retained inputs. It runs the same `compareRequestRows`
-function as `--requests`; the rows are then subject to the same value, request,
-unmatched-request and declared-divergence rules. A compare-only report is
-labelled `requests-compare` and claims no product execution.
+`corpusVersion`, `baselineCommit`, corpus LF identity, recorded manifest pin,
+`goldenSha256`, `manifestSha256`, comparer source LF identity (the raw hash is
+recorded as evidence) or native library path/hash differs from this checkout
+and the retained inputs. It requires the complete typed execution envelope the
+live CLI emits: `status`, `cleanup.replayClosed`/`cleanup.nativeDisposed`,
+`target` fields matching the retained manifest, and `serverErrors`,
+`analysisErrors`, `unmatchedRequests` and `serverUnmatchedRequests`. A recorded
+`status: fail` or a false cleanup flag is preserved and fails the compare-only
+report; missing/malformed carriers or a contradictory target are refused rather
+than replaced with a success value. Both the merged unmatched view and the raw
+server-only receipt are consumed, so either form fails with the actual request
+retained. A compare-only report is labelled `requests-compare` and claims no
+product execution.
 
 The executed REQUEST-01 v2 run remains **23 rows: 20 pass / 0 fail / 3
 notCompared** (`defaults-user-agent-null`, `redirect-cross-origin`,

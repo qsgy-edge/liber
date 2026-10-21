@@ -18,11 +18,13 @@ void main() {
   late Map<String, dynamic> corpus;
   late Map<String, dynamic> manifest;
   late Map<String, dynamic> golden;
+  late RequestCorpusIdentity corpusIdentity;
   late String corpusSha256;
   late String corpusSha256Lf;
   late String manifestSha256;
   late String goldenSha256;
   late List<Map<String, Object?>> observations;
+  late Map<String, Object?> trustedTarget;
 
   Map<String, dynamic> copy(Map<String, dynamic> value) =>
       jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
@@ -32,10 +34,12 @@ void main() {
     List<Map<String, Object?>>? serverUnmatched,
     List<Map<String, Object?>>? serverErrors,
     List<Map<String, Object?>>? analysisErrors,
+    String? sourceStatus,
+    bool? replayClosed,
+    bool? nativeDisposed,
   }) => compareRequestRows(
     corpus: corpus,
-    corpusSha256: corpusSha256,
-    corpusSha256Lf: corpusSha256Lf,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     manifestSha256: manifestSha256,
     golden: golden,
@@ -47,14 +51,81 @@ void main() {
     serverUnmatchedRequests: serverUnmatched ?? const [],
     serverErrors: serverErrors ?? const [],
     analysisErrors: analysisErrors ?? const [],
+    sourceStatus: sourceStatus,
+    replayClosed: replayClosed,
+    nativeDisposed: nativeDisposed,
   );
+
+  Map<String, dynamic> observedReport({
+    String status = 'pass',
+    Map<String, Object?>? cleanup,
+    Map<String, Object?>? target,
+    List<Map<String, Object?>>? serverErrors,
+    List<Map<String, Object?>>? analysisErrors,
+    List<Map<String, Object?>>? unmatchedRequests,
+    List<Map<String, Object?>>? serverUnmatchedRequests,
+  }) => <String, dynamic>{
+    'mode': 'requests',
+    'fixtureId': corpus['fixtureId'],
+    'corpusVersion': corpus['corpusVersion'],
+    'baselineCommit': corpus['baselineCommit'],
+    'corpusSha256': corpusIdentity.rawSha256,
+    'corpusSha256Lf': corpusIdentity.lfSha256,
+    'corpusIdentity': corpusIdentity.toJson(),
+    'manifestSha256': manifestSha256,
+    'goldenSha256': goldenSha256,
+    'comparerSha256': '0' * 64,
+    'comparerSha256Lf': '0' * 64,
+    'library': 'synthetic-fjs.dll',
+    'librarySha256': 'f' * 64,
+    'status': status,
+    'cleanup': cleanup ?? {'replayClosed': true, 'nativeDisposed': true},
+    'target': target ?? trustedTarget,
+    'serverErrors': serverErrors ?? <Map<String, Object?>>[],
+    'analysisErrors': analysisErrors ?? <Map<String, Object?>>[],
+    'unmatchedRequests': unmatchedRequests ?? <Map<String, Object?>>[],
+    'serverUnmatchedRequests':
+        serverUnmatchedRequests ?? <Map<String, Object?>>[],
+    'rows': [
+      for (final observation in observations)
+        {
+          'id': observation['id'],
+          'liber': {
+            for (final entry in observation.entries)
+              if (entry.key != 'id') entry.key: entry.value,
+          },
+        },
+    ],
+  };
+
+  RequestObservationEnvelope loadEnvelope([Map<String, dynamic>? report]) =>
+      loadRequestObservation(
+        observed: report ?? observedReport(),
+        corpus: corpus,
+        corpusIdentity: corpusIdentity,
+        manifest: manifest,
+        goldenSha256: goldenSha256,
+      );
 
   setUp(() {
     corpus = loadRequestCorpus();
     manifest = loadRequestManifest();
-    corpusSha256 = sha256File(File(requestCorpusPath));
-    corpusSha256Lf = sha256FileLf(File(requestCorpusPath));
+    corpusIdentity = requestCorpusIdentity(
+      File(requestCorpusPath),
+      ((manifest['corpus'] as Map)['sha256']) as String,
+    );
+    corpusSha256 = corpusIdentity.rawSha256;
+    corpusSha256Lf = corpusIdentity.lfSha256;
     manifestSha256 = sha256File(File(requestManifestPath));
+    trustedTarget = {
+      'baselineCommit': corpus['baselineCommit'],
+      'deviceFingerprint': (manifest['device'] as Map)['fingerprint'],
+      'applicationPackage':
+          ((manifest['baseline'] as Map)['application'] as Map)['package'],
+      'targetApkSha256':
+          ((manifest['baseline'] as Map)['application'] as Map)['sha256'],
+      'harnessApkSha256': (manifest['harness'] as Map)['apkSha256'],
+    };
     final goldenFile = File(
       'tool/nested_oracle/evidence/android-17-os4.0.0.31/request-oracle.json',
     );
@@ -277,7 +348,13 @@ void main() {
     expectRefused(
       () => checkRequestGolden(
         corpus: corpus,
-        corpusSha256: '0' * 64,
+        corpusIdentity: RequestCorpusIdentity(
+          rawSha256: corpusIdentity.rawSha256,
+          lfSha256: corpusIdentity.lfSha256,
+          manifestRawPin: '0' * 64,
+          inputForm: corpusIdentity.inputForm,
+          reconstructedRawSha256: corpusIdentity.reconstructedRawSha256,
+        ),
         manifest: manifest,
         golden: golden,
         goldenSha256: goldenSha256,
@@ -287,7 +364,7 @@ void main() {
     expectRefused(
       () => checkRequestGolden(
         corpus: corpus,
-        corpusSha256: corpusSha256,
+        corpusIdentity: corpusIdentity,
         manifest: manifest,
         golden: golden,
         goldenSha256: '0' * 64,
@@ -309,7 +386,7 @@ void main() {
       expectRefused(
         () => checkRequestGolden(
           corpus: corpus,
-          corpusSha256: corpusSha256,
+          corpusIdentity: corpusIdentity,
           manifest: manifest,
           golden: mutated,
           goldenSha256: goldenSha256,
@@ -323,7 +400,7 @@ void main() {
     expectRefused(
       () => checkRequestGolden(
         corpus: corpus,
-        corpusSha256: corpusSha256,
+        corpusIdentity: corpusIdentity,
         manifest: manifest,
         golden: failedGolden,
         goldenSha256: goldenSha256,
@@ -337,7 +414,7 @@ void main() {
     expectRefused(
       () => checkRequestGolden(
         corpus: corpus,
-        corpusSha256: corpusSha256,
+        corpusIdentity: corpusIdentity,
         manifest: manifest,
         golden: erroredGolden,
         goldenSha256: goldenSha256,
@@ -349,7 +426,7 @@ void main() {
     expectRefused(
       () => checkRequestGolden(
         corpus: corpus,
-        corpusSha256: corpusSha256,
+        corpusIdentity: corpusIdentity,
         manifest: manifest,
         golden: openGolden,
         goldenSha256: goldenSha256,
@@ -413,7 +490,7 @@ void main() {
       expectRefused(
         () => checkRequestGolden(
           corpus: corpus,
-          corpusSha256: corpusSha256,
+          corpusIdentity: corpusIdentity,
           manifest: mutated,
           golden: golden,
           goldenSha256: goldenSha256,
@@ -443,7 +520,7 @@ void main() {
       expectRefused(
         () => checkRequestGolden(
           corpus: corpus,
-          corpusSha256: corpusSha256,
+          corpusIdentity: corpusIdentity,
           manifest: manifest,
           golden: mutated,
           goldenSha256: goldenSha256,
@@ -463,7 +540,7 @@ void main() {
       expectRefused(
         () => checkRequestGolden(
           corpus: corpus,
-          corpusSha256: corpusSha256,
+          corpusIdentity: corpusIdentity,
           manifest: pinnedManifest,
           golden: mutated,
           goldenSha256: _sha256OfText(mutatedSha),
@@ -491,7 +568,7 @@ void main() {
       expectRefused(
         () => checkRequestGolden(
           corpus: corpus,
-          corpusSha256: corpusSha256,
+          corpusIdentity: corpusIdentity,
           manifest: pinnedManifest,
           golden: mutated,
           goldenSha256: mutatedSha,
@@ -554,6 +631,222 @@ void main() {
       expect(report['failedRows'], isEmpty);
     }
   });
+
+  test('a recorded execution failure is preserved and fails compare-only', () {
+    final envelope = loadEnvelope(observedReport(status: 'fail'));
+    expect(envelope.status, 'fail');
+    final report = comparison(
+      sourceStatus: envelope.status,
+      replayClosed: envelope.replayClosed,
+      nativeDisposed: envelope.nativeDisposed,
+    );
+    expect(report['status'], 'fail');
+    expect(report['executionFailures'], contains('sourceStatus=fail'));
+  });
+
+  test('failed replay or native cleanup fails compare-only', () {
+    for (final key in ['replayClosed', 'nativeDisposed']) {
+      final envelope = loadEnvelope(
+        observedReport(
+          cleanup: {
+            'replayClosed': key != 'replayClosed',
+            'nativeDisposed': key != 'nativeDisposed',
+          },
+        ),
+      );
+      final report = comparison(
+        replayClosed: envelope.replayClosed,
+        nativeDisposed: envelope.nativeDisposed,
+      );
+      expect(report['status'], 'fail', reason: key);
+      expect(report['executionFailures'], contains('$key=false'));
+      expect((report['cleanup'] as Map)[key], false);
+    }
+  });
+
+  test('missing execution envelope carriers are refused', () {
+    for (final key in [
+      'status',
+      'cleanup',
+      'target',
+      'serverErrors',
+      'analysisErrors',
+      'unmatchedRequests',
+      'serverUnmatchedRequests',
+    ]) {
+      final report = observedReport()..remove(key);
+      expectRefused(() => loadEnvelope(report), reason: key);
+    }
+  });
+
+  test('a contradictory target is refused against the retained manifest', () {
+    for (final key in [
+      'baselineCommit',
+      'deviceFingerprint',
+      'applicationPackage',
+      'targetApkSha256',
+      'harnessApkSha256',
+    ]) {
+      final target = Map<String, Object?>.from(trustedTarget)..[key] = 'other';
+      expectRefused(
+        () => loadEnvelope(observedReport(target: target)),
+        reason: key,
+      );
+    }
+  });
+
+  test(
+    'server-only unexpected evidence fails when the merged view is empty',
+    () {
+      final request = <String, Object?>{
+        'method': 'GET',
+        'path': '/controller-undeclared',
+        'rawQuery': 'x=1',
+        'headers': <String, String>{},
+        'body': '',
+        'declared': false,
+      };
+      final envelope = loadEnvelope(
+        observedReport(serverUnmatchedRequests: [request]),
+      );
+      final report = comparison(
+        serverUnmatched: envelope.mergedUnmatchedRequests,
+      );
+      expect(report['status'], 'fail');
+      expect(
+        (report['unmatchedRequests'] as List).single['path'],
+        '/controller-undeclared',
+      );
+      expect(report['executionFailures'], contains('unmatchedRequests=1'));
+    },
+  );
+
+  test(
+    'merged unexpected evidence still fails when the raw field is empty',
+    () {
+      final request = <String, Object?>{
+        'method': 'GET',
+        'path': '/controller-undeclared',
+        'rawQuery': 'x=1',
+        'headers': <String, String>{},
+        'body': '',
+        'declared': false,
+      };
+      final envelope = loadEnvelope(
+        observedReport(unmatchedRequests: [request]),
+      );
+      final report = comparison(
+        serverUnmatched: envelope.mergedUnmatchedRequests,
+      );
+      expect(report['status'], 'fail');
+    },
+  );
+
+  test('the exact CRLF and LF corpus forms are accepted', () {
+    expect(corpusIdentity.inputForm, 'raw');
+    expect(
+      corpusIdentity.rawSha256,
+      'd59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17',
+    );
+    expect(
+      corpusIdentity.lfSha256,
+      'd0262853c300b825f9257bac627c0e46b0b5b7f5a716fb9b2634a3f73073adb4',
+    );
+    final raw = File(requestCorpusPath).readAsBytesSync();
+    final directory = Directory.systemTemp.createTempSync('request-lf-');
+    try {
+      final lfFile = File(
+        '${directory.path}${Platform.pathSeparator}corpus.json',
+      )..writeAsBytesSync(_lfForTest(raw));
+      final lfIdentity = requestCorpusIdentity(
+        lfFile,
+        corpusIdentity.manifestRawPin,
+      );
+      expect(lfIdentity.inputForm, 'lf');
+      expect(lfIdentity.reconstructedRawSha256, corpusIdentity.manifestRawPin);
+      expect(lfIdentity.lfSha256, corpusIdentity.lfSha256);
+      checkRequestGolden(
+        corpus: corpus,
+        corpusIdentity: lfIdentity,
+        manifest: manifest,
+        golden: golden,
+        goldenSha256: goldenSha256,
+      );
+    } finally {
+      directory.deleteSync(recursive: true);
+    }
+  });
+
+  test('content edits are refused in both CRLF and LF forms', () {
+    final text = File(requestCorpusPath).readAsStringSync();
+    final edited = text.replaceFirst('REQUEST-01', 'REQUEST-02');
+    final directory = Directory.systemTemp.createTempSync('request-edit-');
+    try {
+      final crlf = File('${directory.path}${Platform.pathSeparator}crlf.json')
+        ..writeAsBytesSync(utf8.encode(edited));
+      expectRefused(
+        () => requestCorpusIdentity(crlf, corpusIdentity.manifestRawPin),
+        reason: 'a changed CRLF value',
+      );
+      final lf = File('${directory.path}${Platform.pathSeparator}lf.json')
+        ..writeAsBytesSync(_lfForTest(Uint8List.fromList(utf8.encode(edited))));
+      expectRefused(
+        () => requestCorpusIdentity(lf, corpusIdentity.manifestRawPin),
+        reason: 'a changed LF value',
+      );
+    } finally {
+      directory.deleteSync(recursive: true);
+    }
+  });
+
+  test('BOM, mixed and lone-CR forms are refused', () {
+    final lf = _lfForTest(File(requestCorpusPath).readAsBytesSync());
+    final firstNewline = lf.indexOf(0x0a);
+    expect(firstNewline, greaterThan(0));
+    final mixed = Uint8List.fromList([
+      ...lf.sublist(0, firstNewline),
+      0x0d,
+      0x0a,
+      ...lf.sublist(firstNewline + 1),
+    ]);
+    final loneCr = Uint8List.fromList([
+      ...lf.sublist(0, firstNewline),
+      0x0d,
+      ...lf.sublist(firstNewline + 1),
+    ]);
+    final bom = Uint8List.fromList([0xef, 0xbb, 0xbf, ...lf]);
+    final directory = Directory.systemTemp.createTempSync('request-form-');
+    try {
+      for (final entry in <String, Uint8List>{
+        'BOM': bom,
+        'mixed': mixed,
+        'lone CR': loneCr,
+      }.entries) {
+        final file = File(
+          '${directory.path}${Platform.pathSeparator}${entry.key}.json',
+        )..writeAsBytesSync(entry.value);
+        expectRefused(
+          () => requestCorpusIdentity(file, corpusIdentity.manifestRawPin),
+          reason: entry.key,
+        );
+      }
+    } finally {
+      directory.deleteSync(recursive: true);
+    }
+  });
+}
+
+Uint8List _lfForTest(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
+  for (var index = 0; index < bytes.length; index++) {
+    if (bytes[index] == 0x0d &&
+        index + 1 < bytes.length &&
+        bytes[index + 1] == 0x0a) {
+      continue;
+    }
+    out.addByte(bytes[index]);
+  }
+  return out.takeBytes();
 }
 
 List<dynamic> _requests(Map<String, Object?> observation) =>

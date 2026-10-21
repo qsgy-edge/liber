@@ -188,19 +188,141 @@ String sha256File(File file) => _sha256Bytes(file.readAsBytesSync());
 
 /// SHA-256 of a file after CRLF is normalized to LF. It is reported beside the
 /// raw identity as evidence, never substituted for a recorded raw pin.
-String sha256FileLf(File file) {
-  final bytes = file.readAsBytesSync();
-  final normalized = Uint8List(bytes.length);
-  var length = 0;
+String sha256FileLf(File file) =>
+    _sha256Bytes(_lfBytes(file.readAsBytesSync()));
+
+Uint8List _lfBytes(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
   for (var index = 0; index < bytes.length; index++) {
     if (bytes[index] == 0x0d &&
         index + 1 < bytes.length &&
         bytes[index + 1] == 0x0a) {
       continue;
     }
-    normalized[length++] = bytes[index];
+    out.addByte(bytes[index]);
   }
-  return _sha256Bytes(Uint8List.sublistView(normalized, 0, length));
+  return out.takeBytes();
+}
+
+Uint8List _crlfBytes(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
+  for (final byte in bytes) {
+    if (byte == 0x0a) out.addByte(0x0d);
+    out.addByte(byte);
+  }
+  return out.takeBytes();
+}
+
+bool _isPureLf(Uint8List bytes) {
+  for (final byte in bytes) {
+    if (byte == 0x0d) return false;
+  }
+  return true;
+}
+
+bool _hasUtf8Bom(Uint8List bytes) =>
+    bytes.length >= 3 &&
+    bytes[0] == 0xef &&
+    bytes[1] == 0xbb &&
+    bytes[2] == 0xbf;
+
+bool _isPureCrlf(Uint8List bytes) {
+  for (var index = 0; index < bytes.length; index++) {
+    final byte = bytes[index];
+    if (byte == 0x0a && (index == 0 || bytes[index - 1] != 0x0d)) {
+      return false;
+    }
+    if (byte == 0x0d &&
+        (index + 1 >= bytes.length || bytes[index + 1] != 0x0a)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// The request corpus' byte identity in a checkout-independent form.
+///
+/// [rawSha256] is the bytes this checkout actually has. [manifestRawPin] is the
+/// retained measured pin. A CRLF checkout matches the raw pin directly. An LF
+/// checkout is accepted only when it is a pure LF file whose CRLF reconstruction
+/// hashes exactly to the same retained pin; arbitrary content, BOM, mixed or
+/// lone-CR changes never reconstruct that pin. [lfSha256] is the canonical
+/// semantic identity used to bind a copied compare-only report across checkouts.
+class RequestCorpusIdentity {
+  const RequestCorpusIdentity({
+    required this.rawSha256,
+    required this.lfSha256,
+    required this.manifestRawPin,
+    required this.inputForm,
+    this.reconstructedRawSha256,
+  });
+
+  final String rawSha256;
+  final String lfSha256;
+  final String manifestRawPin;
+  final String inputForm;
+  final String? reconstructedRawSha256;
+
+  bool get matchesManifestPin =>
+      rawSha256 == manifestRawPin || reconstructedRawSha256 == manifestRawPin;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'rawSha256': rawSha256,
+    'lfSha256': lfSha256,
+    'manifestRawPin': manifestRawPin,
+    'inputForm': inputForm,
+    'reconstructedRawSha256': ?reconstructedRawSha256,
+    'matchesManifestPin': matchesManifestPin,
+    'rawMatchesManifestPin': rawSha256 == manifestRawPin,
+    'lfMatchesManifestPin': lfSha256 == manifestRawPin,
+  };
+}
+
+/// Binds a request-corpus file to the retained raw/bundled pin without
+/// normalizing arbitrary content. The only accepted non-raw form is the exact
+/// pure-LF conversion whose CRLF reconstruction hashes to the same pin.
+RequestCorpusIdentity requestCorpusIdentity(File file, String manifestRawPin) {
+  if (!_isSha256Text(manifestRawPin)) {
+    throw const FormatException('request corpus manifest pin is missing');
+  }
+  final bytes = file.readAsBytesSync();
+  if (_hasUtf8Bom(bytes)) {
+    throw const FormatException('request corpus carries a UTF-8 BOM');
+  }
+  final rawSha256 = _sha256Bytes(bytes);
+  final lfSha256 = _sha256Bytes(_lfBytes(bytes));
+  if (rawSha256 == manifestRawPin) {
+    return RequestCorpusIdentity(
+      rawSha256: rawSha256,
+      lfSha256: lfSha256,
+      manifestRawPin: manifestRawPin,
+      inputForm: 'raw',
+    );
+  }
+  if (!_isPureLf(bytes)) {
+    if (_isPureCrlf(bytes)) {
+      throw const FormatException(
+        'request corpus bytes differ from the manifest pin',
+      );
+    }
+    throw const FormatException(
+      'request corpus line endings are neither the recorded CRLF bytes nor a '
+      'pure LF checkout',
+    );
+  }
+  final reconstructed = _sha256Bytes(_crlfBytes(bytes));
+  if (reconstructed != manifestRawPin) {
+    throw const FormatException(
+      'request corpus bytes differ from the manifest pin',
+    );
+  }
+  return RequestCorpusIdentity(
+    rawSha256: rawSha256,
+    lfSha256: lfSha256,
+    manifestRawPin: manifestRawPin,
+    inputForm: 'lf',
+    reconstructedRawSha256: reconstructed,
+  );
 }
 
 /// SHA-256 of the corpus with CRLF normalized to LF. The device harness pins
@@ -928,7 +1050,7 @@ Map<String, dynamic> loadRequestManifest() {
 /// problem is a hard refusal, so no comparison can pass vacuously.
 void checkRequestGolden({
   required Map<String, dynamic> corpus,
-  required String corpusSha256,
+  required RequestCorpusIdentity corpusIdentity,
   required Map<String, dynamic> manifest,
   required Map<String, dynamic> golden,
   required String goldenSha256,
@@ -982,7 +1104,12 @@ void checkRequestGolden({
     manifest['corpus'],
     'request manifest corpus',
   );
-  if (manifestCorpus['sha256'] != corpusSha256) {
+  if (manifestCorpus['sha256'] != corpusIdentity.manifestRawPin) {
+    throw const FormatException(
+      'the manifest corpus pin differs from the accepted identity',
+    );
+  }
+  if (!corpusIdentity.matchesManifestPin) {
     throw const FormatException(
       'the corpus bytes differ from the manifest pin',
     );
@@ -995,7 +1122,7 @@ void checkRequestGolden({
     manifestCorpus['bundledAsset'],
     'request manifest bundled corpus',
   );
-  if (bundled['sha256'] != corpusSha256) {
+  if (bundled['sha256'] != corpusIdentity.manifestRawPin) {
     throw const FormatException('the bundled corpus bytes differ from the pin');
   }
   final baseline = _requestObject(
@@ -1135,14 +1262,72 @@ void checkRequestGolden({
   }
 }
 
-/// Loads the product-side observation from a prior `--requests` report. The
-/// compare-only mode never runs the product or the native library; it replays
-/// an already-recorded observation through the same comparison used by the
-/// real CLI. Identity, corpus, golden and library pins are checked here.
-List<Map<String, Object?>> loadRequestObservation({
+/// A recorded `--requests` report's execution envelope. Every carrier the live
+/// CLI emits is required and typed; an execution failure or failed cleanup is
+/// preserved for the comparison instead of being replaced with a success shape.
+class RequestObservationEnvelope {
+  const RequestObservationEnvelope({
+    required this.status,
+    required this.replayClosed,
+    required this.nativeDisposed,
+    required this.target,
+    required this.observations,
+    required this.serverErrors,
+    required this.analysisErrors,
+    required this.unmatchedRequests,
+    required this.serverUnmatchedRequests,
+    required this.mergedUnmatchedRequests,
+  });
+
+  final String status;
+  final bool replayClosed;
+  final bool nativeDisposed;
+  final Map<String, Object?> target;
+  final List<Map<String, Object?>> observations;
+  final List<Map<String, Object?>> serverErrors;
+  final List<Map<String, Object?>> analysisErrors;
+  final List<Map<String, Object?>> unmatchedRequests;
+  final List<Map<String, Object?>> serverUnmatchedRequests;
+  final List<Map<String, Object?>> mergedUnmatchedRequests;
+}
+
+void _checkTerminalError(Map<String, Object?> error, String what) {
+  _requestText(error['error'], '$what error');
+}
+
+/// Consumes both the live report's merged `unmatchedRequests` view and its raw
+/// server-only `serverUnmatchedRequests` receipt. The core comparison must fail
+/// for either form; duplicates are collapsed by the observable request carrier.
+List<Map<String, Object?>> _mergeUnmatchedRequests(
+  List<Map<String, Object?>> merged,
+  List<Map<String, Object?>> serverOnly,
+) {
+  final result = <Map<String, Object?>>[];
+  final seen = <String>{};
+  for (final entry in [...merged, ...serverOnly]) {
+    final key = jsonEncode({
+      'method': entry['method'],
+      'path': entry['path'],
+      'rawQuery': entry['rawQuery'],
+      'headers': entry['headers'],
+      'body': entry['body'],
+    });
+    if (seen.add(key)) result.add(entry);
+  }
+  return result;
+}
+
+/// Loads and validates the product-side observation from a prior `--requests`
+/// report. The compare-only mode never runs the product or the native library;
+/// it replays an already-recorded observation through the same comparison used
+/// by the real CLI. Identity, corpus, golden, library, target, terminal and
+/// cleanup pins are checked here; explicit execution failure is preserved for
+/// the comparison instead of being discarded.
+RequestObservationEnvelope loadRequestObservation({
   required Map<String, dynamic> observed,
   required Map<String, dynamic> corpus,
-  required String corpusSha256,
+  required RequestCorpusIdentity corpusIdentity,
+  required Map<String, dynamic> manifest,
   required String goldenSha256,
 }) {
   if (observed['mode'] != 'requests') {
@@ -1155,9 +1340,41 @@ List<Map<String, Object?>> loadRequestObservation({
       throw FormatException('the observed input names another corpus ($key)');
     }
   }
-  if (observed['corpusSha256'] != corpusSha256) {
+  final observedRaw = _requestText(
+    observed['corpusSha256'],
+    'the observed input corpusSha256',
+  );
+  final observedLf = _requestText(
+    observed['corpusSha256Lf'],
+    'the observed input corpusSha256Lf',
+  );
+  if (!_isSha256Text(observedRaw) || !_isSha256Text(observedLf)) {
+    throw const FormatException('the observed input has no corpus hash pin');
+  }
+  if (observedLf != corpusIdentity.lfSha256) {
     throw const FormatException(
       'the observed input names another corpus bytes',
+    );
+  }
+  final allowedRaw = {
+    corpusIdentity.rawSha256,
+    corpusIdentity.lfSha256,
+    corpusIdentity.manifestRawPin,
+  };
+  if (!allowedRaw.contains(observedRaw)) {
+    throw const FormatException(
+      'the observed input corpus form is not a valid checkout identity',
+    );
+  }
+  final observedIdentity = _requestObject(
+    observed['corpusIdentity'],
+    'the observed input corpusIdentity',
+  );
+  if (observedIdentity['manifestRawPin'] != corpusIdentity.manifestRawPin ||
+      observedIdentity['lfSha256'] != observedLf ||
+      observedIdentity['rawSha256'] != observedRaw) {
+    throw const FormatException(
+      'the observed input corpus identity is inconsistent',
     );
   }
   if (observed['goldenSha256'] != goldenSha256) {
@@ -1167,6 +1384,99 @@ List<Map<String, Object?>> loadRequestObservation({
   if (!_isSha256Text(observed['librarySha256'])) {
     throw const FormatException('the observed input has no native library pin');
   }
+
+  final status = _requestText(observed['status'], 'the observed input status');
+  if (status != 'pass' && status != 'fail') {
+    throw const FormatException('the observed input status is not pass/fail');
+  }
+  final cleanup = _requestObject(
+    observed['cleanup'],
+    'the observed input cleanup',
+  );
+  final replayClosed = cleanup['replayClosed'];
+  final nativeDisposed = cleanup['nativeDisposed'];
+  if (replayClosed is! bool || nativeDisposed is! bool) {
+    throw const FormatException(
+      'the observed input cleanup flags are not booleans',
+    );
+  }
+
+  final target = _requestObject(
+    observed['target'],
+    'the observed input target',
+  );
+  final baseline = _requestObject(
+    manifest['baseline'],
+    'request manifest baseline',
+  );
+  final application = _requestObject(
+    baseline['application'],
+    'request manifest target application',
+  );
+  final harness = _requestObject(
+    manifest['harness'],
+    'request manifest harness',
+  );
+  final expectedTarget = <String, Object?>{
+    'baselineCommit': corpus['baselineCommit'],
+    'deviceFingerprint': _requestObject(
+      manifest['device'],
+      'request manifest device',
+    )['fingerprint'],
+    'applicationPackage': application['package'],
+    'targetApkSha256': application['sha256'],
+    'harnessApkSha256': harness['apkSha256'],
+  };
+  for (final entry in expectedTarget.entries) {
+    if (target[entry.key] != entry.value) {
+      throw FormatException(
+        'the observed input target ${entry.key} differs from the retained '
+        'manifest',
+      );
+    }
+  }
+
+  final serverErrors = _requestObjectList(
+    observed['serverErrors'],
+    'the observed input serverErrors',
+  );
+  final analysisErrors = _requestObjectList(
+    observed['analysisErrors'],
+    'the observed input analysisErrors',
+  );
+  for (var index = 0; index < serverErrors.length; index++) {
+    _checkTerminalError(
+      serverErrors[index],
+      'the observed server error $index',
+    );
+  }
+  for (var index = 0; index < analysisErrors.length; index++) {
+    _checkTerminalError(
+      analysisErrors[index],
+      'the observed analysis error $index',
+    );
+  }
+  final unmatchedRequests = _requestObjectList(
+    observed['unmatchedRequests'],
+    'the observed input unmatchedRequests',
+  );
+  final serverUnmatchedRequests = _requestObjectList(
+    observed['serverUnmatchedRequests'],
+    'the observed input serverUnmatchedRequests',
+  );
+  for (var index = 0; index < unmatchedRequests.length; index++) {
+    _checkRequestCarrier(
+      unmatchedRequests[index],
+      'the observed unmatched request $index',
+    );
+  }
+  for (var index = 0; index < serverUnmatchedRequests.length; index++) {
+    _checkRequestCarrier(
+      serverUnmatchedRequests[index],
+      'the observed server unexpected request $index',
+    );
+  }
+
   final rows = _requestList(observed['rows'], 'the observed input rows');
   final corpusRows = _requestList(corpus['rows'], 'request corpus rows');
   if (rows.length != corpusRows.length) {
@@ -1193,7 +1503,21 @@ List<Map<String, Object?>> loadRequestObservation({
     final liber = _requestObject(row['liber'], 'the observed row $id liber');
     observations.add(<String, Object?>{'id': id, ...liber});
   }
-  return observations;
+  return RequestObservationEnvelope(
+    status: status,
+    replayClosed: replayClosed,
+    nativeDisposed: nativeDisposed,
+    target: target,
+    observations: observations,
+    serverErrors: serverErrors,
+    analysisErrors: analysisErrors,
+    unmatchedRequests: unmatchedRequests,
+    serverUnmatchedRequests: serverUnmatchedRequests,
+    mergedUnmatchedRequests: _mergeUnmatchedRequests(
+      unmatchedRequests,
+      serverUnmatchedRequests,
+    ),
+  );
 }
 
 /// The corpus' replay server: every response comes from the corpus, a row is
@@ -1430,9 +1754,15 @@ Future<void> _runRequestOracle(List<String> args) async {
   final output = File(args[2]);
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
   final corpus = loadRequestCorpus();
-  final corpusSha256 = sha256File(File(requestCorpusPath));
-  final corpusSha256Lf = sha256FileLf(File(requestCorpusPath));
   final manifest = loadRequestManifest();
+  final manifestRawPin = _requestText(
+    _requestObject(manifest['corpus'], 'request manifest corpus')['sha256'],
+    'request manifest corpus pin',
+  );
+  final corpusIdentity = requestCorpusIdentity(
+    File(requestCorpusPath),
+    manifestRawPin,
+  );
   final manifestSha256 = sha256File(File(requestManifestPath));
   final goldenFile = File(args[1]);
   final goldenSha256 = sha256File(goldenFile);
@@ -1442,7 +1772,7 @@ Future<void> _runRequestOracle(List<String> args) async {
   // opening the replay server, so a forged input cannot run the product.
   checkRequestGolden(
     corpus: corpus,
-    corpusSha256: corpusSha256,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     golden: golden,
     goldenSha256: goldenSha256,
@@ -1497,8 +1827,7 @@ Future<void> _runRequestOracle(List<String> args) async {
   }
   final report = compareRequestRows(
     corpus: corpus,
-    corpusSha256: corpusSha256,
-    corpusSha256Lf: corpusSha256Lf,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     manifestSha256: manifestSha256,
     golden: golden,
@@ -1552,9 +1881,15 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
   final output = File(args[2]);
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
   final corpus = loadRequestCorpus();
-  final corpusSha256 = sha256File(File(requestCorpusPath));
-  final corpusSha256Lf = sha256FileLf(File(requestCorpusPath));
   final manifest = loadRequestManifest();
+  final manifestRawPin = _requestText(
+    _requestObject(manifest['corpus'], 'request manifest corpus')['sha256'],
+    'request manifest corpus pin',
+  );
+  final corpusIdentity = requestCorpusIdentity(
+    File(requestCorpusPath),
+    manifestRawPin,
+  );
   final manifestSha256 = sha256File(File(requestManifestPath));
   final goldenFile = File(args[1]);
   final goldenSha256 = sha256File(goldenFile);
@@ -1562,7 +1897,7 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
       jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
   checkRequestGolden(
     corpus: corpus,
-    corpusSha256: corpusSha256,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     golden: golden,
     goldenSha256: goldenSha256,
@@ -1571,10 +1906,11 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
   final observedSha256 = sha256File(observedFile);
   final observed =
       jsonDecode(observedFile.readAsStringSync()) as Map<String, dynamic>;
-  final observations = loadRequestObservation(
+  final envelope = loadRequestObservation(
     observed: observed,
     corpus: corpus,
-    corpusSha256: corpusSha256,
+    corpusIdentity: corpusIdentity,
+    manifest: manifest,
     goldenSha256: goldenSha256,
   );
   if (observed['manifestSha256'] != manifestSha256) {
@@ -1598,37 +1934,19 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
       'the observed native library bytes differ from their pin',
     );
   }
-  final serverUnmatchedRequests = observed['unmatchedRequests'] == null
-      ? const <Map<String, Object?>>[]
-      : _requestObjectList(
-          observed['unmatchedRequests'],
-          'the observed server unmatched requests',
-        );
-  final serverErrors = observed['serverErrors'] == null
-      ? const <Map<String, Object?>>[]
-      : _requestObjectList(
-          observed['serverErrors'],
-          'the observed server errors',
-        );
-  final analysisErrors = observed['analysisErrors'] == null
-      ? const <Map<String, Object?>>[]
-      : _requestObjectList(
-          observed['analysisErrors'],
-          'the observed analysis errors',
-        );
   final report = compareRequestRows(
     corpus: corpus,
-    corpusSha256: corpusSha256,
-    corpusSha256Lf: corpusSha256Lf,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     manifestSha256: manifestSha256,
     golden: golden,
     goldenSha256: goldenSha256,
     goldenPath: args[1],
-    observations: observations,
-    serverUnmatchedRequests: serverUnmatchedRequests,
-    serverErrors: serverErrors,
-    analysisErrors: analysisErrors,
+    observations: envelope.observations,
+    serverUnmatchedRequests: envelope.mergedUnmatchedRequests,
+    serverErrors: envelope.serverErrors,
+    analysisErrors: envelope.analysisErrors,
+    sourceStatus: envelope.status,
     library: _requestText(observed['library'], 'the observed input library'),
     librarySha256: _requestText(
       observed['librarySha256'],
@@ -1636,11 +1954,26 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
     ),
     observedPath: args[0],
     observedSha256: observedSha256,
+    replayClosed: envelope.replayClosed,
+    nativeDisposed: envelope.nativeDisposed,
   );
   report['mode'] = 'requests-compare';
   report['note'] =
       'Compare-only replay of a recorded --requests observation; no product '
       'run, native library load or replay server is claimed.';
+  report['source'] = {
+    'status': envelope.status,
+    'cleanup': {
+      'replayClosed': envelope.replayClosed,
+      'nativeDisposed': envelope.nativeDisposed,
+    },
+    'target': envelope.target,
+    'serverErrors': envelope.serverErrors,
+    'analysisErrors': envelope.analysisErrors,
+    'unmatchedRequests': envelope.unmatchedRequests,
+    'serverUnmatchedRequests': envelope.serverUnmatchedRequests,
+    'mergedUnmatchedRequests': envelope.mergedUnmatchedRequests,
+  };
   report['comparerSha256'] = comparerSha256;
   report['comparerSha256Lf'] = comparerSha256Lf;
   report['comparer'] = {
@@ -1666,8 +1999,7 @@ Future<void> _runRequestCompareOnly(List<String> args) async {
 /// function.
 Map<String, Object?> compareRequestRows({
   required Map<String, dynamic> corpus,
-  required String corpusSha256,
-  required String corpusSha256Lf,
+  required RequestCorpusIdentity corpusIdentity,
   required Map<String, dynamic> manifest,
   required String manifestSha256,
   required Map<String, dynamic> golden,
@@ -1677,6 +2009,7 @@ Map<String, Object?> compareRequestRows({
   required List<Map<String, Object?>> serverUnmatchedRequests,
   required List<Map<String, Object?>> serverErrors,
   required List<Map<String, Object?>> analysisErrors,
+  String? sourceStatus,
   String? library,
   String? librarySha256,
   String? observedPath,
@@ -1686,11 +2019,16 @@ Map<String, Object?> compareRequestRows({
 }) {
   checkRequestGolden(
     corpus: corpus,
-    corpusSha256: corpusSha256,
+    corpusIdentity: corpusIdentity,
     manifest: manifest,
     golden: golden,
     goldenSha256: goldenSha256,
   );
+  if (sourceStatus != null &&
+      sourceStatus != 'pass' &&
+      sourceStatus != 'fail') {
+    throw const FormatException('the source report status is not pass/fail');
+  }
   final corpusRows = _requestList(corpus['rows'], 'request corpus rows');
   final goldenRows = _requestList(golden['rows'], 'the golden rows');
   if (observations.isEmpty) {
@@ -1810,11 +2148,16 @@ Map<String, Object?> compareRequestRows({
   final notCompared = rows
       .where((row) => row['status'] == 'notCompared')
       .toList();
-  final failedBySelection =
-      unmatched.isNotEmpty ||
-      serverErrors.isNotEmpty ||
-      analysisErrors.isNotEmpty;
-  final status = failed.isEmpty && !failedBySelection ? 'pass' : 'fail';
+  final executionFailures = <String>[
+    if (sourceStatus != null && sourceStatus != 'pass')
+      'sourceStatus=$sourceStatus',
+    if (replayClosed == false) 'replayClosed=false',
+    if (nativeDisposed == false) 'nativeDisposed=false',
+    if (serverErrors.isNotEmpty) 'serverErrors=${serverErrors.length}',
+    if (analysisErrors.isNotEmpty) 'analysisErrors=${analysisErrors.length}',
+    if (unmatched.isNotEmpty) 'unmatchedRequests=${unmatched.length}',
+  ];
+  final status = failed.isEmpty && executionFailures.isEmpty ? 'pass' : 'fail';
   final targetApplication = _requestObject(
     _requestObject(
       manifest['baseline'],
@@ -1829,10 +2172,6 @@ Map<String, Object?> compareRequestRows({
   final corpusSource = (harness['sources'] as List)
       .cast<Map<String, dynamic>>()
       .firstWhere((source) => source['path'] == requestCorpusPath);
-  final manifestCorpus = _requestObject(
-    manifest['corpus'],
-    'request manifest corpus',
-  );
   final run = _requestObject(manifest['run'], 'request manifest run');
   final goldenPin = _requestObject(run['golden'], 'request manifest golden');
   return <String, Object?>{
@@ -1843,17 +2182,15 @@ Map<String, Object?> compareRequestRows({
     'baselineCommit': corpus['baselineCommit'],
     'entryPoint': corpus['entryPoint'],
     'corpusPath': requestCorpusPath,
-    'corpusSha256': corpusSha256,
-    'corpusSha256Lf': corpusSha256Lf,
+    'corpusSha256': corpusIdentity.rawSha256,
+    'corpusSha256Lf': corpusIdentity.lfSha256,
+    'corpusRecordedRawSha256': corpusIdentity.manifestRawPin,
+    'corpusInputForm': corpusIdentity.inputForm,
     'corpusIdentity': {
-      'rawSha256': corpusSha256,
-      'lfSha256': corpusSha256Lf,
-      'manifestRawPin': manifestCorpus['sha256'],
+      ...corpusIdentity.toJson(),
       'manifestSourceSha256': corpusSource['sha256'],
       'manifestGitBlobSha256AtStartingHead':
           corpusSource['gitBlobSha256AtStartingHead'],
-      'rawMatchesManifestPin': corpusSha256 == manifestCorpus['sha256'],
-      'lfMatchesManifestPin': corpusSha256Lf == manifestCorpus['sha256'],
     },
     'manifest': requestManifestPath,
     'manifestSha256': manifestSha256,
@@ -1879,6 +2216,8 @@ Map<String, Object?> compareRequestRows({
     'librarySha256': librarySha256,
     'observed': ?observedPath,
     'observedSha256': ?observedSha256,
+    'sourceStatus': ?sourceStatus,
+    'executionFailures': executionFailures,
     'ignoredHeaders': _ignoredHeaders.toList(),
     'declaredDivergences': _declaredDivergences.map(
       (row, entry) => MapEntry(row, entry['reason']!),
