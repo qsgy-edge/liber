@@ -173,10 +173,14 @@ void main() {
     expect((corpus['responses'] as List).length, 25);
     expect(
       manifest['corpus']['sha256'],
-      corpusSha256,
-      reason: 'raw corpus bytes are the manifest pin',
+      corpusIdentity.manifestRawPin,
+      reason: 'the retained manifest pin is the raw corpus identity',
     );
-    expect(manifest['corpus']['bundledAsset']['sha256'], corpusSha256);
+    expect(
+      manifest['corpus']['bundledAsset']['sha256'],
+      corpusIdentity.manifestRawPin,
+    );
+    expect(corpusIdentity.matchesManifestPin, isTrue);
     expect(manifest['run']['rows'], 23);
     expect(manifest['run']['requests'], 51);
     expect(goldenSha256, manifest['run']['golden']['sha256']);
@@ -742,32 +746,49 @@ void main() {
     },
   );
 
-  test('the exact CRLF and LF corpus forms are accepted', () {
-    expect(corpusIdentity.inputForm, 'raw');
-    expect(
-      corpusIdentity.rawSha256,
-      'd59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17',
-    );
-    expect(
-      corpusIdentity.lfSha256,
-      'd0262853c300b825f9257bac627c0e46b0b5b7f5a716fb9b2634a3f73073adb4',
-    );
-    final raw = File(requestCorpusPath).readAsBytesSync();
-    final directory = Directory.systemTemp.createTempSync('request-lf-');
+  test('both explicit CRLF and LF corpus forms are accepted', () {
+    final pin = corpusIdentity.manifestRawPin;
+    final canonicalLf = _lfForTest(File(requestCorpusPath).readAsBytesSync());
+    final explicitLf = Uint8List.fromList(canonicalLf);
+    final explicitCrlf = _crlfForTest(explicitLf);
+    expect(explicitLf.contains(0x0d), isFalse);
+    expect(explicitCrlf.contains(0x0a), isTrue);
+    expect(explicitCrlf.length, greaterThan(explicitLf.length));
+    final directory = Directory.systemTemp.createTempSync('request-forms-');
     try {
-      final lfFile = File(
-        '${directory.path}${Platform.pathSeparator}corpus.json',
-      )..writeAsBytesSync(_lfForTest(raw));
-      final lfIdentity = requestCorpusIdentity(
-        lfFile,
-        corpusIdentity.manifestRawPin,
-      );
+      final lfFile = File('${directory.path}${Platform.pathSeparator}lf.json')
+        ..writeAsBytesSync(explicitLf);
+      final lfIdentity = requestCorpusIdentity(lfFile, pin);
       expect(lfIdentity.inputForm, 'lf');
-      expect(lfIdentity.reconstructedRawSha256, corpusIdentity.manifestRawPin);
-      expect(lfIdentity.lfSha256, corpusIdentity.lfSha256);
+      expect(
+        lfIdentity.rawSha256,
+        'd0262853c300b825f9257bac627c0e46b0b5b7f5a716fb9b2634a3f73073adb4',
+      );
+      expect(lfIdentity.reconstructedRawSha256, pin);
+      expect(lfIdentity.lfSha256, lfIdentity.rawSha256);
       checkRequestGolden(
         corpus: corpus,
         corpusIdentity: lfIdentity,
+        manifest: manifest,
+        golden: golden,
+        goldenSha256: goldenSha256,
+      );
+
+      final crlfFile = File(
+        '${directory.path}${Platform.pathSeparator}crlf.json',
+      )..writeAsBytesSync(explicitCrlf);
+      final crlfIdentity = requestCorpusIdentity(crlfFile, pin);
+      expect(crlfIdentity.inputForm, 'raw');
+      expect(
+        crlfIdentity.rawSha256,
+        'd59b1d2c49cc63d6fbc84c1a830a2de5a5f17c08e5ef925aa7a9765a8546bd17',
+      );
+      expect(crlfIdentity.rawSha256, isNot(lfIdentity.rawSha256));
+      expect(crlfIdentity.lfSha256, lfIdentity.lfSha256);
+      expect(crlfIdentity.reconstructedRawSha256, isNull);
+      checkRequestGolden(
+        corpus: corpus,
+        corpusIdentity: crlfIdentity,
         manifest: manifest,
         golden: golden,
         goldenSha256: goldenSha256,
@@ -777,19 +798,25 @@ void main() {
     }
   });
 
-  test('content edits are refused in both CRLF and LF forms', () {
-    final text = File(requestCorpusPath).readAsStringSync();
-    final edited = text.replaceFirst('REQUEST-01', 'REQUEST-02');
+  test('content edits are refused in both explicit CRLF and LF forms', () {
+    final canonicalLf = _lfForTest(File(requestCorpusPath).readAsBytesSync());
+    final text = utf8.decode(canonicalLf);
+    final editedLf = Uint8List.fromList(
+      utf8.encode(text.replaceFirst('REQUEST-01', 'REQUEST-02')),
+    );
+    final editedCrlf = _crlfForTest(editedLf);
+    expect(editedLf.contains(0x0d), isFalse);
+    expect(editedCrlf.length, greaterThan(editedLf.length));
     final directory = Directory.systemTemp.createTempSync('request-edit-');
     try {
       final crlf = File('${directory.path}${Platform.pathSeparator}crlf.json')
-        ..writeAsBytesSync(utf8.encode(edited));
+        ..writeAsBytesSync(editedCrlf);
       expectRefused(
         () => requestCorpusIdentity(crlf, corpusIdentity.manifestRawPin),
         reason: 'a changed CRLF value',
       );
       final lf = File('${directory.path}${Platform.pathSeparator}lf.json')
-        ..writeAsBytesSync(_lfForTest(Uint8List.fromList(utf8.encode(edited))));
+        ..writeAsBytesSync(editedLf);
       expectRefused(
         () => requestCorpusIdentity(lf, corpusIdentity.manifestRawPin),
         reason: 'a changed LF value',
@@ -845,6 +872,15 @@ Uint8List _lfForTest(Uint8List bytes) {
       continue;
     }
     out.addByte(bytes[index]);
+  }
+  return out.takeBytes();
+}
+
+Uint8List _crlfForTest(Uint8List bytes) {
+  final out = BytesBuilder(copy: false);
+  for (final byte in bytes) {
+    if (byte == 0x0a) out.addByte(0x0d);
+    out.addByte(byte);
   }
   return out.takeBytes();
 }
