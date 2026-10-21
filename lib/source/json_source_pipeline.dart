@@ -1092,9 +1092,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return books;
   }
 
-  /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   @override
-  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+  Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
+    final info = await _beginInformation(hit);
+    return _fetchInformation(hit, info);
+  }
+
+  /// The information stage's pre-request setup, in the frozen composed order:
+  /// source validation, the entity state the candidate carries, header
+  /// evaluation, then the information rule group.
+  Future<Map<String, String>> _beginInformation(HtmlBook hit) async {
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1110,8 +1117,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _validate();
     _page = null;
     _activeHeaders = await _ensureHeaders();
-    final info = _rules('ruleBookInfo', const []);
-    final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    return _rules('ruleBookInfo', const []);
+  }
+
+  /// The information request, its check and its rules, over the setup a caller
+  /// already ran.
+  Future<SourceBookInfo> _fetchInformation(
+    HtmlBook hit,
+    Map<String, String> info,
+  ) async {
     final bookRequest = _bookRequests.remove(hit.url);
     // The book's own address text is what this request analyzes, the way the
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
@@ -1144,11 +1158,42 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, tocAddress) = await _readBookInfo(document, hit, info);
-    // An empty `tocUrl` resolves to the book's own address, which is the frozen
-    // fallback (`BookInfo.kt:150-152`), whose options that request parses again.
-    final (tocUrl, tocOptions) = tocAddress.isEmpty
+    return SourceBookInfo(
+      book: book,
+      tocAddress: tocAddress,
+      tocBase: hit.url,
+      bookUrl: bookUrl,
+      bookOptions: bookOptions,
+      bookAddress: bookAddressText,
+      keyword: _keyword,
+      page: _page,
+    );
+  }
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> tableOfContents(
+    SourceBookInfo info,
+  ) async {
+    // The information stage's book is the one this stage's rules and scripts
+    // read (`book.*`), so a TOC run that follows another analysis still names
+    // the book its own information result carries.
+    _book = info.book;
+    _chapter = null;
+    _chapterTitle = null;
+    _tocChapterAddress = null;
+    // The TOC stage continues the information analysis it was handed, so its
+    // rules see that analysis's own `key`/`page` bindings — not a later search
+    // on this pipeline.
+    _keyword = info.keyword;
+    _page = info.page;
+    final book = info.book;
+    final bookUrl = info.bookUrl;
+    final bookOptions = info.bookOptions;
+    final bookAddressText = info.bookAddress;
+    final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    final (tocUrl, tocOptions) = info.tocAddress.isEmpty
         ? (bookUrl, bookOptions)
-        : await _request(hit.url, tocAddress, _keyword);
+        : await _request(info.tocBase, info.tocAddress, _keyword);
     final chapters = <SourceChapter>[];
     SourceStageResponse? finalTocResponse;
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
@@ -1192,8 +1237,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
       first: (
         url: tocUrl,
         options: tocOptions,
-        address: tocAddress,
-        base: hit.url,
+        address: info.tocAddress,
+        base: info.tocBase,
       ),
       maxPages: 30,
       cycleError: 'TOC page cycle',
@@ -1386,6 +1431,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
       ),
       chapters,
     );
+  }
+
+  /// The composed entry validates the TOC group before its first request, as it
+  /// always has: a `ruleToc` field that belongs to another stage is refused by
+  /// name before any information request, so the composed failure order is the
+  /// one current callers already see. Each stage entry validates its own group
+  /// when it runs.
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    // The composed entry keeps the order current callers already see: source
+    // validation, entity state, header evaluation and the information rule
+    // group first, then the TOC rule group, all before any request. A bad
+    // source, header or information rule is never replaced by a later TOC
+    // group error.
+    final info = await _beginInformation(hit);
+    _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    return tableOfContents(await _fetchInformation(hit, info));
   }
 
   /// The single book a response that is a book detail page describes, or an

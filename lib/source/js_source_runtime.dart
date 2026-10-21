@@ -2614,6 +2614,34 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   };
   const book = snapshot('book', input.book);
   const chapter = snapshot('chapter', input.chapter);
+  // The frozen `BaseSource.getHeaderMap`/`getLoginHeaderMap`/`getLoginInfoMap`
+  // (`BaseSource.kt:103-176`) answer Java `Map` objects, and a source script
+  // reads them with the Java `Map.get(key)` — a `loginUrl` script's
+  // `source.getLoginInfoMap().get('user')` is the frozen idiom. This bridge
+  // answers plain JSON objects, so the three returns carry one local lookup:
+  // bracket access, `JSON.stringify` output and a data key literally named
+  // `get` keep the plain object's behaviour, and `.get(name)` answers the
+  // frozen map's own value or null. A map whose own data has a `get` key keeps
+  // that data — the Java method cannot be reached on such a map here, a
+  // recorded tradeoff for the name only (#137).
+  const javaMap = value => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return value;
+    }
+    return new Proxy(value, {
+      get: (target, key) => {
+        if (typeof key === 'symbol' ||
+            Object.prototype.hasOwnProperty.call(target, key)) {
+          return target[key];
+        }
+        if (key === 'get') {
+          return name => Object.prototype.hasOwnProperty.call(target, name)
+            ? target[name] : null;
+        }
+        return target[key];
+      }
+    });
+  };
   const source = Object.freeze({
     ...sourceFields,
     getKey: () => input.sourceKey,
@@ -2621,19 +2649,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getTag: () => sourceFields.bookSourceName || '',
     getHeaderMap: (...args) => {
       if (args.length > 1) throw new Error('source.getHeaderMap expects zero or one argument');
-      if (args[0]) return call('headers', {hasLoginHeader: true});
-      return call('headers', null);
+      if (args[0]) return javaMap(call('headers', {hasLoginHeader: true}));
+      return javaMap(call('headers', null));
     },
     // Frozen `BaseSource.getLoginHeader`/`putLoginHeader`/`removeLoginHeader`
     // (`BaseSource.kt:132-155`) and `getLoginInfo`/`putLoginInfo`/
     // `removeLoginInfo` (`:160-196`): the login state the source's own scripts
     // read and write, which is what a `loginUrl` script stores a session with.
     getLoginHeader: () => call('loginHeader', {op:'get'}),
-    getLoginHeaderMap: () => call('loginHeader', {op:'map'}),
+    getLoginHeaderMap: () => javaMap(call('loginHeader', {op:'map'})),
     putLoginHeader: header => { call('loginHeader', {op:'put', header:String(header)}); },
     removeLoginHeader: () => { call('loginHeader', {op:'remove'}); },
     getLoginInfo: () => call('loginInfo', {op:'get'}),
-    getLoginInfoMap: () => call('loginInfo', {op:'map'}),
+    getLoginInfoMap: () => javaMap(call('loginInfo', {op:'map'})),
     putLoginInfo: info => call('loginInfo', {op:'put', info:String(info)}),
     removeLoginInfo: () => { call('loginInfo', {op:'remove'}); },
     getVariable: () => call('cache', {op:'get', key:'sourceVariable_' + input.sourceKey}) || '',

@@ -159,14 +159,18 @@ void main() {
         );
       });
       test(
-        'incomplete get and plain malformed or bare rule remain refused',
+        'incomplete get and plain malformed rules remain refused',
         () {
-          for (final rule in ['/@get:', '/', 'name']) {
+          for (final rule in ['/@get:', '/', 'a b', 'a.b', '1name']) {
             expect(
               () => JsonSourceRules.validate(rule),
               throwsUnsupportedError,
             );
           }
+          // A simple bare property name is json-path's canonical `$.name`
+          // (`PathCompiler.compile` prefixes `$.`), so it validates and reads
+          // that property; the shapes above are still refused by name.
+          expect(() => JsonSourceRules.validate('name'), returnsNormally);
         },
       );
       test('a getter inside put is not a top-level literal getter', () {

@@ -877,7 +877,9 @@ void main() {
         ),
       );
       final json = _jsonSource(name: r'$.name');
-      (json['ruleContent'] as Map)['title'] = 'bad';
+      // A simple bare name is json-path's canonical `$.name` and is read; the
+      // shape this test keeps is one no supported form names.
+      (json['ruleContent'] as Map)['title'] = 'a b';
       final pipeline = JsonSourcePipeline(
         json,
         _JsonPages()..pages.addAll(_jsonPages),
