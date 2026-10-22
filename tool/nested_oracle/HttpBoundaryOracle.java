@@ -57,6 +57,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The frozen side of HTTP-BOUNDARY-01: drives the installed, hash-pinned
@@ -123,6 +125,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private JSONObject rateLimiterCleanup;
     private JSONObject requestCheckValue;
     private JSONObject observationCheckValue;
+    private boolean corpusIndexed;
+    private String failureStage;
     private boolean cleanupOk;
     private boolean negativeMode;
     private boolean failEndpointOk;
@@ -223,6 +227,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
             corpus = new JSONObject(new String(asset, StandardCharsets.UTF_8));
             validateCorpus();
             indexCorpus();
+            corpusIndexed = true;
             parseNegative();
             identity = measureIdentity(asset);
             scratch.bind("seed", identity);
@@ -256,9 +261,15 @@ public final class HttpBoundaryOracle extends Instrumentation {
             if (!ok) failure = joinReasons(evaluation.getJSONArray("reasons"));
         } catch (Throwable error) {
             failure = describe(error);
-            if (scratch != null) scratch.refuseWaiters(failure);
+            // A pre-bind refusal wakes provider preference waiters that otherwise crash
+            // the process before this collector can publish its receipt. They remain
+            // blocked on the shared binding latch; the controller force-stops the target
+            // after the instrumentation result. A bound phase needs no refusal because
+            // bind already released the latch. The shared helper is unchanged.
+            if (scratch != null && scratch.isBound()) scratch.refuseWaiters(failure);
             log("failed in stage " + stage.get() + ": " + failure);
         } finally {
+            failureStage = stage.get();
             stage.set("cleanup");
             try {
                 cleanup = cleanup(ok);
@@ -312,6 +323,13 @@ public final class HttpBoundaryOracle extends Instrumentation {
                     .put("status", ok ? "ok" : "incomplete")
                     .put("promotable", ok && !negativeMode)
                     .put("terminalIntegrityOk", terminalIntegrityOk)
+                    .put("setupCompleted", corpusIndexed && structural != null)
+                    .put("setupStatus", !corpusIndexed ? "failed-before-index"
+                        : structural == null ? "failed-after-index" : "completed")
+                    .put("failureStage", failureStage == null ? "" : failureStage)
+                    .put("identityStatus", identity == null
+                        ? "not-measured" : "measured")
+                    .put("notEvaluated", notEvaluatedAreas())
                     .put("negativeMode", negativeMode)
                     .put("negative", negativeBlock == null ? JSONObject.NULL : negativeBlock)
                     .put("identity", identity == null ? JSONObject.NULL : identity)
@@ -332,11 +350,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
                     .put("requests", snapshot(requests))
                     .put("unmatchedRequests", snapshot(unmatched))
                     .put("serverErrors", snapshot(serverErrors))
-                    .put("requestCheck", requestCheckValue != null
-                        ? requestCheckValue : requestCheck())
+                    .put("requestCheck", reportCheck("request"))
                     .put("observations", snapshot(observations))
-                    .put("observationCheck", observationCheckValue != null
-                        ? observationCheckValue : observationCheck())
+                    .put("observationCheck", reportCheck("observation"))
                     .put("inventory", inventory)
                     .put("cleanup", cleanup)
                     .put("sourceDerivedNotes", corpus == null
@@ -752,9 +768,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 throw new IllegalStateException("source " + entry.getString("id")
                     + " declares a login script or jsLib");
             }
-            if (!bookSource.toString().contains("HTTP-BOUNDARY-01/1.0")) {
+            String declaredUa;
+            try {
+                declaredUa = declaredHeaderUserAgent(bookSource.optString("header", ""));
+            } catch (JSONException error) {
                 throw new IllegalStateException("source " + entry.getString("id")
-                    + " does not declare the corpus User-Agent");
+                    + " header is not the authored form: " + error, error);
+            }
+            if (!"HTTP-BOUNDARY-01/1.0".equals(declaredUa)) {
+                throw new IllegalStateException("source " + entry.getString("id")
+                    + " does not declare the corpus User-Agent in its header");
             }
             String rate = bookSource.optString("concurrentRate", "");
             if (!rate.isEmpty()) {
@@ -2313,6 +2336,71 @@ public final class HttpBoundaryOracle extends Instrumentation {
      * causal owner, required raw fields/types, honest terminals, headers and the one
      * permitted negative omission. Per-owner slices alone are not sufficient.
      */
+    /**
+     * Reads the declared User-Agent from the authored header field, never from a
+     * serialized source container. Static headers are parsed as JSON; the two script
+     * header forms are read as their declared JSON.stringify object literal without
+     * executing the script. Missing, wrong or non-string values return null.
+     */
+    private static final Pattern SCRIPT_UA = Pattern.compile(
+        "(?i)['\"]User-Agent['\"]\\s*:\\s*['\"]([^'\"]*)['\"]");
+
+    private static String declaredHeaderUserAgent(String header) throws JSONException {
+        if (header == null) return null;
+        String text = header.trim();
+        if (text.startsWith("@js:")) return scriptHeaderUserAgent(text.substring(4));
+        if (text.startsWith("<js>")) {
+            int end = text.lastIndexOf('<');
+            if (end < 0) return null;
+            return scriptHeaderUserAgent(text.substring(4, end));
+        }
+        JSONObject parsed = new JSONObject(text);
+        Iterator<String> names = parsed.keys();
+        while (names.hasNext()) {
+            String name = names.next();
+            if (!name.equalsIgnoreCase("User-Agent")) continue;
+            Object value = parsed.opt(name);
+            if (value == null || value == JSONObject.NULL) return null;
+            return value instanceof String ? (String) value : null;
+        }
+        return null;
+    }
+
+    private static String scriptHeaderUserAgent(String script) {
+        int call = script.indexOf("JSON.stringify(");
+        if (call < 0) return null;
+        int start = script.indexOf('{', call);
+        int end = script.lastIndexOf('}');
+        if (start < 0 || end <= start) return null;
+        Matcher matcher = SCRIPT_UA.matcher(script.substring(start + 1, end));
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private JSONObject reportCheck(String area) throws Exception {
+        if ("request".equals(area)) {
+            if (requestCheckValue != null) return requestCheckValue;
+            return corpusIndexed ? requestCheck() : notEvaluated("request");
+        }
+        if (observationCheckValue != null) return observationCheckValue;
+        return corpusIndexed ? observationCheck() : notEvaluated("observation");
+    }
+
+    private static JSONObject notEvaluated(String area) throws JSONException {
+        return new JSONObject().put("match", false)
+            .put("notEvaluated", true)
+            .put("status", "not-evaluated")
+            .put("reason", "setup did not complete before the " + area
+                + " indexes were built");
+    }
+
+    private JSONArray notEvaluatedAreas() throws JSONException {
+        JSONArray areas = new JSONArray();
+        if (requestCheckValue == null && !corpusIndexed) areas.put("requestCheck");
+        if (observationCheckValue == null && !corpusIndexed) areas.put("observationCheck");
+        if (structural == null) areas.put("structural");
+        return areas;
+    }
+
     private JSONObject requestCheck() throws Exception {
         JSONArray steps = corpus.getJSONArray("steps");
         JSONArray actual = snapshot(requests);
@@ -3315,6 +3403,25 @@ public final class HttpBoundaryOracle extends Instrumentation {
      */
     private boolean finalTerminalSnapshot(JSONObject cleanup) {
         JSONObject terminal = new JSONObject();
+        if (!corpusIndexed) {
+            try {
+                terminal.put("requests", requests.length())
+                    .put("unmatched", unmatched.length())
+                    .put("serverErrors", serverErrors.length())
+                    .put("requestMatch", false)
+                    .put("observationMatch", false)
+                    .put("notEvaluated", true)
+                    .put("status", "not-evaluated")
+                    .put("reason", "setup did not complete before the request/"
+                        + "observation indexes were built")
+                    .put("ok", false);
+                cleanup.put("terminal", terminal);
+            } catch (JSONException ignored) {
+                // The failure is already visible through cleanupOk and the run failure.
+            }
+            terminalIntegrityOk = false;
+            return false;
+        }
         try {
             requestCheckValue = requestCheck();
             observationCheckValue = observationCheck();

@@ -45,6 +45,16 @@ hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evi
   residue and ownership metadata are preserved for controller force-stop cleanup.
 - Actual `AppConfig.threadCount` is required; a failed read is incomplete, not a guessed
   default.
+- The corpus source check reads the authored `header` field, not a serialized source
+  container: static JSON is parsed and the two script forms' declared
+  `JSON.stringify` object literal is read without executing the script. Missing, wrong
+  or non-string UA values are rejected; the real Android JSON stringer's slash escaping
+  cannot reject a valid header, and a UA in an unrelated comment is not accepted.
+- A setup failure before the request/observation indexes exist emits explicit
+  `notEvaluated` request/observation receipts and a not-evaluated terminal instead of
+  calling the ordinary validators; the original failure stage and cleanup are retained.
+  Pre-bind provider preference waiters remain blocked on the shared binding latch rather
+  than being refused into a process crash before the receipt is published.
 
 ## Corpus shape
 
@@ -307,11 +317,12 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/presence-repair-03/`.
-- The host probes execute the terminal, hold, cleanup and full raw-record presence/type
-  sweep on the actual compiled methods with complete positive counterparts; every
-  missing/null/wrong-type control is rejected and the allowed nullable cases pass. Host
-  checks are never device goldens.
+  receipts are under `E/a2-http-native/android-startup-repair-04/`.
+- The host probes execute the terminal, hold, cleanup, full raw-record presence/type
+  sweep, the six authored header declarations with missing/wrong/unrelated negatives,
+  the actual Android SDK35 org.json escaping semantics and the early-failure receipt
+  path on the actual compiled methods. Every negative is rejected and the allowed
+  positives pass. Host checks are never device goldens.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 
