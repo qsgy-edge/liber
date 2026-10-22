@@ -11,6 +11,7 @@ import 'runner.dart'
         httpBoundaryResponseOwners,
         httpBoundaryResponses,
         httpBoundarySelectorOf,
+        httpBoundarySourceOf,
         httpBoundarySteps,
         httpBoundaryStructuralOf,
         httpBoundaryTargetOf,
@@ -383,8 +384,11 @@ class _ProductGate {
     if (value != true) fail('$path is $value, not true');
   }
 
+  /// Semantic equality: object key order is not a fact (the differential
+  /// contract ignores it), while arrays, duplicate values and every scalar keep
+  /// their order and their type. A decoded `1.0` is not the integer `1`.
   void equal(Object? actual, Object? expected, String path) {
-    if (jsonEncode(actual) != jsonEncode(expected)) {
+    if (!_semanticEquals(actual, expected)) {
       fail(
         '$path is ${jsonEncode(actual)}, the declared value is '
         '${jsonEncode(expected)}',
@@ -406,6 +410,39 @@ class _ProductGate {
 }
 
 String _normalizePath(String path) => path.replaceAll('\\', '/');
+
+/// One corpus source's own key, the address its rate records and cancellation
+/// evidence are keyed by. The failure source's `$FAILPORT` token is a binding,
+/// not part of its key, so it is reported as it is declared only when no rate or
+/// cancellation row uses that source.
+String corpusSourceUrl(Map<String, dynamic> corpus, String id) =>
+    '${httpBoundarySourceOf(corpus, id)['bookSourceUrl']}';
+
+/// Recursive equality that ignores object key order and nothing else: arrays
+/// keep their order (including repeated values), scalars keep their exact type
+/// and value, and an absent key is not a null value.
+bool _semanticEquals(Object? actual, Object? expected) {
+  if (actual is Map || expected is Map) {
+    if (actual is! Map || expected is! Map) return false;
+    if (actual.length != expected.length) return false;
+    for (final entry in actual.entries) {
+      if (!expected.containsKey(entry.key)) return false;
+      if (!_semanticEquals(entry.value, expected[entry.key])) return false;
+    }
+    return true;
+  }
+  if (actual is List || expected is List) {
+    if (actual is! List || expected is! List) return false;
+    if (actual.length != expected.length) return false;
+    for (var index = 0; index < actual.length; index++) {
+      if (!_semanticEquals(actual[index], expected[index])) return false;
+    }
+    return true;
+  }
+  if (actual == null || expected == null) return actual == expected;
+  if (actual.runtimeType != expected.runtimeType) return false;
+  return actual == expected;
+}
 
 /// The product record's own gates: a finished run of the same corpus whose every
 /// compared field is present and correctly typed, whose headline checks agree
@@ -713,6 +750,46 @@ void validateProductReport(
         '${connection['classification']}',
       );
     }
+    // A recorded connection is an owned, armed, actually observed request that
+    // ended in the declared terminal after it was accepted.
+    gate.equal(
+      connection['index'],
+      index + 1,
+      'failEndpoint.connections'
+      '.$index.index',
+    );
+    gate.equal(
+      connection['armed'],
+      true,
+      'failEndpoint.connections.$index.armed',
+    );
+    gate.equal(
+      connection['requestObserved'],
+      true,
+      'failEndpoint.connections.$index.requestObserved',
+    );
+    gate.equal(
+      connection['terminal'],
+      'accepted-and-closed-without-response',
+      'failEndpoint.connections.$index.terminal',
+    );
+    final accepted = connection['acceptedAtNanos'];
+    final closed = connection['closedAtNanos'];
+    if (accepted is int && closed is int && closed < accepted) {
+      gate.fail(
+        'failEndpoint.connections.$index closed before it was accepted',
+      );
+    }
+    final connectionTarget = '${connection['target']}';
+    final connectionPath = '${connection['path']}';
+    final connectionQuery = '${connection['rawQuery']}';
+    gate.equal(
+      connectionTarget,
+      connectionQuery.isEmpty
+          ? connectionPath
+          : '$connectionPath?$connectionQuery',
+      'failEndpoint.connections.$index.target',
+    );
   }
   gate.equal(
     failure['acceptedConnections'],
@@ -778,6 +855,12 @@ void validateProductReport(
     structural['derived'],
     httpBoundaryStructuralOf(corpus),
     'structural.derived',
+  );
+  // The declared block is the corpus' own structural model, not just an object.
+  gate.equal(
+    structural['declared'],
+    _object(corpus['structural'], 'corpus structural'),
+    'structural.declared',
   );
 
   // 7. Every request row: its declared fields, its own internal consistency and
@@ -876,16 +959,22 @@ void validateProductReport(
         gate.fail('$where selector is not its declared response selector');
       }
     }
-    final headers = gate.object(row['headers'], '$where.headers');
-    for (final entry in headers.entries) {
+    // Header names are case-insensitive on the wire (the differential
+    // contract ignores their case); their values stay exact.
+    final rawHeaders = gate.object(row['headers'], '$where.headers');
+    final headers = <String, String>{};
+    for (final entry in rawHeaders.entries) {
       if (entry.value is! String) {
         gate.fail('$where.headers.${entry.key} is not a string');
+        continue;
       }
+      final name = entry.key.toLowerCase();
+      headers[name] = entry.value;
     }
     final required = step['requiredHeaders'];
     if (required is Map) {
       for (final entry in required.entries) {
-        final name = '${entry.key}'.toLowerCase();
+        final name = entry.key.toLowerCase();
         final actual = headers[name];
         if (actual != entry.value) {
           gate.fail(
@@ -932,11 +1021,11 @@ void validateProductReport(
           ? '${fromLines[name]}, $value'
           : value;
     }
-    gate.equal(fromLines, headers.cast<String, String>(), '$where.headerLines');
+    gate.equal(fromLines, headers, '$where.headerLines');
     // Every header the corpus asked for must have its wire line too.
     if (required is Map) {
       for (final entry in required.entries) {
-        final name = '${entry.key}'.toLowerCase();
+        final name = entry.key.toLowerCase();
         if (!fromLines.containsKey(name)) {
           gate.fail('$where.headerLines has no line for $name');
         }
@@ -976,6 +1065,20 @@ void validateProductReport(
         lastPhase = phase;
       }
     }
+    // The measured stage is the declared step the observer was on; a stage
+    // that names no declared step is not a measurement of this run.
+    if (!phaseOf.containsKey('${row['stage']}')) {
+      gate.fail('$where.stage ${row['stage']} is not a declared step');
+    }
+    final received = row['receivedAtNanos'];
+    final sent = row['sentAtNanos'];
+    final responded = row['respondedAtNanos'];
+    if (received is int && sent is int && sent < received) {
+      gate.fail('$where.sentAtNanos precedes its own arrival');
+    }
+    if (received is int && responded is int && responded < received) {
+      gate.fail('$where.respondedAtNanos precedes its own arrival');
+    }
     final key = '$owner|$selector';
     final expectedAttempt = (attempts[key] ?? 0) + 1;
     final attempt = row['attempt'];
@@ -1004,6 +1107,40 @@ void validateProductReport(
     }
     lastTerminal[key] = terminal;
     (ownedByObservation[owner] ??= []).add(row);
+  }
+  // The stage trace is the same run's causal trace: every entry names a declared
+  // step as both stage and owner and matches one actual request row, and no
+  // request is missing from it.
+  final traceMatches = <Map<String, dynamic>>[
+    for (var index = 0; index < stageTrace.length; index++)
+      gate.object(stageTrace[index], 'stageTrace.$index'),
+  ];
+  for (var index = 0; index < traceMatches.length; index++) {
+    final entry = traceMatches[index];
+    for (final name in const ['stage', 'owner']) {
+      if (!phaseOf.containsKey('${entry[name]}')) {
+        gate.fail(
+          'stageTrace.$index.$name ${entry[name]} is not a declared '
+          'step',
+        );
+      }
+    }
+    final matched = requestRows.where((raw) {
+      final row = raw as Map;
+      return '${row['stage']}' == '${entry['stage']}' &&
+          '${row['owner']}' == '${entry['owner']}' &&
+          '${row['listener']}' == '${entry['listener']}' &&
+          '${row['target']}' == '${entry['target']}';
+    }).length;
+    if (matched == 0) {
+      gate.fail('stageTrace.$index matches no measured request');
+    }
+  }
+  if (traceMatches.length != requestRows.length) {
+    gate.fail(
+      'stageTrace has ${traceMatches.length} rows for '
+      '${requestRows.length} requests',
+    );
   }
 
   // 8. Every observation: its own fields, its declared outcome, and its request
@@ -1057,6 +1194,13 @@ void validateProductReport(
         '$where.requests has ${owned.length} rows, the corpus declares '
         '$expectedRequests',
       );
+    }
+    final kind = '${step['kind']}';
+    if (kind == 'cancel') {
+      _cancelRelations(gate, corpus, row, value);
+    } else if ('${step['id']}' ==
+        '${_cancellationBlock(corpus)['followUpStep']}') {
+      _followUpRelations(gate, corpus, id, row, value, observationById);
     }
   }
 
@@ -1112,6 +1256,23 @@ void validateProductReport(
       rateWindow,
       'observations.$id.evidence.windowMillis',
     );
+    // Every rate operation's own interval, duration and source key, checked
+    // before any branch: the operation cannot finish before it started, its
+    // measured duration cannot be negative, and it must be this source's call.
+    final callStart = evidence['callStartMillis'];
+    final callFinish = evidence['callFinishMillis'];
+    final duration = evidence['durationNanos'];
+    if (callStart is int && callFinish is int && callFinish < callStart) {
+      gate.fail('observations.$id.evidence call interval is inverted');
+    }
+    if (duration is int && duration < 0) {
+      gate.fail('observations.$id.evidence.durationNanos is negative');
+    }
+    gate.equal(
+      evidence['sourceKey'],
+      corpusSourceUrl(corpus, '${rate['source']}'),
+      'observations.$id.evidence.sourceKey',
+    );
     if (index == 0) {
       if (before != null) gate.fail('$where.recordBefore is not null');
       if (after == null) {
@@ -1135,6 +1296,15 @@ void validateProductReport(
         after['time'],
         'observations.$id.evidence.windowStartMillis',
       );
+      final recordTime = after['time'];
+      if (callStart is int && callFinish is int && recordTime is int) {
+        if (recordTime < callStart || recordTime > callFinish) {
+          gate.fail(
+            'observations.$id record was created outside its own '
+            'operation interval',
+          );
+        }
+      }
       records[id] = after;
       continue;
     }
@@ -1157,11 +1327,6 @@ void validateProductReport(
       beforeTime == afterTime,
       '$where.sameWindowAsPrevious',
     );
-    final callStart = evidence['callStartMillis'] as int? ?? 0;
-    final callFinish = evidence['callFinishMillis'] as int? ?? 0;
-    if (callFinish < callStart) {
-      gate.fail('$where.evidence call interval is inverted');
-    }
     if (sameWindow) {
       gate.field(
         evidence,
@@ -1270,18 +1435,90 @@ void validateProductReport(
     declaredObservations,
     'requestCheck.steps',
   );
+  // Each step's summary is re-derived from the measured rows with the same
+  // primitives the comparison uses, so a green flag cannot stand on data that
+  // contradicts it.
+  var allStepMatches = true;
   for (final step in checkSteps) {
     final row = gate.object(step, 'requestCheck.steps');
+    final id = '${row['id']}';
     for (final entry in const [
       ('countMatch', _Field.boolean),
       ('orderMatch', _Field.boolean),
       ('batchMatch', _Field.boolean),
       ('match', _Field.boolean),
     ]) {
-      gate.field(row, entry.$1, 'requestCheck.steps.${row['id']}', entry.$2);
+      gate.field(row, entry.$1, 'requestCheck.steps.$id', entry.$2);
     }
-    gate.isTrue(row['match'], 'requestCheck.steps.${row['id']}.match');
+    final corpusStep = stepById[id];
+    if (corpusStep == null) {
+      gate.fail('requestCheck.steps names $id, not a corpus step');
+      allStepMatches = false;
+      continue;
+    }
+    final declaredStep = httpBoundaryDeclaredRequests(corpusStep);
+    // A declared entry that repeats a selector is the next attempt of that
+    // causal row, so the prefix is `#1,#2,#3` and not three identical rows.
+    final seen = <String, int>{};
+    String declaredKey(String responseId) {
+      final selector = httpBoundarySelectorOf(gate.responseById[responseId]!);
+      final attempt = (seen[selector] ?? 0) + 1;
+      seen[selector] = attempt;
+      return '$selector#$attempt';
+    }
+
+    final expectedOrdered = [
+      for (final responseId in declaredStep.ordered) declaredKey(responseId),
+    ];
+    final expectedBatch = [
+      for (final responseId in declaredStep.members) declaredKey(responseId),
+    ];
+    final actual = [
+      for (final request in requestRows)
+        if ('${(request as Map)['owner']}' == id)
+          '${request['selector']}#${request['attempt']}',
+    ];
+    final countMatch =
+        actual.length == expectedOrdered.length + expectedBatch.length;
+    final orderMatch = _isPrefix(expectedOrdered, actual);
+    final batchActual = actual.skip(expectedOrdered.length).toList();
+    final batchMatch = _multisetEquals(expectedBatch, batchActual);
+    gate.equal(
+      row['countMatch'],
+      countMatch,
+      'requestCheck.steps.$id.countMatch',
+    );
+    gate.equal(
+      row['orderMatch'],
+      orderMatch,
+      'requestCheck.steps.$id.orderMatch',
+    );
+    gate.equal(
+      row['batchMatch'],
+      batchMatch,
+      'requestCheck.steps.$id.batchMatch',
+    );
+    gate.equal(
+      row['match'],
+      countMatch && orderMatch && batchMatch,
+      'requestCheck.steps.$id.match',
+    );
+    gate.isTrue(row['match'], 'requestCheck.steps.$id.match');
+    if (row['match'] != true) allStepMatches = false;
   }
+  // The overall flags are those facts, not an independent claim.
+  gate.equal(
+    requestCheck['match'],
+    requestCheck['totalMatch'] == true &&
+        allStepMatches &&
+        gate.array(requestCheck['ownerless'], 'ownerless').isEmpty &&
+        gate.array(requestCheck['unknownOwners'], 'unknownOwners').isEmpty &&
+        gate.array(requestCheck['fieldProblems'], 'fieldProblems').isEmpty &&
+        gate
+            .array(requestCheck['terminalProblems'], 'terminalProblems')
+            .isEmpty,
+    'requestCheck.match',
+  );
   final observationCheck = gate.object(
     product['observationCheck'],
     'observationCheck',
@@ -1336,6 +1573,21 @@ void validateProductReport(
     initial.keys.toList()..sort(),
     'inventory.tables',
   );
+  // The observer's own fixed measurement contract: the four tables the runner
+  // reads, not any non-empty map of zeros.
+  const observedTables = {
+    'books',
+    'chapters',
+    'source_entries',
+    'source_cookies',
+  };
+  for (final snapshot in [initial, finalCounts]) {
+    gate.equal(
+      snapshot.keys.toList()..sort(),
+      observedTables.toList()..sort(),
+      'inventory.tables',
+    );
+  }
   for (final snapshot in [initial, finalCounts]) {
     for (final entry in snapshot.entries) {
       if (entry.value is! int || (entry.value as int) < 0) {
@@ -1466,6 +1718,382 @@ void validateProductReport(
   gate.throwIfAny();
 }
 
+Map<String, dynamic> _cancellationBlock(Map<String, dynamic> corpus) =>
+    _object(corpus['cancellation'], 'corpus cancellation');
+
+Map<String, dynamic> _cancelStep(Map<String, dynamic> corpus) =>
+    httpBoundarySteps(corpus).firstWhere(
+      (step) => '${step['kind']}' == 'cancel',
+      orElse: () => throw const HttpBoundaryRefusal(
+        'the corpus declares no cancellation step',
+      ),
+    );
+
+/// The cancellation row's measured state, bound to the value summary it claims.
+///
+/// `cancellationState` is the real HTML pipeline's own state read before the
+/// request, at the cancel request and after the worker settled; the value's
+/// `jobInactive`/`jobDone`/`workerTerminated` and the derived outcome must be
+/// exactly those facts, the quiet window and the late-request count are the
+/// corpus' own measurements, and the execution identities are this run's
+/// (compared within the run, never across runtimes).
+void _cancelRelations(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> observation,
+  Map<String, dynamic> value,
+) {
+  const where = 'observations.s5.search-cancelled.value';
+  final cancellation = _cancellationBlock(corpus);
+  final evidence = gate.object(
+    observation['evidence'],
+    'observations.s5.search-cancelled.evidence',
+  );
+  final state = gate.object(evidence['cancellationState'], 'cancellationState');
+  for (final entry in const [
+    ('cancelledBeforeRequest', _Field.boolean),
+    ('cancelledAtRequest', _Field.boolean),
+    ('cancelledAfterSettle', _Field.boolean),
+    ('workerSettled', _Field.boolean),
+    ('quietWindowMs', _Field.integer),
+    ('lateRequestCount', _Field.integer),
+  ]) {
+    gate.field(state, entry.$1, 'cancellationState', entry.$2);
+  }
+  for (final entry in const [
+    ('holdEntered', _Field.boolean),
+    ('cancelRequested', _Field.boolean),
+    ('clientAborted', _Field.boolean),
+    ('workerTerminated', _Field.boolean),
+    ('jobInactive', _Field.boolean),
+    ('jobCompleted', _Field.boolean),
+    ('jobDone', _Field.boolean),
+    ('workerOutcome', _Field.string),
+    ('lateRequests', _Field.array),
+    ('stateProbes', _Field.object),
+    ('execution', _Field.object),
+    ('derivedOutcome', _Field.object),
+  ]) {
+    gate.field(value, entry.$1, where, entry.$2);
+  }
+  final cancelledBeforeRequest = state['cancelledBeforeRequest'];
+  final cancelledAtRequest = state['cancelledAtRequest'];
+  final cancelledAfterSettle = state['cancelledAfterSettle'];
+  final workerSettled = state['workerSettled'];
+  final quietWindow = state['quietWindowMs'];
+  final lateCount = state['lateRequestCount'];
+  // The measured state must be the one the corpus' cancellation row describes.
+  gate.equal(
+    cancelledBeforeRequest,
+    false,
+    'cancellationState.cancelledBeforeRequest',
+  );
+  gate.equal(cancelledAtRequest, true, 'cancellationState.cancelledAtRequest');
+  gate.equal(
+    cancelledAfterSettle,
+    true,
+    'cancellationState.cancelledAfterSettle',
+  );
+  gate.equal(workerSettled, true, 'cancellationState.workerSettled');
+  gate.equal(
+    quietWindow,
+    _integerOf(cancellation['quietWindowMs'], 'cancellation.quietWindowMs'),
+    'cancellationState.quietWindowMs',
+  );
+  gate.equal(lateCount, 0, 'cancellationState.lateRequestCount');
+  // …and the value summary must be exactly those facts.
+  gate.equal(value['holdEntered'], true, '$where.holdEntered');
+  gate.equal(value['cancelRequested'], true, '$where.cancelRequested');
+  gate.equal(value['clientAborted'], true, '$where.clientAborted');
+  gate.equal(
+    value['workerTerminated'],
+    workerSettled,
+    '$where.workerTerminated',
+  );
+  gate.equal(value['jobInactive'], cancelledAfterSettle, '$where.jobInactive');
+  gate.equal(value['jobCompleted'], workerSettled, '$where.jobCompleted');
+  gate.equal(
+    value['jobDone'],
+    cancelledAtRequest == true &&
+        cancelledAfterSettle == true &&
+        workerSettled == true,
+    '$where.jobDone',
+  );
+  gate.equal(value['workerOutcome'], 'cancelled', '$where.workerOutcome');
+  gate.equal(
+    gate.array(value['lateRequests'], '$where.lateRequests').length,
+    lateCount,
+    '$where.lateRequests',
+  );
+  final probes = gate.object(value['stateProbes'], '$where.stateProbes');
+  for (final entry in const [
+    ('sourceValues', _Field.object),
+    ('variable', _Field.object),
+    ('unchanged', _Field.boolean),
+    ('databaseUnchanged', _Field.boolean),
+  ]) {
+    gate.field(probes, entry.$1, '$where.stateProbes', entry.$2);
+  }
+  gate.equal(probes['unchanged'], true, '$where.stateProbes.unchanged');
+  gate.equal(
+    probes['databaseUnchanged'],
+    true,
+    '$where.stateProbes.databaseUnchanged',
+  );
+  final derived = gate.object(value['derivedOutcome'], '$where.derivedOutcome');
+  gate.equal(derived['outcome'], 'cancelled', '$where.derivedOutcome.outcome');
+  gate.equal(
+    derived['category'],
+    'cancellation',
+    '$where.derivedOutcome.category',
+  );
+  gate.equal(
+    derived['receiptsComplete'],
+    true,
+    '$where.derivedOutcome.receiptsComplete',
+  );
+  final execution = gate.object(value['execution'], '$where.execution');
+  gate.equal(
+    execution['jobInactive'],
+    cancelledAfterSettle,
+    '$where.execution.jobInactive',
+  );
+  gate.equal(
+    execution['jobCompleted'],
+    workerSettled,
+    '$where.execution.jobCompleted',
+  );
+  final evidenceExecution = gate.object(
+    evidence['execution'],
+    'cancellation execution evidence',
+  );
+  for (final entry in const [
+    ('pipelineIdentity', _Field.integer),
+    ('transportIdentity', _Field.integer),
+    ('sourceObjectIdentity', _Field.integer),
+    ('sourceKey', _Field.string),
+    ('jobLevel', _Field.string),
+    ('boundBeforeInvocation', _Field.boolean),
+    ('tokenPresent', _Field.boolean),
+    ('keyword', _Field.string),
+  ]) {
+    gate.field(
+      evidenceExecution,
+      entry.$1,
+      'cancellation execution evidence',
+      entry.$2,
+    );
+  }
+  final cancelStep = _cancelStep(corpus);
+  gate.equal(
+    evidenceExecution['sourceKey'],
+    corpusSourceUrl(corpus, '${cancelStep['source']}'),
+    'cancellation execution evidence.sourceKey',
+  );
+  gate.equal(
+    evidenceExecution['sourceKey'],
+    execution['sourceKey'],
+    'cancellation execution evidence.sourceKey',
+  );
+  gate.equal(
+    evidenceExecution['jobLevel'],
+    execution['jobLevel'],
+    'cancellation execution evidence.jobLevel',
+  );
+  gate.equal(
+    evidenceExecution['tokenPresent'],
+    execution['tokenPresent'],
+    'cancellation execution evidence.tokenPresent',
+  );
+  gate.equal(
+    evidenceExecution['boundBeforeInvocation'],
+    true,
+    'cancellation execution evidence.boundBeforeInvocation',
+  );
+  gate.equal(
+    evidenceExecution['keyword'],
+    '${cancellation['keyword']}',
+    'cancellation execution evidence.keyword',
+  );
+  // A claimed abort is the peer's own close or the failed write the runner
+  // measured, never an assumption.
+  if (value['clientAborted'] == true) {
+    if (evidence['peerClosed'] == null && !evidence.containsKey('abortError')) {
+      gate.fail('cancellation claims an abort with no measured close');
+    }
+  }
+  final dbProvenance = gate.object(
+    evidence['dbProvenance'],
+    'cancellation dbProvenance',
+  );
+  gate.equal(
+    dbProvenance['productTableSnapshotIsProvenance'],
+    true,
+    'cancellation dbProvenance is not marked provenance',
+  );
+  gate.equal(
+    dbProvenance['before'],
+    dbProvenance['after'],
+    'cancellation dbProvenance.before',
+  );
+  if (value['workerOutcome'] == 'cancelled') {
+    final workerFailure = evidence['workerFailure'];
+    if (workerFailure is! String || workerFailure.isEmpty) {
+      gate.fail('a cancelled worker has no recorded failure');
+    }
+  }
+}
+
+/// The post-cancellation search: its own fresh execution identity, measured in
+/// the same run against the cancelled execution and the same source key.
+void _followUpRelations(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  String id,
+  Map<String, dynamic> observation,
+  Map<String, dynamic> value,
+  Map<String, Map<String, dynamic>> observationById,
+) {
+  final cancellation = _cancellationBlock(corpus);
+  final where = 'observations.$id.value';
+  final evidence = gate.object(
+    observation['evidence'],
+    'observations.$id.evidence',
+  );
+  final execution = gate.object(
+    evidence['followUpExecution'],
+    'follow-up execution evidence',
+  );
+  for (final entry in const [
+    ('pipelineIdentity', _Field.integer),
+    ('transportIdentity', _Field.integer),
+    ('sourceObjectIdentity', _Field.integer),
+    ('sourceKey', _Field.string),
+    ('jobLevel', _Field.string),
+    ('boundBeforeInvocation', _Field.boolean),
+    ('sourceKeyAfter', _Field.string),
+    ('cancelledPipelineIdentity', _Field.integer),
+    ('derivedFreshness', _Field.object),
+    ('declaredStep', _Field.string),
+  ]) {
+    gate.field(execution, entry.$1, 'follow-up execution evidence', entry.$2);
+  }
+  final freshness = gate.object(
+    execution['derivedFreshness'],
+    'follow-up derivedFreshness',
+  );
+  for (final entry in const [
+    ('jobIdentityFresh', _Field.boolean),
+    ('contextIdentityFresh', _Field.boolean),
+    ('sameSourceObject', _Field.boolean),
+    ('sameSourceKey', _Field.boolean),
+    ('proven', _Field.boolean),
+  ]) {
+    gate.field(freshness, entry.$1, 'follow-up derivedFreshness', entry.$2);
+  }
+  final followUp = gate.object(value['followUp'], '$where.followUp');
+  for (final entry in const [
+    ('jobIdentityFresh', _Field.boolean),
+    ('contextIdentityFresh', _Field.boolean),
+    ('sameSourceObject', _Field.boolean),
+    ('sameSourceKey', _Field.boolean),
+    ('jobLevel', _Field.string),
+    ('jobClosed', _Field.boolean),
+    ('sourceKey', _Field.string),
+    ('tokenPresent', _Field.boolean),
+  ]) {
+    gate.field(followUp, entry.$1, '$where.followUp', entry.$2);
+  }
+  // Same run only: the cancelled execution this observation follows.
+  final cancelledRow = observationById['${cancellation['step']}'];
+  if (cancelledRow == null) {
+    gate.fail('the follow-up has no cancelled execution to compare with');
+    return;
+  }
+  final cancelledEvidence = gate.object(
+    cancelledRow['evidence'],
+    'cancellation evidence',
+  );
+  final cancelledExecution = gate.object(
+    cancelledEvidence['execution'],
+    'cancellation execution evidence',
+  );
+  gate.equal(
+    execution['cancelledPipelineIdentity'],
+    cancelledExecution['pipelineIdentity'],
+    'follow-up cancelledPipelineIdentity',
+  );
+  final jobIdentityFresh =
+      execution['pipelineIdentity'] != execution['cancelledPipelineIdentity'];
+  final contextIdentityFresh =
+      execution['transportIdentity'] != cancelledExecution['transportIdentity'];
+  final sameSourceObject =
+      execution['sourceObjectIdentity'] ==
+      cancelledExecution['sourceObjectIdentity'];
+  final sameSourceKey =
+      '${execution['sourceKey']}' == '${execution['sourceKeyAfter']}';
+  gate.equal(jobIdentityFresh, true, 'follow-up jobIdentityFresh');
+  gate.equal(contextIdentityFresh, true, 'follow-up contextIdentityFresh');
+  gate.equal(sameSourceObject, true, 'follow-up sameSourceObject');
+  gate.equal(sameSourceKey, true, 'follow-up sameSourceKey');
+  gate.equal(
+    freshness['jobIdentityFresh'],
+    jobIdentityFresh,
+    'follow-up derivedFreshness.jobIdentityFresh',
+  );
+  gate.equal(
+    freshness['contextIdentityFresh'],
+    contextIdentityFresh,
+    'follow-up derivedFreshness.contextIdentityFresh',
+  );
+  gate.equal(
+    freshness['sameSourceObject'],
+    sameSourceObject,
+    'follow-up derivedFreshness.sameSourceObject',
+  );
+  gate.equal(
+    freshness['sameSourceKey'],
+    sameSourceKey,
+    'follow-up derivedFreshness.sameSourceKey',
+  );
+  gate.equal(freshness['proven'], true, 'follow-up derivedFreshness.proven');
+  gate.equal(
+    execution['sourceKey'],
+    corpusSourceUrl(corpus, '${_cancelStep(corpus)['source']}'),
+    'follow-up execution evidence.sourceKey',
+  );
+  gate.equal(
+    execution['boundBeforeInvocation'],
+    true,
+    'follow-up execution evidence.boundBeforeInvocation',
+  );
+  gate.equal(
+    execution['declaredStep'],
+    id,
+    'follow-up execution evidence.declaredStep',
+  );
+  for (final field in const [
+    'jobIdentityFresh',
+    'contextIdentityFresh',
+    'sameSourceObject',
+    'sameSourceKey',
+  ]) {
+    gate.equal(followUp[field], freshness[field], '$where.followUp.$field');
+  }
+  gate.equal(
+    followUp['jobLevel'],
+    execution['jobLevel'],
+    '$where.followUp.jobLevel',
+  );
+  gate.equal(
+    followUp['sourceKey'],
+    execution['sourceKey'],
+    '$where.followUp.sourceKey',
+  );
+  gate.equal(followUp['jobClosed'], true, '$where.followUp.jobClosed');
+  gate.equal(followUp['tokenPresent'], true, '$where.followUp.tokenPresent');
+}
+
 /// The scratch root a measured run may own: the isolation root is a fresh
 /// directory this lane created, so it may not be a volume root, a shared system
 /// directory or the worktree itself.
@@ -1491,7 +2119,7 @@ Map<String, String> portableHeaders(
   final result = <String, String>{};
   if (headers is! Map) return result;
   for (final entry in headers.entries) {
-    final name = '${entry.key}'.toLowerCase();
+    final name = entry.key.toLowerCase();
     if (httpBoundaryPlatformHeaders.contains(name) &&
         !declared.contains(name)) {
       continue;

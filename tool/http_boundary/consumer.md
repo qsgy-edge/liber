@@ -85,15 +85,26 @@ shipped class; no rate policy is changed.
 - The product record itself is validated as one bounded schema before any value is
   compared: every compared field must be present with its declared type (an
   integer is an `int`, so a widened `200.0` is refused), explicit nulls stay
-  distinct from absence, the headline booleans must agree with the rows they
-  summarise (`requestCheck`, `observationCheck`, `structural`, the cleanup flags
-  and the nested `terminal` block, `lateErrorCount` against `serverErrors`, each
-  observation's `requests` recomputed from the trace, `headerLines` re-derived from
-  `headers`, `bodyLength`/`bodySha256` from the body), the inventory must be a
-  non-empty all-integer snapshot of the same tables, the failure endpoint's counts
-  must equal its own connection list, and the rate rows must satisfy their typed
-  record chain and interval/window relations. Two captures must be two
-  independently captured runs (distinct id, report path, report hash and run id).
+  distinct from absence, and object key order is never a fact (arrays, duplicate
+  values and raw bytes keep their order). The headline booleans must agree with
+  the rows they summarise: each observation's `requests` recomputed from the
+  trace, `headerLines` re-derived from `headers` (header names case-insensitive,
+  values exact), `bodyLength`/`bodySha256` from the body, every
+  `requestCheck.steps` count/order/batch flag re-derived from the rows and
+  `requestCheck.match` from those, `observationCheck` from the observation set,
+  `structural.declared` against the corpus' own declared model and
+  `structural.derived` recomputed, the cleanup flags against the nested `terminal`
+  block, `lateErrorCount` against `serverErrors`, the failure endpoint's counts
+  against its own connection list (each armed, observed, terminated after
+  acceptance), and the inventory against the four tables this observer actually
+  reads (`books`, `chapters`, `source_entries`, `source_cookies`). Each request's
+  send cannot precede its own arrival, its stage must name a measured step, and
+  the stage trace must be the same rows. The cancellation row's measured
+  `cancellationState`, the follow-up's fresh execution identities (same run only)
+  and every rate operation's own interval, duration, source key, record chain and
+  window relation are checked, so a claim and its evidence cannot disagree. Two
+  captures must be two independently captured runs (distinct id, report path,
+  report hash and run id).
 - The product's own gates and cleanup receipts (listeners, bridge, database,
   scratch removal), its inventory ("opened and empty before and after" — the table
   names are each runtime's own schema) and the failure endpoint's measured
@@ -112,9 +123,10 @@ declares:
   and `requests[].index` as row position rather than a value;
 - a rate record's `time` epoch, compared only through `sameWindowAsPrevious`,
   `scheduleComplete`, the within-run call interval and the window advance; its
-  type, `isConcurrent`, `frequency` and the record chain are compared exactly, so
-  one coherent cross-host epoch translation stays valid while a zeroed or
-  non-numeric time is refused;
+  type, `isConcurrent`, `frequency`, the record chain and the first record's own
+  operation interval are compared exactly, so one coherent cross-host epoch
+  translation stays valid while a zeroed, non-numeric or out-of-interval time is
+  refused;
 - the failure endpoint's assigned port, its nanosecond stamps and its host header,
   and the owner manifest's timestamp;
 - header **name case and order** and the differential contract's platform-generated

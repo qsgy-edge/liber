@@ -8,6 +8,14 @@ import '../tool/http_boundary/runner.dart'
         HttpBoundaryRefusal,
         httpBoundaryDeclaredRequests,
         httpBoundaryStructuralOf,
+        httpBoundaryResponseOwners,
+        httpBoundaryResponses,
+        httpBoundarySelectorOf,
+        httpBoundarySteps,
+        httpBoundaryCorpusPath,
+        httpBoundaryCorpusSha256Lf,
+        sha256Text,
+        httpBoundaryObservationIds,
         loadHttpBoundaryCorpus,
         sha256File,
         validateHttpBoundaryCorpus;
@@ -413,6 +421,518 @@ Map<String, Object?> _sequentialReport() {
   return report;
 }
 
+// --- the product-record gate's own public boundary ---------------------------
+
+/// A legitimate product record built from the committed corpus: every declared
+/// request, observation, receipt and relation the exported validator checks, so
+/// a mutation of one fact is what a test asserts, not the fixture's arithmetic.
+/// The runner and library identities are bound to real files (the committed
+/// runner and a temp library), which is the artifact setup the gate requires.
+Map<String, dynamic> _validProduct({
+  required String libraryPath,
+  required String librarySha,
+}) {
+  final corpus = loadHttpBoundaryCorpus();
+  final steps = httpBoundarySteps(corpus);
+  final responses = {
+    for (final response in httpBoundaryResponses(corpus))
+      '${response['id']}': response,
+  };
+  final owners = httpBoundaryResponseOwners(corpus);
+  const root = 'C:/evidence/repair-02/root';
+  var clock = 1000;
+  var position = 0;
+  final requests = <Map<String, Object?>>[];
+  final observations = <Map<String, Object?>>[];
+  final attempts = <String, int>{};
+  final lastTerminal = <String, String>{};
+  final stageTrace = <Map<String, Object?>>[];
+  final cancelBy = <String, Map<String, Object?>>{};
+  for (final step in steps) {
+    final id = '${step['id']}';
+    final declared = httpBoundaryDeclaredRequests(step);
+    final rows = <Map<String, Object?>>[];
+    for (final responseId in [...declared.ordered, ...declared.members]) {
+      final response = responses[responseId]!;
+      final method = '${response['method']}';
+      final path = '${response['path']}';
+      final rawQuery = '${response['rawQuery'] ?? ''}';
+      final selector = '$method $path?$rawQuery';
+      final attempt = (attempts[selector] ?? 0) + 1;
+      attempts[selector] = attempt;
+      final terminal = id == 's5.search-cancelled'
+          ? 'client-aborted'
+          : 'responded';
+      final attemptKind = attempt == 1
+          ? 'initial'
+          : lastTerminal[selector] == 'responded'
+          ? 'source-status-retry'
+          : 'transport-reconnect';
+      lastTerminal[selector] = terminal;
+      final received = clock;
+      clock += 100;
+      final sent = clock;
+      clock += 10;
+      final responded = clock;
+      clock += 10;
+      position++;
+      final row = <String, Object?>{
+        'index': position,
+        'listener': '127.0.0.1',
+        'owner': id,
+        'family': '${step['family']}',
+        'cohort': owners[responseId]!.cohort,
+        'attempt': attempt,
+        'attemptKind': attemptKind,
+        'selector': selector,
+        'method': method,
+        'path': path,
+        'rawQuery': rawQuery,
+        'target': rawQuery.isEmpty ? path : '$path?$rawQuery',
+        'query': Uri.splitQueryString(rawQuery),
+        'headers': {
+          for (final entry
+              in ((step['requiredHeaders'] as Map?) ?? const {}).entries)
+            '${entry.key}'.toLowerCase(): '${entry.value}',
+          'keep-alive': '300',
+        },
+        'headerLines': [
+          for (final entry
+              in ((step['requiredHeaders'] as Map?) ?? const {}).entries)
+            '${entry.key}: ${entry.value}',
+          'Keep-Alive: 300',
+        ],
+        'body': '',
+        'bodyLength': 0,
+        'bodySha256': sha256Text(''),
+        'receivedAtNanos': received,
+        'respondedAtNanos': responded,
+        'sentAtNanos': sent,
+        'sendSequence': position,
+        'status': terminal == 'responded' ? 200 : -1,
+        'terminal': terminal,
+        'declaredResponse': responseId,
+        'outcome': terminal,
+        'stage': id,
+      };
+      rows.add(row);
+      requests.add(row);
+      stageTrace.add({
+        'stage': id,
+        'listener': '127.0.0.1',
+        'target': row['target'],
+        'owner': id,
+      });
+    }
+    final value = <String, Object?>{
+      'kind': 'stage',
+      'stage': '${step['kind']}',
+    };
+    final evidence = <String, Object?>{};
+    if ('${step['kind']}' == 'cancel') {
+      final execution = <String, Object?>{
+        'pipelineIdentity': 11,
+        'transportIdentity': 12,
+        'sourceObjectIdentity': 13,
+        'sourceKey': 'http://127.0.0.1:18771/s',
+        'jobLevel': 'pipeline-cancellation',
+        'boundBeforeInvocation': true,
+        'tokenPresent': true,
+        'keyword': 'hold',
+      };
+      cancelBy[id] = execution;
+      value.addAll({
+        'holdEntered': true,
+        'cancelRequested': true,
+        'clientAborted': true,
+        'workerTerminated': true,
+        'jobInactive': true,
+        'jobCompleted': true,
+        'jobDone': true,
+        'workerOutcome': 'cancelled',
+        'lateRequests': <Object?>[],
+        'stateProbes': {
+          'sourceValues': {
+            'before': {
+              'cancel.probe': {'present': true, 'value': ''},
+            },
+            'after': {
+              'cancel.probe': {'present': true, 'value': ''},
+            },
+          },
+          'variable': {
+            'before': {'present': true, 'value': ''},
+            'after': {'present': true, 'value': ''},
+          },
+          'unchanged': true,
+          'databaseUnchanged': true,
+        },
+        'execution': {
+          'sourceKey': 'http://127.0.0.1:18771/s',
+          'jobLevel': 'pipeline-cancellation',
+          'tokenPresent': true,
+          'jobInactive': true,
+          'jobCompleted': true,
+        },
+        'derivedOutcome': {
+          'outcome': 'cancelled',
+          'category': 'cancellation',
+          'receiptsComplete': true,
+        },
+      });
+      evidence.addAll({
+        'cancellationState': {
+          'cancelledBeforeRequest': false,
+          'cancelledAtRequest': true,
+          'cancelledAfterSettle': true,
+          'workerSettled': true,
+          'quietWindowMs': 750,
+          'lateRequestCount': 0,
+        },
+        'execution': execution,
+        'peerClosed': 'peer-closed',
+        'workerFailure': 'cancelled: source request cancelled',
+        'dbProvenance': {
+          'before': {'books': 0},
+          'after': {'books': 0},
+          'productTableSnapshotIsProvenance': true,
+        },
+      });
+    } else if (id == 's6.search-after-cancel') {
+      final cancelled = cancelBy['s5.search-cancelled']!;
+      final execution = <String, Object?>{
+        'pipelineIdentity': 21,
+        'transportIdentity': 22,
+        'sourceObjectIdentity': cancelled['sourceObjectIdentity'],
+        'sourceKey': 'http://127.0.0.1:18771/s',
+        'jobLevel': 'pipeline-cancellation',
+        'boundBeforeInvocation': true,
+        'sourceKeyAfter': 'http://127.0.0.1:18771/s',
+        'cancelledPipelineIdentity': cancelled['pipelineIdentity'],
+        'derivedFreshness': {
+          'jobIdentityFresh': true,
+          'contextIdentityFresh': true,
+          'sameSourceObject': true,
+          'sameSourceKey': true,
+          'proven': true,
+        },
+        'declaredStep': id,
+      };
+      value['followUp'] = {
+        'jobIdentityFresh': true,
+        'contextIdentityFresh': true,
+        'sameSourceObject': true,
+        'sameSourceKey': true,
+        'jobLevel': 'pipeline-cancellation',
+        'jobClosed': true,
+        'sourceKey': 'http://127.0.0.1:18771/s',
+        'tokenPresent': true,
+      };
+      evidence['followUpExecution'] = execution;
+    } else if ('${step['kind']}' == 'rate') {
+      // The three real records chain: one window start, a second admission in
+      // that window, then a window advance that resets the frequency.
+      final index = step['index'] as int;
+      const windowStart = 1792687280573;
+      Map<String, Object?> record(int time, int frequency) => {
+        'isConcurrent': true,
+        'time': time,
+        'frequency': frequency,
+      };
+      value.addAll({
+        'kind': 'rate',
+        'index': index,
+        'result': 'R$index',
+        'recordBefore': switch (index) {
+          1 => null,
+          2 => record(windowStart, 1),
+          _ => record(windowStart, 2),
+        },
+        'recordAfter': switch (index) {
+          1 => record(windowStart, 1),
+          2 => record(windowStart, 2),
+          _ => record(windowStart + 2000, 1),
+        },
+        'sameWindowAsPrevious': switch (index) {
+          1 => null,
+          2 => true,
+          _ => false,
+        },
+        'scheduleComplete': true,
+        'scheduleReason': null,
+      });
+      evidence.addAll({
+        'callStartMillis': switch (index) {
+          1 => windowStart - 5,
+          2 => windowStart + 20,
+          _ => windowStart + 40,
+        },
+        'callFinishMillis': switch (index) {
+          1 => windowStart + 10,
+          2 => windowStart + 30,
+          _ => windowStart + 2040,
+        },
+        'durationNanos': 18000000,
+        'sourceKey': 'http://127.0.0.1:18771/r',
+        'windowMillis': 2000,
+        'windowStartMillis': index == 3 ? null : windowStart,
+        'windowAdvanceMillis': index == 3 ? 2000 : null,
+      });
+    }
+    observations.add({
+      'id': id,
+      'outcome': '${step['expectedOutcome'] ?? 'ok'}',
+      'category': step['expectedCategory'],
+      'value': value,
+      'evidence': evidence,
+      'requests': rows,
+    });
+  }
+  final requestCheckSteps = <Map<String, Object?>>[];
+  for (final step in steps) {
+    final id = '${step['id']}';
+    final declared = httpBoundaryDeclaredRequests(step);
+    final seen = <String, int>{};
+    String key(String responseId) {
+      final selector = httpBoundarySelectorOf(responses[responseId]!);
+      final attempt = (seen[selector] ?? 0) + 1;
+      seen[selector] = attempt;
+      return '$selector#$attempt';
+    }
+
+    final expectedOrdered = [
+      for (final responseId in declared.ordered) key(responseId),
+    ];
+    final expectedBatch = [
+      for (final responseId in declared.members) key(responseId),
+    ];
+    final actual = [
+      for (final request in requests)
+        if ('${(request)['owner']}' == id)
+          '${request['selector']}#${request['attempt']}',
+    ];
+    final countMatch =
+        actual.length == expectedOrdered.length + expectedBatch.length;
+    final orderMatch = expectedOrdered.isEmpty
+        ? true
+        : (() {
+            for (var i = 0; i < expectedOrdered.length; i++) {
+              if (actual[i] != expectedOrdered[i]) return false;
+            }
+            return true;
+          })();
+    final batch = actual.skip(expectedOrdered.length).toList()..sort();
+    final expectedSorted = [...expectedBatch]..sort();
+    final batchMatch = '$batch' == '$expectedSorted';
+    requestCheckSteps.add({
+      'id': id,
+      'expectedOrdered': expectedOrdered,
+      'expectedBatch': expectedBatch,
+      'actual': actual,
+      'countMatch': countMatch,
+      'orderMatch': orderMatch,
+      'batchMatch': batchMatch,
+      'match': countMatch && orderMatch && batchMatch,
+    });
+  }
+  final ids = httpBoundaryObservationIds(corpus);
+  return <String, dynamic>{
+    'schemaVersion': 1,
+    'product': 'liber-http-boundary-runner',
+    'platform': 'windows',
+    'pid': 1,
+    'runId': 'synthetic-run',
+    'recordedAt': '2026-10-22T00:00:00.000Z',
+    'completedAt': '2026-10-22T00:00:30.000Z',
+    'captureKind': 'product',
+    'fixtureId': corpus['fixtureId'],
+    'corpusVersion': corpus['corpusVersion'],
+    'baselineCommit': corpus['baselineCommit'],
+    'entryPoint': corpus['entryPoint'],
+    'status': 'completed',
+    'analysisFailure': null,
+    'negativeMode': false,
+    'negative': null,
+    'identity': {
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'corpusPath': httpBoundaryImportCorpusPath,
+      'corpusRawSha256': 'a' * 64,
+      'corpusSha256Lf': 'c' * 64,
+      'corpusRawLineEndings': 'crlf',
+      'target': {
+        'package': (corpus['target'] as Map)['package'],
+        'apkSha256': (corpus['target'] as Map)['apkSha256'],
+        'baselineCommit': (corpus['target'] as Map)['baselineCommit'],
+        'manifest': (corpus['target'] as Map)['manifest'],
+      },
+      'library': {'path': libraryPath, 'sha256': librarySha},
+      'runner': {
+        'path': httpBoundaryImportRunnerPath,
+        'sha256': sha256File(File(httpBoundaryImportRunnerPath)),
+      },
+    },
+    'isolation': {
+      'application': 'dart:io process over Workspace/SpaceStore',
+      'root': root,
+      'database': '$root\\spaces\\default\\data.db',
+      'workspaceManifest': '$root\\manifest.json',
+      'ownerFile': '$root\\owner.json',
+      'rootExistedAtStart': false,
+      'createdByThisRun': true,
+      'preferenceFilesOutsideRoot': <Object?>[],
+      'preferenceBoundary': 'inside this root',
+    },
+    'runtimeConfiguration': {
+      'threadCount': 4,
+      'threadCountSource': 'SourceHostDispatcher.ajaxAll concurrency default',
+      'threadCountPreference': null,
+      'declaredNativeDefault': 16,
+      'resolved': true,
+    },
+    'rateLimiter': {
+      'instance': 'SourceRateLimiter()',
+      'reason': 'injected',
+      'concurrentRate': '1/2000',
+      'windowMillis': 2000,
+      'initialSnapshot': 'empty',
+    },
+    'failEndpoint': {
+      'host': '127.0.0.1',
+      'requestedPort': 0,
+      'assignedPort': 54369,
+      'armedAtLeastOnce': true,
+      'armedAtNanos': 10,
+      'acceptedConnections': 1,
+      'transportReconnects': 0,
+      'connections': [
+        {
+          'index': 1,
+          'method': 'GET',
+          'target': '/f/search?keyword=fail&page=1',
+          'path': '/f/search',
+          'rawQuery': 'keyword=fail&page=1',
+          'headers': {'user-agent': 'HTTP-BOUNDARY-01/1.0'},
+          'armed': true,
+          'classification': 'initial',
+          'requestObserved': true,
+          'acceptedAtNanos': 20,
+          'terminal': 'accepted-and-closed-without-response',
+          'closedAtNanos': 21,
+        },
+      ],
+      'errors': <Object?>[],
+      'closed': true,
+      'classification': {
+        'first': 'initial',
+        'subsequent': 'transport-reconnect',
+        'statusRetryImpossible': 'no response is written',
+      },
+    },
+    'stageTrace': stageTrace,
+    'structural': {
+      'declared': corpus['structural'],
+      'derived': httpBoundaryStructuralOf(corpus),
+      'match': true,
+    },
+    'requests': requests,
+    'unmatchedRequests': <Object?>[],
+    'serverErrors': <Object?>[],
+    'requestCheck': {
+      'steps': requestCheckSteps,
+      'declaredTotal': 31,
+      'actualTotal': requests.length,
+      'totalMatch': requests.length == 31,
+      'ownerless': <Object?>[],
+      'unknownOwners': <Object?>[],
+      'duplicateIndices': 0,
+      'fieldProblems': <Object?>[],
+      'terminalProblems': <Object?>[],
+      'unmatchedRequests': 0,
+      'serverErrors': 0,
+      'match': true,
+    },
+    'observations': observations,
+    'observationCheck': {
+      'declared': ids,
+      'actual': ids,
+      'missing': <Object?>[],
+      'extra': <Object?>[],
+      'duplicates': <Object?>[],
+      'ordered': true,
+      'outcomeMismatches': <Object?>[],
+      'requestCountMismatches': <Object?>[],
+      'shapeMismatches': <Object?>[],
+      'match': true,
+    },
+    'inventory': {
+      'databaseOpened': true,
+      'initial': {
+        'books': 0,
+        'chapters': 0,
+        'source_entries': 0,
+        'source_cookies': 0,
+      },
+      'final': {
+        'books': 0,
+        'chapters': 0,
+        'source_entries': 0,
+        'source_cookies': 0,
+      },
+    },
+    'cleanup': {
+      'admission': 'stopped before teardown',
+      'listenerClosed': true,
+      'failEndpointClosed': true,
+      'failEndpointConnections': 1,
+      'nativeLibraryDisposed': true,
+      'databaseClosed': true,
+      'ownerWritten': true,
+      'ownerSha256': 'd' * 64,
+      'scratchRetained': false,
+      'scratchRemoved': true,
+      'rootAbsentAfter': true,
+      'removalSkipped': '',
+      'lateErrorCount': 0,
+      'terminal': {
+        'listeners': {'replayClosed': true, 'failEndpointClosed': true},
+        'bridge': {'nativeDisposed': true},
+        'database': {'closed': true},
+        'scratch': {'removed': true, 'absentAfter': true},
+        'integrityOk': true,
+      },
+      'ownerManifest': {
+        'path': '$root\\owner.json',
+        'createdAt': '2026-10-22T00:00:00.000Z',
+        'written': true,
+      },
+      'startedAt': '2026-10-22T00:00:00.000Z',
+    },
+    'sourceDerivedNotes': corpus['sourceDerivedNotes'],
+    'coverageGaps': corpus['coverageGaps'],
+    'nondeterministic': corpus['nondeterministic'],
+  };
+}
+
+/// The corpus path and runner path the gate binds to, re-exported from the
+/// entry points so a test never spells them twice.
+const httpBoundaryImportCorpusPath = httpBoundaryCorpusPath;
+const httpBoundaryImportRunnerPath = 'tool/http_boundary/runner.dart';
+
+Map<String, dynamic> _validProductCopy({
+  required String libraryPath,
+  required String librarySha,
+}) =>
+    (jsonDecode(
+              jsonEncode(
+                _validProduct(libraryPath: libraryPath, librarySha: librarySha),
+              ),
+            )
+            as Map)
+        .cast<String, dynamic>();
+
 void main() {
   test('identical records have no difference', () {
     final golden = _report();
@@ -744,6 +1264,280 @@ void main() {
     corpus.remove('_capturedAssetSha256');
     corpus['_rawSha256'] = 'd' * 64;
     expect(validate, returnsNormally);
+  });
+
+  group('the product-record gate', () {
+    late Directory work;
+    late String libraryPath;
+    late String librarySha;
+    late Map<String, dynamic> corpus;
+    late String corpusLf;
+
+    setUpAll(() {
+      work = Directory.systemTemp.createTempSync('http-boundary-gate-');
+      final library = File('${work.path}${Platform.pathSeparator}fjs.dll')
+        ..writeAsBytesSync(List<int>.generate(64, (index) => index));
+      libraryPath = library.path;
+      librarySha = sha256File(library);
+      corpus = loadHttpBoundaryCorpus();
+      corpusLf = httpBoundaryCorpusSha256Lf(File(httpBoundaryCorpusPath));
+    });
+
+    tearDownAll(() => work.deleteSync(recursive: true));
+
+    Map<String, dynamic> fresh() {
+      final record = _validProductCopy(
+        libraryPath: libraryPath,
+        librarySha: librarySha,
+      );
+      (record['identity'] as Map)['corpusSha256Lf'] = corpusLf;
+      return record;
+    }
+
+    void gate(Map<String, dynamic> record) => validateProductReport(
+      record,
+      corpus: corpus,
+      corpusLf: corpusLf,
+      productPath: 'synthetic-product.json',
+    );
+
+    Map<String, dynamic> observation(Map<String, dynamic> record, String id) =>
+        (record['observations'] as List)
+            .cast<Map>()
+            .firstWhere((row) => row['id'] == id)
+            .cast<String, dynamic>();
+
+    Map<String, dynamic> firstRequest(Map<String, dynamic> record) =>
+        (record['requests'] as List).first as Map<String, dynamic>;
+
+    test('a legitimate record passes the exported gate', () {
+      expect(() => gate(fresh()), returnsNormally);
+    });
+
+    test(
+      'object key order, header-line order and header-name case are not facts',
+      () {
+        Object? reverseKeys(Object? input) {
+          if (input is Map) {
+            final keys = input.keys.toList().reversed;
+            return {for (final key in keys) key: reverseKeys(input[key])};
+          }
+          if (input is List) {
+            return [for (final value in input) reverseKeys(value)];
+          }
+          return input;
+        }
+
+        final reordered = (reverseKeys(fresh()) as Map).cast<String, dynamic>();
+        expect(() => gate(reordered), returnsNormally);
+        final record = fresh();
+        // Every measured copy of a request row is transformed together: the top
+        // level trace and each observation's own slice are the same facts.
+        void eachRequest(
+          Map<String, dynamic> report,
+          void Function(Map) change,
+        ) {
+          for (final row in (report['requests'] as List).cast<Map>()) {
+            change(row);
+          }
+          for (final observation
+              in (report['observations'] as List).cast<Map>()) {
+            for (final row in (observation['requests'] as List).cast<Map>()) {
+              change(row);
+            }
+          }
+        }
+
+        eachRequest(record, (row) {
+          row['headerLines'] = (row['headerLines'] as List).reversed.toList(
+            growable: false,
+          );
+          // The same names and values with different wire case.
+          row['headers'] = {
+            for (final entry in (row['headers'] as Map).entries)
+              '${entry.key}'
+                  .split('-')
+                  .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+                  .join('-'): entry
+                  .value,
+          };
+        });
+        expect(() => gate(record), returnsNormally);
+        // The stage trace's own order is not a compared fact either.
+        final trace = fresh();
+        trace['stageTrace'] = (trace['stageTrace'] as List).reversed.toList();
+        expect(() => gate(trace), returnsNormally);
+      },
+    );
+
+    test('contradictory cancellation evidence is refused', () {
+      final missing = fresh();
+      (observation(missing, 's5.search-cancelled')['evidence'] as Map).remove(
+        'cancellationState',
+      );
+      expect(() => gate(missing), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final running = fresh();
+      (((observation(running, 's5.search-cancelled')['evidence']
+                  as Map)['cancellationState']
+              as Map))['workerSettled'] =
+          false;
+      expect(() => gate(running), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final quiet = fresh();
+      (((observation(quiet, 's5.search-cancelled')['evidence']
+                  as Map)['cancellationState']
+              as Map))['quietWindowMs'] =
+          0;
+      expect(() => gate(quiet), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final notCancelled = fresh();
+      (((observation(notCancelled, 's5.search-cancelled')['evidence']
+                  as Map)['cancellationState']
+              as Map))['cancelledAtRequest'] =
+          false;
+      expect(() => gate(notCancelled), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final emptyCancel = fresh();
+      observation(emptyCancel, 's5.search-cancelled')['evidence'] = {};
+      expect(() => gate(emptyCancel), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final emptyFollowUp = fresh();
+      observation(emptyFollowUp, 's6.search-after-cancel')['evidence'] = {};
+      expect(() => gate(emptyFollowUp), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('a false value summary cannot stand on a measured cancellation', () {
+      final record = fresh();
+      observation(record, 's5.search-cancelled')['value']['jobDone'] = false;
+      expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test(
+      'every rate operation keeps its own interval, duration and source',
+      () {
+        for (final id in const ['rate.record.1', 'rate.record.3']) {
+          final record = fresh();
+          final evidence = observation(record, id)['evidence'] as Map;
+          evidence['callFinishMillis'] =
+              (evidence['callStartMillis'] as int) - 1;
+          expect(
+            () => gate(record),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: '$id allowed an inverted call interval',
+          );
+        }
+        final outside = fresh();
+        final first = observation(outside, 'rate.record.1')['evidence'] as Map;
+        first['callStartMillis'] = 1792687280573 + 5000;
+        first['callFinishMillis'] = 1792687280573 + 5001;
+        expect(() => gate(outside), throwsA(isA<HttpBoundaryRefusal>()));
+
+        final negative = fresh();
+        (observation(negative, 'rate.record.1')['evidence']
+                as Map)['durationNanos'] =
+            -1;
+        expect(() => gate(negative), throwsA(isA<HttpBoundaryRefusal>()));
+
+        final otherSource = fresh();
+        (observation(otherSource, 'rate.record.2')['evidence']
+                as Map)['sourceKey'] =
+            'another-source';
+        expect(() => gate(otherSource), throwsA(isA<HttpBoundaryRefusal>()));
+
+        final window = fresh();
+        (observation(window, 'rate.record.3')['evidence']
+                as Map)['windowAdvanceMillis'] =
+            1;
+        expect(() => gate(window), throwsA(isA<HttpBoundaryRefusal>()));
+      },
+    );
+
+    test('a request and a failure connection keep their own clock order', () {
+      final request = fresh();
+      final row = firstRequest(request);
+      row['receivedAtNanos'] = (row['sentAtNanos'] as int) + 1;
+      expect(() => gate(request), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final connection = fresh();
+      final closed =
+          ((connection['failEndpoint'] as Map)['connections'] as List).first
+              as Map;
+      closed['closedAtNanos'] = (closed['acceptedAtNanos'] as int) - 1;
+      expect(() => gate(connection), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final unobserved = fresh();
+      final unseen =
+          ((unobserved['failEndpoint'] as Map)['connections'] as List).first
+              as Map;
+      unseen['requestObserved'] = false;
+      expect(() => gate(unobserved), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final noTerminal = fresh();
+      final terminal =
+          ((noTerminal['failEndpoint'] as Map)['connections'] as List).first
+              as Map;
+      terminal['terminal'] = '';
+      expect(() => gate(noTerminal), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('a request stage and the stage trace name measured steps only', () {
+      final stage = fresh();
+      firstRequest(stage)['stage'] = 'bogus-stage';
+      expect(() => gate(stage), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final owner = fresh();
+      ((owner['stageTrace'] as List).first as Map)['owner'] =
+          'nonexistent-owner';
+      expect(() => gate(owner), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final traceStage = fresh();
+      ((traceStage['stageTrace'] as List).first as Map)['stage'] =
+          'bogus-stage';
+      expect(() => gate(traceStage), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('a per-step summary cannot contradict the rows it summarises', () {
+      for (final field in const ['countMatch', 'orderMatch', 'batchMatch']) {
+        final record = fresh();
+        (((record['requestCheck'] as Map)['steps'] as List).first
+                as Map)[field] =
+            false;
+        expect(
+          () => gate(record),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason: 'a false $field summary was accepted',
+        );
+      }
+      final declared = fresh();
+      (declared['structural'] as Map)['declared'] = <String, Object?>{};
+      expect(() => gate(declared), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('the inventory is the four tables this observer reads', () {
+      final record = fresh();
+      for (final snapshot in const ['initial', 'final']) {
+        (record['inventory'] as Map)[snapshot] = {'not-an-actual-table': 0};
+      }
+      expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('arrays keep their order and their duplicate values', () {
+      final reversed = fresh();
+      reversed['coverageGaps'] = (reversed['coverageGaps'] as List).reversed
+          .toList();
+      expect(() => gate(reversed), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final duplicated = fresh();
+      final gaps = (duplicated['coverageGaps'] as List).toList()
+        ..add((duplicated['coverageGaps'] as List).first);
+      duplicated['coverageGaps'] = gaps;
+      expect(() => gate(duplicated), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final typed = fresh();
+      firstRequest(typed)['status'] = 200.0;
+      expect(() => gate(typed), throwsA(isA<HttpBoundaryRefusal>()));
+    });
   });
 
   test('the committed corpus derives the declared structural model', () {
