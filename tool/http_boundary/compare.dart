@@ -1998,6 +1998,15 @@ void _cancelRelations(
   if (dbBefore != null && dbAfter != null) {
     gate.equal(dbBefore, dbAfter, 'cancellation dbProvenance.before');
   }
+  // A cancelled worker has a recorded failure: the runner stores the exception
+  // it cancelled with, so a missing, null, empty or untyped receipt cannot
+  // stand beside a `workerOutcome: cancelled` claim.
+  if (value['workerOutcome'] == 'cancelled') {
+    final workerFailure = evidence['workerFailure'];
+    if (workerFailure is! String || workerFailure.isEmpty) {
+      gate.fail('a cancelled worker has no recorded failure');
+    }
+  }
 }
 
 /// The post-cancellation search: its own fresh execution identity, measured in

@@ -1628,6 +1628,40 @@ void main() {
       },
     );
 
+    test('a cancelled worker keeps a recorded failure receipt', () {
+      Map<String, Object?> cancelEvidence(Map<String, dynamic> record) =>
+          observation(record, 's5.search-cancelled')['evidence']
+              as Map<String, Object?>;
+
+      // The legitimate neighbor first: the runner's own cancelled-worker receipt.
+      final valid = fresh();
+      expect(
+        cancelEvidence(valid)['workerFailure'],
+        'cancelled: source request cancelled',
+      );
+      expect(() => gate(valid), returnsNormally);
+
+      final variants = <String, void Function(Map<String, Object?>)>{
+        'missing': (evidence) => evidence.remove('workerFailure'),
+        'null': (evidence) => evidence['workerFailure'] = null,
+        'empty': (evidence) => evidence['workerFailure'] = '',
+        'boolean': (evidence) => evidence['workerFailure'] = false,
+        'object': (evidence) => evidence['workerFailure'] = <String, Object?>{},
+        'array': (evidence) => evidence['workerFailure'] = <Object?>[],
+      };
+      for (final entry in variants.entries) {
+        final record = fresh();
+        entry.value(cancelEvidence(record));
+        expect(
+          () => gate(record),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason:
+              'the ${entry.key} worker-failure variant was accepted beside a '
+              'cancelled worker',
+        );
+      }
+    });
+
     test(
       'both database snapshots are complete and typed before comparison',
       () {
