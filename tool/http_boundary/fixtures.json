@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "fixtureId": "HTTP-BOUNDARY-01",
-  "corpusVersion": 1,
+  "corpusVersion": 2,
   "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
   "entryPoint": "io.legado.app.help.JsExtensions.ajax/ajaxAll/connect + io.legado.app.data.entities.BaseSource.getHeaderMap + io.legado.app.model.analyzeRule.AnalyzeUrl.evalJS + io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
   "origins": {
@@ -323,7 +323,7 @@
     {
       "id": "s-book-1-ch1",
       "method": "GET",
-      "path": "/s/book/1/ch1",
+      "path": "/s/book/1/c1",
       "rawQuery": "",
       "status": 200,
       "body": "<html><body><div class=\"c\">P1</div><div class=\"next\"><a href=\"http://127.0.0.1:18771/s/book/1/ch1-2\">2</a><a href=\"http://127.0.0.1:18771/s/book/1/ch1-3\">3</a></div></body></html>"

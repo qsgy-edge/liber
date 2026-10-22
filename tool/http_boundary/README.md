@@ -60,7 +60,7 @@ hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evi
 
 | Item | Value |
 |---|---|
-| fixture id | `HTTP-BOUNDARY-01`, corpus version 1, schema 1 |
+| fixture id | `HTTP-BOUNDARY-01`, corpus version 2, schema 1 |
 | baseline | `14dd24945b2914ce2708b8abaa4ee67ceef892af` |
 | target pin | `io.legado.app.debug`, APK SHA-256 `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6` (the AUTH pin) |
 | origin | exactly `http://127.0.0.1:18771`; one loopback listener, no wildcard, no alternate port |
@@ -127,7 +127,7 @@ Stages (11 observations):
 | `s1.search` | search `b1` | 1 | ordered search result fields |
 | `s1.details` | details book 1 | 1 | book fields and `tocUrl` |
 | `s1.toc` | toc book 1 | ordered prefix `toc1` + tail batch `{toc2,toc3}` | ordered chapters `c1,c2,c3`; peak 2 |
-| `s1.content` | content chapter c1 | ordered prefix `ch1` + tail batch `{ch1-2,ch1-3}` | exact `P1\nP2\nP3`; peak 2 |
+| `s1.content` | content chapter c1 | ordered prefix `c1` (response id `s-book-1-ch1`) + tail batch `{ch1-2,ch1-3}` | exact `P1\nP2\nP3`; peak 2 |
 | `s2.retry-non2xx` | search `b4` (`retry:2`) | 3 attempts of one selector, 502 body | parsed results; `attemptKind` 1 `initial` then 2 `source-status-retry` |
 | `s3.toc-empty.search/details/toc` | search/details/toc book 2 | 1 + 1 + 1 | toc outcome `failure`, category `empty-required-result` |
 | `s4.search-connection-failure` | search `fail` on source `F` | 0 ordinary requests | row `failure`/`network-failure`; fail-endpoint connections recorded separately |
@@ -317,7 +317,7 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/android-startup-repair-04/`.
+  receipts are under `E/a2-http-native/content-selector-repair-05/`.
 - The host probes execute the terminal, hold, cleanup, full raw-record presence/type
   sweep, the six authored header declarations with missing/wrong/unrelated negatives,
   the actual Android SDK35 org.json escaping semantics and the early-failure receipt
@@ -329,8 +329,8 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  63e5702878a413ad2f8e4fa760dae6e6ebcb95043d94390882e62699668a2db5
-LF-normalised sha256 12e58825243434a42a0741f6a0d02d014efec48ae2334c352962ef1ed7a22d54
+raw (CRLF) sha256  29bf5a3b4d9ecc22d4c211c9dd78549eb2da5ebe9f10ee289d38abcf0973beae
+LF-normalised sha256 712d43739199d1af1ca3addd92c3f423ccc3cef553bda64129c5b467b9d69d5a
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is

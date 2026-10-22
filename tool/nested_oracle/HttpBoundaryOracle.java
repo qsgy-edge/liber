@@ -726,8 +726,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private void validateCorpus() throws Exception {
         if (!"HTTP-BOUNDARY-01".equals(corpus.getString("fixtureId"))
                 || corpus.getInt("schemaVersion") != 1
-                || corpus.getInt("corpusVersion") != 1) {
-            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema/version 1");
+                || corpus.getInt("corpusVersion") != 2) {
+            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema 1/version 2");
         }
         JSONObject target = corpus.getJSONObject("target");
         if (!"io.legado.app.debug".equals(target.getString("package"))) {
