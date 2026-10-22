@@ -1115,6 +1115,13 @@ void validateProductReport(
     for (var index = 0; index < stageTrace.length; index++)
       gate.object(stageTrace[index], 'stageTrace.$index'),
   ];
+  // The trace is the measured requests' own four-field multiset: a duplicated
+  // entry can never stand in for a distinct request, while a reversed trace and
+  // the identical retry rows keep exactly their counted multiplicities.
+  String traceKey(Map row) =>
+      '${row['stage']}|${row['listener']}|${row['target']}|${row['owner']}';
+  final traceKeys = [for (final entry in traceMatches) traceKey(entry)];
+  final requestKeys = [for (final raw in requestRows) traceKey(raw as Map)];
   for (var index = 0; index < traceMatches.length; index++) {
     final entry = traceMatches[index];
     for (final name in const ['stage', 'owner']) {
@@ -1125,21 +1132,11 @@ void validateProductReport(
         );
       }
     }
-    final matched = requestRows.where((raw) {
-      final row = raw as Map;
-      return '${row['stage']}' == '${entry['stage']}' &&
-          '${row['owner']}' == '${entry['owner']}' &&
-          '${row['listener']}' == '${entry['listener']}' &&
-          '${row['target']}' == '${entry['target']}';
-    }).length;
-    if (matched == 0) {
-      gate.fail('stageTrace.$index matches no measured request');
-    }
   }
-  if (traceMatches.length != requestRows.length) {
+  if (!_multisetEquals(traceKeys, requestKeys)) {
     gate.fail(
-      'stageTrace has ${traceMatches.length} rows for '
-      '${requestRows.length} requests',
+      'stageTrace is not the measured request trace (a duplicated or '
+      'missing row changes the counted set)',
     );
   }
 
@@ -1575,12 +1572,7 @@ void validateProductReport(
   );
   // The observer's own fixed measurement contract: the four tables the runner
   // reads, not any non-empty map of zeros.
-  const observedTables = {
-    'books',
-    'chapters',
-    'source_entries',
-    'source_cookies',
-  };
+  const observedTables = _observedTableNames;
   for (final snapshot in [initial, finalCounts]) {
     gate.equal(
       snapshot.keys.toList()..sort(),
@@ -1915,13 +1907,55 @@ void _cancelRelations(
     '${cancellation['keyword']}',
     'cancellation execution evidence.keyword',
   );
-  // A claimed abort is the peer's own close or the failed write the runner
-  // measured, never an assumption.
+  // The abort proof is one of the runner's two measured branches: the peer's
+  // own close as a present nullable non-empty string, or the failed write the
+  // runner recorded on the bound held request whose terminal is the abort. An
+  // arbitrary observation key or an unrelated request is never a receipt.
+  if (!evidence.containsKey('peerClosed')) {
+    gate.fail('cancellation evidence has no peerClosed receipt');
+  }
+  final peerClosed = evidence['peerClosed'];
+  if (peerClosed != null && (peerClosed is! String || peerClosed.isEmpty)) {
+    gate.fail('cancellation peerClosed is neither a non-empty string nor null');
+  }
+  final holdResponseId = _heldResponseId(corpus);
+  final heldRequests = [
+    for (final raw in gate.array(
+      observation['requests'],
+      'cancellation requests',
+    ))
+      gate.object(raw, 'cancellation request'),
+  ].where((row) => '${row['declaredResponse']}' == holdResponseId).toList();
+  final failedWrite = [
+    for (final row in heldRequests)
+      if (row['abortError'] is String &&
+          (row['abortError'] as String).isNotEmpty)
+        row,
+  ];
+  final closeReceipt = peerClosed is String && peerClosed.isNotEmpty;
   if (value['clientAborted'] == true) {
-    if (evidence['peerClosed'] == null && !evidence.containsKey('abortError')) {
-      gate.fail('cancellation claims an abort with no measured close');
+    if (heldRequests.isEmpty) {
+      gate.fail('a claimed abort has no bound held request');
+    }
+    for (final row in heldRequests) {
+      if ('${row['terminal']}' != 'client-aborted') {
+        gate.fail('the bound held request does not record the abort terminal');
+      }
+    }
+    if (!closeReceipt && failedWrite.isEmpty) {
+      gate.fail(
+        'cancellation claims an abort with neither a peer close nor a '
+        'failed-write receipt on its held request',
+      );
     }
   }
+  for (final row in failedWrite) {
+    if ('${row['terminal']}' != 'client-aborted') {
+      gate.fail('a failed-write receipt is not on a client-aborted request');
+    }
+  }
+  // Both database snapshots are actual measurements over the four tables this
+  // observer reads, with non-negative integer counts, before they are compared.
   final dbProvenance = gate.object(
     evidence['dbProvenance'],
     'cancellation dbProvenance',
@@ -1931,16 +1965,38 @@ void _cancelRelations(
     true,
     'cancellation dbProvenance is not marked provenance',
   );
-  gate.equal(
+  Map<String, int>? snapshot(Object? raw, String path) {
+    if (raw is! Map) {
+      gate.fail('$path is not a measured snapshot');
+      return null;
+    }
+    final counts = <String, int>{};
+    for (final entry in raw.entries) {
+      final name = '${entry.key}';
+      final value = entry.value;
+      if (value is! int || value < 0) {
+        gate.fail('$path.$name is not a non-negative integer count');
+        continue;
+      }
+      counts[name] = value;
+    }
+    if (counts.keys.toSet().length != _observedTableNames.length ||
+        !counts.keys.toSet().containsAll(_observedTableNames)) {
+      gate.fail("$path does not cover the observer's four database tables");
+    }
+    return counts;
+  }
+
+  final dbBefore = snapshot(
     dbProvenance['before'],
-    dbProvenance['after'],
     'cancellation dbProvenance.before',
   );
-  if (value['workerOutcome'] == 'cancelled') {
-    final workerFailure = evidence['workerFailure'];
-    if (workerFailure is! String || workerFailure.isEmpty) {
-      gate.fail('a cancelled worker has no recorded failure');
-    }
+  final dbAfter = snapshot(
+    dbProvenance['after'],
+    'cancellation dbProvenance.after',
+  );
+  if (dbBefore != null && dbAfter != null) {
+    gate.equal(dbBefore, dbAfter, 'cancellation dbProvenance.before');
   }
 }
 
@@ -2093,6 +2149,21 @@ void _followUpRelations(
   gate.equal(followUp['jobClosed'], true, '$where.followUp.jobClosed');
   gate.equal(followUp['tokenPresent'], true, '$where.followUp.tokenPresent');
 }
+
+/// The four database categories this observer actually reads: the runner's own
+/// fixed measurement contract (`runner.dart` inventory query), not a generic
+/// database schema.
+const _observedTableNames = {
+  'books',
+  'chapters',
+  'source_entries',
+  'source_cookies',
+};
+
+/// The corpus' one held response: the request whose abort the cancellation row
+/// measures.
+String _heldResponseId(Map<String, dynamic> corpus) =>
+    '${httpBoundaryResponses(corpus).firstWhere((response) => response['hold'] == true, orElse: () => throw const HttpBoundaryRefusal('the corpus declares no held response'))['id']}';
 
 /// The scratch root a measured run may own: the isolation root is a fresh
 /// directory this lane created, so it may not be a volume root, a shared system

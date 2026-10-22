@@ -592,9 +592,21 @@ Map<String, dynamic> _validProduct({
         'execution': execution,
         'peerClosed': 'peer-closed',
         'workerFailure': 'cancelled: source request cancelled',
+        // The observer's own four-table snapshot, complete and typed: the gate
+        // requires both sides of this receipt before it compares them.
         'dbProvenance': {
-          'before': {'books': 0},
-          'after': {'books': 0},
+          'before': {
+            'books': 0,
+            'chapters': 0,
+            'source_entries': 0,
+            'source_cookies': 0,
+          },
+          'after': {
+            'books': 0,
+            'chapters': 0,
+            'source_entries': 0,
+            'source_cookies': 0,
+          },
           'productTableSnapshotIsProvenance': true,
         },
       });
@@ -1521,6 +1533,151 @@ void main() {
       }
       expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
     });
+
+    test('the stage trace keeps its multiplicity', () {
+      final duplicate = fresh();
+      final trace = duplicate['stageTrace'] as List;
+      trace[1] = Map<String, Object?>.from(trace.first as Map);
+      expect(() => gate(duplicate), throwsA(isA<HttpBoundaryRefusal>()));
+
+      // An identical retry entry may stand for another identical one: the
+      // counted set of measured rows is unchanged.
+      final identical = fresh();
+      final rows = identical['stageTrace'] as List;
+      final retries = [
+        for (final entry in rows)
+          if ('${(entry as Map)['stage']}' == 's2.retry-non2xx') entry,
+      ];
+      expect(retries, hasLength(3));
+      expect(
+        retries.map((entry) => jsonEncode(entry)).toSet(),
+        hasLength(1),
+        reason: 'the three retry rows are not identical in the fixture',
+      );
+      rows[rows.lastIndexWhere(
+        (entry) => (entry as Map)['stage'] == 's2.retry-non2xx',
+      )] = Map<String, Object?>.from(
+        retries.first,
+      );
+      expect(() => gate(identical), returnsNormally);
+    });
+
+    test(
+      'an abort needs a measured close or a failed write on the held request',
+      () {
+        for (final bad in <Object?>[false, '', <String, Object?>{}]) {
+          final record = fresh();
+          (observation(record, 's5.search-cancelled')['evidence']
+                  as Map)['peerClosed'] =
+              bad;
+          expect(
+            () => gate(record),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: 'peerClosed=$bad was accepted as a close receipt',
+          );
+        }
+
+        Map<String, Object?> cancelEvidence(Map<String, dynamic> record) =>
+            observation(record, 's5.search-cancelled')['evidence']
+                as Map<String, Object?>;
+
+        List<Map> heldRows(Map<String, dynamic> record) => [
+          for (final raw in (record['requests'] as List).cast<Map>())
+            if ('${raw['declaredResponse']}' == 's-search-hold') raw,
+        ];
+
+        final nullNoWrite = fresh();
+        cancelEvidence(nullNoWrite)['peerClosed'] = null;
+        expect(() => gate(nullNoWrite), throwsA(isA<HttpBoundaryRefusal>()));
+
+        final emptyMarker = fresh();
+        cancelEvidence(emptyMarker)['peerClosed'] = null;
+        cancelEvidence(emptyMarker)['abortError'] = '';
+        expect(() => gate(emptyMarker), throwsA(isA<HttpBoundaryRefusal>()));
+
+        // The runner's other real branch: the failing write is recorded on the
+        // bound held request, whose terminal is the abort.
+        final writeFailure = fresh();
+        cancelEvidence(writeFailure)['peerClosed'] = null;
+        final held = heldRows(writeFailure);
+        expect(held, isNotEmpty);
+        for (final row in held) {
+          row['abortError'] =
+              'SocketException: peer closed during response write';
+        }
+        for (final row
+            in (observation(writeFailure, 's5.search-cancelled')['requests']
+                    as List)
+                .cast<Map>()) {
+          if ('${row['declaredResponse']}' == 's-search-hold') {
+            row['abortError'] =
+                'SocketException: peer closed during response write';
+          }
+        }
+        expect(() => gate(writeFailure), returnsNormally);
+
+        final unrelated = fresh();
+        cancelEvidence(unrelated)['peerClosed'] = null;
+        final other = (unrelated['requests'] as List).first as Map;
+        other['abortError'] = 'unrelated failure';
+        final otherInSlice =
+            (observation(unrelated, 'helper.ajax')['requests'] as List).first
+                as Map;
+        otherInSlice['abortError'] = 'unrelated failure';
+        expect(() => gate(unrelated), throwsA(isA<HttpBoundaryRefusal>()));
+      },
+    );
+
+    test(
+      'both database snapshots are complete and typed before comparison',
+      () {
+        Map<String, Object?> snapshots(Map<String, dynamic> record) =>
+            (observation(record, 's5.search-cancelled')['evidence']
+                    as Map)['dbProvenance']
+                as Map<String, Object?>;
+
+        final variants = <String, void Function(Map<String, Object?>)>{
+          'absent': (db) {
+            db.remove('before');
+            db.remove('after');
+          },
+          'null': (db) {
+            db['before'] = null;
+            db['after'] = null;
+          },
+          'empty': (db) {
+            db['before'] = <String, Object?>{};
+            db['after'] = <String, Object?>{};
+          },
+          'not-a-snapshot': (db) {
+            db['before'] = 'snapshot';
+            db['after'] = 'snapshot';
+          },
+          'dropped-category': (db) {
+            for (final key in const ['before', 'after']) {
+              (db[key] as Map).remove('chapters');
+            }
+          },
+          'string-count': (db) {
+            for (final key in const ['before', 'after']) {
+              (db[key] as Map)['books'] = '0';
+            }
+          },
+          'changed-count': (db) {
+            (db['after'] as Map)['books'] = 1;
+          },
+        };
+        for (final entry in variants.entries) {
+          final record = fresh();
+          entry.value(snapshots(record));
+          expect(
+            () => gate(record),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: 'the ${entry.key} snapshot variant was accepted',
+          );
+        }
+      },
+    );
 
     test('arrays keep their order and their duplicate values', () {
       final reversed = fresh();

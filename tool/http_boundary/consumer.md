@@ -98,11 +98,19 @@ shipped class; no rate policy is changed.
   against its own connection list (each armed, observed, terminated after
   acceptance), and the inventory against the four tables this observer actually
   reads (`books`, `chapters`, `source_entries`, `source_cookies`). Each request's
-  send cannot precede its own arrival, its stage must name a measured step, and
-  the stage trace must be the same rows. The cancellation row's measured
-  `cancellationState`, the follow-up's fresh execution identities (same run only)
-  and every rate operation's own interval, duration, source key, record chain and
-  window relation are checked, so a claim and its evidence cannot disagree. Two
+  send cannot precede its own arrival and its stage must name a measured step. The
+  stage trace must be the measured rows' own four-field **multiset**: a duplicated
+  entry can never stand in for a distinct request, while a reversed trace and the
+  identical retry rows keep exactly their counted multiplicities. The cancellation
+  row's measured `cancellationState`, the follow-up's fresh execution identities
+  (same run only) and every rate operation's own interval, duration, source key,
+  record chain and window relation are checked, so a claim and its evidence cannot
+  disagree. An abort is proven by exactly one of the runner's two measured
+  branches: a present nullable `peerClosed` holding a non-empty string, or a
+  non-empty `abortError` on the bound held request whose terminal is
+  `client-aborted`; an unrelated request or a bare observation key is not a
+  receipt. Both `dbProvenance` snapshots must be actual measurements over the same
+  four tables with non-negative integer counts before they are compared. Two
   captures must be two independently captured runs (distinct id, report path,
   report hash and run id).
 - The product's own gates and cleanup receipts (listeners, bridge, database,
