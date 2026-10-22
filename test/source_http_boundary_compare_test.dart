@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../tool/http_boundary/compare.dart';
 import '../tool/http_boundary/runner.dart'
     show
+        HttpBoundaryRefusal,
         httpBoundaryDeclaredRequests,
         httpBoundaryStructuralOf,
         loadHttpBoundaryCorpus,
+        sha256File,
         validateHttpBoundaryCorpus;
 
 /// Focused checks of the HTTP-BOUNDARY-01 comparer's own rules. They run on
@@ -73,6 +76,7 @@ Map<String, Object?> _corpus() => {
       'cohort': 'stage.toc-tail',
     },
   ],
+  'structural': {'observations': 3},
   'steps': [
     {
       'id': 'helper.ajax',
@@ -189,7 +193,9 @@ Map<String, Object?> _report() {
     'corpusVersion': 2,
     'baselineCommit': 'b',
     'promotable': true,
+    'status': 'ok',
     'terminalIntegrityOk': true,
+    'structural': {'match': true},
     'negativeMode': false,
     'negative': null,
     'identity': {
@@ -200,6 +206,14 @@ Map<String, Object?> _report() {
       'targetPackage': 'io.legado.app.debug',
       'targetApkSha256': 'a' * 64,
       'targetBaselineCommit': 'b',
+      // The frozen record keeps the target pin flat; the product keeps the same
+      // three facts in a nested object. A fixture that stands in for both
+      // carries both spellings of the identical pin.
+      'target': {
+        'package': 'io.legado.app.debug',
+        'apkSha256': 'a' * 64,
+        'baselineCommit': 'b',
+      },
     },
     'runtimeConfiguration': {'threadCount': 16, 'resolved': true},
     'failEndpoint': {'acceptedConnections': 1, 'transportReconnects': 0},
@@ -219,6 +233,8 @@ Map<String, Object?> _report() {
       'rootAbsentAfter': true,
       'terminal': {'integrityOk': true},
     },
+    'unmatchedRequests': <Object?>[],
+    'serverErrors': <Object?>[],
     'requests': [request, details, toc2, toc3],
     'observations': [
       {
@@ -288,6 +304,114 @@ HttpBoundaryComparison _compare(
   corpus: _corpus().cast<String, dynamic>(),
   goldenId: 'synthetic',
 );
+
+/// A record whose only step is the corpus' 3-member ordering cohort, so the
+/// cohort-peak control has a baseline fact to corrupt.
+Map<String, Object?> _batchReport() {
+  final report = _report();
+  final rows = <Map<String, Object?>>[
+    for (final index in const [1, 2, 3])
+      _request(
+        owner: 'helper.ajaxAll-order',
+        selector: 'GET /h1/order/$index?',
+        path: '/h1/order/$index',
+        declaredResponse: 'h1-order-$index',
+        cohort: 'helper.order',
+      ),
+  ];
+  report['requests'] = rows;
+  report['observations'] = [
+    {
+      'id': 'helper.ajaxAll-order',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'helper',
+        'action': 'ajaxAll',
+        'result': 'O1|O2|O3',
+        'batch': {
+          'cohort': 'helper.order',
+          'cohortSize': 3,
+          'cohortTimeoutMs': 5000,
+          'entered': true,
+          'cohortComplete': true,
+          'releaseReason': 'complete',
+          'inFlightPeak': 3,
+          'membership': [
+            'GET /h1/order/1?',
+            'GET /h1/order/2?',
+            'GET /h1/order/3?',
+          ],
+          'threadCount': 16,
+        },
+      },
+      'requests': rows,
+    },
+  ];
+  return report;
+}
+
+Map<String, Object?> relic(Map<String, Object?> report) =>
+    (jsonDecode(jsonEncode(report)) as Map).cast<String, Object?>();
+
+/// A record whose only step is the corpus' repeated-selector retry row.
+Map<String, Object?> _retryReport() {
+  final report = _report();
+  final rows = <Map<String, Object?>>[
+    for (var attempt = 1; attempt <= 3; attempt++)
+      _request(
+        owner: 's2.retry-non2xx',
+        selector: 'GET /s/search?keyword=b4&page=1',
+        path: '/s/search',
+        rawQuery: 'keyword=b4&page=1',
+        attempt: attempt,
+        attemptKind: attempt == 1 ? 'initial' : 'source-status-retry',
+        declaredResponse: 's-search-b4',
+        status: 502,
+      ),
+  ];
+  report['requests'] = rows;
+  report['observations'] = [
+    {
+      'id': 's2.retry-non2xx',
+      'outcome': 'ok',
+      'category': null,
+      'value': {'kind': 'stage', 'stage': 'search'},
+      'requests': rows,
+    },
+  ];
+  return report;
+}
+
+/// A record with two sequential single-request steps.
+Map<String, Object?> _sequentialReport() {
+  final report = _report();
+  final first = _request(owner: 'helper.ajax', selector: 'GET /h1/single?');
+  final second = _request(
+    owner: 'helper.ajax-list-first',
+    selector: 'GET /h1/first?',
+    path: '/h1/first',
+    declaredResponse: 'h1-first',
+  );
+  report['requests'] = [first, second];
+  report['observations'] = [
+    {
+      'id': 'helper.ajax',
+      'outcome': 'ok',
+      'category': null,
+      'value': {'kind': 'helper', 'action': 'ajax', 'result': 'SINGLE'},
+      'requests': [first],
+    },
+    {
+      'id': 'helper.ajax-list-first',
+      'outcome': 'ok',
+      'category': null,
+      'value': {'kind': 'helper', 'action': 'ajaxList', 'result': 'FIRST'},
+      'requests': [second],
+    },
+  ];
+  return report;
+}
 
 void main() {
   test('identical records have no difference', () {
@@ -469,6 +593,157 @@ void main() {
     }
     // The originals are untouched: the same comparison still passes.
     expect(_compare(golden, product).mismatches, isEmpty);
+  });
+
+  test('a repeated declared selector expects its own attempt sequence', () {
+    // The corpus declares one selector three times for the retry row; the
+    // comparator must require #1, #2, #3 rather than three identical rows.
+    final corpus = loadHttpBoundaryCorpus();
+    final golden = _retryReport();
+    final product = _retryReport();
+    // The record carries only this one step, so the other steps' declared
+    // prefixes are absent; the retry row's own order is what this checks.
+    int retryOrderRows(List<HttpBoundaryMismatch> mismatches) => mismatches
+        .where(
+          (mismatch) =>
+              mismatch.surface == 'order' && mismatch.row == 's2.retry-non2xx',
+        )
+        .length;
+    expect(
+      retryOrderRows(
+        compareHttpBoundaryRecords(
+          golden: golden,
+          product: product,
+          corpus: corpus,
+          goldenId: 'synthetic',
+        ).mismatches,
+      ),
+      0,
+    );
+    final swapped = _retryReport();
+    final rows = (swapped['requests'] as List).cast<Map>();
+    final first = rows[0];
+    rows[0] = rows[2];
+    rows[2] = first;
+    final mismatches = compareHttpBoundaryRecords(
+      golden: golden,
+      product: swapped,
+      corpus: corpus,
+      goldenId: 'synthetic',
+    ).mismatches;
+    expect(
+      mismatches.map((mismatch) => mismatch.field),
+      contains('product-ordered-prefix'),
+    );
+  });
+
+  test('a swapped sequential step order is a causal difference', () {
+    final corpus = loadHttpBoundaryCorpus();
+    final golden = _sequentialReport();
+    final product = _sequentialReport();
+    final rows = (product['requests'] as List).cast<Map>();
+    final first = rows[0];
+    rows[0] = rows[1];
+    rows[1] = first;
+    final mismatches = compareHttpBoundaryRecords(
+      golden: golden,
+      product: product,
+      corpus: corpus,
+      goldenId: 'synthetic',
+    ).mismatches;
+    expect(
+      mismatches.map((mismatch) => mismatch.field),
+      contains('causal-steps'),
+    );
+  });
+
+  test('the batch control corrupts a real cohort-peak fact', () {
+    final corpus = loadHttpBoundaryCorpus();
+    final golden = _batchReport();
+    final product = _batchReport();
+    final baseline = compareHttpBoundaryRecords(
+      golden: golden,
+      product: product,
+      corpus: corpus,
+      goldenId: 'synthetic',
+    );
+    final controls = runHttpBoundaryControls(
+      golden: golden,
+      product: product,
+      corpus: corpus,
+      goldenId: 'synthetic',
+      baseline: baseline,
+    );
+    final batch = controls.firstWhere(
+      (control) => control.id == 'product-batch-width',
+    );
+    expect(batch.applied, isTrue, reason: 'the batch control did not apply');
+    expect(
+      batch.newKeys,
+      contains(
+        'observation|helper.ajaxAll-order|value.batch.inFlightPeak|number',
+      ),
+    );
+  });
+
+  test('the retry and sequential order controls add their own keys', () {
+    final corpus = loadHttpBoundaryCorpus();
+    final golden = _retryReport();
+    final product = _retryReport();
+    final baseline = compareHttpBoundaryRecords(
+      golden: golden,
+      product: product,
+      corpus: corpus,
+      goldenId: 'synthetic',
+    );
+    final controls = runHttpBoundaryControls(
+      golden: golden,
+      product: product,
+      corpus: corpus,
+      goldenId: 'synthetic',
+      baseline: baseline,
+    );
+    for (final id in const [
+      'product-retry-order',
+      'product-sequential-order',
+    ]) {
+      final control = controls.firstWhere((control) => control.id == id);
+      expect(control.applied, isTrue, reason: '$id did not apply');
+      expect(
+        control.newKeys,
+        isNotEmpty,
+        reason: '$id must add its own mismatch key',
+      );
+    }
+  });
+
+  test('the capture asset pin is the captured asset, not the working bytes', () {
+    final directory = Directory.systemTemp.createTempSync('http-boundary-lf-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final golden = _report();
+    (golden['identity'] as Map)['corpusAssetSha256'] = 'd' * 64;
+    final file = File('${directory.path}/positive.json')
+      ..writeAsStringSync(jsonEncode(golden));
+    final reportSha = sha256File(file);
+    final corpus = _corpus().cast<String, dynamic>();
+    void validate() => validateFrozenCapture(
+      golden.cast<String, dynamic>(),
+      corpus: corpus,
+      corpusLf: 'c' * 64,
+      goldenId: 'synthetic',
+      expectedReportSha256: reportSha,
+      reportPath: file.path,
+    );
+    // The captured asset pin is accepted whether the working corpus is CRLF or
+    // LF: the semantic LF hash above is the identity that matters.
+    corpus['_capturedAssetSha256'] = 'd' * 64;
+    corpus['_rawSha256'] = 'f' * 64;
+    expect(validate, returnsNormally);
+    corpus['_capturedAssetSha256'] = 'e' * 64;
+    expect(validate, throwsA(isA<HttpBoundaryRefusal>()));
+    corpus.remove('_capturedAssetSha256');
+    corpus['_rawSha256'] = 'd' * 64;
+    expect(validate, returnsNormally);
   });
 
   test('the committed corpus derives the declared structural model', () {

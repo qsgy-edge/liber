@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
+import 'package:liber/source/html_source_pipeline.dart' as html_boundary;
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart'
     show InProcessSourceScriptRuntime;
@@ -1675,14 +1676,22 @@ class _HttpBoundaryRun {
         '$raw',
     ];
     final before = await _stateProbe(sourceId, keys);
-    final pipeline = openBookSourcePipeline(
+    // The corpus' cancel source runs the HTML adapter, whose own `cancelled`
+    // getter is the execution's real cancellation state. Measuring it is what
+    // the row records; no unrelated token stands in for it.
+    final pipeline = html_boundary.HtmlSourcePipeline(
       sourceObject(sourceId),
       HttpSourceTransport(),
       hostState: hostState,
       androidId: androidId,
     );
     _cancelledPipeline = pipeline;
-    final token = SourceCancellation();
+    final cancelledBeforeRequest = pipeline.cancelled;
+    if (cancelledBeforeRequest) {
+      throw const HttpBoundaryIncomplete(
+        'the cancellation execution was already cancelled before it started',
+      );
+    }
     final hold = replay!.hold;
     final worker = pipeline.search(_text(step['keyword'], 'cancel keyword'));
     Object? workerFailure;
@@ -1713,7 +1722,7 @@ class _HttpBoundaryRun {
       );
     }
     pipeline.cancel();
-    token.cancel();
+    final cancelledAtRequest = pipeline.cancelled;
     hold.cancelNanos = _nowNanos();
     value['cancelRequested'] = true;
     // The peer's own close is what the held response reports while nothing has
@@ -1760,10 +1769,9 @@ class _HttpBoundaryRun {
         jsonEncode(before['variable']) == jsonEncode(after['variable']);
     final databaseUnchanged =
         jsonEncode(before['database']) == jsonEncode(after['database']);
-    // The product's `BookSourcePipeline` exposes the cancellation call, not a
-    // state getter: the receipt is that this run cancelled this execution and
-    // the run measured no further request from it.
-    final jobInactive = token.isCancelled;
+    // The measured state of the execution this run cancelled: the HTML
+    // pipeline's own cancellation, read on the same object that ran the search.
+    final jobInactive = cancelledAtRequest && pipeline.cancelled;
     final jobDone = jobInactive && terminated;
     final derived = _deriveCancelOutcome(
       workerOutcome: workerOutcome,
@@ -1817,6 +1825,17 @@ class _HttpBoundaryRun {
       },
       'workerFailure': workerFailure == null ? null : '$workerFailure',
       'peerClosed': peerClosed == null ? null : '$peerClosed',
+      'cancellationState': {
+        'cancelledBeforeRequest': cancelledBeforeRequest,
+        'cancelledAtRequest': cancelledAtRequest,
+        'cancelledAfterSettle': pipeline.cancelled,
+        'workerSettled': terminated,
+        'quietWindowMs': _integer(
+          cancellation['quietWindowMs'],
+          'quietWindowMs',
+        ),
+        'lateRequestCount': late.length,
+      },
       'dbProvenance': {
         'before': before['database'],
         'after': after['database'],

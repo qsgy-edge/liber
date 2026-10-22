@@ -52,8 +52,12 @@ input is refused.
 
 The held response detaches its socket so the peer's own close is observable while
 nothing has been written: the abort receipt is that close (or a failing write), never
-an assumption. The follow-up row opens a new pipeline (its own cancellation and
-transport) over the same source object and key before invoking it.
+an assumption. The cancelled execution is the HTML pipeline the search actually ran
+on, so `jobInactive`/`jobDone` read that pipeline's own `cancelled` state (before the
+request, at the cancel request and after the worker settled) together with the
+worker termination, the quiet window and the late-request count; no unrelated
+cancellation token stands in for it. The follow-up row opens a new pipeline (its own
+cancellation and transport) over the same source object and key before invoking it.
 
 `SourceRateLimiter` is a dedicated instance over the real clock, injected into the
 rate source's dispatcher, so the corpus' "initial snapshot empty" precondition is
@@ -69,11 +73,27 @@ shipped class; no rate policy is changed.
   exact method, path, raw query bytes, decoded query, target, body bytes, body
   length and body hash, status, terminal, declared response, cohort and the two
   batch facts, attempt kind, and the source-controlled headers.
-- The declared ordered prefixes in order and each declared batch as a multiset.
+- The causal chronology: every row's complete `(selector, attempt)` identity, its
+  declared dependency, the run's step order (a sequential step cannot be entered
+  twice or reached after a later one) and each selector's attempt kinds. Declared
+  ordered prefixes are ordered; only a declared cohort is a multiset, and arrival
+  or completion order is never compared inside one.
 - Both sides' identity pins (corpus LF hash, target package/APK/baseline) and the
   frozen capture's own receipts (`terminalIntegrityOk`, `promotable`,
   `requestCheck.match`, `observationCheck.match`, cleanup integrity), so a mutated
   copy is a visible difference rather than an unchecked assumption.
+- The product record itself is validated as one bounded schema before any value is
+  compared: every compared field must be present with its declared type (an
+  integer is an `int`, so a widened `200.0` is refused), explicit nulls stay
+  distinct from absence, the headline booleans must agree with the rows they
+  summarise (`requestCheck`, `observationCheck`, `structural`, the cleanup flags
+  and the nested `terminal` block, `lateErrorCount` against `serverErrors`, each
+  observation's `requests` recomputed from the trace, `headerLines` re-derived from
+  `headers`, `bodyLength`/`bodySha256` from the body), the inventory must be a
+  non-empty all-integer snapshot of the same tables, the failure endpoint's counts
+  must equal its own connection list, and the rate rows must satisfy their typed
+  record chain and interval/window relations. Two captures must be two
+  independently captured runs (distinct id, report path, report hash and run id).
 - The product's own gates and cleanup receipts (listeners, bridge, database,
   scratch removal), its inventory ("opened and empty before and after" — the table
   names are each runtime's own schema) and the failure endpoint's measured
@@ -91,8 +111,10 @@ declares:
 - request `receivedAtNanos` / `sentAtNanos` / `respondedAtNanos` / `sendSequence`,
   and `requests[].index` as row position rather than a value;
 - a rate record's `time` epoch, compared only through `sameWindowAsPrevious`,
-  `scheduleComplete` and the window advance; its `isConcurrent`/`frequency` are
-  compared exactly;
+  `scheduleComplete`, the within-run call interval and the window advance; its
+  type, `isConcurrent`, `frequency` and the record chain are compared exactly, so
+  one coherent cross-host epoch translation stays valid while a zeroed or
+  non-numeric time is refused;
 - the failure endpoint's assigned port, its nanosecond stamps and its host header,
   and the owner manifest's timestamp;
 - header **name case and order** and the differential contract's platform-generated
@@ -105,13 +127,17 @@ this comparer.
 
 ## Controls
 
-Fourteen controls run on deep copies of the immutable captures and of the product
+Sixteen controls run on deep copies of the immutable captures and of the product
 record; each is compared against **its own** baseline, so a row the baseline already
 reports can never satisfy a control: product value, golden value, product raw query,
-product retry order, product identity, product presence, product receipt, golden
+product retry attempt, product identity, product presence, product receipt, golden
 receipt (native provenance), an undeclared extra request, a product header, a
-product body, a product attempt kind, a product batch fact and the held row's
-terminal. Originals are re-hashed after the run and stay byte-identical.
+product body, a product attempt kind, a real cohort peak
+(`helper.ajaxAll-order.value.batch.inFlightPeak`, a fact that genuinely matches at
+baseline), the retry row order, the sequential step order and the held row's
+terminal. The aggregate result keeps every capture's rows, so neither capture's
+controls can hide the other's. Originals are re-hashed after the run and stay
+byte-identical.
 
 ## The measured differences (all strict failures, kept as they are)
 
@@ -148,7 +174,11 @@ await the controller's decision.
 
 ## Limits
 
-One product session is compared with both independently captured positives; nothing
-is fabricated from a capture or a raw script rerun. No phone, ADB, corpus, capture,
+One product session is compared with both independently captured positives, which
+must be two distinct captured runs; nothing is fabricated from a capture or a raw
+script rerun. The canonical LF corpus hash is the semantic identity, so an LF or a
+CRLF working copy of the same corpus is equally acceptable; each capture's bundled
+asset hash is checked against the asset its capture manifest pinned, never against
+whatever line endings this checkout happens to have. No phone, ADB, corpus, capture,
 native producer or product `lib/`/Rust/persistence/public API change is part of this
 lane, and this document closes no capability row, #137 or #133.
