@@ -55,6 +55,12 @@ hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evi
   calling the ordinary validators; the original failure stage and cleanup are retained.
   Pre-bind provider preference waiters remain blocked on the shared binding latch rather
   than being refused into a process crash before the receipt is published.
+- The replay-omission declaration's `expectedOwner`, `expectedTerminal` and
+  `expectedStatus` are validated at load (corpus-boundary presence/type/terminal/exact
+  status checks plus the indexed declared owner) and propagated into the negative block.
+  Missing, null, wrong-type, fractional or contradictory expectations are rejected
+  before any request and never default into success; a negative report stays
+  incomplete/non-promotable even when the intended omission passes.
 
 ## Corpus shape
 
@@ -317,12 +323,16 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
 - Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
   both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/content-selector-repair-05/`.
+  receipts are under `E/a2-http-native/negative-builder-repair-06/`.
 - The host probes execute the terminal, hold, cleanup, full raw-record presence/type
   sweep, the six authored header declarations with missing/wrong/unrelated negatives,
-  the actual Android SDK35 org.json escaping semantics and the early-failure receipt
-  path on the actual compiled methods. Every negative is rejected and the allowed
-  positives pass. Host checks are never device goldens.
+  the actual Android SDK35 org.json escaping semantics, the early-failure receipt path
+  and the actual negative builder plus downstream checks over the immutable captured
+  negative trace on the actual compiled methods. The retained old builder drops the
+  three expectations and rejects the intended omission; the repaired builder propagates
+  them and the complete trace passes, while altered owner/selector/terminal/status,
+  multiple unmatched, outside-mode and malformed declaration cases are rejected. Host
+  checks are never device goldens.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 

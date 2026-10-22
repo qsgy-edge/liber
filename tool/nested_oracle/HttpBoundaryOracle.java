@@ -919,6 +919,25 @@ public final class HttpBoundaryOracle extends Instrumentation {
         if (!responseIds.contains(negative.getString("drop"))) {
             throw new IllegalStateException("corpus negative drop names no response");
         }
+        if (!negative.has("expectedOwner")
+                || !(negative.get("expectedOwner") instanceof String)
+                || negative.getString("expectedOwner").isEmpty()) {
+            throw new IllegalStateException("corpus negative expectedOwner is missing or"
+                + " not a non-empty string");
+        }
+        if (!negative.has("expectedTerminal")
+                || !(negative.get("expectedTerminal") instanceof String)
+                || !"omitted-unmatched".equals(negative.getString("expectedTerminal"))) {
+            throw new IllegalStateException("corpus negative expectedTerminal is missing,"
+                + " not a string or not the existing omission terminal");
+        }
+        Object expectedStatus = negative.get("expectedStatus");
+        if (!(expectedStatus instanceof Number)
+                || ((Number) expectedStatus).intValue() != 404
+                || ((Number) expectedStatus).doubleValue() != 404.0d) {
+            throw new IllegalStateException("corpus negative expectedStatus is missing,"
+                + " not an integer 404 or not the existing omission status");
+        }
         JSONObject rate = corpus.getJSONObject("rate");
         if (!"1/2000".equals(rate.getString("concurrentRate"))
                 || rate.getLong("windowMillis") != 2000) {
@@ -1181,11 +1200,19 @@ public final class HttpBoundaryOracle extends Instrumentation {
             throw new IllegalStateException("the negative drop is owned by " + owner.step
                 + ", the corpus declares " + declared.getString("step"));
         }
+        String expectedOwner = declared.getString("expectedOwner");
+        if (!owner.step.equals(expectedOwner)) {
+            throw new IllegalStateException("the negative expectedOwner " + expectedOwner
+                + " is not the indexed declared step " + owner.step);
+        }
         negativeBlock = new JSONObject()
             .put("mode", "replay-omission")
             .put("drop", drop)
             .put("selector", selector)
             .put("step", owner.step)
+            .put("expectedOwner", expectedOwner)
+            .put("expectedTerminal", declared.getString("expectedTerminal"))
+            .put("expectedStatus", declared.getInt("expectedStatus"))
             .put("declaredResponses", corpus.getJSONArray("responses").length())
             .put("activeResponses", corpus.getJSONArray("responses").length() - 1)
             .put("armedAtLoad", true)
