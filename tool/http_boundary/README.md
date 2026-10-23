@@ -110,8 +110,8 @@ Helper (12 observations, no stage involved):
 | `helper.connect-source-header` | `java.connect(url)` | source `x-declared`/`user-agent` |
 | `helper.header-map-js` | three fixture-authored scripts through `AnalyzeUrl.evalJS` calling `source.getHeaderMap()`, `(false)`, `(true)` on `@js:` | one typed `returned` record per arity plus the actual primitive map; a thrown arity keeps its real outcome; the Kotlin `$default` call is provenance only |
 | `helper.header-map-ltjs` | same on `<js>` spelling | same shape |
-| `helper.script-probe-hg0` | one corpus script through `AnalyzeUrl.evalJS`/`source` calling the real installed-app `source.getHeaderMap(false)` with no data-key collision; `m.get`/`m.keySet` and `m['get']`/`m['keySet']` are read separately before inspection | the typed `{portable, diagnostics}` envelope: both access forms, lookup strict/loose/text, sorted key-set membership; the compared portable projection is validated and real caught diagnostics stay in evidence |
-| `helper.script-probe-hg1` / `-hg2` / `-hg3` | the same probe on sources whose header declares an own `get`, `keySet`, or both data keys | the actual dot/bracket type and data, the actual `get` lookup outcome (a real TypeError when shadowed) and the keySet call outcome; the portable projection rejects empty/missing/wrong-typed facts, and the caught name/message/text/bounded stack are noncompared provenance |
+| `helper.script-probe-hg0` | one corpus script through `AnalyzeUrl.evalJS`/`source` calling the real installed-app `source.getHeaderMap(false)` with no data-key collision; `m.get`/`m.keySet` and `m['get']`/`m['keySet']` are read separately before inspection | the typed `{portable, diagnostics}` envelope: both access forms, lookup strict/loose/text, sorted key-set membership; the compared portable projection is validated, expected own-data TypeErrors keep real diagnostics in evidence, and unknown/setup errors escape as incomplete |
+| `helper.script-probe-hg1` / `-hg2` / `-hg3` | the same probe on sources whose header declares an own `get`, `keySet`, or both data keys | the actual dot/bracket type and data, the actual `get` lookup outcome (a real TypeError when shadowed) and the keySet call outcome; only the expected noncallable own-data collision TypeError is a negative observation, and its name/message/text/bounded stack are noncompared provenance. Unknown errors and a TypeError from an otherwise-callable method escape |
 
 Rate (3 observations). The corpus value `1/2000` is a **synthetic fixture input**; the
 frozen `ConcurrentRateLimiter` semantics are preserved. Each row reads
@@ -357,10 +357,11 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 - The actual v3 checks performed here are the Dart corpus gate in `runner.dart`, the
   focused test `the committed corpus derives the declared structural model` (selectors,
   owners, cohorts and the 44/51/49 model re-derived from the committed bytes), the
-  action/carrier refusal tests, the typed probe/pair gates and control-sensitivity
-  tests, and the four real `source.getHeaderMap(false)` probes in
-  `test/source_http_boundary_interop_test.dart` through the product's own runtime. This
-  tree contains no `structural_check.py`; that script was not executed.
+  action/carrier refusal tests, the typed probe/pair identity gates, the measured
+  relation controls, and the four real `source.getHeaderMap(false)` probes plus
+  unexpected-error fault injection in `test/source_http_boundary_interop_test.dart`
+  through the product's own runtime. This tree contains no `structural_check.py`; that
+  script was not executed.
 - The earlier negative-builder and host-probe checks in
   `E/a2-http-native/negative-builder-repair-06/` remain historical evidence for the v2
   corpus and its immutable captures; they were not re-run for v3 and no v3 handset
@@ -371,8 +372,8 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  0c7844e0c72b55d488c1de553c6f94e4001e4fd5c15122d1b91641618fca1070
-LF-normalised sha256 ad4645ab904830ba591644a4a4185f0d06eb19a989163fd60796327b33f9c817
+raw (CRLF) sha256  5ed32f547417647c63cdc3240a0f1173823199d2b577d665c7991fd78039d9a1
+LF-normalised sha256 1eb8666e9417e91cc4d2f0ab5dabe4be8fefa9cf5399fd8765b8513f33b1b7e2
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is

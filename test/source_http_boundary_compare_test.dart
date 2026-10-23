@@ -1707,6 +1707,16 @@ void main() {
         ),
         throwsFormatException,
       );
+      final missingNullable = _validProbeProjection();
+      (missingNullable['getDot'] as Map)['type'] = 'function';
+      (missingNullable['getDot'] as Map).remove('text');
+      expect(
+        () => validateHttpBoundaryScriptProbeProjection(
+          missingNullable,
+          where: 'probe',
+        ),
+        throwsFormatException,
+      );
       final wrongLookup = _validProbeProjection();
       (wrongLookup['lookup'] as Map)['returned'] = 'yes';
       expect(
@@ -1723,6 +1733,26 @@ void main() {
           wrongKeys,
           where: 'probe',
         ),
+        throwsFormatException,
+      );
+      final unexpected = _validProbeProjection();
+      unexpected['lookup'] = <String, Object?>{
+        'returned': false,
+        'errorName': 'RangeError',
+      };
+      final unexpectedDiagnostics = _validProbeDiagnostics();
+      unexpectedDiagnostics['lookup'] = <String, Object?>{
+        'caught': true,
+        'name': 'RangeError',
+        'message': 'injected',
+        'text': 'RangeError: injected',
+        'stack': null,
+      };
+      expect(
+        () => validateHttpBoundaryScriptProbeEnvelope({
+          'portable': unexpected,
+          'diagnostics': unexpectedDiagnostics,
+        }, where: 'probe'),
         throwsFormatException,
       );
       final wrongDiagnostics = _validProbeDiagnostics();
@@ -1785,6 +1815,11 @@ void main() {
   });
 
   test('the v3 observation controls target their own new rows', () {
+    final corpus = loadHttpBoundaryCorpus();
+    final oBook = ((corpus['books'] as List).cast<Map>().firstWhere(
+      (book) => book['id'] == 'o-book-1',
+    )).cast<String, dynamic>();
+    final oBookUrl = '${oBook['bookUrl']}';
     final golden = _report();
     final product = _product();
     Map<String, Object?> probeRow() => {
@@ -1821,7 +1856,7 @@ void main() {
         'kind': 'stage',
         'stage': 'details',
         'source': 'O',
-        'bookUrl': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+        'bookUrl': oBookUrl,
         'counterAfter': counter,
       },
       'evidence': {
@@ -1844,7 +1879,7 @@ void main() {
           'storedIdentity': 501,
           'sameObject': true,
           'bookId': 'o-book-1',
-          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+          'rawAddress': oBookUrl,
           'preOptionUrl': 'http://127.0.0.1:18771/o/book',
           'sourceKey': 'http://127.0.0.1:18771/o',
           'counterAfter': counter,
@@ -1887,11 +1922,16 @@ void main() {
         ),
       ]);
     }
-    final baseline = _compare(golden, product);
+    final baseline = compareHttpBoundaryRecords(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: corpus,
+      goldenId: 'synthetic',
+    );
     final controls = runHttpBoundaryControls(
       golden: golden.cast<String, dynamic>(),
       product: product.cast<String, dynamic>(),
-      corpus: _corpus().cast<String, dynamic>(),
+      corpus: corpus,
       goldenId: 'synthetic',
       baseline: baseline,
     );
@@ -1914,12 +1954,28 @@ void main() {
       contains('observation|o1.details-same|value.bookUrl|type-or-value'),
     );
     expect(
-      control('product-fresh-substituted-hit')['newMismatchKeys'],
-      contains('observation|o1.details-fresh|value.bookUrl|type-or-value'),
+      control('product-fresh-substituted-hit')['relationFailure'],
+      contains('hit address'),
     );
     expect(
-      control('product-fresh-reused-pipeline')['newMismatchKeys'],
-      isNotEmpty,
+      control('product-fresh-reused-pipeline')['relationFailure'],
+      contains('did not use a fresh pipeline'),
+    );
+    expect(
+      control('product-fresh-reused-transport')['relationFailure'],
+      contains('did not use a fresh pipeline'),
+    );
+    expect(
+      control('product-fresh-wrong-source-object')['relationFailure'],
+      contains('source object is not the cached one'),
+    );
+    expect(
+      control('product-fresh-wrong-stored-hit')['relationFailure'],
+      contains('actual hit differs from stored hit'),
+    );
+    expect(
+      control('golden-fresh-retained-book')['relationFailure'],
+      contains('retained book identity'),
     );
     expect(
       control('product-same-extra-execution')['newMismatchKeys'],
@@ -1939,52 +1995,16 @@ void main() {
       'product-fresh-binding',
       'product-fresh-substituted-hit',
       'product-fresh-reused-pipeline',
+      'product-fresh-reused-transport',
+      'product-fresh-wrong-source-object',
+      'product-fresh-wrong-stored-hit',
+      'golden-fresh-retained-book',
       'product-same-extra-execution',
       'product-fresh-missing-execution',
       'product-option-counter',
     ]) {
       expect(control(id)['passed'], isTrue, reason: '$id must pass');
     }
-  });
-
-  test('the reused-pipeline control has an actual counter fallback', () {
-    final golden = _report();
-    final product = _product();
-    Map<String, Object?> row(String id, String counter) => {
-      'id': id,
-      'outcome': 'ok',
-      'category': null,
-      'value': {
-        'kind': 'stage',
-        'stage': 'details',
-        'source': 'O',
-        'bookUrl': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
-        'counterAfter': counter,
-      },
-    };
-    for (final report in [golden, product]) {
-      (report['observations'] as List).addAll(<Map<String, Object?>>[
-        row('o1.details-same', '1'),
-        row('o1.details-fresh', '2'),
-      ]);
-    }
-    final baseline = _compare(golden, product);
-    final controls = runHttpBoundaryControls(
-      golden: golden.cast<String, dynamic>(),
-      product: product.cast<String, dynamic>(),
-      corpus: _corpus().cast<String, dynamic>(),
-      goldenId: 'synthetic',
-      baseline: baseline,
-    );
-    final reused = controls.firstWhere(
-      (control) => control.id == 'product-fresh-reused-pipeline',
-    );
-    expect(reused.applied, isTrue);
-    expect(reused.passed, isTrue);
-    expect(
-      reused.newKeys,
-      contains('observation|o1.details-fresh|value.counterAfter|type-or-value'),
-    );
   });
 
   test('the retry and sequential order controls add their own keys', () {
@@ -2143,6 +2163,30 @@ void main() {
             hit['rawAddress'] = 'http://127.0.0.1:18771/o/book/SUBSTITUTED';
           },
           (record) {
+            for (final id in const ['o1.details-same', 'o1.details-fresh']) {
+              final carrier =
+                  (observation(record, id)['evidence'] as Map)['carrier']
+                      as Map;
+              carrier.remove('sourceObjectIdentity');
+              carrier.remove('cachedSourceObjectIdentity');
+              carrier.remove('hostStateIdentity');
+            }
+          },
+          (record) {
+            final hit =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['hitReference']
+                    as Map;
+            hit['storedIdentity'] = 999;
+          },
+          (record) {
+            final carrier =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['carrier']
+                    as Map;
+            carrier['sourceKey'] = 'http://127.0.0.1:18771/other';
+          },
+          (record) {
             final carrier =
                 (observation(record, 'o1.details-fresh')['evidence']
                         as Map)['carrier']
@@ -2154,10 +2198,23 @@ void main() {
                 (observation(record, 'o1.details-fresh')['evidence']
                         as Map)['carrier']
                     as Map;
+            final same =
+                (observation(record, 'o1.details-same')['evidence']
+                        as Map)['carrier']
+                    as Map;
+            carrier['pipelineIdentity'] = same['cachedPipelineIdentity'];
+            carrier['reusedPipeline'] = true;
+          },
+          (record) {
+            final carrier =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['carrier']
+                    as Map;
             carrier['transportIdentity'] =
                 ((observation(record, 'o1.details-same')['evidence']
                         as Map)['carrier']
                     as Map)['transportIdentity'];
+            carrier['distinctTransport'] = false;
           },
           (record) {
             (observation(record, 'o1.details-fresh')['value']
@@ -2195,6 +2252,66 @@ void main() {
           reportPath: file.path,
         ),
         returnsNormally,
+      );
+    });
+
+    test('a missing frozen probe replaced by a duplicate is refused', () {
+      final record = fresh();
+      final observations = record['observations'] as List;
+      observations.removeWhere(
+        (raw) => (raw as Map)['id'] == 'helper.script-probe-hg0',
+      );
+      observations.add(
+        jsonDecode(jsonEncode(observation(record, 'helper.script-probe-hg1'))),
+      );
+      final identity = record['identity'] as Map;
+      identity['corpusAssetSha256'] = 'a' * 64;
+      identity['targetPackage'] = (corpus['target'] as Map)['package'];
+      identity['targetApkSha256'] = (corpus['target'] as Map)['apkSha256'];
+      identity['targetBaselineCommit'] =
+          (corpus['target'] as Map)['baselineCommit'];
+      record['status'] = 'ok';
+      record['promotable'] = true;
+      record['terminalIntegrityOk'] = true;
+      final file = File('${work.path}/duplicate-probe.json')
+        ..writeAsStringSync(jsonEncode(record));
+      expect(
+        () => validateFrozenCapture(
+          record,
+          corpus: corpus,
+          corpusLf: corpusLf,
+          goldenId: 'synthetic-duplicate',
+          expectedReportSha256: sha256File(file),
+          reportPath: file.path,
+        ),
+        throwsA(isA<HttpBoundaryRefusal>()),
+      );
+    });
+
+    test('an already-invalid relation baseline is refused by controls', () {
+      final golden = fresh();
+      final record = fresh();
+      final carrier =
+          (observation(record, 'o1.details-fresh')['evidence']
+                  as Map)['carrier']
+              as Map;
+      carrier['pipelineIdentity'] = carrier['cachedPipelineIdentity'];
+      carrier['reusedPipeline'] = true;
+      final baseline = compareHttpBoundaryRecords(
+        golden: golden,
+        product: record,
+        corpus: corpus,
+        goldenId: 'synthetic-invalid',
+      );
+      expect(
+        () => runHttpBoundaryControls(
+          golden: golden,
+          product: record,
+          corpus: corpus,
+          goldenId: 'synthetic-invalid',
+          baseline: baseline,
+        ),
+        throwsA(isA<HttpBoundaryRefusal>()),
       );
     });
 

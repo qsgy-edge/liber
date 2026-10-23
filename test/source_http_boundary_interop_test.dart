@@ -54,6 +54,41 @@ void main() {
   Map<String, dynamic> member(Map<String, dynamic> value, String name) =>
       (value[name] as Map).cast<String, dynamic>();
 
+  Future<Object?> evaluateInjected(String errorType) async {
+    final corpus = loadHttpBoundaryCorpus();
+    final source = httpBoundarySourceOf(corpus, 'HG0');
+    final step = [
+      for (final raw in corpus['steps'] as List)
+        (raw as Map).cast<String, dynamic>(),
+    ].firstWhere((step) => step['id'] == 'helper.script-probe-hg0');
+    final script = '${step['script']}'.replaceFirst(
+      'try{var v=m.get(',
+      'try{throw new $errorType("controller-injected");var v=m.get(',
+    );
+    final runtime = InProcessSourceScriptRuntime(
+      androidId: 'interop-fault',
+      hostState: SourceHostState(),
+    );
+    return runtime.evaluate(
+      source: script,
+      input: {'sourceKey': '${source['bookSourceUrl']}', 'source': source},
+      timeout: const Duration(seconds: 30),
+    );
+  }
+
+  test('unexpected RangeError and callable-method TypeError escape', () async {
+    for (final type in const ['RangeError', 'TypeError']) {
+      await expectLater(
+        evaluateInjected(type),
+        throwsA(
+          predicate<Object>(
+            (error) => '$error'.contains('controller-injected'),
+          ),
+        ),
+      );
+    }
+  });
+
   test('no collision: both Java Map access forms are callable', () async {
     final envelope = await probe('HG0');
     final value = portable(envelope);

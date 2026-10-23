@@ -1450,6 +1450,9 @@ public final class HttpBoundaryOracle extends Instrumentation {
             JSONObject projection, String name, String where) {
         JSONObject member = probeMember(projection, name, where);
         String type = probeText(member, "type", where + "." + name, true);
+        if (!member.has("text")) {
+            throw new IllegalStateException(where + "." + name + ".text is missing");
+        }
         Object text;
         try {
             text = member.get("text");
@@ -1483,7 +1486,18 @@ public final class HttpBoundaryOracle extends Instrumentation {
             probeBoolean(lookup, "looseLiteral", where + ".lookup");
             probeText(lookup, "text", where + ".lookup", false);
         } else {
-            probeText(lookup, "errorName", where + ".lookup", true);
+            String errorName = probeText(lookup, "errorName", where + ".lookup", true);
+            if (!"TypeError".equals(errorName)) {
+                throw new IllegalStateException(where
+                    + ".lookup refusal is not the expected TypeError");
+            }
+            JSONObject getDot = probeMember(projection, "getDot", where);
+            String getType = probeText(getDot, "type", where + ".getDot", true);
+            if ("function".equals(getType) || "undefined".equals(getType)
+                    || !(getDot.get("text") instanceof String)) {
+                throw new IllegalStateException(where
+                    + ".lookup refusal has no noncallable own-data context");
+            }
         }
         JSONObject enumeration = probeMember(projection, "enumeration", where);
         boolean enumerationReturned = probeBoolean(enumeration, "returned",
@@ -1503,30 +1517,65 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 }
             }
         } else {
-            probeText(enumeration, "errorName", where + ".enumeration", true);
+            String errorName = probeText(enumeration, "errorName",
+                where + ".enumeration", true);
+            if (!"TypeError".equals(errorName)) {
+                throw new IllegalStateException(where
+                    + ".enumeration refusal is not the expected TypeError");
+            }
+            JSONObject keySetDot = probeMember(projection, "keySetDot", where);
+            String keySetType = probeText(keySetDot, "type", where + ".keySetDot", true);
+            if ("function".equals(keySetType) || "undefined".equals(keySetType)
+                    || !(keySetDot.get("text") instanceof String)) {
+                throw new IllegalStateException(where
+                    + ".enumeration refusal has no noncallable own-data context");
+            }
         }
     }
 
-    private static void validateScriptProbeDiagnostics(JSONObject diagnostics, String where) {
+    private static void validateScriptProbeDiagnostics(
+            JSONObject diagnostics, JSONObject projection, String where) {
         if (diagnostics == null) {
             throw new IllegalStateException(where + " diagnostics is not an object");
         }
         for (String name : new String[]{"lookup", "enumeration"}) {
             JSONObject entry = probeMember(diagnostics, name, where);
             boolean caught = probeBoolean(entry, "caught", where + "." + name);
-            if (!caught) continue;
-            probeText(entry, "name", where + "." + name, false);
-            probeText(entry, "message", where + "." + name, false);
-            probeText(entry, "text", where + "." + name, false);
-            Object stack;
-            try {
-                stack = entry.get("stack");
-            } catch (Throwable missing) {
-                throw new IllegalStateException(where + "." + name + ".stack is missing");
+            if (caught) {
+                probeText(entry, "name", where + "." + name, false);
+                probeText(entry, "message", where + "." + name, false);
+                probeText(entry, "text", where + "." + name, false);
+                Object stack;
+                try {
+                    stack = entry.get("stack");
+                } catch (Throwable missing) {
+                    throw new IllegalStateException(where + "." + name + ".stack is missing");
+                }
+                if (stack != JSONObject.NULL && !(stack instanceof String)) {
+                    throw new IllegalStateException(where + "." + name + ".stack is not"
+                        + " a string or null");
+                }
             }
-            if (stack != JSONObject.NULL && !(stack instanceof String)) {
-                throw new IllegalStateException(where + "." + name + ".stack is not"
-                    + " a string or null");
+            JSONObject portableEntry = probeMember(projection, name, where);
+            boolean returned = probeBoolean(portableEntry, "returned",
+                where + "." + name);
+            if (returned) {
+                if (caught) {
+                    throw new IllegalStateException(where + "." + name
+                        + " caught contradicts a returned value");
+                }
+            } else {
+                if (!caught) {
+                    throw new IllegalStateException(where + "." + name
+                        + " has no caught provenance for a refusal");
+                }
+                if (!"TypeError".equals(probeText(entry, "name",
+                        where + "." + name, false))
+                        || !"TypeError".equals(probeText(portableEntry, "errorName",
+                            where + "." + name, true))) {
+                    throw new IllegalStateException(where + "." + name
+                        + " is not the expected TypeError");
+                }
             }
         }
     }
@@ -1543,7 +1592,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
         JSONObject diagnostics = envelope.optJSONObject("diagnostics");
         try {
             validateScriptProbeProjection(portable, where);
-            validateScriptProbeDiagnostics(diagnostics, where);
+            validateScriptProbeDiagnostics(diagnostics, portable, where);
         } catch (Throwable error) {
             throw new IncompleteStep(where + " envelope is not typed: "
                 + describe(error));
@@ -3225,7 +3274,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 if (shapeOk) {
                     try {
                         validateScriptProbeProjection(projection, "script probe " + id);
-                        validateScriptProbeDiagnostics(diagnostics,
+                        validateScriptProbeDiagnostics(diagnostics, projection,
                             "script probe " + id);
                     } catch (Throwable error) {
                         shapeOk = false;

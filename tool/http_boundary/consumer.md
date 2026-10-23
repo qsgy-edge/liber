@@ -39,7 +39,7 @@ captures compared with **38 strict differences each**. All 38 are named in
 `notCompared` under the four approved dispositions below and **0 are unattributed**;
 the strict verdict remains a difference (exit 3), never a pass. Nineteen own-baseline
 controls per v2 capture applied and passed, and every control's own new mismatch stayed
-unattributed; the eight v3 row controls are not-applicable on a v2 record. Integration,
+unattributed; the twelve v3 row controls are not-applicable on a v2 record. Integration,
 review, the Windows driven run and #137/#133 acceptance stay with the controller.
 
 ## What runs
@@ -199,7 +199,7 @@ name stays an unattributed failure.
 
 ## Controls
 
-Twenty-seven controls run on deep copies of the immutable captures and of the product
+Thirty-one controls run on deep copies of the immutable captures and of the product
 record; each is compared against **its own** baseline, so a row the baseline already
 reports can never satisfy a control. A control passes only when it introduces a new
 strict mismatch and the approved disposition leaves every one of those new keys
@@ -211,14 +211,16 @@ product body, a product attempt kind, a real cohort peak
 baseline), the retry row order, the sequential step order, the held row's terminal,
 and three wrong-behaviour probes added with the carrier projection: a changed search
 result `origin`, a changed search result `type`, and a broken cancellation
-`workerTerminated` receipt; eight v3 row controls then cover a changed script-probe
+`workerTerminated` receipt; twelve v3 row controls then cover a changed script-probe
 projection member, a removed native-return `latestChapterTitle`, a wrong retained
-`bookUrl` on the same row, a substituted retained address on the fresh row, the
-request consequence of a reused fresh pipeline (with a counter fallback when a record
-has no request row), a genuine extra execution on the same row (counter 1 -> 2), a
-genuine missing execution on the fresh row (counter 2 -> 1), and a changed
-counter-backed TOC chapter title. Each is compared against its own otherwise-identical
-baseline, including baselines that already carry unrelated strict differences. The aggregate result keeps every capture's rows, so
+`bookUrl` on the same row, and measured-relation failures for a substituted retained
+hit, a reused fresh pipeline, a reused fresh transport, a wrong source object, a wrong
+stored hit and a golden retained-book identity, plus a genuine extra execution on the
+same row (counter 1 -> 2), a genuine missing execution on the fresh row (counter 2 -> 1),
+and a changed counter-backed TOC chapter title. Relation controls mutate the actual
+identity and run the same pure admission rule; an invalid baseline is refused. Every
+control is compared against its own otherwise-identical baseline, including baselines
+that already carry unrelated strict differences. The aggregate result keeps every capture's rows, so
 neither capture's controls can hide the other's. Originals are re-hashed after the
 run and stay byte-identical.
 

@@ -337,6 +337,9 @@ Map<String, Object?> validateHttpBoundaryScriptProbeProjection(
     if (type is! String || type.isEmpty) {
       throw FormatException('$where.$name.type is not a non-empty string');
     }
+    if (!member.containsKey('text')) {
+      throw FormatException('$where.$name.text is absent');
+    }
     final text = member['text'];
     if (type == 'function') {
       if (text != null) {
@@ -368,9 +371,22 @@ Map<String, Object?> validateHttpBoundaryScriptProbeProjection(
         lookupMember['text'] is! String) {
       throw FormatException('$where.lookup returned result is not typed');
     }
-  } else if (lookupMember['errorName'] is! String ||
-      (lookupMember['errorName'] as String).isEmpty) {
-    throw FormatException('$where.lookup refusal has no errorName');
+  } else {
+    if (lookupMember['errorName'] != 'TypeError') {
+      throw FormatException(
+        '$where.lookup refusal is not the expected TypeError',
+      );
+    }
+    final getDot = projection['getDot'] as Map;
+    final getType = getDot['type'];
+    if (getType == 'function' || getType == 'undefined') {
+      throw FormatException(
+        '$where.lookup refusal has no noncallable own-data context',
+      );
+    }
+    if (getDot['text'] is! String) {
+      throw FormatException('$where.lookup refusal has no data text');
+    }
   }
   final enumeration = projection['enumeration'];
   if (enumeration is! Map) {
@@ -386,9 +402,22 @@ Map<String, Object?> validateHttpBoundaryScriptProbeProjection(
     if (keys is! List || keys.any((key) => key is! String)) {
       throw FormatException('$where.enumeration.keys is not a string list');
     }
-  } else if (enumerationMember['errorName'] is! String ||
-      (enumerationMember['errorName'] as String).isEmpty) {
-    throw FormatException('$where.enumeration refusal has no errorName');
+  } else {
+    if (enumerationMember['errorName'] != 'TypeError') {
+      throw FormatException(
+        '$where.enumeration refusal is not the expected TypeError',
+      );
+    }
+    final keySetDot = projection['keySetDot'] as Map;
+    final keySetType = keySetDot['type'];
+    if (keySetType == 'function' || keySetType == 'undefined') {
+      throw FormatException(
+        '$where.enumeration refusal has no noncallable own-data context',
+      );
+    }
+    if (keySetDot['text'] is! String) {
+      throw FormatException('$where.enumeration refusal has no data text');
+    }
   }
   return projection;
 }
@@ -436,6 +465,27 @@ Map<String, Object?> validateHttpBoundaryScriptProbeEnvelope(
           (member['stack'] != null && member['stack'] is! String)) {
         throw FormatException(
           '$where.diagnostics.$name caught fields are not typed',
+        );
+      }
+    }
+    final portableEntry = (portable[name] as Map).cast<String, Object?>();
+    final returned = portableEntry['returned'] == true;
+    if (returned) {
+      if (caught) {
+        throw FormatException(
+          '$where.diagnostics.$name caught contradicts a returned value',
+        );
+      }
+    } else {
+      if (!caught) {
+        throw FormatException(
+          '$where.diagnostics.$name has no caught provenance for a refusal',
+        );
+      }
+      if (member['name'] != 'TypeError' ||
+          portableEntry['errorName'] != 'TypeError') {
+        throw FormatException(
+          '$where.diagnostics.$name is not the expected TypeError',
         );
       }
     }
