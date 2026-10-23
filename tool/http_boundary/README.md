@@ -110,8 +110,8 @@ Helper (12 observations, no stage involved):
 | `helper.connect-source-header` | `java.connect(url)` | source `x-declared`/`user-agent` |
 | `helper.header-map-js` | three fixture-authored scripts through `AnalyzeUrl.evalJS` calling `source.getHeaderMap()`, `(false)`, `(true)` on `@js:` | one typed `returned` record per arity plus the actual primitive map; a thrown arity keeps its real outcome; the Kotlin `$default` call is provenance only |
 | `helper.header-map-ltjs` | same on `<js>` spelling | same shape |
-| `helper.script-probe-hg0` | one corpus script through `AnalyzeUrl.evalJS`/`source` calling the real installed-app `source.getHeaderMap(false)` with no data-key collision | both access forms, lookup strict/loose/text, sorted key-set membership |
-| `helper.script-probe-hg1` / `-hg2` / `-hg3` | the same probe on sources whose header declares an own `get`, `keySet`, or both data keys | the actual dot/bracket type and data, the actual `get` lookup outcome (a real TypeError when shadowed) and the keySet call outcome; a thrown call is a measured outcome, never an expected golden |
+| `helper.script-probe-hg0` | one corpus script through `AnalyzeUrl.evalJS`/`source` calling the real installed-app `source.getHeaderMap(false)` with no data-key collision; `m.get`/`m.keySet` and `m['get']`/`m['keySet']` are read separately before inspection | the typed `{portable, diagnostics}` envelope: both access forms, lookup strict/loose/text, sorted key-set membership; the compared portable projection is validated and real caught diagnostics stay in evidence |
+| `helper.script-probe-hg1` / `-hg2` / `-hg3` | the same probe on sources whose header declares an own `get`, `keySet`, or both data keys | the actual dot/bracket type and data, the actual `get` lookup outcome (a real TypeError when shadowed) and the keySet call outcome; the portable projection rejects empty/missing/wrong-typed facts, and the caught name/message/text/bounded stack are noncompared provenance |
 
 Rate (3 observations). The corpus value `1/2000` is a **synthetic fixture input**; the
 frozen `ConcurrentRateLimiter` semantics are preserved. Each row reads
@@ -151,8 +151,8 @@ The appended v3 stage rows:
 |---|---|---|---|
 | `v1.search/details/toc/content` | source `V`, four real stages | 4 | `latestChapterTitle` and content text carry the script's JSON projection of `book.getVariable`/`putVariable`, `chapter.getVariable`/`putVariable`, `source.getVariable`/`setVariable`, the directly bound `result`, and a `java.getString` chained result; each fact is `typeof` plus strict/loose equality and the String diagnostic, compared before conversion |
 | `o1.search` | source `O` search | 1 | one selected hit keeps its absolute pre-option address and the original raw tail; the tail's `js` increments one O-source counter (`source.get`/`source.put`) and returns `result + '/1'` then `result + '/2'` |
-| `o1.details-same` | details on the search pipeline | declared `GET /o/book/1` | the identical retained hit is analyzed by the cached request; a product that skips the tail's `js` sends the pre-option target and the counter is not executed, never a pass |
-| `o1.details-fresh` | details on a declared fresh pipeline | declared `GET /o/book/2` | a genuinely different `BookSourcePipeline` over the same source object/key/state and the same retained hit object runs the tail's `js` once; the actual counter and request are retained, so a skipped first execution can leave the fresh call at `/1`, not `/2` |
+| `o1.details-same` | details on the search pipeline | declared `GET /o/book/1` | the identical retained hit is analyzed by the cached request; `value.bookUrl` publishes the retained `identityAddress` (the analyzed target stays in the request trace); a product that skips the tail's `js` sends the pre-option target and the counter is not executed, never a pass |
+| `o1.details-fresh` | details on a declared fresh pipeline | declared `GET /o/book/2` | a genuinely different `BookSourcePipeline` and transport over the same source object/key/state and the same retained hit object runs the tail's `js` once; `value.bookUrl` stays the retained identity, the actual counter is compared, and the actual request is retained, so a skipped first execution can leave the fresh call at `/1`, not `/2` |
 | `t1.search/details/toc` | source `T` | 1 + 1 + 1 | `ruleBookInfo.tocUrl` carries a URL-option `js`; the TOC stage's declared target is its one-construction result |
 | `p1.search/details/toc` | source `P` | 1 + 1 + ordered prefix + 2-member `stage.toc-option-tail` | `nextTocUrl` discovers two pages; each address keeps its own raw tail; the frozen batch and the product's serial walk remain separate measured facts |
 | `n1.search/details/toc` | source `N` | 1 + 1 + 1 | the selected hit's `bookUrl` option `js` returns null after a real `source.put` counter write; the unchanged `/n/book` target and the later stages' `source.get` read separate executed-vs-skipped; the product's skipped script leaves the TOC chapter title empty and its row incomplete |
@@ -162,7 +162,11 @@ The appended v3 stage rows:
 stored hit: both steps name `o-book-1`, the search is not re-read, and the hit's
 `identityAddress` (raw absolute address plus its original option tail) is unchanged.
 The first step is the existing-search pipeline's cached request; the second is the
-narrow declared fresh mode. The source-authored option `js` is what supplies the two
+narrow declared fresh mode. Implementation labels and object identities are
+noncompared evidence; the product record gate independently verifies the same
+pipeline was reused, the fresh pipeline and transport are distinct, the source
+object/host state are shared, and both details publish the retained identity rather
+than the analyzed request target. The source-authored option `js` is what supplies the two
 distinct selectors, not a transport rewrite; its counter is an actual script effect.
 The fresh declaration is validated at the corpus boundary, and the actual hit object
 identity, raw address, pipeline/transport/source/host-state identities, actual carrier
@@ -353,7 +357,8 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 - The actual v3 checks performed here are the Dart corpus gate in `runner.dart`, the
   focused test `the committed corpus derives the declared structural model` (selectors,
   owners, cohorts and the 44/51/49 model re-derived from the committed bytes), the
-  action/carrier refusal tests, and the four real `source.getHeaderMap(false)` probes in
+  action/carrier refusal tests, the typed probe/pair gates and control-sensitivity
+  tests, and the four real `source.getHeaderMap(false)` probes in
   `test/source_http_boundary_interop_test.dart` through the product's own runtime. This
   tree contains no `structural_check.py`; that script was not executed.
 - The earlier negative-builder and host-probe checks in
@@ -366,8 +371,8 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  92278b78df1345966801d838339f781aabc0025998c89598c253b7458383b33d
-LF-normalised sha256 9965fb4f410749606f97096ba71441d8da016e5d1858ae7573eacfc8f2e8f60e
+raw (CRLF) sha256  0c7844e0c72b55d488c1de553c6f94e4001e4fd5c15122d1b91641618fca1070
+LF-normalised sha256 ad4645ab904830ba591644a4a4185f0d06eb19a989163fd60796327b33f9c817
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is

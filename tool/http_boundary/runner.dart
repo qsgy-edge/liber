@@ -303,6 +303,146 @@ const httpBoundaryHelperActions = {
   'scriptProbe',
 };
 
+/// One small shared rule for the script-probe portable projection. The runner,
+/// the product record gate and the canonical comparer use this exact function,
+/// so an empty object, a missing member or a wrong type is refused at every
+/// boundary; no frozen typeof/equality answer is prescribed.
+Map<String, Object?> validateHttpBoundaryScriptProbeProjection(
+  Object? raw, {
+  required String where,
+}) {
+  if (raw is! Map) {
+    throw FormatException('$where portable projection is not an object');
+  }
+  final projection = raw.cast<String, Object?>();
+  for (final name in const [
+    'getDot',
+    'getBracket',
+    'keySetDot',
+    'keySetBracket',
+    'lookup',
+    'enumeration',
+  ]) {
+    if (!projection.containsKey(name)) {
+      throw FormatException('$where portable projection has no $name');
+    }
+  }
+  void access(String name) {
+    final value = projection[name];
+    if (value is! Map) {
+      throw FormatException('$where.$name is not an object');
+    }
+    final member = value.cast<String, Object?>();
+    final type = member['type'];
+    if (type is! String || type.isEmpty) {
+      throw FormatException('$where.$name.type is not a non-empty string');
+    }
+    final text = member['text'];
+    if (type == 'function') {
+      if (text != null) {
+        throw FormatException('$where.$name.text is not null for a function');
+      }
+    } else if (text is! String) {
+      throw FormatException('$where.$name.text is not a string');
+    }
+  }
+
+  access('getDot');
+  access('getBracket');
+  access('keySetDot');
+  access('keySetBracket');
+  final lookup = projection['lookup'];
+  if (lookup is! Map) {
+    throw FormatException('$where.lookup is not an object');
+  }
+  final lookupMember = lookup.cast<String, Object?>();
+  final lookupReturned = lookupMember['returned'];
+  if (lookupReturned is! bool) {
+    throw FormatException('$where.lookup.returned is not a boolean');
+  }
+  if (lookupReturned) {
+    if (lookupMember['type'] is! String ||
+        (lookupMember['type'] as String).isEmpty ||
+        lookupMember['strictLiteral'] is! bool ||
+        lookupMember['looseLiteral'] is! bool ||
+        lookupMember['text'] is! String) {
+      throw FormatException('$where.lookup returned result is not typed');
+    }
+  } else if (lookupMember['errorName'] is! String ||
+      (lookupMember['errorName'] as String).isEmpty) {
+    throw FormatException('$where.lookup refusal has no errorName');
+  }
+  final enumeration = projection['enumeration'];
+  if (enumeration is! Map) {
+    throw FormatException('$where.enumeration is not an object');
+  }
+  final enumerationMember = enumeration.cast<String, Object?>();
+  final enumerationReturned = enumerationMember['returned'];
+  if (enumerationReturned is! bool) {
+    throw FormatException('$where.enumeration.returned is not a boolean');
+  }
+  if (enumerationReturned) {
+    final keys = enumerationMember['keys'];
+    if (keys is! List || keys.any((key) => key is! String)) {
+      throw FormatException('$where.enumeration.keys is not a string list');
+    }
+  } else if (enumerationMember['errorName'] is! String ||
+      (enumerationMember['errorName'] as String).isEmpty) {
+    throw FormatException('$where.enumeration refusal has no errorName');
+  }
+  return projection;
+}
+
+/// The bounded probe envelope: the portable projection is the compared result;
+/// the caught diagnostics are real provenance and are never compared.
+Map<String, Object?> validateHttpBoundaryScriptProbeEnvelope(
+  Object? raw, {
+  required String where,
+}) {
+  if (raw is! Map) {
+    throw FormatException('$where script probe envelope is not an object');
+  }
+  final envelope = raw.cast<String, Object?>();
+  if (!envelope.containsKey('portable') ||
+      !envelope.containsKey('diagnostics')) {
+    throw FormatException(
+      '$where script probe envelope has no portable/diagnostics',
+    );
+  }
+  final portable = validateHttpBoundaryScriptProbeProjection(
+    envelope['portable'],
+    where: '$where.portable',
+  );
+  final diagnostics = envelope['diagnostics'];
+  if (diagnostics is! Map) {
+    throw FormatException('$where diagnostics is not an object');
+  }
+  final diagnosticMap = diagnostics.cast<String, Object?>();
+  for (final name in const ['lookup', 'enumeration']) {
+    final entry = diagnosticMap[name];
+    if (entry is! Map) {
+      throw FormatException('$where.diagnostics.$name is not an object');
+    }
+    final member = entry.cast<String, Object?>();
+    final caught = member['caught'];
+    if (caught is! bool) {
+      throw FormatException('$where.diagnostics.$name.caught is not a boolean');
+    }
+    if (caught) {
+      if (member['name'] is! String ||
+          member['message'] is! String ||
+          member['text'] is! String ||
+          !member.containsKey('stack') ||
+          (member['stack'] != null && member['stack'] is! String)) {
+        throw FormatException(
+          '$where.diagnostics.$name caught fields are not typed',
+        );
+      }
+    }
+  }
+  return {'portable': portable, 'diagnostics': diagnosticMap};
+}
+
 void _validateHelperAction(Map<String, dynamic> step, String id) {
   final action = _text(step['action'], 'step $id action');
   if (!httpBoundaryHelperActions.contains(action)) {
@@ -1375,6 +1515,7 @@ class _HttpBoundaryRun {
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
+    final id = '${step['id']}';
     final sourceId = '${step['source']}';
     final action = '${step['action']}';
     final value = <String, Object?>{
@@ -1405,20 +1546,21 @@ class _HttpBoundaryRun {
           _text(step['script'], 'script'),
         );
         final text = result is String ? result : '$result';
-        final Object? projection;
+        final Map<String, Object?> envelope;
         try {
-          projection = jsonDecode(text);
+          envelope = validateHttpBoundaryScriptProbeEnvelope(
+            jsonDecode(text),
+            where: 'helper $id',
+          );
         } on FormatException catch (error) {
           throw HttpBoundaryIncomplete(
-            'the script probe did not answer a JSON projection: $error',
+            'the script probe did not answer a valid envelope: $error',
           );
         }
-        if (projection is! Map) {
-          throw const HttpBoundaryIncomplete(
-            'the script probe projection is not a JSON object',
-          );
-        }
-        value['result'] = text;
+        value['result'] = envelope['portable'];
+        (observation['evidence'] as Map)['scriptProbe'] = {
+          'diagnostics': envelope['diagnostics'],
+        };
       default:
         throw HttpBoundaryIncomplete('unknown helper action $action');
     }
@@ -1632,32 +1774,50 @@ class _HttpBoundaryRun {
     Map<String, Object?> observation,
   ) async {
     final sourceId = '${step['source']}';
-    final fresh = '${step['carrier'] ?? ''}' == 'fresh';
+    final carrier = step['carrier'];
+    final fresh = '${carrier ?? ''}' == 'fresh';
     final cached = _pipelines[sourceId];
-    final pipeline = fresh
-        ? openBookSourcePipeline(
-            sourceObject(sourceId),
-            HttpSourceTransport(),
-            hostState: hostState,
-            androidId: androidId,
-          )
-        : _pipelineOf(sourceId);
-    if (fresh && cached != null && identical(pipeline, cached)) {
-      throw const HttpBoundaryIncomplete(
-        'the fresh carrier reused the cached analysis pipeline',
-      );
-    }
-    if (step['carrier'] != null) {
+    late final BookSourcePipeline pipeline;
+    if (carrier == null) {
+      pipeline = _pipelineOf(sourceId);
+    } else {
+      if (cached == null) {
+        throw const HttpBoundaryIncomplete(
+          'the carrier has no preceding search pipeline',
+        );
+      }
+      pipeline = fresh
+          ? openBookSourcePipeline(
+              sourceObject(sourceId),
+              HttpSourceTransport(),
+              hostState: hostState,
+              androidId: androidId,
+            )
+          : cached;
+      if (fresh) {
+        if (identical(pipeline, cached) ||
+            identical(pipeline.transport, cached.transport)) {
+          throw const HttpBoundaryIncomplete(
+            'the fresh carrier did not create a distinct pipeline and '
+            'transport',
+          );
+        }
+      } else if (!identical(pipeline, cached)) {
+        throw const HttpBoundaryIncomplete(
+          'the same carrier did not reuse the search pipeline',
+        );
+      }
       (observation['evidence'] as Map)['carrier'] = {
-        'declared': '${step['carrier']}',
+        'declared': '$carrier',
         'actual': fresh ? 'fresh' : 'same',
         'pipelineIdentity': identityHashCode(pipeline),
-        'cachedPipelineIdentity': cached == null
-            ? null
-            : identityHashCode(cached),
-        'reusedPipeline': cached != null && identical(pipeline, cached),
+        'cachedPipelineIdentity': identityHashCode(cached),
+        'reusedPipeline': identical(pipeline, cached),
         'transportIdentity': identityHashCode(pipeline.transport),
+        'cachedTransportIdentity': identityHashCode(cached.transport),
+        'distinctTransport': !identical(pipeline.transport, cached.transport),
         'sourceObjectIdentity': identityHashCode(sourceObject(sourceId)),
+        'cachedSourceObjectIdentity': identityHashCode(sourceObject(sourceId)),
         'hostStateIdentity': identityHashCode(hostState),
         'sourceKey': sourceUrl(sourceId),
       };
@@ -1748,7 +1908,7 @@ class _HttpBoundaryRun {
           // `stage` marker the search/TOC/content rows carry.
           value['kind'] = book.kind;
           value['book'] = bookId;
-          value['bookUrl'] = '${info.bookUrl}';
+          value['bookUrl'] = book.identityAddress;
           value['name'] = book.title;
           value['author'] = book.author;
           value['intro'] = book.intro;
@@ -1785,22 +1945,22 @@ class _HttpBoundaryRun {
                 'the O-source counter read is unresolved: $error',
               );
             }
-            value['hitReference'] = {
-              'bookId': bookId,
-              'rawAddress': hit.identityAddress,
-              'sourceKey': sourceUrl(sourceId),
-            };
-            value['pipelineMode'] = '${step['carrier']}';
+            final declaredBook = _bookOf(bookId);
+            if (hit.identityAddress != '${declaredBook['bookUrl']}') {
+              throw HttpBoundaryIncomplete(
+                'details $id retained ${hit.identityAddress}, the corpus '
+                'declares ${declaredBook['bookUrl']}',
+              );
+            }
             value['counterAfter'] = counter;
             (observation['evidence'] as Map)['hitReference'] = {
               'identity': identityHashCode(hit),
               'storedIdentity': identityHashCode(stored),
-              'sameObject': true,
+              'sameObject': identical(hit, stored),
               'bookId': bookId,
               'rawAddress': hit.identityAddress,
               'preOptionUrl': '${hit.preOptionUrl}',
               'sourceKey': sourceUrl(sourceId),
-              'pipelineMode': '${step['carrier']}',
               'counterAfter': counter,
             };
           }

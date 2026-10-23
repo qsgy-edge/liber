@@ -19,7 +19,8 @@ import 'runner.dart'
         httpBoundaryTargetOf,
         loadHttpBoundaryCorpus,
         sha256File,
-        sha256Text;
+        sha256Text,
+        validateHttpBoundaryScriptProbeEnvelope;
 
 /// Compares one measured product record with both immutable frozen captures of
 /// the controller's hash-bound handoff.
@@ -309,6 +310,113 @@ void validateFrozenCapture(
       'observations, the corpus declares $declaredObservations',
     );
   }
+  _validateFrozenV3Facts(golden, corpus, goldenId);
+}
+
+void _validateFrozenV3Facts(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus,
+  String goldenId,
+) {
+  final byId = {
+    for (final raw in _array(golden['observations'], 'capture observations'))
+      '${(raw as Map)['id']}': _object(raw, 'capture observation'),
+  };
+  final carrierRows = <String, Map<String, dynamic>>{};
+  for (final step in httpBoundarySteps(corpus)) {
+    final id = '${step['id']}';
+    final row = byId[id];
+    if (row == null) continue;
+    final value = _object(row['value'], 'capture $id value');
+    if ('${step['action']}' == 'scriptProbe') {
+      final evidence = _object(row['evidence'], 'capture $id evidence');
+      final probe = _object(evidence['scriptProbe'], 'capture $id scriptProbe');
+      final diagnostics = probe['diagnostics'];
+      try {
+        validateHttpBoundaryScriptProbeEnvelope({
+          'portable': value['result'],
+          'diagnostics': diagnostics,
+        }, where: 'capture $goldenId $id');
+      } on FormatException catch (error) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId probe $id is not typed: ${error.message}',
+        );
+      }
+    }
+    if (step['carrier'] != null) {
+      carrierRows[id] = row;
+      final book = _declaredBook(corpus, '${step['book']}');
+      if ('${value['bookUrl']}' != '${book['bookUrl']}') {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId $id does not publish the retained book identity',
+        );
+      }
+      final counter = value['counterAfter'];
+      if (counter is! String || !RegExp(r'^[0-9]+$').hasMatch(counter)) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId $id has no actual counter',
+        );
+      }
+      final evidence = _object(row['evidence'], 'capture $id evidence');
+      final carrier = _object(evidence['carrier'], 'capture $id carrier');
+      if ('${carrier['declared']}' != '${step['carrier']}' ||
+          carrier['actual'] is! String ||
+          '${carrier['actual']}'.isEmpty ||
+          carrier['sourceKey'] is! String) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId $id carrier proof is not typed',
+        );
+      }
+      final hit = _object(evidence['hitReference'], 'capture $id hitReference');
+      if (hit['identity'] is! int ||
+          '${hit['bookId']}' != '${step['book']}' ||
+          '${hit['rawAddress']}' != '${book['bookUrl']}' ||
+          '${hit['sourceKey']}' != '${carrier['sourceKey']}') {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId $id retained hit proof is not typed',
+        );
+      }
+    }
+  }
+  final carrierSteps = [
+    for (final step in httpBoundarySteps(corpus))
+      if (step['carrier'] != null) step,
+  ];
+  if (carrierSteps.isEmpty) return;
+  final same = [
+    for (final step in carrierSteps)
+      if (step['carrier'] == 'same') '${step['id']}',
+  ];
+  final fresh = [
+    for (final step in carrierSteps)
+      if (step['carrier'] == 'fresh') '${step['id']}',
+  ];
+  if (same.length != 1 || fresh.length != 1) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId corpus has no one same/fresh carrier pair',
+    );
+  }
+  final sameRow = carrierRows[same.single];
+  final freshRow = carrierRows[fresh.single];
+  if (sameRow == null || freshRow == null) {
+    throw HttpBoundaryRefusal('the capture $goldenId lacks a carrier row');
+  }
+  final sameHit = _object(
+    _object(sameRow['evidence'], 'same evidence')['hitReference'],
+    'same hit',
+  );
+  final freshHit = _object(
+    _object(freshRow['evidence'], 'fresh evidence')['hitReference'],
+    'fresh hit',
+  );
+  if (sameHit['identity'] != freshHit['identity'] ||
+      '${sameHit['rawAddress']}' != '${freshHit['rawAddress']}' ||
+      '${_object(sameRow['value'], 'same value')['counterAfter']}' != '1' ||
+      '${_object(freshRow['value'], 'fresh value')['counterAfter']}' != '2') {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId paired carrier facts are not the retained 1/2 hit',
+    );
+  }
 }
 
 int _integerOf(Object? value, String what) {
@@ -476,6 +584,16 @@ bool _semanticEquals(Object? actual, Object? expected) {
   if (actual.runtimeType != expected.runtimeType) return false;
   return actual == expected;
 }
+
+Map<String, dynamic> _declaredBook(Map<String, dynamic> corpus, String id) =>
+    _object(
+      _array(corpus['books'], 'corpus books').firstWhere(
+        (raw) => '${(raw as Map)['id']}' == id,
+        orElse: () =>
+            throw HttpBoundaryRefusal('the corpus declares no book $id'),
+      ),
+      'book $id',
+    );
 
 /// The product record's own gates: a finished run of the same corpus whose every
 /// compared field is present and correctly typed, whose headline checks agree
@@ -1352,7 +1470,17 @@ void validateProductReport(
         '${_cancellationBlock(corpus)['followUpStep']}') {
       _followUpRelations(gate, corpus, id, row, value, observationById);
     }
+    _v3ObservationFacts(
+      gate,
+      corpus,
+      step,
+      row,
+      value,
+      ownedByObservation,
+      observationById,
+    );
   }
+  _v3CarrierPairFacts(gate, corpus, observationById, ownedByObservation);
 
   // 9. The rate rows' own typed records and within-run interval/window
   //    relations. Every comparison below is a difference, so one coherent
@@ -1992,6 +2120,205 @@ void validateProductReport(
     throw HttpBoundaryRefusal('the product report path is empty');
   }
   gate.throwIfAny();
+}
+
+void _v3ObservationFacts(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+  Map<String, dynamic> row,
+  Map<String, dynamic> value,
+  Map<String, List<Map<String, dynamic>>> ownedByObservation,
+  Map<String, Map<String, dynamic>> observationById,
+) {
+  final id = '${step['id']}';
+  final where = 'observations.$id';
+  final stage = '${step['stage'] ?? ''}';
+  final expectedOutcome = '${step['expectedOutcome'] ?? 'ok'}';
+  if ('${step['kind']}' == 'stage' &&
+      stage == 'details' &&
+      expectedOutcome == 'ok') {
+    final book = _declaredBook(corpus, '${step['book']}');
+    gate.equal(value['bookUrl'], book['bookUrl'], '$where.value.bookUrl');
+  }
+  if ('${step['action']}' != 'scriptProbe') return;
+  final result = value['result'];
+  final evidence = gate.object(row['evidence'], '$where.evidence');
+  final probe = gate.object(
+    evidence['scriptProbe'],
+    '$where.evidence.scriptProbe',
+  );
+  final diagnostics = probe['diagnostics'];
+  if (diagnostics is! Map) {
+    gate.fail('$where.evidence.scriptProbe.diagnostics is not an object');
+    return;
+  }
+  try {
+    validateHttpBoundaryScriptProbeEnvelope({
+      'portable': result,
+      'diagnostics': diagnostics,
+    }, where: '$where.evidence.scriptProbe');
+  } on FormatException catch (error) {
+    gate.fail('$where script probe projection is not typed: ${error.message}');
+  }
+  final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
+  if (owned.isNotEmpty) {
+    gate.fail('$where script probe owns ${owned.length} requests');
+  }
+  if (value['action'] != 'scriptProbe' ||
+      '${value['source']}' != '${step['source']}') {
+    gate.fail('$where value does not name the script-probe source/action');
+  }
+}
+
+void _v3CarrierPairFacts(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  Map<String, Map<String, dynamic>> observationById,
+  Map<String, List<Map<String, dynamic>>> ownedByObservation,
+) {
+  final carrierSteps = [
+    for (final step in httpBoundarySteps(corpus))
+      if (step['carrier'] != null) step,
+  ];
+  final sameSteps = carrierSteps.where((step) => step['carrier'] == 'same');
+  final freshSteps = carrierSteps.where((step) => step['carrier'] == 'fresh');
+  if (sameSteps.length != 1 || freshSteps.length != 1) {
+    gate.fail('the corpus must declare one same and one fresh carrier step');
+    return;
+  }
+  final same = sameSteps.single;
+  final fresh = freshSteps.single;
+  final sameId = '${same['id']}';
+  final freshId = '${fresh['id']}';
+  if ('${same['book']}' != '${fresh['book']}') {
+    gate.fail('the same/fresh carriers name different retained books');
+  }
+  final sameRow = observationById[sameId];
+  final freshRow = observationById[freshId];
+  if (sameRow == null || freshRow == null) return;
+  final sameValue = gate.object(sameRow['value'], 'observations.$sameId.value');
+  final freshValue = gate.object(
+    freshRow['value'],
+    'observations.$freshId.value',
+  );
+  final sameEvidence = gate.object(
+    sameRow['evidence'],
+    'observations.$sameId.evidence',
+  );
+  final freshEvidence = gate.object(
+    freshRow['evidence'],
+    'observations.$freshId.evidence',
+  );
+  final sameCarrier = gate.object(
+    sameEvidence['carrier'],
+    'observations.$sameId.evidence.carrier',
+  );
+  final freshCarrier = gate.object(
+    freshEvidence['carrier'],
+    'observations.$freshId.evidence.carrier',
+  );
+  final sameHit = gate.object(
+    sameEvidence['hitReference'],
+    'observations.$sameId.evidence.hitReference',
+  );
+  final freshHit = gate.object(
+    freshEvidence['hitReference'],
+    'observations.$freshId.evidence.hitReference',
+  );
+  for (final entry in [('declared', 'same'), ('actual', 'same')]) {
+    gate.equal(sameCarrier[entry.$1], entry.$2, 'same carrier ${entry.$1}');
+  }
+  gate.equal(sameCarrier['reusedPipeline'], true, 'same carrier reused');
+  gate.equal(
+    sameCarrier['pipelineIdentity'],
+    sameCarrier['cachedPipelineIdentity'],
+    'same carrier pipeline identity',
+  );
+  gate.equal(freshCarrier['declared'], 'fresh', 'fresh carrier declared');
+  gate.equal(freshCarrier['actual'], 'fresh', 'fresh carrier actual');
+  gate.equal(freshCarrier['reusedPipeline'], false, 'fresh carrier reused');
+  if (freshCarrier['pipelineIdentity'] == sameCarrier['pipelineIdentity']) {
+    gate.fail('the fresh carrier reused the same pipeline identity');
+  }
+  if (freshCarrier['transportIdentity'] == sameCarrier['transportIdentity']) {
+    gate.fail('the fresh carrier reused the same transport identity');
+  }
+  if (freshCarrier['sourceObjectIdentity'] !=
+      sameCarrier['sourceObjectIdentity']) {
+    gate.fail('the paired carriers do not share one source object');
+  }
+  if (freshCarrier['hostStateIdentity'] != sameCarrier['hostStateIdentity']) {
+    gate.fail('the paired carriers do not share one host state');
+  }
+  if ('${freshCarrier['sourceKey']}' != '${sameCarrier['sourceKey']}') {
+    gate.fail('the paired carriers do not share one source key');
+  }
+  final book = _declaredBook(corpus, '${same['book']}');
+  for (final entry in [(sameHit, sameId), (freshHit, freshId)]) {
+    final hit = entry.$1;
+    final where = 'observations.${entry.$2}.evidence.hitReference';
+    for (final field in const ['identity', 'storedIdentity']) {
+      if (hit[field] is! int) gate.fail('$where.$field is not an integer');
+    }
+    gate.equal(hit['sameObject'], true, '$where.sameObject');
+    gate.equal(hit['bookId'], '${same['book']}', '$where.bookId');
+    gate.equal(hit['rawAddress'], book['bookUrl'], '$where.rawAddress');
+    gate.equal(hit['sourceKey'], sameCarrier['sourceKey'], '$where.sourceKey');
+    if (hit['counterAfter'] is! String) {
+      gate.fail('$where.counterAfter is not a string');
+    }
+  }
+  if (sameHit['identity'] != freshHit['identity'] ||
+      sameHit['storedIdentity'] != freshHit['storedIdentity']) {
+    gate.fail('the paired carriers did not retain one hit identity');
+  }
+  if (sameHit['rawAddress'] != freshHit['rawAddress']) {
+    gate.fail('the paired carriers retained different raw addresses');
+  }
+  gate.equal(sameValue['counterAfter'], '1', 'same carrier counterAfter');
+  gate.equal(freshValue['counterAfter'], '2', 'fresh carrier counterAfter');
+  gate.equal(
+    sameHit['counterAfter'],
+    sameValue['counterAfter'],
+    'same carrier evidence counter',
+  );
+  gate.equal(
+    freshHit['counterAfter'],
+    freshValue['counterAfter'],
+    'fresh carrier evidence counter',
+  );
+  void requireOwnedSelector(
+    Map<String, dynamic> step,
+    String expectedSelector,
+  ) {
+    final id = '${step['id']}';
+    final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
+    gate.equal(
+      [for (final request in owned) '${request['selector']}'],
+      [expectedSelector],
+      'observations.$id.requests.target',
+    );
+  }
+
+  final sameDeclared = httpBoundaryDeclaredRequests(same);
+  final freshDeclared = httpBoundaryDeclaredRequests(fresh);
+  final responseById = {
+    for (final response in httpBoundaryResponses(corpus))
+      '${response['id']}': response,
+  };
+  if (sameDeclared.ordered.length != 1 || freshDeclared.ordered.length != 1) {
+    gate.fail('a carrier step must declare exactly one ordered request');
+  } else {
+    requireOwnedSelector(
+      same,
+      httpBoundarySelectorOf(responseById[sameDeclared.ordered.single]!),
+    );
+    requireOwnedSelector(
+      fresh,
+      httpBoundarySelectorOf(responseById[freshDeclared.ordered.single]!),
+    );
+  }
 }
 
 Map<String, dynamic> _cancellationBlock(Map<String, dynamic> corpus) =>
@@ -4077,7 +4404,9 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
           observation(productCopy, 'helper.script-probe-hg1')['value'],
           'value',
         );
-        value['result'] = '${value['result']}-MUTATED';
+        final result = _object(value['result'], 'result');
+        final lookup = _object(result['lookup'], 'lookup');
+        lookup['returned'] = lookup['returned'] != true;
       },
     ),
   );
@@ -4094,41 +4423,57 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
     ),
   );
   controls.addAll(
-    run('product-fresh-binding', 'product o1.details-fresh bookUrl', (
+    run('product-fresh-binding', 'product o1.details-same retained bookUrl', (
       goldenCopy,
       productCopy,
     ) {
       final value = _object(
-        observation(productCopy, 'o1.details-fresh')['value'],
+        observation(productCopy, 'o1.details-same')['value'],
         'value',
       );
-      value['bookUrl'] = 'http://127.0.0.1:18771/o/book/MUTATED';
+      // The analyzed target is a different concept; publish it as the retained
+      // book identity and the control adds its own key.
+      value['bookUrl'] = 'http://127.0.0.1:18771/o/book';
     }),
   );
   controls.addAll(
     run(
       'product-fresh-substituted-hit',
-      'product o1.details-fresh retained hit',
+      'product o1.details-fresh substituted retained hit',
       (goldenCopy, productCopy) {
         final value = _object(
           observation(productCopy, 'o1.details-fresh')['value'],
           'value',
         );
-        _object(value['hitReference'], 'hitReference')['rawAddress'] =
-            'http://127.0.0.1:18771/o/book/SUBSTITUTED';
+        value['bookUrl'] =
+            'http://127.0.0.1:18771/o/book/SUBSTITUTED,{"js":"other"}';
       },
     ),
   );
   controls.addAll(
     run(
       'product-fresh-reused-pipeline',
-      'product o1.details-fresh pipeline mode',
+      'product o1.details-fresh reused pipeline consequence',
       (goldenCopy, productCopy) {
         final value = _object(
           observation(productCopy, 'o1.details-fresh')['value'],
           'value',
         );
-        value['pipelineMode'] = 'same';
+        final freshCounter = int.tryParse('${value['counterAfter']}') ?? 0;
+        try {
+          final row = request(productCopy, 'o1.details-fresh');
+          final method = '${row['method']}';
+          final path = '/o/book';
+          row['path'] = path;
+          row['rawQuery'] = '';
+          row['target'] = path;
+          row['selector'] = '$method $path?';
+          row['declaredResponse'] = null;
+        } on StateError {
+          // A record without the request row still has the actual execution
+          // consequence: a reused pipeline cannot run the second script.
+          value['counterAfter'] = '${freshCounter > 0 ? freshCounter - 1 : 0}';
+        }
       },
     ),
   );
@@ -4141,7 +4486,8 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
         observation(productCopy, 'o1.details-same')['value'],
         'value',
       );
-      value['counterAfter'] = '1';
+      final current = int.tryParse('${value['counterAfter']}') ?? 0;
+      value['counterAfter'] = '${current + 1}';
     }),
   );
   controls.addAll(
@@ -4153,7 +4499,8 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
         observation(productCopy, 'o1.details-fresh')['value'],
         'value',
       );
-      value['counterAfter'] = '0';
+      final current = int.tryParse('${value['counterAfter']}') ?? 0;
+      value['counterAfter'] = '${current > 0 ? current - 1 : 0}';
     }),
   );
   controls.addAll(

@@ -20,15 +20,17 @@ identities and are not relabelled as v3. The v3 product run on this preparation 
 reaches 50/51 declared requests and 44 observations with three unmatched requests.
 `t1.toc`, `p1.toc` and `n1.toc` are the incomplete rows: the first two request the
 pre-option TOC addresses, and the null-return counter read leaves the TOC chapter title
-empty. The O pair consumes the identical retained hit; the product's cached first call
-skips the source-authored option `js`, so the fresh call's counter is 1 and it sends
-`/o/book/1` (not the declared `/o/book/2`), while the frozen runs the script twice.
-That `/1` request lands on the same row's declared selector, so the actual
-ownership/count mismatch is retained rather than repaired (`o1.details-fresh` owns no
-request and `/o/book/2` is missing; `GET /o/book` is unmatched). That report is
-retained as the actual current-product measurement: it is not a pass, and the
-comparator refuses an incomplete product record by design. The v3 installed-app
-capture and comparison remain with the controller and are **not-run** here.
+empty. The O pair consumes the identical retained hit; both details publish the
+retained `identityAddress` (the analyzed targets stay in the request trace). The
+product's cached first call skips the source-authored option `js`, so the fresh call's
+counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`), while the frozen
+runs the script twice. That `/1` request lands on the same row's declared selector, so
+the actual ownership/count mismatch is retained rather than repaired
+(`o1.details-fresh` owns no request and `/o/book/2` is missing; `GET /o/book` is
+unmatched). That report is retained as the actual current-product measurement: it is
+not a pass, and the comparator refuses an incomplete product record by design. The v3
+installed-app capture and comparison remain with the controller and are **not-run**
+here.
 
 At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
 repair and the source-context carrier projection were in place. That product session
@@ -37,7 +39,7 @@ captures compared with **38 strict differences each**. All 38 are named in
 `notCompared` under the four approved dispositions below and **0 are unattributed**;
 the strict verdict remains a difference (exit 3), never a pass. Nineteen own-baseline
 controls per v2 capture applied and passed, and every control's own new mismatch stayed
-unattributed; the four v3 row controls are not-applicable on a v2 record. Integration,
+unattributed; the eight v3 row controls are not-applicable on a v2 record. Integration,
 review, the Windows driven run and #137/#133 acceptance stay with the controller.
 
 ## What runs
@@ -210,10 +212,13 @@ baseline), the retry row order, the sequential step order, the held row's termin
 and three wrong-behaviour probes added with the carrier projection: a changed search
 result `origin`, a changed search result `type`, and a broken cancellation
 `workerTerminated` receipt; eight v3 row controls then cover a changed script-probe
-projection, a removed native-return `latestChapterTitle`, a changed fresh-carrier
-`bookUrl`, a substituted retained-hit address, a reused-pipeline mode, a same-row extra
-counter execution, a fresh-row missing counter execution, and a changed
-counter-backed TOC chapter title. The aggregate result keeps every capture's rows, so
+projection member, a removed native-return `latestChapterTitle`, a wrong retained
+`bookUrl` on the same row, a substituted retained address on the fresh row, the
+request consequence of a reused fresh pipeline (with a counter fallback when a record
+has no request row), a genuine extra execution on the same row (counter 1 -> 2), a
+genuine missing execution on the fresh row (counter 2 -> 1), and a changed
+counter-backed TOC chapter title. Each is compared against its own otherwise-identical
+baseline, including baselines that already carry unrelated strict differences. The aggregate result keeps every capture's rows, so
 neither capture's controls can hide the other's. Originals are re-hashed after the
 run and stay byte-identical.
 

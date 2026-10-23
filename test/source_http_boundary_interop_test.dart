@@ -7,7 +7,10 @@ import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
 
 import '../tool/http_boundary/runner.dart'
-    show httpBoundarySourceOf, loadHttpBoundaryCorpus;
+    show
+        httpBoundarySourceOf,
+        loadHttpBoundaryCorpus,
+        validateHttpBoundaryScriptProbeEnvelope;
 import 'native_library.dart';
 
 /// The actual product `source.getHeaderMap(false)` binding over the four
@@ -38,14 +41,22 @@ void main() {
       input: {'sourceKey': '${source['bookSourceUrl']}', 'source': source},
       timeout: const Duration(seconds: 60),
     );
-    return (jsonDecode('$raw') as Map).cast<String, dynamic>();
+    return validateHttpBoundaryScriptProbeEnvelope(
+      jsonDecode('$raw'),
+      where: 'interop $sourceId',
+    );
   }
 
+  Map<String, dynamic> portable(Map<String, dynamic> envelope) =>
+      (envelope['portable'] as Map).cast<String, dynamic>();
+  Map<String, dynamic> diagnostics(Map<String, dynamic> envelope) =>
+      (envelope['diagnostics'] as Map).cast<String, dynamic>();
   Map<String, dynamic> member(Map<String, dynamic> value, String name) =>
       (value[name] as Map).cast<String, dynamic>();
 
   test('no collision: both Java Map access forms are callable', () async {
-    final value = await probe('HG0');
+    final envelope = await probe('HG0');
+    final value = portable(envelope);
     expect(member(value, 'getDot')['type'], 'function');
     expect(member(value, 'getBracket')['type'], 'function');
     expect(member(value, 'keySetDot')['type'], 'function');
@@ -58,10 +69,13 @@ void main() {
     final enumeration = member(value, 'enumeration');
     expect(enumeration['returned'], isTrue);
     expect(enumeration['keys'], containsAll(['User-Agent', 'X-Declared']));
+    expect(diagnostics(envelope)['lookup'], {'caught': false});
+    expect(diagnostics(envelope)['enumeration'], {'caught': false});
   });
 
   test('an own data key get shadows the method for dot and bracket', () async {
-    final value = await probe('HG1');
+    final envelope = await probe('HG1');
+    final value = portable(envelope);
     expect(member(value, 'getDot')['type'], 'string');
     expect(member(value, 'getDot')['text'], 'data-get');
     expect(member(value, 'getBracket')['type'], 'string');
@@ -73,12 +87,20 @@ void main() {
     final enumeration = member(value, 'enumeration');
     expect(enumeration['returned'], isTrue);
     expect(enumeration['keys'], contains('get'));
+    final lookupDiagnostic = (diagnostics(envelope)['lookup'] as Map)
+        .cast<String, dynamic>();
+    expect(lookupDiagnostic['caught'], isTrue);
+    expect(lookupDiagnostic['name'], 'TypeError');
+    expect('${lookupDiagnostic['message']}', isNotEmpty);
+    expect('${lookupDiagnostic['text']}', isNotEmpty);
+    expect(diagnostics(envelope)['enumeration'], {'caught': false});
   });
 
   test(
     'an own data key keySet shadows the method for dot and bracket',
     () async {
-      final value = await probe('HG2');
+      final envelope = await probe('HG2');
+      final value = portable(envelope);
       expect(member(value, 'keySetDot')['type'], 'string');
       expect(member(value, 'keySetDot')['text'], 'data-keyset');
       expect(member(value, 'keySetBracket')['type'], 'string');
@@ -90,19 +112,28 @@ void main() {
       final enumeration = member(value, 'enumeration');
       expect(enumeration['returned'], isFalse);
       expect(enumeration['errorName'], 'TypeError');
+      expect(diagnostics(envelope)['lookup'], {'caught': false});
+      final enumerationDiagnostic =
+          (diagnostics(envelope)['enumeration'] as Map).cast<String, dynamic>();
+      expect(enumerationDiagnostic['caught'], isTrue);
+      expect(enumerationDiagnostic['name'], 'TypeError');
+      expect('${enumerationDiagnostic['text']}', isNotEmpty);
     },
   );
 
   test(
     'both own data keys shadow their methods; user data stays intact',
     () async {
-      final value = await probe('HG3');
+      final envelope = await probe('HG3');
+      final value = portable(envelope);
       expect(member(value, 'getDot')['text'], 'data-get');
       expect(member(value, 'keySetDot')['text'], 'data-keyset');
       expect(member(value, 'lookup')['returned'], isFalse);
       expect(member(value, 'lookup')['errorName'], 'TypeError');
       expect(member(value, 'enumeration')['returned'], isFalse);
       expect(member(value, 'enumeration')['errorName'], 'TypeError');
+      expect((diagnostics(envelope)['lookup'] as Map)['caught'], isTrue);
+      expect((diagnostics(envelope)['enumeration'] as Map)['caught'], isTrue);
     },
   );
 }

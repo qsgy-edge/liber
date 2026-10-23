@@ -26,7 +26,9 @@ import '../tool/http_boundary/runner.dart'
         httpBoundaryObservationIds,
         loadHttpBoundaryCorpus,
         sha256File,
-        validateHttpBoundaryCorpus;
+        validateHttpBoundaryCorpus,
+        validateHttpBoundaryScriptProbeProjection,
+        validateHttpBoundaryScriptProbeEnvelope;
 
 /// Focused checks of the HTTP-BOUNDARY-01 comparer's own rules. They run on
 /// small synthetic records and on the committed corpus; no controller capture
@@ -458,6 +460,29 @@ Map<String, Object?> _sequentialReport() {
 /// a mutation of one fact is what a test asserts, not the fixture's arithmetic.
 /// The runner and library identities are bound to real files (the committed
 /// runner and a temp library), which is the artifact setup the gate requires.
+Map<String, Object?> _validProbeProjection() => {
+  'getDot': <String, Object?>{'type': 'string', 'text': 'synthetic'},
+  'getBracket': <String, Object?>{'type': 'string', 'text': 'synthetic'},
+  'keySetDot': <String, Object?>{'type': 'function', 'text': null},
+  'keySetBracket': <String, Object?>{'type': 'function', 'text': null},
+  'lookup': <String, Object?>{
+    'returned': true,
+    'type': 'string',
+    'strictLiteral': true,
+    'looseLiteral': true,
+    'text': 'synthetic',
+  },
+  'enumeration': <String, Object?>{
+    'returned': true,
+    'keys': ['User-Agent', 'X-Declared'],
+  },
+};
+
+Map<String, Object?> _validProbeDiagnostics() => {
+  'lookup': <String, Object?>{'caught': false},
+  'enumeration': <String, Object?>{'caught': false},
+};
+
 Map<String, dynamic> _validProduct({
   required String libraryPath,
   required String librarySha,
@@ -467,6 +492,10 @@ Map<String, dynamic> _validProduct({
   final responses = {
     for (final response in httpBoundaryResponses(corpus))
       '${response['id']}': response,
+  };
+  final books = {
+    for (final raw in (corpus['books'] as List).cast<Map>())
+      '${raw['id']}': raw.cast<String, dynamic>(),
   };
   final owners = httpBoundaryResponseOwners(corpus);
   final sources = {
@@ -601,9 +630,53 @@ Map<String, dynamic> _validProduct({
         ];
       } else {
         value['origin'] = carrier['origin'];
+        final declaredBook = books['${step['book']}'];
+        if (declaredBook != null) {
+          value['bookUrl'] = declaredBook['bookUrl'];
+        }
       }
     }
     final evidence = <String, Object?>{};
+    if ('${step['action']}' == 'scriptProbe') {
+      value
+        ..clear()
+        ..addAll({
+          'kind': 'helper',
+          'action': 'scriptProbe',
+          'source': '${step['source']}',
+          'result': _validProbeProjection(),
+        });
+      evidence['scriptProbe'] = {'diagnostics': _validProbeDiagnostics()};
+    }
+    if (step['carrier'] != null) {
+      final same = '${step['carrier']}' == 'same';
+      value['counterAfter'] = same ? '1' : '2';
+      final book = books['${step['book']}']!;
+      evidence['carrier'] = {
+        'declared': '${step['carrier']}',
+        'actual': '${step['carrier']}',
+        'pipelineIdentity': same ? 101 : 102,
+        'cachedPipelineIdentity': 101,
+        'reusedPipeline': same,
+        'transportIdentity': same ? 201 : 202,
+        'cachedTransportIdentity': 201,
+        'distinctTransport': !same,
+        'sourceObjectIdentity': 301,
+        'cachedSourceObjectIdentity': 301,
+        'hostStateIdentity': 401,
+        'sourceKey': 'http://127.0.0.1:18771/o',
+      };
+      evidence['hitReference'] = {
+        'identity': 501,
+        'storedIdentity': 501,
+        'sameObject': true,
+        'bookId': '${step['book']}',
+        'rawAddress': '${book['bookUrl']}',
+        'preOptionUrl': 'http://127.0.0.1:18771/o/book',
+        'sourceKey': 'http://127.0.0.1:18771/o',
+        'counterAfter': same ? '1' : '2',
+      };
+    }
     if ('${step['kind']}' == 'cancel') {
       final execution = <String, Object?>{
         'pipelineIdentity': 11,
@@ -1611,6 +1684,106 @@ void main() {
     );
   });
 
+  test(
+    'the shared probe projection refuses empty, missing and wrong types',
+    () {
+      expect(
+        () =>
+            validateHttpBoundaryScriptProbeProjection(const {}, where: 'probe'),
+        throwsFormatException,
+      );
+      final missing = _validProbeProjection()..remove('lookup');
+      expect(
+        () =>
+            validateHttpBoundaryScriptProbeProjection(missing, where: 'probe'),
+        throwsFormatException,
+      );
+      final wrongType = _validProbeProjection();
+      (wrongType['getDot'] as Map)['type'] = 1;
+      expect(
+        () => validateHttpBoundaryScriptProbeProjection(
+          wrongType,
+          where: 'probe',
+        ),
+        throwsFormatException,
+      );
+      final wrongLookup = _validProbeProjection();
+      (wrongLookup['lookup'] as Map)['returned'] = 'yes';
+      expect(
+        () => validateHttpBoundaryScriptProbeProjection(
+          wrongLookup,
+          where: 'probe',
+        ),
+        throwsFormatException,
+      );
+      final wrongKeys = _validProbeProjection();
+      (wrongKeys['enumeration'] as Map)['keys'] = [1];
+      expect(
+        () => validateHttpBoundaryScriptProbeProjection(
+          wrongKeys,
+          where: 'probe',
+        ),
+        throwsFormatException,
+      );
+      final wrongDiagnostics = _validProbeDiagnostics();
+      (wrongDiagnostics['lookup'] as Map)['caught'] = 'yes';
+      expect(
+        () => validateHttpBoundaryScriptProbeEnvelope({
+          'portable': _validProbeProjection(),
+          'diagnostics': wrongDiagnostics,
+        }, where: 'probe'),
+        throwsFormatException,
+      );
+      expect(
+        validateHttpBoundaryScriptProbeEnvelope({
+          'portable': _validProbeProjection(),
+          'diagnostics': _validProbeDiagnostics(),
+        }, where: 'probe')['portable'],
+        isA<Map>(),
+      );
+    },
+  );
+
+  test('diagnostics are provenance and do not enter portable comparison', () {
+    final left = _report();
+    final right = _product();
+    for (final report in [left, right]) {
+      (report['observations'] as List).add({
+        'id': 'helper.script-probe-hg0',
+        'outcome': 'ok',
+        'category': null,
+        'value': {
+          'kind': 'helper',
+          'action': 'scriptProbe',
+          'source': 'HG0',
+          'result': _validProbeProjection(),
+        },
+        'evidence': {
+          'scriptProbe': {
+            'diagnostics': {
+              'lookup': {
+                'caught': true,
+                'name': 'TypeError',
+                'message': report == left ? 'left message' : 'right message',
+                'text': report == left ? 'left text' : 'right text',
+                'stack': null,
+              },
+              'enumeration': {'caught': false},
+            },
+          },
+        },
+      });
+    }
+    expect(_compare(left, right).notCompared, isEmpty);
+    expect(
+      _compare(
+        left,
+        right,
+      ).mismatches.where((mismatch) => mismatch.surface == 'observation'),
+      isEmpty,
+    );
+  });
+
   test('the v3 observation controls target their own new rows', () {
     final golden = _report();
     final product = _product();
@@ -1622,7 +1795,10 @@ void main() {
         'kind': 'helper',
         'action': 'scriptProbe',
         'source': 'HG1',
-        'result': '{"getDot":{"type":"object","text":"data-get"}}',
+        'result': _validProbeProjection(),
+      },
+      'evidence': {
+        'scriptProbe': {'diagnostics': _validProbeDiagnostics()},
       },
     };
     Map<String, Object?> nativeRow() => {
@@ -1633,43 +1809,46 @@ void main() {
         'kind': 'stage',
         'stage': 'details',
         'source': 'V',
+        'bookUrl': 'http://127.0.0.1:18771/v/book/1',
         'latestChapterTitle': '{"bookAfterText":"bv"}',
       },
     };
-    Map<String, Object?> sameRow() => {
-      'id': 'o1.details-same',
+    Map<String, Object?> carrierRow(String id, String mode, String counter) => {
+      'id': id,
       'outcome': 'ok',
       'category': null,
       'value': {
         'kind': 'stage',
         'stage': 'details',
         'source': 'O',
-        'bookUrl': 'http://127.0.0.1:18771/o/book',
-        'hitReference': {
-          'bookId': 'o-book-1',
-          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
-          'sourceKey': 'http://127.0.0.1:18771/o',
-        },
-        'pipelineMode': 'same',
-        'counterAfter': '',
+        'bookUrl': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+        'counterAfter': counter,
       },
-    };
-    Map<String, Object?> freshRow() => {
-      'id': 'o1.details-fresh',
-      'outcome': 'ok',
-      'category': null,
-      'value': {
-        'kind': 'stage',
-        'stage': 'details',
-        'source': 'O',
-        'bookUrl': 'http://127.0.0.1:18771/o/book/1',
-        'hitReference': {
-          'bookId': 'o-book-1',
-          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+      'evidence': {
+        'carrier': {
+          'declared': mode,
+          'actual': mode,
+          'pipelineIdentity': mode == 'same' ? 101 : 102,
+          'cachedPipelineIdentity': 101,
+          'reusedPipeline': mode == 'same',
+          'transportIdentity': mode == 'same' ? 201 : 202,
+          'cachedTransportIdentity': 201,
+          'distinctTransport': mode != 'same',
+          'sourceObjectIdentity': 301,
+          'cachedSourceObjectIdentity': 301,
+          'hostStateIdentity': 401,
           'sourceKey': 'http://127.0.0.1:18771/o',
         },
-        'pipelineMode': 'fresh',
-        'counterAfter': '1',
+        'hitReference': {
+          'identity': 501,
+          'storedIdentity': 501,
+          'sameObject': true,
+          'bookId': 'o-book-1',
+          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+          'preOptionUrl': 'http://127.0.0.1:18771/o/book',
+          'sourceKey': 'http://127.0.0.1:18771/o',
+          'counterAfter': counter,
+        },
       },
     };
     Map<String, Object?> counterRow() => {
@@ -1689,9 +1868,23 @@ void main() {
       (report['observations'] as List).addAll(<Map<String, Object?>>[
         probeRow(),
         nativeRow(),
-        sameRow(),
-        freshRow(),
+        carrierRow('o1.details-same', 'same', '1'),
+        carrierRow('o1.details-fresh', 'fresh', '2'),
         counterRow(),
+      ]);
+      (report['requests'] as List).addAll(<Map<String, Object?>>[
+        _request(
+          owner: 'o1.details-same',
+          selector: 'GET /o/book/1?',
+          path: '/o/book/1',
+          declaredResponse: 'o-book-1',
+        ),
+        _request(
+          owner: 'o1.details-fresh',
+          selector: 'GET /o/book/2?',
+          path: '/o/book/2',
+          declaredResponse: 'o-book-2',
+        ),
       ]);
     }
     final baseline = _compare(golden, product);
@@ -1707,7 +1900,7 @@ void main() {
     expect(
       control('product-script-probe-value')['newMismatchKeys'],
       contains(
-        'observation|helper.script-probe-hg1|value.result|type-or-value',
+        'observation|helper.script-probe-hg1|value.result.lookup.returned|type-or-value',
       ),
     );
     expect(
@@ -1718,17 +1911,15 @@ void main() {
     );
     expect(
       control('product-fresh-binding')['newMismatchKeys'],
-      contains('observation|o1.details-fresh|value.bookUrl|type-or-value'),
+      contains('observation|o1.details-same|value.bookUrl|type-or-value'),
     );
     expect(
       control('product-fresh-substituted-hit')['newMismatchKeys'],
-      contains(
-        'observation|o1.details-fresh|value.hitReference.rawAddress|type-or-value',
-      ),
+      contains('observation|o1.details-fresh|value.bookUrl|type-or-value'),
     );
     expect(
       control('product-fresh-reused-pipeline')['newMismatchKeys'],
-      contains('observation|o1.details-fresh|value.pipelineMode|type-or-value'),
+      isNotEmpty,
     );
     expect(
       control('product-same-extra-execution')['newMismatchKeys'],
@@ -1754,6 +1945,46 @@ void main() {
     ]) {
       expect(control(id)['passed'], isTrue, reason: '$id must pass');
     }
+  });
+
+  test('the reused-pipeline control has an actual counter fallback', () {
+    final golden = _report();
+    final product = _product();
+    Map<String, Object?> row(String id, String counter) => {
+      'id': id,
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'stage',
+        'stage': 'details',
+        'source': 'O',
+        'bookUrl': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+        'counterAfter': counter,
+      },
+    };
+    for (final report in [golden, product]) {
+      (report['observations'] as List).addAll(<Map<String, Object?>>[
+        row('o1.details-same', '1'),
+        row('o1.details-fresh', '2'),
+      ]);
+    }
+    final baseline = _compare(golden, product);
+    final controls = runHttpBoundaryControls(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: _corpus().cast<String, dynamic>(),
+      goldenId: 'synthetic',
+      baseline: baseline,
+    );
+    final reused = controls.firstWhere(
+      (control) => control.id == 'product-fresh-reused-pipeline',
+    );
+    expect(reused.applied, isTrue);
+    expect(reused.passed, isTrue);
+    expect(
+      reused.newKeys,
+      contains('observation|o1.details-fresh|value.counterAfter|type-or-value'),
+    );
   });
 
   test('the retry and sequential order controls add their own keys', () {
@@ -1866,6 +2097,112 @@ void main() {
 
     test('a legitimate record passes the exported gate', () {
       expect(() => gate(fresh()), returnsNormally);
+    });
+
+    test('missing or malformed v3 probe facts are refused', () {
+      for (final mutate in <void Function(Map<String, dynamic>)>[
+        (record) {
+          (observation(record, 'helper.script-probe-hg0')['value'] as Map)
+              .remove('result');
+        },
+        (record) {
+          (observation(record, 'helper.script-probe-hg0')['value']
+                  as Map)['result'] =
+              <String, Object?>{};
+        },
+        (record) {
+          final value =
+              observation(record, 'helper.script-probe-hg0')['value'] as Map;
+          ((value['result'] as Map)['lookup'] as Map)['returned'] = 'yes';
+        },
+        (record) {
+          (observation(record, 'helper.script-probe-hg0')['evidence'] as Map)
+              .remove('scriptProbe');
+        },
+      ]) {
+        final record = fresh();
+        mutate(record);
+        expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
+      }
+    });
+
+    test(
+      'malformed paired hit, pipeline, transport or counter proof is refused',
+      () {
+        for (final mutate in <void Function(Map<String, dynamic>)>[
+          (record) {
+            (observation(record, 'o1.details-fresh')['evidence'] as Map).remove(
+              'hitReference',
+            );
+          },
+          (record) {
+            final hit =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['hitReference']
+                    as Map;
+            hit['rawAddress'] = 'http://127.0.0.1:18771/o/book/SUBSTITUTED';
+          },
+          (record) {
+            final carrier =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['carrier']
+                    as Map;
+            carrier['reusedPipeline'] = true;
+          },
+          (record) {
+            final carrier =
+                (observation(record, 'o1.details-fresh')['evidence']
+                        as Map)['carrier']
+                    as Map;
+            carrier['transportIdentity'] =
+                ((observation(record, 'o1.details-same')['evidence']
+                        as Map)['carrier']
+                    as Map)['transportIdentity'];
+          },
+          (record) {
+            (observation(record, 'o1.details-fresh')['value']
+                    as Map)['counterAfter'] =
+                '1';
+          },
+        ]) {
+          final record = fresh();
+          mutate(record);
+          expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
+        }
+      },
+    );
+
+    test('a complete v3 record passes the frozen-capture gate', () {
+      final record = fresh();
+      final identity = record['identity'] as Map;
+      identity['corpusAssetSha256'] = 'a' * 64;
+      identity['targetPackage'] = (corpus['target'] as Map)['package'];
+      identity['targetApkSha256'] = (corpus['target'] as Map)['apkSha256'];
+      identity['targetBaselineCommit'] =
+          (corpus['target'] as Map)['baselineCommit'];
+      record['status'] = 'ok';
+      record['promotable'] = true;
+      record['terminalIntegrityOk'] = true;
+      final file = File('${work.path}${Platform.pathSeparator}positive.json')
+        ..writeAsStringSync(jsonEncode(record));
+      expect(
+        () => validateFrozenCapture(
+          record,
+          corpus: corpus,
+          corpusLf: corpusLf,
+          goldenId: 'synthetic-v3',
+          expectedReportSha256: sha256File(file),
+          reportPath: file.path,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('the retained book identity is not the analyzed request target', () {
+      final record = fresh();
+      (observation(record, 'o1.details-fresh')['value'] as Map)['bookUrl'] =
+          'http://127.0.0.1:18771/o/book/1';
+      expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
     });
 
     test('the published carrier type is a required integer, not a double', () {

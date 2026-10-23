@@ -1410,6 +1410,148 @@ public final class HttpBoundaryOracle extends Instrumentation {
 
     // -------------------------------------------------------------- helpers
 
+    private static JSONObject probeMember(JSONObject value, String name, String where) {
+        JSONObject member = value.optJSONObject(name);
+        if (member == null) {
+            throw new IllegalStateException(where + "." + name + " is not an object");
+        }
+        return member;
+    }
+
+    private static String probeText(
+            JSONObject value, String name, String where, boolean nonEmpty) {
+        Object raw;
+        try {
+            raw = value.get(name);
+        } catch (Throwable missing) {
+            throw new IllegalStateException(where + "." + name + " is missing");
+        }
+        if (!(raw instanceof String) || (nonEmpty && ((String) raw).isEmpty())) {
+            throw new IllegalStateException(where + "." + name + " is not a"
+                + (nonEmpty ? " non-empty string" : " string"));
+        }
+        return (String) raw;
+    }
+
+    private static boolean probeBoolean(JSONObject value, String name, String where) {
+        Object raw;
+        try {
+            raw = value.get(name);
+        } catch (Throwable missing) {
+            throw new IllegalStateException(where + "." + name + " is missing");
+        }
+        if (!(raw instanceof Boolean)) {
+            throw new IllegalStateException(where + "." + name + " is not a boolean");
+        }
+        return ((Boolean) raw).booleanValue();
+    }
+
+    private static void validateScriptProbeAccess(
+            JSONObject projection, String name, String where) {
+        JSONObject member = probeMember(projection, name, where);
+        String type = probeText(member, "type", where + "." + name, true);
+        Object text;
+        try {
+            text = member.get("text");
+        } catch (Throwable missing) {
+            throw new IllegalStateException(where + "." + name + ".text is missing");
+        }
+        if ("function".equals(type)) {
+            if (text != JSONObject.NULL) {
+                throw new IllegalStateException(where + "." + name
+                    + ".text is not null for a function");
+            }
+        } else if (!(text instanceof String)) {
+            throw new IllegalStateException(where + "." + name + ".text is not a string");
+        }
+    }
+
+    private static void validateScriptProbeProjection(JSONObject projection, String where)
+            throws JSONException {
+        if (projection == null) {
+            throw new IllegalStateException(where + " portable projection is not an object");
+        }
+        for (String name : new String[]{"getDot", "getBracket", "keySetDot",
+                "keySetBracket"}) {
+            validateScriptProbeAccess(projection, name, where);
+        }
+        JSONObject lookup = probeMember(projection, "lookup", where);
+        boolean lookupReturned = probeBoolean(lookup, "returned", where + ".lookup");
+        if (lookupReturned) {
+            probeText(lookup, "type", where + ".lookup", true);
+            probeBoolean(lookup, "strictLiteral", where + ".lookup");
+            probeBoolean(lookup, "looseLiteral", where + ".lookup");
+            probeText(lookup, "text", where + ".lookup", false);
+        } else {
+            probeText(lookup, "errorName", where + ".lookup", true);
+        }
+        JSONObject enumeration = probeMember(projection, "enumeration", where);
+        boolean enumerationReturned = probeBoolean(enumeration, "returned",
+            where + ".enumeration");
+        if (enumerationReturned) {
+            JSONArray keys;
+            try {
+                keys = enumeration.getJSONArray("keys");
+            } catch (Throwable missing) {
+                throw new IllegalStateException(where
+                    + ".enumeration.keys is not an array");
+            }
+            for (int index = 0; index < keys.length(); index++) {
+                if (!(keys.get(index) instanceof String)) {
+                    throw new IllegalStateException(where
+                        + ".enumeration.keys." + index + " is not a string");
+                }
+            }
+        } else {
+            probeText(enumeration, "errorName", where + ".enumeration", true);
+        }
+    }
+
+    private static void validateScriptProbeDiagnostics(JSONObject diagnostics, String where) {
+        if (diagnostics == null) {
+            throw new IllegalStateException(where + " diagnostics is not an object");
+        }
+        for (String name : new String[]{"lookup", "enumeration"}) {
+            JSONObject entry = probeMember(diagnostics, name, where);
+            boolean caught = probeBoolean(entry, "caught", where + "." + name);
+            if (!caught) continue;
+            probeText(entry, "name", where + "." + name, false);
+            probeText(entry, "message", where + "." + name, false);
+            probeText(entry, "text", where + "." + name, false);
+            Object stack;
+            try {
+                stack = entry.get("stack");
+            } catch (Throwable missing) {
+                throw new IllegalStateException(where + "." + name + ".stack is missing");
+            }
+            if (stack != JSONObject.NULL && !(stack instanceof String)) {
+                throw new IllegalStateException(where + "." + name + ".stack is not"
+                    + " a string or null");
+            }
+        }
+    }
+
+    private JSONObject scriptProbeEnvelope(String text, String where) throws Exception {
+        JSONObject envelope;
+        try {
+            envelope = new JSONObject(text);
+        } catch (Throwable error) {
+            throw new IncompleteStep(where + " did not answer a JSON envelope: "
+                + describe(error));
+        }
+        JSONObject portable = envelope.optJSONObject("portable");
+        JSONObject diagnostics = envelope.optJSONObject("diagnostics");
+        try {
+            validateScriptProbeProjection(portable, where);
+            validateScriptProbeDiagnostics(diagnostics, where);
+        } catch (Throwable error) {
+            throw new IncompleteStep(where + " envelope is not typed: "
+                + describe(error));
+        }
+        return new JSONObject().put("portable", portable)
+            .put("diagnostics", diagnostics);
+    }
+
     private void stepHelper(JSONObject step, JSONObject value, JSONObject evidence)
             throws Throwable {
         String sourceId = step.getString("source");
@@ -1522,17 +1664,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
         String resultText = result == null ? "null" : String.valueOf(result);
         if ("scriptProbe".equals(action)) {
             // One fixture-authored script through the real AnalyzeUrl.evalJS/source
-            // binding. Its JSON projection is the portable compared value; a
-            // non-object answer or an unresolved evaluation is an incomplete row,
-            // never a converted diagnostic string or an expected TypeError.
-            try {
-                new JSONObject(resultText);
-            } catch (Throwable error) {
-                throw new IncompleteStep("the script probe did not answer a JSON projection: "
-                    + describe(error));
-            }
+            // binding. The envelope carries the portable projection plus real caught
+            // diagnostics; only the portable object reaches the compared result.
+            JSONObject envelope = scriptProbeEnvelope(resultText,
+                "script probe " + step.getString("id"));
+            value.put("result", envelope.getJSONObject("portable"));
+            evidence.put("scriptProbe", new JSONObject()
+                .put("diagnostics", envelope.getJSONObject("diagnostics")));
+        } else {
+            value.put("result", result == null ? JSONObject.NULL : resultText);
         }
-        value.put("result", result == null ? JSONObject.NULL : resultText);
         evidence.put("javaType", result == null ? JSONObject.NULL : result.getClass().getName());
         JSONObject spec = step.getJSONObject("requests");
         JSONObject batch = spec.optJSONObject("batch");
@@ -1753,18 +1894,14 @@ public final class HttpBoundaryOracle extends Instrumentation {
                     }
                     String counterText = counter == null ? "" : String.valueOf(counter);
                     String sourceKey = str(source.getClass(), source, "getKey");
-                    value.put("hitReference", new JSONObject()
-                        .put("bookId", step.getString("book"))
-                        .put("rawAddress", rawAfter)
-                        .put("sourceKey", sourceKey));
-                    value.put("pipelineMode", "analyze-url-per-stage-call");
                     value.put("counterAfter", counterText);
                     evidence.put("hitReference", new JSONObject()
                         .put("identity", System.identityHashCode(book))
+                        .put("bookId", step.getString("book"))
+                        .put("rawAddress", rawAfter)
                         .put("rawAddressBefore", rawBefore)
                         .put("rawAddressAfter", rawAfter)
                         .put("sourceKey", sourceKey)
-                        .put("pipelineMode", "analyze-url-per-stage-call")
                         .put("counterAfter", counterText));
                 }
                 break;
@@ -3077,19 +3214,27 @@ public final class HttpBoundaryOracle extends Instrumentation {
             }
             if ("scriptProbe".equals(step.optString("action", ""))) {
                 JSONObject probeValue = row.optJSONObject("value");
-                String projection = probeValue == null ? null
-                    : probeValue.optString("result", null);
-                boolean shapeOk = projection != null;
+                JSONObject projection = probeValue == null ? null
+                    : probeValue.optJSONObject("result");
+                JSONObject probeEvidence = row.optJSONObject("evidence");
+                JSONObject probe = probeEvidence == null ? null
+                    : probeEvidence.optJSONObject("scriptProbe");
+                JSONObject diagnostics = probe == null ? null
+                    : probe.optJSONObject("diagnostics");
+                boolean shapeOk = projection != null && diagnostics != null;
                 if (shapeOk) {
                     try {
-                        new JSONObject(projection);
+                        validateScriptProbeProjection(projection, "script probe " + id);
+                        validateScriptProbeDiagnostics(diagnostics,
+                            "script probe " + id);
                     } catch (Throwable error) {
                         shapeOk = false;
                     }
                 }
                 if (!shapeOk) {
                     shapeMismatches.put(new JSONObject().put("id", id)
-                        .put("problem", "the script probe did not answer a JSON projection"));
+                        .put("problem", "the script probe portable projection or diagnostics"
+                            + " is not typed"));
                 }
             }
             if (id.equals(cancelStep)) {
@@ -3122,6 +3267,10 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 }
             }
         }
+        JSONArray carrierProblems = carrierPairProblems();
+        for (int index = 0; index < carrierProblems.length(); index++) {
+            shapeMismatches.put(carrierProblems.getJSONObject(index));
+        }
         boolean match = missing.length() == 0 && extra.length() == 0
             && duplicates.length() == 0 && ordered
             && outcomeMismatches.length() == 0 && requestCountMismatches.length() == 0
@@ -3137,6 +3286,119 @@ public final class HttpBoundaryOracle extends Instrumentation {
             .put("requestCountMismatches", requestCountMismatches)
             .put("shapeMismatches", shapeMismatches)
             .put("match", match);
+    }
+
+    private JSONArray carrierPairProblems() throws JSONException {
+        JSONArray problems = new JSONArray();
+        JSONArray steps = corpus.getJSONArray("steps");
+        List<JSONObject> carriers = new ArrayList<>();
+        for (int index = 0; index < steps.length(); index++) {
+            JSONObject step = steps.getJSONObject(index);
+            if (!step.has("carrier")) continue;
+            carriers.add(step);
+            String id = step.getString("id");
+            JSONObject row = rowById(id);
+            if (row == null) continue;
+            JSONObject value = row.optJSONObject("value");
+            JSONObject evidence = row.optJSONObject("evidence");
+            JSONObject carrier = evidence == null ? null
+                : evidence.optJSONObject("carrier");
+            JSONObject hit = evidence == null ? null
+                : evidence.optJSONObject("hitReference");
+            boolean ok = value != null && carrier != null && hit != null;
+            if (ok) {
+                try {
+                    String declared = carrier.getString("declared");
+                    Object sourceObject = sourcesById.get(step.getString("source"));
+                    String sourceKey = str(sourceObject.getClass(), sourceObject, "getKey");
+                    String actual = carrier.getString("actual");
+                    if (!declared.equals(step.getString("carrier"))
+                            || actual.isEmpty()
+                            || carrier.getBoolean("pipelineCache")
+                            || !sourceKey.equals(carrier.getString("sourceKey"))) {
+                        ok = false;
+                    }
+                    String bookUrl = declaredBook(step.getString("book"))
+                        .getString("bookUrl");
+                    if (!bookUrl.equals(value.getString("bookUrl"))
+                            || !bookUrl.equals(hit.getString("rawAddress"))
+                            || !hit.getString("bookId").equals(step.getString("book"))
+                            || !(hit.get("identity") instanceof Number)
+                            || !(value.get("counterAfter") instanceof String)) {
+                        ok = false;
+                    }
+                    String counter = value.getString("counterAfter");
+                    if (!counter.matches("[0-9]+")
+                            || !counter.equals(hit.getString("counterAfter"))) {
+                        ok = false;
+                    }
+                    JSONArray slice = row.getJSONArray("requests");
+                    if (slice.length() != 1) {
+                        ok = false;
+                    } else {
+                        JSONArray ordered = step.getJSONObject("requests")
+                            .getJSONArray("ordered");
+                        if (ordered.length() != 1) {
+                            ok = false;
+                        } else {
+                            String selector = slice.getJSONObject(0)
+                                .getString("selector");
+                            if (!selector.equals(selectorOf(
+                                    responseById.get(ordered.getString(0))))) {
+                                ok = false;
+                            }
+                        }
+                    }
+                } catch (Throwable error) {
+                    ok = false;
+                }
+            }
+            if (!ok) {
+                problems.put(new JSONObject().put("id", id)
+                    .put("problem", "the carrier hit/projection proof is not typed"));
+            }
+        }
+        JSONObject same = null;
+        JSONObject fresh = null;
+        for (JSONObject step : carriers) {
+            if ("same".equals(step.optString("carrier", ""))) same = step;
+            if ("fresh".equals(step.optString("carrier", ""))) fresh = step;
+        }
+        if (same == null || fresh == null
+                || !same.getString("book").equals(fresh.getString("book"))) {
+            problems.put(new JSONObject().put("id", "carrier-pair")
+                .put("problem", "the same/fresh carrier pair is not declared"));
+            return problems;
+        }
+        JSONObject sameRow = rowById(same.getString("id"));
+        JSONObject freshRow = rowById(fresh.getString("id"));
+        if (sameRow != null && freshRow != null) {
+            try {
+                JSONObject sameHit = sameRow.getJSONObject("evidence")
+                    .getJSONObject("hitReference");
+                JSONObject freshHit = freshRow.getJSONObject("evidence")
+                    .getJSONObject("hitReference");
+                String sameCounter = sameRow.getJSONObject("value")
+                    .getString("counterAfter");
+                String freshCounter = freshRow.getJSONObject("value")
+                    .getString("counterAfter");
+                if (sameHit.getInt("identity") != freshHit.getInt("identity")
+                        || !sameHit.getString("rawAddress").equals(
+                            freshHit.getString("rawAddress"))
+                        || !sameHit.getString("sourceKey").equals(
+                            freshHit.getString("sourceKey"))
+                        || !"1".equals(sameCounter)
+                        || !"2".equals(freshCounter)) {
+                    problems.put(new JSONObject().put("id", "carrier-pair")
+                        .put("problem", "the same/fresh counter or retained hit"
+                            + " relationship is not the controlled 1/2 pair"));
+                }
+            } catch (Throwable error) {
+                problems.put(new JSONObject().put("id", "carrier-pair")
+                    .put("problem", "the same/fresh carrier pair is not typed"));
+            }
+        }
+        return problems;
     }
 
     private JSONObject evaluateSuccess() throws Exception {
