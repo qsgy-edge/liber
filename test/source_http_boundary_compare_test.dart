@@ -822,6 +822,7 @@ Map<String, dynamic> _validProduct({
       'match': countMatch && orderMatch && batchMatch,
     });
   }
+  final declaredTotal = httpBoundaryStructuralOf(corpus)['requests'] as int;
   final ids = httpBoundaryObservationIds(corpus);
   return <String, dynamic>{
     'schemaVersion': 1,
@@ -929,9 +930,9 @@ Map<String, dynamic> _validProduct({
     'serverErrors': <Object?>[],
     'requestCheck': {
       'steps': requestCheckSteps,
-      'declaredTotal': 31,
+      'declaredTotal': declaredTotal,
       'actualTotal': requests.length,
-      'totalMatch': requests.length == 31,
+      'totalMatch': requests.length == declaredTotal,
       'ownerless': <Object?>[],
       'unknownOwners': <Object?>[],
       'duplicateIndices': 0,
@@ -1608,6 +1609,103 @@ void main() {
         'observation|helper.ajaxAll-order|value.batch.inFlightPeak|number',
       ),
     );
+  });
+
+  test('the v3 observation controls target their own new rows', () {
+    final golden = _report();
+    final product = _product();
+    Map<String, Object?> probeRow() => {
+      'id': 'helper.script-probe-hg1',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'helper',
+        'action': 'scriptProbe',
+        'source': 'HG1',
+        'result': '{"getDot":{"type":"object","text":"data-get"}}',
+      },
+    };
+    Map<String, Object?> nativeRow() => {
+      'id': 'v1.details',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'stage',
+        'stage': 'details',
+        'source': 'V',
+        'latestChapterTitle': '{"bookAfterText":"bv"}',
+      },
+    };
+    Map<String, Object?> freshRow() => {
+      'id': 'o1.details-fresh',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'stage',
+        'stage': 'details',
+        'source': 'O',
+        'bookUrl': 'http://127.0.0.1:18771/o/book/fresh',
+      },
+    };
+    Map<String, Object?> counterRow() => {
+      'id': 'n1.toc',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'stage',
+        'stage': 'toc',
+        'source': 'N',
+        'chapters': [
+          {'index': 0, 'title': 'x', 'url': 'u', 'tag': ''},
+        ],
+      },
+    };
+    for (final report in [golden, product]) {
+      (report['observations'] as List).addAll(<Map<String, Object?>>[
+        probeRow(),
+        nativeRow(),
+        freshRow(),
+        counterRow(),
+      ]);
+    }
+    final baseline = _compare(golden, product);
+    final controls = runHttpBoundaryControls(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: _corpus().cast<String, dynamic>(),
+      goldenId: 'synthetic',
+      baseline: baseline,
+    );
+    Map<String, Object?> control(String id) =>
+        controls.firstWhere((control) => control.id == id).toJson();
+    expect(
+      control('product-script-probe-value')['newMismatchKeys'],
+      contains(
+        'observation|helper.script-probe-hg1|value.result|type-or-value',
+      ),
+    );
+    expect(
+      control('product-native-return-presence')['newMismatchKeys'],
+      contains(
+        'observation|v1.details|value.latestChapterTitle|missing-observed-field',
+      ),
+    );
+    expect(
+      control('product-fresh-binding')['newMismatchKeys'],
+      contains('observation|o1.details-fresh|value.bookUrl|type-or-value'),
+    );
+    expect(
+      control('product-option-counter')['newMismatchKeys'],
+      contains('observation|n1.toc|value.chapters.0.title|type-or-value'),
+    );
+    for (final id in const [
+      'product-script-probe-value',
+      'product-native-return-presence',
+      'product-fresh-binding',
+      'product-option-counter',
+    ]) {
+      expect(control(id)['passed'], isTrue, reason: '$id must pass');
+    }
   });
 
   test('the retry and sequential order controls add their own keys', () {
@@ -2774,13 +2872,13 @@ void main() {
   test('the committed corpus derives the declared structural model', () {
     final corpus = loadHttpBoundaryCorpus();
     final derived = httpBoundaryStructuralOf(corpus);
-    expect(derived['observations'], 22);
-    expect(derived['requests'], 31);
-    expect(derived['responses'], 29);
+    expect(derived['observations'], 44);
+    expect(derived['requests'], 51);
+    expect(derived['responses'], 49);
     expect(derived['helperSelectors'], 12);
     expect(derived['rateSelectors'], 3);
-    expect(derived['stageSelectors'], 14);
-    expect(derived['stageRequests'], 16);
+    expect(derived['stageSelectors'], 34);
+    expect(derived['stageRequests'], 36);
     expect(derived['requestsExceedingSelectors'], 2);
     final declared = (corpus['structural'] as Map).cast<String, dynamic>();
     for (final entry in derived.entries) {
@@ -2816,6 +2914,77 @@ void main() {
     },
   );
 
+  test('the committed corpus declares the v3 interop observation rows', () {
+    final corpus = loadHttpBoundaryCorpus();
+    expect(corpus['corpusVersion'], 3);
+    final steps = httpBoundarySteps(corpus);
+    // Four real installed-app `source.getHeaderMap(false)` probes cover no
+    // collision, a data key `get`, a data key `keySet` and both.
+    final probes = [
+      for (final step in steps)
+        if (step['action'] == 'scriptProbe') step,
+    ];
+    expect(probes, hasLength(4));
+    for (final id in const [
+      'helper.script-probe-hg0',
+      'helper.script-probe-hg1',
+      'helper.script-probe-hg2',
+      'helper.script-probe-hg3',
+    ]) {
+      final probe = probes.firstWhere((step) => step['id'] == id);
+      expect('${probe['script']}', contains('source.getHeaderMap(false)'));
+      final declared = httpBoundaryDeclaredRequests(probe);
+      expect(declared.ordered, isEmpty);
+      expect(declared.members, isEmpty);
+    }
+    // One details row declares the narrow fresh-pipeline carrier: a genuinely
+    // different product pipeline over the same source object/key and stored hit.
+    final fresh = [
+      for (final step in steps)
+        if (step['carrier'] == 'fresh') step,
+    ];
+    expect(fresh, hasLength(1));
+    expect(fresh.single['stage'], 'details');
+    expect(fresh.single['id'], 'o1.details-fresh');
+    // The native-return rows route through real book-info and content fields.
+    final latest = httpBoundarySteps(
+      corpus,
+    ).firstWhere((step) => step['id'] == 'v1.details');
+    expect(latest['stage'], 'details');
+    final content = httpBoundarySteps(
+      corpus,
+    ).firstWhere((step) => step['id'] == 'v1.content');
+    expect(content['stage'], 'content');
+    // No declared step lost the original v2 ids or their order prefix.
+    expect(
+      [for (final step in steps.take(22)) step['id']],
+      [
+        'helper.ajax',
+        'helper.ajax-list-first',
+        'helper.ajaxAll-order',
+        'helper.ajaxAll-width',
+        'helper.connect-header-string',
+        'helper.connect-source-header',
+        'helper.header-map-js',
+        'helper.header-map-ltjs',
+        'rate.record.1',
+        'rate.record.2',
+        'rate.record.3',
+        's1.search',
+        's1.details',
+        's1.toc',
+        's1.content',
+        's2.retry-non2xx',
+        's3.toc-empty.search',
+        's3.toc-empty.details',
+        's3.toc-empty.toc',
+        's4.search-connection-failure',
+        's5.search-cancelled',
+        's6.search-after-cancel',
+      ],
+    );
+  });
+
   test('a corpus source without the declared user agent is refused', () {
     final corpus = (jsonDecode(jsonEncode(loadHttpBoundaryCorpus())) as Map)
         .cast<String, dynamic>();
@@ -2826,5 +2995,51 @@ void main() {
       () => validateHttpBoundaryCorpus(corpus),
       throwsA(isA<FormatException>()),
     );
+  });
+
+  test('the v3 action and carrier declarations are gated', () {
+    Map<String, dynamic> copy() =>
+        (jsonDecode(jsonEncode(loadHttpBoundaryCorpus())) as Map)
+            .cast<String, dynamic>();
+    FormatException? refusal(Map<String, dynamic> corpus) {
+      try {
+        validateHttpBoundaryCorpus(corpus);
+        return null;
+      } on FormatException catch (error) {
+        return error;
+      }
+    }
+
+    final unknownAction = copy();
+    for (final raw in unknownAction['steps'] as List) {
+      final step = raw as Map;
+      if (step['id'] == 'helper.script-probe-hg0') step['action'] = 'probe';
+    }
+    expect(refusal(unknownAction), isNotNull);
+
+    final probeWithRequest = copy();
+    for (final raw in probeWithRequest['steps'] as List) {
+      final step = raw as Map;
+      if (step['id'] == 'helper.script-probe-hg0') {
+        step['requests'] = {
+          'ordered': ['h1-single'],
+        };
+      }
+    }
+    expect(refusal(probeWithRequest), isNotNull);
+
+    final carrierOutsideDetails = copy();
+    for (final raw in carrierOutsideDetails['steps'] as List) {
+      final step = raw as Map;
+      if (step['id'] == 'o1.search') step['carrier'] = 'fresh';
+    }
+    expect(refusal(carrierOutsideDetails), isNotNull);
+
+    final unknownCarrier = copy();
+    for (final raw in unknownCarrier['steps'] as List) {
+      final step = raw as Map;
+      if (step['id'] == 'o1.details-fresh') step['carrier'] = 'stored';
+    }
+    expect(refusal(unknownCarrier), isNotNull);
   });
 }

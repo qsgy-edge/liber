@@ -9,18 +9,30 @@ still differs. Nothing here is a compatibility claim, and nothing here can turn 
 difference into a pass.
 
 Status: **measured, not accepted.** At candidate `b7fc3cf`, the product run reached
-all 22 declared observations and all 31 ordinary requests with no unmatched request,
-and both captures compared identically with 56 strict differences. That retained
+all 22 v2 observations and all 31 v2 ordinary requests with no unmatched request,
+and both v2 captures compared identically with 56 strict differences. That retained
 pre-repair measurement keeps its original identity; new runtime or observer bytes
 require a new execution and comparison.
 
-At this observer candidate, built on integration/133 `a175a67`, the Map repair and
-the source-context carrier projection are in place. The new product session reached
-22 observations and 31 requests, every cleanup receipt is true, and both captures
-compare with **38 strict differences each**. All 38 are named in `notCompared` under
-the four approved dispositions below and **0 are unattributed**; the strict verdict
-remains a difference (exit 3), never a pass. Nineteen own-baseline controls per
-capture pass, and every control's own new mismatch stays unattributed. Integration,
+The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
+requests and a fifth declared cohort. The v2 rows and captures keep their original
+identities and are not relabelled as v3. The v3 product run on this preparation branch
+reaches 50/51 declared requests and 44 observations with **three known URL-option
+omission rows incomplete** (`o1.details-same` misses its declared transformed request,
+`t1.toc` requests the pre-option TOC address, `p1.toc` walks the first pre-option next
+page) and three unmatched requests. That report is retained as the actual current-
+product measurement: it is not a pass, and the comparator refuses an incomplete
+product record by design. The v3 installed-app capture and comparison remain with the
+controller and are **not-run** here.
+
+At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
+repair and the source-context carrier projection were in place. That product session
+reached 22 observations and 31 requests, every cleanup receipt was true, and both v2
+captures compared with **38 strict differences each**. All 38 are named in
+`notCompared` under the four approved dispositions below and **0 are unattributed**;
+the strict verdict remains a difference (exit 3), never a pass. Nineteen own-baseline
+controls per v2 capture applied and passed, and every control's own new mismatch stayed
+unattributed; the four v3 row controls are not-applicable on a v2 record. Integration,
 review, the Windows driven run and #137/#133 acceptance stay with the controller.
 
 ## What runs
@@ -180,7 +192,7 @@ name stays an unattributed failure.
 
 ## Controls
 
-Nineteen controls run on deep copies of the immutable captures and of the product
+Twenty-three controls run on deep copies of the immutable captures and of the product
 record; each is compared against **its own** baseline, so a row the baseline already
 reports can never satisfy a control. A control passes only when it introduces a new
 strict mismatch and the approved disposition leaves every one of those new keys
@@ -229,13 +241,15 @@ remove the cancellation row or any behavioral assertion.
 The comparer retains its strict difference list and exit semantics and reports the
 four approved named differences in `notCompared`; a scheduling or zero-argument
 divergence is not a frozen compatibility pass. The 56 historical differences below
-remain the pre-repair result bound to `b7fc3cf`; the current candidate's measured 38
-are listed next.
+remain the pre-repair result bound to `b7fc3cf`; the historical v2 candidate's measured
+38 are listed next. No v3 capture exists on this branch, so this document makes no v3
+difference list and no v3 claim; the new rows' actual frozen/product differences must
+come from the controller's executed v3 comparison.
 
-## The current named differences
+## The historical v2 named differences
 
-The current observer candidate records 38 strict differences per capture, each one
-named by the classifier above and none left unattributed:
+The historical v2 observer candidate records 38 strict differences per capture, each
+one named by the classifier above and none left unattributed:
 
 1. **Configured `ajaxAll` width — 16 entries.** `runtimeConfiguration.threadCount`
    16 → 4, each helper batch row's `value.batch.threadCount` 16 → 4, and the declared

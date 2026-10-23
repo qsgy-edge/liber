@@ -4066,6 +4066,59 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
       value['workerTerminated'] = false;
     }),
   );
+  // The v3 observation controls: each targets a fact its own new row carries,
+  // so a green baseline cannot be satisfied by an unrelated existing mismatch.
+  controls.addAll(
+    run(
+      'product-script-probe-value',
+      'product helper.script-probe-hg1 projection',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'helper.script-probe-hg1')['value'],
+          'value',
+        );
+        value['result'] = '${value['result']}-MUTATED';
+      },
+    ),
+  );
+  controls.addAll(
+    run(
+      'product-native-return-presence',
+      'product v1.details latestChapterTitle',
+      (goldenCopy, productCopy) {
+        _object(
+          observation(productCopy, 'v1.details')['value'],
+          'value',
+        ).remove('latestChapterTitle');
+      },
+    ),
+  );
+  controls.addAll(
+    run('product-fresh-binding', 'product o1.details-fresh bookUrl', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-fresh')['value'],
+        'value',
+      );
+      value['bookUrl'] = 'http://127.0.0.1:18771/o/book/MUTATED';
+    }),
+  );
+  controls.addAll(
+    run(
+      'product-option-counter',
+      'product n1.toc counter-backed chapter title',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'n1.toc')['value'],
+          'value',
+        );
+        final chapters = _array(value['chapters'], 'chapters');
+        _object(chapters.first, 'chapter')['title'] = '';
+      },
+    ),
+  );
   return controls;
 }
 

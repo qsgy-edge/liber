@@ -36,7 +36,7 @@ import 'package:pointycastle/digests/sha256.dart';
 /// cleanup receipts, and the root is removed again when the run is clean.
 const httpBoundaryCorpusPath = 'tool/http_boundary/fixtures.json';
 const httpBoundaryFixtureId = 'HTTP-BOUNDARY-01';
-const httpBoundaryCorpusVersion = 2;
+const httpBoundaryCorpusVersion = 3;
 
 /// The user agent every corpus source declares (`fixtures.json` `sources`).
 /// The corpus tests header arity and replacement with it, so a source without
@@ -289,6 +289,37 @@ Map<String, Object?> httpBoundaryStructuralOf(Map<String, dynamic> corpus) {
   };
 }
 
+/// The helper actions the two lanes actually implement. `scriptProbe` is one
+/// fixture-authored script through the real evaluation binding; its result is
+/// the script's own JSON projection, never a relabelled arity or a converted
+/// diagnostic string.
+const httpBoundaryHelperActions = {
+  'ajax',
+  'ajaxList',
+  'ajaxAll',
+  'connectHeader',
+  'connectSource',
+  'headerMap',
+  'scriptProbe',
+};
+
+void _validateHelperAction(Map<String, dynamic> step, String id) {
+  final action = _text(step['action'], 'step $id action');
+  if (!httpBoundaryHelperActions.contains(action)) {
+    throw FormatException('step $id has unknown helper action $action');
+  }
+  if (action == 'scriptProbe') {
+    _text(step['script'], 'step $id script');
+    if (step['scripts'] != null) {
+      throw FormatException('step $id script probe declares headerMap scripts');
+    }
+    final declared = httpBoundaryDeclaredRequests(step);
+    if (declared.ordered.isNotEmpty || declared.members.isNotEmpty) {
+      throw FormatException('step $id script probe declares requests');
+    }
+  }
+}
+
 /// Whether one declared `header` rule names [httpBoundaryUserAgent] as its user
 /// agent. A static rule is parsed; the two script forms' declared
 /// `JSON.stringify` object literal is read without executing the script.
@@ -372,12 +403,16 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
     );
   }
   final sources = _array(corpus['sources'], 'sources');
-  if (sources.length != 6) {
-    throw const FormatException('the corpus declares six sources');
+  if (sources.length != 16) {
+    throw const FormatException('the corpus declares sixteen sources');
   }
+  final sourceIds = <String>{};
   for (final raw in sources) {
     final entry = _object(raw, 'source');
     final id = _text(entry['id'], 'source id');
+    if (!sourceIds.add(id)) {
+      throw FormatException('source $id is declared twice');
+    }
     final source = _object(entry['bookSource'], 'source $id bookSource');
     _text(source['bookSourceUrl'], 'source $id bookSourceUrl');
     if (source['enabledCookieJar'] != false) {
@@ -389,6 +424,11 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       throw FormatException(
         'source $id does not declare the corpus user agent in its header rule',
       );
+    }
+  }
+  for (final id in const ['H1', 'H2', 'H3', 'S', 'R', 'F']) {
+    if (!sourceIds.contains(id)) {
+      throw FormatException('the corpus dropped the v2 source $id');
     }
   }
   if (!'${httpBoundarySourceOf(corpus, 'F')['bookSourceUrl']}'.contains(
@@ -447,6 +487,20 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       throw FormatException('step $id has unknown kind $kind');
     }
     httpBoundarySourceOf(corpus, _text(step['source'], 'step $id source'));
+    if (kind == 'helper') {
+      _validateHelperAction(step, id);
+    }
+    final carrier = step['carrier'];
+    if (carrier != null) {
+      if (kind != 'stage' || '${step['stage']}' != 'details') {
+        throw FormatException(
+          'step $id declares a carrier outside a details stage',
+        );
+      }
+      if (carrier != 'same' && carrier != 'fresh') {
+        throw FormatException('step $id declares unknown carrier $carrier');
+      }
+    }
     final declared = httpBoundaryDeclaredRequests(step);
     for (final responseId in [...declared.ordered, ...declared.members]) {
       if (!responseIds.contains(responseId)) {
@@ -1345,6 +1399,26 @@ class _HttpBoundaryRun {
         }
       case 'headerMap':
         value.addAll(await _headerMapValue(observation, step));
+      case 'scriptProbe':
+        final result = await _evaluate(
+          sourceId,
+          _text(step['script'], 'script'),
+        );
+        final text = result is String ? result : '$result';
+        final Object? projection;
+        try {
+          projection = jsonDecode(text);
+        } on FormatException catch (error) {
+          throw HttpBoundaryIncomplete(
+            'the script probe did not answer a JSON projection: $error',
+          );
+        }
+        if (projection is! Map) {
+          throw const HttpBoundaryIncomplete(
+            'the script probe projection is not a JSON object',
+          );
+        }
+        value['result'] = text;
       default:
         throw HttpBoundaryIncomplete('unknown helper action $action');
     }
@@ -1557,11 +1631,28 @@ class _HttpBoundaryRun {
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
-    final value = await _stageValue(
-      _pipelineOf('${step['source']}'),
-      step,
-      observation,
-    );
+    final fresh = '${step['carrier'] ?? ''}' == 'fresh';
+    final pipeline = fresh
+        ? openBookSourcePipeline(
+            sourceObject('${step['source']}'),
+            HttpSourceTransport(),
+            hostState: hostState,
+            androidId: androidId,
+          )
+        : _pipelineOf('${step['source']}');
+    if (step['carrier'] != null) {
+      (observation['evidence'] as Map)['carrier'] = {
+        'declared': '${step['carrier']}',
+        'actual': fresh ? 'fresh' : 'same',
+        'pipelineIdentity': identityHashCode(pipeline),
+        'transportIdentity': identityHashCode(pipeline.transport),
+        'sourceObjectIdentity': identityHashCode(
+          sourceObject('${step['source']}'),
+        ),
+        'sourceKey': sourceUrl('${step['source']}'),
+      };
+    }
+    final value = await _stageValue(pipeline, step, observation);
     observation['value'] = value;
     if (observation['outcome'] == 'ok') observation['category'] = null;
   }

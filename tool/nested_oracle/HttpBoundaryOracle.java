@@ -726,8 +726,8 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private void validateCorpus() throws Exception {
         if (!"HTTP-BOUNDARY-01".equals(corpus.getString("fixtureId"))
                 || corpus.getInt("schemaVersion") != 1
-                || corpus.getInt("corpusVersion") != 2) {
-            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema 1/version 2");
+                || corpus.getInt("corpusVersion") != 3) {
+            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema 1/version 3");
         }
         JSONObject target = corpus.getJSONObject("target");
         if (!"io.legado.app.debug".equals(target.getString("package"))) {
@@ -750,7 +750,19 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 + " host:port: " + origin);
         }
         JSONArray sources = corpus.getJSONArray("sources");
-        if (sources.length() != 6) throw new IllegalStateException("corpus needs six sources");
+        if (sources.length() != 16) throw new IllegalStateException("corpus needs sixteen sources");
+        Set<String> sourceIds = new LinkedHashSet<>();
+        for (int index = 0; index < sources.length(); index++) {
+            String sourceId = sources.getJSONObject(index).getString("id");
+            if (!sourceIds.add(sourceId)) {
+                throw new IllegalStateException("duplicate source id " + sourceId);
+            }
+        }
+        for (String requiredId : new String[]{"H1", "H2", "H3", "S", "R", "F"}) {
+            if (!sourceIds.contains(requiredId)) {
+                throw new IllegalStateException("corpus dropped the v2 source " + requiredId);
+            }
+        }
         Set<String> sourceKeys = new LinkedHashSet<>();
         String concurrentRate = null;
         for (int index = 0; index < sources.length(); index++) {
@@ -857,6 +869,39 @@ public final class HttpBoundaryOracle extends Instrumentation {
             if (!new LinkedHashSet<>(Arrays.asList("helper", "rate", "stage", "failure",
                     "cancel")).contains(kind)) {
                 throw new IllegalStateException("unknown step kind " + kind);
+            }
+            if ("helper".equals(kind)) {
+                String action = step.getString("action");
+                if (!new LinkedHashSet<>(Arrays.asList("ajax", "ajaxList", "ajaxAll",
+                        "connectHeader", "connectSource", "headerMap", "scriptProbe"))
+                        .contains(action)) {
+                    throw new IllegalStateException("step " + id
+                        + " has unknown helper action " + action);
+                }
+                if ("scriptProbe".equals(action)) {
+                    if (step.optString("script", "").isEmpty() || step.has("scripts")) {
+                        throw new IllegalStateException("script probe " + id
+                            + " has no single script or carries headerMap scripts");
+                    }
+                    JSONObject spec = step.getJSONObject("requests");
+                    JSONArray ordered = spec.optJSONArray("ordered");
+                    if ((ordered != null && ordered.length() != 0)
+                            || spec.optJSONObject("batch") != null) {
+                        throw new IllegalStateException("script probe " + id
+                            + " declares requests");
+                    }
+                }
+            }
+            if (step.has("carrier")) {
+                String carrier = step.getString("carrier");
+                if (!"stage".equals(kind) || !"details".equals(step.optString("stage", ""))) {
+                    throw new IllegalStateException("step " + id
+                        + " declares a carrier outside a details stage");
+                }
+                if (!"same".equals(carrier) && !"fresh".equals(carrier)) {
+                    throw new IllegalStateException("step " + id
+                        + " declares unknown carrier " + carrier);
+                }
             }
             String outcome = step.getString("expectedOutcome");
             if (!new LinkedHashSet<>(Arrays.asList("ok", "failure", "cancelled"))
@@ -1462,7 +1507,20 @@ public final class HttpBoundaryOracle extends Instrumentation {
         }
         Object host = newAnalyzeUrl(source);
         Object result = evalJS(host, step.getString("script"));
-        value.put("result", result == null ? JSONObject.NULL : String.valueOf(result));
+        String resultText = result == null ? "null" : String.valueOf(result);
+        if ("scriptProbe".equals(action)) {
+            // One fixture-authored script through the real AnalyzeUrl.evalJS/source
+            // binding. Its JSON projection is the portable compared value; a
+            // non-object answer or an unresolved evaluation is an incomplete row,
+            // never a converted diagnostic string or an expected TypeError.
+            try {
+                new JSONObject(resultText);
+            } catch (Throwable error) {
+                throw new IncompleteStep("the script probe did not answer a JSON projection: "
+                    + describe(error));
+            }
+        }
+        value.put("result", result == null ? JSONObject.NULL : resultText);
         evidence.put("javaType", result == null ? JSONObject.NULL : result.getClass().getName());
         JSONObject spec = step.getJSONObject("requests");
         JSONObject batch = spec.optJSONObject("batch");
@@ -1674,6 +1732,15 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 break;
             default:
                 throw new IllegalStateException("unknown stage " + stageKind);
+        }
+        if (step.has("carrier")) {
+            // The frozen has no pipeline cache to choose between: every stage call
+            // constructs its own AnalyzeUrl from the stored Book/BookChapter carrier.
+            evidence.put("carrier", new JSONObject()
+                .put("declared", step.getString("carrier"))
+                .put("actual", "analyze-url-per-stage-call")
+                .put("pipelineCache", false)
+                .put("sourceKey", str(source.getClass(), source, "getKey")));
         }
         JSONObject batch = step.getJSONObject("requests").optJSONObject("batch");
         if (batch != null) {
@@ -2961,6 +3028,23 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 if (!shapeOk) {
                     shapeMismatches.put(new JSONObject().put("id", id)
                         .put("problem", "the three script arities are not measured"));
+                }
+            }
+            if ("scriptProbe".equals(step.optString("action", ""))) {
+                JSONObject probeValue = row.optJSONObject("value");
+                String projection = probeValue == null ? null
+                    : probeValue.optString("result", null);
+                boolean shapeOk = projection != null;
+                if (shapeOk) {
+                    try {
+                        new JSONObject(projection);
+                    } catch (Throwable error) {
+                        shapeOk = false;
+                    }
+                }
+                if (!shapeOk) {
+                    shapeMismatches.put(new JSONObject().put("id", id)
+                        .put("problem", "the script probe did not answer a JSON projection"));
                 }
             }
             if (id.equals(cancelStep)) {
