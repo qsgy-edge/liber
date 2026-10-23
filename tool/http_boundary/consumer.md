@@ -12,8 +12,16 @@ Status: **measured, not accepted.** At candidate `b7fc3cf`, the product run reac
 all 22 declared observations and all 31 ordinary requests with no unmatched request,
 and both captures compared identically with 56 strict differences. That retained
 pre-repair measurement keeps its original identity; new runtime or observer bytes
-require a new execution and comparison. Integration, review, the Windows driven run
-and #137/#133 acceptance stay with the controller.
+require a new execution and comparison.
+
+At this observer candidate, built on integration/133 `a175a67`, the Map repair and
+the source-context carrier projection are in place. The new product session reached
+22 observations and 31 requests, every cleanup receipt is true, and both captures
+compare with **38 strict differences each**. All 38 are named in `notCompared` under
+the four approved dispositions below and **0 are unattributed**; the strict verdict
+remains a difference (exit 3), never a pass. Nineteen own-baseline controls per
+capture pass, and every control's own new mismatch stays unattributed. Integration,
+review, the Windows driven run and #137/#133 acceptance stay with the controller.
 
 ## What runs
 
@@ -129,6 +137,17 @@ shipped class; no rate policy is changed.
   scratch removal), its inventory ("opened and empty before and after" — the table
   names are each runtime's own schema) and the failure endpoint's measured
   `acceptedConnections` / `transportReconnects`.
+- The approved named differences: a strict mismatch stays in `mismatches`, and the
+  amended differential contract's four approved cases also appear once each in
+  `notCompared` with their exact `surface`/`row`/`field`, `expected`, `observed`
+  and reason. They are the configured `ajaxAll` width and its measured 5-member
+  cohort consequences, the declared TOC/content page-list scheduling and its
+  measured cohort/request consequences, the zero-argument `getHeaderMap` extension
+  (only while its value equals the product's explicit `getHeaderMap(false)` form),
+  and the two cancellation-owner labels. `unattributedCount` is
+  `mismatchCount - notComparedCount`; an unknown width, peak, result or label, a
+  corrupt zero-argument map or any other changed behavioural fact remains an
+  unattributed failure. Approval never turns a difference into a pass.
 
 ### Documented exclusions
 
@@ -154,22 +173,28 @@ declares:
   declares required or forbidden is never filtered);
 - `headerLines`, which is the same facts as `headers` with wire case and order.
 
-No wildcard, no fuzzy text, no lower-bound proxy and no `notCompared` row exists in
-this comparer.
+No wildcard, no fuzzy text and no lower-bound proxy exists in this comparer. A
+`notCompared` entry is not an exemption: it names one strict mismatch, its actual
+expected/observed values and the approved reason, and every mismatch it does not
+name stays an unattributed failure.
 
 ## Controls
 
-Sixteen controls run on deep copies of the immutable captures and of the product
+Nineteen controls run on deep copies of the immutable captures and of the product
 record; each is compared against **its own** baseline, so a row the baseline already
-reports can never satisfy a control: product value, golden value, product raw query,
+reports can never satisfy a control. A control passes only when it introduces a new
+strict mismatch and the approved disposition leaves every one of those new keys
+unattributed. The controls are: product value, golden value, product raw query,
 product retry attempt, product identity, product presence, product receipt, golden
 receipt (native provenance), an undeclared extra request, a product header, a
 product body, a product attempt kind, a real cohort peak
 (`helper.ajaxAll-order.value.batch.inFlightPeak`, a fact that genuinely matches at
-baseline), the retry row order, the sequential step order and the held row's
-terminal. The aggregate result keeps every capture's rows, so neither capture's
-controls can hide the other's. Originals are re-hashed after the run and stay
-byte-identical.
+baseline), the retry row order, the sequential step order, the held row's terminal,
+and three wrong-behaviour probes added with the carrier projection: a changed search
+result `origin`, a changed search result `type`, and a broken cancellation
+`workerTerminated` receipt. The aggregate result keeps every capture's rows, so
+neither capture's controls can hide the other's. Originals are re-hashed after the
+run and stay byte-identical.
 
 ## Approved product behavior and repair acceptance
 
@@ -182,15 +207,18 @@ measurements; the approved later option is at most four network fetches collecte
 in declared order, preserving #26's serialized analyses/prefetch and serial
 next-URL-discovery chains.
 
-The required repair is the Java-Map key-set/iterator access used by the fixture's
-explicit false/true header-map calls, including the shared login-header and
-login-information map callers. Existing zero-argument calls, property reads and
-`.get()` remain supported. Any resulting zero-argument script difference is
-reported with both actual results, not converted into a product refusal.
+The Map repair already answers the Java-Map key-set/iterator access used by the
+fixture's explicit false/true header-map calls, including the shared login-header
+and login-information map callers. Existing zero-argument calls, property reads and
+`.get()` remain supported. The resulting zero-argument script difference is
+reported with both actual results, not converted into a product refusal; its value
+must still equal the product's explicit false/default form.
 
 Search `origin`/`originName` and search book `type`, plus details `origin`, are
 projected from the actual source/book context with their derivation retained as
 provenance. No field is filled from a golden and no database shape or value changes.
+The frozen mapping is `getBookType()` at `14dd2494`: `bookSourceType` 1/2/3 answer
+32/64/136 and the default or any other value answers 8.
 
 Cancellation retains `created-parent` and `pipeline-cancellation` as each side's
 own provenance label. Acceptance checks requests/scripts stopping, late side
@@ -198,11 +226,38 @@ effects, terminal state, state preservation, resource release and the fresh
 follow-up operation. The label difference is recorded explicitly; it does not
 remove the cancellation row or any behavioral assertion.
 
-The comparer retains its strict difference list and exit semantics. Controller
-acceptance separately attributes only the approved named differences above; a
-scheduling or zero-argument divergence is not a frozen compatibility pass. The 56
-historical differences below remain the pre-repair result until a new execution
-replaces that candidate's current measurement.
+The comparer retains its strict difference list and exit semantics and reports the
+four approved named differences in `notCompared`; a scheduling or zero-argument
+divergence is not a frozen compatibility pass. The 56 historical differences below
+remain the pre-repair result bound to `b7fc3cf`; the current candidate's measured 38
+are listed next.
+
+## The current named differences
+
+The current observer candidate records 38 strict differences per capture, each one
+named by the classifier above and none left unattributed:
+
+1. **Configured `ajaxAll` width — 16 entries.** `runtimeConfiguration.threadCount`
+   16 → 4, each helper batch row's `value.batch.threadCount` 16 → 4, and the declared
+   5-member cohort's measured consequences: `cohortComplete` true → false,
+   `releaseReason` "complete" → "cohort-window", `inFlightPeak` 5 → 4, and the same
+   two cohort facts on each of its five declared request rows.
+2. **Declared page-list scheduling — 16 entries.** `s1.toc` and `s1.content` record
+   `threadCount` 16 → 1, their tails' `cohortComplete` true → false,
+   `releaseReason` "complete" → "cohort-window", `inFlightPeak` 2 → 1, and the same
+   two cohort facts on their four declared tail request rows.
+3. **Zero-argument `getHeaderMap` — 4 entries.** The two header-map rows record the
+   product's zero-argument result where the frozen binding refused: `returned`
+   false → true and the observed value list, which equals that row's explicit
+   `getHeaderMap(false)` result.
+4. **Cancellation-owner provenance — 2 entries.** `s5.search-cancelled`
+   `execution.jobLevel` and `s6.search-after-cancel` `followUp.jobLevel` read
+   `created-parent` → `pipeline-cancellation`; every behavioural cancellation
+   receipt and the fresh follow-up remain strictly compared.
+
+The former book-carrier and explicit false/true header-map differences are gone:
+those fields now match the frozen values. The 56 differences retained below are the
+pre-repair measurement at `b7fc3cf` and are not this candidate's result.
 
 ## The retained pre-repair differences (all strict failures at `b7fc3cf`)
 
@@ -240,8 +295,9 @@ Both captures produce the same 56 differences, grouped by cause:
    (`holdEntered`, `clientAborted`, `workerTerminated`, `jobDone`, `lateRequests`,
    unchanged state probes and database, fresh follow-up execution) passes.
 
-These are the original measured facts. The approved dispositions above govern the
-repair and its next measurement; this historical result is not relabelled as pass.
+These are the original measured facts. The approved dispositions above governed the
+repair and this candidate's measurement; this historical result is not relabelled as
+pass.
 
 ## Limits
 

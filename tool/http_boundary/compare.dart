@@ -4,6 +4,7 @@ import 'dart:io';
 import 'runner.dart'
     show
         HttpBoundaryRefusal,
+        httpBoundaryBatchWidth,
         httpBoundaryCorpusPath,
         httpBoundaryCorpusSha256Lf,
         httpBoundaryDeclaredRequests,
@@ -11,6 +12,7 @@ import 'runner.dart'
         httpBoundaryResponseOwners,
         httpBoundaryResponses,
         httpBoundarySelectorOf,
+        httpBoundarySerialWalkWidth,
         httpBoundarySourceOf,
         httpBoundarySteps,
         httpBoundaryStructuralOf,
@@ -107,16 +109,44 @@ class HttpBoundaryMismatch {
       'observed ${jsonEncode(observed)}';
 }
 
+/// One approved difference the amended differential contract requires this
+/// harness to name instead of hiding or relabeling as a pass. It keeps the
+/// strict mismatch itself and adds only the approval and its reason.
+class HttpBoundaryNotCompared {
+  const HttpBoundaryNotCompared({
+    required this.mismatch,
+    required this.approved,
+    required this.reason,
+  });
+
+  final HttpBoundaryMismatch mismatch;
+  final String approved;
+  final String reason;
+
+  /// The strict mismatch identity this disposition names: one entry is exactly
+  /// one mismatch, never a second pass for a different behavioural fact.
+  String get key => mismatch.key;
+
+  Map<String, Object?> toJson() => {
+    'approved': approved,
+    'observation': '${mismatch.surface}|${mismatch.row}|${mismatch.field}',
+    ...mismatch.toJson(),
+    'reason': reason,
+  };
+}
+
 /// One compared pair: the product record against one frozen capture.
 class HttpBoundaryComparison {
   HttpBoundaryComparison({
     required this.goldenId,
     required this.mismatches,
+    required this.notCompared,
     required this.notes,
   });
 
   final String goldenId;
   final List<HttpBoundaryMismatch> mismatches;
+  final List<HttpBoundaryNotCompared> notCompared;
   final List<String> notes;
 
   bool get passed => mismatches.isEmpty;
@@ -125,7 +155,10 @@ class HttpBoundaryComparison {
     'golden': goldenId,
     'passed': passed,
     'mismatchCount': mismatches.length,
+    'notComparedCount': notCompared.length,
+    'unattributedCount': mismatches.length - notCompared.length,
     'mismatches': [for (final mismatch in mismatches) mismatch.toJson()],
+    'notCompared': [for (final entry in notCompared) entry.toJson()],
     'notes': notes,
   };
 }
@@ -916,6 +949,18 @@ void validateProductReport(
   final stepById = {
     for (final step in httpBoundarySteps(corpus)) '${step['id']}': step,
   };
+  // The frozen carrier schema of the successful declared search/details
+  // stages, including the post-cancel search. The gate checks the published
+  // fields' presence and declared types; value derivation stays with the
+  // strict comparison. Failed, cancelled and non-carrier stages keep their
+  // existing declared shape.
+  final carrierStageById = <String, String>{
+    for (final step in stepById.values)
+      if ('${step['kind']}' == 'stage' &&
+          '${step['expectedOutcome'] ?? 'ok'}' == 'ok' &&
+          ('${step['stage']}' == 'search' || '${step['stage']}' == 'details'))
+        '${step['id']}': '${step['stage']}',
+  };
   final phaseOf = {
     for (var index = 0; index < declaredObservations.length; index++)
       declaredObservations[index]: index,
@@ -1266,6 +1311,22 @@ void validateProductReport(
           gate.fail('$where.value.batch.membership.$slot is not a string');
         }
       }
+    }
+    // The frozen carrier fields the successful search/details stages publish.
+    // A search result's origin/originName are required strings and its type a
+    // required integer; a details row publishes a required origin string.
+    final carrierStage = carrierStageById[id];
+    if (carrierStage == 'search') {
+      final results = gate.array(value['results'], '$where.value.results');
+      for (var slot = 0; slot < results.length; slot++) {
+        final resultPath = '$where.value.results.$slot';
+        final result = gate.object(results[slot], resultPath);
+        gate.field(result, 'origin', resultPath, _Field.string);
+        gate.field(result, 'originName', resultPath, _Field.string);
+        gate.field(result, 'type', resultPath, _Field.integer);
+      }
+    } else if (carrierStage == 'details') {
+      gate.field(value, 'origin', '$where.value', _Field.string);
     }
     final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
     gate.equal(row['requests'], owned, '$where.requests');
@@ -3264,11 +3325,350 @@ HttpBoundaryComparison compareHttpBoundaryRecords({
     'header name case and order, and the platform-generated Host, '
     'Content-Length, Accept-Encoding and Connection headers',
   );
+  // 8. The approved named differences. Each one remains in the strict mismatch
+  //    list above; this disposition names both actual values and the approved
+  //    reason. A mismatch the classifier does not bind stays unattributed, and
+  //    nothing here can turn a difference into a pass.
+  final notCompared = <HttpBoundaryNotCompared>[];
+  for (final mismatch in mismatches) {
+    final named = attributeHttpBoundaryMismatch(
+      corpus: corpus,
+      product: product,
+      mismatch: mismatch,
+    );
+    if (named != null) notCompared.add(named);
+  }
   return HttpBoundaryComparison(
     goldenId: goldenId,
     mismatches: mismatches,
+    notCompared: notCompared,
     notes: notes,
   );
+}
+
+/// The configured `ajaxAll` width and the declared page-list scheduling are
+/// approved architecture facts: the strict mismatch stays visible, and this
+/// disposition records why it is not a frozen parity claim.
+const httpBoundaryConfiguredWidthReason =
+    'Approved experience-first default: SourceHostDispatcher.ajaxAll batches '
+    'four requests, while the frozen capture records AppConfig.threadCount 16. '
+    'Returned order, request values, the per-source rate limiter and '
+    'cancellation remain strictly compared.';
+
+const httpBoundaryWidthCohortReason =
+    '$httpBoundaryConfiguredWidthReason The declared 5-member cohort '
+    'consequently records the measured peak 4 and a cohort-window release; '
+    'those are the measured consequences of that configured width.';
+
+const httpBoundaryPageListSchedulingReason =
+    'Approved current behavior: a declared TOC/content page list is fetched '
+    'serially at width 1, while the frozen baseline batches it at '
+    'AppConfig.threadCount 16. Declared output order and the per-source rate '
+    'limiter are preserved; the measured cohort and request facts are the '
+    'consequence of that scheduling.';
+
+const httpBoundaryZeroArityReason =
+    'Approved supported product extension: the frozen Rhino binding refuses '
+    'the zero-argument source.getHeaderMap() call, while the product answers '
+    'it. The returned value is required to equal the product\'s explicit '
+    'getHeaderMap(false) form; explicit false/true calls, ordinary property '
+    'reads and .get() remain required comparisons.';
+
+const httpBoundaryCancellationOwnerReason =
+    'Cancellation-owner names are provenance: the frozen oracle records its '
+    'created Kotlin parent Job and the product records its pipeline '
+    'cancellation. Request/script stopping, late effects, job/terminal state, '
+    'state/database preservation, owned cleanup and the fresh follow-up remain '
+    'strictly compared.';
+
+/// Binds one strict mismatch to one of the amended differential contract's
+/// approved named differences, or returns null so the mismatch stays an
+/// unattributed failure. Every branch reads the corpus' own declared rows and
+/// the actual values; no row is matched by a wildcard and no unknown width,
+/// peak, result or changed behavioral fact is absorbed.
+HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
+  required Map<String, dynamic> corpus,
+  required Map<String, dynamic> product,
+  required HttpBoundaryMismatch mismatch,
+}) {
+  final approved = _approvedDifference(corpus, product, mismatch);
+  if (approved == null) return null;
+  return HttpBoundaryNotCompared(
+    mismatch: mismatch,
+    approved: approved.group,
+    reason: approved.reason,
+  );
+}
+
+({String group, String reason})? _approvedDifference(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> product,
+  HttpBoundaryMismatch mismatch,
+) {
+  final steps = httpBoundarySteps(corpus);
+  final stepById = {for (final step in steps) '${step['id']}': step};
+  final runtime = corpus['runtime'];
+  final frozenWidth = runtime is Map && runtime['threadCountDefault'] is int
+      ? runtime['threadCountDefault'] as int
+      : null;
+
+  // The configured batch width itself, as the run's runtime configuration and
+  // as each helper batch's own measured configuration.
+  if (mismatch.surface == 'runtimeConfiguration' &&
+      mismatch.row == 'batch-width' &&
+      mismatch.field == 'threadCount' &&
+      frozenWidth != null &&
+      mismatch.expected == frozenWidth &&
+      mismatch.observed == httpBoundaryBatchWidth) {
+    return (
+      group: 'ajaxall-configured-width',
+      reason: httpBoundaryConfiguredWidthReason,
+    );
+  }
+
+  if (mismatch.surface == 'observation') {
+    final step = stepById[mismatch.row];
+    if (step != null) {
+      final declared = httpBoundaryDeclaredRequests(step);
+      final cohort = declared.cohort;
+      final family = '${step['family']}';
+      final stage = '${step['stage'] ?? ''}';
+      final isHelperBatch = family == 'helper' && cohort != null;
+      final isPageListBatch =
+          family == 'stage' &&
+          (stage == 'toc' || stage == 'content') &&
+          cohort != null;
+      if (mismatch.field == 'value.batch.threadCount' &&
+          frozenWidth != null &&
+          mismatch.expected == frozenWidth) {
+        if (isHelperBatch && mismatch.observed == httpBoundaryBatchWidth) {
+          return (
+            group: 'ajaxall-configured-width',
+            reason: httpBoundaryConfiguredWidthReason,
+          );
+        }
+        if (isPageListBatch &&
+            mismatch.observed == httpBoundarySerialWalkWidth) {
+          return (
+            group: 'page-list-scheduling',
+            reason: httpBoundaryPageListSchedulingReason,
+          );
+        }
+      }
+      final cohortSize = cohort == null
+          ? null
+          : _declaredCohortSize(corpus, cohort);
+      if (isHelperBatch &&
+          cohortSize == 5 &&
+          _isCohortConsequence(mismatch, cohortSize!, httpBoundaryBatchWidth)) {
+        return (
+          group: 'ajaxall-configured-width',
+          reason: httpBoundaryWidthCohortReason,
+        );
+      }
+      if (isPageListBatch &&
+          cohortSize != null &&
+          _isCohortConsequence(
+            mismatch,
+            cohortSize,
+            httpBoundarySerialWalkWidth,
+          )) {
+        return (
+          group: 'page-list-scheduling',
+          reason: httpBoundaryPageListSchedulingReason,
+        );
+      }
+      if ('${step['action']}' == 'headerMap') {
+        final zero = _zeroArityDisposition(product, mismatch);
+        if (zero != null) return zero;
+      }
+    }
+    // The two cancellation-owner labels, bound to the corpus' own steps.
+    final cancellation = corpus['cancellation'];
+    if (cancellation is Map) {
+      var cancelId = '';
+      for (final step in steps) {
+        if ('${step['kind']}' == 'cancel') {
+          cancelId = '${step['id']}';
+          break;
+        }
+      }
+      final followUpId = '${cancellation['followUpStep']}';
+      final ownerField =
+          (mismatch.row == cancelId &&
+              mismatch.field == 'value.execution.jobLevel') ||
+          (mismatch.row == followUpId &&
+              mismatch.field == 'value.followUp.jobLevel');
+      if (ownerField &&
+          mismatch.expected == 'created-parent' &&
+          mismatch.observed == 'pipeline-cancellation') {
+        return (
+          group: 'cancellation-owner-provenance',
+          reason: httpBoundaryCancellationOwnerReason,
+        );
+      }
+    }
+    return null;
+  }
+
+  if (mismatch.surface == 'request') {
+    final row = mismatch.row;
+    final first = row.indexOf('|');
+    final last = row.lastIndexOf('|');
+    if (first <= 0 || last <= first) return null;
+    final owner = row.substring(0, first);
+    final step = stepById[owner];
+    if (step == null) return null;
+    final declared = httpBoundaryDeclaredRequests(step);
+    final cohort = declared.cohort;
+    if (cohort == null) return null;
+    final family = '${step['family']}';
+    final stage = '${step['stage'] ?? ''}';
+    final isHelperBatch = family == 'helper';
+    final isPageListBatch =
+        family == 'stage' && (stage == 'toc' || stage == 'content');
+    if (!isHelperBatch && !isPageListBatch) return null;
+    // The row must be one of the step's declared batch members at its own
+    // counted attempt; an undeclared selector or attempt is never absorbed.
+    if (!_declaredRequestKeys(corpus, step).contains(row)) return null;
+    final cohortSize = _declaredCohortSize(corpus, cohort);
+    final cohortFact =
+        (mismatch.field == 'cohortComplete' &&
+            mismatch.expected == true &&
+            mismatch.observed == false) ||
+        (mismatch.field == 'releaseReason' &&
+            mismatch.expected == 'complete' &&
+            mismatch.observed == 'cohort-window');
+    if (!cohortFact) return null;
+    if (isHelperBatch && cohortSize == 5) {
+      return (
+        group: 'ajaxall-configured-width',
+        reason: httpBoundaryWidthCohortReason,
+      );
+    }
+    if (isPageListBatch) {
+      return (
+        group: 'page-list-scheduling',
+        reason: httpBoundaryPageListSchedulingReason,
+      );
+    }
+    return null;
+  }
+  return null;
+}
+
+bool _isCohortConsequence(
+  HttpBoundaryMismatch mismatch,
+  int cohortSize,
+  int width,
+) {
+  if (mismatch.field == 'value.batch.cohortComplete') {
+    return mismatch.expected == true && mismatch.observed == false;
+  }
+  if (mismatch.field == 'value.batch.releaseReason') {
+    return mismatch.expected == 'complete' &&
+        mismatch.observed == 'cohort-window';
+  }
+  if (mismatch.field == 'value.batch.inFlightPeak') {
+    return mismatch.expected == cohortSize && mismatch.observed == width;
+  }
+  return false;
+}
+
+({String group, String reason})? _zeroArityDisposition(
+  Map<String, dynamic> product,
+  HttpBoundaryMismatch mismatch,
+) {
+  if (!_zeroArityAgreesWithFalseForm(product, mismatch.row)) return null;
+  if (mismatch.field == 'value.arities.zero.returned' &&
+      mismatch.expected == false &&
+      mismatch.observed == true) {
+    return (
+      group: 'header-map-zero-arity',
+      reason: httpBoundaryZeroArityReason,
+    );
+  }
+  if (mismatch.field == 'value.arities.zero.value' &&
+      mismatch.kind == 'extra-observed-field' &&
+      mismatch.expected == null) {
+    return (
+      group: 'header-map-zero-arity',
+      reason: httpBoundaryZeroArityReason,
+    );
+  }
+  return null;
+}
+
+/// The zero-argument result is approved only while it is the same map the
+/// product's explicit `getHeaderMap(false)` call answers. A corrupt or missing
+/// zero-argument value stays an unattributed strict failure.
+bool _zeroArityAgreesWithFalseForm(Map<String, dynamic> product, String rowId) {
+  final value = _productObservationValue(product, rowId);
+  final arities = value?['arities'];
+  if (arities is! Map) return false;
+  final zero = arities['zero'];
+  final explicitFalse = arities['falseArity'];
+  return zero is Map &&
+      explicitFalse is Map &&
+      zero['returned'] == true &&
+      explicitFalse['returned'] == true &&
+      zero.containsKey('value') &&
+      _semanticEquals(zero['value'], explicitFalse['value']);
+}
+
+Map<String, dynamic>? _productObservationValue(
+  Map<String, dynamic> product,
+  String id,
+) {
+  final rows = product['observations'];
+  if (rows is! List) return null;
+  for (final raw in rows) {
+    if (raw is Map && '${raw['id']}' == id) {
+      final value = raw['value'];
+      return value is Map ? value.cast<String, dynamic>() : null;
+    }
+  }
+  return null;
+}
+
+int? _declaredCohortSize(Map<String, dynamic> corpus, String cohortId) {
+  final cohorts = corpus['cohorts'];
+  if (cohorts is! List) return null;
+  for (final raw in cohorts) {
+    if (raw is Map && '${raw['id']}' == cohortId) {
+      final size = raw['size'];
+      return size is int ? size : null;
+    }
+  }
+  return null;
+}
+
+/// The step's declared batch member keys, with the same counted attempt
+/// identity the comparer uses: an ordered selector first, then each member.
+Set<String> _declaredRequestKeys(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+) {
+  final responseById = {
+    for (final response in httpBoundaryResponses(corpus))
+      '${response['id']}': response,
+  };
+  final declared = httpBoundaryDeclaredRequests(step);
+  final attempts = <String, int>{};
+  String keyOf(String responseId) {
+    final response = responseById[responseId];
+    if (response == null) return '';
+    final selector = httpBoundarySelectorOf(response);
+    final attempt = (attempts[selector] ?? 0) + 1;
+    attempts[selector] = attempt;
+    return '${step['id']}|$selector|$attempt';
+  }
+
+  for (final responseId in declared.ordered) {
+    keyOf(responseId);
+  }
+  return {for (final responseId in declared.members) keyOf(responseId)}
+    ..remove('');
 }
 
 /// A comparable text form of a JSON value: object keys sorted, so key order is
@@ -3316,14 +3716,16 @@ bool _multisetEquals(List<String> left, List<String> right) {
 
 // --- controls -----------------------------------------------------------------
 
-/// One control's outcome: the mismatch key it was required to introduce and
-/// whether the comparison it ran on was its own unmutated baseline.
+/// One control's outcome: the mismatch keys it was required to introduce, the
+/// subset of them the approved classifier left unattributed, and whether the
+/// comparison it ran on was its own unmutated baseline.
 class HttpBoundaryControl {
   const HttpBoundaryControl({
     required this.id,
     required this.applied,
     required this.target,
     required this.newKeys,
+    required this.unattributedNewKeys,
     required this.baselinePassed,
   });
 
@@ -3331,15 +3733,22 @@ class HttpBoundaryControl {
   final bool applied;
   final String target;
   final List<String> newKeys;
+  final List<String> unattributedNewKeys;
   final bool baselinePassed;
 
-  bool get passed => applied && newKeys.isNotEmpty;
+  /// A control passes only when it really introduced a new strict difference
+  /// and the approved disposition did not absorb any of those new keys.
+  bool get passed =>
+      applied &&
+      newKeys.isNotEmpty &&
+      unattributedNewKeys.length == newKeys.length;
 
   Map<String, Object?> toJson() => {
     'id': id,
     'applied': applied,
     'target': target,
     'newMismatchKeys': newKeys,
+    'unattributedNewMismatchKeys': unattributedNewKeys,
     'baselinePassed': baselinePassed,
     'passed': passed,
   };
@@ -3378,6 +3787,7 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
           applied: false,
           target: '$target ($error)',
           newKeys: const [],
+          unattributedNewKeys: const [],
           baselinePassed: baseline.passed,
         ),
       ];
@@ -3391,12 +3801,16 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
     final keys = {
       for (final mismatch in compared.mismatches) mismatch.key,
     }.difference(baselineKeys).toList()..sort();
+    final namedKeys = {for (final entry in compared.notCompared) entry.key};
+    final unattributed = keys.where((key) => !namedKeys.contains(key)).toList()
+      ..sort();
     return [
       HttpBoundaryControl(
         id: id,
         applied: true,
         target: target,
         newKeys: keys,
+        unattributedNewKeys: unattributed,
         baselinePassed: baseline.passed,
       ),
     ];
@@ -3615,6 +4029,43 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
       rows.first['status'] = 200;
     }),
   );
+  controls.addAll(
+    run('product-carrier-origin', 'product s1.search result origin', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 's1.search')['value'],
+        'value',
+      );
+      _object(_array(value['results'], 'results').first, 'result')['origin'] =
+          'http://127.0.0.1:18771/other';
+    }),
+  );
+  controls.addAll(
+    run('product-carrier-type', 'product s1.search result type', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 's1.search')['value'],
+        'value',
+      );
+      _object(_array(value['results'], 'results').first, 'result')['type'] = 32;
+    }),
+  );
+  controls.addAll(
+    run('product-cancellation-behavior', 'product s5 worker termination', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 's5.search-cancelled')['value'],
+        'value',
+      );
+      value['workerTerminated'] = false;
+    }),
+  );
   return controls;
 }
 
@@ -3656,6 +4107,7 @@ Future<void> main(List<String> args) async {
     'status': 'failed',
     'runs': <Map<String, Object?>>[],
     'controls': <Map<String, Object?>>[],
+    'notCompared': <Map<String, Object?>>[],
     'analysisFailure': null,
   };
   var exit = 1;
@@ -3795,6 +4247,14 @@ Future<void> main(List<String> args) async {
             if (!control.passed) control.toJson(),
         ];
       }
+      for (final entry in comparison.notCompared) {
+        // Every capture's approved names stay in the aggregate result with the
+        // capture they came from; neither capture can hide the other's rows.
+        (result['notCompared']! as List).add({
+          ...entry.toJson(),
+          'golden': goldenId,
+        });
+      }
       if (!comparison.passed) comparisonsPassed = false;
     }
     final controlsOk = runs.every((run) => run['controlsPassed'] == true);
@@ -3829,10 +4289,15 @@ Future<void> main(List<String> args) async {
     for (final run in result['runs']! as List)
       for (final mismatch in ((run as Map)['mismatches'] as List)) '$mismatch',
   ];
+  final named = [
+    for (final run in result['runs']! as List)
+      for (final entry in ((run as Map)['notCompared'] as List)) entry,
+  ];
   stdout.writeln(
     'http-boundary comparison: ${result['status']} '
     '(${(result['runs']! as List).length} captures, '
-    '${failures.length} differences) -> ${out.path}',
+    '${failures.length} strict differences, ${named.length} named-approved, '
+    '${failures.length - named.length} unattributed) -> ${out.path}',
   );
   for (final failure in failures.take(60)) {
     stdout.writeln(failure);
