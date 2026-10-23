@@ -2623,7 +2623,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   // returns carry those local lookups: bracket access, `JSON.stringify` output
   // and a data key literally named `get` keep the plain object's behaviour,
   // `.get(name)` answers the frozen map's own value or null, and
-  // `keySet().iterator()` visits the data keys in their insertion order. A map
+  // `keySet().iterator()` visits keys in JavaScript enumeration order. A map
   // whose own data has a `get` or `keySet` key keeps that data — the Java
   // method cannot be reached on such a map here, a recorded tradeoff for those
   // names only (#137).
