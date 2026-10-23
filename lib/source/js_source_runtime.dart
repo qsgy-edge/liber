@@ -2615,19 +2615,35 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   const book = snapshot('book', input.book);
   const chapter = snapshot('chapter', input.chapter);
   // The frozen `BaseSource.getHeaderMap`/`getLoginHeaderMap`/`getLoginInfoMap`
-  // (`BaseSource.kt:103-176`) answer Java `Map` objects, and a source script
-  // reads them with the Java `Map.get(key)` — a `loginUrl` script's
-  // `source.getLoginInfoMap().get('user')` is the frozen idiom. This bridge
-  // answers plain JSON objects, so the three returns carry one local lookup:
-  // bracket access, `JSON.stringify` output and a data key literally named
-  // `get` keep the plain object's behaviour, and `.get(name)` answers the
-  // frozen map's own value or null. A map whose own data has a `get` key keeps
-  // that data — the Java method cannot be reached on such a map here, a
-  // recorded tradeoff for the name only (#137).
+  // (`BaseSource.kt:103-196`) answer Java `Map` objects. A source script reads
+  // them with the Java `Map.get(key)` — a `loginUrl` script's
+  // `source.getLoginInfoMap().get('user')` is the frozen idiom — and the
+  // frozen header-map scripts iterate `map.keySet().iterator()` with
+  // `hasNext()`/`next()`. This bridge answers plain JSON objects, so the three
+  // returns carry those local lookups: bracket access, `JSON.stringify` output
+  // and a data key literally named `get` keep the plain object's behaviour,
+  // `.get(name)` answers the frozen map's own value or null, and
+  // `keySet().iterator()` visits keys in JavaScript enumeration order. A map
+  // whose own data has a `get` or `keySet` key keeps that data — the Java
+  // method cannot be reached on such a map here, a recorded tradeoff for those
+  // names only (#137).
   const javaMap = value => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return value;
     }
+    const keySet = () => ({
+      iterator: () => {
+        const keys = Object.keys(value);
+        let index = 0;
+        return {
+          hasNext: () => index < keys.length,
+          next: () => {
+            if (index >= keys.length) throw new Error('keySet iterator exhausted');
+            return keys[index++];
+          }
+        };
+      }
+    });
     return new Proxy(value, {
       get: (target, key) => {
         if (typeof key === 'symbol' ||
@@ -2638,6 +2654,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           return name => Object.prototype.hasOwnProperty.call(target, name)
             ? target[name] : null;
         }
+        if (key === 'keySet') return keySet;
         return target[key];
       }
     });
