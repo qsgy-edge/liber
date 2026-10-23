@@ -8,11 +8,12 @@ with both frozen captures of the controller's hash-bound handoff, and report wha
 still differs. Nothing here is a compatibility claim, and nothing here can turn a
 difference into a pass.
 
-Status: **measured, not accepted.** The product run reaches all 22 declared
-observations and all 31 ordinary requests with no unmatched request, and both
-captures compare identically; the remaining differences are listed below as strict
-failures. Integration, review, the Windows driven run and #137/#133 acceptance stay
-with the controller.
+Status: **measured, not accepted.** At candidate `b7fc3cf`, the product run reached
+all 22 declared observations and all 31 ordinary requests with no unmatched request,
+and both captures compared identically with 56 strict differences. That retained
+pre-repair measurement keeps its original identity; new runtime or observer bytes
+require a new execution and comparison. Integration, review, the Windows driven run
+and #137/#133 acceptance stay with the controller.
 
 ## What runs
 
@@ -170,7 +171,40 @@ terminal. The aggregate result keeps every capture's rows, so neither capture's
 controls can hide the other's. Originals are re-hashed after the run and stay
 byte-identical.
 
-## The measured differences (all strict failures, kept as they are)
+## Approved product behavior and repair acceptance
+
+Spec A #133/#137 and the differential contract retain `ajaxAll`'s default width 4
+and the current serial page-list walk. The frozen widths and actual cohort/request
+facts remain visible as named scheduling differences. A replay cohort-window is an
+arrival-shape probe; it provides no real-site performance comparison. Pagination
+changes first need real-source waiting-time, timeout/rate-limit and cancellation
+measurements; the approved later option is at most four network fetches collected
+in declared order, preserving #26's serialized analyses/prefetch and serial
+next-URL-discovery chains.
+
+The required repair is the Java-Map key-set/iterator access used by the fixture's
+explicit false/true header-map calls, including the shared login-header and
+login-information map callers. Existing zero-argument calls, property reads and
+`.get()` remain supported. Any resulting zero-argument script difference is
+reported with both actual results, not converted into a product refusal.
+
+Search `origin`/`originName` and search book `type`, plus details `origin`, are
+projected from the actual source/book context with their derivation retained as
+provenance. No field is filled from a golden and no database shape or value changes.
+
+Cancellation retains `created-parent` and `pipeline-cancellation` as each side's
+own provenance label. Acceptance checks requests/scripts stopping, late side
+effects, terminal state, state preservation, resource release and the fresh
+follow-up operation. The label difference is recorded explicitly; it does not
+remove the cancellation row or any behavioral assertion.
+
+The comparer retains its strict difference list and exit semantics. Controller
+acceptance separately attributes only the approved named differences above; a
+scheduling or zero-argument divergence is not a frozen compatibility pass. The 56
+historical differences below remain the pre-repair result until a new execution
+replaces that candidate's current measurement.
+
+## The retained pre-repair differences (all strict failures at `b7fc3cf`)
 
 Both captures produce the same 56 differences, grouped by cause:
 
@@ -206,8 +240,8 @@ Both captures produce the same 56 differences, grouped by cause:
    (`holdEntered`, `clientAborted`, `workerTerminated`, `jobDone`, `lateRequests`,
    unchanged state probes and database, fresh follow-up execution) passes.
 
-No exemption, normalization or policy change was introduced for any of these; they
-await the controller's decision.
+These are the original measured facts. The approved dispositions above govern the
+repair and its next measurement; this historical result is not relabelled as pass.
 
 ## Limits
 
@@ -216,6 +250,7 @@ must be two distinct captured runs; nothing is fabricated from a capture or a ra
 script rerun. The canonical LF corpus hash is the semantic identity, so an LF or a
 CRLF working copy of the same corpus is equally acceptable; each capture's bundled
 asset hash is checked against the asset its capture manifest pinned, never against
-whatever line endings this checkout happens to have. No phone, ADB, corpus, capture,
-native producer or product `lib/`/Rust/persistence/public API change is part of this
-lane, and this document closes no capability row, #137 or #133.
+whatever line endings this checkout happens to have. The corpus, captures, handoff
+and native producer remain immutable inputs to the product repair. This work
+introduces no Rust, persistence or transport-policy change, and this document
+closes no capability row, #137 or #133.
