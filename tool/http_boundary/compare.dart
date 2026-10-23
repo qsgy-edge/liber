@@ -110,45 +110,27 @@ class HttpBoundaryMismatch {
 }
 
 /// One approved difference the amended differential contract requires this
-/// harness to name instead of hiding or relabeling as a pass. The strict
-/// mismatch stays in the comparison's mismatch list; this entry adds the exact
-/// observation/field, both actual values and the approved reason.
+/// harness to name instead of hiding or relabeling as a pass. It keeps the
+/// strict mismatch itself and adds only the approval and its reason.
 class HttpBoundaryNotCompared {
   const HttpBoundaryNotCompared({
+    required this.mismatch,
     required this.approved,
-    required this.surface,
-    required this.row,
-    required this.field,
-    required this.kind,
-    required this.expected,
-    required this.observed,
     required this.reason,
   });
 
+  final HttpBoundaryMismatch mismatch;
   final String approved;
-  final String surface;
-  final String row;
-  final String field;
-  final String kind;
-  final Object? expected;
-  final Object? observed;
   final String reason;
-
-  String get observation => '$surface|$row|$field';
 
   /// The strict mismatch identity this disposition names: one entry is exactly
   /// one mismatch, never a second pass for a different behavioural fact.
-  String get key => '$surface|$row|$field|$kind';
+  String get key => mismatch.key;
 
   Map<String, Object?> toJson() => {
     'approved': approved,
-    'observation': observation,
-    'surface': surface,
-    'row': row,
-    'field': field,
-    'kind': kind,
-    'expected': expected,
-    'observed': observed,
+    'observation': '${mismatch.surface}|${mismatch.row}|${mismatch.field}',
+    ...mismatch.toJson(),
     'reason': reason,
   };
 }
@@ -967,6 +949,18 @@ void validateProductReport(
   final stepById = {
     for (final step in httpBoundarySteps(corpus)) '${step['id']}': step,
   };
+  // The frozen carrier schema of the successful declared search/details
+  // stages, including the post-cancel search. The gate checks the published
+  // fields' presence and declared types; value derivation stays with the
+  // strict comparison. Failed, cancelled and non-carrier stages keep their
+  // existing declared shape.
+  final carrierStageById = <String, String>{
+    for (final step in stepById.values)
+      if ('${step['kind']}' == 'stage' &&
+          '${step['expectedOutcome'] ?? 'ok'}' == 'ok' &&
+          ('${step['stage']}' == 'search' || '${step['stage']}' == 'details'))
+        '${step['id']}': '${step['stage']}',
+  };
   final phaseOf = {
     for (var index = 0; index < declaredObservations.length; index++)
       declaredObservations[index]: index,
@@ -1317,6 +1311,22 @@ void validateProductReport(
           gate.fail('$where.value.batch.membership.$slot is not a string');
         }
       }
+    }
+    // The frozen carrier fields the successful search/details stages publish.
+    // A search result's origin/originName are required strings and its type a
+    // required integer; a details row publishes a required origin string.
+    final carrierStage = carrierStageById[id];
+    if (carrierStage == 'search') {
+      final results = gate.array(value['results'], '$where.value.results');
+      for (var slot = 0; slot < results.length; slot++) {
+        final resultPath = '$where.value.results.$slot';
+        final result = gate.object(results[slot], resultPath);
+        gate.field(result, 'origin', resultPath, _Field.string);
+        gate.field(result, 'originName', resultPath, _Field.string);
+        gate.field(result, 'type', resultPath, _Field.integer);
+      }
+    } else if (carrierStage == 'details') {
+      gate.field(value, 'origin', '$where.value', _Field.string);
     }
     final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
     gate.equal(row['requests'], owned, '$where.requests');
@@ -3384,13 +3394,8 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
   final approved = _approvedDifference(corpus, product, mismatch);
   if (approved == null) return null;
   return HttpBoundaryNotCompared(
+    mismatch: mismatch,
     approved: approved.group,
-    surface: mismatch.surface,
-    row: mismatch.row,
-    field: mismatch.field,
-    kind: mismatch.kind,
-    expected: mismatch.expected,
-    observed: mismatch.observed,
     reason: approved.reason,
   );
 }

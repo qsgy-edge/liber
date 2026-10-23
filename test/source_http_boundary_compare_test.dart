@@ -469,6 +469,10 @@ Map<String, dynamic> _validProduct({
       '${response['id']}': response,
   };
   final owners = httpBoundaryResponseOwners(corpus);
+  final sources = {
+    for (final raw in (corpus['sources'] as List).cast<Map>())
+      '${raw['id']}': (raw['bookSource'] as Map).cast<String, dynamic>(),
+  };
   const root = 'C:/evidence/repair-02/root';
   var clock = 1000;
   var position = 0;
@@ -578,6 +582,26 @@ Map<String, dynamic> _validProduct({
         ]..sort(),
         'threadCount': 4,
       };
+    }
+    // The frozen carrier schema of the successful declared stages, read from
+    // the same source object the runner hands to the pipeline. A search result
+    // publishes origin/originName strings and an integer type; details publish
+    // only the origin string. Failed/cancelled stages keep their own shape.
+    final corpusStage = '${step['stage'] ?? ''}';
+    final carrierSource = sources['${step['source']}'];
+    if ('${step['kind']}' == 'stage' &&
+        '${step['expectedOutcome'] ?? 'ok'}' == 'ok' &&
+        carrierSource != null &&
+        (corpusStage == 'search' || corpusStage == 'details')) {
+      final carrier = httpBoundaryBookCarrierOf(carrierSource);
+      if (corpusStage == 'search') {
+        value['results'] = [
+          for (final raw in (step['expectBooks'] as List? ?? const []))
+            {'id': '$raw', ...carrier},
+        ];
+      } else {
+        value['origin'] = carrier['origin'];
+      }
     }
     final evidence = <String, Object?>{};
     if ('${step['kind']}' == 'cancel') {
@@ -1690,9 +1714,71 @@ void main() {
     Map<String, dynamic> firstRequest(Map<String, dynamic> record) =>
         (record['requests'] as List).first as Map<String, dynamic>;
 
+    Map firstResult(Map<String, dynamic> record, String id) =>
+        ((observation(record, id)['value'] as Map)['results'] as List).first
+            as Map;
+
     test('a legitimate record passes the exported gate', () {
       expect(() => gate(fresh()), returnsNormally);
     });
+
+    test('the published carrier type is a required integer, not a double', () {
+      // The comparer's numeric equality accepts 8 and 8.0; the product-record
+      // schema is what keeps the newly published type an actual integer.
+      for (final id in const ['s1.search', 's6.search-after-cancel']) {
+        final record = fresh();
+        firstResult(record, id)['type'] = 8.0;
+        expect(
+          () => gate(record),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason: '$id accepted a double carrier type',
+        );
+      }
+      // The same decoded JSON number with the declared integer type still
+      // passes: this is a type gate, not a second value-mapping validator.
+      expect(() => gate(fresh()), returnsNormally);
+    });
+
+    test(
+      'the published carrier fields are present with their declared types',
+      () {
+        for (final field in const ['origin', 'originName', 'type']) {
+          final missing = fresh();
+          firstResult(missing, 's1.search').remove(field);
+          expect(
+            () => gate(missing),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: 'search $field absence was accepted',
+          );
+        }
+        for (final entry in const [
+          ('origin', 7),
+          ('originName', false),
+          ('type', '8'),
+        ]) {
+          final wrong = fresh();
+          firstResult(wrong, 's1.search')[entry.$1] = entry.$2;
+          expect(
+            () => gate(wrong),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: 'search ${entry.$1} wrong type was accepted',
+          );
+        }
+        final missingDetails = fresh();
+        (observation(missingDetails, 's1.details')['value'] as Map).remove(
+          'origin',
+        );
+        expect(() => gate(missingDetails), throwsA(isA<HttpBoundaryRefusal>()));
+
+        final wrongDetails = fresh();
+        (observation(wrongDetails, 's1.details')['value'] as Map)['origin'] = 7;
+        expect(() => gate(wrongDetails), throwsA(isA<HttpBoundaryRefusal>()));
+
+        // Failed, cancelled and non-carrier stages keep their existing shape:
+        // the legitimate record itself carries s3.toc-empty.toc, s4 and s5.
+        expect(() => gate(fresh()), returnsNormally);
+      },
+    );
 
     test(
       'object key order, header-line order and header-name case are not facts',
