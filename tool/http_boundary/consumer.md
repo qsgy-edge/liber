@@ -17,14 +17,15 @@ require a new execution and comparison.
 The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
 requests and a fifth declared cohort. The v2 rows and captures keep their original
 identities and are not relabelled as v3. The v3 product run on this preparation branch
-reaches 50/51 declared requests and 44 observations with **three known URL-option
-omission rows incomplete** (`o1.details-same` sends the pre-option target, `t1.toc`
-requests the pre-option TOC address, `p1.toc` walks the first pre-option next page)
-and three unmatched requests. The O pair consumes the identical retained hit; the
-product's cached first call skips the source-authored option `js`, so the fresh call's
-counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`), while the frozen
-runs the script twice. That `/1` request lands on the same row's declared selector, so
-the actual ownership/count mismatch is retained rather than repaired. That report is
+reaches 50/51 declared requests and 44 observations with three unmatched requests.
+`t1.toc`, `p1.toc` and `n1.toc` are the incomplete rows: the first two request the
+pre-option TOC addresses, and the null-return counter read leaves the TOC chapter title
+empty. The O pair consumes the identical retained hit; the product's cached first call
+skips the source-authored option `js`, so the fresh call's counter is 1 and it sends
+`/o/book/1` (not the declared `/o/book/2`), while the frozen runs the script twice.
+That `/1` request lands on the same row's declared selector, so the actual
+ownership/count mismatch is retained rather than repaired (`o1.details-fresh` owns no
+request and `/o/book/2` is missing; `GET /o/book` is unmatched). That report is
 retained as the actual current-product measurement: it is not a pass, and the
 comparator refuses an incomplete product record by design. The v3 installed-app
 capture and comparison remain with the controller and are **not-run** here.
