@@ -100,12 +100,29 @@ Two frozen behaviors require named field-specific assertions rather than broad m
 
 Concurrent pagination MUST produce the same final ordered chapters or content even when request completion order varies. Tests assert the configured maximum concurrency, rate-limit semantics, and causal batches rather than exact millisecond timings.
 
+For ordinary HTTP in Spec A (#133/#137), the approved product default is four
+requests per `ajaxAll` batch. Declared TOC/content page lists currently remain
+serial, preserving declared output order and the per-source rate limiter. Both
+scheduling differences from the frozen configured width remain named divergences;
+replay cohort-window releases measure their arrival shape, not real-site latency.
+Any later pagination change requires measured real-source waiting time,
+timeout/rate-limit behavior and cancellation response first. The approved option
+is at most four network fetches with ordered collection when those measurements
+justify it; a chain that discovers its next URL one page at a time stays serial,
+and #26's serialized JavaScript analyses and prefetch decision remain in force.
+
 Timeout and cancellation fixtures compare:
 
 - whether the operation ends within the fixture's bounded window;
 - whether requests and scripts stop;
 - whether partial output or state survives;
 - whether WebView, response-body, and temporary resources are cleaned up.
+
+Cancellation-owner names are provenance. HTTP-BOUNDARY-01 retains the frozen
+`created-parent` and product `pipeline-cancellation` labels with their original
+values; label equality is not an acceptance condition. Requests and scripts
+stopping, late side effects, terminal state, resource cleanup and a fresh
+follow-up operation remain required behavioral assertions.
 
 Cleanup has two distinct assertions:
 
@@ -125,6 +142,9 @@ compared.
 
 | Row | Expected (frozen baseline) | Observed (Liber) | Reason | Mitigation |
 |---|---|---|---|---|
+| Ordinary HTTP `ajaxAll` configured width (#137) | Frozen `AppConfig.threadCount`, 16 in the retained HTTP-BOUNDARY-01 captures | Product default 4; measured peaks and cohort release facts remain the values actually observed | Approved experience-first default; no real-source 4/8/16 comparison establishes an optimal width | Keep the configured widths and every consequential cohort/request difference explicit; returned order, request values, per-source limiting and cancellation remain compared |
+| Declared ordinary TOC/content page-list scheduling (#137) | Frozen fetches the declared list concurrently at its configured width and collects in input order | Product fetches the declared list serially and collects in input order | Approved current behavior pending real-source latency, failure/rate-limit and cancellation measurements | Report scheduling and cohort differences without claiming concurrency parity; any justified later change is bounded to four network fetches and preserves #26's analysis/prefetch serialization |
+| Zero-argument `source.getHeaderMap()` (#137) | The frozen Rhino binding refuses the zero-argument call | Product supports the existing zero-argument extension, ordinary property access and `.get()` | Approved supported product usage is retained while repairing the explicit false/true Java-Map iteration forms | Record the actual zero-argument script result as a named difference; explicit false/true results and the shared login-map callers remain required comparisons |
 | `firstCompletesWhileSecondHeld` (`tool/state_oracle_compare.dart`, `state-expanded-golden.json`) | `true` | `false` | ADR 0009 removes the per-execution stacks, so two scopes can no longer be parked independently: a second execution runs nested inside the parked one and the nested wait owns the OS thread, which leaves the outer scope's parked wait unpolled until the nested one returns. The frozen baseline resumes independently parked scopes in any order. | Overlapping analyses are serialized at the product level (#26), and a later chapter prefetch stays serialized rather than concurrent, so no source reaches the interleaved shape this row describes. |
 | `escape` request charset, wire query | `EncoderUtils.escape`'s output as written: `%7e` for `~`, `%u4e2d` for 中 (`EncoderUtils.kt:11-28`) | `~` and `%25u4e2d` | The request URL is a Dart `Uri`, which canonicalizes an escape of an unreserved character while it resolves and rewrites the `%uXXXX` form, which is not a valid URI escape; the frozen client keeps the URL as text and hands its query to `HttpUrl.encodedQuery` (`AnalyzeUrl.kt:279-292`) without parsing it | The `charset: "escape"` value appears in none of the 150 used sources; the query text is spliced back before the encoder runs, so the default and named-charset branches are unaffected |
 | Legacy request charset, a character the charset cannot represent (including a raw body with that declared media type) | `CharsetEncoder`'s REPLACE action writes `?` (`3F` for a raw GBK emoji body; `AnalyzeUrl.kt:323-334` / okhttp `String.getBytes(charset)`) | The HTML numeric character reference, `&#128512;` for an emoji (`26 23 31 32 38 35 31 32 3B` in a raw body) | The encoder is `encoding_rs`'s (`packages/fjs/liber_text`), whose Encoding Standard error mode is the HTML one | No device fixture covers this case; #54 reuses that bridge without changing its replacement mode |
