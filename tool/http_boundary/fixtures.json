@@ -223,7 +223,7 @@
           "bookList": ".result li",
           "name": "a.0@text",
           "author": "span.author@text",
-          "bookUrl": "a.0@href@js:'http://127.0.0.1:18771' + result + ',' + JSON.stringify({js:\"result + '/1'\"})"
+          "bookUrl": "a.0@href@js:'http://127.0.0.1:18771' + result + ',' + JSON.stringify({js:\"(function(){var n=(Number(String(source.get('oRuns')))||0)+1;source.put('oRuns',String(n));return result+'/'+n;})()\"})"
         },
         "ruleBookInfo": {
           "name": "h1@text",
@@ -395,16 +395,6 @@
       "bookUrl": "http://127.0.0.1:18771/v/book/1"
     },
     {
-      "id": "o-book-same",
-      "source": "O",
-      "bookUrl": "http://127.0.0.1:18771/o/book/same,{\"js\":\"result + '/1'\"}"
-    },
-    {
-      "id": "o-book-fresh",
-      "source": "O",
-      "bookUrl": "http://127.0.0.1:18771/o/book/fresh,{\"js\":\"result + '/1'\"}"
-    },
-    {
       "id": "t-book-1",
       "source": "T",
       "bookUrl": "http://127.0.0.1:18771/t/book/1"
@@ -423,6 +413,11 @@
       "id": "j-book-1",
       "source": "J",
       "bookUrl": "http://127.0.0.1:18771/j/book,{\"js\":\"result + '/1'\"}"
+    },
+    {
+      "id": "o-book-1",
+      "source": "O",
+      "bookUrl": "http://127.0.0.1:18771/o/book,{\"js\":\"(function(){var n=(Number(String(source.get('oRuns')))||0)+1;source.put('oRuns',String(n));return result+'/'+n;})()\"}"
     }
   ],
   "responses": [
@@ -710,23 +705,23 @@
       "path": "/o/search",
       "rawQuery": "keyword=o&page=1",
       "status": 200,
-      "body": "<html><body><ul class=\"result\"><li><a href=\"/o/book/same\">O-same</a><span class=\"author\">OA</span></li><li><a href=\"/o/book/fresh\">O-fresh</a><span class=\"author\">OB</span></li></ul></body></html>"
+      "body": "<html><body><ul class=\"result\"><li><a href=\"/o/book\">O1</a><span class=\"author\">OA</span></li></ul></body></html>"
     },
     {
-      "id": "o-book-same-1",
+      "id": "o-book-1",
       "method": "GET",
-      "path": "/o/book/same/1",
+      "path": "/o/book/1",
       "rawQuery": "",
       "status": 200,
-      "body": "<html><body><h1>O-same</h1><div class=\"info\"><span class=\"author\">OA</span></div><div class=\"intro\">OI-same</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/same/toc\">toc</a></div></body></html>"
+      "body": "<html><body><h1>O1</h1><div class=\"info\"><span class=\"author\">OA</span></div><div class=\"intro\">OI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/toc\">toc</a></div></body></html>"
     },
     {
-      "id": "o-book-fresh-1",
+      "id": "o-book-2",
       "method": "GET",
-      "path": "/o/book/fresh/1",
+      "path": "/o/book/2",
       "rawQuery": "",
       "status": 200,
-      "body": "<html><body><h1>O-fresh</h1><div class=\"info\"><span class=\"author\">OB</span></div><div class=\"intro\">OI-fresh</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/fresh/toc\">toc</a></div></body></html>"
+      "body": "<html><body><h1>O1</h1><div class=\"info\"><span class=\"author\">OA</span></div><div class=\"intro\">OI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/toc\">toc</a></div></body></html>"
     },
     {
       "id": "t-search-t",
@@ -1508,8 +1503,7 @@
       "source": "O",
       "keyword": "o",
       "expectBooks": [
-        "o-book-same",
-        "o-book-fresh"
+        "o-book-1"
       ],
       "requests": {
         "ordered": [
@@ -1528,11 +1522,11 @@
       "family": "stage",
       "stage": "details",
       "source": "O",
-      "book": "o-book-same",
+      "book": "o-book-1",
       "carrier": "same",
       "requests": {
         "ordered": [
-          "o-book-same-1"
+          "o-book-1"
         ]
       },
       "requiredHeaders": {
@@ -1547,11 +1541,11 @@
       "family": "stage",
       "stage": "details",
       "source": "O",
-      "book": "o-book-fresh",
+      "book": "o-book-1",
       "carrier": "fresh",
       "requests": {
         "ordered": [
-          "o-book-fresh-1"
+          "o-book-2"
         ]
       },
       "requiredHeaders": {
@@ -1841,7 +1835,7 @@
     "retry": "OkHttpUtils.kt:29-43 returns the first successful response and otherwise the last one, so retry=2 is 1 attempt on 2xx and 3 on non-2xx.",
     "headerMapScriptArity": "The pinned Rhino host probe dispatches source.getHeaderMap(false) on a source-signature carrier and rejects the zero-argument call; that is host carrier provenance, not Android execution. The collector measures the actual Android script outcomes for all three arities.",
     "scriptProbe": "The scriptProbe helper action evaluates one fixture-authored script through the real AnalyzeUrl.evalJS/source binding (frozen) and the product's own InProcessSourceScriptRuntime; its result is the script's JSON projection, compared before any diagnostic conversion.",
-    "freshCarrier": "A details step declared carrier=fresh opens a genuinely new product BookSourcePipeline over the same source object/key and the stored search hit; the frozen stage constructs its own AnalyzeUrl per stage call. The declaration is validated at the corpus boundary and the actual mode is recorded as observation evidence, not compared as a value.",
+    "freshCarrier": "A details step declared carrier=fresh opens a genuinely new product BookSourcePipeline over the same source object/key and the identical stored search hit; the frozen details stage constructs its own AnalyzeUrl per stage call for the same retained book. The source-authored URL-option js reads and increments one O-source counter, so the two actual invocations supply the distinct /1 and /2 selectors without a transport rewrite. The declaration is validated at the corpus boundary and the actual hit reference, pipeline/transport/source/host-state identities, counter and request facts are in the observation value/evidence.",
     "urlOptionJs": "The URL-option rows keep the selected absolute pre-option address and the original raw option tail; no side rebases or manufactures a transformed URL. The product's same-analysis HTML _extracted path does not run the option js (a measured omission), while a fresh analysis and the JSON adapter do."
   }
 }

@@ -1631,25 +1631,35 @@ class _HttpBoundaryRun {
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
+    final sourceId = '${step['source']}';
     final fresh = '${step['carrier'] ?? ''}' == 'fresh';
+    final cached = _pipelines[sourceId];
     final pipeline = fresh
         ? openBookSourcePipeline(
-            sourceObject('${step['source']}'),
+            sourceObject(sourceId),
             HttpSourceTransport(),
             hostState: hostState,
             androidId: androidId,
           )
-        : _pipelineOf('${step['source']}');
+        : _pipelineOf(sourceId);
+    if (fresh && cached != null && identical(pipeline, cached)) {
+      throw const HttpBoundaryIncomplete(
+        'the fresh carrier reused the cached analysis pipeline',
+      );
+    }
     if (step['carrier'] != null) {
       (observation['evidence'] as Map)['carrier'] = {
         'declared': '${step['carrier']}',
         'actual': fresh ? 'fresh' : 'same',
         'pipelineIdentity': identityHashCode(pipeline),
+        'cachedPipelineIdentity': cached == null
+            ? null
+            : identityHashCode(cached),
+        'reusedPipeline': cached != null && identical(pipeline, cached),
         'transportIdentity': identityHashCode(pipeline.transport),
-        'sourceObjectIdentity': identityHashCode(
-          sourceObject('${step['source']}'),
-        ),
-        'sourceKey': sourceUrl('${step['source']}'),
+        'sourceObjectIdentity': identityHashCode(sourceObject(sourceId)),
+        'hostStateIdentity': identityHashCode(hostState),
+        'sourceKey': sourceUrl(sourceId),
       };
     }
     final value = await _stageValue(pipeline, step, observation);
@@ -1753,6 +1763,47 @@ class _HttpBoundaryRun {
           )['origin'];
           (observation['evidence'] as Map)['bookCarrier'] =
               _bookCarrierProvenance(sourceId, published: const ['origin']);
+          if (step['carrier'] != null) {
+            // The paired same/fresh rows must consume the identical stored
+            // search hit: the fresh pipeline is different, the hit is not
+            // re-searched and its raw absolute address/tail is unchanged.
+            final stored = _hits[bookId]!;
+            if (!identical(hit, stored)) {
+              throw HttpBoundaryIncomplete(
+                'details $id did not consume the stored hit $bookId',
+              );
+            }
+            final String counter;
+            try {
+              final raw = await _evaluate(
+                sourceId,
+                "String(source.get('oRuns'))",
+              );
+              counter = '$raw';
+            } on Object catch (error) {
+              throw HttpBoundaryIncomplete(
+                'the O-source counter read is unresolved: $error',
+              );
+            }
+            value['hitReference'] = {
+              'bookId': bookId,
+              'rawAddress': hit.identityAddress,
+              'sourceKey': sourceUrl(sourceId),
+            };
+            value['pipelineMode'] = '${step['carrier']}';
+            value['counterAfter'] = counter;
+            (observation['evidence'] as Map)['hitReference'] = {
+              'identity': identityHashCode(hit),
+              'storedIdentity': identityHashCode(stored),
+              'sameObject': true,
+              'bookId': bookId,
+              'rawAddress': hit.identityAddress,
+              'preOptionUrl': '${hit.preOptionUrl}',
+              'sourceKey': sourceUrl(sourceId),
+              'pipelineMode': '${step['carrier']}',
+              'counterAfter': counter,
+            };
+          }
         case 'toc':
           final bookId = '${step['book']}';
           final info = _infos[bookId];

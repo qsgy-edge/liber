@@ -1636,6 +1636,24 @@ void main() {
         'latestChapterTitle': '{"bookAfterText":"bv"}',
       },
     };
+    Map<String, Object?> sameRow() => {
+      'id': 'o1.details-same',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'stage',
+        'stage': 'details',
+        'source': 'O',
+        'bookUrl': 'http://127.0.0.1:18771/o/book',
+        'hitReference': {
+          'bookId': 'o-book-1',
+          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+          'sourceKey': 'http://127.0.0.1:18771/o',
+        },
+        'pipelineMode': 'same',
+        'counterAfter': '',
+      },
+    };
     Map<String, Object?> freshRow() => {
       'id': 'o1.details-fresh',
       'outcome': 'ok',
@@ -1644,7 +1662,14 @@ void main() {
         'kind': 'stage',
         'stage': 'details',
         'source': 'O',
-        'bookUrl': 'http://127.0.0.1:18771/o/book/fresh',
+        'bookUrl': 'http://127.0.0.1:18771/o/book/1',
+        'hitReference': {
+          'bookId': 'o-book-1',
+          'rawAddress': 'http://127.0.0.1:18771/o/book,{"js":"counter"}',
+          'sourceKey': 'http://127.0.0.1:18771/o',
+        },
+        'pipelineMode': 'fresh',
+        'counterAfter': '1',
       },
     };
     Map<String, Object?> counterRow() => {
@@ -1664,6 +1689,7 @@ void main() {
       (report['observations'] as List).addAll(<Map<String, Object?>>[
         probeRow(),
         nativeRow(),
+        sameRow(),
         freshRow(),
         counterRow(),
       ]);
@@ -1695,6 +1721,24 @@ void main() {
       contains('observation|o1.details-fresh|value.bookUrl|type-or-value'),
     );
     expect(
+      control('product-fresh-substituted-hit')['newMismatchKeys'],
+      contains(
+        'observation|o1.details-fresh|value.hitReference.rawAddress|type-or-value',
+      ),
+    );
+    expect(
+      control('product-fresh-reused-pipeline')['newMismatchKeys'],
+      contains('observation|o1.details-fresh|value.pipelineMode|type-or-value'),
+    );
+    expect(
+      control('product-same-extra-execution')['newMismatchKeys'],
+      contains('observation|o1.details-same|value.counterAfter|type-or-value'),
+    );
+    expect(
+      control('product-fresh-missing-execution')['newMismatchKeys'],
+      contains('observation|o1.details-fresh|value.counterAfter|type-or-value'),
+    );
+    expect(
       control('product-option-counter')['newMismatchKeys'],
       contains('observation|n1.toc|value.chapters.0.title|type-or-value'),
     );
@@ -1702,6 +1746,10 @@ void main() {
       'product-script-probe-value',
       'product-native-return-presence',
       'product-fresh-binding',
+      'product-fresh-substituted-hit',
+      'product-fresh-reused-pipeline',
+      'product-same-extra-execution',
+      'product-fresh-missing-execution',
       'product-option-counter',
     ]) {
       expect(control(id)['passed'], isTrue, reason: '$id must pass');

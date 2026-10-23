@@ -4107,6 +4107,57 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
   );
   controls.addAll(
     run(
+      'product-fresh-substituted-hit',
+      'product o1.details-fresh retained hit',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'o1.details-fresh')['value'],
+          'value',
+        );
+        _object(value['hitReference'], 'hitReference')['rawAddress'] =
+            'http://127.0.0.1:18771/o/book/SUBSTITUTED';
+      },
+    ),
+  );
+  controls.addAll(
+    run(
+      'product-fresh-reused-pipeline',
+      'product o1.details-fresh pipeline mode',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'o1.details-fresh')['value'],
+          'value',
+        );
+        value['pipelineMode'] = 'same';
+      },
+    ),
+  );
+  controls.addAll(
+    run('product-same-extra-execution', 'product o1.details-same counter', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-same')['value'],
+        'value',
+      );
+      value['counterAfter'] = '1';
+    }),
+  );
+  controls.addAll(
+    run('product-fresh-missing-execution', 'product o1.details-fresh counter', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-fresh')['value'],
+        'value',
+      );
+      value['counterAfter'] = '0';
+    }),
+  );
+  controls.addAll(
+    run(
       'product-option-counter',
       'product n1.toc counter-backed chapter title',
       (goldenCopy, productCopy) {

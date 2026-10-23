@@ -150,19 +150,24 @@ The appended v3 stage rows:
 | id | stage | requests | checked |
 |---|---|---|---|
 | `v1.search/details/toc/content` | source `V`, four real stages | 4 | `latestChapterTitle` and content text carry the script's JSON projection of `book.getVariable`/`putVariable`, `chapter.getVariable`/`putVariable`, `source.getVariable`/`setVariable`, the directly bound `result`, and a `java.getString` chained result; each fact is `typeof` plus strict/loose equality and the String diagnostic, compared before conversion |
-| `o1.search` | source `O` search | 1 | two selected hits keep their absolute pre-option address and raw `{"js":"result + '/1'"}` tail |
-| `o1.details-same` | details on the search pipeline | declared 1 | the same selected hit is analyzed by the cached request; a product that skips the tail's `js` sends the pre-option target and is an unmatched request, never a pass |
-| `o1.details-fresh` | details on a declared fresh pipeline | 1 | a genuinely different `BookSourcePipeline` over the same source object/key and the stored hit runs the tail's `js` once and reaches the transformed target |
+| `o1.search` | source `O` search | 1 | one selected hit keeps its absolute pre-option address and the original raw tail; the tail's `js` increments one O-source counter (`source.get`/`source.put`) and returns `result + '/1'` then `result + '/2'` |
+| `o1.details-same` | details on the search pipeline | declared `GET /o/book/1` | the identical retained hit is analyzed by the cached request; a product that skips the tail's `js` sends the pre-option target and the counter is not executed, never a pass |
+| `o1.details-fresh` | details on a declared fresh pipeline | declared `GET /o/book/2` | a genuinely different `BookSourcePipeline` over the same source object/key/state and the same retained hit object runs the tail's `js` once; the actual counter and request are retained, so a skipped first execution can leave the fresh call at `/1`, not `/2` |
 | `t1.search/details/toc` | source `T` | 1 + 1 + 1 | `ruleBookInfo.tocUrl` carries a URL-option `js`; the TOC stage's declared target is its one-construction result |
 | `p1.search/details/toc` | source `P` | 1 + 1 + ordered prefix + 2-member `stage.toc-option-tail` | `nextTocUrl` discovers two pages; each address keeps its own raw tail; the frozen batch and the product's serial walk remain separate measured facts |
 | `n1.search/details/toc` | source `N` | 1 + 1 + 1 | the selected hit's `bookUrl` option `js` returns null after a real `source.put` counter write; the unchanged `/n/book` target and the later stages' `source.get` read separate executed-vs-skipped; the product's skipped script leaves the TOC chapter title empty and its row incomplete |
 | `j1.search/details` | JSON source `J` | 1 + 1 | the selected hit's `bookUrl` option `js` runs once per construction; the details target is transformed once, not twice |
 
-`o1.details-same` and `o1.details-fresh` are the two carriers of one stored absolute
-hit: the first is the existing-search pipeline's cached request, the second is the
-narrow declared fresh mode. The fresh declaration is validated at the corpus boundary
-and the actual mode, pipeline/transport/source-object identities and source key are in
-the observation evidence; no public pipeline API is added or changed.
+`o1.details-same` and `o1.details-fresh` are the two carriers of the **identical**
+stored hit: both steps name `o-book-1`, the search is not re-read, and the hit's
+`identityAddress` (raw absolute address plus its original option tail) is unchanged.
+The first step is the existing-search pipeline's cached request; the second is the
+narrow declared fresh mode. The source-authored option `js` is what supplies the two
+distinct selectors, not a transport rewrite; its counter is an actual script effect.
+The fresh declaration is validated at the corpus boundary, and the actual hit object
+identity, raw address, pipeline/transport/source/host-state identities, actual carrier
+mode, counter and request facts are in the observation value/evidence; no public
+pipeline API is added or changed.
 
 `s1.search` is also the `retry:2`-on-2xx proof (exactly 1 attempt). `s2` is the
 `retry+1` proof, and the last 502 body is parsed, not raised.
@@ -361,8 +366,8 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  4c31b61fbee77af2037cf7dd9f0e5ac93000d079dac98fe15a5f04287c669f29
-LF-normalised sha256 e00c60fbfa4d0ec747d99bdc7d168f7df624ba2b1e2b7ed980e90b66d5d02740
+raw (CRLF) sha256  92278b78df1345966801d838339f781aabc0025998c89598c253b7458383b33d
+LF-normalised sha256 9965fb4f410749606f97096ba71441d8da016e5d1858ae7573eacfc8f2e8f60e
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is

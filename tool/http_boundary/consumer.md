@@ -18,12 +18,16 @@ The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
 requests and a fifth declared cohort. The v2 rows and captures keep their original
 identities and are not relabelled as v3. The v3 product run on this preparation branch
 reaches 50/51 declared requests and 44 observations with **three known URL-option
-omission rows incomplete** (`o1.details-same` misses its declared transformed request,
-`t1.toc` requests the pre-option TOC address, `p1.toc` walks the first pre-option next
-page) and three unmatched requests. That report is retained as the actual current-
-product measurement: it is not a pass, and the comparator refuses an incomplete
-product record by design. The v3 installed-app capture and comparison remain with the
-controller and are **not-run** here.
+omission rows incomplete** (`o1.details-same` sends the pre-option target, `t1.toc`
+requests the pre-option TOC address, `p1.toc` walks the first pre-option next page)
+and three unmatched requests. The O pair consumes the identical retained hit; the
+product's cached first call skips the source-authored option `js`, so the fresh call's
+counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`), while the frozen
+runs the script twice. That `/1` request lands on the same row's declared selector, so
+the actual ownership/count mismatch is retained rather than repaired. That report is
+retained as the actual current-product measurement: it is not a pass, and the
+comparator refuses an incomplete product record by design. The v3 installed-app
+capture and comparison remain with the controller and are **not-run** here.
 
 At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
 repair and the source-context carrier projection were in place. That product session
@@ -192,7 +196,7 @@ name stays an unattributed failure.
 
 ## Controls
 
-Twenty-three controls run on deep copies of the immutable captures and of the product
+Twenty-seven controls run on deep copies of the immutable captures and of the product
 record; each is compared against **its own** baseline, so a row the baseline already
 reports can never satisfy a control. A control passes only when it introduces a new
 strict mismatch and the approved disposition leaves every one of those new keys
@@ -204,7 +208,11 @@ product body, a product attempt kind, a real cohort peak
 baseline), the retry row order, the sequential step order, the held row's terminal,
 and three wrong-behaviour probes added with the carrier projection: a changed search
 result `origin`, a changed search result `type`, and a broken cancellation
-`workerTerminated` receipt. The aggregate result keeps every capture's rows, so
+`workerTerminated` receipt; eight v3 row controls then cover a changed script-probe
+projection, a removed native-return `latestChapterTitle`, a changed fresh-carrier
+`bookUrl`, a substituted retained-hit address, a reused-pipeline mode, a same-row extra
+counter execution, a fresh-row missing counter execution, and a changed
+counter-backed TOC chapter title. The aggregate result keeps every capture's rows, so
 neither capture's controls can hide the other's. Originals are re-hashed after the
 run and stay byte-identical.
 

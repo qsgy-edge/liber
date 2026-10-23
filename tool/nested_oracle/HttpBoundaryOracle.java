@@ -1505,8 +1505,20 @@ public final class HttpBoundaryOracle extends Instrumentation {
             evidence.put("arityProvenance", arityProvenance);
             return;
         }
-        Object host = newAnalyzeUrl(source);
-        Object result = evalJS(host, step.getString("script"));
+        Object host;
+        Object result;
+        try {
+            host = newAnalyzeUrl(source);
+            result = evalJS(host, step.getString("script"));
+        } catch (Throwable error) {
+            if ("scriptProbe".equals(action)) {
+                // An unresolved evaluator/binding or a deadline is a measurement
+                // precondition failure, never a script outcome.
+                throw new IncompleteStep("the script probe evaluation is unresolved: "
+                    + describe(error));
+            }
+            throw error;
+        }
         String resultText = result == null ? "null" : String.valueOf(result);
         if ("scriptProbe".equals(action)) {
             // One fixture-authored script through the real AnalyzeUrl.evalJS/source
@@ -1721,9 +1733,42 @@ public final class HttpBoundaryOracle extends Instrumentation {
             case "search":
                 stageSearch(step, source, value);
                 break;
-            case "details":
+            case "details": {
+                Object book = require(books, step.getString("book"), "book");
+                Class<?> bookClass = loader.loadClass("io.legado.app.data.entities.Book");
+                String rawBefore = str(bookClass, book, "getBookUrl");
                 stageDetails(step, source, value);
+                if (step.has("carrier")) {
+                    // The paired same/fresh rows pass the identical retained
+                    // SearchBook/Book object. The frozen has no pipeline cache:
+                    // every stage call constructs its own AnalyzeUrl, and the
+                    // source-authored option js consumes the shared O counter.
+                    String rawAfter = str(bookClass, book, "getBookUrl");
+                    Object counter;
+                    try {
+                        counter = call(source, "get", "oRuns");
+                    } catch (Throwable error) {
+                        throw new IncompleteStep("the O-source counter read is unresolved: "
+                            + describe(error));
+                    }
+                    String counterText = counter == null ? "" : String.valueOf(counter);
+                    String sourceKey = str(source.getClass(), source, "getKey");
+                    value.put("hitReference", new JSONObject()
+                        .put("bookId", step.getString("book"))
+                        .put("rawAddress", rawAfter)
+                        .put("sourceKey", sourceKey));
+                    value.put("pipelineMode", "analyze-url-per-stage-call");
+                    value.put("counterAfter", counterText);
+                    evidence.put("hitReference", new JSONObject()
+                        .put("identity", System.identityHashCode(book))
+                        .put("rawAddressBefore", rawBefore)
+                        .put("rawAddressAfter", rawAfter)
+                        .put("sourceKey", sourceKey)
+                        .put("pipelineMode", "analyze-url-per-stage-call")
+                        .put("counterAfter", counterText));
+                }
                 break;
+            }
             case "toc":
                 stageToc(step, source, value);
                 break;
