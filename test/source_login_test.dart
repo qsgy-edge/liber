@@ -570,6 +570,74 @@ JSON.stringify([
       );
     });
 
+    test(
+      'the login maps answer keySet().iterator() and keep absent and empty maps coherent',
+      () async {
+        final runtime = InProcessSourceScriptRuntime(
+          androidId: _installationId,
+        );
+        const input = <String, Object?>{
+          'sourceKey': 'http://a.test',
+          'source': <String, Object?>{'bookSourceUrl': 'http://a.test'},
+        };
+        const pairs =
+            'function pairs(m){var out=[];if(m){var it=m.keySet().iterator();'
+            'while(it.hasNext()){var k=String(it.next());'
+            'out.push([k,String(m.get(k))]);}}'
+            'out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});'
+            'return out;}';
+        Future<Object?> evaluate(String script) => runtime.evaluate(
+          source: '$pairs $script',
+          input: input,
+          timeout: const Duration(seconds: 15),
+        );
+        expect(
+          jsonDecode(
+            await evaluate(
+                  'JSON.stringify([pairs(source.getLoginInfoMap()), '
+                  'pairs(source.getLoginHeaderMap()), '
+                  'source.getLoginInfoMap(), '
+                  'source.getLoginHeaderMap()])',
+                )
+                as String,
+          ),
+          [<Object?>[], <Object?>[], null, null],
+        );
+        expect(
+          jsonDecode(
+            await evaluate(
+                  "source.putLoginInfo('{}'); "
+                  "source.putLoginHeader('{}'); "
+                  'JSON.stringify([pairs(source.getLoginInfoMap()), '
+                  'pairs(source.getLoginHeaderMap())])',
+                )
+                as String,
+          ),
+          [<Object?>[], <Object?>[]],
+        );
+        expect(
+          jsonDecode(
+            await evaluate(
+                  "source.putLoginInfo(JSON.stringify({user:'alice',pass:'pw'})); "
+                  "source.putLoginHeader(JSON.stringify({'X-Login':'yes'})); "
+                  'JSON.stringify([pairs(source.getLoginInfoMap()), '
+                  'pairs(source.getLoginHeaderMap())])',
+                )
+                as String,
+          ),
+          [
+            [
+              ['pass', 'pw'],
+              ['user', 'alice'],
+            ],
+            [
+              ['X-Login', 'yes'],
+            ],
+          ],
+        );
+      },
+    );
+
     test('a map data key named get is not overwritten by the lookup', () async {
       final runtime = InProcessSourceScriptRuntime(androidId: _installationId);
       final value = await runtime.evaluate(
