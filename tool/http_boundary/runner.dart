@@ -55,6 +55,29 @@ const httpBoundaryBatchWidth = 4;
 /// declared next pages one at a time (`source_page_results.dart:21-27,161-165`).
 const httpBoundarySerialWalkWidth = 1;
 
+/// The frozen `BookSource.getBookType()` mapping at
+/// `14dd24945b2914ce2708b8abaa4ee67ceef892af`
+/// (`BookSourceExtensions.kt:107-113`): `bookSourceType` 1/2/3 answer
+/// `BookType.audio` 32, `BookType.image` 64 and `text|webFile` 136; the default
+/// and every other value answer `BookType.text` 8.
+int httpBoundaryBookTypeOf(Object? bookSourceType) => switch (bookSourceType) {
+  1 => 32,
+  2 => 64,
+  3 => 136,
+  _ => 8,
+};
+
+/// The frozen `SearchBook`/`Book` carrier's source-derived fields, read from the
+/// actual source object this run hands to the pipeline: `origin` is that
+/// source's `bookSourceUrl`, `originName` its `bookSourceName`, and `type` the
+/// frozen `getBookType()` of its `bookSourceType`. No value is read from a
+/// golden capture and the book's own stored type is not mutated.
+Map<String, Object?> httpBoundaryBookCarrierOf(Map<String, dynamic> source) => {
+  'origin': '${source['bookSourceUrl']}',
+  'originName': '${source['bookSourceName']}',
+  'type': httpBoundaryBookTypeOf(source['bookSourceType']),
+};
+
 /// A corpus, library or ownership problem: nothing ran, so the target capture
 /// is left exactly as it was.
 class HttpBoundaryRefusal implements Exception {
@@ -1576,6 +1599,7 @@ class _HttpBoundaryRun {
             );
           }
           final results = <Map<String, Object?>>[];
+          final carrier = httpBoundaryBookCarrierOf(sourceObject(sourceId));
           for (var index = 0; index < expect.length; index++) {
             final bookId = expect[index];
             final declared = _bookOf(bookId);
@@ -1593,13 +1617,21 @@ class _HttpBoundaryRun {
               'author': hit.author,
               'kind': hit.kind,
               'bookUrl': hit.identityAddress,
+              'origin': carrier['origin'],
+              'originName': carrier['originName'],
               'coverUrl': hit.cover.isEmpty ? null : hit.cover,
               'intro': hit.intro,
               'wordCount': hit.wordCount,
               'latestChapterTitle': hit.lastChapter,
+              'type': carrier['type'],
             });
           }
           value['results'] = results;
+          (observation['evidence']
+              as Map)['bookCarrier'] = _bookCarrierProvenance(
+            sourceId,
+            published: const ['origin', 'originName', 'type'],
+          );
         case 'details':
           final bookId = '${step['book']}';
           final hit = _hits[bookId];
@@ -1623,6 +1655,13 @@ class _HttpBoundaryRun {
           value['wordCount'] = book.wordCount;
           value['latestChapterTitle'] = book.lastChapter;
           value['tocUrl'] = info.tocUrl;
+          // The frozen details row publishes only `origin`; the search result
+          // carrier has the three portable fields.
+          value['origin'] = httpBoundaryBookCarrierOf(
+            sourceObject(sourceId),
+          )['origin'];
+          (observation['evidence'] as Map)['bookCarrier'] =
+              _bookCarrierProvenance(sourceId, published: const ['origin']);
         case 'toc':
           final bookId = '${step['book']}';
           final info = _infos[bookId];
@@ -1696,6 +1735,31 @@ class _HttpBoundaryRun {
     ),
     'book $id',
   );
+
+  /// The actual source context behind the published carrier fields: the object
+  /// this run handed to the pipeline, the field each value came from, and which
+  /// fields this stage publishes. It is evidence, never a compared value.
+  Map<String, Object?> _bookCarrierProvenance(
+    String sourceId, {
+    required List<String> published,
+  }) {
+    final source = sourceObject(sourceId);
+    return {
+      'source': sourceId,
+      'bookSourceUrl': '${source['bookSourceUrl']}',
+      'bookSourceName': '${source['bookSourceName']}',
+      'bookSourceType': source['bookSourceType'],
+      'published': published,
+      'derivation': {
+        'origin': 'source.bookSourceUrl',
+        'originName': 'source.bookSourceName',
+        'type':
+            'getBookType(source.bookSourceType) at frozen '
+            '14dd24945b2914ce2708b8abaa4ee67ceef892af, '
+            'BookSourceExtensions.kt:107-113',
+      },
+    };
+  }
 
   void _attachBatch(
     Map<String, dynamic> step,

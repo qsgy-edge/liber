@@ -21,6 +21,8 @@ import '../tool/http_boundary/runner.dart'
         HttpBoundaryTeardownReceipt,
         probeHeaderMapEvaluationError,
         sha256Text,
+        httpBoundaryBookCarrierOf,
+        httpBoundaryBookTypeOf,
         httpBoundaryObservationIds,
         loadHttpBoundaryCorpus,
         sha256File,
@@ -1027,6 +1029,314 @@ void main() {
     expect(comparison.mismatches.single.kind, 'missing-observed-field');
     expect(comparison.mismatches.single.field, 'value.origin');
   });
+
+  test('an approved configured width is a named difference, not a pass', () {
+    // The strict mismatch stays in the difference list; the amended contract
+    // also requires the harness to name the approved disposition with both
+    // values. A narrow classifier must attribute this one and nothing else.
+    final corpus = _corpus()..['runtime'] = {'threadCountDefault': 16};
+    final golden = _report();
+    final product = _product();
+    (product['runtimeConfiguration'] as Map)['threadCount'] = 4;
+    final comparison = compareHttpBoundaryRecords(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: corpus.cast<String, dynamic>(),
+      goldenId: 'synthetic',
+    );
+    expect(comparison.mismatches, hasLength(1));
+    expect(comparison.passed, isFalse);
+    final named = comparison.toJson()['notCompared'] as List;
+    expect(named, hasLength(1));
+    expect(named.single['approved'], 'ajaxall-configured-width');
+    expect(
+      named.single['observation'],
+      'runtimeConfiguration|batch-width|threadCount',
+    );
+    expect(named.single['expected'], 16);
+    expect(named.single['observed'], 4);
+    expect(comparison.toJson()['unattributedCount'], 0);
+  });
+
+  test('an unknown width stays an unattributed strict failure', () {
+    final corpus = _corpus()..['runtime'] = {'threadCountDefault': 16};
+    final golden = _report();
+    final product = _product();
+    (product['runtimeConfiguration'] as Map)['threadCount'] = 8;
+    final comparison = compareHttpBoundaryRecords(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: corpus.cast<String, dynamic>(),
+      goldenId: 'synthetic',
+    );
+    expect(comparison.mismatches, hasLength(1));
+    expect(comparison.notCompared, isEmpty);
+    expect(comparison.toJson()['unattributedCount'], 1);
+  });
+
+  test('only the declared cohort rows can carry a width consequence', () {
+    final corpus = loadHttpBoundaryCorpus();
+    HttpBoundaryMismatch request(
+      String row,
+      String field,
+      Object? expected,
+      Object? observed,
+    ) => HttpBoundaryMismatch(
+      surface: 'request',
+      row: row,
+      field: field,
+      expected: expected,
+      observed: observed,
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: request(
+          'helper.ajaxAll-width|GET /h1/width/2?|1',
+          'cohortComplete',
+          true,
+          false,
+        ),
+      )?.approved,
+      'ajaxall-configured-width',
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: request(
+          's1.toc|GET /s/book/1/toc2?|1',
+          'releaseReason',
+          'complete',
+          'cohort-window',
+        ),
+      )?.approved,
+      'page-list-scheduling',
+    );
+    // An undeclared selector, a wrong value pair and a non-cohort field are
+    // never absorbed by the approved scheduling facts.
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: request(
+          'helper.ajaxAll-width|GET /h1/width/9?|1',
+          'cohortComplete',
+          true,
+          false,
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: request(
+          'helper.ajaxAll-width|GET /h1/width/2?|1',
+          'releaseReason',
+          'complete',
+          'incomplete-schedule',
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: request(
+          'helper.ajaxAll-width|GET /h1/width/2?|1',
+          'status',
+          200,
+          500,
+        ),
+      ),
+      isNull,
+    );
+  });
+
+  test(
+    'the zero-argument extension is named only while its map is the false form',
+    () {
+      final corpus = loadHttpBoundaryCorpus();
+      Map<String, Object?> product(String zeroValue) => {
+        'observations': [
+          {
+            'id': 'helper.header-map-js',
+            'value': {
+              'arities': {
+                'zero': {
+                  'returned': true,
+                  'value': [
+                    ['User-Agent', 'HTTP-BOUNDARY-01/1.0'],
+                    ['X-Script', zeroValue],
+                  ],
+                },
+                'falseArity': {
+                  'returned': true,
+                  'value': [
+                    ['User-Agent', 'HTTP-BOUNDARY-01/1.0'],
+                    ['X-Script', 's1'],
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      };
+      const returned = HttpBoundaryMismatch(
+        surface: 'observation',
+        row: 'helper.header-map-js',
+        field: 'value.arities.zero.returned',
+        expected: false,
+        observed: true,
+      );
+      const value = HttpBoundaryMismatch(
+        surface: 'observation',
+        row: 'helper.header-map-js',
+        field: 'value.arities.zero.value',
+        kind: 'extra-observed-field',
+        expected: null,
+        observed: [
+          ['User-Agent', 'HTTP-BOUNDARY-01/1.0'],
+          ['X-Script', 's1'],
+        ],
+      );
+      expect(
+        attributeHttpBoundaryMismatch(
+          corpus: corpus,
+          product: product('s1'),
+          mismatch: returned,
+        )?.approved,
+        'header-map-zero-arity',
+      );
+      expect(
+        attributeHttpBoundaryMismatch(
+          corpus: corpus,
+          product: product('s1'),
+          mismatch: value,
+        )?.approved,
+        'header-map-zero-arity',
+      );
+      // A corrupt zero-argument map is not the approved extension: neither the
+      // returned fact nor its value may hide behind the approval.
+      expect(
+        attributeHttpBoundaryMismatch(
+          corpus: corpus,
+          product: product('OTHER'),
+          mismatch: returned,
+        ),
+        isNull,
+      );
+      expect(
+        attributeHttpBoundaryMismatch(
+          corpus: corpus,
+          product: product('OTHER'),
+          mismatch: value,
+        ),
+        isNull,
+      );
+    },
+  );
+
+  test('the two cancellation owner labels are named and nothing else', () {
+    final corpus = loadHttpBoundaryCorpus();
+    const owner = HttpBoundaryMismatch(
+      surface: 'observation',
+      row: 's5.search-cancelled',
+      field: 'value.execution.jobLevel',
+      expected: 'created-parent',
+      observed: 'pipeline-cancellation',
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: owner,
+      )?.approved,
+      'cancellation-owner-provenance',
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: const HttpBoundaryMismatch(
+          surface: 'observation',
+          row: 's6.search-after-cancel',
+          field: 'value.followUp.jobLevel',
+          expected: 'created-parent',
+          observed: 'pipeline-cancellation',
+        ),
+      )?.approved,
+      'cancellation-owner-provenance',
+    );
+    // A different label and every behavioral fact beside it stay strict: the
+    // owner-name disposition cannot conceal a cancellation failure.
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: const HttpBoundaryMismatch(
+          surface: 'observation',
+          row: 's5.search-cancelled',
+          field: 'value.execution.jobLevel',
+          expected: 'created-parent',
+          observed: 'invented-owner',
+        ),
+      ),
+      isNull,
+    );
+    expect(
+      attributeHttpBoundaryMismatch(
+        corpus: corpus,
+        product: const {},
+        mismatch: const HttpBoundaryMismatch(
+          surface: 'observation',
+          row: 's5.search-cancelled',
+          field: 'value.workerTerminated',
+          expected: true,
+          observed: false,
+        ),
+      ),
+      isNull,
+    );
+  });
+
+  test(
+    'the frozen book carrier is projected from the actual source context',
+    () {
+      // The corpus source is only one actual context: changed URL, name and type
+      // must change the projection, so 8 cannot be a hardcoded corpus answer.
+      final source = <String, dynamic>{
+        'bookSourceUrl': 'http://127.0.0.1:18771/other',
+        'bookSourceName': 'Another source',
+        'bookSourceType': 0,
+      };
+      expect(httpBoundaryBookCarrierOf(source), {
+        'origin': 'http://127.0.0.1:18771/other',
+        'originName': 'Another source',
+        'type': 8,
+      });
+      source['bookSourceType'] = 1;
+      expect(httpBoundaryBookTypeOf(source['bookSourceType']), 32);
+      source['bookSourceType'] = 2;
+      expect(httpBoundaryBookTypeOf(source['bookSourceType']), 64);
+      source['bookSourceType'] = 3;
+      expect(httpBoundaryBookTypeOf(source['bookSourceType']), 136);
+      source['bookSourceType'] = 4;
+      expect(httpBoundaryBookTypeOf(source['bookSourceType']), 8);
+      source['bookSourceType'] = null;
+      expect(httpBoundaryBookTypeOf(source['bookSourceType']), 8);
+      source['bookSourceType'] = 0;
+      source['bookSourceUrl'] = 'http://127.0.0.1:18771/changed';
+      expect(
+        httpBoundaryBookCarrierOf(source)['origin'],
+        'http://127.0.0.1:18771/changed',
+      );
+    },
+  );
 
   test('an added field is a difference too', () {
     final product = _product();
