@@ -50,10 +50,21 @@ input is refused.
 | `s4.search-connection-failure` | the same search against the task-owned `127.0.0.1:0` listener, which accepts and closes each connection without a response; `SourceStageDiagnostic(kind: connection)` is the measured failure |
 | `s5.search-cancelled` | the same search held in flight by the replay listener, then `BookSourcePipeline.cancel()` after the hold is confirmed entered |
 
-The held response detaches its socket so the peer's own close is observable while
-nothing has been written: the abort receipt is that close (or a failing write), never
-an assumption. The cancelled execution is the HTML pipeline the search actually ran
-on, so `jobInactive`/`jobDone` read that pipeline's own `cancelled` state (before the
+The replay listener reads each request itself on one owned `ServerSocket`: the literal
+request line and header lines are recorded before parsing, a `Content-Length` body is
+read for every method, responses are matched by literal method + raw path + raw query,
+and unsupported or ambiguous framing is a named refusal. The held response keeps its
+connection open so the peer's own close is observable while nothing has been written,
+and only the connection that entered the hold can report that abort: an unrelated idle
+connection's close is not the held request's abort. The abort receipt is that close (or
+the failing write on the held request), never an assumption, and a locally closed
+listener never invents one. Cleanup is ordered and truthful: the listener stops admitting and releases its gates,
+the owned cancellation worker is joined, and only then are the database snapshot, the
+database close and the native disposal attempted, each independently, so one failing
+step cannot skip the rest or lose the collected trace; the run's `ownedTeardown`
+receipt records what was attempted, what completed and each error, and an unresolved
+worker performs none of those steps and keeps its owned residue. The cancelled
+execution is the HTML pipeline the search actually ran on, so `jobInactive`/`jobDone` read that pipeline's own `cancelled` state (before the
 request, at the cancel request and after the worker settled) together with the
 worker termination, the quiet window and the late-request count; no unrelated
 cancellation token stands in for it. The follow-up row opens a new pipeline (its own
@@ -165,7 +176,13 @@ Both captures produce the same 56 differences, grouped by cause:
 
 1. **Configured batch width** — `runtimeConfiguration.threadCount` 16 vs 4, and every
    batch row's `value.batch.threadCount`. The frozen reads `AppConfig.threadCount`
-   (default 16); the product's `SourceHostDispatcher.ajaxAll` default is 4.
+   (default 16). The product's configuration is recorded per family from the code that
+   actually runs the batch: the helper `ajaxAll` batches use
+   `SourceHostDispatcher.ajaxAll`'s default 4, while the TOC and content pagination
+   tails run `walkSourcePages`, which fetches the declared next pages one at a time
+   (`lib/source/source_page_results.dart`), so their rows record 1 against the frozen
+   16. Each cohort's `evidence.batch` names which configuration it measured; a measured
+   peak is never reported as a configured width.
 2. **Declared 5-member batch** — the width cohort records
    `inFlightPeak` 4, `cohortComplete: false` and `releaseReason: "cohort-window"`,
    and the same two facts on each of its five request rows. This is the recorded

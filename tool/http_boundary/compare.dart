@@ -1820,16 +1820,38 @@ void validateProductReport(
     final teardown = gate.object(product['ownedTeardown'], 'ownedTeardown');
     for (final entry in const [
       ('workerSettled', _Field.boolean),
+      ('stepsAttempted', _Field.array),
       ('stepsRun', _Field.array),
+      ('errors', _Field.array),
       ('residueRetained', _Field.boolean),
       ('timeoutMillis', _Field.integer),
     ]) {
       gate.field(teardown, entry.$1, 'ownedTeardown', entry.$2);
     }
+    for (final key in const ['stepsAttempted', 'stepsRun']) {
+      final steps = gate.array(teardown[key], 'ownedTeardown.$key');
+      for (var slot = 0; slot < steps.length; slot++) {
+        if (steps[slot] is! String) {
+          gate.fail('ownedTeardown.$key.$slot is not a string');
+        }
+      }
+    }
     final stepsRun = gate.array(teardown['stepsRun'], 'ownedTeardown.stepsRun');
-    for (var slot = 0; slot < stepsRun.length; slot++) {
-      if (stepsRun[slot] is! String) {
-        gate.fail('ownedTeardown.stepsRun.$slot is not a string');
+    final teardownErrors = gate.array(
+      teardown['errors'],
+      'ownedTeardown.errors',
+    );
+    for (var slot = 0; slot < teardownErrors.length; slot++) {
+      final failure = gate.object(
+        teardownErrors[slot],
+        'ownedTeardown.errors.$slot',
+      );
+      for (final entry in const [
+        ('step', _Field.string),
+        ('errorType', _Field.string),
+        ('error', _Field.string),
+      ]) {
+        gate.field(failure, entry.$1, 'ownedTeardown.errors.$slot', entry.$2);
       }
     }
     final timeoutMillis = teardown['timeoutMillis'];
@@ -1843,10 +1865,17 @@ void validateProductReport(
         false,
         'ownedTeardown.residueRetained',
       );
+      gate.equal(teardown['stepsAttempted'], const [
+        'snapshotDatabase',
+        'closeDatabase',
+        'disposeNative',
+      ], 'ownedTeardown.stepsAttempted');
       gate.equal(stepsRun, const [
+        'snapshotDatabase',
         'closeDatabase',
         'disposeNative',
       ], 'ownedTeardown.stepsRun');
+      gate.emptyArray(teardown['errors'], 'ownedTeardown.errors');
       gate.equal(
         cleanup['databaseClosed'],
         true,
@@ -1863,7 +1892,13 @@ void validateProductReport(
         true,
         'ownedTeardown.residueRetained',
       );
+      gate.equal(
+        teardown['stepsAttempted'],
+        const <Object?>[],
+        'ownedTeardown.stepsAttempted',
+      );
       gate.equal(stepsRun, const <Object?>[], 'ownedTeardown.stepsRun');
+      gate.emptyArray(teardown['errors'], 'ownedTeardown.errors');
       gate.equal(
         cleanup['databaseClosed'],
         false,

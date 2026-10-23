@@ -9,7 +9,7 @@ import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/html_source_pipeline.dart' as html_boundary;
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart'
-    show InProcessSourceScriptRuntime;
+    show InProcessSourceScriptRuntime, SourceScriptError;
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
@@ -1002,56 +1002,46 @@ class _HttpBoundaryRun {
     // queried or closed and before the native runtime is disposed. A worker that
     // cannot settle keeps the owned residue instead of a clean exit.
     final owned = _ownedCancelWorker;
-    var ownedWorkSettled = true;
-    if (owned != null) {
-      final teardown = await settleOwnedTeardown(
-        workers: [owned],
-        deadline: const Duration(seconds: 20),
-        closeDatabase: () async {
-          if (store != null) finalCounts = await _databaseCounts();
-          await workspace?.close();
-          databaseClosed = workspace != null;
-        },
-        disposeNative: () async {
-          await InProcessSourceScriptRuntime.dispose();
-          NativeLibrary.dispose();
-          libraryDisposed = true;
-        },
-      );
-      report['ownedTeardown'] = teardown.toJson();
-      ownedWorkSettled = teardown.workerSettled;
-      if (!ownedWorkSettled) {
-        failure ??= StateError(
-          'an owned cancellation worker did not settle before teardown; the '
-          'owned residue is retained',
-        );
-        removalSkipped =
-            'an owned worker did not settle; the owned root and preferences are '
-            'retained for the controller';
-      }
-    } else {
-      try {
+    // One teardown composition for every caller: the owned worker settles first,
+    // then the snapshot, the database close and the native disposal are each
+    // attempted independently, and the collected evidence is published whatever
+    // happens here.
+    final teardown = await settleOwnedTeardown(
+      workers: [?owned],
+      deadline: const Duration(seconds: 20),
+      snapshotDatabase: () async {
         if (store != null) finalCounts = await _databaseCounts();
-      } on Object catch (error) {
-        failure ??= error;
-      }
-      try {
+      },
+      closeDatabase: () async {
         await workspace?.close();
         databaseClosed = workspace != null;
-      } on Object catch (error) {
-        failure ??= error;
-      }
-      try {
+      },
+      disposeNative: () async {
         await InProcessSourceScriptRuntime.dispose();
         NativeLibrary.dispose();
         libraryDisposed = true;
-      } on Object catch (error) {
-        failure ??= error;
-      }
+      },
+    );
+    report['ownedTeardown'] = teardown.toJson();
+    final ownedWorkSettled = teardown.workerSettled;
+    if (!ownedWorkSettled) {
+      failure ??= StateError(
+        'an owned cancellation worker did not settle before teardown; the '
+        'owned residue is retained',
+      );
+      removalSkipped =
+          'an owned worker did not settle; the owned root and preferences are '
+          'retained for the controller';
+    } else if (teardown.errors.isNotEmpty) {
+      final first = teardown.errors.first;
+      failure ??= StateError(
+        'cleanup did not complete: ${first['step']} failed with '
+        '${first['errorType']}: ${first['error']}',
+      );
+      removalSkipped =
+          'cleanup did not complete (${teardown.errors.map((error) => error['step']).join(', ')}); '
+          'the owned root and preferences are retained';
     }
-    // No database query/close, native disposal or root removal may run while an
-    // owned worker is unresolved: the settleOwnedTeardown call above is the only
-    // path that performs them, and it performs them only once the worker joined.
 
     requests
       ..clear()
@@ -1128,7 +1118,7 @@ class _HttpBoundaryRun {
       } on Object catch (error) {
         failure = error;
       }
-    } else if (root.existsSync()) {
+    } else if (root.existsSync() && removalSkipped.isEmpty) {
       removalSkipped = 'the owned root is preserved for inspection';
     }
     final integrityOk =
@@ -1378,16 +1368,44 @@ class _HttpBoundaryRun {
         // A step/evaluation deadline is not a script outcome: the row is an
         // incomplete measurement, never three `returned:false` arities in an ok
         // row.
-        provenance[arity] = {
-          'outcome': 'deadline',
-          'errorType': '${error.runtimeType}',
-          'error': '$error',
+        (observation['evidence'] as Map)['arityProvenance'] = {
+          ...provenance,
+          arity: {
+            'outcome': 'deadline',
+            'errorType': '${error.runtimeType}',
+            'error': '$error',
+          },
         };
-        (observation['evidence'] as Map)['arityProvenance'] = provenance;
         observation['outcome'] = 'incomplete';
         throw HttpBoundaryIncomplete(
           'the $arity header-map evaluation hit its deadline: $error',
         );
+      } on SourceScriptError catch (error) {
+        // The engine reports its own bounded-deadline failure as a typed
+        // `SourceScriptError('timeout')`, which is the same measurement deadline
+        // as a wall-clock TimeoutException. Any other category stays the ordinary
+        // measured binding refusal below.
+        if (error.category == 'timeout') {
+          (observation['evidence'] as Map)['arityProvenance'] = {
+            ...provenance,
+            arity: {
+              'outcome': 'deadline',
+              'errorType': '${error.runtimeType}',
+              'error': '$error',
+              'engineCategory': error.category,
+            },
+          };
+          observation['outcome'] = 'incomplete';
+          throw HttpBoundaryIncomplete(
+            'the $arity header-map evaluation hit the engine deadline: $error',
+          );
+        }
+        arities[arity] = {'returned': false};
+        provenance[arity] = {
+          'outcome': 'threw',
+          'errorType': '${error.runtimeType}',
+          'error': '$error',
+        };
       } on Object catch (error) {
         arities[arity] = {'returned': false};
         provenance[arity] = {
@@ -3549,6 +3567,58 @@ Future<Map<String, Object?>> probeOwnedReplayListener({
   };
 }
 
+/// Runs the real header-map helper against one injected evaluation failure, so a
+/// focused test asserts the observed outcome through the helper's own code rather
+/// than a model of it. Nothing is executed beyond that row.
+class _ProbeFailingRuntime implements InProcessSourceScriptRuntime {
+  _ProbeFailingRuntime(this.error);
+  final Object error;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName == #evaluate) {
+      return Future<Object?>.error(error);
+    }
+    return super.noSuchMethod(invocation);
+  }
+}
+
+Future<Map<String, Object?>> probeHeaderMapEvaluationError({
+  required Object error,
+  required Map<String, dynamic> corpus,
+  required Directory root,
+}) async {
+  final step = httpBoundarySteps(
+    corpus,
+  ).firstWhere((row) => row['action'] == 'headerMap');
+  final run = _HttpBoundaryRun(
+    corpus: corpus,
+    corpusLf: '',
+    root: root,
+    libraryPath: '',
+    librarySha256: '',
+    report: <String, Object?>{},
+  );
+  run._runtimes['${step['source']}'] = _ProbeFailingRuntime(error);
+  final observation = <String, Object?>{
+    'id': step['id'],
+    'evidence': <String, Object?>{},
+    'value': <String, Object?>{},
+    'outcome': 'incomplete',
+    'category': null,
+  };
+  Object? thrown;
+  try {
+    await run._runHelper(step, observation);
+  } on Object catch (error) {
+    thrown = error;
+  }
+  return {
+    'thrownType': thrown == null ? null : '${thrown.runtimeType}',
+    'observation': observation,
+  };
+}
+
 /// The order every owned resource follows after admission stops: owned workers
 /// settle first, and only then are the database, the native runtime and the
 /// scratch root touched. A worker that cannot settle inside [deadline] is not
@@ -3556,27 +3626,45 @@ Future<Map<String, Object?>> probeOwnedReplayListener({
 class HttpBoundaryTeardownReceipt {
   const HttpBoundaryTeardownReceipt({
     required this.workerSettled,
+    required this.stepsAttempted,
     required this.stepsRun,
+    required this.errors,
     required this.residueRetained,
     required this.timeoutMillis,
   });
 
   final bool workerSettled;
+
+  /// Every cleanup step the caller tried, in the order it tried them.
+  final List<String> stepsAttempted;
+
+  /// The steps that completed; an attempted step is never implied completed.
   final List<String> stepsRun;
+
+  /// One entry per failed step: which step, the error's type and its message.
+  final List<Map<String, Object?>> errors;
   final bool residueRetained;
   final int timeoutMillis;
 
   Map<String, Object?> toJson() => {
     'workerSettled': workerSettled,
+    'stepsAttempted': stepsAttempted,
     'stepsRun': stepsRun,
+    'errors': errors,
     'residueRetained': residueRetained,
     'timeoutMillis': timeoutMillis,
   };
 }
 
+/// The order every owned resource follows after admission stops: owned workers
+/// settle first, and only then are the database snapshot, the database close and
+/// the native runtime touched. Each step is attempted independently once the
+/// worker is settled, so one failing step cannot skip the remaining safe cleanup
+/// or lose the collected evidence; an unresolved worker performs none of them.
 Future<HttpBoundaryTeardownReceipt> settleOwnedTeardown({
   required List<Future<void>> workers,
   required Duration deadline,
+  required Future<void> Function() snapshotDatabase,
   required Future<void> Function() closeDatabase,
   required Future<void> Function() disposeNative,
 }) async {
@@ -3591,22 +3679,39 @@ Future<HttpBoundaryTeardownReceipt> settleOwnedTeardown({
   if (!settled) {
     return HttpBoundaryTeardownReceipt(
       workerSettled: false,
+      stepsAttempted: const <String>[],
       stepsRun: const <String>[],
+      errors: const <Map<String, Object?>>[],
       residueRetained: true,
       timeoutMillis: deadline.inMilliseconds,
     );
   }
-  // Only the work this seam really performs is named in its receipt; the root
-  // removal belongs to the caller and is recorded by the cleanup block.
-  final steps = <String>[];
-  await closeDatabase();
-  steps.add('closeDatabase');
-  await disposeNative();
-  steps.add('disposeNative');
+  final attempted = <String>[];
+  final completed = <String>[];
+  final errors = <Map<String, Object?>>[];
+  Future<void> step(String name, Future<void> Function() action) async {
+    attempted.add(name);
+    try {
+      await action();
+      completed.add(name);
+    } on Object catch (error) {
+      errors.add({
+        'step': name,
+        'errorType': '${error.runtimeType}',
+        'error': '$error',
+      });
+    }
+  }
+
+  await step('snapshotDatabase', snapshotDatabase);
+  await step('closeDatabase', closeDatabase);
+  await step('disposeNative', disposeNative);
   return HttpBoundaryTeardownReceipt(
     workerSettled: true,
-    stepsRun: steps,
-    residueRetained: false,
+    stepsAttempted: attempted,
+    stepsRun: completed,
+    errors: errors,
+    residueRetained: errors.isNotEmpty,
     timeoutMillis: deadline.inMilliseconds,
   );
 }

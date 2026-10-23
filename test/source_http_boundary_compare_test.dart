@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../tool/http_boundary/compare.dart';
+import 'package:liber/source/js_source_runtime.dart' show SourceScriptError;
 import '../tool/http_boundary/runner.dart'
     show
         HttpBoundaryRefusal,
@@ -17,6 +18,8 @@ import '../tool/http_boundary/runner.dart'
         httpBoundaryCorpusSha256Lf,
         probeOwnedReplayListener,
         settleOwnedTeardown,
+        HttpBoundaryTeardownReceipt,
+        probeHeaderMapEvaluationError,
         sha256Text,
         httpBoundaryObservationIds,
         loadHttpBoundaryCorpus,
@@ -943,7 +946,9 @@ Map<String, dynamic> _validProduct({
     // The owned-worker teardown receipt of a settled, normal run.
     'ownedTeardown': {
       'workerSettled': true,
-      'stepsRun': ['closeDatabase', 'disposeNative'],
+      'stepsAttempted': ['snapshotDatabase', 'closeDatabase', 'disposeNative'],
+      'stepsRun': ['snapshotDatabase', 'closeDatabase', 'disposeNative'],
+      'errors': <Object?>[],
       'residueRetained': false,
       'timeoutMillis': 20000,
     },
@@ -1615,6 +1620,43 @@ void main() {
       expect(() => gate(identical), returnsNormally);
     });
 
+    test('the engine typed deadline is an incomplete measurement', () async {
+      final work = Directory.systemTemp.createTempSync(
+        'http-boundary-deadline-',
+      );
+      addTearDown(() => work.deleteSync(recursive: true));
+      final corpus = loadHttpBoundaryCorpus();
+      final typed = await probeHeaderMapEvaluationError(
+        error: const SourceScriptError('timeout'),
+        corpus: corpus,
+        root: work,
+      );
+      expect(typed['thrownType'], 'HttpBoundaryIncomplete');
+      final typedObservation = typed['observation'] as Map;
+      expect(typedObservation['outcome'], 'incomplete');
+      final provenance =
+          (typedObservation['evidence'] as Map)['arityProvenance'] as Map;
+      expect((provenance['zero'] as Map)['outcome'], 'deadline');
+
+      final wall = await probeHeaderMapEvaluationError(
+        error: TimeoutException('wall-clock deadline'),
+        corpus: corpus,
+        root: work,
+      );
+      expect(wall['thrownType'], 'HttpBoundaryIncomplete');
+      expect((wall['observation'] as Map)['outcome'], 'incomplete');
+
+      // An ordinary typed binding refusal stays a measured outcome.
+      final binding = await probeHeaderMapEvaluationError(
+        error: const SourceScriptError('js', 'no such member'),
+        corpus: corpus,
+        root: work,
+      );
+      expect(binding['thrownType'], isNull);
+      final bindingObservation = binding['observation'] as Map;
+      expect(bindingObservation['outcome'], 'ok');
+    });
+
     test(
       'an abort needs a measured close or a failed write on the held request',
       () {
@@ -1775,6 +1817,11 @@ void main() {
         'missing': (record) => record.remove('ownedTeardown'),
         'steps': (record) =>
             (record['ownedTeardown'] as Map)['stepsRun'] = ['closeDatabase'],
+        'attempted': (record) =>
+            (record['ownedTeardown'] as Map)['stepsAttempted'] = <Object?>[],
+        'errors': (record) => (record['ownedTeardown'] as Map)['errors'] = [
+          {'step': 'closeDatabase', 'errorType': 'StateError', 'error': 'x'},
+        ],
         'zero-deadline': (record) =>
             (record['ownedTeardown'] as Map)['timeoutMillis'] = 0,
         'residue': (record) =>
@@ -2253,35 +2300,77 @@ void main() {
     });
 
     test(
-      'the owned teardown settles workers before the database and native steps',
+      'the owned teardown attempts every safe step once the worker settled',
       () async {
-        final steps = <String>[];
-        final settled = await settleOwnedTeardown(
-          workers: [Future<void>.value()],
-          deadline: const Duration(seconds: 5),
-          closeDatabase: () async => steps.add('closeDatabase'),
-          disposeNative: () async => steps.add('disposeNative'),
-        );
-        expect(settled.workerSettled, isTrue);
-        expect(settled.residueRetained, isFalse);
-        expect(settled.stepsRun, ['closeDatabase', 'disposeNative']);
-        expect(steps, ['closeDatabase', 'disposeNative']);
+        Future<HttpBoundaryTeardownReceipt> run({
+          bool failSnapshot = false,
+          bool failClose = false,
+          bool failDispose = false,
+          Future<void>? worker,
+        }) {
+          final steps = <String>[];
+          return settleOwnedTeardown(
+            workers: [?worker],
+            deadline: const Duration(milliseconds: 50),
+            snapshotDatabase: () async {
+              steps.add('snapshotDatabase');
+              if (failSnapshot) throw StateError('injected snapshot failure');
+            },
+            closeDatabase: () async {
+              steps.add('closeDatabase');
+              if (failClose) throw StateError('injected close failure');
+            },
+            disposeNative: () async {
+              steps.add('disposeNative');
+              if (failDispose) throw StateError('injected native failure');
+            },
+          ).then((receipt) {
+            expect(steps, receipt.stepsAttempted);
+            return receipt;
+          });
+        }
 
-        // An owned worker that never settles: the database and native callbacks do
-        // not run and the owned residue is retained.
+        final settled = await run();
+        expect(settled.workerSettled, isTrue);
+        expect(settled.stepsAttempted, [
+          'snapshotDatabase',
+          'closeDatabase',
+          'disposeNative',
+        ]);
+        expect(settled.stepsRun, settled.stepsAttempted);
+        expect(settled.errors, isEmpty);
+        expect(settled.residueRetained, isFalse);
+
+        // A failing snapshot still attempts the database close and the native
+        // disposal; the failure is recorded, not hidden.
+        final snapshot = await run(failSnapshot: true);
+        expect(snapshot.stepsAttempted, [
+          'snapshotDatabase',
+          'closeDatabase',
+          'disposeNative',
+        ]);
+        expect(snapshot.stepsRun, ['closeDatabase', 'disposeNative']);
+        expect(snapshot.errors.single['step'], 'snapshotDatabase');
+        expect(snapshot.errors.single['errorType'], 'StateError');
+        expect(snapshot.residueRetained, isTrue);
+
+        final close = await run(failClose: true);
+        expect(close.stepsRun, ['snapshotDatabase', 'disposeNative']);
+        expect(close.errors.single['step'], 'closeDatabase');
+
+        final dispose = await run(failDispose: true);
+        expect(dispose.stepsRun, ['snapshotDatabase', 'closeDatabase']);
+        expect(dispose.errors.single['step'], 'disposeNative');
+
+        // An unresolved worker performs none of them.
         final never = Completer<void>();
         addTearDown(() => never.complete());
-        final retainedSteps = <String>[];
-        final busy = await settleOwnedTeardown(
-          workers: [never.future],
-          deadline: const Duration(milliseconds: 50),
-          closeDatabase: () async => retainedSteps.add('closeDatabase'),
-          disposeNative: () async => retainedSteps.add('disposeNative'),
-        );
+        final busy = await run(worker: never.future);
         expect(busy.workerSettled, isFalse);
-        expect(busy.residueRetained, isTrue);
+        expect(busy.stepsAttempted, isEmpty);
         expect(busy.stepsRun, isEmpty);
-        expect(retainedSteps, isEmpty);
+        expect(busy.errors, isEmpty);
+        expect(busy.residueRetained, isTrue);
       },
     );
   });
