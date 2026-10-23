@@ -1809,6 +1809,89 @@ void validateProductReport(
     'cleanup.terminal.scratch.absentAfter',
   );
 
+  // The owned-worker teardown receipt is a measurement, not a label: its types
+  // and its relations to the cleanup facts decide whether the run may claim a
+  // clean exit.
+  if (!product.containsKey('ownedTeardown')) {
+    gate.fail(
+      'ownedTeardown is missing from a run that owns a cancellation row',
+    );
+  } else {
+    final teardown = gate.object(product['ownedTeardown'], 'ownedTeardown');
+    for (final entry in const [
+      ('workerSettled', _Field.boolean),
+      ('stepsRun', _Field.array),
+      ('residueRetained', _Field.boolean),
+      ('timeoutMillis', _Field.integer),
+    ]) {
+      gate.field(teardown, entry.$1, 'ownedTeardown', entry.$2);
+    }
+    final stepsRun = gate.array(teardown['stepsRun'], 'ownedTeardown.stepsRun');
+    for (var slot = 0; slot < stepsRun.length; slot++) {
+      if (stepsRun[slot] is! String) {
+        gate.fail('ownedTeardown.stepsRun.$slot is not a string');
+      }
+    }
+    final timeoutMillis = teardown['timeoutMillis'];
+    if (timeoutMillis is int && timeoutMillis <= 0) {
+      gate.fail('ownedTeardown.timeoutMillis is not a positive deadline');
+    }
+    final workerSettled = teardown['workerSettled'];
+    if (workerSettled == true) {
+      gate.equal(
+        teardown['residueRetained'],
+        false,
+        'ownedTeardown.residueRetained',
+      );
+      gate.equal(stepsRun, const [
+        'closeDatabase',
+        'disposeNative',
+      ], 'ownedTeardown.stepsRun');
+      gate.equal(
+        cleanup['databaseClosed'],
+        true,
+        'ownedTeardown implies a closed database',
+      );
+      gate.equal(
+        cleanup['nativeLibraryDisposed'],
+        true,
+        'ownedTeardown implies a disposed native runtime',
+      );
+    } else if (workerSettled == false) {
+      gate.equal(
+        teardown['residueRetained'],
+        true,
+        'ownedTeardown.residueRetained',
+      );
+      gate.equal(stepsRun, const <Object?>[], 'ownedTeardown.stepsRun');
+      gate.equal(
+        cleanup['databaseClosed'],
+        false,
+        'an unresolved owned worker cannot have closed the database',
+      );
+      gate.equal(
+        cleanup['nativeLibraryDisposed'],
+        false,
+        'an unresolved owned worker cannot have disposed the native runtime',
+      );
+      gate.equal(
+        cleanup['scratchRemoved'],
+        false,
+        'an unresolved owned worker keeps its owned root',
+      );
+      gate.equal(
+        cleanup['rootAbsentAfter'],
+        false,
+        'an unresolved owned worker keeps its owned root',
+      );
+      gate.equal(
+        terminal['integrityOk'],
+        false,
+        'an unresolved owned worker cannot claim a clean terminal',
+      );
+    }
+  }
+
   if (productPath.isEmpty) {
     throw HttpBoundaryRefusal('the product report path is empty');
   }

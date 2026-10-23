@@ -1002,6 +1002,7 @@ class _HttpBoundaryRun {
     // queried or closed and before the native runtime is disposed. A worker that
     // cannot settle keeps the owned residue instead of a clean exit.
     final owned = _ownedCancelWorker;
+    var ownedWorkSettled = true;
     if (owned != null) {
       final teardown = await settleOwnedTeardown(
         workers: [owned],
@@ -1016,10 +1017,10 @@ class _HttpBoundaryRun {
           NativeLibrary.dispose();
           libraryDisposed = true;
         },
-        removeRoot: () async {},
       );
       report['ownedTeardown'] = teardown.toJson();
-      if (!teardown.workerSettled) {
+      ownedWorkSettled = teardown.workerSettled;
+      if (!ownedWorkSettled) {
         failure ??= StateError(
           'an owned cancellation worker did not settle before teardown; the '
           'owned residue is retained',
@@ -1040,14 +1041,17 @@ class _HttpBoundaryRun {
       } on Object catch (error) {
         failure ??= error;
       }
+      try {
+        await InProcessSourceScriptRuntime.dispose();
+        NativeLibrary.dispose();
+        libraryDisposed = true;
+      } on Object catch (error) {
+        failure ??= error;
+      }
     }
-    try {
-      await InProcessSourceScriptRuntime.dispose();
-      NativeLibrary.dispose();
-      libraryDisposed = true;
-    } on Object catch (error) {
-      failure ??= error;
-    }
+    // No database query/close, native disposal or root removal may run while an
+    // owned worker is unresolved: the settleOwnedTeardown call above is the only
+    // path that performs them, and it performs them only once the worker joined.
 
     requests
       ..clear()
@@ -2477,6 +2481,16 @@ bool _multisetEquals(List<String> left, List<String> right) {
 /// the exact raw query bytes; the declared concurrent members of one cohort are
 /// held until the cohort is complete or its own window expires, and every row
 /// keeps what actually happened.
+/// The frozen collector's status reasons (`HttpBoundaryOracle.java:4994+`), used
+/// for the controlled responses this listener writes.
+String _statusReason(int status) => switch (status) {
+  200 => 'OK',
+  404 => 'Not Found',
+  502 => 'Bad Gateway',
+  503 => 'Service Unavailable',
+  _ => 'Status',
+};
+
 /// One request as the socket actually carried it: the literal request line and
 /// header lines are recorded before any semantic parsing, and the body is the
 /// exact number of bytes the framing declared.
@@ -2584,6 +2598,7 @@ class _ReplayServer {
   final _attempts = <String, int>{};
   final _lastTerminal = <String, String>{};
   final _connections = <_ReplayConnection>{};
+  final _handlers = <Future<void>>{};
   int _nextSendSequence = 1;
   final hold = _HoldGate();
 
@@ -2614,10 +2629,12 @@ class _ReplayServer {
     _server.listen((socket) {
       final connection = _ReplayConnection(this, socket);
       _connections.add(connection);
-      connection.run().whenComplete(() {
+      final handler = connection.run().whenComplete(() {
         _connections.remove(connection);
         connection.dispose();
       });
+      _handlers.add(handler);
+      handler.whenComplete(() => _handlers.remove(handler));
     }, onError: _onServerError);
   }
 
@@ -2701,7 +2718,6 @@ class _ReplayServer {
         connection,
         record,
         status: 404,
-        reason: 'Not Found',
         headers: const {'Content-Type': 'text/plain'},
         body: utf8.encode('undeclared replay request'),
       );
@@ -2736,7 +2752,6 @@ class _ReplayServer {
       connection,
       record,
       status: status,
-      reason: 'OK',
       headers: {
         for (final entry in declaredHeaders.entries)
           if (!const {
@@ -2766,7 +2781,7 @@ class _ReplayServer {
     String selector,
   ) async {
     final status = _integer(declared['status'], 'status');
-    hold.enter(selector);
+    hold.enter(selector, connection);
     await hold.released.future;
     if (hold.peerClosedObserved) {
       record['terminal'] = 'client-aborted';
@@ -2780,7 +2795,6 @@ class _ReplayServer {
       connection,
       record,
       status: status,
-      reason: 'OK',
       headers: const {'Content-Type': 'text/plain'},
       body: utf8.encode('${declared['body'] ?? ''}'),
       onWriteFailed: (error) {
@@ -2805,18 +2819,19 @@ class _ReplayServer {
     _ReplayConnection connection,
     Map<String, Object?> record, {
     required int status,
-    required String reason,
     required Map<String, String> headers,
     required List<int> body,
     void Function(Object error)? onWriteFailed,
   }) async {
-    final head = StringBuffer('HTTP/1.1 $status $reason\r\n');
+    // The frozen controlled-response recipe (`HttpBoundaryOracle.java:4557-4584`):
+    // the declared status with its standard reason, the declared headers, the
+    // actual body length and the keep-alive marker.
+    final head = StringBuffer('HTTP/1.1 $status ${_statusReason(status)}\r\n');
     for (final entry in headers.entries) {
       head.write('${entry.key}: ${entry.value}\r\n');
     }
     head.write('Content-Length: ${body.length}\r\n');
-    head.write(connection.wantsClose ? 'Connection: close\r\n' : '');
-    head.write('\r\n');
+    head.write('Connection: keep-alive\r\n\r\n');
     record['sentAtNanos'] = _nowNanos();
     record['sendSequence'] = _nextSendSequence++;
     try {
@@ -2861,12 +2876,23 @@ class _ReplayServer {
   }
 
   Future<void> close() async {
+    // Stop admission, free every gate so an idle reader wakes, close the
+    // listener, and settle the owned handlers instead of only forgetting them.
     releaseAllGates();
     await _server.close();
+    final handlers = _handlers.toList();
     for (final connection in _connections.toList()) {
       connection.closeSocket();
     }
+    if (handlers.isNotEmpty) {
+      try {
+        await Future.wait(handlers).timeout(const Duration(seconds: 5));
+      } on TimeoutException {
+        _onServerError('an owned replay handler did not settle on close');
+      }
+    }
     _connections.clear();
+    _handlers.clear();
     _closed = true;
   }
 }
@@ -2897,9 +2923,9 @@ class _ReplayConnection {
       },
       onDone: () {
         _peerClosed = true;
-        // A peer close while a response is held is the measured abort; a close
-        // after the hold was released (or with none) is not.
-        if (server.hold.awaitingRelease) {
+        // Only this connection's own close, while it still owns the hold, is the
+        // measured peer abort.
+        if (server.hold.awaitingRelease && server.hold.owns(this)) {
           server.hold.notePeerClosed('peer-closed');
         }
         _wake();
@@ -2907,7 +2933,7 @@ class _ReplayConnection {
       onError: (Object error) {
         _streamError ??= error;
         _peerClosed = true;
-        if (server.hold.awaitingRelease) {
+        if (server.hold.awaitingRelease && server.hold.owns(this)) {
           server.hold.notePeerClosed(error);
         }
         _wake();
@@ -2996,14 +3022,19 @@ class _ReplayConnection {
       }
       final name = line.substring(0, colon);
       final value = line.substring(colon + 1).trim();
-      headerLines.add('$name: $value');
+      // The literal line the peer sent, including any legal optional whitespace
+      // after the colon; the semantic map below is the normalized view.
+      headerLines.add(line);
       final lower = name.toLowerCase();
       if (lower == 'content-length') {
-        final length = int.tryParse(value);
-        if (length == null || length < 0) {
-          throw _ReplayFramingError('invalid Content-Length "$value"');
+        // HTTP's Content-Length is decimal digits only: `+3`, `0x3` and any other
+        // Dart-accepted spelling are not this framing.
+        if (!RegExp(r'^[0-9]+$').hasMatch(value)) {
+          throw _ReplayFramingError(
+            'invalid Content-Length "$value": only decimal digits are accepted',
+          );
         }
-        contentLengths.add(length);
+        contentLengths.add(int.parse(value));
       } else if (lower == 'transfer-encoding') {
         throw _ReplayFramingError(
           'unsupported framing: Transfer-Encoding "$value"',
@@ -3223,9 +3254,18 @@ class _HoldGate {
 
   Future<bool> get entered => _entered.future;
 
-  void enter(String selector) {
+  void enter(String selector, [Object? owner]) {
+    _owner ??= owner;
     if (!_entered.isCompleted) _entered.complete(true);
   }
+
+  /// The one connection whose request entered this hold: only its own close may
+  /// report the peer abort. An unrelated idle connection's EOF is not the
+  /// owner's abort.
+  Object? _owner;
+
+  bool owns(Object? connection) =>
+      _owner != null && identical(_owner, connection);
 
   /// Whether a hold is entered and not yet released: the only window in which a
   /// peer close is the measured abort.
@@ -3351,6 +3391,7 @@ Future<Map<String, Object?>> probeOwnedReplayListener({
   bool fragment = false,
   bool abortHeld = false,
   bool closeAfterWrite = false,
+  bool idlePeerClose = false,
 }) async {
   final requests = <Map<String, Object?>>[];
   final unmatched = <Map<String, Object?>>[];
@@ -3398,7 +3439,26 @@ Future<Map<String, Object?>> probeOwnedReplayListener({
           socket.add(bytes);
         }
         await socket.flush();
-        if (abortHeld) {
+        if (idlePeerClose) {
+          // A second, idle connection that never sends a request: closing it must
+          // not be reported as the held request's peer abort.
+          final idle = await Socket.connect(
+            InternetAddress.loopbackIPv4,
+            listener.port,
+          );
+          final entered = await listener.hold.entered.timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => false,
+          );
+          if (entered != true) {
+            idle.destroy();
+            throw StateError('the held response was not entered');
+          }
+          idle.destroy();
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          listener.releaseHold();
+          await done.future.timeout(const Duration(seconds: 10));
+        } else if (abortHeld) {
           final entered = await listener.hold.entered.timeout(
             const Duration(seconds: 5),
             onTimeout: () => false,
@@ -3519,7 +3579,6 @@ Future<HttpBoundaryTeardownReceipt> settleOwnedTeardown({
   required Duration deadline,
   required Future<void> Function() closeDatabase,
   required Future<void> Function() disposeNative,
-  required Future<void> Function() removeRoot,
 }) async {
   var settled = true;
   if (workers.isNotEmpty) {
@@ -3537,13 +3596,13 @@ Future<HttpBoundaryTeardownReceipt> settleOwnedTeardown({
       timeoutMillis: deadline.inMilliseconds,
     );
   }
+  // Only the work this seam really performs is named in its receipt; the root
+  // removal belongs to the caller and is recorded by the cleanup block.
   final steps = <String>[];
   await closeDatabase();
   steps.add('closeDatabase');
   await disposeNative();
   steps.add('disposeNative');
-  await removeRoot();
-  steps.add('removeRoot');
   return HttpBoundaryTeardownReceipt(
     workerSettled: true,
     stepsRun: steps,

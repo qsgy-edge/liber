@@ -940,6 +940,13 @@ Map<String, dynamic> _validProduct({
         'source_cookies': 0,
       },
     },
+    // The owned-worker teardown receipt of a settled, normal run.
+    'ownedTeardown': {
+      'workerSettled': true,
+      'stepsRun': ['closeDatabase', 'disposeNative'],
+      'residueRetained': false,
+      'timeoutMillis': 20000,
+    },
     'cleanup': {
       'admission': 'stopped before teardown',
       'listenerClosed': true,
@@ -1759,6 +1766,31 @@ void main() {
       },
     );
 
+    test('the owned-worker teardown receipt is typed and consistent', () {
+      final variants = <String, void Function(Map<String, dynamic>)>{
+        'false': (record) =>
+            (record['ownedTeardown'] as Map)['workerSettled'] = false,
+        'string': (record) =>
+            (record['ownedTeardown'] as Map)['workerSettled'] = 'true',
+        'missing': (record) => record.remove('ownedTeardown'),
+        'steps': (record) =>
+            (record['ownedTeardown'] as Map)['stepsRun'] = ['closeDatabase'],
+        'zero-deadline': (record) =>
+            (record['ownedTeardown'] as Map)['timeoutMillis'] = 0,
+        'residue': (record) =>
+            (record['ownedTeardown'] as Map)['residueRetained'] = true,
+      };
+      for (final entry in variants.entries) {
+        final record = fresh();
+        entry.value(record);
+        expect(
+          () => gate(record),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason: 'the ${entry.key} ownedTeardown variant was accepted',
+        );
+      }
+    });
+
     test('arrays keep their order and their duplicate values', () {
       final reversed = fresh();
       reversed['coverageGaps'] = (reversed['coverageGaps'] as List).reversed
@@ -1923,6 +1955,120 @@ void main() {
         expect(rows.every((row) => row['terminal'] == 'responded'), isTrue);
       },
     );
+
+    test('only the held request own connection can report its abort', () async {
+      // The held request's own peer stays open; a separate idle connection is
+      // closed. The held row must still be answered, not marked aborted.
+      final unrelated = await probeOwnedReplayListener(
+        response: response(path: '/held', hold: true, body: 'held'),
+        rawRequests: [request('/held', close: true)],
+        idlePeerClose: true,
+      );
+      final row = (unrelated['requests'] as List).single as Map;
+      expect(row['terminal'], 'responded');
+      expect(row['status'], 200);
+      expect(row['sentAtNanos'] as int, greaterThan(0));
+      expect((unrelated['serverErrors'] as List), isEmpty);
+
+      // The owner's own close is still the measured abort, with nothing sent.
+      final own = await probeOwnedReplayListener(
+        response: response(path: '/held', hold: true, body: 'held'),
+        rawRequests: [request('/held', close: true)],
+        abortHeld: true,
+      );
+      final aborted = (own['requests'] as List).single as Map;
+      expect(aborted['terminal'], 'client-aborted');
+      expect(aborted['sentAtNanos'], 0);
+      expect(aborted['respondedAtNanos'], 0);
+      expect(aborted['sendSequence'], 0);
+      expect(own['responseBytes'], 0);
+    });
+
+    test(
+      'the literal header line and the frozen status reason are kept',
+      () async {
+        final literal = await probeOwnedReplayListener(
+          response: response(body: 'x'),
+          rawRequests: [
+            'GET /probe HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+                'Content-Length: 0\r\nX-Controller-Probe:\towned \t\r\n'
+                'Connection: close\r\n\r\n',
+          ],
+        );
+        final row = (literal['requests'] as List).single as Map;
+        expect(
+          (row['headerLines'] as List),
+          contains('X-Controller-Probe:\towned \t'),
+        );
+        expect((row['headers'] as Map)['x-controller-probe'], 'owned');
+
+        final unavailable = await probeOwnedReplayListener(
+          response: <String, Object?>{
+            'id': 'probe',
+            'method': 'GET',
+            'path': '/probe',
+            'rawQuery': '',
+            'status': 503,
+            'body': 'unavailable',
+            'headers': <String, Object?>{'Content-Type': 'text/plain'},
+          },
+          rawRequests: [request('/probe', close: true)],
+        );
+        expect(
+          unavailable['responseText'] as String,
+          startsWith('HTTP/1.1 503 Service Unavailable\r\n'),
+        );
+
+        final missing = await probeOwnedReplayListener(
+          response: response(),
+          rawRequests: [request('/nothing-here', close: true)],
+        );
+        expect(
+          missing['responseText'] as String,
+          startsWith('HTTP/1.1 404 Not Found\r\n'),
+        );
+      },
+    );
+
+    test('Content-Length is decimal HTTP framing only', () async {
+      Future<List<String>> errorsFor(String raw) async =>
+          ((await probeOwnedReplayListener(
+                    response: response(),
+                    rawRequests: [raw],
+                    closeAfterWrite: true,
+                  ))['serverErrors']
+                  as List)
+              .cast<String>();
+
+      // Legal optional whitespace around a value is trimmed by the framing (HTTP
+      // OWS); the grammar itself is decimal digits only.
+      for (final spelling in const ['+3', '0x3', '3.0', '-0']) {
+        final errors = await errorsFor(
+          'POST /probe HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+          'Content-Length: $spelling\r\nConnection: close\r\n\r\nABC',
+        );
+        expect(
+          errors.any((error) => error.contains('Content-Length')),
+          isTrue,
+          reason: 'the $spelling spelling was accepted',
+        );
+      }
+
+      // The legal decimal forms keep working, including a split body.
+      for (final body in const ['', 'ABC']) {
+        final legal = await probeOwnedReplayListener(
+          response: response(body: 'ok'),
+          rawRequests: [
+            'GET /probe HTTP/1.1\r\nHost: 127.0.0.1\r\n'
+                'Content-Length: ${body.length}\r\nConnection: close\r\n\r\n$body',
+          ],
+        );
+        final row = (legal['requests'] as List).single as Map;
+        expect(row['terminal'], 'responded');
+        expect(row['body'], body);
+        expect(row['bodyLength'], body.length);
+      }
+    });
 
     test('unsupported framing and truncated bodies are named refusals', () async {
       Future<List<String>> errorsFor(
@@ -2115,16 +2261,11 @@ void main() {
           deadline: const Duration(seconds: 5),
           closeDatabase: () async => steps.add('closeDatabase'),
           disposeNative: () async => steps.add('disposeNative'),
-          removeRoot: () async => steps.add('removeRoot'),
         );
         expect(settled.workerSettled, isTrue);
         expect(settled.residueRetained, isFalse);
-        expect(settled.stepsRun, [
-          'closeDatabase',
-          'disposeNative',
-          'removeRoot',
-        ]);
-        expect(steps, ['closeDatabase', 'disposeNative', 'removeRoot']);
+        expect(settled.stepsRun, ['closeDatabase', 'disposeNative']);
+        expect(steps, ['closeDatabase', 'disposeNative']);
 
         // An owned worker that never settles: the database and native callbacks do
         // not run and the owned residue is retained.
@@ -2136,7 +2277,6 @@ void main() {
           deadline: const Duration(milliseconds: 50),
           closeDatabase: () async => retainedSteps.add('closeDatabase'),
           disposeNative: () async => retainedSteps.add('disposeNative'),
-          removeRoot: () async => retainedSteps.add('removeRoot'),
         );
         expect(busy.workerSettled, isFalse);
         expect(busy.residueRetained, isTrue);
