@@ -66,18 +66,18 @@ hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evi
 
 | Item | Value |
 |---|---|
-| fixture id | `HTTP-BOUNDARY-01`, corpus version 2, schema 1 |
+| fixture id | `HTTP-BOUNDARY-01`, corpus version 3, schema 1 |
 | baseline | `14dd24945b2914ce2708b8abaa4ee67ceef892af` |
 | target pin | `io.legado.app.debug`, APK SHA-256 `cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6` (the AUTH pin) |
 | origin | exactly `http://127.0.0.1:18771`; one loopback listener, no wildcard, no alternate port |
-| sources | 6: `H1` static header, `H2` `@js:` header, `H3` `<js>` header, `S` HTML stages, `R` `concurrentRate 1/2000`, `F` task-owned failure endpoint |
-| observations | 22 ids |
-| ordinary HTTP requests | 31 |
-| response declarations | 29 unique selectors |
+| sources | 16: the v2 `H1`/`H2`/`H3`/`S`/`R`/`F`, the four `HG0..HG3` header-map collision probes, and `V`/`O`/`T`/`P`/`N`/`J` appended for native-return and URL-option observations |
+| observations | 44 ids |
+| ordinary HTTP requests | 51 |
+| response declarations | 49 unique selectors |
 | helper | 12 selectors: 4 singleton (`/h1/single`, `/h1/first`, `/h1/connect`, `/h1/connect-source`), batch 3 (`/h1/order/1..3`), batch 5 (`/h1/width/1..5`) |
 | rate | 3 selectors `/r/1../r/3`, sequential |
-| stages | 14 selectors, 16 requests (`s2.retry-non2xx` repeats one selector three times) |
-| cohorts | `helper.order` 3, `helper.width` 5, `stage.toc-tail` 2, `stage.content-tail` 2 |
+| stages | 34 selectors, 36 requests (`s2.retry-non2xx` repeats one selector three times) |
+| cohorts | `helper.order` 3, `helper.width` 5, `stage.toc-tail` 2, `stage.content-tail` 2, `stage.toc-option-tail` 2 |
 | harness entry | `io.liber.oracle.nested.HttpBoundaryOracle` |
 
 Every source declares `User-Agent: HTTP-BOUNDARY-01/1.0`, including the two script
@@ -86,8 +86,11 @@ Every source is `enabledCookieJar:false`, has no login script and no `jsLib`.
 
 The counts above are **structural**, not observations. `HttpBoundaryOracle.indexCorpus`
 and `validateCorpus` derive them from the step declarations and refuse the corpus when
-the declared `structural` block differs; the host check (`structural_check.py`, see
-Verification) re-derives the same numbers from the committed bytes.
+the declared `structural` block differs; the Dart corpus gate in `runner.dart` derives
+the same block, and the focused comparer test
+`the committed corpus derives the declared structural model` re-derives it from the
+committed bytes. This tree contains no `structural_check.py`; no execution of that absent
+script is claimed.
 
 `$FAILPORT` in source `F` is the only declared fixture binding: the collector binds a
 task-owned ephemeral `127.0.0.1` listener, substitutes its assigned port, and refuses
@@ -95,7 +98,7 @@ any other token. It is not a general URL rewrite.
 
 ## What each row exercises
 
-Helper (8 observations, no stage involved):
+Helper (12 observations, no stage involved):
 
 | id | real entry | control |
 |---|---|---|
@@ -107,6 +110,8 @@ Helper (8 observations, no stage involved):
 | `helper.connect-source-header` | `java.connect(url)` | source `x-declared`/`user-agent` |
 | `helper.header-map-js` | three fixture-authored scripts through `AnalyzeUrl.evalJS` calling `source.getHeaderMap()`, `(false)`, `(true)` on `@js:` | one typed `returned` record per arity plus the actual primitive map; a thrown arity keeps its real outcome; the Kotlin `$default` call is provenance only |
 | `helper.header-map-ltjs` | same on `<js>` spelling | same shape |
+| `helper.script-probe-hg0` | one corpus script through `AnalyzeUrl.evalJS`/`source` calling the real installed-app `source.getHeaderMap(false)` with no data-key collision; `m.get`/`m.keySet` and `m['get']`/`m['keySet']` are read separately before inspection | the typed `{portable, diagnostics}` envelope: both access forms, lookup strict/loose/text, sorted key-set membership; the compared portable projection is validated, expected own-data TypeErrors keep real diagnostics in evidence, and unknown/setup errors escape as incomplete |
+| `helper.script-probe-hg1` / `-hg2` / `-hg3` | the same probe on sources whose header declares an own `get`, `keySet`, or both data keys | the actual dot/bracket type and data, the actual `get` lookup outcome (a real TypeError when shadowed) and the keySet call outcome; only the expected noncallable own-data collision TypeError is a negative observation, and its name/message/text/bounded stack are noncompared provenance. Unknown errors and a TypeError from an otherwise-callable method escape |
 
 Rate (3 observations). The corpus value `1/2000` is a **synthetic fixture input**; the
 frozen `ConcurrentRateLimiter` semantics are preserved. Each row reads
@@ -126,7 +131,7 @@ implementation verdict. Epoch values are compared only through these relations, 
 across hosts. The map field is resolved on its actual declaring class (outer class
 first, then the Companion); unrelated records are never erased.
 
-Stages (11 observations):
+Stages (29 observations; the v2 11 first, then the appended v3 rows):
 
 | id | stage | requests | checked |
 |---|---|---|---|
@@ -139,6 +144,34 @@ Stages (11 observations):
 | `s4.search-connection-failure` | search `fail` on source `F` | 0 ordinary requests | row `failure`/`network-failure`; fail-endpoint connections recorded separately |
 | `s5.search-cancelled` | search `hold`, then real `Job.cancel` | 1 held request | `cancelled` + abort/termination/no-late/state receipts |
 | `s6.search-after-cancel` | search `after` on the same source | 1 | results + fresh execution token |
+
+The appended v3 stage rows:
+
+| id | stage | requests | checked |
+|---|---|---|---|
+| `v1.search/details/toc/content` | source `V`, four real stages | 4 | `latestChapterTitle` and content text carry the script's JSON projection of `book.getVariable`/`putVariable`, `chapter.getVariable`/`putVariable`, `source.getVariable`/`setVariable`, the directly bound `result`, and a `java.getString` chained result; each fact is `typeof` plus strict/loose equality and the String diagnostic, compared before conversion |
+| `o1.search` | source `O` search | 1 | one selected hit keeps its absolute pre-option address and the original raw tail; the tail's `js` increments one O-source counter (`source.get`/`source.put`) and returns `result + '/1'` then `result + '/2'` |
+| `o1.details-same` | details on the search pipeline | declared `GET /o/book/1` | the identical retained hit is analyzed by the cached request; `value.bookUrl` publishes the retained `identityAddress` (the analyzed target stays in the request trace); a product that skips the tail's `js` sends the pre-option target and the counter is not executed, never a pass |
+| `o1.details-fresh` | details on a declared fresh pipeline | declared `GET /o/book/2` | a genuinely different `BookSourcePipeline` and transport over the same source object/key/state and the same retained hit object runs the tail's `js` once; `value.bookUrl` stays the retained identity, the actual counter is compared, and the actual request is retained, so a skipped first execution can leave the fresh call at `/1`, not `/2` |
+| `t1.search/details/toc` | source `T` | 1 + 1 + 1 | `ruleBookInfo.tocUrl` carries a URL-option `js`; the TOC stage's declared target is its one-construction result |
+| `p1.search/details/toc` | source `P` | 1 + 1 + ordered prefix + 2-member `stage.toc-option-tail` | `nextTocUrl` discovers two pages; each address keeps its own raw tail; the frozen batch and the product's serial walk remain separate measured facts |
+| `n1.search/details/toc` | source `N` | 1 + 1 + 1 | the selected hit's `bookUrl` option `js` returns null after a real `source.put` counter write; the unchanged `/n/book` target and the later stages' `source.get` read separate executed-vs-skipped; the product's skipped script leaves the TOC chapter title empty and its row incomplete |
+| `j1.search/details` | JSON source `J` | 1 + 1 | the selected hit's `bookUrl` option `js` runs once per construction; the details target is transformed once, not twice |
+
+`o1.details-same` and `o1.details-fresh` are the two carriers of the **identical**
+stored hit: both steps name `o-book-1`, the search is not re-read, and the hit's
+`identityAddress` (raw absolute address plus its original option tail) is unchanged.
+The first step is the existing-search pipeline's cached request; the second is the
+narrow declared fresh mode. Implementation labels and object identities are
+noncompared evidence; the product record gate independently verifies the same
+pipeline was reused, the fresh pipeline and transport are distinct, the source
+object/host state are shared, and both details publish the retained identity rather
+than the analyzed request target. The source-authored option `js` is what supplies the two
+distinct selectors, not a transport rewrite; its counter is an actual script effect.
+The fresh declaration is validated at the corpus boundary, and the actual hit object
+identity, raw address, pipeline/transport/source/host-state identities, actual carrier
+mode, counter and request facts are in the observation value/evidence; no public
+pipeline API is added or changed.
 
 `s1.search` is also the `retry:2`-on-2xx proof (exactly 1 attempt). `s2` is the
 `retry+1` proof, and the last 502 body is parsed, not raised.
@@ -158,7 +191,7 @@ Stages (11 observations):
   multisets, while the returned chapter/content order is the frozen `mapAsync` emission
   order (declared order) and is compared exactly.
 - `requestCheck` is the collector's own structural gate over the whole final trace: the
-  declared total (31), every causal owner (no ownerless or unknown-owner record), per
+  declared total (51), every causal owner (no ownerless or unknown-owner record), per
   step count, ordered prefix, batch multiset, required raw fields/types, required
   source-controlled header values (a missing header object is a failure, not a skip) and
   per-step/global forbidden headers (`cookie` globally; `x-declared` on the
@@ -189,7 +222,7 @@ Stages (11 observations):
   unexpected activity fails closed. Because no response is ever written, the frozen
   source-status retry (`OkHttpUtils.kt:29-43`) cannot occur; later connections are
   classified `transport-reconnect`. `$FAILPORT` connections are a separate trace and are
-  **not** part of the 31 ordinary HTTP requests.
+  **not** part of the 51 ordinary HTTP requests.
 - Cancellation is triggered only after the replay confirms the hold was entered. It uses
   the real `JobKt.Job(null)` + `CoroutineContext.plus` + two-argument `runBlocking` +
   `Job.cancel` entry and derives the row outcome/category from the measured cancellation
@@ -303,7 +336,7 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
   `negative.integrityOk` must still be true: the omission may not excuse another
   malformed, extra or error row.
 - A positive capture is promotable only with `status:"ok"`, zero unmatched requests and
-  server errors, all 22 rows matching their expected outcome/category/request counts,
+  server errors, all 44 rows matching their expected outcome/category/request counts,
   the follow-up execution proven fresh/same-source, complete resource receipts,
   `terminal.integrityOk:true` and a true cleanup. A cohort-window release or a real
   frozen/product difference is a measurement, not a harness failure; a step/watchdog
@@ -316,31 +349,31 @@ adb -s 5615f742 shell am force-stop io.legado.app.debug
 ## Verification performed by this producer
 
 - `javac -source 8 -target 8` against `android-35/android.jar`, `build.ps1` into a fresh
-  directory, `d8` dexing, `aapt` packaging, `apksigner verify --print-certs` (v2+v3,
-  existing Android debug certificate `954abf2c…b2f2ad`), and a manifest/dex check that
-  the new instrumentation is registered and packaged.
+  worker-owned directory, `d8` dexing, `aapt` packaging, `apksigner verify --print-certs`
+  (existing Android debug certificate `954abf2c…b2f2ad`), and a manifest/dex check that
+  the instrumentation is registered and packaged.
 - The bundled `assets/http-boundary-fixtures.json` is byte-identical to the committed
   corpus (raw hash below), and the report records the raw and LF-normalised hash.
-- Host structural check re-derives selectors, owners, cohorts, the 22/31/29 model and
-  both line-ending identity forms from the committed bytes; its output and the build
-  receipts are under `E/a2-http-native/negative-builder-repair-06/`.
-- The host probes execute the terminal, hold, cleanup, full raw-record presence/type
-  sweep, the six authored header declarations with missing/wrong/unrelated negatives,
-  the actual Android SDK35 org.json escaping semantics, the early-failure receipt path
-  and the actual negative builder plus downstream checks over the immutable captured
-  negative trace on the actual compiled methods. The retained old builder drops the
-  three expectations and rejects the intended omission; the repaired builder propagates
-  them and the complete trace passes, while altered owner/selector/terminal/status,
-  multiple unmatched, outside-mode and malformed declaration cases are rejected. Host
-  checks are never device goldens.
+- The actual v3 checks performed here are the Dart corpus gate in `runner.dart`, the
+  focused test `the committed corpus derives the declared structural model` (selectors,
+  owners, cohorts and the 44/51/49 model re-derived from the committed bytes), the
+  action/carrier refusal tests, the typed probe/pair identity gates, the measured
+  relation controls, and the four real `source.getHeaderMap(false)` probes plus
+  unexpected-error fault injection in `test/source_http_boundary_interop_test.dart`
+  through the product's own runtime. This tree contains no `structural_check.py`; that
+  script was not executed.
+- The earlier negative-builder and host-probe checks in
+  `E/a2-http-native/negative-builder-repair-06/` remain historical evidence for the v2
+  corpus and its immutable captures; they were not re-run for v3 and no v3 handset
+  capture is claimed here.
 - No ADB, phone, install, app/Driver, target/Rust/Flutter build, dependency or config
   change happened here.
 
 Pinned corpus identity (this checkout):
 
 ```
-raw (CRLF) sha256  29bf5a3b4d9ecc22d4c211c9dd78549eb2da5ebe9f10ee289d38abcf0973beae
-LF-normalised sha256 712d43739199d1af1ca3addd92c3f423ccc3cef553bda64129c5b467b9d69d5a
+raw (CRLF) sha256  5ed32f547417647c63cdc3240a0f1173823199d2b577d665c7991fd78039d9a1
+LF-normalised sha256 1eb8666e9417e91cc4d2f0ab5dabe4be8fefa9cf5399fd8765b8513f33b1b7e2
 ```
 
 `core.autocrlf=true` materialises a fresh Windows checkout as CRLF; the LF form is
@@ -363,26 +396,30 @@ what the comparator's identity rules normalise to. Both are pinned in the report
 
 - No login, cookie-jar on/off, restart or WebView row (AUTH-SESSION-01 / Spec B).
 - No POST/form/redirect/body-charset row (REQUEST-01).
-- No product implementation and no comparator; the product lane, the SLICE-01
-  destination replay, Windows driven verification, integration, publication and ticket
-  closure stay with the controller/consumer.
-- The recorded #137 residuals (native-return strict equality, URL-option `js` on
-  cached/extracted addresses, a `getHeaderMap` data key literally named `get`) are not
-  exercised or closed here.
-- The 5-vs-4 `ajaxAll` width and 2-vs-1 page-walk differences are source-derived
-  findings. This corpus records the real frozen peak; whether a product difference
-  becomes a FAIL waiting for a decision is the comparator's job, and no `notCompared`
-  or lower-bound proxy is introduced here.
+- Product behavior, the SLICE-01 destination replay, Windows driven verification,
+  integration, publication and ticket acceptance stay with the controller. The Dart
+  runner and comparer are described in [consumer.md](consumer.md).
+- The v3 rows declare the recorded #137 residuals (native-return strict equality,
+  URL-option `js` on cached/extracted addresses, a `getHeaderMap` data key literally
+  named `get`), but no installed-app capture of v3 exists on this preparation branch;
+  the controller's real-phone rows remain not-run.
+- Frozen configured widths, actual peaks and page-walk shapes are checked under the
+  approved default-four and serial-page policy in [consumer.md](consumer.md). The v2
+  measurements keep their original capture binding; v3 peak and request facts require
+  the v3 capture.
 
 ## Ownership
 
-Producer write set: this directory, `tool/nested_oracle/HttpBoundaryOracle.java`, one
-asset-copy and one `javac` argument in `tool/nested_oracle/build.ps1`, and one
-`<instrumentation>` entry in `tool/nested_oracle/AndroidManifest.xml`. Every existing
-oracle, `ScratchContext`, corpus, golden, product/Rust and consumer file is read-only.
+The frozen collector is `tool/nested_oracle/HttpBoundaryOracle.java`.
+`tool/nested_oracle/build.ps1` copies its corpus asset and compiles the collector;
+`tool/nested_oracle/AndroidManifest.xml` registers its instrumentation. The product
+runner, comparer and their focused tests implement the boundary described in
+[consumer.md](consumer.md).
 
-The `build.ps1`/manifest edits change the harness APK for any *future* capture. No
-existing oracle's code changed, so no existing family needs a re-capture now; no
-existing corpus may be re-captured afterward and still claim its recorded producer
-identity. A later change to a shared helper (including `ScratchContext`) would force
-re-capture of the affected family instead of relabelling historical evidence.
+Captures are bound to their own producer, target and corpus hashes. The v2 captures
+retain those identities; v3 requires a fresh harness build and phone execution.
+The other oracle implementations, `ScratchContext` and product/Rust code remain
+unchanged. The existing portable comparison and approved named-difference policies
+are preserved while v3 adds typed observation, identity and control validation.
+A shared-helper change, including a change to `ScratchContext`, requires re-running
+the affected family against its new producer bytes.

@@ -36,7 +36,7 @@ import 'package:pointycastle/digests/sha256.dart';
 /// cleanup receipts, and the root is removed again when the run is clean.
 const httpBoundaryCorpusPath = 'tool/http_boundary/fixtures.json';
 const httpBoundaryFixtureId = 'HTTP-BOUNDARY-01';
-const httpBoundaryCorpusVersion = 2;
+const httpBoundaryCorpusVersion = 3;
 
 /// The user agent every corpus source declares (`fixtures.json` `sources`).
 /// The corpus tests header arity and replacement with it, so a source without
@@ -289,6 +289,227 @@ Map<String, Object?> httpBoundaryStructuralOf(Map<String, dynamic> corpus) {
   };
 }
 
+/// The helper actions the two lanes actually implement. `scriptProbe` is one
+/// fixture-authored script through the real evaluation binding; its result is
+/// the script's own JSON projection, never a relabelled arity or a converted
+/// diagnostic string.
+const httpBoundaryHelperActions = {
+  'ajax',
+  'ajaxList',
+  'ajaxAll',
+  'connectHeader',
+  'connectSource',
+  'headerMap',
+  'scriptProbe',
+};
+
+/// One small shared rule for the script-probe portable projection. The runner,
+/// the product record gate and the canonical comparer use this exact function,
+/// so an empty object, a missing member or a wrong type is refused at every
+/// boundary; no frozen typeof/equality answer is prescribed.
+Map<String, Object?> validateHttpBoundaryScriptProbeProjection(
+  Object? raw, {
+  required String where,
+}) {
+  if (raw is! Map) {
+    throw FormatException('$where portable projection is not an object');
+  }
+  final projection = raw.cast<String, Object?>();
+  for (final name in const [
+    'getDot',
+    'getBracket',
+    'keySetDot',
+    'keySetBracket',
+    'lookup',
+    'enumeration',
+  ]) {
+    if (!projection.containsKey(name)) {
+      throw FormatException('$where portable projection has no $name');
+    }
+  }
+  void access(String name) {
+    final value = projection[name];
+    if (value is! Map) {
+      throw FormatException('$where.$name is not an object');
+    }
+    final member = value.cast<String, Object?>();
+    final type = member['type'];
+    if (type is! String || type.isEmpty) {
+      throw FormatException('$where.$name.type is not a non-empty string');
+    }
+    if (!member.containsKey('text')) {
+      throw FormatException('$where.$name.text is absent');
+    }
+    final text = member['text'];
+    if (type == 'function') {
+      if (text != null) {
+        throw FormatException('$where.$name.text is not null for a function');
+      }
+    } else if (text is! String) {
+      throw FormatException('$where.$name.text is not a string');
+    }
+  }
+
+  access('getDot');
+  access('getBracket');
+  access('keySetDot');
+  access('keySetBracket');
+  final lookup = projection['lookup'];
+  if (lookup is! Map) {
+    throw FormatException('$where.lookup is not an object');
+  }
+  final lookupMember = lookup.cast<String, Object?>();
+  final lookupReturned = lookupMember['returned'];
+  if (lookupReturned is! bool) {
+    throw FormatException('$where.lookup.returned is not a boolean');
+  }
+  if (lookupReturned) {
+    if (lookupMember['type'] is! String ||
+        (lookupMember['type'] as String).isEmpty ||
+        lookupMember['strictLiteral'] is! bool ||
+        lookupMember['looseLiteral'] is! bool ||
+        lookupMember['text'] is! String) {
+      throw FormatException('$where.lookup returned result is not typed');
+    }
+  } else {
+    if (lookupMember['errorName'] != 'TypeError') {
+      throw FormatException(
+        '$where.lookup refusal is not the expected TypeError',
+      );
+    }
+    final getDot = projection['getDot'] as Map;
+    final getType = getDot['type'];
+    if (getType == 'function' || getType == 'undefined') {
+      throw FormatException(
+        '$where.lookup refusal has no noncallable own-data context',
+      );
+    }
+    if (getDot['text'] is! String) {
+      throw FormatException('$where.lookup refusal has no data text');
+    }
+  }
+  final enumeration = projection['enumeration'];
+  if (enumeration is! Map) {
+    throw FormatException('$where.enumeration is not an object');
+  }
+  final enumerationMember = enumeration.cast<String, Object?>();
+  final enumerationReturned = enumerationMember['returned'];
+  if (enumerationReturned is! bool) {
+    throw FormatException('$where.enumeration.returned is not a boolean');
+  }
+  if (enumerationReturned) {
+    final keys = enumerationMember['keys'];
+    if (keys is! List || keys.any((key) => key is! String)) {
+      throw FormatException('$where.enumeration.keys is not a string list');
+    }
+  } else {
+    if (enumerationMember['errorName'] != 'TypeError') {
+      throw FormatException(
+        '$where.enumeration refusal is not the expected TypeError',
+      );
+    }
+    final keySetDot = projection['keySetDot'] as Map;
+    final keySetType = keySetDot['type'];
+    if (keySetType == 'function' || keySetType == 'undefined') {
+      throw FormatException(
+        '$where.enumeration refusal has no noncallable own-data context',
+      );
+    }
+    if (keySetDot['text'] is! String) {
+      throw FormatException('$where.enumeration refusal has no data text');
+    }
+  }
+  return projection;
+}
+
+/// The bounded probe envelope: the portable projection is the compared result;
+/// the caught diagnostics are real provenance and are never compared.
+Map<String, Object?> validateHttpBoundaryScriptProbeEnvelope(
+  Object? raw, {
+  required String where,
+}) {
+  if (raw is! Map) {
+    throw FormatException('$where script probe envelope is not an object');
+  }
+  final envelope = raw.cast<String, Object?>();
+  if (!envelope.containsKey('portable') ||
+      !envelope.containsKey('diagnostics')) {
+    throw FormatException(
+      '$where script probe envelope has no portable/diagnostics',
+    );
+  }
+  final portable = validateHttpBoundaryScriptProbeProjection(
+    envelope['portable'],
+    where: '$where.portable',
+  );
+  final diagnostics = envelope['diagnostics'];
+  if (diagnostics is! Map) {
+    throw FormatException('$where diagnostics is not an object');
+  }
+  final diagnosticMap = diagnostics.cast<String, Object?>();
+  for (final name in const ['lookup', 'enumeration']) {
+    final entry = diagnosticMap[name];
+    if (entry is! Map) {
+      throw FormatException('$where.diagnostics.$name is not an object');
+    }
+    final member = entry.cast<String, Object?>();
+    final caught = member['caught'];
+    if (caught is! bool) {
+      throw FormatException('$where.diagnostics.$name.caught is not a boolean');
+    }
+    if (caught) {
+      if (member['name'] is! String ||
+          member['message'] is! String ||
+          member['text'] is! String ||
+          !member.containsKey('stack') ||
+          (member['stack'] != null && member['stack'] is! String)) {
+        throw FormatException(
+          '$where.diagnostics.$name caught fields are not typed',
+        );
+      }
+    }
+    final portableEntry = (portable[name] as Map).cast<String, Object?>();
+    final returned = portableEntry['returned'] == true;
+    if (returned) {
+      if (caught) {
+        throw FormatException(
+          '$where.diagnostics.$name caught contradicts a returned value',
+        );
+      }
+    } else {
+      if (!caught) {
+        throw FormatException(
+          '$where.diagnostics.$name has no caught provenance for a refusal',
+        );
+      }
+      if (member['name'] != 'TypeError' ||
+          portableEntry['errorName'] != 'TypeError') {
+        throw FormatException(
+          '$where.diagnostics.$name is not the expected TypeError',
+        );
+      }
+    }
+  }
+  return {'portable': portable, 'diagnostics': diagnosticMap};
+}
+
+void _validateHelperAction(Map<String, dynamic> step, String id) {
+  final action = _text(step['action'], 'step $id action');
+  if (!httpBoundaryHelperActions.contains(action)) {
+    throw FormatException('step $id has unknown helper action $action');
+  }
+  if (action == 'scriptProbe') {
+    _text(step['script'], 'step $id script');
+    if (step['scripts'] != null) {
+      throw FormatException('step $id script probe declares headerMap scripts');
+    }
+    final declared = httpBoundaryDeclaredRequests(step);
+    if (declared.ordered.isNotEmpty || declared.members.isNotEmpty) {
+      throw FormatException('step $id script probe declares requests');
+    }
+  }
+}
+
 /// Whether one declared `header` rule names [httpBoundaryUserAgent] as its user
 /// agent. A static rule is parsed; the two script forms' declared
 /// `JSON.stringify` object literal is read without executing the script.
@@ -372,12 +593,16 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
     );
   }
   final sources = _array(corpus['sources'], 'sources');
-  if (sources.length != 6) {
-    throw const FormatException('the corpus declares six sources');
+  if (sources.length != 16) {
+    throw const FormatException('the corpus declares sixteen sources');
   }
+  final sourceIds = <String>{};
   for (final raw in sources) {
     final entry = _object(raw, 'source');
     final id = _text(entry['id'], 'source id');
+    if (!sourceIds.add(id)) {
+      throw FormatException('source $id is declared twice');
+    }
     final source = _object(entry['bookSource'], 'source $id bookSource');
     _text(source['bookSourceUrl'], 'source $id bookSourceUrl');
     if (source['enabledCookieJar'] != false) {
@@ -389,6 +614,11 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       throw FormatException(
         'source $id does not declare the corpus user agent in its header rule',
       );
+    }
+  }
+  for (final id in const ['H1', 'H2', 'H3', 'S', 'R', 'F']) {
+    if (!sourceIds.contains(id)) {
+      throw FormatException('the corpus dropped the v2 source $id');
     }
   }
   if (!'${httpBoundarySourceOf(corpus, 'F')['bookSourceUrl']}'.contains(
@@ -447,6 +677,20 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       throw FormatException('step $id has unknown kind $kind');
     }
     httpBoundarySourceOf(corpus, _text(step['source'], 'step $id source'));
+    if (kind == 'helper') {
+      _validateHelperAction(step, id);
+    }
+    final carrier = step['carrier'];
+    if (carrier != null) {
+      if (kind != 'stage' || '${step['stage']}' != 'details') {
+        throw FormatException(
+          'step $id declares a carrier outside a details stage',
+        );
+      }
+      if (carrier != 'same' && carrier != 'fresh') {
+        throw FormatException('step $id declares unknown carrier $carrier');
+      }
+    }
     final declared = httpBoundaryDeclaredRequests(step);
     for (final responseId in [...declared.ordered, ...declared.members]) {
       if (!responseIds.contains(responseId)) {
@@ -1321,6 +1565,7 @@ class _HttpBoundaryRun {
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
+    final id = '${step['id']}';
     final sourceId = '${step['source']}';
     final action = '${step['action']}';
     final value = <String, Object?>{
@@ -1345,6 +1590,27 @@ class _HttpBoundaryRun {
         }
       case 'headerMap':
         value.addAll(await _headerMapValue(observation, step));
+      case 'scriptProbe':
+        final result = await _evaluate(
+          sourceId,
+          _text(step['script'], 'script'),
+        );
+        final text = result is String ? result : '$result';
+        final Map<String, Object?> envelope;
+        try {
+          envelope = validateHttpBoundaryScriptProbeEnvelope(
+            jsonDecode(text),
+            where: 'helper $id',
+          );
+        } on FormatException catch (error) {
+          throw HttpBoundaryIncomplete(
+            'the script probe did not answer a valid envelope: $error',
+          );
+        }
+        value['result'] = envelope['portable'];
+        (observation['evidence'] as Map)['scriptProbe'] = {
+          'diagnostics': envelope['diagnostics'],
+        };
       default:
         throw HttpBoundaryIncomplete('unknown helper action $action');
     }
@@ -1557,11 +1823,56 @@ class _HttpBoundaryRun {
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
-    final value = await _stageValue(
-      _pipelineOf('${step['source']}'),
-      step,
-      observation,
-    );
+    final sourceId = '${step['source']}';
+    final carrier = step['carrier'];
+    final fresh = '${carrier ?? ''}' == 'fresh';
+    final cached = _pipelines[sourceId];
+    late final BookSourcePipeline pipeline;
+    if (carrier == null) {
+      pipeline = _pipelineOf(sourceId);
+    } else {
+      if (cached == null) {
+        throw const HttpBoundaryIncomplete(
+          'the carrier has no preceding search pipeline',
+        );
+      }
+      pipeline = fresh
+          ? openBookSourcePipeline(
+              sourceObject(sourceId),
+              HttpSourceTransport(),
+              hostState: hostState,
+              androidId: androidId,
+            )
+          : cached;
+      if (fresh) {
+        if (identical(pipeline, cached) ||
+            identical(pipeline.transport, cached.transport)) {
+          throw const HttpBoundaryIncomplete(
+            'the fresh carrier did not create a distinct pipeline and '
+            'transport',
+          );
+        }
+      } else if (!identical(pipeline, cached)) {
+        throw const HttpBoundaryIncomplete(
+          'the same carrier did not reuse the search pipeline',
+        );
+      }
+      (observation['evidence'] as Map)['carrier'] = {
+        'declared': '$carrier',
+        'actual': fresh ? 'fresh' : 'same',
+        'pipelineIdentity': identityHashCode(pipeline),
+        'cachedPipelineIdentity': identityHashCode(cached),
+        'reusedPipeline': identical(pipeline, cached),
+        'transportIdentity': identityHashCode(pipeline.transport),
+        'cachedTransportIdentity': identityHashCode(cached.transport),
+        'distinctTransport': !identical(pipeline.transport, cached.transport),
+        'sourceObjectIdentity': identityHashCode(sourceObject(sourceId)),
+        'cachedSourceObjectIdentity': identityHashCode(sourceObject(sourceId)),
+        'hostStateIdentity': identityHashCode(hostState),
+        'sourceKey': sourceUrl(sourceId),
+      };
+    }
+    final value = await _stageValue(pipeline, step, observation);
     observation['value'] = value;
     if (observation['outcome'] == 'ok') observation['category'] = null;
   }
@@ -1647,7 +1958,7 @@ class _HttpBoundaryRun {
           // `stage` marker the search/TOC/content rows carry.
           value['kind'] = book.kind;
           value['book'] = bookId;
-          value['bookUrl'] = '${info.bookUrl}';
+          value['bookUrl'] = book.identityAddress;
           value['name'] = book.title;
           value['author'] = book.author;
           value['intro'] = book.intro;
@@ -1662,6 +1973,47 @@ class _HttpBoundaryRun {
           )['origin'];
           (observation['evidence'] as Map)['bookCarrier'] =
               _bookCarrierProvenance(sourceId, published: const ['origin']);
+          if (step['carrier'] != null) {
+            // The paired same/fresh rows must consume the identical stored
+            // search hit: the fresh pipeline is different, the hit is not
+            // re-searched and its raw absolute address/tail is unchanged.
+            final stored = _hits[bookId]!;
+            if (!identical(hit, stored)) {
+              throw HttpBoundaryIncomplete(
+                'details $id did not consume the stored hit $bookId',
+              );
+            }
+            final String counter;
+            try {
+              final raw = await _evaluate(
+                sourceId,
+                "String(source.get('oRuns'))",
+              );
+              counter = '$raw';
+            } on Object catch (error) {
+              throw HttpBoundaryIncomplete(
+                'the O-source counter read is unresolved: $error',
+              );
+            }
+            final declaredBook = _bookOf(bookId);
+            if (hit.identityAddress != '${declaredBook['bookUrl']}') {
+              throw HttpBoundaryIncomplete(
+                'details $id retained ${hit.identityAddress}, the corpus '
+                'declares ${declaredBook['bookUrl']}',
+              );
+            }
+            value['counterAfter'] = counter;
+            (observation['evidence'] as Map)['hitReference'] = {
+              'identity': identityHashCode(hit),
+              'storedIdentity': identityHashCode(stored),
+              'sameObject': identical(hit, stored),
+              'bookId': bookId,
+              'rawAddress': hit.identityAddress,
+              'preOptionUrl': '${hit.preOptionUrl}',
+              'sourceKey': sourceUrl(sourceId),
+              'counterAfter': counter,
+            };
+          }
         case 'toc':
           final bookId = '${step['book']}';
           final info = _infos[bookId];

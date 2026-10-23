@@ -19,7 +19,8 @@ import 'runner.dart'
         httpBoundaryTargetOf,
         loadHttpBoundaryCorpus,
         sha256File,
-        sha256Text;
+        sha256Text,
+        validateHttpBoundaryScriptProbeEnvelope;
 
 /// Compares one measured product record with both immutable frozen captures of
 /// the controller's hash-bound handoff.
@@ -302,12 +303,487 @@ void validateFrozenCapture(
     _object(corpus['structural'], 'corpus structural')['observations'],
     'structural.observations',
   );
-  if (_array(golden['observations'], 'capture observations').length !=
-      declaredObservations) {
+  final captureRows = _array(golden['observations'], 'capture observations');
+  if (captureRows.length != declaredObservations) {
     throw HttpBoundaryRefusal(
-      'the capture $goldenId has ${_array(golden['observations'], 'obs').length} '
-      'observations, the corpus declares $declaredObservations',
+      'the capture $goldenId has ${captureRows.length} observations, the '
+      'corpus declares $declaredObservations',
     );
+  }
+  final declaredIds = httpBoundaryObservationIds(corpus);
+  final actualIds = [
+    for (final raw in captureRows)
+      '${_object(raw, 'capture observation')['id']}',
+  ];
+  final counts = <String, int>{};
+  for (final id in actualIds) {
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  for (final id in declaredIds) {
+    if (counts[id] != 1) {
+      throw HttpBoundaryRefusal(
+        'the capture $goldenId does not carry observation $id exactly once',
+      );
+    }
+  }
+  final declaredSet = declaredIds.toSet();
+  for (final id in counts.keys) {
+    if (!declaredSet.contains(id)) {
+      throw HttpBoundaryRefusal(
+        'the capture $goldenId carries unexpected observation $id',
+      );
+    }
+  }
+  _validateFrozenV3Facts(golden, corpus, goldenId);
+}
+
+Map<String, dynamic> _relationObject(Object? raw, String where) {
+  if (raw is! Map) throw FormatException('$where is not an object');
+  return raw.cast<String, dynamic>();
+}
+
+int _relationInt(Map<String, dynamic> value, String key, String where) {
+  final raw = value[key];
+  if (raw is! int) throw FormatException('$where.$key is not an integer');
+  return raw;
+}
+
+bool _relationBool(Map<String, dynamic> value, String key, String where) {
+  final raw = value[key];
+  if (raw is! bool) throw FormatException('$where.$key is not a boolean');
+  return raw;
+}
+
+String _relationString(
+  Map<String, dynamic> value,
+  String key,
+  String where, {
+  bool nonEmpty = true,
+}) {
+  final raw = value[key];
+  if (raw is! String || (nonEmpty && raw.isEmpty)) {
+    throw FormatException('$where.$key is not a string');
+  }
+  return raw;
+}
+
+Map<String, dynamic> _relationObservationsById(Map<String, dynamic> record) {
+  final rows = record['observations'];
+  if (rows is! List) {
+    throw const FormatException('observations is not an array');
+  }
+  final byId = <String, Map<String, dynamic>>{};
+  for (final raw in rows) {
+    final row = _relationObject(raw, 'observation');
+    final id = '${row['id']}';
+    byId[id] = row;
+  }
+  return byId;
+}
+
+List<Map<String, dynamic>> _relationRequests(Map<String, dynamic> record) {
+  final rows = record['requests'];
+  if (rows is! List) throw const FormatException('requests is not an array');
+  return [for (final raw in rows) _relationObject(raw, 'request')];
+}
+
+void validateFrozenCarrierRelations(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus, {
+  String where = 'frozen capture',
+}) {
+  final carrierSteps = [
+    for (final step in httpBoundarySteps(corpus))
+      if (step['carrier'] != null) step,
+  ];
+  if (carrierSteps.isEmpty) return;
+  final byId = _relationObservationsById(golden);
+  final same = carrierSteps.where((step) => step['carrier'] == 'same').toList();
+  final fresh = carrierSteps
+      .where((step) => step['carrier'] == 'fresh')
+      .toList();
+  if (same.length != 1 || fresh.length != 1) {
+    throw FormatException('$where corpus has no one same/fresh carrier pair');
+  }
+  if ('${same.single['book']}' != '${fresh.single['book']}') {
+    throw FormatException('$where carriers name different retained books');
+  }
+  Map<String, dynamic> rowOf(Map<String, dynamic> step) {
+    final row = byId['${step['id']}'];
+    if (row == null) {
+      throw FormatException('$where lacks carrier row ${step['id']}');
+    }
+    return row;
+  }
+
+  final sameRow = rowOf(same.single);
+  final freshRow = rowOf(fresh.single);
+  final book = _declaredBook(corpus, '${same.single['book']}');
+  final bookUrl = '${book['bookUrl']}';
+  Map<String, dynamic> checkRow(
+    Map<String, dynamic> step,
+    Map<String, dynamic> row,
+  ) {
+    final value = _relationObject(row['value'], '$where ${step['id']} value');
+    final evidence = _relationObject(
+      row['evidence'],
+      '$where ${step['id']} evidence',
+    );
+    final carrier = _relationObject(
+      evidence['carrier'],
+      '$where ${step['id']} carrier',
+    );
+    final hit = _relationObject(
+      evidence['hitReference'],
+      '$where ${step['id']} hit',
+    );
+    if (_relationString(carrier, 'declared', '$where ${step['id']} carrier') !=
+        '${step['carrier']}') {
+      throw FormatException('$where ${step['id']} carrier declaration differs');
+    }
+    _relationString(carrier, 'actual', '$where ${step['id']} carrier');
+    final sourceKey = _relationString(
+      carrier,
+      'sourceKey',
+      '$where ${step['id']} carrier',
+    );
+    final source = httpBoundarySourceOf(corpus, '${step['source']}');
+    if (sourceKey != '${source['bookSourceUrl']}') {
+      throw FormatException(
+        '$where ${step['id']} source key is not the source',
+      );
+    }
+    if (_relationString(value, 'bookUrl', '$where ${step['id']} value') !=
+        bookUrl) {
+      throw FormatException(
+        '$where ${step['id']} does not publish the retained book identity',
+      );
+    }
+    final counter = _relationString(
+      value,
+      'counterAfter',
+      '$where ${step['id']} value',
+    );
+    if (!RegExp(r'^[0-9]+$').hasMatch(counter)) {
+      throw FormatException('$where ${step['id']} counter is not decimal');
+    }
+    _relationInt(hit, 'identity', '$where ${step['id']} hit');
+    if (_relationString(hit, 'bookId', '$where ${step['id']} hit') !=
+        '${step['book']}') {
+      throw FormatException('$where ${step['id']} hit book differs');
+    }
+    if (_relationString(hit, 'rawAddress', '$where ${step['id']} hit') !=
+        bookUrl) {
+      throw FormatException('$where ${step['id']} hit address differs');
+    }
+    if (_relationString(hit, 'sourceKey', '$where ${step['id']} hit') !=
+        _relationString(carrier, 'sourceKey', '$where ${step['id']} carrier')) {
+      throw FormatException('$where ${step['id']} hit source key differs');
+    }
+    if (_relationString(hit, 'counterAfter', '$where ${step['id']} hit') !=
+        counter) {
+      throw FormatException('$where ${step['id']} hit counter differs');
+    }
+    return {'row': row, 'value': value, 'carrier': carrier, 'hit': hit};
+  }
+
+  final sameFacts = checkRow(same.single, sameRow);
+  final freshFacts = checkRow(fresh.single, freshRow);
+  final sameHit = sameFacts['hit'] as Map<String, dynamic>;
+  final freshHit = freshFacts['hit'] as Map<String, dynamic>;
+  final sameValue = sameFacts['value'] as Map<String, dynamic>;
+  final freshValue = freshFacts['value'] as Map<String, dynamic>;
+  if (sameHit['identity'] != freshHit['identity'] ||
+      '${sameHit['rawAddress']}' != '${freshHit['rawAddress']}' ||
+      '${sameHit['sourceKey']}' != '${freshHit['sourceKey']}') {
+    throw FormatException('$where paired carriers did not retain one hit');
+  }
+  if ('${sameValue['counterAfter']}' != '1' ||
+      '${freshValue['counterAfter']}' != '2') {
+    throw FormatException('$where paired counters are not the retained 1/2');
+  }
+}
+
+void validateHttpBoundaryCarrierRelations(
+  Map<String, dynamic> product,
+  Map<String, dynamic> corpus, {
+  String where = 'product',
+}) {
+  final carrierSteps = [
+    for (final step in httpBoundarySteps(corpus))
+      if (step['carrier'] != null) step,
+  ];
+  if (carrierSteps.isEmpty) return;
+  final byId = _relationObservationsById(product);
+  final requests = _relationRequests(product);
+  final same = carrierSteps.where((step) => step['carrier'] == 'same').toList();
+  final fresh = carrierSteps
+      .where((step) => step['carrier'] == 'fresh')
+      .toList();
+  if (same.length != 1 || fresh.length != 1) {
+    throw FormatException('$where corpus has no one same/fresh carrier pair');
+  }
+  if ('${same.single['book']}' != '${fresh.single['book']}') {
+    throw FormatException('$where carriers name different retained books');
+  }
+  final book = _declaredBook(corpus, '${same.single['book']}');
+  final bookUrl = '${book['bookUrl']}';
+  final responseById = {
+    for (final response in httpBoundaryResponses(corpus))
+      '${response['id']}': response,
+  };
+  Map<String, dynamic> checkRow(
+    Map<String, dynamic> step,
+    String expectedCounter,
+  ) {
+    final id = '${step['id']}';
+    final row = byId[id];
+    if (row == null) throw FormatException('$where lacks observation $id');
+    final value = _relationObject(row['value'], '$where $id value');
+    final evidence = _relationObject(row['evidence'], '$where $id evidence');
+    final carrier = _relationObject(
+      evidence['carrier'],
+      '$where $id evidence.carrier',
+    );
+    final hit = _relationObject(
+      evidence['hitReference'],
+      '$where $id evidence.hitReference',
+    );
+    final declared = _relationString(carrier, 'declared', '$where $id carrier');
+    if (declared != '${step['carrier']}') {
+      throw FormatException('$where $id carrier declaration differs');
+    }
+    final actual = _relationString(carrier, 'actual', '$where $id carrier');
+    if (actual != '${step['carrier']}') {
+      throw FormatException('$where $id carrier actual label differs');
+    }
+    final source = httpBoundarySourceOf(corpus, '${step['source']}');
+    final expectedSourceKey = '${source['bookSourceUrl']}';
+    final sourceKey = _relationString(
+      carrier,
+      'sourceKey',
+      '$where $id carrier',
+    );
+    if (sourceKey != expectedSourceKey) {
+      throw FormatException('$where $id source key is not the O source');
+    }
+    final pipelineIdentity = _relationInt(
+      carrier,
+      'pipelineIdentity',
+      '$where $id carrier',
+    );
+    final cachedPipelineIdentity = _relationInt(
+      carrier,
+      'cachedPipelineIdentity',
+      '$where $id carrier',
+    );
+    final transportIdentity = _relationInt(
+      carrier,
+      'transportIdentity',
+      '$where $id carrier',
+    );
+    final cachedTransportIdentity = _relationInt(
+      carrier,
+      'cachedTransportIdentity',
+      '$where $id carrier',
+    );
+    final sourceObjectIdentity = _relationInt(
+      carrier,
+      'sourceObjectIdentity',
+      '$where $id carrier',
+    );
+    final cachedSourceObjectIdentity = _relationInt(
+      carrier,
+      'cachedSourceObjectIdentity',
+      '$where $id carrier',
+    );
+    _relationInt(carrier, 'hostStateIdentity', '$where $id carrier');
+    final reusedPipeline = _relationBool(
+      carrier,
+      'reusedPipeline',
+      '$where $id carrier',
+    );
+    final distinctTransport = _relationBool(
+      carrier,
+      'distinctTransport',
+      '$where $id carrier',
+    );
+    if (reusedPipeline != (pipelineIdentity == cachedPipelineIdentity)) {
+      throw FormatException('$where $id reusedPipeline contradicts identities');
+    }
+    if (distinctTransport != (transportIdentity != cachedTransportIdentity)) {
+      throw FormatException(
+        '$where $id distinctTransport contradicts identities',
+      );
+    }
+    if (sourceObjectIdentity != cachedSourceObjectIdentity) {
+      throw FormatException('$where $id source object is not the cached one');
+    }
+    if ('${step['carrier']}' == 'same') {
+      if (pipelineIdentity != cachedPipelineIdentity ||
+          transportIdentity != cachedTransportIdentity ||
+          !reusedPipeline ||
+          distinctTransport) {
+        throw FormatException('$where $id did not reuse the search pipeline');
+      }
+    } else {
+      if (pipelineIdentity == cachedPipelineIdentity ||
+          transportIdentity == cachedTransportIdentity ||
+          reusedPipeline ||
+          !distinctTransport) {
+        throw FormatException(
+          '$where $id did not use a fresh pipeline and transport',
+        );
+      }
+    }
+    final bookValue = _relationString(value, 'bookUrl', '$where $id value');
+    if (bookValue != bookUrl) {
+      throw FormatException('$where $id bookUrl is not the retained identity');
+    }
+    final counter = _relationString(value, 'counterAfter', '$where $id value');
+    if (counter != expectedCounter) {
+      throw FormatException('$where $id counterAfter is not $expectedCounter');
+    }
+    if (_relationInt(hit, 'identity', '$where $id hit') !=
+        _relationInt(hit, 'storedIdentity', '$where $id hit')) {
+      throw FormatException('$where $id actual hit differs from stored hit');
+    }
+    if (!_relationBool(hit, 'sameObject', '$where $id hit')) {
+      throw FormatException('$where $id sameObject is not true');
+    }
+    if (_relationString(hit, 'bookId', '$where $id hit') != '${step['book']}') {
+      throw FormatException('$where $id hit book differs');
+    }
+    if (_relationString(hit, 'rawAddress', '$where $id hit') != bookUrl) {
+      throw FormatException('$where $id hit address differs');
+    }
+    if (_relationString(hit, 'sourceKey', '$where $id hit') != sourceKey) {
+      throw FormatException('$where $id hit source key differs');
+    }
+    if (_relationString(hit, 'counterAfter', '$where $id hit') != counter) {
+      throw FormatException('$where $id hit counter differs');
+    }
+    final declaredRequests = httpBoundaryDeclaredRequests(step);
+    if (declaredRequests.ordered.length != 1 ||
+        declaredRequests.members.isNotEmpty) {
+      throw FormatException('$where $id carrier request declaration differs');
+    }
+    final expectedSelector = httpBoundarySelectorOf(
+      responseById[declaredRequests.ordered.single]!,
+    );
+    final owned = [
+      for (final request in requests)
+        if ('${request['owner']}' == id) '${request['selector']}',
+    ];
+    if (owned.length != 1 || owned.single != expectedSelector) {
+      throw FormatException('$where $id carrier request target differs');
+    }
+    return {'carrier': carrier, 'hit': hit, 'value': value};
+  }
+
+  final sameFacts = checkRow(same.single, '1');
+  final freshFacts = checkRow(fresh.single, '2');
+  final sameCarrier = sameFacts['carrier'] as Map<String, dynamic>;
+  final freshCarrier = freshFacts['carrier'] as Map<String, dynamic>;
+  final sameHit = sameFacts['hit'] as Map<String, dynamic>;
+  final freshHit = freshFacts['hit'] as Map<String, dynamic>;
+  final sameSource = _relationInt(
+    sameCarrier,
+    'sourceObjectIdentity',
+    '$where same carrier',
+  );
+  final freshSource = _relationInt(
+    freshCarrier,
+    'sourceObjectIdentity',
+    '$where fresh carrier',
+  );
+  final sameHost = _relationInt(
+    sameCarrier,
+    'hostStateIdentity',
+    '$where same carrier',
+  );
+  final freshHost = _relationInt(
+    freshCarrier,
+    'hostStateIdentity',
+    '$where fresh carrier',
+  );
+  if (sameSource != freshSource || sameHost != freshHost) {
+    throw FormatException('$where paired carriers do not share source/state');
+  }
+  if (_relationInt(
+        sameCarrier,
+        'cachedPipelineIdentity',
+        '$where same carrier',
+      ) !=
+      _relationInt(
+        freshCarrier,
+        'cachedPipelineIdentity',
+        '$where fresh carrier',
+      )) {
+    throw FormatException(
+      '$where paired carriers do not share the cached pipeline',
+    );
+  }
+  if (_relationInt(
+        sameCarrier,
+        'cachedTransportIdentity',
+        '$where same carrier',
+      ) !=
+      _relationInt(
+        freshCarrier,
+        'cachedTransportIdentity',
+        '$where fresh carrier',
+      )) {
+    throw FormatException(
+      '$where paired carriers do not share the cached transport',
+    );
+  }
+  if (_relationString(sameCarrier, 'sourceKey', '$where same carrier') !=
+      _relationString(freshCarrier, 'sourceKey', '$where fresh carrier')) {
+    throw FormatException('$where paired carriers do not share the source key');
+  }
+  if (sameHit['identity'] != freshHit['identity'] ||
+      sameHit['storedIdentity'] != freshHit['storedIdentity'] ||
+      '${sameHit['rawAddress']}' != '${freshHit['rawAddress']}' ||
+      '${sameHit['sourceKey']}' != '${freshHit['sourceKey']}') {
+    throw FormatException('$where paired carriers did not retain one hit');
+  }
+}
+
+void _validateFrozenV3Facts(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus,
+  String goldenId,
+) {
+  final byId = {
+    for (final raw in _array(golden['observations'], 'capture observations'))
+      '${(raw as Map)['id']}': _object(raw, 'capture observation'),
+  };
+  for (final step in httpBoundarySteps(corpus)) {
+    final id = '${step['id']}';
+    final row = byId[id];
+    if (row == null) continue;
+    final value = _object(row['value'], 'capture $id value');
+    if ('${step['action']}' == 'scriptProbe') {
+      final evidence = _object(row['evidence'], 'capture $id evidence');
+      final probe = _object(evidence['scriptProbe'], 'capture $id scriptProbe');
+      final diagnostics = probe['diagnostics'];
+      try {
+        validateHttpBoundaryScriptProbeEnvelope({
+          'portable': value['result'],
+          'diagnostics': diagnostics,
+        }, where: 'capture $goldenId $id');
+      } on FormatException catch (error) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId probe $id is not typed: ${error.message}',
+        );
+      }
+    }
+  }
+  try {
+    validateFrozenCarrierRelations(golden, corpus, where: 'capture $goldenId');
+  } on FormatException catch (error) {
+    throw HttpBoundaryRefusal(error.message);
   }
 }
 
@@ -476,6 +952,16 @@ bool _semanticEquals(Object? actual, Object? expected) {
   if (actual.runtimeType != expected.runtimeType) return false;
   return actual == expected;
 }
+
+Map<String, dynamic> _declaredBook(Map<String, dynamic> corpus, String id) =>
+    _object(
+      _array(corpus['books'], 'corpus books').firstWhere(
+        (raw) => '${(raw as Map)['id']}' == id,
+        orElse: () =>
+            throw HttpBoundaryRefusal('the corpus declares no book $id'),
+      ),
+      'book $id',
+    );
 
 /// The product record's own gates: a finished run of the same corpus whose every
 /// compared field is present and correctly typed, whose headline checks agree
@@ -1352,7 +1838,17 @@ void validateProductReport(
         '${_cancellationBlock(corpus)['followUpStep']}') {
       _followUpRelations(gate, corpus, id, row, value, observationById);
     }
+    _v3ObservationFacts(
+      gate,
+      corpus,
+      step,
+      row,
+      value,
+      ownedByObservation,
+      observationById,
+    );
   }
+  _v3CarrierPairFacts(gate, corpus, product);
 
   // 9. The rate rows' own typed records and within-run interval/window
   //    relations. Every comparison below is a difference, so one coherent
@@ -1992,6 +2488,67 @@ void validateProductReport(
     throw HttpBoundaryRefusal('the product report path is empty');
   }
   gate.throwIfAny();
+}
+
+void _v3ObservationFacts(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+  Map<String, dynamic> row,
+  Map<String, dynamic> value,
+  Map<String, List<Map<String, dynamic>>> ownedByObservation,
+  Map<String, Map<String, dynamic>> observationById,
+) {
+  final id = '${step['id']}';
+  final where = 'observations.$id';
+  final stage = '${step['stage'] ?? ''}';
+  final expectedOutcome = '${step['expectedOutcome'] ?? 'ok'}';
+  if ('${step['kind']}' == 'stage' &&
+      stage == 'details' &&
+      expectedOutcome == 'ok') {
+    final book = _declaredBook(corpus, '${step['book']}');
+    gate.equal(value['bookUrl'], book['bookUrl'], '$where.value.bookUrl');
+  }
+  if ('${step['action']}' != 'scriptProbe') return;
+  final result = value['result'];
+  final evidence = gate.object(row['evidence'], '$where.evidence');
+  final probe = gate.object(
+    evidence['scriptProbe'],
+    '$where.evidence.scriptProbe',
+  );
+  final diagnostics = probe['diagnostics'];
+  if (diagnostics is! Map) {
+    gate.fail('$where.evidence.scriptProbe.diagnostics is not an object');
+    return;
+  }
+  try {
+    validateHttpBoundaryScriptProbeEnvelope({
+      'portable': result,
+      'diagnostics': diagnostics,
+    }, where: '$where.evidence.scriptProbe');
+  } on FormatException catch (error) {
+    gate.fail('$where script probe projection is not typed: ${error.message}');
+  }
+  final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
+  if (owned.isNotEmpty) {
+    gate.fail('$where script probe owns ${owned.length} requests');
+  }
+  if (value['action'] != 'scriptProbe' ||
+      '${value['source']}' != '${step['source']}') {
+    gate.fail('$where value does not name the script-probe source/action');
+  }
+}
+
+void _v3CarrierPairFacts(
+  _ProductGate gate,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> product,
+) {
+  try {
+    validateHttpBoundaryCarrierRelations(product, corpus, where: 'product');
+  } on Object catch (error) {
+    gate.fail('$error');
+  }
 }
 
 Map<String, dynamic> _cancellationBlock(Map<String, dynamic> corpus) =>
@@ -3727,6 +4284,7 @@ class HttpBoundaryControl {
     required this.newKeys,
     required this.unattributedNewKeys,
     required this.baselinePassed,
+    this.relationFailure,
   });
 
   final String id;
@@ -3736,12 +4294,18 @@ class HttpBoundaryControl {
   final List<String> unattributedNewKeys;
   final bool baselinePassed;
 
-  /// A control passes only when it really introduced a new strict difference
-  /// and the approved disposition did not absorb any of those new keys.
-  bool get passed =>
-      applied &&
-      newKeys.isNotEmpty &&
-      unattributedNewKeys.length == newKeys.length;
+  /// A measured-relation control's precise validation failure, when the
+  /// mutation corrupts a fact the portable comparison cannot see.
+  final String? relationFailure;
+
+  /// A control passes when it really introduced its own new strict difference
+  /// or its own measured-relation validation failure, and no approved
+  /// disposition absorbed that result.
+  bool get passed {
+    if (!applied) return false;
+    if (relationFailure != null) return relationFailure!.isNotEmpty;
+    return newKeys.isNotEmpty && unattributedNewKeys.length == newKeys.length;
+  }
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -3750,6 +4314,7 @@ class HttpBoundaryControl {
     'newMismatchKeys': newKeys,
     'unattributedNewMismatchKeys': unattributedNewKeys,
     'baselinePassed': baselinePassed,
+    'relationFailure': relationFailure,
     'passed': passed,
   };
 }
@@ -3814,6 +4379,112 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
         baselinePassed: baseline.passed,
       ),
     ];
+  }
+
+  // A measured-relation control mutates one actual identity and runs the same
+  // pure rule the admission gate uses. The baseline must already be valid; an
+  // invalid baseline is refused rather than credited to a control.
+  final carrierSteps = [
+    for (final step in httpBoundarySteps(corpus))
+      if (step['carrier'] != null) step,
+  ];
+  bool hasCarrierRows(Map<String, dynamic> record) {
+    final rows = record['observations'];
+    if (rows is! List) return false;
+    final ids = {for (final raw in rows) '${(raw as Map)['id']}'};
+    for (final step in carrierSteps) {
+      if (!ids.contains('${step['id']}')) return false;
+    }
+    return true;
+  }
+
+  final canControlRelations =
+      carrierSteps.isNotEmpty &&
+      hasCarrierRows(product) &&
+      hasCarrierRows(golden);
+  if (canControlRelations) {
+    try {
+      validateHttpBoundaryCarrierRelations(
+        product,
+        corpus,
+        where: 'control product baseline',
+      );
+    } on Object catch (error) {
+      throw HttpBoundaryRefusal('control product baseline is invalid: $error');
+    }
+    try {
+      validateFrozenCarrierRelations(
+        golden,
+        corpus,
+        where: 'control frozen baseline',
+      );
+    } on Object catch (error) {
+      throw HttpBoundaryRefusal('control frozen baseline is invalid: $error');
+    }
+  }
+  List<HttpBoundaryControl> runRelation(
+    String id,
+    String target,
+    void Function(
+      Map<String, dynamic> goldenCopy,
+      Map<String, dynamic> productCopy,
+    )
+    mutate, {
+    bool frozen = false,
+  }) {
+    final goldenCopy = _deepCopy(golden);
+    final productCopy = _deepCopy(product);
+    try {
+      mutate(goldenCopy, productCopy);
+    } on Object catch (error) {
+      return [
+        HttpBoundaryControl(
+          id: id,
+          applied: false,
+          target: '$target ($error)',
+          newKeys: const [],
+          unattributedNewKeys: const [],
+          baselinePassed: baseline.passed,
+        ),
+      ];
+    }
+    try {
+      if (frozen) {
+        validateFrozenCarrierRelations(
+          goldenCopy,
+          corpus,
+          where: 'control $id',
+        );
+      } else {
+        validateHttpBoundaryCarrierRelations(
+          productCopy,
+          corpus,
+          where: 'control $id',
+        );
+      }
+      return [
+        HttpBoundaryControl(
+          id: id,
+          applied: true,
+          target: target,
+          newKeys: const [],
+          unattributedNewKeys: const [],
+          baselinePassed: baseline.passed,
+        ),
+      ];
+    } on Object catch (error) {
+      return [
+        HttpBoundaryControl(
+          id: id,
+          applied: true,
+          target: target,
+          newKeys: const [],
+          unattributedNewKeys: const [],
+          baselinePassed: baseline.passed,
+          relationFailure: '$error',
+        ),
+      ];
+    }
   }
 
   final controls = <HttpBoundaryControl>[];
@@ -4065,6 +4736,190 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
       );
       value['workerTerminated'] = false;
     }),
+  );
+  // The v3 observation controls: each targets a fact its own new row carries,
+  // so a green baseline cannot be satisfied by an unrelated existing mismatch.
+  controls.addAll(
+    run(
+      'product-script-probe-value',
+      'product helper.script-probe-hg1 projection',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'helper.script-probe-hg1')['value'],
+          'value',
+        );
+        final result = _object(value['result'], 'result');
+        final lookup = _object(result['lookup'], 'lookup');
+        lookup['returned'] = lookup['returned'] != true;
+      },
+    ),
+  );
+  controls.addAll(
+    run(
+      'product-native-return-presence',
+      'product v1.details latestChapterTitle',
+      (goldenCopy, productCopy) {
+        _object(
+          observation(productCopy, 'v1.details')['value'],
+          'value',
+        ).remove('latestChapterTitle');
+      },
+    ),
+  );
+  controls.addAll(
+    run('product-fresh-binding', 'product o1.details-same retained bookUrl', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-same')['value'],
+        'value',
+      );
+      // The analyzed target is a different concept; publish it as the retained
+      // book identity and the control adds its own key.
+      value['bookUrl'] = 'http://127.0.0.1:18771/o/book';
+    }),
+  );
+  if (canControlRelations) {
+    controls.addAll(
+      runRelation(
+        'product-fresh-substituted-hit',
+        'product o1.details-fresh retained hit address',
+        (goldenCopy, productCopy) {
+          final hit = _object(
+            _object(
+              observation(productCopy, 'o1.details-fresh')['evidence'],
+              'evidence',
+            )['hitReference'],
+            'hitReference',
+          );
+          hit['rawAddress'] =
+              'http://127.0.0.1:18771/o/book/SUBSTITUTED,{"js":"other"}';
+        },
+      ),
+    );
+    controls.addAll(
+      runRelation(
+        'product-fresh-reused-pipeline',
+        'product o1.details-fresh pipeline relation',
+        (goldenCopy, productCopy) {
+          final carrier = _object(
+            _object(
+              observation(productCopy, 'o1.details-fresh')['evidence'],
+              'evidence',
+            )['carrier'],
+            'carrier',
+          );
+          carrier['pipelineIdentity'] = carrier['cachedPipelineIdentity'];
+          carrier['reusedPipeline'] = true;
+        },
+      ),
+    );
+    controls.addAll(
+      runRelation(
+        'product-fresh-reused-transport',
+        'product o1.details-fresh transport relation',
+        (goldenCopy, productCopy) {
+          final carrier = _object(
+            _object(
+              observation(productCopy, 'o1.details-fresh')['evidence'],
+              'evidence',
+            )['carrier'],
+            'carrier',
+          );
+          carrier['transportIdentity'] = carrier['cachedTransportIdentity'];
+          carrier['distinctTransport'] = false;
+        },
+      ),
+    );
+    controls.addAll(
+      runRelation(
+        'product-fresh-wrong-source-object',
+        'product o1.details-fresh source object relation',
+        (goldenCopy, productCopy) {
+          final carrier = _object(
+            _object(
+              observation(productCopy, 'o1.details-fresh')['evidence'],
+              'evidence',
+            )['carrier'],
+            'carrier',
+          );
+          final current = carrier['sourceObjectIdentity'] as int;
+          carrier['sourceObjectIdentity'] = current == 0 ? 1 : 0;
+        },
+      ),
+    );
+    controls.addAll(
+      runRelation(
+        'product-fresh-wrong-stored-hit',
+        'product o1.details-fresh stored hit relation',
+        (goldenCopy, productCopy) {
+          final hit = _object(
+            _object(
+              observation(productCopy, 'o1.details-fresh')['evidence'],
+              'evidence',
+            )['hitReference'],
+            'hitReference',
+          );
+          final current = hit['storedIdentity'] as int;
+          hit['storedIdentity'] = current == 0 ? 1 : 0;
+        },
+      ),
+    );
+    controls.addAll(
+      runRelation(
+        'golden-fresh-retained-book',
+        'golden o1.details-fresh retained book identity',
+        (goldenCopy, productCopy) {
+          final value = _object(
+            observation(goldenCopy, 'o1.details-fresh')['value'],
+            'value',
+          );
+          value['bookUrl'] = 'http://127.0.0.1:18771/o/book/1';
+        },
+        frozen: true,
+      ),
+    );
+  }
+  controls.addAll(
+    run('product-same-extra-execution', 'product o1.details-same counter', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-same')['value'],
+        'value',
+      );
+      final current = int.tryParse('${value['counterAfter']}') ?? 0;
+      value['counterAfter'] = '${current + 1}';
+    }),
+  );
+  controls.addAll(
+    run('product-fresh-missing-execution', 'product o1.details-fresh counter', (
+      goldenCopy,
+      productCopy,
+    ) {
+      final value = _object(
+        observation(productCopy, 'o1.details-fresh')['value'],
+        'value',
+      );
+      final current = int.tryParse('${value['counterAfter']}') ?? 0;
+      value['counterAfter'] = '${current > 0 ? current - 1 : 0}';
+    }),
+  );
+  controls.addAll(
+    run(
+      'product-option-counter',
+      'product n1.toc counter-backed chapter title',
+      (goldenCopy, productCopy) {
+        final value = _object(
+          observation(productCopy, 'n1.toc')['value'],
+          'value',
+        );
+        final chapters = _array(value['chapters'], 'chapters');
+        _object(chapters.first, 'chapter')['title'] = '';
+      },
+    ),
   );
   return controls;
 }

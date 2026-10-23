@@ -9,18 +9,41 @@ still differs. Nothing here is a compatibility claim, and nothing here can turn 
 difference into a pass.
 
 Status: **measured, not accepted.** At candidate `b7fc3cf`, the product run reached
-all 22 declared observations and all 31 ordinary requests with no unmatched request,
-and both captures compared identically with 56 strict differences. That retained
+all 22 v2 observations and all 31 v2 ordinary requests with no unmatched request,
+and both v2 captures compared identically with 56 strict differences. That retained
 pre-repair measurement keeps its original identity; new runtime or observer bytes
 require a new execution and comparison.
 
-At this observer candidate, built on integration/133 `a175a67`, the Map repair and
-the source-context carrier projection are in place. The new product session reached
-22 observations and 31 requests, every cleanup receipt is true, and both captures
-compare with **38 strict differences each**. All 38 are named in `notCompared` under
-the four approved dispositions below and **0 are unattributed**; the strict verdict
-remains a difference (exit 3), never a pass. Nineteen own-baseline controls per
-capture pass, and every control's own new mismatch stays unattributed. Integration,
+The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
+requests and a fifth declared cohort. The v2 rows and captures keep their original
+identities and are not relabelled as v3. The v3 product run records 44 observations
+and 50 actual requests: 47 match declared selectors and three are unmatched, against
+51 expected requests.
+`t1.toc`, `p1.toc` and `n1.toc` are the incomplete rows: the first two request the
+pre-option TOC addresses, and the null-return counter read leaves the TOC chapter title
+empty. The O pair consumes the identical retained hit; both details publish the
+retained `identityAddress` (the analyzed targets stay in the request trace). The
+product's cached first call skips the source-authored option `js`, so the fresh call's
+counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`). The paired
+fixture declares counters 1 and 2; confirming the frozen execution still requires the
+v3 phone capture. That `/1` request lands on the same row's declared selector, so
+the actual ownership/count mismatch is retained rather than repaired
+(`o1.details-fresh` owns no request and `/o/book/2` is missing; `GET /o/book` is
+unmatched). That report is retained as the actual current-product measurement: it is
+not a pass, and the comparator refuses an incomplete product record by design. The v3
+installed-app capture and comparison remain with the controller and are **not-run**
+here. The CLI still pins the historical v2 handoff head
+`fbf556130176841fea14196bf94555823be589c7`; a v3 comparison needs the controller's
+actual v3 capture/handoff and a reviewed pin for that capture before execution.
+
+At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
+repair and the source-context carrier projection were in place. That product session
+reached 22 observations and 31 requests, every cleanup receipt was true, and both v2
+captures compared with **38 strict differences each**. All 38 are named in
+`notCompared` under the four approved dispositions below and **0 are unattributed**;
+the strict verdict remains a difference (exit 3), never a pass. Nineteen own-baseline
+controls per v2 capture applied and passed, and every control's own new mismatch stayed
+unattributed; the twelve v3 row controls are not-applicable on a v2 record. Integration,
 review, the Windows driven run and #137/#133 acceptance stay with the controller.
 
 ## What runs
@@ -180,11 +203,13 @@ name stays an unattributed failure.
 
 ## Controls
 
-Nineteen controls run on deep copies of the immutable captures and of the product
-record; each is compared against **its own** baseline, so a row the baseline already
-reports can never satisfy a control. A control passes only when it introduces a new
-strict mismatch and the approved disposition leaves every one of those new keys
-unattributed. The controls are: product value, golden value, product raw query,
+Thirty-one controls run on deep copies of the immutable captures and of the product
+record; each is checked against **its own** baseline, so an existing difference
+cannot satisfy a control. A portable-value control must introduce a new strict
+mismatch whose new keys all remain unattributed. A measured-relation control must
+start from a valid relation and make its own mutation fail the shared admission
+rule; its precise failure is recorded in `relationFailure`. The controls are:
+product value, golden value, product raw query,
 product retry attempt, product identity, product presence, product receipt, golden
 receipt (native provenance), an undeclared extra request, a product header, a
 product body, a product attempt kind, a real cohort peak
@@ -192,7 +217,17 @@ product body, a product attempt kind, a real cohort peak
 baseline), the retry row order, the sequential step order, the held row's terminal,
 and three wrong-behaviour probes added with the carrier projection: a changed search
 result `origin`, a changed search result `type`, and a broken cancellation
-`workerTerminated` receipt. The aggregate result keeps every capture's rows, so
+`workerTerminated` receipt; twelve v3 row controls then cover a changed script-probe
+projection member, a removed native-return `latestChapterTitle`, a wrong retained
+`bookUrl` on the same row, and measured-relation failures for a substituted retained
+hit, a reused fresh pipeline, a reused fresh transport, a wrong source object, a wrong
+stored hit and a golden retained-book identity, plus a genuine extra execution on the
+same row (counter 1 -> 2), a genuine missing execution on the fresh row (counter 2 -> 1),
+and a changed counter-backed TOC chapter title. Relation controls mutate the actual
+identity and run the same pure admission rule; an invalid baseline is refused. Every
+control is checked against its own otherwise-identical baseline, including baselines
+that already carry unrelated strict differences. The aggregate result keeps every
+capture's rows, so
 neither capture's controls can hide the other's. Originals are re-hashed after the
 run and stay byte-identical.
 
@@ -229,13 +264,15 @@ remove the cancellation row or any behavioral assertion.
 The comparer retains its strict difference list and exit semantics and reports the
 four approved named differences in `notCompared`; a scheduling or zero-argument
 divergence is not a frozen compatibility pass. The 56 historical differences below
-remain the pre-repair result bound to `b7fc3cf`; the current candidate's measured 38
-are listed next.
+remain the pre-repair result bound to `b7fc3cf`; the historical v2 candidate's measured
+38 are listed next. No v3 capture exists on this branch, so this document makes no v3
+difference list and no v3 claim; the new rows' actual frozen/product differences must
+come from the controller's executed v3 comparison.
 
-## The current named differences
+## The historical v2 named differences
 
-The current observer candidate records 38 strict differences per capture, each one
-named by the classifier above and none left unattributed:
+The historical v2 observer candidate records 38 strict differences per capture, each
+one named by the classifier above and none left unattributed:
 
 1. **Configured `ajaxAll` width — 16 entries.** `runtimeConfiguration.threadCount`
    16 → 4, each helper batch row's `value.batch.threadCount` 16 → 4, and the declared
