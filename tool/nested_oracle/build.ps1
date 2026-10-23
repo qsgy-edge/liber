@@ -2,7 +2,12 @@ param(
   [Parameter(Mandatory=$true)][string]$OutputDirectory,
   [Parameter(Mandatory=$true)][string]$JavaHome,
   [string]$AndroidSdk = "$env:LOCALAPPDATA/Android/Sdk",
-  [string]$DebugKeystore = "$env:USERPROFILE/.android/debug.keystore"
+  [string]$DebugKeystore = "$env:USERPROFILE/.android/debug.keystore",
+  # Optional local selection of the HTML corpus asset only. The default stays
+  # the original #12/#65 corpus, so every existing build is unchanged; passing
+  # tool/html_oracle/list-fixtures.json packages the independent HTML-LIST-01
+  # family under the harness' fixed html-fixtures.json asset name.
+  [string]$HtmlCorpusPath = "$PSScriptRoot/../html_oracle/fixtures.json"
 )
 $ErrorActionPreference = 'Stop'
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
@@ -30,8 +35,10 @@ Copy-Item "$PSScriptRoot/request-fixtures.json" "$OutputDirectory/assets/request
 Copy-Item "$PSScriptRoot/../first_slice/fixtures.json" "$OutputDirectory/assets/slice-fixtures.json"
 # The #23 HTML extraction corpus travels the same way; the harness serves it from
 # the device process, and the golden records `tool/html_oracle/fixtures.json`'s
-# hash as its corpus hash.
-Copy-Item "$PSScriptRoot/../html_oracle/fixtures.json" "$OutputDirectory/assets/html-fixtures.json"
+# hash as its corpus hash. -HtmlCorpusPath may select the independent
+# HTML-LIST-01 corpus instead; only this asset changes, and the collector binds
+# its emitted observations to the packaged asset's actual bytes and raw SHA-256.
+Copy-Item (Resolve-Path $HtmlCorpusPath).Path "$OutputDirectory/assets/html-fixtures.json"
 # Ticket #79's limit probe drives a rule-level `@js:` field through the frozen
 # rule path and appends every stage to a journal the process may not outlive, so
 # its row set travels as data too.

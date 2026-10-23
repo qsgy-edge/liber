@@ -26,14 +26,17 @@ string rendering.
 ## Destination side
 
 ```
-dart run tool/html_adapter_gate.dart <fjs library> - <observations.json>
+dart run tool/html_adapter_gate.dart <fjs library> - <observations.json> \r
+  [tool/html_oracle/fixtures.json | tool/html_oracle/list-fixtures.json]
 ```
 
-CI runs this gate on Windows, Linux and macOS; Android and iOS cross-build the
-native library. Each case runs through the Rust HTML adapter, the product rule
-field, or the JSON reader as its `path` declares, and fails on a typed value
-difference. The original 39 expectations were read from the pinned frozen
-sources; #65's six were filled only after the installed APK returned them.
+The fourth positional argument selects the corpus; an existing three-argument
+invocation keeps the original `tool/html_oracle/fixtures.json` and its exact
+45-case meaning. CI runs this gate on Windows, Linux and macOS; Android and iOS
+cross-build the native library. Each case runs through the Rust HTML adapter, the
+product rule field, or the JSON reader as its `path` declares, and fails on a
+typed value difference. The original 39 expectations were read from the pinned
+frozen sources; #65's six were filled only after the installed APK returned them.
 All 45 rows then matched the frozen report on Windows. The three JSON cases
 confirm only the named `@Json:$.missing##$##Fallback` no-match shape, not the
 JSONPath grammar.
@@ -72,3 +75,81 @@ and `lib/source/rule_field.dart`; ticket #51 removed both trailing-empty trims
 and corrected the corpus expectation for `replacement-trailing-field`, which had
 been read from the Java-style split. The named device-confirmed rows are
 recorded in `docs/compatibility/book-source-capability-matrix.md`.
+
+## HTML-LIST-01 preparation (not executed on a handset)
+
+`list-fixtures.json` is the independent nonempty-list family added for #138. It
+is `HTML-LIST-01`, corpus version 1, schema 1, at the same pinned baseline and
+entry point. The original `fixtures.json`, the committed 45-case golden, its
+gate report and its manifest are unchanged; the default invocation above still
+reads the original corpus and admits that golden by the same baseline/entry-point
+identity check.
+
+The family has 11 cases over three documents:
+
+| id | entry | source-derived expectation |
+|---|---|---|
+| `html-list-ordered-hrefs` | HTML `getStringList`, `#list li@a@href` | `["/1", "/2", "/3"]` |
+| `html-scalar-twin-ordered-hrefs` | HTML `getString`, same rule | `"/1\n/2\n/3"` (the same matches joined) |
+| `html-list-declared-order` | HTML `getStringList`, `#list li[2,0,1]@a@href` | `["/3", "/1", "/2"]` |
+| `html-list-per-item-replacement` | HTML `getStringList`, `##^/##/page/` | `["/page/1", "/page/2", "/page/3"]` |
+| `html-scalar-joined-replacement-twin` | HTML `getString`, same rule | `"/page/1\n/2\n/3"` (`##` runs on the join) |
+| `html-list-empty` | HTML `getStringList`, no match | `[]` |
+| `html-list-url-empty` | HTML `getStringListUrl`, no match with `##` | `[]` |
+| `html-list-entity-no-unescape` | HTML `getStringList`, `#code@text` | `["A&amp;B"]` |
+| `html-scalar-entity-twin` | HTML `getString`, same rule | `"A&B"` (the scalar read unescapes last) |
+| `json-list-string-names` | JSON `getStringList`, `@Json:$.names[*]` | `["甲", "乙"]` |
+| `json-scalar-string-twin` | JSON `getString`, same rule | `"甲\n乙"` |
+
+The expectations are **source-derived, not a device golden**. They were read
+from the frozen list entry points (`AnalyzeRule.getStringList`, its URL branch,
+`AnalyzeByJSoup.getStringList`, `AnalyzeByJSonPath.getStringList` and
+`AnalyzeRule.getString` at the pinned commit) together with the existing product
+path: `HtmlRuleBatch.documentTextList` for the per-match HTML list (its `##` runs
+per item and it does not entity-unescape), `HtmlRuleBatch.documentText` for the
+scalar join, and `JsonSourceRules.list` rendered by `JsonSourceRules.contentText`
+for the string-valued JSON sibling. No new evaluator, bridge API or container
+form is introduced.
+
+The nonempty `getStringListUrl` form is a named product refusal (`#90`): the
+product's URL mode does not carry the analysis' redirect/base URL. Only the
+supported empty URL-list result is in the corpus; the gate refuses a nonempty
+URL-list row instead of rendering it as a default list.
+
+### Selected corpus in the harness
+
+`tool/nested_oracle/build.ps1` accepts an optional local `-HtmlCorpusPath`. It
+changes only the packaged `assets/html-fixtures.json`; every other asset and
+harness source is unchanged, so the default build still carries
+`tool/html_oracle/fixtures.json`. The collector reads the packaged asset bytes
+and writes the measured binding in its report:
+
+```json
+"corpus": {
+  "asset": "html-fixtures.json",
+  "bytes": 3604,
+  "sha256": "<SHA-256 of the bytes that were parsed>",
+  "fixtureId": "HTML-LIST-01",
+  "corpusVersion": 1,
+  "schemaVersion": 1
+}
+```
+
+The hash is computed from the actual asset bytes, never copied from a hash
+claimed inside the corpus. `baselineCommit`, `entryPoint` and the device
+`fingerprint` stay in the report. A real handset capture of this family is
+**not-run** here; building and inspecting the signed APK is preparation, not a
+golden.
+
+### Measured boundary and remaining proof
+
+This preparation measures the extraction/list boundary: ordered HTML matches,
+the scalar join, per-item versus joined `##`, the empty default/URL list, the
+HTML list's no-unescape behavior and the string-valued JSON list. It does not
+run the reader or pipeline: actual TOC/next-page page walking, search →
+information → TOC → shelf → reader, final title/content/selection/paragraph
+processing, imageStyle layout, the real installed-APK golden, handset and
+reader acceptance, and any platform claim remain outstanding for the controller
+and #138/#133. The `HTML-LIST-01` destination-only run leaves
+`frozenGolden: "not-run"`; it is not a compatibility result. The unchanged
+45-case legacy comparison remains the executed frozen row it always was.
