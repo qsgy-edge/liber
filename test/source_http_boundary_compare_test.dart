@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,6 +15,8 @@ import '../tool/http_boundary/runner.dart'
         httpBoundarySteps,
         httpBoundaryCorpusPath,
         httpBoundaryCorpusSha256Lf,
+        probeOwnedReplayListener,
+        settleOwnedTeardown,
         sha256Text,
         httpBoundaryObservationIds,
         loadHttpBoundaryCorpus,
@@ -224,7 +227,29 @@ Map<String, Object?> _report() {
       },
     },
     'runtimeConfiguration': {'threadCount': 16, 'resolved': true},
-    'failEndpoint': {'acceptedConnections': 1, 'transportReconnects': 0},
+    'failEndpoint': {
+      'acceptedConnections': 1,
+      'transportReconnects': 0,
+      // The separate connection trace is compared, so the fixture carries the
+      // declared failure request's own measured attempt.
+      'connections': [
+        {
+          'index': 1,
+          'method': 'GET',
+          'target': '/f/search?keyword=fail&page=1',
+          'path': '/f/search',
+          'rawQuery': 'keyword=fail&page=1',
+          'headers': {
+            'x-declared': 'f',
+            'user-agent': 'HTTP-BOUNDARY-01/1.0',
+            'host': '127.0.0.1:34545',
+          },
+          'classification': 'initial',
+          'requestObserved': true,
+          'terminal': 'accepted-and-closed-without-response',
+        },
+      ],
+    },
     'inventory': {
       'databaseOpened': true,
       'initial': {'books': 0},
@@ -471,9 +496,10 @@ Map<String, dynamic> _validProduct({
       lastTerminal[selector] = terminal;
       final received = clock;
       clock += 100;
-      final sent = clock;
+      // An aborted row wrote nothing: its send facts stay zero.
+      final sent = terminal == 'client-aborted' ? 0 : clock;
       clock += 10;
-      final responded = clock;
+      final responded = terminal == 'client-aborted' ? 0 : clock;
       clock += 10;
       position++;
       final row = <String, Object?>{
@@ -508,7 +534,7 @@ Map<String, dynamic> _validProduct({
         'receivedAtNanos': received,
         'respondedAtNanos': responded,
         'sentAtNanos': sent,
-        'sendSequence': position,
+        'sendSequence': sent == 0 ? 0 : position,
         'status': terminal == 'responded' ? 200 : -1,
         'terminal': terminal,
         'declaredResponse': responseId,
@@ -528,6 +554,26 @@ Map<String, dynamic> _validProduct({
       'kind': 'stage',
       'stage': '${step['kind']}',
     };
+    // A helper batch's own declared block, so the batch integer/configuration
+    // schema has a real subject in this fixture.
+    if (declared.cohort != null && '${step['family']}' == 'helper') {
+      value['batch'] = {
+        'cohort': declared.cohort,
+        'cohortSize': declared.members.length,
+        'cohortTimeoutMs': 5000,
+        'entered': true,
+        'cohortComplete': true,
+        'releaseReason': 'complete',
+        'inFlightPeak': declared.members.length,
+        'membership': [
+          for (final responseId in declared.members)
+            '${responses[responseId]!['method']} '
+                '${responses[responseId]!['path']}?'
+                '${responses[responseId]!['rawQuery'] ?? ''}',
+        ]..sort(),
+        'threadCount': 4,
+      };
+    }
     final evidence = <String, Object?>{};
     if ('${step['kind']}' == 'cancel') {
       final execution = <String, Object?>{
@@ -676,7 +722,7 @@ Map<String, dynamic> _validProduct({
       evidence.addAll({
         'callStartMillis': switch (index) {
           1 => windowStart - 5,
-          2 => windowStart + 20,
+          2 => windowStart + 5,
           _ => windowStart + 40,
         },
         'callFinishMillis': switch (index) {
@@ -826,7 +872,7 @@ Map<String, dynamic> _validProduct({
           'target': '/f/search?keyword=fail&page=1',
           'path': '/f/search',
           'rawQuery': 'keyword=fail&page=1',
-          'headers': {'user-agent': 'HTTP-BOUNDARY-01/1.0'},
+          'headers': {'user-agent': 'HTTP-BOUNDARY-01/1.0', 'x-declared': 'f'},
           'armed': true,
           'classification': 'initial',
           'requestObserved': true,
@@ -1729,6 +1775,375 @@ void main() {
       firstRequest(typed)['status'] = 200.0;
       expect(() => gate(typed), throwsA(isA<HttpBoundaryRefusal>()));
     });
+  });
+
+  group('the owned raw replay listener', () {
+    Map<String, Object?> response({
+      String method = 'GET',
+      String path = '/probe',
+      String rawQuery = '',
+      bool hold = false,
+      String body = 'probe response',
+    }) => {
+      'id': 'probe',
+      'method': method,
+      'path': path,
+      'rawQuery': rawQuery,
+      'status': 200,
+      'body': body,
+      if (hold) 'hold': true,
+      if (hold) 'holdTimeoutMs': 5000,
+    };
+
+    String request(
+      String target, {
+      String method = 'GET',
+      String body = '',
+      Map<String, String> headers = const {'Host': '127.0.0.1'},
+      bool close = false,
+    }) {
+      final buffer = StringBuffer('$method $target HTTP/1.1\r\n');
+      for (final entry in headers.entries) {
+        buffer.write('${entry.key}: ${entry.value}\r\n');
+      }
+      buffer.write('Content-Length: ${utf8.encode(body).length}\r\n');
+      if (close) buffer.write('Connection: close\r\n');
+      buffer.write('\r\n$body');
+      return buffer.toString();
+    }
+
+    test(
+      'the literal request target is recorded and matched byte-exactly',
+      () async {
+        final encoded = await probeOwnedReplayListener(
+          response: response(rawQuery: 'p=%62%31'),
+          rawRequests: [request('/probe?p=%62%31')],
+        );
+        final recorded = (encoded['requests'] as List).single as Map;
+        expect(recorded['rawQuery'], 'p=%62%31');
+        expect(recorded['target'], '/probe?p=%62%31');
+        expect(recorded['declaredResponse'], 'probe');
+        expect(recorded['terminal'], 'responded');
+        expect((encoded['unmatched'] as List), isEmpty);
+        expect((encoded['serverErrors'] as List), isEmpty);
+
+        // The semantically equivalent but differently encoded target is a
+        // different request; the declaration decides which one matches.
+        final nearMiss = await probeOwnedReplayListener(
+          response: response(rawQuery: 'p=%62%31'),
+          rawRequests: [request('/probe?p=b1')],
+        );
+        expect((nearMiss['unmatched'] as List), hasLength(1));
+        final unmatchedRow = (nearMiss['unmatched'] as List).single as Map;
+        expect(unmatchedRow['rawQuery'], 'p=b1');
+
+        final literal = await probeOwnedReplayListener(
+          response: response(rawQuery: 'p=b1'),
+          rawRequests: [request('/probe?p=%62%31')],
+        );
+        expect((literal['unmatched'] as List), hasLength(1));
+      },
+    );
+
+    test('a GET body is read from its declared framing', () async {
+      final probe = await probeOwnedReplayListener(
+        response: response(path: '/probe'),
+        rawRequests: [request('/probe', body: 'ABC')],
+      );
+      final recorded = (probe['requests'] as List).single as Map;
+      expect(recorded['method'], 'GET');
+      expect(recorded['body'], 'ABC');
+      expect(recorded['bodyLength'], 3);
+      expect(recorded['bodySha256'], sha256Text('ABC'));
+      expect(recorded['terminal'], 'responded');
+    });
+
+    test(
+      'a normal write records real send facts and content-length framing',
+      () async {
+        final probe = await probeOwnedReplayListener(
+          response: response(body: 'hello'),
+          rawRequests: [request('/probe', close: true)],
+        );
+        final recorded = (probe['requests'] as List).single as Map;
+        expect(recorded['terminal'], 'responded');
+        expect(recorded['status'], 200);
+        expect(recorded['sentAtNanos'] as int, greaterThan(0));
+        expect(recorded['respondedAtNanos'] as int, greaterThan(0));
+        expect(recorded['sendSequence'], 1);
+        expect(probe['responseText'], contains('Content-Length: 5'));
+        expect(probe['responseText'], endsWith('hello'));
+      },
+    );
+
+    test(
+      'a peer abort before the write keeps every send fact unsent',
+      () async {
+        final probe = await probeOwnedReplayListener(
+          response: response(path: '/held', hold: true, body: 'held'),
+          rawRequests: [request('/held', close: true)],
+          abortHeld: true,
+        );
+        final recorded = (probe['requests'] as List).single as Map;
+        expect(recorded['terminal'], 'client-aborted');
+        expect(recorded['status'], -1);
+        expect(recorded['sentAtNanos'], 0);
+        expect(recorded['respondedAtNanos'], 0);
+        expect(recorded['sendSequence'], 0);
+        expect(probe['responseBytes'], 0);
+      },
+    );
+
+    test(
+      'split reads and sequential keep-alive requests are framed per request',
+      () async {
+        final fragmented = await probeOwnedReplayListener(
+          response: response(body: 'frag'),
+          rawRequests: [request('/probe', close: true)],
+          fragment: true,
+        );
+        expect((fragmented['requests'] as List), hasLength(1));
+        expect(
+          ((fragmented['requests'] as List).single as Map)['terminal'],
+          'responded',
+        );
+
+        final sequential = await probeOwnedReplayListener(
+          response: response(body: 'seq'),
+          rawRequests: [request('/probe'), request('/probe', close: true)],
+          sequential: true,
+        );
+        final rows = (sequential['requests'] as List).cast<Map>();
+        expect(rows, hasLength(2));
+        expect(rows.map((row) => row['attempt']), [1, 2]);
+        expect(rows.map((row) => row['attemptKind']), [
+          'initial',
+          'source-status-retry',
+        ]);
+        expect(rows.every((row) => row['terminal'] == 'responded'), isTrue);
+      },
+    );
+
+    test('unsupported framing and truncated bodies are named refusals', () async {
+      Future<List<String>> errorsFor(
+        String raw, {
+        bool closeAfterWrite = false,
+      }) async =>
+          ((await probeOwnedReplayListener(
+                    response: response(),
+                    rawRequests: [raw],
+                    closeAfterWrite: closeAfterWrite,
+                  ))['serverErrors']
+                  as List)
+              .cast<String>();
+
+      final chunked = await errorsFor(
+        'POST /probe HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n',
+      );
+      expect(
+        chunked.any((error) => error.contains('Transfer-Encoding')),
+        isTrue,
+      );
+
+      final expectContinue = await errorsFor(
+        'GET /probe HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\n\r\n',
+      );
+      expect(expectContinue.any((error) => error.contains('Expect')), isTrue);
+
+      final badLength = await errorsFor(
+        'GET /probe HTTP/1.1\r\nHost: x\r\nContent-Length: -2\r\n\r\n',
+      );
+      expect(
+        badLength.any((error) => error.contains('Content-Length')),
+        isTrue,
+      );
+
+      final truncated = await errorsFor(
+        'GET /probe HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nAB',
+        closeAfterWrite: true,
+      );
+      expect(truncated.any((error) => error.contains('declared body')), isTrue);
+
+      final badRequestLine = await errorsFor('GET\r\nHost: x\r\n\r\n');
+      expect(
+        badRequestLine.any((error) => error.contains('request line')),
+        isTrue,
+      );
+    });
+  });
+
+  group('the full-review repairs', () {
+    late Directory work;
+    late String libraryPath;
+    late String librarySha;
+    late Map<String, dynamic> corpus;
+    late String corpusLf;
+
+    setUpAll(() {
+      work = Directory.systemTemp.createTempSync('http-boundary-full-');
+      final library = File('${work.path}${Platform.pathSeparator}fjs.dll')
+        ..writeAsBytesSync(List<int>.generate(32, (index) => index));
+      libraryPath = library.path;
+      librarySha = sha256File(library);
+      corpus = loadHttpBoundaryCorpus();
+      corpusLf = httpBoundaryCorpusSha256Lf(File(httpBoundaryCorpusPath));
+    });
+
+    tearDownAll(() => work.deleteSync(recursive: true));
+
+    Map<String, dynamic> fresh() {
+      final record = _validProductCopy(
+        libraryPath: libraryPath,
+        librarySha: librarySha,
+      );
+      (record['identity'] as Map)['corpusSha256Lf'] = corpusLf;
+      return record;
+    }
+
+    void gate(Map<String, dynamic> record) => validateProductReport(
+      record,
+      corpus: corpus,
+      corpusLf: corpusLf,
+      productPath: 'synthetic-product.json',
+    );
+
+    Map<String, dynamic> observation(Map<String, dynamic> record, String id) =>
+        (record['observations'] as List)
+            .cast<Map>()
+            .firstWhere((row) => row['id'] == id)
+            .cast<String, dynamic>();
+
+    Map<String, dynamic> firstRequest(Map<String, dynamic> record) =>
+        (record['requests'] as List).first as Map<String, dynamic>;
+
+    Map<String, dynamic> failureConnection(Map<String, dynamic> record) =>
+        ((record['failEndpoint'] as Map)['connections'] as List).first
+            as Map<String, dynamic>;
+
+    test('send facts exist only where bytes were really written', () {
+      final responded = fresh();
+      firstRequest(responded)['sentAtNanos'] = 0;
+      expect(() => gate(responded), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final aborted = fresh();
+      final held = (aborted['requests'] as List).cast<Map>().firstWhere(
+        (row) => row['terminal'] == 'client-aborted',
+      );
+      held['sentAtNanos'] = 12345;
+      expect(() => gate(aborted), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final sequence = fresh();
+      final answered = firstRequest(sequence);
+      answered['sendSequence'] = 0;
+      expect(() => gate(sequence), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('the failure connection is the declared source request', () {
+      final method = fresh();
+      failureConnection(method)['method'] = 'POST';
+      expect(() => gate(method), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final target = fresh();
+      final altered = failureConnection(target);
+      altered['path'] = '/controller-other';
+      altered['rawQuery'] = 'q=altered';
+      altered['target'] = '/controller-other?q=altered';
+      expect(() => gate(target), throwsA(isA<HttpBoundaryRefusal>()));
+
+      final header = fresh();
+      (failureConnection(header)['headers'] as Map)['x-declared'] =
+          'controller-altered';
+      expect(() => gate(header), throwsA(isA<HttpBoundaryRefusal>()));
+
+      // The comparison half: a golden whose attempt differs is a mismatch, not a
+      // silent pass, even on an already-failing baseline.
+      final golden = _report()..['failEndpoint'] = _report()['failEndpoint'];
+      final goldenConnection =
+          ((golden['failEndpoint'] as Map)['connections'] as List).first as Map;
+      goldenConnection['method'] = 'HEAD';
+      final compared = compareHttpBoundaryRecords(
+        golden: golden.cast<String, dynamic>(),
+        product: _product().cast<String, dynamic>(),
+        corpus: _corpus().cast<String, dynamic>(),
+        goldenId: 'synthetic',
+      );
+      expect(
+        compared.mismatches.any(
+          (mismatch) =>
+              mismatch.surface == 'failEndpoint' && mismatch.field == 'method',
+        ),
+        isTrue,
+      );
+    });
+
+    test('a rate reset record stays inside its own operation interval', () {
+      final record = fresh();
+      final evidence = observation(record, 'rate.record.3')['evidence'] as Map;
+      final value = observation(record, 'rate.record.3')['value'] as Map;
+      final after = value['recordAfter'] as Map;
+      after['time'] = (after['time'] as int) + 86400000;
+      evidence['windowAdvanceMillis'] =
+          (evidence['windowAdvanceMillis'] as int) + 86400000;
+      expect(() => gate(record), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test('the batch block keeps its declared integer fields', () {
+      for (final field in const ['cohortSize', 'cohortTimeoutMs']) {
+        final record = fresh();
+        final batch =
+            observation(record, 'helper.ajaxAll-order')['value']['batch']
+                as Map;
+        batch[field] = (batch[field] as int).toDouble();
+        expect(
+          () => gate(record),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason: 'a $field double was accepted',
+        );
+      }
+      final missing = fresh();
+      (observation(missing, 'helper.ajaxAll-order')['value']['batch'] as Map)
+          .remove('cohortSize');
+      expect(() => gate(missing), throwsA(isA<HttpBoundaryRefusal>()));
+    });
+
+    test(
+      'the owned teardown settles workers before the database and native steps',
+      () async {
+        final steps = <String>[];
+        final settled = await settleOwnedTeardown(
+          workers: [Future<void>.value()],
+          deadline: const Duration(seconds: 5),
+          closeDatabase: () async => steps.add('closeDatabase'),
+          disposeNative: () async => steps.add('disposeNative'),
+          removeRoot: () async => steps.add('removeRoot'),
+        );
+        expect(settled.workerSettled, isTrue);
+        expect(settled.residueRetained, isFalse);
+        expect(settled.stepsRun, [
+          'closeDatabase',
+          'disposeNative',
+          'removeRoot',
+        ]);
+        expect(steps, ['closeDatabase', 'disposeNative', 'removeRoot']);
+
+        // An owned worker that never settles: the database and native callbacks do
+        // not run and the owned residue is retained.
+        final never = Completer<void>();
+        addTearDown(() => never.complete());
+        final retainedSteps = <String>[];
+        final busy = await settleOwnedTeardown(
+          workers: [never.future],
+          deadline: const Duration(milliseconds: 50),
+          closeDatabase: () async => retainedSteps.add('closeDatabase'),
+          disposeNative: () async => retainedSteps.add('disposeNative'),
+          removeRoot: () async => retainedSteps.add('removeRoot'),
+        );
+        expect(busy.workerSettled, isFalse);
+        expect(busy.residueRetained, isTrue);
+        expect(busy.stepsRun, isEmpty);
+        expect(retainedSteps, isEmpty);
+      },
+    );
   });
 
   test('the committed corpus derives the declared structural model', () {

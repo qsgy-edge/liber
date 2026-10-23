@@ -51,6 +51,10 @@ const httpBoundaryFailPortToken = r'$FAILPORT';
 /// collector reads the same capability from `AppConfig.threadCount`.
 const httpBoundaryBatchWidth = 4;
 
+/// The stage pagination tails' real configuration: `walkSourcePages` fetches the
+/// declared next pages one at a time (`source_page_results.dart:21-27,161-165`).
+const httpBoundarySerialWalkWidth = 1;
+
 /// A corpus, library or ownership problem: nothing ran, so the target capture
 /// is left exactly as it was.
 class HttpBoundaryRefusal implements Exception {
@@ -813,6 +817,11 @@ class _HttpBoundaryRun {
   final _pipelines = <String, BookSourcePipeline>{};
   BookSourcePipeline? _cancelledPipeline;
 
+  /// The cancellation row's owned worker (the search future's settlement). It is
+  /// kept so the teardown can join it before the database and the native runtime
+  /// are touched; a merely local future was the review finding.
+  Future<void>? _ownedCancelWorker;
+
   final _outcomes = <String, ({String outcome, String? category})>{};
   final _hits = <String, HtmlBook>{};
   final _infos = <String, SourceBookInfo>{};
@@ -892,12 +901,35 @@ class _HttpBoundaryRun {
           'cohort timeoutMs',
         );
       }
+      // The concurrency configuration of the family that actually runs the
+      // cohort: the helper batch's `ajaxAll` default, or the serial page walk
+      // that the stage tails really execute. A peak is not a configuration.
+      final cohortThreadCounts = <String, int>{};
+      final cohortThreadSources = <String, String>{};
+      for (final step in httpBoundarySteps(corpus)) {
+        final declared = httpBoundaryDeclaredRequests(step);
+        final cohort = declared.cohort;
+        if (cohort == null) continue;
+        if ('${step['family']}' == 'helper') {
+          cohortThreadCounts[cohort] = httpBoundaryBatchWidth;
+          cohortThreadSources[cohort] =
+              'SourceHostDispatcher.ajaxAll concurrency default '
+              '(lib/source/source_host_dispatcher.dart:186)';
+        } else {
+          cohortThreadCounts[cohort] = httpBoundarySerialWalkWidth;
+          cohortThreadSources[cohort] =
+              'walkSourcePages serial page walk '
+              '(lib/source/source_page_results.dart:21-27,161-165)';
+        }
+      }
       replay = await _ReplayServer.start(
         origin: origin,
         responses: httpBoundaryResponses(corpus),
         owners: httpBoundaryResponseOwners(corpus),
         cohortSizes: cohortSizes,
         cohortTimeouts: cohortTimeouts,
+        cohortThreadCounts: cohortThreadCounts,
+        cohortThreadSources: cohortThreadSources,
         onServerError: (error) => serverErrors.add({'replay': '$error'}),
       );
       await NativeLibrary.initialize(libraryPath: libraryPath);
@@ -966,16 +998,48 @@ class _HttpBoundaryRun {
     } on Object catch (error) {
       failure ??= error;
     }
-    try {
-      if (store != null) finalCounts = await _databaseCounts();
-    } on Object catch (error) {
-      failure ??= error;
-    }
-    try {
-      await workspace?.close();
-      databaseClosed = workspace != null;
-    } on Object catch (error) {
-      failure ??= error;
+    // An owned worker may still be writing: settle it before the database is
+    // queried or closed and before the native runtime is disposed. A worker that
+    // cannot settle keeps the owned residue instead of a clean exit.
+    final owned = _ownedCancelWorker;
+    if (owned != null) {
+      final teardown = await settleOwnedTeardown(
+        workers: [owned],
+        deadline: const Duration(seconds: 20),
+        closeDatabase: () async {
+          if (store != null) finalCounts = await _databaseCounts();
+          await workspace?.close();
+          databaseClosed = workspace != null;
+        },
+        disposeNative: () async {
+          await InProcessSourceScriptRuntime.dispose();
+          NativeLibrary.dispose();
+          libraryDisposed = true;
+        },
+        removeRoot: () async {},
+      );
+      report['ownedTeardown'] = teardown.toJson();
+      if (!teardown.workerSettled) {
+        failure ??= StateError(
+          'an owned cancellation worker did not settle before teardown; the '
+          'owned residue is retained',
+        );
+        removalSkipped =
+            'an owned worker did not settle; the owned root and preferences are '
+            'retained for the controller';
+      }
+    } else {
+      try {
+        if (store != null) finalCounts = await _databaseCounts();
+      } on Object catch (error) {
+        failure ??= error;
+      }
+      try {
+        await workspace?.close();
+        databaseClosed = workspace != null;
+      } on Object catch (error) {
+        failure ??= error;
+      }
     }
     try {
       await InProcessSourceScriptRuntime.dispose();
@@ -1306,6 +1370,20 @@ class _HttpBoundaryRun {
           ],
         };
         provenance[arity] = {'outcome': 'returned'};
+      } on TimeoutException catch (error) {
+        // A step/evaluation deadline is not a script outcome: the row is an
+        // incomplete measurement, never three `returned:false` arities in an ok
+        // row.
+        provenance[arity] = {
+          'outcome': 'deadline',
+          'errorType': '${error.runtimeType}',
+          'error': '$error',
+        };
+        (observation['evidence'] as Map)['arityProvenance'] = provenance;
+        observation['outcome'] = 'incomplete';
+        throw HttpBoundaryIncomplete(
+          'the $arity header-map evaluation hit its deadline: $error',
+        );
       } on Object catch (error) {
         arities[arity] = {'returned': false};
         provenance[arity] = {
@@ -1397,6 +1475,25 @@ class _HttpBoundaryRun {
     }
     observation['value'] = value;
     observation['evidence'] = evidence;
+    // Every record this call creates or resets belongs to its own operation
+    // interval; a same-window admission keeps the shared window start.
+    final createdHere = index == 1 || value['sameWindowAsPrevious'] == false;
+    final recordTime = after?['time'];
+    if (createdHere &&
+        recordTime is int &&
+        (recordTime < callStart || recordTime > callFinish)) {
+      observation['outcome'] = 'incomplete';
+      throw HttpBoundaryIncomplete(
+        'the rate record of row $index lies outside its own operation interval',
+      );
+    }
+    if (value['scheduleComplete'] != true) {
+      // An incomplete schedule is an incomplete measurement, never an ok row.
+      observation['outcome'] = 'incomplete';
+      throw const HttpBoundaryIncomplete(
+        'the rate schedule did not complete inside its declared window',
+      );
+    }
     observation['outcome'] = 'ok';
     observation['category'] = null;
   }
@@ -1591,16 +1688,26 @@ class _HttpBoundaryRun {
 
   /// The typed category of one stage diagnostic, limited to the failure kinds
   /// the corpus declares: an empty table of contents and a connection failure.
+  /// The category of the *observed* diagnostic: an expectation never relabels a
+  /// real timeout or connection failure, and the corpus' declared category is
+  /// compared after this derivation, not instead of it.
   String _categoryOf(
     SourceStageDiagnostic diagnostic,
     Map<String, dynamic> step,
   ) {
-    final declared = step['expectedCategory'];
-    if (declared is String && declared.isNotEmpty) return declared;
-    if (diagnostic.kind == SourceStageFailureKind.connection) {
-      return 'network-failure';
+    if (diagnostic.stage == BookSourceStage.tableOfContents &&
+        const {
+          SourceStageFailureKind.emptyResponse,
+          SourceStageFailureKind.extractionFailed,
+        }.contains(diagnostic.kind)) {
+      return 'empty-required-result';
     }
-    return 'unclassified';
+    return switch (diagnostic.kind) {
+      SourceStageFailureKind.connection => 'network-failure',
+      SourceStageFailureKind.timeout => 'timeout',
+      SourceStageFailureKind.emptyResponse ||
+      SourceStageFailureKind.extractionFailed => 'empty-required-result',
+    };
   }
 
   // --- the task-owned connection failure -------------------------------------
@@ -1703,6 +1810,9 @@ class _HttpBoundaryRun {
         terminated = true;
       },
     );
+    // The owned worker is tracked beyond this row: a timeout here must not let
+    // the teardown close the database or dispose the runtime under it.
+    _ownedCancelWorker = settled;
     final holdWindow = _integer(cancellation['holdTimeoutMs'], 'holdTimeoutMs');
     final entered = await hold.entered.timeout(
       Duration(milliseconds: holdWindow),
@@ -2367,6 +2477,48 @@ bool _multisetEquals(List<String> left, List<String> right) {
 /// the exact raw query bytes; the declared concurrent members of one cohort are
 /// held until the cohort is complete or its own window expires, and every row
 /// keeps what actually happened.
+/// One request as the socket actually carried it: the literal request line and
+/// header lines are recorded before any semantic parsing, and the body is the
+/// exact number of bytes the framing declared.
+class _RawRequest {
+  _RawRequest({
+    required this.method,
+    required this.rawTarget,
+    required this.version,
+    required this.headerLines,
+    required this.headers,
+    required this.bodyBytes,
+    required this.wantsClose,
+  });
+
+  final String method;
+  final String rawTarget;
+  final String version;
+  final List<String> headerLines;
+  final Map<String, String> headers;
+  final List<int> bodyBytes;
+  final bool wantsClose;
+
+  String get path {
+    final boundary = rawTarget.indexOf('?');
+    return boundary < 0 ? rawTarget : rawTarget.substring(0, boundary);
+  }
+
+  String get rawQuery {
+    final boundary = rawTarget.indexOf('?');
+    return boundary < 0 ? '' : rawTarget.substring(boundary + 1);
+  }
+}
+
+/// The corpus' one replay listener.
+///
+/// It reads the request itself on an owned [ServerSocket] instead of letting
+/// `HttpServer` parse it, because the compared facts are the bytes on the wire:
+/// the literal request target keeps its percent-encoding, a GET body is read when
+/// its framing declares one, and header lines keep their order and case. A
+/// request is matched by literal method + raw path + raw query. The declared
+/// concurrent members of one cohort are held until the cohort is complete or its
+/// own window expires, and every row keeps what actually happened.
 class _ReplayServer {
   _ReplayServer._(
     this._server,
@@ -2375,6 +2527,8 @@ class _ReplayServer {
     this._owners,
     this._cohortSizes,
     this._cohortTimeouts,
+    this._cohortThreadCounts,
+    this._cohortThreadSources,
     this._onServerError,
   );
 
@@ -2384,11 +2538,13 @@ class _ReplayServer {
     required Map<String, ({String step, String family, String? cohort})> owners,
     required Map<String, int> cohortSizes,
     required Map<String, int> cohortTimeouts,
+    Map<String, int> cohortThreadCounts = const {},
+    Map<String, String> cohortThreadSources = const {},
     required void Function(Object error) onServerError,
   }) async {
-    final HttpServer server;
+    final ServerSocket server;
     try {
-      server = await HttpServer.bind(origin.host, origin.port);
+      server = await ServerSocket.bind(origin.host, origin.port);
     } on SocketException catch (error) {
       throw HttpBoundaryRefusal(
         'the corpus origin $origin is busy: ${error.message}. The port is '
@@ -2403,18 +2559,22 @@ class _ReplayServer {
       owners,
       cohortSizes,
       cohortTimeouts,
+      cohortThreadCounts,
+      cohortThreadSources,
       onServerError,
     );
-    server.listen(instance._handle, onError: onServerError);
+    instance._accept();
     return instance;
   }
 
-  final HttpServer _server;
+  final ServerSocket _server;
   final Uri origin;
   final List<Map<String, dynamic>> _responses;
   final Map<String, ({String step, String family, String? cohort})> _owners;
   final Map<String, int> _cohortSizes;
   final Map<String, int> _cohortTimeouts;
+  final Map<String, int> _cohortThreadCounts;
+  final Map<String, String> _cohortThreadSources;
   final void Function(Object error) _onServerError;
 
   final requests = <Map<String, Object?>>[];
@@ -2423,6 +2583,8 @@ class _ReplayServer {
   final _gates = <String, _CohortGate>{};
   final _attempts = <String, int>{};
   final _lastTerminal = <String, String>{};
+  final _connections = <_ReplayConnection>{};
+  int _nextSendSequence = 1;
   final hold = _HoldGate();
 
   /// The corpus step currently running, recorded with every request as
@@ -2431,6 +2593,8 @@ class _ReplayServer {
 
   bool _closed = false;
   bool get closed => _closed;
+
+  int get port => _server.port;
 
   Map<String, Object?> cohortBlock(String cohort) => _gates[cohort]!.block();
 
@@ -2446,29 +2610,38 @@ class _ReplayServer {
     }
   }
 
-  Future<void> _handle(HttpRequest request) async {
+  void _accept() {
+    _server.listen((socket) {
+      final connection = _ReplayConnection(this, socket);
+      _connections.add(connection);
+      connection.run().whenComplete(() {
+        _connections.remove(connection);
+        connection.dispose();
+      });
+    }, onError: _onServerError);
+  }
+
+  /// The named refusal of one owned connection's framing: a recorded server error
+  /// makes the measurement non-promotable instead of guessing a body.
+  void refuseFraming(_ReplayConnection connection, String reason) {
+    _onServerError('replay connection refused: $reason');
+    connection.closeSocket();
+  }
+
+  Future<void> _handleRequest(
+    _RawRequest request,
+    _ReplayConnection connection,
+  ) async {
     final receivedAt = _nowNanos();
-    final body = request.method == 'POST'
-        ? await utf8.decoder.bind(request).join()
-        : '';
-    final headers = <String, Object?>{};
-    request.headers.forEach((name, values) {
-      headers[name.toLowerCase()] = values.length == 1
-          ? values.single
-          : values.join(', ');
-    });
-    final headerLines = <String>[];
-    request.headers.forEach((name, values) {
-      for (final value in values) {
-        headerLines.add('${_headerCase(name)}: $value');
-      }
-    });
-    final bytes = utf8.encode(body);
-    final declared = _match(request.method, request.uri);
+    final bodyBytes = request.bodyBytes;
+    final body = utf8.decode(bodyBytes, allowMalformed: false);
+    final headers = <String, Object?>{
+      for (final e in request.headers.entries) e.key: e.value,
+    };
+    final declared = _match(request.method, request.path, request.rawQuery);
     final declaredId = declared == null ? null : '${declared['id']}';
     final owner = declaredId == null ? null : _owners[declaredId];
-    final selector =
-        '${request.method} ${request.uri.path}?${request.uri.query}';
+    final selector = '${request.method} ${request.path}?${request.rawQuery}';
     final attempt = _attempts.update(
       selector,
       (value) => value + 1,
@@ -2489,19 +2662,22 @@ class _ReplayServer {
           : 'transport-reconnect',
       'selector': selector,
       'method': request.method,
-      'target': _target(request.uri),
-      'path': request.uri.path,
-      'rawQuery': request.uri.query,
-      'query': request.uri.queryParameters,
+      'target': request.rawTarget,
+      'path': request.path,
+      'rawQuery': request.rawQuery,
+      'query': _decodedQuery(request.rawQuery),
       'headers': headers,
-      'headerLines': headerLines,
+      'headerLines': request.headerLines,
+      // The bytes the framing declared, never a decode/re-encode of them.
       'body': body,
-      'bodyLength': bytes.length,
-      'bodySha256': sha256Bytes(bytes),
+      'bodyLength': bodyBytes.length,
+      'bodySha256': sha256Bytes(bodyBytes),
       'receivedAtNanos': receivedAt,
-      'respondedAtNanos': receivedAt,
-      'sentAtNanos': receivedAt,
-      'sendSequence': index,
+      // Unsent facts: nothing has been written yet, so a peer abort before the
+      // first response byte can never report a send or a completion.
+      'respondedAtNanos': 0,
+      'sentAtNanos': 0,
+      'sendSequence': 0,
       'status': -1,
       'terminal': 'received',
       'declaredResponse': declaredId,
@@ -2521,10 +2697,14 @@ class _ReplayServer {
       record['outcome'] = 'omitted-unmatched';
       _lastTerminal[selector] = 'omitted-unmatched';
       unmatched.add(record);
-      request.response.statusCode = HttpStatus.notFound;
-      request.response.headers.contentType = ContentType.text;
-      request.response.add(utf8.encode('undeclared replay request'));
-      await request.response.close();
+      await _send(
+        connection,
+        record,
+        status: 404,
+        reason: 'Not Found',
+        headers: const {'Content-Type': 'text/plain'},
+        body: utf8.encode('undeclared replay request'),
+      );
       return;
     }
     _CohortGate? gate;
@@ -2536,155 +2716,404 @@ class _ReplayServer {
           cohort,
           _cohortSizes[cohort]!,
           _cohortTimeouts[cohort]!,
+          _cohortThreadCounts[cohort] ?? httpBoundaryBatchWidth,
+          _cohortThreadSources[cohort] ?? 'unrecorded configuration',
         ),
       );
       final arrival = await gate.arrive(selector);
       record['cohortComplete'] = arrival.cohortComplete;
       record['releaseReason'] = arrival.releaseReason;
-      record['sentAtNanos'] = _nowNanos();
     }
     if (declared['hold'] == true) {
-      await _handleHeld(request, record, declared, selector);
+      await _handleHeldRequest(connection, record, declared, selector);
       gate?.finish();
       return;
     }
-    try {
-      request.response.statusCode = _integer(declared['status'], 'status');
-      final declaredHeaders =
-          (declared['headers'] as Map?)?.cast<String, dynamic>() ?? const {};
-      for (final entry in declaredHeaders.entries) {
-        final name = entry.key.toLowerCase();
-        if (name == 'content-length' || name == 'transfer-encoding') continue;
-        if (name == 'content-type') {
-          request.response.headers.contentType = ContentType.parse(
-            '${entry.value}',
-          );
-        } else {
-          request.response.headers.set(entry.key, '${entry.value}');
-        }
-      }
-      request.response.add(utf8.encode('${declared['body'] ?? ''}'));
-      await request.response.close();
-      record['respondedAtNanos'] = _nowNanos();
-      record['sentAtNanos'] = _nowNanos();
-      record['status'] = declared['status'];
+    final status = _integer(declared['status'], 'status');
+    final declaredHeaders =
+        (declared['headers'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final wrote = await _send(
+      connection,
+      record,
+      status: status,
+      reason: 'OK',
+      headers: {
+        for (final entry in declaredHeaders.entries)
+          if (!const {
+            'content-length',
+            'transfer-encoding',
+            'connection',
+          }.contains(entry.key.toLowerCase()))
+            entry.key: '${entry.value}',
+      },
+      body: utf8.encode('${declared['body'] ?? ''}'),
+    );
+    if (wrote) {
+      record['status'] = status;
       record['terminal'] = 'responded';
       record['outcome'] = 'responded';
       _lastTerminal[selector] = 'responded';
-    } on Object catch (error) {
-      record['terminal'] = 'write-failed';
-      record['outcome'] = 'write-failed';
-      _lastTerminal[selector] = 'write-failed';
-      _onServerError(error);
-    } finally {
-      gate?.finish();
     }
+    gate?.finish();
   }
 
-  /// One held response: the socket is detached so the peer's own close is
-  /// observable while nothing has been written, then the declared response is
-  /// written once the hold is released. A write or flush that fails, or a peer
-  /// that closed first, is the measured client abort; nothing is assumed.
-  Future<void> _handleHeld(
-    HttpRequest request,
+  /// One held response: nothing is written until the hold is released, and a
+  /// peer that closed first keeps the row unsent with the abort terminal.
+  Future<void> _handleHeldRequest(
+    _ReplayConnection connection,
     Map<String, Object?> record,
     Map<String, dynamic> declared,
     String selector,
   ) async {
-    final body = utf8.encode('${declared['body'] ?? ''}');
     final status = _integer(declared['status'], 'status');
-    Socket socket;
-    try {
-      socket = await request.response.detachSocket(writeHeaders: false);
-    } on Object catch (error) {
-      record['terminal'] = 'write-failed';
-      record['outcome'] = 'write-failed';
-      _lastTerminal[selector] = 'write-failed';
-      _onServerError(error);
-      hold.finish(aborted: false);
+    hold.enter(selector);
+    await hold.released.future;
+    if (hold.peerClosedObserved) {
+      record['terminal'] = 'client-aborted';
+      record['outcome'] = 'client-aborted';
+      _lastTerminal[selector] = 'client-aborted';
+      hold.finish(aborted: true);
+      connection.closeSocket();
       return;
     }
-    final subscription = socket.listen(
-      (_) {},
-      onDone: () => hold.notePeerClosed('peer-closed'),
-      onError: (Object error) => hold.notePeerClosed(error),
-    );
-    // The detached socket belongs to this handler now, not to the server: every
-    // path below has to close it, or the process keeps a live handle after the
-    // report is written.
-    try {
-      hold.enter(selector);
-      await hold.released.future;
-      if (hold.peerClosedObserved) {
-        // The peer closed while the response was held: this row's honest
-        // terminal is the abort it measured, whichever way a later write would
-        // behave.
-        record['terminal'] = 'client-aborted';
-        record['outcome'] = 'client-aborted';
-        _lastTerminal[selector] = 'client-aborted';
-        hold.finish(aborted: true);
-        return;
-      }
-      try {
-        socket.write(
-          'HTTP/1.1 $status OK\r\n'
-          'Content-Type: text/plain\r\n'
-          'Content-Length: ${body.length}\r\n'
-          'Connection: close\r\n\r\n',
-        );
-        socket.add(body);
-        await socket.flush();
-        await socket.close();
-        record['respondedAtNanos'] = _nowNanos();
-        record['sentAtNanos'] = _nowNanos();
-        record['status'] = status;
-        record['terminal'] = 'responded';
-        record['outcome'] = 'responded';
-        _lastTerminal[selector] = 'responded';
-        hold.finish(aborted: false);
-      } on Object catch (error) {
-        record['terminal'] = 'client-aborted';
-        record['outcome'] = 'client-aborted';
+    final wrote = await _send(
+      connection,
+      record,
+      status: status,
+      reason: 'OK',
+      headers: const {'Content-Type': 'text/plain'},
+      body: utf8.encode('${declared['body'] ?? ''}'),
+      onWriteFailed: (error) {
         record['abortError'] = '$error';
-        _lastTerminal[selector] = 'client-aborted';
         hold.notePeerClosed(error);
         hold.finish(aborted: true);
-      }
-    } finally {
-      await subscription.cancel();
-      socket.destroy();
+        _lastTerminal[selector] = 'client-aborted';
+      },
+    );
+    if (wrote) {
+      record['status'] = status;
+      record['terminal'] = 'responded';
+      record['outcome'] = 'responded';
+      _lastTerminal[selector] = 'responded';
+      hold.finish(aborted: false);
     }
   }
 
-  Map<String, dynamic>? _match(String method, Uri uri) {
+  /// Writes one declared response with real HTTP/1.1 framing and records the send
+  /// facts only around the actual write and flush.
+  Future<bool> _send(
+    _ReplayConnection connection,
+    Map<String, Object?> record, {
+    required int status,
+    required String reason,
+    required Map<String, String> headers,
+    required List<int> body,
+    void Function(Object error)? onWriteFailed,
+  }) async {
+    final head = StringBuffer('HTTP/1.1 $status $reason\r\n');
+    for (final entry in headers.entries) {
+      head.write('${entry.key}: ${entry.value}\r\n');
+    }
+    head.write('Content-Length: ${body.length}\r\n');
+    head.write(connection.wantsClose ? 'Connection: close\r\n' : '');
+    head.write('\r\n');
+    record['sentAtNanos'] = _nowNanos();
+    record['sendSequence'] = _nextSendSequence++;
+    try {
+      connection.socket.add(ascii.encode(head.toString()));
+      connection.socket.add(body);
+      await connection.socket.flush();
+      record['respondedAtNanos'] = _nowNanos();
+      return true;
+    } on Object catch (error) {
+      record['terminal'] = 'write-failed';
+      record['outcome'] = 'write-failed';
+      record['sentAtNanos'] = 0;
+      record['respondedAtNanos'] = 0;
+      _lastTerminal['${record['selector']}'] = 'write-failed';
+      _onServerError(error);
+      onWriteFailed?.call(error);
+      connection.closeSocket();
+      return false;
+    }
+  }
+
+  Map<String, Object?> _decodedQuery(String rawQuery) {
+    if (rawQuery.isEmpty) return const <String, Object?>{};
+    try {
+      return Uri.splitQueryString(rawQuery);
+    } on FormatException {
+      return const <String, Object?>{};
+    }
+  }
+
+  /// The declared response for one request: literal method, path and raw query
+  /// bytes. A semantically equivalent but differently encoded target is a
+  /// different request.
+  Map<String, dynamic>? _match(String method, String path, String rawQuery) {
     for (final response in _responses) {
       if (response['method'] != method) continue;
-      if (response['path'] != uri.path) continue;
-      if ('${response['rawQuery'] ?? ''}' != uri.query) continue;
+      if (response['path'] != path) continue;
+      if ('${response['rawQuery'] ?? ''}' != rawQuery) continue;
       return response;
     }
     return null;
   }
 
-  String _target(Uri uri) =>
-      uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
-
   Future<void> close() async {
     releaseAllGates();
-    await _server.close(force: true);
+    await _server.close();
+    for (final connection in _connections.toList()) {
+      connection.closeSocket();
+    }
+    _connections.clear();
     _closed = true;
   }
+}
+
+/// One owned connection: a single stream subscription over the socket, the bytes
+/// it has not consumed yet, and the sequential keep-alive request loop.
+class _ReplayConnection {
+  _ReplayConnection(this.server, this.socket);
+
+  final _ReplayServer server;
+  final Socket socket;
+
+  static const _maxRequestBytes = 1024 * 1024;
+
+  final _buffered = <int>[];
+  StreamSubscription<List<int>>? _subscription;
+  Completer<void>? _more;
+  bool _peerClosed = false;
+  bool _disposed = false;
+  Object? _streamError;
+  bool wantsClose = false;
+
+  Future<void> run() async {
+    _subscription = socket.listen(
+      (data) {
+        _buffered.addAll(data);
+        _wake();
+      },
+      onDone: () {
+        _peerClosed = true;
+        // A peer close while a response is held is the measured abort; a close
+        // after the hold was released (or with none) is not.
+        if (server.hold.awaitingRelease) {
+          server.hold.notePeerClosed('peer-closed');
+        }
+        _wake();
+      },
+      onError: (Object error) {
+        _streamError ??= error;
+        _peerClosed = true;
+        if (server.hold.awaitingRelease) {
+          server.hold.notePeerClosed(error);
+        }
+        _wake();
+      },
+      cancelOnError: false,
+    );
+    try {
+      while (!_disposed && !server.closed) {
+        final request = await _readRequest();
+        if (request == null) return;
+        wantsClose = request.wantsClose;
+        await server._handleRequest(request, this);
+        if (wantsClose) return;
+      }
+    } on _ReplayFramingError catch (error) {
+      server.refuseFraming(this, error.message);
+    } on Object catch (error) {
+      server._onServerError(error);
+      closeSocket();
+    }
+  }
+
+  void _wake() {
+    final waiter = _more;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
+  }
+
+  Future<bool> _need(int count) async {
+    while (_buffered.length < count) {
+      if (_peerClosed) return false;
+      final waiter = _more = Completer<void>();
+      await waiter.future;
+    }
+    return true;
+  }
+
+  Future<_RawRequest?> _readRequest() async {
+    // The header block ends at the first empty line; split reads are normal.
+    var boundary = -1;
+    while (boundary < 0) {
+      if (_buffered.length > _maxRequestBytes) {
+        throw const _ReplayFramingError(
+          'the request header block exceeds 1 MiB',
+        );
+      }
+      boundary = _indexOfHeaderEnd(_buffered);
+      if (boundary >= 0) break;
+      if (!await _need(_buffered.length + 1)) {
+        if (_buffered.isEmpty) return null; // clean EOF between requests
+        throw const _ReplayFramingError(
+          'the connection ended inside a request header block',
+        );
+      }
+    }
+    final headerBytes = _buffered.sublist(0, boundary);
+    _buffered.removeRange(0, boundary + 4);
+    final headerText = latin1.decode(headerBytes);
+    final lines = headerText.split('\r\n');
+    if (lines.isEmpty || lines.first.isEmpty) {
+      throw const _ReplayFramingError('the request line is empty');
+    }
+    final parts = lines.first.split(' ');
+    if (parts.length != 3) {
+      throw _ReplayFramingError(
+        'the request line is not "METHOD target HTTP/x.y": ${lines.first}',
+      );
+    }
+    final method = parts[0];
+    final rawTarget = parts[1];
+    final version = parts[2];
+    if (method.isEmpty || rawTarget.isEmpty || !rawTarget.startsWith('/')) {
+      throw _ReplayFramingError('the request target is not origin-form');
+    }
+    if (version != 'HTTP/1.1' && version != 'HTTP/1.0') {
+      throw _ReplayFramingError('unsupported HTTP version $version');
+    }
+    final headerLines = <String>[];
+    final headers = <String, String>{};
+    final contentLengths = <int>[];
+    var wantsClose = version == 'HTTP/1.0';
+    for (final line in lines.skip(1)) {
+      if (line.isEmpty) continue;
+      final colon = line.indexOf(':');
+      if (colon <= 0) {
+        throw _ReplayFramingError('a header line has no name: $line');
+      }
+      final name = line.substring(0, colon);
+      final value = line.substring(colon + 1).trim();
+      headerLines.add('$name: $value');
+      final lower = name.toLowerCase();
+      if (lower == 'content-length') {
+        final length = int.tryParse(value);
+        if (length == null || length < 0) {
+          throw _ReplayFramingError('invalid Content-Length "$value"');
+        }
+        contentLengths.add(length);
+      } else if (lower == 'transfer-encoding') {
+        throw _ReplayFramingError(
+          'unsupported framing: Transfer-Encoding "$value"',
+        );
+      } else if (lower == 'expect') {
+        throw _ReplayFramingError('unsupported framing: Expect "$value"');
+      } else if (lower == 'connection') {
+        if (value
+            .toLowerCase()
+            .split(',')
+            .map((part) => part.trim())
+            .contains('close')) {
+          wantsClose = true;
+        }
+      }
+      headers[lower] = value;
+    }
+    if (contentLengths.toSet().length > 1) {
+      throw const _ReplayFramingError('conflicting Content-Length headers');
+    }
+    final length = contentLengths.isEmpty ? 0 : contentLengths.single;
+    if (length > _maxRequestBytes) {
+      throw const _ReplayFramingError('the declared body exceeds 1 MiB');
+    }
+    if (length > 0 && !await _need(length)) {
+      throw const _ReplayFramingError(
+        'the connection ended before the declared body was read',
+      );
+    }
+    final body = _buffered.sublist(0, length);
+    _buffered.removeRange(0, length);
+    if (_streamError != null && body.length < length) {
+      throw _ReplayFramingError('the connection failed: $_streamError');
+    }
+    return _RawRequest(
+      method: method,
+      rawTarget: rawTarget,
+      version: version,
+      headerLines: headerLines,
+      headers: headers,
+      bodyBytes: body,
+      wantsClose: wantsClose || _peerClosed,
+    );
+  }
+
+  static int _indexOfHeaderEnd(List<int> bytes) {
+    for (var index = 0; index + 3 < bytes.length; index++) {
+      if (bytes[index] == 13 &&
+          bytes[index + 1] == 10 &&
+          bytes[index + 2] == 13 &&
+          bytes[index + 3] == 10) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  void closeSocket() {
+    if (_disposed) return;
+    _disposed = true;
+    _wake();
+    try {
+      socket.destroy();
+    } on Object {
+      // The socket is already gone; its terminal was recorded by the caller.
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    _wake();
+    final subscription = _subscription;
+    _subscription = null;
+    subscription?.cancel().catchError((Object _) {});
+    // The handler is finished with this connection: the socket must not outlive
+    // it (a keep-alive client would otherwise wait for an end that never comes).
+    try {
+      socket.destroy();
+    } on Object {
+      // Already gone.
+    }
+  }
+}
+
+class _ReplayFramingError implements Exception {
+  const _ReplayFramingError(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }
 
 /// One declared concurrent batch: its members are held until every member is in
 /// flight or the cohort's own window expires, and the block keeps the measured
 /// peak, membership and release reason.
 class _CohortGate {
-  _CohortGate(this.id, this.size, this.timeoutMs);
+  _CohortGate(
+    this.id,
+    this.size,
+    this.timeoutMs, [
+    this.threadCount = httpBoundaryBatchWidth,
+    this.threadCountSource = 'unrecorded configuration',
+  ]);
 
   final String id;
   final int size;
   final int timeoutMs;
+
+  /// The configuration the owning family actually runs with.
+  final int threadCount;
+  final String threadCountSource;
   final membership = <String>[];
   final _waiting = <Completer<void>>[];
   int inFlight = 0;
@@ -2745,7 +3174,7 @@ class _CohortGate {
     'releaseReason': released ? releaseReason : 'cohort-window',
     'inFlightPeak': peak,
     'membership': membership.toSet().toList()..sort(),
-    'threadCount': httpBoundaryBatchWidth,
+    'threadCount': threadCount,
   };
 
   Map<String, Object?> evidence() => {
@@ -2753,6 +3182,8 @@ class _CohortGate {
     'memberCount': membership.length,
     'memberArrivalOrder': membership,
     'releaseReason': released ? releaseReason : 'cohort-window',
+    'threadCount': threadCount,
+    'threadCountSource': threadCountSource,
     'note':
         'the product has no gate of its own: this block records the corpus '
         "replay listener's own hold decision",
@@ -2795,6 +3226,10 @@ class _HoldGate {
   void enter(String selector) {
     if (!_entered.isCompleted) _entered.complete(true);
   }
+
+  /// Whether a hold is entered and not yet released: the only window in which a
+  /// peer close is the measured abort.
+  bool get awaitingRelease => _entered.isCompleted && !released.isCompleted;
 
   void release() {
     if (!_entered.isCompleted) _entered.complete(false);
@@ -2905,10 +3340,217 @@ class _FailEndpoint {
   }
 }
 
-String _headerCase(String name) => [
-  for (final part in name.split('-'))
-    part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}',
-].join('-');
+/// Drives the real replay listener through a real loopback socket, so the
+/// focused tests exercise the owned framing/reader itself rather than a model of
+/// it. One declared response, one connection per entry in [rawRequests] unless
+/// [sequential] asks for them on one connection.
+Future<Map<String, Object?>> probeOwnedReplayListener({
+  required Map<String, Object?> response,
+  required List<String> rawRequests,
+  bool sequential = false,
+  bool fragment = false,
+  bool abortHeld = false,
+  bool closeAfterWrite = false,
+}) async {
+  final requests = <Map<String, Object?>>[];
+  final unmatched = <Map<String, Object?>>[];
+  final serverErrors = <String>[];
+  final responseBytes = <int>[];
+  final listener = await _ReplayServer.start(
+    origin: Uri.parse('http://127.0.0.1:0'),
+    responses: [response.cast<String, dynamic>()],
+    owners: {
+      '${response['id']}': (step: 'probe.step', family: 'stage', cohort: null),
+    },
+    cohortSizes: const {},
+    cohortTimeouts: const {},
+    onServerError: (error) => serverErrors.add('$error'),
+  );
+  try {
+    Future<List<int>> oneConnection(String raw) async {
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        listener.port,
+      );
+      final received = <int>[];
+      final done = Completer<void>();
+      final answered = Completer<void>();
+      final subscription = socket.listen(
+        (data) {
+          received.addAll(data);
+          if (!answered.isCompleted) answered.complete();
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        onError: (Object _) {
+          if (!done.isCompleted) done.complete();
+        },
+      );
+      try {
+        final bytes = utf8.encode(raw);
+        if (fragment && bytes.length > 12) {
+          socket.add(bytes.sublist(0, 12));
+          await socket.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          socket.add(bytes.sublist(12));
+        } else {
+          socket.add(bytes);
+        }
+        await socket.flush();
+        if (abortHeld) {
+          final entered = await listener.hold.entered.timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => false,
+          );
+          if (entered != true) {
+            throw StateError('the held response was not entered');
+          }
+          socket.destroy();
+          await listener.hold.peerClosed.timeout(const Duration(seconds: 5));
+          listener.releaseHold();
+          await listener.hold.abortObserved.future.timeout(
+            const Duration(seconds: 5),
+          );
+        } else if (closeAfterWrite) {
+          // The client ends its own request early (a truncated body, an EOF
+          // between requests): the listener must refuse it visibly.
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          socket.destroy();
+          // The client ended this connection itself, so it is done here whatever
+          // the listener does next; the listener's refusal is what is measured.
+          if (!done.isCompleted) done.complete();
+          await done.future.timeout(const Duration(seconds: 10));
+        } else if (raw.toLowerCase().contains('connection: close')) {
+          // The server closes after this response, so the body arrives with it.
+          await done.future.timeout(const Duration(seconds: 10));
+        } else {
+          // A keep-alive server answers and stays open: the response is the
+          // client's completion fact, not the socket's end.
+          await Future.any([
+            answered.future,
+            done.future,
+          ]).timeout(const Duration(seconds: 10));
+        }
+      } finally {
+        await subscription.cancel();
+        socket.destroy();
+      }
+      return received;
+    }
+
+    if (sequential) {
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        listener.port,
+      );
+      final received = <int>[];
+      final done = Completer<void>();
+      final subscription = socket.listen(
+        received.addAll,
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        onError: (Object _) {
+          if (!done.isCompleted) done.complete();
+        },
+      );
+      try {
+        for (final raw in rawRequests) {
+          socket.add(utf8.encode(raw));
+          await socket.flush();
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+        socket.destroy();
+        await done.future.timeout(const Duration(seconds: 10));
+      } finally {
+        await subscription.cancel();
+      }
+      responseBytes.addAll(received);
+    } else {
+      for (final raw in rawRequests) {
+        responseBytes.addAll(await oneConnection(raw));
+      }
+    }
+    // The listener records asynchronously; give the last handler its turn.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    requests.addAll(listener.requests);
+    unmatched.addAll(listener.unmatched);
+  } finally {
+    await listener.close();
+  }
+  return {
+    'requests': requests,
+    'unmatched': unmatched,
+    'serverErrors': serverErrors,
+    'responseBytes': responseBytes.length,
+    'responseText': utf8.decode(responseBytes, allowMalformed: true),
+    'closed': listener.closed,
+  };
+}
+
+/// The order every owned resource follows after admission stops: owned workers
+/// settle first, and only then are the database, the native runtime and the
+/// scratch root touched. A worker that cannot settle inside [deadline] is not
+/// hidden: the remaining steps do not run and the owned residue is retained.
+class HttpBoundaryTeardownReceipt {
+  const HttpBoundaryTeardownReceipt({
+    required this.workerSettled,
+    required this.stepsRun,
+    required this.residueRetained,
+    required this.timeoutMillis,
+  });
+
+  final bool workerSettled;
+  final List<String> stepsRun;
+  final bool residueRetained;
+  final int timeoutMillis;
+
+  Map<String, Object?> toJson() => {
+    'workerSettled': workerSettled,
+    'stepsRun': stepsRun,
+    'residueRetained': residueRetained,
+    'timeoutMillis': timeoutMillis,
+  };
+}
+
+Future<HttpBoundaryTeardownReceipt> settleOwnedTeardown({
+  required List<Future<void>> workers,
+  required Duration deadline,
+  required Future<void> Function() closeDatabase,
+  required Future<void> Function() disposeNative,
+  required Future<void> Function() removeRoot,
+}) async {
+  var settled = true;
+  if (workers.isNotEmpty) {
+    try {
+      await Future.wait(workers).timeout(deadline);
+    } on TimeoutException {
+      settled = false;
+    }
+  }
+  if (!settled) {
+    return HttpBoundaryTeardownReceipt(
+      workerSettled: false,
+      stepsRun: const <String>[],
+      residueRetained: true,
+      timeoutMillis: deadline.inMilliseconds,
+    );
+  }
+  final steps = <String>[];
+  await closeDatabase();
+  steps.add('closeDatabase');
+  await disposeNative();
+  steps.add('disposeNative');
+  await removeRoot();
+  steps.add('removeRoot');
+  return HttpBoundaryTeardownReceipt(
+    workerSettled: true,
+    stepsRun: steps,
+    residueRetained: false,
+    timeoutMillis: deadline.inMilliseconds,
+  );
+}
 
 Map<String, Object?> _lowerHeaders(HttpHeaders headers) {
   final result = <String, Object?>{};

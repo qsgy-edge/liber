@@ -790,6 +790,50 @@ void validateProductReport(
           : '$connectionPath?$connectionQuery',
       'failEndpoint.connections.$index.target',
     );
+    // The connection is the declared failure step's own request, not any peer:
+    // its method, path, raw query and the source-controlled headers are that
+    // request's identity.
+    final declaredFailure = _declaredFailureRequest(corpus);
+    gate.equal(
+      '${connection['method']}',
+      declaredFailure.method,
+      'failEndpoint.connections.$index.method',
+    );
+    gate.equal(
+      connectionPath,
+      declaredFailure.path,
+      'failEndpoint.connections.$index.path',
+    );
+    gate.equal(
+      connectionQuery,
+      declaredFailure.rawQuery,
+      'failEndpoint.connections.$index.rawQuery',
+    );
+    final connectionHeaders = gate.object(
+      connection['headers'],
+      'failEndpoint.connections.$index.headers',
+    );
+    for (final entry in declaredFailure.headers.entries) {
+      Object? actual;
+      for (final key in connectionHeaders.keys) {
+        if (key.toLowerCase() == entry.key) actual = connectionHeaders[key];
+      }
+      if (actual != entry.value) {
+        gate.fail(
+          'failEndpoint.connections.$index.headers.${entry.key} is '
+          '$actual, the corpus declares ${entry.value}',
+        );
+      }
+    }
+    if (connectionQuery.contains('cookie') ||
+        connectionHeaders.keys.any((key) => key.toLowerCase() == 'cookie')) {
+      gate.fail('failEndpoint.connections.$index carries a cookie');
+    }
+    gate.equal(
+      '${connection['classification']}',
+      index == 0 ? 'initial' : 'transport-reconnect',
+      'failEndpoint.connections.$index.classification',
+    );
   }
   gate.equal(
     failure['acceptedConnections'],
@@ -1042,15 +1086,32 @@ void validateProductReport(
     }
     gate.equal(row['outcome'], terminal, '$where.outcome');
     final status = row['status'];
+    final sentAt = row['sentAtNanos'] as int? ?? 0;
+    final respondedAt = row['respondedAtNanos'] as int? ?? 0;
+    final sendSequence = row['sendSequence'] as int? ?? 0;
     if (terminal == 'responded') {
       if (status is int && (status < 200 || status > 599)) {
         gate.fail('$where.status $status is not a response status');
       }
-      if ((row['sentAtNanos'] as int? ?? 0) <= 0) {
-        gate.fail('$where.sentAtNanos is not a send fact');
+      // A responded row really wrote: the send facts exist and are ordered.
+      if (sentAt <= 0) gate.fail('$where.sentAtNanos is not a send fact');
+      if (respondedAt <= 0) {
+        gate.fail('$where.respondedAtNanos is not a completion fact');
       }
-    } else if (status != -1) {
-      gate.fail('$where is $terminal but carries status $status');
+      if (sendSequence <= 0) {
+        gate.fail('$where.sendSequence is not a send fact');
+      }
+      if (respondedAt < sentAt) {
+        gate.fail('$where completed before its own send');
+      }
+    } else {
+      if (status != -1) {
+        gate.fail('$where is $terminal but carries status $status');
+      }
+      // Nothing was written on an aborted/failed row: no send, no completion.
+      if (sentAt != 0 || respondedAt != 0 || sendSequence != 0) {
+        gate.fail('$where is $terminal but reports a send or a completion');
+      }
     }
     // The causal chronology: the row order is the arrival order, a selector's
     // attempts increase from 1, and a sequential step cannot arrive after a
@@ -1073,10 +1134,13 @@ void validateProductReport(
     final received = row['receivedAtNanos'];
     final sent = row['sentAtNanos'];
     final responded = row['respondedAtNanos'];
-    if (received is int && sent is int && sent < received) {
+    if (received is int && sent is int && sent != 0 && sent < received) {
       gate.fail('$where.sentAtNanos precedes its own arrival');
     }
-    if (received is int && responded is int && responded < received) {
+    if (received is int &&
+        responded is int &&
+        responded != 0 &&
+        responded < received) {
       gate.fail('$where.respondedAtNanos precedes its own arrival');
     }
     final key = '$owner|$selector';
@@ -1175,6 +1239,34 @@ void validateProductReport(
     }
     final value = gate.object(row['value'], '$where.value');
     if (value.isEmpty) gate.fail('$where.value is empty');
+    // The declared batch block's own schema: its counts and configuration are
+    // integers, its flags booleans and its membership strings. A same-valued
+    // double is not the declared integer.
+    if (value.containsKey('batch')) {
+      final batch = gate.object(value['batch'], '$where.value.batch');
+      gate.field(batch, 'cohort', '$where.value.batch', _Field.string);
+      for (final name in const [
+        'cohortSize',
+        'cohortTimeoutMs',
+        'inFlightPeak',
+        'threadCount',
+      ]) {
+        gate.field(batch, name, '$where.value.batch', _Field.integer);
+      }
+      for (final name in const ['entered', 'cohortComplete']) {
+        gate.field(batch, name, '$where.value.batch', _Field.boolean);
+      }
+      gate.field(batch, 'releaseReason', '$where.value.batch', _Field.string);
+      final membership = gate.array(
+        batch['membership'],
+        '$where.value.batch.membership',
+      );
+      for (var slot = 0; slot < membership.length; slot++) {
+        if (membership[slot] is! String) {
+          gate.fail('$where.value.batch.membership.$slot is not a string');
+        }
+      }
+    }
     final owned = ownedByObservation[id] ?? const <Map<String, dynamic>>[];
     gate.equal(row['requests'], owned, '$where.requests');
     final declared = httpBoundaryDeclaredRequests(step);
@@ -1270,6 +1362,19 @@ void validateProductReport(
       corpusSourceUrl(corpus, '${rate['source']}'),
       'observations.$id.evidence.sourceKey',
     );
+    // A record this operation created or reset carries that operation's own
+    // admission instant; a same-window record carries the shared window start.
+    final createdHere = index == 0 || value['sameWindowAsPrevious'] == false;
+    if (createdHere && callStart is int && callFinish is int && after != null) {
+      final recordTime = after['time'];
+      if (recordTime is int &&
+          (recordTime < callStart || recordTime > callFinish)) {
+        gate.fail(
+          '$where.recordAfter.time lies outside its own operation '
+          'interval',
+        );
+      }
+    }
     if (index == 0) {
       if (before != null) gate.fail('$where.recordBefore is not null');
       if (after == null) {
@@ -2159,6 +2264,57 @@ void _followUpRelations(
   gate.equal(followUp['tokenPresent'], true, '$where.followUp.tokenPresent');
 }
 
+/// The failure step's own declared request: its source's `searchUrl` template
+/// expanded with the step's keyword and page, exactly as the corpus declares it
+/// and the pipeline issues it. Used to bind the separate connection trace.
+({String method, String path, String rawQuery, Map<String, String> headers})
+_declaredFailureRequest(Map<String, dynamic> corpus) {
+  final endpoint = _object(corpus['failureEndpoint'], 'failureEndpoint');
+  final stepId = '${endpoint['step']}';
+  final step = httpBoundarySteps(corpus).firstWhere(
+    (candidate) => '${candidate['id']}' == stepId,
+    orElse: () =>
+        throw const HttpBoundaryRefusal('the corpus declares no failure step'),
+  );
+  final source = httpBoundarySourceOf(corpus, '${step['source']}');
+  final template = '${source['searchUrl']}';
+  final cut = template.indexOf(',{');
+  final path = cut < 0 ? template : template.substring(0, cut);
+  final expanded = path
+      .replaceAll(r'{{key}}', '${step['keyword']}')
+      .replaceAll(r'{{page}}', '1');
+  final boundary = expanded.indexOf('?');
+  final headers = <String, String>{};
+  // The source's own static header rule is part of the request's identity; a
+  // script rule is left to the runtime and is not re-evaluated here.
+  final declaredHeader = '${source['header'] ?? ''}'.trim();
+  if (declaredHeader.startsWith('{')) {
+    try {
+      final decoded = jsonDecode(declaredHeader);
+      if (decoded is Map) {
+        for (final entry in decoded.entries) {
+          headers['${entry.key}'.toLowerCase()] = '${entry.value}';
+        }
+      }
+    } on FormatException {
+      // A non-static rule is not an authored header map; the step's own
+      // requirements below still apply.
+    }
+  }
+  final required = step['requiredHeaders'];
+  if (required is Map) {
+    for (final entry in required.entries) {
+      headers['${entry.key}'.toLowerCase()] = '${entry.value}';
+    }
+  }
+  return (
+    method: 'GET',
+    path: boundary < 0 ? expanded : expanded.substring(0, boundary),
+    rawQuery: boundary < 0 ? '' : expanded.substring(boundary + 1),
+    headers: headers,
+  );
+}
+
 /// The four database categories this observer actually reads: the runner's own
 /// fixed measurement contract (`runner.dart` inventory query), not a generic
 /// database schema.
@@ -2717,6 +2873,78 @@ HttpBoundaryComparison compareHttpBoundaryRecords({
           field: field,
           expected: expectedFailure[field],
           observed: productFailure[field],
+        ),
+      );
+    }
+  }
+  // The separate connection trace is compared, not only counted: every actual
+  // attempt's portable request identity and its classification, in causal order.
+  final expectedConnections = [
+    for (final raw in _array(
+      expectedFailure['connections'],
+      'golden failEndpoint.connections',
+    ))
+      _object(raw, 'golden connection'),
+  ];
+  final productConnections = [
+    for (final raw in _array(
+      productFailure['connections'],
+      'product failEndpoint.connections',
+    ))
+      _object(raw, 'product connection'),
+  ];
+  if (expectedConnections.length != productConnections.length) {
+    mismatches.add(
+      HttpBoundaryMismatch(
+        surface: 'failEndpoint',
+        row: 'connections',
+        field: 'count',
+        expected: expectedConnections.length,
+        observed: productConnections.length,
+        kind: 'count',
+      ),
+    );
+  }
+  final sharedConnections =
+      expectedConnections.length < productConnections.length
+      ? expectedConnections.length
+      : productConnections.length;
+  for (var index = 0; index < sharedConnections; index++) {
+    final expectedConnection = expectedConnections[index];
+    final productConnection = productConnections[index];
+    for (final field in const [
+      'classification',
+      'method',
+      'path',
+      'rawQuery',
+      'target',
+      'requestObserved',
+      'terminal',
+    ]) {
+      if (expectedConnection[field] != productConnection[field]) {
+        mismatches.add(
+          HttpBoundaryMismatch(
+            surface: 'failEndpoint',
+            row: 'connections.$index',
+            field: field,
+            expected: expectedConnection[field],
+            observed: productConnection[field],
+          ),
+        );
+      }
+    }
+    // The source-controlled headers only: the ephemeral host header is already
+    // one of the corpus' documented exclusions.
+    final expectedHeaders = portableHeaders(expectedConnection['headers']);
+    final productHeaders = portableHeaders(productConnection['headers']);
+    if (_canonical(expectedHeaders) != _canonical(productHeaders)) {
+      mismatches.add(
+        HttpBoundaryMismatch(
+          surface: 'failEndpoint',
+          row: 'connections.$index',
+          field: 'headers',
+          expected: expectedHeaders,
+          observed: productHeaders,
         ),
       );
     }
