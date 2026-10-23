@@ -396,30 +396,30 @@ what the comparator's identity rules normalise to. Both are pinned in the report
 
 - No login, cookie-jar on/off, restart or WebView row (AUTH-SESSION-01 / Spec B).
 - No POST/form/redirect/body-charset row (REQUEST-01).
-- No product implementation and no comparator; the product lane, the SLICE-01
-  destination replay, Windows driven verification, integration, publication and ticket
-  closure stay with the controller/consumer.
+- Product behavior, the SLICE-01 destination replay, Windows driven verification,
+  integration, publication and ticket acceptance stay with the controller. The Dart
+  runner and comparer are described in [consumer.md](consumer.md).
 - The v3 rows declare the recorded #137 residuals (native-return strict equality,
   URL-option `js` on cached/extracted addresses, a `getHeaderMap` data key literally
   named `get`), but no installed-app capture of v3 exists on this preparation branch;
   the controller's real-phone rows remain not-run.
-- The 5-vs-4 `ajaxAll` width and 2-vs-1 page-walk differences are source-derived
-  findings. This corpus records the real frozen peak; whether a product difference
-  becomes a FAIL waiting for a decision is the comparator's job, and no `notCompared`
-  or lower-bound proxy is introduced here.
+- Frozen configured widths, actual peaks and page-walk shapes are checked under the
+  approved default-four and serial-page policy in [consumer.md](consumer.md). The v2
+  measurements keep their original capture binding; v3 peak and request facts require
+  the v3 capture.
 
 ## Ownership
 
-Producer write set: this directory, `tool/nested_oracle/HttpBoundaryOracle.java`, one
-asset-copy and one `javac` argument in `tool/nested_oracle/build.ps1`, and one
-`<instrumentation>` entry in `tool/nested_oracle/AndroidManifest.xml`. Every existing
-oracle, `ScratchContext`, corpus, golden, product/Rust and consumer file is read-only.
+The frozen collector is `tool/nested_oracle/HttpBoundaryOracle.java`.
+`tool/nested_oracle/build.ps1` copies its corpus asset and compiles the collector;
+`tool/nested_oracle/AndroidManifest.xml` registers its instrumentation. The product
+runner, comparer and their focused tests implement the boundary described in
+[consumer.md](consumer.md).
 
-This version changes `HttpBoundaryOracle.java` (the `scriptProbe` action, the action
-and carrier corpus gates and the version/source-count checks) and the shared corpus, so
-the v2 captures keep their original producer/corpus identity and are **not** relabelled
-as v3. A v3 capture requires a fresh harness build and a fresh phone run. The other
-oracle files, `ScratchContext`, the product/Rust code and the consumer comparison rules
-are unchanged by this corpus version. A later change to a shared helper (including
-`ScratchContext`) would force re-capture of the affected family instead of relabelling
-historical evidence.
+Captures are bound to their own producer, target and corpus hashes. The v2 captures
+retain those identities; v3 requires a fresh harness build and phone execution.
+The other oracle implementations, `ScratchContext` and product/Rust code remain
+unchanged. The existing portable comparison and approved named-difference policies
+are preserved while v3 adds typed observation, identity and control validation.
+A shared-helper change, including a change to `ScratchContext`, requires re-running
+the affected family against its new producer bytes.

@@ -16,21 +16,25 @@ require a new execution and comparison.
 
 The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
 requests and a fifth declared cohort. The v2 rows and captures keep their original
-identities and are not relabelled as v3. The v3 product run on this preparation branch
-reaches 50/51 declared requests and 44 observations with three unmatched requests.
+identities and are not relabelled as v3. The v3 product run records 44 observations
+and 50 actual requests: 47 match declared selectors and three are unmatched, against
+51 expected requests.
 `t1.toc`, `p1.toc` and `n1.toc` are the incomplete rows: the first two request the
 pre-option TOC addresses, and the null-return counter read leaves the TOC chapter title
 empty. The O pair consumes the identical retained hit; both details publish the
 retained `identityAddress` (the analyzed targets stay in the request trace). The
 product's cached first call skips the source-authored option `js`, so the fresh call's
-counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`), while the frozen
-runs the script twice. That `/1` request lands on the same row's declared selector, so
+counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`). The paired
+fixture declares counters 1 and 2; confirming the frozen execution still requires the
+v3 phone capture. That `/1` request lands on the same row's declared selector, so
 the actual ownership/count mismatch is retained rather than repaired
 (`o1.details-fresh` owns no request and `/o/book/2` is missing; `GET /o/book` is
 unmatched). That report is retained as the actual current-product measurement: it is
 not a pass, and the comparator refuses an incomplete product record by design. The v3
 installed-app capture and comparison remain with the controller and are **not-run**
-here.
+here. The CLI still pins the historical v2 handoff head
+`fbf556130176841fea14196bf94555823be589c7`; a v3 comparison needs the controller's
+actual v3 capture/handoff and a reviewed pin for that capture before execution.
 
 At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
 repair and the source-context carrier projection were in place. That product session
@@ -200,10 +204,12 @@ name stays an unattributed failure.
 ## Controls
 
 Thirty-one controls run on deep copies of the immutable captures and of the product
-record; each is compared against **its own** baseline, so a row the baseline already
-reports can never satisfy a control. A control passes only when it introduces a new
-strict mismatch and the approved disposition leaves every one of those new keys
-unattributed. The controls are: product value, golden value, product raw query,
+record; each is checked against **its own** baseline, so an existing difference
+cannot satisfy a control. A portable-value control must introduce a new strict
+mismatch whose new keys all remain unattributed. A measured-relation control must
+start from a valid relation and make its own mutation fail the shared admission
+rule; its precise failure is recorded in `relationFailure`. The controls are:
+product value, golden value, product raw query,
 product retry attempt, product identity, product presence, product receipt, golden
 receipt (native provenance), an undeclared extra request, a product header, a
 product body, a product attempt kind, a real cohort peak
@@ -219,8 +225,9 @@ stored hit and a golden retained-book identity, plus a genuine extra execution o
 same row (counter 1 -> 2), a genuine missing execution on the fresh row (counter 2 -> 1),
 and a changed counter-backed TOC chapter title. Relation controls mutate the actual
 identity and run the same pure admission rule; an invalid baseline is refused. Every
-control is compared against its own otherwise-identical baseline, including baselines
-that already carry unrelated strict differences. The aggregate result keeps every capture's rows, so
+control is checked against its own otherwise-identical baseline, including baselines
+that already carry unrelated strict differences. The aggregate result keeps every
+capture's rows, so
 neither capture's controls can hide the other's. Originals are re-hashed after the
 run and stay byte-identical.
 
