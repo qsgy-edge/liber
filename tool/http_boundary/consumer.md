@@ -50,10 +50,10 @@ input is refused.
 | `s4.search-connection-failure` | the same search against the task-owned `127.0.0.1:0` listener, which accepts and closes each connection without a response; `SourceStageDiagnostic(kind: connection)` is the measured failure |
 | `s5.search-cancelled` | the same search held in flight by the replay listener, then `BookSourcePipeline.cancel()` after the hold is confirmed entered |
 
-The replay listener reads each request itself on one owned `ServerSocket`: the literal
-request line and header lines are recorded before parsing, a `Content-Length` body is
-read for every method, responses are matched by literal method + raw path + raw query,
-and unsupported or ambiguous framing is a named refusal. The held response keeps its
+The replay listener reads each request itself on one owned `ServerSocket`. Published
+rows retain the method, literal request target and original header lines. A
+`Content-Length` body is read for every method; responses are matched by literal
+method + raw path + raw query, and unsupported or ambiguous framing is a named refusal. The held response keeps its
 connection open so the peer's own close is observable while nothing has been written,
 and only the connection that entered the hold can report that abort: an unrelated idle
 connection's close is not the held request's abort. The abort receipt is that close (or
