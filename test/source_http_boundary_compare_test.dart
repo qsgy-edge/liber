@@ -2095,6 +2095,20 @@ void main() {
       return record;
     }
 
+    Map<String, dynamic> goldenRecord() {
+      final record = fresh();
+      final identity = record['identity'] as Map;
+      identity['corpusAssetSha256'] = 'a' * 64;
+      identity['targetPackage'] = (corpus['target'] as Map)['package'];
+      identity['targetApkSha256'] = (corpus['target'] as Map)['apkSha256'];
+      identity['targetBaselineCommit'] =
+          (corpus['target'] as Map)['baselineCommit'];
+      record['status'] = 'ok';
+      record['promotable'] = true;
+      record['terminalIntegrityOk'] = true;
+      return record;
+    }
+
     void gate(Map<String, dynamic> record) => validateProductReport(
       record,
       corpus: corpus,
@@ -2253,6 +2267,119 @@ void main() {
         ),
         returnsNormally,
       );
+    });
+
+    test('frozen hit identity must be a present integer per row', () {
+      for (final variant in const ['missing', 'null', 'string', 'double']) {
+        Map<String, dynamic> mutant() {
+          final record = goldenRecord();
+          for (final id in const ['o1.details-same', 'o1.details-fresh']) {
+            final hit =
+                (observation(record, id)['evidence'] as Map)['hitReference']
+                    as Map;
+            switch (variant) {
+              case 'missing':
+                hit.remove('identity');
+              case 'null':
+                hit['identity'] = null;
+              case 'string':
+                hit['identity'] = '501';
+              case 'double':
+                hit['identity'] = 501.0;
+            }
+          }
+          return record;
+        }
+
+        expect(
+          () => validateFrozenCarrierRelations(mutant(), corpus),
+          throwsFormatException,
+          reason: 'shared frozen rule accepted $variant identity',
+        );
+        final record = mutant();
+        final file = File('${work.path}/frozen-$variant.json')
+          ..writeAsStringSync(jsonEncode(record));
+        expect(
+          () => validateFrozenCapture(
+            record,
+            corpus: corpus,
+            corpusLf: corpusLf,
+            goldenId: 'synthetic-$variant',
+            expectedReportSha256: sha256File(file),
+            reportPath: file.path,
+          ),
+          throwsA(isA<HttpBoundaryRefusal>()),
+          reason: 'exported frozen gate accepted $variant identity',
+        );
+      }
+    });
+
+    test('source and stored identity controls survive 0, 1 and 999', () {
+      Map<String, dynamic> carrierOf(Map<String, dynamic> record, String id) =>
+          (observation(record, id)['evidence'] as Map)['carrier']
+              as Map<String, dynamic>;
+      Map<String, dynamic> hitOf(Map<String, dynamic> record, String id) =>
+          (observation(record, id)['evidence'] as Map)['hitReference']
+              as Map<String, dynamic>;
+      for (final value in const [0, 1, 999]) {
+        final source = fresh();
+        for (final id in const ['o1.details-same', 'o1.details-fresh']) {
+          carrierOf(source, id)['sourceObjectIdentity'] = value;
+          carrierOf(source, id)['cachedSourceObjectIdentity'] = value;
+        }
+        expect(() => gate(source), returnsNormally);
+        final sourceGolden = fresh();
+        final sourceBaseline = compareHttpBoundaryRecords(
+          golden: sourceGolden,
+          product: source,
+          corpus: corpus,
+          goldenId: 'synthetic-source-$value',
+        );
+        final sourceControls = runHttpBoundaryControls(
+          golden: sourceGolden,
+          product: source,
+          corpus: corpus,
+          goldenId: 'synthetic-source-$value',
+          baseline: sourceBaseline,
+        );
+        final sourceControl = sourceControls.firstWhere(
+          (control) => control.id == 'product-fresh-wrong-source-object',
+        );
+        expect(
+          sourceControl.passed,
+          isTrue,
+          reason: 'source identity $value control did not mutate',
+        );
+
+        final stored = fresh();
+        for (final id in const ['o1.details-same', 'o1.details-fresh']) {
+          hitOf(stored, id)['identity'] = value;
+          hitOf(stored, id)['storedIdentity'] = value;
+        }
+        expect(() => gate(stored), returnsNormally);
+        final storedGolden = fresh();
+        final storedBaseline = compareHttpBoundaryRecords(
+          golden: storedGolden,
+          product: stored,
+          corpus: corpus,
+          goldenId: 'synthetic-stored-$value',
+        );
+        final storedControls = runHttpBoundaryControls(
+          golden: storedGolden,
+          product: stored,
+          corpus: corpus,
+          goldenId: 'synthetic-stored-$value',
+          baseline: storedBaseline,
+        );
+        final storedControl = storedControls.firstWhere(
+          (control) => control.id == 'product-fresh-wrong-stored-hit',
+        );
+        expect(
+          storedControl.passed,
+          isTrue,
+          reason: 'stored identity $value control did not mutate',
+        );
+      }
     });
 
     test('a missing frozen probe replaced by a duplicate is refused', () {

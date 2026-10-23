@@ -467,6 +467,7 @@ void validateFrozenCarrierRelations(
     if (!RegExp(r'^[0-9]+$').hasMatch(counter)) {
       throw FormatException('$where ${step['id']} counter is not decimal');
     }
+    _relationInt(hit, 'identity', '$where ${step['id']} hit');
     if (_relationString(hit, 'bookId', '$where ${step['id']} hit') !=
         '${step['book']}') {
       throw FormatException('$where ${step['id']} hit book differs');
@@ -4843,7 +4844,8 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
             )['carrier'],
             'carrier',
           );
-          carrier['sourceObjectIdentity'] = 999;
+          final current = carrier['sourceObjectIdentity'] as int;
+          carrier['sourceObjectIdentity'] = current == 0 ? 1 : 0;
         },
       ),
     );
@@ -4859,7 +4861,8 @@ List<HttpBoundaryControl> runHttpBoundaryControls({
             )['hitReference'],
             'hitReference',
           );
-          hit['storedIdentity'] = 999;
+          final current = hit['storedIdentity'] as int;
+          hit['storedIdentity'] = current == 0 ? 1 : 0;
         },
       ),
     );
