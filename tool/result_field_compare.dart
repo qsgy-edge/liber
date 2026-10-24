@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:pointycastle/export.dart';
 
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of
@@ -71,12 +72,21 @@ void main(List<String> args) {
   // checkout that rewrote them (a CRLF conversion, a corpus edit) has to fail
   // here rather than compare against a different corpus than the one recorded.
   final manifestFile = File('${File(positional[0]).parent.path}/manifest.json');
-  String? manifestCorpusSha256;
-  if (manifestFile.existsSync()) {
-    final manifest = (jsonDecode(manifestFile.readAsStringSync()) as Map)
-        .cast<String, Object?>();
-    final corpusPin = (manifest['corpus'] as Map?)?.cast<String, Object?>();
-    manifestCorpusSha256 = corpusPin?['sha256'] as String?;
+  final manifest = manifestFile.existsSync()
+      ? (jsonDecode(manifestFile.readAsStringSync()) as Map)
+            .cast<String, dynamic>()
+      : <String, dynamic>{};
+  final manifestCorpusSha256 =
+      (manifest['corpus'] as Map?)?['sha256'] as String?;
+  Map<String, dynamic>? harnessProvenance;
+  String? harnessProvenanceSha256;
+  if (corpus['fixtureId'] == 'FIELDS-02') {
+    if (selectedHarnessApk == null) {
+      throw ArgumentError('--harness-apk is required for FIELDS-02');
+    }
+    final inspected = _inspectHarnessApk(selectedHarnessApk);
+    harnessProvenance = inspected['provenance'] as Map<String, dynamic>;
+    harnessProvenanceSha256 = inspected['provenanceSha256'] as String;
   }
   final report = corpus['fixtureId'] == 'FIELDS-02'
       ? compareBookUrlMarkers(
@@ -92,12 +102,16 @@ void main(List<String> args) {
             selectedHarnessApk,
             '--harness-apk',
           ),
+          expectedHarnessAssetSha256:
+              harnessProvenance!['corpus']['sha256'] as String,
+          expectedProvenanceSha256: harnessProvenanceSha256!,
+          expectedProvenance: harnessProvenance,
           expectedLibrarySha256: _requiredMeasuredPath(
             selectedLibrary,
             '--library',
           ),
           expectedProductSources: _measureProductSources(productSourceRoot),
-          manifestCorpusSha256: manifestCorpusSha256,
+          externalManifest: manifest,
         )
       : compareResultFields(
           golden: golden,
@@ -583,6 +597,7 @@ List<Map<String, Object?>> _requests(Map<String, dynamic> evidence) => [
 /// (contract, Matching Rules -> Outputs).
 const bookUrlMarkersFixtureId = 'FIELDS-02';
 const bookUrlMarkersCorpusVersion = 1;
+const _ownedPreferencePrefix = 'liber_fields_02_';
 
 /// Strict FIELDS-02 admission and comparison. The native report uses `cases`;
 /// the product report uses `caseRecords`. The two sides are admitted
@@ -598,8 +613,12 @@ Map<String, Object?> compareBookUrlMarkers({
   required String corpusSha256Lf,
   required int corpusByteCount,
   required String expectedHarnessApkSha256,
+  required String expectedHarnessAssetSha256,
+  required String expectedProvenanceSha256,
+  required Map<String, dynamic> expectedProvenance,
   required String expectedLibrarySha256,
   required Map<String, String> expectedProductSources,
+  required Map<String, dynamic> externalManifest,
   String? manifestCorpusSha256,
 }) {
   final corpusCases = _admitCorpus(
@@ -635,6 +654,19 @@ Map<String, Object?> compareBookUrlMarkers({
     corpusByteCount: corpusByteCount,
     expectedLibrarySha256: expectedLibrarySha256,
     expectedProductSources: expectedProductSources,
+  );
+  _admitExternalArtifact(
+    externalManifest,
+    golden,
+    corpus,
+    target,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedHarnessApkSha256: expectedHarnessApkSha256,
+    expectedHarnessAssetSha256: expectedHarnessAssetSha256,
+    expectedProvenanceSha256: expectedProvenanceSha256,
+    expectedProvenance: expectedProvenance,
   );
 
   final goldenCases = _records(golden['cases'], 'golden.cases');
@@ -696,6 +728,23 @@ Map<String, Object?> compareBookUrlMarkers({
     trace: liber['stageTrace'],
     label: 'liber.stageTrace',
   );
+  final origin = _requiredString(corpus, 'origin', 'corpus');
+  _admitCausalRelationships(
+    requestDifferences,
+    'golden',
+    goldenRequests,
+    goldenCases,
+    goldenTrace,
+    origin,
+  );
+  _admitCausalRelationships(
+    requestDifferences,
+    'liber',
+    productRequests,
+    productCases,
+    productTrace,
+    origin,
+  );
   _diff(
     stageDifferences,
     'stageTrace',
@@ -747,6 +796,202 @@ Map<String, Object?> compareBookUrlMarkers({
     'librarySha256': expectedLibrarySha256,
     'harnessApkSha256': expectedHarnessApkSha256,
   };
+}
+
+Map<String, dynamic> inspectSelectedHarnessApk(String path) =>
+    _inspectHarnessApk(path);
+
+Map<String, dynamic> _inspectHarnessApk(String path) {
+  final bytes = File(path).readAsBytesSync();
+  final archive = ZipDecoder().decodeBytes(bytes);
+  final names = archive.files.map((file) => file.name).toList();
+  for (final required in const [
+    'assets/field-fixtures.json',
+    'assets/field-provenance.json',
+  ]) {
+    if (names.where((name) => name == required).length != 1) {
+      throw StateError('selected APK must contain exactly one $required');
+    }
+  }
+  final asset = archive.findFile('assets/field-fixtures.json')!;
+  final provenanceFile = archive.findFile('assets/field-provenance.json')!;
+  final provenanceBytes = Uint8List.fromList(provenanceFile.content);
+  final decoded = jsonDecode(utf8.decode(provenanceBytes));
+  if (decoded is! Map) {
+    throw StateError('embedded provenance is not an object');
+  }
+  final provenance = decoded.cast<String, dynamic>();
+  if (provenance['schemaVersion'] is! int || provenance['schemaVersion'] != 1) {
+    throw StateError('embedded provenance schemaVersion is not integer 1');
+  }
+  if (provenance['fixtureId'] != bookUrlMarkersFixtureId) {
+    throw StateError('embedded provenance fixtureId differs');
+  }
+  final corpus = _map(provenance['corpus'], 'provenance.corpus');
+  if (corpus['asset'] != 'field-fixtures.json' ||
+      corpus['fixtureId'] != bookUrlMarkersFixtureId ||
+      corpus['corpusVersion'] is! int ||
+      corpus['corpusVersion'] != 1) {
+    throw StateError('embedded provenance corpus identity differs');
+  }
+  final assetBytes = Uint8List.fromList(asset.content);
+  if (_requiredInt(corpus, 'bytes', 'provenance.corpus') != assetBytes.length ||
+      corpus['sha256'] != _sha256(assetBytes) ||
+      corpus['sha256Lf'] != _sha256(_lf(assetBytes))) {
+    throw StateError('embedded provenance does not bind embedded corpus bytes');
+  }
+  final sources = _stringMap(provenance['sources'], 'provenance.sources');
+  if (sources.length != 5 ||
+      !sources.keys.toSet().containsAll(const [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+      ])) {
+    throw StateError('embedded provenance source key set differs');
+  }
+  for (final entry in sources.entries) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(entry.value)) {
+      throw StateError('embedded provenance source hash is malformed');
+    }
+  }
+  return {
+    'apkSha256': _sha256(bytes),
+    'assetBytes': assetBytes,
+    'provenance': provenance,
+    'provenanceSha256': _sha256(provenanceBytes),
+  };
+}
+
+void _admitExternalArtifact(
+  Map<String, dynamic> manifest,
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> target, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+  required String expectedHarnessAssetSha256,
+  required String expectedProvenanceSha256,
+  required Map<String, dynamic> expectedProvenance,
+}) {
+  if (manifest.isEmpty) {
+    throw StateError('external capture manifest is missing');
+  }
+  final artifact = _map(manifest['artifact'], 'manifest.artifact');
+  if (artifact['apkSha256'] != expectedHarnessApkSha256 ||
+      artifact['selectedAssetSha256'] != expectedHarnessAssetSha256 ||
+      artifact['selectedAssetSha256Lf'] != corpusSha256Lf ||
+      artifact['selectedAssetBytes'] != corpusByteCount) {
+    throw StateError(
+      'external artifact bytes do not match the selected APK/corpus',
+    );
+  }
+  if (artifact['provenanceSha256'] != expectedProvenanceSha256 ||
+      !_deepEquals(artifact['provenance'], expectedProvenance)) {
+    throw StateError(
+      'external artifact provenance differs from the selected APK',
+    );
+  }
+  final provenance = _map(expectedProvenance, 'provenance');
+  final pcorpus = _map(provenance['corpus'], 'provenance.corpus');
+  if (pcorpus['sha256'] != corpusSha256 ||
+      pcorpus['sha256Lf'] != corpusSha256Lf ||
+      pcorpus['bytes'] != corpusByteCount ||
+      pcorpus['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(pcorpus, 'corpusVersion', 'provenance.corpus') != 1) {
+    throw StateError(
+      'embedded provenance corpus does not match selected bytes',
+    );
+  }
+  final sources = _stringMap(provenance['sources'], 'provenance.sources');
+  if (sources.length != 5) {
+    throw StateError('embedded provenance source map is incomplete');
+  }
+  final isolation = _map(golden['isolation'], 'golden.isolation');
+  if (isolation['harnessApkSha256'] != expectedHarnessApkSha256) {
+    throw StateError('golden harness APK differs from selected APK');
+  }
+  final manifestCorpus = _map(manifest['corpus'], 'manifest.corpus');
+  if (_requiredInt(manifestCorpus, 'bytes', 'manifest.corpus') !=
+          corpusByteCount ||
+      manifestCorpus['sha256'] != corpusSha256 ||
+      manifestCorpus['sha256Lf'] != corpusSha256Lf) {
+    throw StateError('external manifest corpus measurement differs');
+  }
+  final cleanup = _map(manifest['scratchCleanup'], 'manifest.scratchCleanup');
+  final owner = _map(manifest['scratchOwner'], 'manifest.scratchOwner');
+  final targetRoot = _requiredString(manifest, 'targetPrivateRoot', 'manifest');
+  final scratchRoot = '$targetRoot/cache/liber-fields-02';
+  final nativeCleanup = _map(golden['cleanup'], 'golden.cleanup');
+  final nativeIsolation = _map(golden['isolation'], 'golden.isolation');
+  if (nativeIsolation['scratchRoot'] != scratchRoot ||
+      nativeIsolation['preferencesPrefix'] != _ownedPreferencePrefix ||
+      nativeCleanup['scratchRoot'] != scratchRoot ||
+      nativeCleanup['reportPath'] != '$scratchRoot/field-oracle.json') {
+    throw StateError(
+      'native cleanup/root is not the measured target-private relation',
+    );
+  }
+  if (nativeCleanup['ownerRunId'] != cleanup['ownerRunId']) {
+    throw StateError('external and native cleanup attempts differ');
+  }
+  if (cleanup['postStop'] != true ||
+      cleanup['rootAbsent'] != true ||
+      cleanup['ownedPreferencesAbsent'] != true ||
+      cleanup['root'] != scratchRoot ||
+      cleanup['ownerRunId'] != nativeCleanup['ownerRunId']) {
+    throw StateError('external post-stop cleanup proof is incomplete');
+  }
+  if (owner['complete'] != true ||
+      owner['seedRunId'] != nativeCleanup['ownerRunId'] ||
+      owner['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(owner, 'corpusVersion', 'manifest.scratchOwner') != 1 ||
+      owner['targetPackage'] != target['package'] ||
+      owner['harnessPackage'] != nativeIsolation['harnessPackage'] ||
+      owner['targetApkSha256'] != target['apkSha256'] ||
+      owner['harnessApkSha256'] != expectedHarnessApkSha256 ||
+      owner['corpusSha256Lf'] != corpusSha256Lf) {
+    throw StateError('external owner proof is not bound to selected evidence');
+  }
+  final ownerPrefs = owner['preferences'];
+  final cleanupPrefs = cleanup['reportedOwnedPreferences'];
+  final nativePrefs = nativeCleanup['ownedPreferences'];
+  if (ownerPrefs is! List ||
+      cleanupPrefs is! List ||
+      nativePrefs is! List ||
+      ownerPrefs.any(
+        (value) =>
+            value is! String || !value.startsWith(_ownedPreferencePrefix),
+      ) ||
+      cleanupPrefs.any(
+        (value) =>
+            value is! String || !value.startsWith(_ownedPreferencePrefix),
+      ) ||
+      nativePrefs.any(
+        (value) =>
+            value is! String || !value.startsWith(_ownedPreferencePrefix),
+      ) ||
+      ownerPrefs.length != nativePrefs.length ||
+      cleanupPrefs.length != nativePrefs.length ||
+      ownerPrefs.toSet().length != ownerPrefs.length ||
+      cleanupPrefs.toSet().length != cleanupPrefs.length ||
+      !ownerPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
+      !cleanupPrefs.toSet().containsAll(nativePrefs.cast<Object?>())) {
+    throw StateError('external owner/cleanup preference inventory differs');
+  }
+  final probe = _map(
+    nativeIsolation['preferenceProbe'],
+    'golden.isolation.preferenceProbe',
+  );
+  if (probe['installationFile'] != false ||
+      probe['registered'] != true ||
+      probe['committed'] != true ||
+      probe['scopedFile'] != true) {
+    throw StateError('native preference probe flags are incomplete');
+  }
 }
 
 List<Map<String, dynamic>> _admitCorpus(
@@ -860,10 +1105,11 @@ void _admitGoldenIdentity(
   final corpusBlock = _map(golden['corpus'], 'golden.corpus');
   if (corpusBlock['asset'] != 'field-fixtures.json' ||
       corpusBlock['fixtureId'] != bookUrlMarkersFixtureId ||
-      corpusBlock['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+      _requiredInt(corpusBlock, 'corpusVersion', 'golden.corpus') !=
+          bookUrlMarkersCorpusVersion) {
     throw StateError('golden corpus identity is malformed');
   }
-  if (_present(corpusBlock, 'bytes', 'golden.corpus') != corpusByteCount) {
+  if (_requiredInt(corpusBlock, 'bytes', 'golden.corpus') != corpusByteCount) {
     throw StateError('golden measured corpus byte count differs');
   }
   if (_present(corpusBlock, 'sha256', 'golden.corpus') != corpusSha256 ||
@@ -902,15 +1148,36 @@ void _admitGoldenIdentity(
       throw StateError('golden cleanup.$field must be true');
     }
   }
-  _requiredString(cleanup, 'ownerRunId', 'golden.cleanup');
+  final ownerRunId = _requiredString(cleanup, 'ownerRunId', 'golden.cleanup');
+  if (ownerRunId.isEmpty) {
+    throw StateError('golden ownerRunId must not be empty');
+  }
   _requiredString(cleanup, 'scratchRoot', 'golden.cleanup');
   _requiredString(cleanup, 'reportPath', 'golden.cleanup');
   final owned = _requiredList(cleanup, 'ownedPreferences', 'golden.cleanup');
   if (owned.isEmpty ||
-      owned.any((value) => value is! String || value.isEmpty)) {
+      owned.any(
+        (value) =>
+            value is! String ||
+            !value.startsWith(_ownedPreferencePrefix) ||
+            value.length == _ownedPreferencePrefix.length,
+      )) {
     throw StateError(
-      'golden cleanup.ownedPreferences must be a nonempty string list',
+      'golden cleanup.ownedPreferences must be owned, nonempty names',
     );
+  }
+  if (isolation['preferencesPrefix'] != _ownedPreferencePrefix) {
+    throw StateError('golden preference namespace differs');
+  }
+  final probe = _map(
+    isolation['preferenceProbe'],
+    'golden.isolation.preferenceProbe',
+  );
+  if (probe['installationFile'] != false ||
+      probe['registered'] != true ||
+      probe['committed'] != true ||
+      probe['scopedFile'] != true) {
+    throw StateError('golden preference probe flags are incomplete');
   }
   _admitErrorFacts(golden, 'golden');
 }
@@ -925,7 +1192,7 @@ void _admitProductIdentity(
   required Map<String, String> expectedProductSources,
 }) {
   _admitIdentityFields(liber, corpus, 'liber');
-  if (_present(liber, 'fixturesBytes', 'liber') != corpusByteCount ||
+  if (_requiredInt(liber, 'fixturesBytes', 'liber') != corpusByteCount ||
       _present(liber, 'fixturesSha256', 'liber') != corpusSha256 ||
       _present(liber, 'fixturesSha256Lf', 'liber') != corpusSha256Lf) {
     throw StateError('product fixture measurement does not match the corpus');
@@ -967,7 +1234,12 @@ void _admitIdentityFields(
     'baselineCommit',
     'entryPoint',
   ]) {
-    if (_present(record, field, label) != corpus[field]) {
+    if (field == 'corpusVersion') {
+      if (_requiredInt(record, field, label) !=
+          _requiredInt(corpus, field, 'corpus')) {
+        throw StateError('$label $field does not match the selected corpus');
+      }
+    } else if (_present(record, field, label) != corpus[field]) {
       throw StateError('$label $field does not match the selected corpus');
     }
   }
@@ -1257,6 +1529,122 @@ void _compareCases(
   }
 }
 
+String _expectedRawQuery(Map<String, dynamic> request) {
+  final query = request['query'];
+  if (query == null) return '';
+  final map = _stringMap(query, 'expected.query');
+  return map.entries
+      .map(
+        (entry) =>
+            '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
+      )
+      .join('&');
+}
+
+void _admitCausalRelationships(
+  List<Map<String, Object?>> differences,
+  String side,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> cases,
+  List<Map<String, dynamic>> trace,
+  String origin,
+) {
+  final concatenated = <Map<String, dynamic>>[];
+  for (final record in cases) {
+    final slices = _requiredList(
+      record,
+      'requests',
+      '$side.case.${record['id']}',
+    );
+    for (final value in slices) {
+      concatenated.add(_map(value, '$side.case.${record['id']}.requests[]'));
+    }
+  }
+  if (!_deepEquals(concatenated, requests)) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.caseRequestSlices',
+      'frozen': 'global request sequence',
+      'liber': 'case slices do not reconstruct the global sequence',
+    });
+  }
+
+  int? previous = -1;
+  for (var index = 0; index < trace.length; index++) {
+    final entry = trace[index];
+    final path = _requiredString(entry, 'path', '$side.trace[$index]');
+    var matched = -1;
+    for (var requestIndex = 0; requestIndex < requests.length; requestIndex++) {
+      final request = requests[requestIndex];
+      final requestPath = _requiredString(
+        request,
+        'path',
+        '$side.request[$requestIndex]',
+      );
+      final raw = _requiredString(
+        request,
+        'rawQuery',
+        '$side.request[$requestIndex]',
+      );
+      final candidates = <String>{
+        requestPath,
+        requestPath + (raw.isEmpty ? '' : '?$raw'),
+        origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
+      };
+      if (candidates.contains(path)) {
+        matched = requestIndex;
+        break;
+      }
+    }
+    if (matched < 0) {
+      differences.add({
+        'row': 'C3',
+        'field': '$side.trace[$index].path',
+        'frozen': 'actual request path',
+        'liber': path,
+      });
+    } else if (matched < previous!) {
+      differences.add({
+        'row': 'C3',
+        'field': '$side.trace[$index].order',
+        'frozen': 'request order',
+        'liber': 'trace order regressed',
+      });
+    } else {
+      previous = matched;
+    }
+  }
+
+  for (final record in cases) {
+    final id = _requiredString(record, 'id', '$side.case');
+    final slices = _requiredList(record, 'requests', '$side.case.$id.requests');
+    if (slices.isEmpty) continue;
+    final first = _map(slices.first, '$side.case.$id.requests[0]');
+    final path = _requiredString(first, 'path', '$side.case.$id.requests[0]');
+    final raw = _requiredString(
+      first,
+      'rawQuery',
+      '$side.case.$id.requests[0]',
+    );
+    final candidates = <String>{
+      path,
+      path + (raw.isEmpty ? '' : '?$raw'),
+      origin + path + (raw.isEmpty ? '' : '?$raw'),
+    };
+    final traced = trace.any(
+      (entry) => entry['path'] is String && candidates.contains(entry['path']),
+    );
+    if (!traced) {
+      differences.add({
+        'row': 'C3',
+        'field': '$side.trace.case.$id',
+        'frozen': 'case search request traced',
+        'liber': 'missing case trace evidence',
+      });
+    }
+  }
+}
+
 void _compareRequestsToDeclaration(
   List<Map<String, Object?>> differences,
   String side,
@@ -1301,6 +1689,15 @@ void _compareRequestsToDeclaration(
         'field': '$side.requests[$index].query',
         'frozen': wantedQuery,
         'liber': actualQuery,
+      });
+    }
+    final expectedRawQuery = _expectedRawQuery(wanted);
+    if (actual['rawQuery'] != expectedRawQuery) {
+      differences.add({
+        'row': 'C2',
+        'field': '$side.requests[$index].rawQuery',
+        'frozen': expectedRawQuery,
+        'liber': actual['rawQuery'],
       });
     }
     final response = responses[index];
@@ -1422,6 +1819,12 @@ Object? _present(Map<String, dynamic> map, String key, String label) {
 String _requiredString(Map<String, dynamic> map, String key, String label) {
   final value = _present(map, key, label);
   if (value is! String) throw StateError('$label.$key must be a string');
+  return value;
+}
+
+int _requiredInt(Map<String, dynamic> map, String key, String label) {
+  final value = _present(map, key, label);
+  if (value is! int) throw StateError('$label.$key must be an integer');
   return value;
 }
 

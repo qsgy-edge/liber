@@ -72,14 +72,28 @@ side. Native `chapter.url` is compared with product `address`; native
 `chapter.absoluteUrl` with product `url`; provenance fields stay separate. The
 product's legacy `infoHtml` claim is not compared.
 
+Selected builds embed `assets/field-provenance.json` alongside the fixed
+`field-fixtures.json`: actual corpus raw/LF/byte measurements and hashes of the
+five same-build inputs (`FieldOracle.java`, `StateSessionOracle.java`,
+`AndroidManifest.xml`, `build.ps1`, `capture.py`). `capture.py` inspects the
+actual `--apk` zip before installation and binds the embedded fixture/provenance
+to the selected fixture and measured source bytes; a matching loose `--asset` is
+not enough. The Dart comparator inspects the same APK with `archive`, and joins
+the embedded provenance to the capture manifest. Re-finalization keeps that
+historical artifact provenance instead of relabeling it with today's sources.
+
 Selected capture adds a storage-only Application over the existing
-`StateSessionOracle.ScratchContext`. It refuses a preexisting scratch root,
+`StateSessionOracle.ScratchContext`.
+ It refuses a preexisting scratch root,
 field preference inventory, harness package or target process; it never
 pre-cleans or wildcard-removes. After the owned target is stopped, the driver
-reads the report and owner, verifies the exact preference inventory and attempt
-id, removes only those exact paths plus the owned scratch root with quoted
-single remote scripts, verifies absence, and requires a successful harness
-uninstall before promotion. Any unavailable report, failed command, partial
+reads the report and owner, verifies the exact target/harness/corpus/provenance
+bindings, preference-probe flags, preference inventory and attempt id, removes
+only those exact paths plus the owned scratch root with quoted single remote
+scripts, verifies absence, and requires a successful harness uninstall before
+promotion. The measured target-private root comes from the device rather than a
+string alias. FIELDS-02 snapshots the complete target data directory (files and
+directories) before and after; only the verified owned removal is expected. Any unavailable report, failed command, partial
 install, or out-of-scratch private-file change leaves ambiguous data in place
 and fails.
 

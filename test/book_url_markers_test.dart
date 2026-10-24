@@ -125,6 +125,8 @@ void main() {
       'raw address': 'chapters[0].url(raw vs address)',
       'absolute target': 'chapters[0].absoluteUrl(vs url)',
       'vip probe': 'sourceProbes.vipProbe',
+      'raw query bytes': 'golden.requests[0].rawQuery',
+      'request assigned to wrong case': 'golden.caseRequestSlices',
     };
     for (final entry in controls.entries) {
       final changed = _clone(base);
@@ -140,6 +142,12 @@ void main() {
           chapter['absoluteUrl'] = 'http://wrong.test/c';
         case 'vip probe':
           (_record(changed)['sourceProbes'] as Map)['vipProbe'] = 'read';
+        case 'raw query bytes':
+          ((changed['requests'] as List).first as Map)['rawQuery'] =
+              'different=bytes';
+          _request(changed)['rawQuery'] = 'different=bytes';
+        case 'request assigned to wrong case':
+          _record(changed)['requests'] = [_requestJson('/wrong')];
       }
       final report = _compare(changed, product, corpus);
       expect(report['status'], 'fail', reason: entry.key);
@@ -168,6 +176,7 @@ void main() {
       'wrong marker type': (g) => _chapters(g)[0]['isVip'] = 'true',
       'empty title': (g) => _chapters(g)[0]['title'] = '',
       'missing request receipt': (g) => _request(g).remove('receipt'),
+      'truncated stage trace': (g) => g['stageTrace'] = <Object?>[],
     };
     for (final entry in structural.entries) {
       final changed = _clone(base);
@@ -228,7 +237,11 @@ Map<String, dynamic> _compare(
   corpusSha256Lf: 'a' * 64,
   corpusByteCount: 123,
   expectedHarnessApkSha256: 'harness',
+  expectedHarnessAssetSha256: 'a' * 64,
+  expectedProvenanceSha256: 'b' * 64,
+  expectedProvenance: _syntheticProvenance(),
   expectedLibrarySha256: 'library',
+  externalManifest: _syntheticManifest(corpus),
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},
 );
 
@@ -265,6 +278,62 @@ Map<String, dynamic> _syntheticCorpus() => {
     },
   ],
 };
+
+Map<String, dynamic> _syntheticProvenance() => {
+  'schemaVersion': 1,
+  'fixtureId': 'FIELDS-02',
+  'corpus': {
+    'asset': 'field-fixtures.json',
+    'bytes': 123,
+    'sha256': 'a' * 64,
+    'sha256Lf': 'a' * 64,
+    'fixtureId': 'FIELDS-02',
+    'corpusVersion': 1,
+  },
+  'sources': {
+    'FieldOracle.java': 'c' * 64,
+    'StateSessionOracle.java': 'c' * 64,
+    'AndroidManifest.xml': 'c' * 64,
+    'build.ps1': 'c' * 64,
+    'capture.py': 'c' * 64,
+  },
+};
+
+Map<String, dynamic> _syntheticManifest(Map<String, dynamic> corpus) {
+  final provenance = _syntheticProvenance();
+  return {
+    'targetPrivateRoot': '/data/data/io.legado.app.debug',
+    'corpus': {'bytes': 123, 'sha256': 'a' * 64, 'sha256Lf': 'a' * 64},
+    'artifact': {
+      'apkSha256': 'harness',
+      'selectedAssetSha256': 'a' * 64,
+      'selectedAssetSha256Lf': 'a' * 64,
+      'selectedAssetBytes': 123,
+      'provenanceSha256': 'b' * 64,
+      'provenance': provenance,
+    },
+    'scratchCleanup': {
+      'postStop': true,
+      'rootAbsent': true,
+      'ownedPreferencesAbsent': true,
+      'root': '/data/data/io.legado.app.debug/cache/liber-fields-02',
+      'ownerRunId': 'synthetic-run',
+      'reportedOwnedPreferences': ['liber_fields_02_probe'],
+    },
+    'scratchOwner': {
+      'fixtureId': 'FIELDS-02',
+      'corpusVersion': 1,
+      'targetPackage': 'io.legado.app.debug',
+      'harnessPackage': 'io.liber.oracle.fields',
+      'targetApkSha256': 'target-apk',
+      'harnessApkSha256': 'harness',
+      'corpusSha256Lf': 'a' * 64,
+      'complete': true,
+      'seedRunId': 'synthetic-run',
+      'preferences': ['liber_fields_02_probe'],
+    },
+  };
+}
 
 Map<String, dynamic> _requestJson(String path) => {
   'method': 'GET',
@@ -345,6 +414,13 @@ Map<String, dynamic> _syntheticEnvelope(Map<String, dynamic> corpus) => {
     'corpusSha256Lf': 'a' * 64,
     'preferencesPrefix': 'liber_fields_02_',
     'scratchRoot': '/data/data/io.legado.app.debug/cache/liber-fields-02',
+    'preferenceProbe': {
+      'name': 'liber_fields_02_probe',
+      'registered': true,
+      'committed': true,
+      'scopedFile': true,
+      'installationFile': false,
+    },
   },
   'cleanup': {
     'serverClosed': true,

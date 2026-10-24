@@ -18,6 +18,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import zipfile
 
 BASELINE_APK = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6'
 FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
@@ -26,11 +28,14 @@ INSTRUMENTATION = PACKAGE + '/.FieldOracle'
 TARGET_PACKAGE = 'io.legado.app.debug'
 REPORT_REMOTE = '/sdcard/Android/data/io.legado.app.debug/files/field-oracle.json'
 FIELDS_02 = 'FIELDS-02'
-SCRATCH_ROOT = '/data/data/io.legado.app.debug/cache/liber-fields-02'
-REPORT_REMOTE_FIELDS_02 = SCRATCH_ROOT + '/field-oracle.json'
-OWNER_REMOTE_FIELDS_02 = SCRATCH_ROOT + '/owner.json'
-PREFERENCE_DIR = '/data/data/io.legado.app.debug/shared_prefs'
 OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
+HARNESS_SOURCE_KEYS = (
+    'FieldOracle.java',
+    'StateSessionOracle.java',
+    'AndroidManifest.xml',
+    'build.ps1',
+    'capture.py',
+)
 # The frozen application's own persisted data. Starting its process writes
 # third-party state (Play Services measurement, Firebase, WebView Chromium
 # prefs) that this corpus cannot and need not control, so the gate is the
@@ -57,6 +62,80 @@ def remote_script_arguments(package, script):
     return ['run-as', package, 'sh', '-c', shlex.quote(script)]
 
 
+def _is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _require_int(value, label):
+    if not _is_int(value):
+        raise ValueError(label + ' must be an integer')
+    return value
+
+
+def _source_path(name):
+    here = Path(__file__).resolve().parent
+    if name == 'StateSessionOracle.java':
+        return here.parent / 'nested_oracle' / name
+    return here / name
+
+
+def harness_source_hashes():
+    return {name: sha256(_source_path(name)) for name in HARNESS_SOURCE_KEYS}
+
+
+def inspect_selected_apk(apk_path, fixture_path, fixture):
+    """Read the actual selected APK zip and bind its corpus/provenance bytes."""
+    apk_bytes = Path(apk_path).read_bytes()
+    apk_sha = sha256_bytes(apk_bytes)
+    fixture_bytes = Path(fixture_path).read_bytes()
+    fixture_sha = sha256_bytes(fixture_bytes)
+    fixture_sha_lf = sha256_bytes(lf_bytes(fixture_bytes))
+    with zipfile.ZipFile(Path(apk_path)) as archive:
+        names = archive.namelist()
+        for required in ('assets/field-fixtures.json', 'assets/field-provenance.json'):
+            if names.count(required) != 1:
+                raise ValueError('selected APK must contain exactly one ' + required)
+        asset_bytes = archive.read('assets/field-fixtures.json')
+        provenance_bytes = archive.read('assets/field-provenance.json')
+    if asset_bytes != fixture_bytes:
+        raise ValueError('selected APK embedded corpus differs from the selected fixture')
+    if sha256_bytes(asset_bytes) != fixture_sha or sha256_bytes(lf_bytes(asset_bytes)) != fixture_sha_lf:
+        raise ValueError('selected APK embedded corpus digests differ')
+    provenance = json.loads(provenance_bytes.decode('utf-8'))
+    if not isinstance(provenance, dict):
+        raise ValueError('embedded provenance is not an object')
+    if _require_int(_required(provenance, 'schemaVersion', 'provenance'), 'provenance.schemaVersion') != 1:
+        raise ValueError('unsupported provenance schemaVersion')
+    if provenance.get('fixtureId') != FIELDS_02:
+        raise ValueError('embedded provenance fixtureId differs')
+    corpus = _required_map(provenance, 'corpus', 'provenance')
+    if corpus.get('asset') != 'field-fixtures.json':
+        raise ValueError('embedded provenance corpus asset differs')
+    if corpus.get('fixtureId') != FIELDS_02:
+        raise ValueError('embedded provenance corpus family differs')
+    if _require_int(corpus.get('corpusVersion'), 'provenance.corpus.corpusVersion') != 1:
+        raise ValueError('embedded provenance corpus version differs')
+    if _require_int(corpus.get('bytes'), 'provenance.corpus.bytes') != len(fixture_bytes):
+        raise ValueError('embedded provenance byte count differs')
+    if corpus.get('sha256') != fixture_sha or corpus.get('sha256Lf') != fixture_sha_lf:
+        raise ValueError('embedded provenance corpus digests differ')
+    sources = _required_map(provenance, 'sources', 'provenance')
+    expected_sources = harness_source_hashes()
+    if set(sources) != set(expected_sources):
+        raise ValueError('embedded provenance source key set differs')
+    for name, expected in expected_sources.items():
+        if sources.get(name) != expected:
+            raise ValueError('embedded provenance source hash differs: ' + name)
+    return {
+        'apkSha256': apk_sha,
+        'selectedAssetSha256': fixture_sha,
+        'selectedAssetSha256Lf': fixture_sha_lf,
+        'selectedAssetBytes': len(fixture_bytes),
+        'provenanceSha256': sha256_bytes(provenance_bytes),
+        'provenance': provenance,
+    }
+
+
 def _write_finalize_failure(output, error):
     receipt = {
         'status': 'failed',
@@ -73,12 +152,17 @@ def _hash_lines(output):
     for line in output.decode(errors='replace').splitlines():
         parts = line.split(None, 1)
         if len(parts) == 2:
-            hashes[parts[1].strip()] = parts[0]
+            path = parts[1].strip()
+            if path == './':
+                path = '.'
+            elif path.startswith('./'):
+                path = path[2:]
+            hashes[path] = parts[0]
     return hashes
 
 
 def finalize(output, fixture, manifest, report, before, after, asset=None,
-             scratch_cleanup=None):
+             scratch_cleanup=None, fixture_bytes=None, report_bytes=None):
     """Validate one pulled report and its privacy snapshot; write the golden.
 
     Re-runnable over an evidence directory that already holds
@@ -88,7 +172,9 @@ def finalize(output, fixture, manifest, report, before, after, asset=None,
     """
     if fixture.get('fixtureId') == FIELDS_02:
         return _finalize_fields_02(output, fixture, manifest, report, before, after,
-                                   asset=asset, scratch_cleanup=scratch_cleanup)
+                                   asset=asset, scratch_cleanup=scratch_cleanup,
+                                   fixture_bytes=fixture_bytes,
+                                   report_bytes=report_bytes)
     if report.get('analysisFailure') is not None:
         raise ValueError('the frozen harness reported an analysis failure')
     if report.get('caseFailures'):
@@ -226,8 +312,8 @@ def _admit_native_request(request, label):
     receipt = _required_map(request, 'receipt', label)
     if _required_string(receipt, 'terminal', label + '.receipt') != 'responded':
         raise ValueError(label + ' receipt did not complete')
-    if not isinstance(_required(receipt, 'status', label + '.receipt'), int):
-        raise ValueError(label + '.receipt.status must be integer')
+    _require_int(_required(receipt, 'status', label + '.receipt'),
+                 label + '.receipt.status')
     if _required_string(receipt, 'send', label + '.receipt') != 'completed':
         raise ValueError(label + '.receipt.send must record completion')
     _nullable_string(receipt, 'responseId', label + '.receipt')
@@ -297,11 +383,139 @@ def _admit_native_case(case, declared, label):
         _admit_native_request(request, f'{label}.requests[{index}]')
 
 
+def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
+    artifact = _required_map(manifest, 'artifact', 'manifest')
+    if artifact.get('apkSha256') != _required(manifest, 'harnessApkSha256', 'manifest'):
+        raise ValueError('artifact APK hash differs from the manifest harness APK')
+    if artifact.get('apkSha256') != isolation.get('harnessApkSha256'):
+        raise ValueError('artifact APK hash differs from the report harness APK')
+    raw_sha = sha256_bytes(fixture_bytes)
+    lf_sha = sha256_bytes(lf_bytes(fixture_bytes))
+    if artifact.get('selectedAssetSha256') != raw_sha:
+        raise ValueError('artifact selected asset raw hash differs')
+    if artifact.get('selectedAssetSha256Lf') != lf_sha:
+        raise ValueError('artifact selected asset LF hash differs')
+    if _require_int(artifact.get('selectedAssetBytes'), 'artifact.selectedAssetBytes') != len(fixture_bytes):
+        raise ValueError('artifact selected asset byte count differs')
+    provenance_sha = artifact.get('provenanceSha256')
+    if not isinstance(provenance_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', provenance_sha):
+        raise ValueError('artifact provenance hash must be a sha256 digest')
+    provenance = _required_map(artifact, 'provenance', 'artifact')
+    if _require_int(_required(provenance, 'schemaVersion', 'artifact.provenance'), 'artifact.provenance.schemaVersion') != 1:
+        raise ValueError('artifact provenance schema version differs')
+    if provenance.get('fixtureId') != FIELDS_02:
+        raise ValueError('artifact provenance fixture id differs')
+    corpus = _required_map(provenance, 'corpus', 'artifact.provenance')
+    if corpus.get('asset') != 'field-fixtures.json' or corpus.get('fixtureId') != FIELDS_02:
+        raise ValueError('artifact provenance corpus identity differs')
+    if _require_int(corpus.get('corpusVersion'), 'artifact.provenance.corpus.corpusVersion') != 1:
+        raise ValueError('artifact provenance corpus version differs')
+    if _require_int(corpus.get('bytes'), 'artifact.provenance.corpus.bytes') != len(fixture_bytes):
+        raise ValueError('artifact provenance byte count differs')
+    if corpus.get('sha256') != raw_sha or corpus.get('sha256Lf') != lf_sha:
+        raise ValueError('artifact provenance corpus digest differs')
+    sources = _required_map(provenance, 'sources', 'artifact.provenance')
+    if set(sources) != set(HARNESS_SOURCE_KEYS):
+        raise ValueError('artifact provenance source key set differs')
+    for name in HARNESS_SOURCE_KEYS:
+        value = sources.get(name)
+        if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
+            raise ValueError('artifact provenance source hash is malformed: ' + name)
+    expected_root = _required_string(manifest, 'targetPrivateRoot', 'manifest')
+    if isolation.get('scratchRoot') != expected_root + '/cache/liber-fields-02':
+        raise ValueError('scratch root is not the measured target-private cache relation')
+    if isolation.get('preferencesPrefix') != OWNED_PREFERENCE_PREFIX:
+        raise ValueError('preference namespace differs from the owned namespace')
+
+
+def _canonical_raw_query(request):
+    query = request.get('query')
+    if query is None:
+        return ''
+    if not isinstance(query, dict):
+        raise ValueError('expected request query must be an object')
+    return '&'.join(
+        urllib.parse.quote(str(key), safe='') + '=' +
+        urllib.parse.quote(str(value), safe='')
+        for key, value in query.items()
+    )
+
+
+def _admit_native_causality(cases, requests, trace, fixture):
+    flattened = []
+    for case in cases:
+        slices = case.get('requests')
+        if not isinstance(slices, list):
+            raise ValueError('case request slice is missing')
+        flattened.extend(slices)
+    if flattened != requests:
+        raise ValueError('case request slices do not reconstruct the global sequence')
+    origin = fixture['origin']
+    previous = -1
+    for index, entry in enumerate(trace):
+        path = entry.get('path')
+        if not isinstance(path, str):
+            raise ValueError('trace path must be a string')
+        matched = -1
+        for request_index, request in enumerate(requests):
+            request_path = request.get('path')
+            raw = request.get('rawQuery')
+            if not isinstance(request_path, str) or not isinstance(raw, str):
+                raise ValueError('request path/rawQuery must be strings')
+            candidates = {
+                request_path,
+                request_path + ('' if not raw else '?' + raw),
+                origin + request_path + ('' if not raw else '?' + raw),
+            }
+            if path in candidates:
+                matched = request_index
+                break
+        if matched < 0:
+            raise ValueError('trace path does not match an actual request: ' + path)
+        if matched < previous:
+            raise ValueError('trace order regresses against the request sequence')
+        previous = matched
+    for case in cases:
+        slices = case.get('requests') or []
+        if not slices:
+            raise ValueError('case request slice is empty')
+        first = slices[0]
+        path = first.get('path')
+        raw = first.get('rawQuery')
+        if not isinstance(path, str) or not isinstance(raw, str):
+            raise ValueError('case first request path/rawQuery must be strings')
+        candidates = {
+            path,
+            path + ('' if not raw else '?' + raw),
+            origin + path + ('' if not raw else '?' + raw),
+        }
+        if not any(entry.get('path') in candidates for entry in trace):
+            raise ValueError('case search request is not represented in the trace')
+
 def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=None,
-                        scratch_cleanup=None):
+                        scratch_cleanup=None, fixture_bytes=None, report_bytes=None):
     """Validate the FIELDS-02 native report without deleting prior artifacts."""
     golden_path = output / 'golden.json'
-    report_bytes = (output / 'field-oracle.json').read_bytes()
+    disk_report_bytes = (output / 'field-oracle.json').read_bytes()
+    if report_bytes is not None and report_bytes != disk_report_bytes:
+        raise ValueError('the supplied report bytes differ from the exact disk report')
+    report_bytes = disk_report_bytes
+    report = json.loads(report_bytes.decode('utf-8'))
+    if fixture_bytes is None:
+        raise ValueError('the selected fixture bytes are required for FIELDS-02 finalization')
+    if not isinstance(fixture_bytes, (bytes, bytearray)):
+        raise ValueError('the selected fixture bytes must be bytes')
+    fixture_bytes = bytes(fixture_bytes)
+    selected_fixture = json.loads(fixture_bytes.decode('utf-8'))
+    if selected_fixture != fixture:
+        raise ValueError('the supplied fixture object differs from the selected fixture bytes')
+    fixture = selected_fixture
+    fixture_sha = sha256_bytes(fixture_bytes)
+    fixture_lf_sha = sha256_bytes(lf_bytes(fixture_bytes))
+    if fixture.get('fixtureId') != FIELDS_02:
+        raise ValueError('the selected fixture is not FIELDS-02')
+    if _require_int(fixture.get('corpusVersion'), 'fixture.corpusVersion') != 1:
+        raise ValueError('the selected fixture version is not integer 1')
     golden_reused = golden_path.exists()
     if golden_reused and golden_path.read_bytes() != report_bytes:
         raise ValueError('an existing golden differs from this report; refusing to overwrite')
@@ -319,6 +533,8 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     for field in ['fixtureId', 'corpusVersion', 'baselineCommit', 'entryPoint']:
         if _required(report, field, 'report') != fixture[field]:
             raise ValueError('the frozen report disagrees on ' + field)
+    _require_int(_required(report, 'corpusVersion', 'report'), 'report.corpusVersion')
+    _require_int(_required(fixture, 'corpusVersion', 'fixture'), 'fixture.corpusVersion')
     if _required_string(report, 'platform', 'report') != 'android':
         raise ValueError('the frozen report platform differs')
     if _required_string(report, 'origin', 'report') != fixture['origin']:
@@ -350,11 +566,13 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
             raise ValueError('request identity differs at ' + str(index))
         if actual_query != wanted.get('query', {}):
             raise ValueError('request query differs at ' + str(index))
+        if actual.get('rawQuery') != _canonical_raw_query(wanted):
+            raise ValueError('request rawQuery differs at ' + str(index))
         response = responses[index]
         receipt = _required_map(actual, 'receipt', label)
         if receipt.get('responseId') != response['id']:
             raise ValueError('response id differs at ' + str(index))
-        if receipt.get('status') != response.get('status', 200):
+        if _require_int(receipt.get('status'), f'report.requests[{index}].receipt.status') != _require_int(response.get('status', 200), f'responses[{index}].status'):
             raise ValueError('response status differs at ' + str(index))
         location = (response.get('headers') or {}).get('Location')
         if receipt.get('redirect') != location:
@@ -369,26 +587,27 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
             raise ValueError(label + ' must be an object')
         _required_string(entry, 'stage', label)
         _required_string(entry, 'path', label)
+    _admit_native_causality(cases, requests, trace, fixture)
 
     corpus = _required_map(report, 'corpus', 'report')
     if corpus.get('asset') != 'field-fixtures.json':
         raise ValueError('the frozen report corpus asset differs')
     if corpus.get('fixtureId') != fixture['fixtureId']:
         raise ValueError('the frozen report fixture id differs')
-    if corpus.get('corpusVersion') != fixture['corpusVersion']:
+    if _require_int(corpus.get('corpusVersion'), 'report.corpus.corpusVersion') != _require_int(fixture['corpusVersion'], 'fixture.corpusVersion'):
         raise ValueError('the frozen report corpus version differs')
     manifest_corpus = _required_map(manifest, 'corpus', 'manifest')
     for field in ['bytes', 'sha256', 'sha256Lf']:
         if field not in manifest_corpus:
             raise ValueError('manifest corpus measurement is missing ' + field)
-    if corpus.get('bytes') != manifest_corpus['bytes']:
+    if _require_int(corpus.get('bytes'), 'report.corpus.bytes') != _require_int(manifest_corpus['bytes'], 'manifest.corpus.bytes'):
         raise ValueError('the frozen report corpus byte count differs')
     if corpus.get('sha256') != manifest_corpus['sha256']:
         raise ValueError('the frozen report raw corpus hash differs')
     if corpus.get('sha256Lf') != manifest_corpus['sha256Lf']:
         raise ValueError('the frozen report LF corpus hash differs')
-    if not isinstance(manifest_corpus['bytes'], int) or manifest_corpus['bytes'] < 0:
-        raise ValueError('manifest corpus byte count must be a nonnegative integer')
+    if _require_int(manifest_corpus['bytes'], 'manifest.corpus.bytes') < 0:
+        raise ValueError('manifest corpus byte count must be nonnegative')
     if not re.fullmatch(r'[0-9a-f]{64}', manifest_corpus['sha256']):
         raise ValueError('manifest raw corpus hash is malformed')
     if not re.fullmatch(r'[0-9a-f]{64}', manifest_corpus['sha256Lf']):
@@ -420,14 +639,26 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the scratch corpus LF binding differs')
     _required_string(isolation, 'preferencesPrefix', 'report.isolation')
     _required_string(isolation, 'scratchRoot', 'report.isolation')
+    _admit_provenance(manifest, fixture_bytes, fixture, isolation)
+    probe = _required_map(isolation, 'preferenceProbe', 'report.isolation')
+    if probe.get('installationFile') is not False:
+        raise ValueError('preference probe wrote the installation file')
+    for flag in ['registered', 'committed', 'scopedFile']:
+        if _required(probe, flag, 'report.isolation.preferenceProbe') is not True:
+            raise ValueError('preference probe.' + flag + ' must be true')
+    if probe.get('name') != OWNED_PREFERENCE_PREFIX + 'probe':
+        raise ValueError('preference probe name differs from the owned namespace')
 
+    target_root = _required_string(manifest, 'targetPrivateRoot', 'manifest')
+    root_path = target_root + '/cache/liber-fields-02'
+    report_path = root_path + '/field-oracle.json'
     cleanup = _required_map(report, 'cleanup', 'report')
     for field in ['serverClosed', 'ownerComplete', 'rootRetained', 'preferencesFenced']:
         if _required(cleanup, field, 'report.cleanup') is not True:
             raise ValueError('report.cleanup.' + field + ' must be true')
-    if cleanup.get('scratchRoot') != SCRATCH_ROOT:
+    if cleanup.get('scratchRoot') != root_path:
         raise ValueError('the scratch root path differs from the measured path')
-    if cleanup.get('reportPath') != REPORT_REMOTE_FIELDS_02:
+    if cleanup.get('reportPath') != report_path:
         raise ValueError('the scratch report path differs from the measured path')
     owner_run_id = _required_string(cleanup, 'ownerRunId', 'report.cleanup')
     owned = _required_list(cleanup, 'ownedPreferences', 'report.cleanup')
@@ -441,7 +672,7 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     owner = _required_map(manifest, 'scratchOwner', 'manifest')
     if owner.get('fixtureId') != fixture['fixtureId']:
         raise ValueError('the scratch owner fixture id differs')
-    if owner.get('corpusVersion') != fixture['corpusVersion']:
+    if _require_int(owner.get('corpusVersion'), 'manifest.scratchOwner.corpusVersion') != _require_int(fixture['corpusVersion'], 'fixture.corpusVersion'):
         raise ValueError('the scratch owner corpus version differs')
     if owner.get('targetPackage') != TARGET_PACKAGE:
         raise ValueError('the scratch owner target package differs')
@@ -469,8 +700,10 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the external scratch root cleanup is not proven')
     if scratch_cleanup.get('ownedPreferencesAbsent') is not True:
         raise ValueError('the owned preferences survived cleanup')
-    if scratch_cleanup.get('root') != SCRATCH_ROOT:
+    if scratch_cleanup.get('root') != root_path:
         raise ValueError('the external cleanup root differs')
+    if scratch_cleanup.get('ownerRunId') != cleanup.get('ownerRunId'):
+        raise ValueError('the external cleanup attempt differs from the owner')
     receipt_owned = scratch_cleanup.get('reportedOwnedPreferences')
     if not isinstance(receipt_owned, list) or sorted(receipt_owned) != sorted(owned):
         raise ValueError('the external cleanup inventory differs from the owner')
@@ -486,6 +719,13 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
 
     before_hashes = _hash_lines(before)
     after_hashes = _hash_lines(after)
+    for label, hashes in [('before', before_hashes), ('after', after_hashes)]:
+        required_paths = set(FROZEN_APP_STORE) | {
+            '.', 'cache', 'databases', 'shared_prefs', 'files',
+        }
+        if not required_paths.issubset(hashes):
+            missing = sorted(required_paths - set(hashes))
+            raise ValueError('the ' + label + ' private inventory is incomplete: ' + ', '.join(missing))
     changed = {path: {'before': before_hashes.get(path), 'after': after_hashes.get(path)}
                for path in sorted(set(before_hashes) | set(after_hashes))
                if before_hashes.get(path) != after_hashes.get(path)}
@@ -541,6 +781,7 @@ def main():
     if args.finalize:
         report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
         manifest = json.loads((args.output / 'manifest.json').read_text(encoding='utf-8'))
+        report_bytes = (args.output / 'field-oracle.json').read_bytes()
         if fields_02:
             golden = args.output / 'golden.json'
             report_bytes = (args.output / 'field-oracle.json').read_bytes()
@@ -558,7 +799,9 @@ def main():
                                   (args.output / 'private-before.log').read_bytes(),
                                   (args.output / 'private-after.log').read_bytes(),
                                   asset=args.asset,
-                                  scratch_cleanup=manifest.get('scratchCleanup'))
+                                  scratch_cleanup=manifest.get('scratchCleanup'),
+                                  fixture_bytes=fixture_path.read_bytes(),
+                                  report_bytes=report_bytes)
             except Exception as error:  # noqa: BLE001 - preserve accepted bytes
                 _write_finalize_failure(args.output, str(error))
                 return 1
@@ -577,7 +820,9 @@ def main():
                      (args.output / 'private-before.log').read_bytes(),
                      (args.output / 'private-after.log').read_bytes(),
                      asset=args.asset,
-                     scratch_cleanup=manifest.get('scratchCleanup'))
+                     scratch_cleanup=manifest.get('scratchCleanup'),
+                     fixture_bytes=fixture_path.read_bytes(),
+                     report_bytes=report_bytes)
         except Exception as error:  # noqa: BLE001 - legacy manifest records the blocker
             manifest['status'] = 'failed'
             manifest['error'] = str(error)
@@ -594,6 +839,7 @@ def main():
     corpus_sha256 = sha256_bytes(corpus_bytes)
     corpus_sha256_lf = sha256_bytes(lf_bytes(corpus_bytes))
     asset_bytes = None
+    artifact = None
     if fields_02:
         asset_bytes = Path(args.asset).read_bytes()
         if len(asset_bytes) != len(corpus_bytes):
@@ -602,6 +848,7 @@ def main():
             raise SystemExit('the built asset raw hash differs from the selected corpus')
         if sha256_bytes(lf_bytes(asset_bytes)) != corpus_sha256_lf:
             raise SystemExit('the built asset LF hash differs from the selected corpus')
+        artifact = inspect_selected_apk(args.apk, fixture_path, fixture)
     args.output.mkdir(parents=True, exist_ok=False)
     # The pulled baseline APK is a ~50 MB copy of the installed artifact; it is
     # hashed, never committed, and stays outside the evidence directory.
@@ -642,6 +889,7 @@ def main():
             'sha256Lf': corpus_sha256_lf,
             'assetCopySha256': sha256_bytes(asset_bytes),
         })
+        manifest['artifact'] = artifact
     installed = False
 
     def run(command, name, timeout=60, checked=True):
@@ -666,8 +914,17 @@ def main():
         process = adb('target-process', 'shell', 'pidof', TARGET_PACKAGE, checked=False)
         if process.returncode not in (0, 1) or process.stdout.strip():
             raise ValueError('a target process already exists; refusing an unowned run')
+        root_result = adb('target-private-root', 'shell', 'run-as', TARGET_PACKAGE,
+                          'pwd', checked=False)
+        if root_result.returncode != 0:
+            raise ValueError('cannot measure the target-private root')
+        target_root = root_result.stdout.decode(errors='replace').strip()
+        if not target_root.startswith('/data/') or '\n' in target_root:
+            raise ValueError('target-private root is not a canonical absolute data path')
+        root_path = target_root + '/cache/liber-fields-02'
+        pref_dir = target_root + '/shared_prefs'
         root = remote_script('scratch-root-check',
-                             'if [ -e ' + shlex.quote(SCRATCH_ROOT)
+                             'if [ -e ' + shlex.quote(root_path)
                              + ' ]; then echo PRESENT; else echo ABSENT; fi',
                              checked=False)
         if root.returncode != 0:
@@ -676,8 +933,8 @@ def main():
             raise ValueError('a preexisting scratch root exists; refusing to delete it')
         prefs = remote_script(
             'scratch-prefs-check',
-            'if [ -d ' + shlex.quote(PREFERENCE_DIR) + ' ]; then '
-            + 'find ' + shlex.quote(PREFERENCE_DIR)
+            'if [ -d ' + shlex.quote(pref_dir) + ' ]; then '
+            + 'find ' + shlex.quote(pref_dir)
             + ' -maxdepth 1 -name ' + shlex.quote(OWNED_PREFERENCE_PREFIX + '*.xml')
             + ' -print; fi',
             checked=False,
@@ -686,6 +943,7 @@ def main():
             raise ValueError('cannot determine whether owned preferences exist')
         if prefs.stdout.strip():
             raise ValueError('a preexisting field preference namespace exists; refusing to delete it')
+        return target_root
 
     def stop_owned_target():
         stopped = adb('poststop', 'shell', 'am', 'force-stop', TARGET_PACKAGE, checked=False)
@@ -695,13 +953,62 @@ def main():
         if check.returncode not in (0, 1) or check.stdout.strip():
             raise ValueError('the target process is still present after the owned stop')
 
-    def cleanup_fields_02(report, owner):
+    def cleanup_fields_02(report, owner, manifest):
         """Remove only the exact owner inventory after proving the stop/binding."""
         if not isinstance(report, dict) or not isinstance(owner, dict):
             raise ValueError('report/owner cleanup input is malformed')
         cleanup = report.get('cleanup') or {}
         if not isinstance(cleanup, dict):
             raise ValueError('scratch cleanup record malformed')
+        target_root = manifest.get('targetPrivateRoot')
+        if not isinstance(target_root, str) or not target_root.startswith('/data/'):
+            raise ValueError('measured target-private root is missing')
+        root_path = target_root + '/cache/liber-fields-02'
+        pref_dir = target_root + '/shared_prefs'
+        isolation = report.get('isolation') or {}
+        artifact = manifest.get('artifact') or {}
+        if isolation.get('targetPackage') != TARGET_PACKAGE:
+            raise ValueError('report target package differs before cleanup')
+        if isolation.get('targetApkSha256') != manifest.get('baselineApkSha256'):
+            raise ValueError('report target APK differs before cleanup')
+        if isolation.get('harnessApkSha256') != manifest.get('harnessApkSha256'):
+            raise ValueError('report harness APK differs before cleanup')
+        if isolation.get('scratchRoot') != root_path:
+            raise ValueError('report scratch root differs before cleanup')
+        if isolation.get('preferencesPrefix') != OWNED_PREFERENCE_PREFIX:
+            raise ValueError('report preference namespace differs before cleanup')
+        if cleanup.get('scratchRoot') != root_path:
+            raise ValueError('cleanup scratch root differs before cleanup')
+        if cleanup.get('reportPath') != root_path + '/field-oracle.json':
+            raise ValueError('cleanup report path differs before cleanup')
+        if artifact.get('apkSha256') != isolation.get('harnessApkSha256'):
+            raise ValueError('artifact APK differs before cleanup')
+        if owner.get('targetPackage') != TARGET_PACKAGE or owner.get('harnessPackage') != PACKAGE:
+            raise ValueError('owner package binding differs before cleanup')
+        if owner.get('targetApkSha256') != isolation.get('targetApkSha256'):
+            raise ValueError('owner target APK differs before cleanup')
+        if owner.get('harnessApkSha256') != isolation.get('harnessApkSha256'):
+            raise ValueError('owner harness APK differs before cleanup')
+        if owner.get('corpusSha256Lf') != isolation.get('corpusSha256Lf'):
+            raise ValueError('owner corpus differs before cleanup')
+        if not isinstance(artifact, dict):
+            raise ValueError('artifact receipt is missing before cleanup')
+        provenance = artifact.get('provenance')
+        if not isinstance(provenance, dict) or set(provenance.get('sources', {})) != set(HARNESS_SOURCE_KEYS):
+            raise ValueError('artifact source inventory is incomplete before cleanup')
+        for name in HARNESS_SOURCE_KEYS:
+            value = provenance.get('sources', {}).get(name)
+            if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
+                raise ValueError('artifact source hash is malformed before cleanup: ' + name)
+        pcorpus = provenance.get('corpus') or {}
+        manifest_corpus = manifest.get('corpus') or {}
+        if pcorpus.get('bytes') != manifest_corpus.get('bytes') or pcorpus.get('sha256') != manifest_corpus.get('sha256') or pcorpus.get('sha256Lf') != manifest_corpus.get('sha256Lf'):
+            raise ValueError('artifact corpus differs before cleanup')
+        if pcorpus.get('sha256Lf') != isolation.get('corpusSha256Lf'):
+            raise ValueError('artifact corpus LF differs before cleanup')
+        probe = isolation.get('preferenceProbe') or {}
+        if probe.get('installationFile') is not False or any(probe.get(flag) is not True for flag in ['registered', 'committed', 'scopedFile']):
+            raise ValueError('preference probe is not proven scratch-scoped before cleanup')
         if cleanup.get('ownerComplete') is not True or cleanup.get('rootRetained') is not True:
             raise ValueError('the harness did not retain a completed owner scratch root')
         if cleanup.get('preferencesFenced') is not True:
@@ -728,33 +1035,33 @@ def main():
 
         stop_owned_target()
         for name in owner_prefs:
-            path = PREFERENCE_DIR + '/' + name + '.xml'
+            path = pref_dir + '/' + name + '.xml'
             removed = remote_script('scratch-remove-' + name,
                                     'rm -f -- ' + shlex.quote(path),
                                     checked=False)
             if removed.returncode != 0:
                 raise ValueError('could not remove the exact owned preference: ' + name)
         root_removed = remote_script('scratch-remove-root',
-                                     'rm -rf -- ' + shlex.quote(SCRATCH_ROOT),
+                                     'rm -rf -- ' + shlex.quote(root_path),
                                      checked=False)
         if root_removed.returncode != 0:
             raise ValueError('could not remove the owned scratch root')
         for name in owner_prefs:
-            path = PREFERENCE_DIR + '/' + name + '.xml'
+            path = pref_dir + '/' + name + '.xml'
             absent = remote_script('scratch-absent-' + name,
                                    'test ! -e ' + shlex.quote(path),
                                    checked=False)
             if absent.returncode != 0:
                 raise ValueError('owned preference survived cleanup: ' + name)
         root_absent = remote_script('scratch-absent-root',
-                                    'test ! -e ' + shlex.quote(SCRATCH_ROOT),
+                                    'test ! -e ' + shlex.quote(root_path),
                                     checked=False)
         if root_absent.returncode != 0:
             raise ValueError('owned scratch root survived cleanup')
         return {
             'reportedOwnedPreferences': list(owner_prefs),
             'ownerRunId': owner_run_id,
-            'root': SCRATCH_ROOT,
+            'root': root_path,
             'rootAbsent': True,
             'ownedPreferencesAbsent': True,
             'postStop': True,
@@ -811,19 +1118,26 @@ def main():
         if manifest['baselineApkSha256'] != expected_apk:
             raise ValueError('installed baseline APK differs')
         existing = adb('harness-existing', 'shell', 'pm', 'path', PACKAGE, checked=False)
+        if fields_02 and existing.returncode != 0:
+            raise ValueError('cannot determine whether a harness package already exists')
         if b'package:' in existing.stdout:
             raise ValueError('harness package already exists; do not replace unowned install')
+        target_private_root = None
         if fields_02:
             # A preexisting namespace is owned by someone else and is never
             # cleaned, replaced, or wildcard-deleted by this driver.
-            preflight_fields_02()
-        # Only hash lists leave the device; no user content is copied.
-        snapshot_script = ("find databases shared_prefs files -type f "
-                           "-exec sha256sum {} \\; 2>/dev/null")
+            target_private_root = preflight_fields_02()
+            manifest['targetPrivateRoot'] = target_private_root
+        # Only hashes/paths leave the device; no private content is copied.
         if fields_02:
+            snapshot_script = (
+                'cd ' + shlex.quote(target_private_root) + ' && { '
+                'find . -type f -exec sha256sum {} \\; ; '
+                "find . -type d -print | sed 's/^/dir /'; }"
+            )
             before = remote_script('private-before', snapshot_script)
         else:
-            snapshot = "'" + snapshot_script + "'"
+            snapshot = "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
             before = adb('private-before', 'shell', 'run-as', 'io.legado.app.debug',
                          'sh', '-c', snapshot)
         installed_result = adb('install', 'install', '-r', str(args.apk), checked=False,
@@ -831,16 +1145,13 @@ def main():
         if installed_result.returncode:
             manifest['status'] = 'blocked'
             manifest['blocker'] = installed_result.stderr.decode(errors='replace')
-            partial = adb('partial-harness', 'shell', 'pm', 'path', PACKAGE,
-                          checked=False)
-            if b'package:' in partial.stdout:
-                manifest['status'] = 'failed'
-                manifest['error'] = ('install returned nonzero but a partial harness '
-                                     'package is present; preserving it for inspection')
-                removed = adb('remove-partial-harness', 'uninstall', PACKAGE,
-                               checked=False)
-                if removed.returncode:
-                    manifest['error'] += '; partial harness uninstall also failed'
+            if fields_02:
+                partial = adb('partial-harness', 'shell', 'pm', 'path', PACKAGE,
+                              checked=False)
+                if partial.returncode != 0 or b'package:' in partial.stdout:
+                    manifest['status'] = 'failed'
+                    manifest['error'] = ('install returned nonzero and package state is '
+                                         'ambiguous; preserving it for inspection')
             return 2 if manifest['status'] == 'blocked' else 1
         installed = True
         adb('logcat-clear', 'logcat', '-c', checked=False)
@@ -854,19 +1165,21 @@ def main():
             # target cache for this external driver. Stop the owned target first,
             # then read the report/owner and remove only the verified inventory.
             stop_owned_target()
+            report_path = target_private_root + '/cache/liber-fields-02/field-oracle.json'
+            owner_path = target_private_root + '/cache/liber-fields-02/owner.json'
             pulled = adb('pull-report', 'exec-out', 'run-as', TARGET_PACKAGE,
-                         'cat', REPORT_REMOTE_FIELDS_02, checked=False)
+                         'cat', report_path, checked=False)
             if pulled.returncode:
                 raise ValueError('the device reported no oracle report')
             (args.output / 'field-oracle.json').write_bytes(pulled.stdout)
             owner_result = adb('scratch-owner', 'exec-out', 'run-as', TARGET_PACKAGE,
-                               'cat', OWNER_REMOTE_FIELDS_02, checked=False)
+                               'cat', owner_path, checked=False)
             if owner_result.returncode:
                 raise ValueError('the outer driver could not read the scratch owner manifest')
             manifest['scratchOwner'] = json.loads(owner_result.stdout)
             report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
             manifest['scratchCleanup'] = cleanup_fields_02(
-                report, manifest['scratchOwner'])
+                report, manifest['scratchOwner'], manifest)
             uninstalled = adb('remove-harness', 'uninstall', PACKAGE, checked=False)
             if uninstalled.returncode:
                 raise ValueError('the owned harness could not be uninstalled')
@@ -874,7 +1187,8 @@ def main():
             before = (args.output / 'private-before.log').read_bytes()
             after = remote_script('private-after', snapshot_script).stdout
             finalize(args.output, fixture, manifest, report, before, after,
-                     asset=args.asset, scratch_cleanup=manifest['scratchCleanup'])
+                     asset=args.asset, scratch_cleanup=manifest['scratchCleanup'],
+                     fixture_bytes=corpus_bytes, report_bytes=pulled.stdout)
         else:
             pull = adb('pull-report', 'pull', REPORT_REMOTE,
                        str(args.output / 'field-oracle.json'), checked=False)
@@ -899,13 +1213,13 @@ def main():
                 if stop.returncode:
                     manifest['status'] = 'failed'
                     manifest['error'] = 'owned target stop failed in cleanup'
+                # A failed/ambiguous FIELDS-02 run leaves the installed harness
+                # in place for inspection; only the verified success path
+                # uninstalls it.
             else:
                 adb('stop-owned-run', 'shell', 'am', 'force-stop',
                     'io.legado.app.debug', checked=False)
-            removed = adb('remove-harness', 'uninstall', PACKAGE, checked=False)
-            if removed.returncode and fields_02:
-                manifest['status'] = 'failed'
-                manifest['error'] = 'owned harness uninstall failed in cleanup'
+                adb('remove-harness', 'uninstall', PACKAGE, checked=False)
         (args.output / 'manifest.json').write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print(json.dumps({'status': manifest['status'],

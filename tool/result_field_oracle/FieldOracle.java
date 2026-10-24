@@ -119,7 +119,8 @@ public final class FieldOracle extends Instrumentation {
         }
         String fixtureId = selection.optString("fixtureId", "");
         if (FIELDS_02.equals(fixtureId)) {
-            if (selection.optInt("corpusVersion", -1) != 1) {
+            Object version = selection.opt("corpusVersion");
+            if (!(version instanceof Integer) || ((Integer) version) != 1) {
                 throw new IllegalStateException("unsupported FIELDS-02 corpusVersion");
             }
             newFamily = true;
@@ -303,6 +304,13 @@ public final class FieldOracle extends Instrumentation {
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
         JSONObject probe = scratch.seedProbePreferences(
             (android.content.Context) app, dataDir, "liber_fields_02_probe");
+        if (probe.getBoolean("installationFile")
+                || !probe.getBoolean("registered")
+                || !probe.getBoolean("committed")
+                || !probe.getBoolean("scopedFile")) {
+            throw new IllegalStateException("fields preference storage is not scratch-scoped: "
+                + probe);
+        }
         isolation.put("bound", scratch.isBound())
             .put("targetPackage", getTargetContext().getPackageName())
             .put("targetApkSha256", identity.getString("targetApkSha256"))
