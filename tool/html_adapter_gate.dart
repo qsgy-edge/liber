@@ -400,6 +400,12 @@ void _validateHtmlListRows(Map<String, dynamic> json) {
     if (document is! String || !documents.containsKey(document)) {
       throw FormatException('HTML-LIST-01 case $id names an absent document');
     }
+    final body = documents[document];
+    if (body is! String) {
+      throw FormatException(
+        'HTML-LIST-01 case $id references a non-string document: $document',
+      );
+    }
     final rule = entry['rule'];
     if (rule is! String || rule.isEmpty) {
       throw FormatException('HTML-LIST-01 case $id has no rule');

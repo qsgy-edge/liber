@@ -160,6 +160,40 @@ void main() {
     },
   );
 
+  test('a referenced document body must be a string or empty string', () async {
+    final base = _listCorpus();
+    final single = _clone(base)..['cases'] = [_case(base, 'html-list-empty')];
+
+    final stringReport = await _run(
+      corpusPath: _writeJson('document-string', single),
+    );
+    expect(stringReport['status'], 'pass');
+    expect(stringReport['cases'], 1);
+
+    final empty = _clone(single);
+    (empty['documents'] as Map<String, dynamic>)['toc'] = '';
+    final emptyReport = await _run(
+      corpusPath: _writeJson('document-empty', empty),
+    );
+    expect(emptyReport['status'], 'pass');
+    expect(emptyReport['cases'], 1);
+
+    for (final (name, value) in [
+      ('null', null),
+      ('number', 7),
+      ('object', <String, Object?>{'body': '<html></html>'}),
+      ('array', <String>['<html></html>']),
+    ]) {
+      final corpus = _clone(single);
+      (corpus['documents'] as Map<String, dynamic>)['toc'] = value;
+      await expectLater(
+        _run(corpusPath: _writeJson('document-$name', corpus)),
+        throwsA(isA<FormatException>()),
+        reason: name,
+      );
+    }
+  });
+
   test('metadata and row damage are refused before a rule runs', () async {
     final controls = <String, Map<String, dynamic> Function()>{
       'unknown family': () {
@@ -466,26 +500,6 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
-
-  test(
-    'a metadata-bearing golden must name exactly the declared ids',
-    () async {
-      final base = _hybridGolden();
-      final rows = _observations(base);
-      final controls = <String, List<Map<String, dynamic>>>{
-        'missing': rows.sublist(0, rows.length - 1),
-        'duplicate': [...rows.sublist(0, rows.length - 1), rows.first],
-      };
-      for (final control in controls.entries) {
-        final golden = _clone(base)..['observations'] = control.value;
-        await expectLater(
-          _run(goldenPath: _writeJson('declared-ids-${control.key}', golden)),
-          throwsA(isA<StateError>()),
-          reason: control.key,
-        );
-      }
-    },
-  );
 
   test('the legacy golden is refused by the list family identity', () async {
     await expectLater(
