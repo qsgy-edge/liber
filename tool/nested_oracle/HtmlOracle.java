@@ -33,9 +33,10 @@ import java.security.MessageDigest;
  * observation. It also binds every observation set to the raw bytes of the
  * selected {@code html-fixtures.json} asset: the build may copy either the
  * original corpus or the independently selected list corpus under that asset
- * name, so the report carries the asset's actual byte count and SHA-256 (and
- * its declared fixture id/version when present), never a hash copied from the
- * corpus JSON.
+ * name, so the report carries the asset's actual byte count and SHA-256 and its
+ * declared fixture id/version/schema in the nested {@code corpus} block, never
+ * a hash copied from the corpus JSON. An empty corpus is a failed capture, not
+ * a successful zero-observation report.
  */
 public final class HtmlOracle extends Instrumentation {
     /** Fallback for a corpus without a {@code baseUrl}; relative-URL base only. */
@@ -55,6 +56,7 @@ public final class HtmlOracle extends Instrumentation {
             JSONObject corpus = new JSONObject(fixture);
             JSONObject documents = corpus.getJSONObject("documents");
             JSONArray cases = corpus.getJSONArray("cases");
+            if (cases.length() == 0) throw new IllegalStateException("HTML oracle corpus has no cases");
             String baseUrl = corpus.optString("baseUrl", DEFAULT_BASE_URL);
             ClassLoader loader = getTargetContext().getClassLoader();
             Class<?> ruleClass = loader.loadClass("io.legado.app.model.analyzeRule.AnalyzeRule");

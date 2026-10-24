@@ -26,20 +26,23 @@ string rendering.
 ## Destination side
 
 ```
-dart run tool/html_adapter_gate.dart <fjs library> - <observations.json> \r
-  [tool/html_oracle/fixtures.json | tool/html_oracle/list-fixtures.json]
+dart run tool/html_adapter_gate.dart <fjs library> - <observations.json> [tool/html_oracle/fixtures.json | tool/html_oracle/list-fixtures.json]
 ```
 
 The fourth positional argument selects the corpus; an existing three-argument
 invocation keeps the original `tool/html_oracle/fixtures.json` and its exact
-45-case meaning. CI runs this gate on Windows, Linux and macOS; Android and iOS
-cross-build the native library. Each case runs through the Rust HTML adapter, the
-product rule field, or the JSON reader as its `path` declares, and fails on a
-typed value difference. The original 39 expectations were read from the pinned
-frozen sources; #65's six were filled only after the installed APK returned them.
-All 45 rows then matched the frozen report on Windows. The three JSON cases
-confirm only the named `@Json:$.missing##$##Fallback` no-match shape, not the
-JSONPath grammar.
+45-case meaning. A corpus is refused before any rule runs when it declares no
+cases. The legacy corpus is recognized by its pinned raw bytes
+(`e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342`), so a
+byte-identical copy is still the legacy corpus while a downgraded copy is
+unknown and refused. CI runs this gate on Windows, Linux and macOS; Android and
+iOS cross-build the native library. Each case runs through the Rust HTML
+adapter, the product rule field, or the JSON reader as its `path` declares, and
+fails on a typed value difference. The original 39 expectations were read from
+the pinned frozen sources; #65's six were filled only after the installed APK
+returned them. All 45 rows then matched the frozen report on Windows. The three
+JSON cases confirm only the named `@Json:$.missing##$##Fallback` no-match shape,
+not the JSONPath grammar.
 
 ## Frozen side (executed)
 
@@ -52,12 +55,15 @@ ids keep their values and six no-match rows are added. The entry is
 loads `io.legado.app.model.analyzeRule.AnalyzeRule` from the installed,
 hash-pinned `io.legado.app.debug` (installed bytes `cc99040c…`), calls
 `setContent(document, baseUrl)` and the method selected per case, and writes
-`{"baselineCommit", "entryPoint", "observations": [{"id", "value"}]}`. The
+`{"baselineCommit", "entryPoint", "fingerprint", "corpus", "observations":
+[{"id", "value"|"error"}]}`. The nested `corpus` block carries the selected
+asset name, its actual byte length and raw SHA-256, and its declared
+fixture/version/schema identity; it is never copied from a claimed corpus hash.
+An empty corpus fails the capture instead of reporting zero observations. The
 original #51 run remains in Git history. Re-run the comparison on Windows:
 
 ```
-dart run tool/html_adapter_gate.dart <fjs library> \r
-  tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json <out.json>
+dart run tool/html_adapter_gate.dart <fjs library> tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json <out.json>
 ```
 
 The comparison passes for all 45 rows. With an unmatched HTML selector,
@@ -140,6 +146,26 @@ claimed inside the corpus. `baselineCommit`, `entryPoint` and the device
 `fingerprint` stay in the report. A real handset capture of this family is
 **not-run** here; building and inspecting the signed APK is preparation, not a
 golden.
+
+### Admission contract (repair)
+
+For `HTML-LIST-01` the gate requires the collector's actual nested record: the
+`corpus` block with `asset: "html-fixtures.json"`, integer `bytes` equal to the
+selected corpus bytes, `sha256` equal to the measured raw hash, string
+`fixtureId`, typed integer `corpusVersion`/`schemaVersion`, and a nonempty-string
+top-level `fingerprint`. Missing, fractional or contradictory metadata is
+refused; the old top-level family fields remain admissible only as an extra
+hybrid because the nested fields are still required. The legacy golden keeps
+its original baseline/entry-point admission and gets no fabricated nested
+fields; its raw bytes are the identity pin above.
+
+Every frozen row must have exactly one outcome, `value` or `error`. A value is
+validated against its declared method: scalar methods accept a string or an
+explicit null, list methods accept a string list or an explicit null, and
+`error` must be a nonempty string. Rows must name exactly the declared unique
+ids in any order. Comparison carries the outcome kind as well as the payload, so
+a value and an error with the same text cannot compare equal; null is a value,
+not an absence, and missing fields are never backfilled.
 
 ### Measured boundary and remaining proof
 

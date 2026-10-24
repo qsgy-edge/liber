@@ -25,10 +25,14 @@ import 'package:pointycastle/export.dart';
 /// committed goldens stay verbatim.
 ///
 /// `HTML-LIST-01` (`tool/html_oracle/list-fixtures.json`) is the independent
-/// nonempty-list family. It carries `fixtureId`/`corpusVersion` metadata, and
-/// this gate refuses an unknown or damaged family, a duplicate/missing case id
-/// and a declared expected value of the wrong type for its method. Its report
-/// names the selected corpus and the measured raw SHA-256 of the bytes it read.
+/// nonempty-list family. Its metadata is at the corpus root and its frozen
+/// record is the collector's nested `corpus` block (`asset`, byte length, raw
+/// SHA-256, fixture/version/schema) plus a nonempty device fingerprint. The gate
+/// validates that measured binding before comparing, refuses an empty corpus or
+/// an unknown non-legacy corpus, and accepts only the byte-identical legacy
+/// corpus without those fields. Frozen rows must carry exactly one typed
+/// value/error outcome per declared unique id; row order is not a fact, explicit
+/// null is a value, and an outcome's kind is compared as well as its payload.
 /// The `getStringListUrl` form is a named product refusal when nonempty, so a
 /// corpus row of that shape is refused rather than rendered as a list.
 ///
@@ -38,6 +42,15 @@ import 'package:pointycastle/export.dart';
 /// segment, and the bare adapter deliberately refuses those (ticket #11).
 const legacyHtmlCorpusPath = 'tool/html_oracle/fixtures.json';
 const htmlListCorpusPath = 'tool/html_oracle/list-fixtures.json';
+
+/// The one immutable legacy corpus identity. A byte-identical copy is the same
+/// corpus wherever it is selected; any other corpus without family metadata is
+/// unknown, not a legacy downgrade.
+const legacyHtmlCorpusSha256 =
+    'e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342';
+
+/// The harness packages the selected corpus under this one fixed asset name.
+const htmlOracleCorpusAsset = 'html-fixtures.json';
 
 /// The selected nonempty-list family this gate admits.
 const htmlListFixtureId = 'HTML-LIST-01';
@@ -76,6 +89,12 @@ class _HtmlCorpus {
 
   List<Map<String, dynamic>> get cases =>
       (json['cases'] as List).cast<Map<String, dynamic>>();
+
+  /// The declared method of every case, used to type a frozen outcome.
+  Map<String, String> get caseMethods => {
+    for (final entry in cases)
+      entry['id'] as String: entry['method'] as String? ?? 'getString',
+  };
 }
 
 /// Runs one corpus and returns its report. The caller owns [NativeLibrary]:
@@ -90,26 +109,22 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
     throw StateError('Refusing to overwrite evidence: ${output.path}');
   }
   final corpus = _readHtmlCorpus(corpusPath);
+  final caseMethods = corpus.caseMethods;
+  final declaredIds = [for (final entry in corpus.cases) entry['id'] as String];
   final golden = goldenPath == null
       ? null
       : jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
   if (golden != null) {
-    if (golden['baselineCommit'] != corpus.json['baselineCommit'] ||
-        golden['entryPoint'] != corpus.json['entryPoint']) {
-      throw StateError('Oracle identity mismatch');
+    _validateGoldenIdentity(golden, corpus);
+    final goldenObservations = golden['observations'];
+    if (goldenObservations is! List) {
+      throw StateError('Frozen golden observations missing');
     }
-    final family = corpus.family;
-    if (family != null &&
-        (golden['fixtureId'] != family.fixtureId ||
-            golden['corpusVersion'] != family.corpusVersion)) {
-      throw StateError('Oracle corpus identity mismatch');
-    }
-    if (family != null) {
-      _validateGoldenObservationIds(
-        (golden['observations'] as List).cast<Map>(),
-        [for (final entry in corpus.cases) entry['id'] as String],
-      );
-    }
+    _validateFrozenObservations(
+      goldenObservations.cast<Map>(),
+      caseMethods,
+      declaredIds,
+    );
   }
 
   await NativeLibrary.initialize(libraryPath: libraryPath);
@@ -168,7 +183,6 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
 
   final family = corpus.family;
   if (family != null) {
-    final declaredIds = [for (final entry in cases) entry['id'] as String];
     final observedIds = [for (final item in observations) item['id'] as String];
     if (declaredIds.toSet().length != declaredIds.length ||
         observedIds.length != declaredIds.length ||
@@ -187,15 +201,13 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
     final id = entry['id'] as String;
     final expected = entry['expected'];
     final observed = observations.firstWhere((item) => item['id'] == id);
-    final actual = observed.containsKey('value')
-        ? observed['value']
-        : observed['error'];
-    if (!observed.containsKey('value') ||
-        jsonEncode(actual) != jsonEncode(expected)) {
+    final outcome = _outcomeOf(observed, 'Observation $id');
+    if (outcome.kind != 'value' ||
+        jsonEncode(outcome.payload) != jsonEncode(expected)) {
       failed = true;
       expectedFailures.add(
         '$id\n  expected: ${jsonEncode(expected)}\n  observed: '
-        '${jsonEncode(actual)}',
+        '${jsonEncode(outcome.payload)} (${outcome.kind})',
       );
     }
   }
@@ -207,25 +219,27 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
 
   final mismatches = <String>[];
   if (golden != null) {
-    final goldenValues = <String, Object?>{
+    final goldenRows = <String, Map>{
       for (final item in (golden['observations'] as List).cast<Map>())
-        item['id'] as String: item.containsKey('value')
-            ? item['value']
-            : item['error'],
+        item['id'] as String: item,
     };
     for (final item in observations) {
       final id = item['id'] as String;
-      if (!goldenValues.containsKey(id)) {
+      final frozenRow = goldenRows[id];
+      if (frozenRow == null) {
         mismatches.add('$id: no frozen observation');
         continue;
       }
-      final frozen = goldenValues[id];
-      final observed = item.containsKey('value')
-          ? item['value']
-          : item['error'];
-      if (jsonEncode(observed) != jsonEncode(frozen)) {
+      final frozenOutcome = _outcomeOf(frozenRow, 'Frozen observation $id');
+      final observedOutcome = _outcomeOf(item, 'Observation $id');
+      if (frozenOutcome.kind != observedOutcome.kind ||
+          jsonEncode(frozenOutcome.payload) !=
+              jsonEncode(observedOutcome.payload)) {
         mismatches.add(
-          '$id: frozen=${jsonEncode(frozen)} windows=${jsonEncode(observed)}',
+          '$id: frozen=${jsonEncode(frozenOutcome.payload)} '
+          '(${frozenOutcome.kind}) windows='
+          '${jsonEncode(observedOutcome.payload)} '
+          '(${observedOutcome.kind})',
         );
       }
     }
@@ -297,9 +311,11 @@ Future<void> main(List<String> args) async {
   }
 }
 
-/// Reads and validates one corpus before any rule runs. The legacy corpus is
-/// admitted exactly as before (no fixture metadata); a metadata-bearing corpus
-/// must name the one family this gate implements, and every row must be usable.
+/// The unchanged legacy corpus is the only corpus without family metadata, and
+/// only its pinned raw bytes are that corpus. A metadata-bearing corpus must
+/// name the one family this gate implements, carry typed integers, and have a
+/// nonempty row set. Every corpus is rejected before a rule runs when it is
+/// empty or unknown; a same-byte legacy copy remains the legacy corpus.
 _HtmlCorpus _readHtmlCorpus(String path) {
   final bytes = File(path).readAsBytesSync();
   final decoded = jsonDecode(utf8.decode(bytes));
@@ -307,6 +323,10 @@ _HtmlCorpus _readHtmlCorpus(String path) {
     throw const FormatException('HTML oracle corpus must be a JSON object');
   }
   final json = decoded;
+  final cases = json['cases'];
+  if (cases is! List || cases.isEmpty) {
+    throw const FormatException('HTML oracle corpus declares no cases');
+  }
   final fixtureId = json['fixtureId'];
   final corpusVersion = json['corpusVersion'];
   ({String fixtureId, int corpusVersion})? family;
@@ -323,7 +343,8 @@ _HtmlCorpus _readHtmlCorpus(String path) {
         'Unknown HTML oracle corpus family: $fixtureId v$corpusVersion',
       );
     }
-    if (json['schemaVersion'] != htmlOracleSchemaVersion) {
+    final schemaVersion = json['schemaVersion'];
+    if (schemaVersion is! int || schemaVersion != htmlOracleSchemaVersion) {
       throw const FormatException('Unsupported HTML-LIST-01 schemaVersion');
     }
     if (json['baselineCommit'] != htmlOracleBaselineCommit ||
@@ -334,6 +355,10 @@ _HtmlCorpus _readHtmlCorpus(String path) {
     }
     family = (fixtureId: fixtureId, corpusVersion: corpusVersion);
     _validateHtmlListRows(json);
+  } else if (_sha256(bytes) != legacyHtmlCorpusSha256) {
+    throw const FormatException(
+      'Unknown HTML oracle corpus: not the pinned legacy bytes',
+    );
   }
   final corpus = _HtmlCorpus(
     path: path,
@@ -409,11 +434,55 @@ void _validateHtmlListRows(Map<String, dynamic> json) {
   }
 }
 
-/// One metadata-bearing family's frozen rows: exactly one observation for each
-/// declared unique id, with no missing, extra or duplicate id. Order is not a
-/// fact, and an explicit null value is a value, not an absence.
-void _validateGoldenObservationIds(
+/// The new family's frozen record must carry the actual nested `corpus` block
+/// the collector emits: the one asset name, the measured byte length and raw
+/// SHA-256, typed fixture/version/schema identity and a nonempty device
+/// fingerprint. Legacy keeps its original top-level baseline/entryPoint
+/// admission and its committed golden with no fabricated nested fields.
+void _validateGoldenIdentity(Map<String, dynamic> golden, _HtmlCorpus corpus) {
+  if (golden['baselineCommit'] != corpus.json['baselineCommit'] ||
+      golden['entryPoint'] != corpus.json['entryPoint']) {
+    throw StateError('Oracle identity mismatch');
+  }
+  final family = corpus.family;
+  if (family == null) return;
+  final identity = golden['corpus'];
+  if (identity is! Map) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final measured = _sha256(corpus.bytes);
+  if (identity['asset'] != htmlOracleCorpusAsset) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final bytes = identity['bytes'];
+  if (bytes is! int || bytes != corpus.bytes.length) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final sha256 = identity['sha256'];
+  if (sha256 is! String || sha256 != measured) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final corpusVersion = identity['corpusVersion'];
+  final schemaVersion = identity['schemaVersion'];
+  if (identity['fixtureId'] != family.fixtureId ||
+      corpusVersion is! int ||
+      corpusVersion != family.corpusVersion ||
+      schemaVersion is! int ||
+      schemaVersion != htmlOracleSchemaVersion) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final fingerprint = golden['fingerprint'];
+  if (fingerprint is! String || fingerprint.trim().isEmpty) {
+    throw StateError('Frozen golden device fingerprint missing');
+  }
+}
+
+/// One frozen row: exactly one actual outcome, a declared id, and a value typed
+/// by that case's own method. An explicit null is a value; a missing or
+/// contradictory outcome is not backfilled. Row order is not a fact.
+void _validateFrozenObservations(
   List<Map> observations,
+  Map<String, String> methods,
   List<String> declaredIds,
 ) {
   final ids = <String>{};
@@ -425,6 +494,21 @@ void _validateGoldenObservationIds(
     if (!ids.add(id)) {
       throw StateError('Duplicate frozen golden observation id: $id');
     }
+    final method = methods[id];
+    if (method == null) {
+      throw StateError('Frozen golden observation id is not declared: $id');
+    }
+    final outcome = _outcomeOf(item, 'Frozen observation $id');
+    if (outcome.kind == 'error') {
+      final error = outcome.payload;
+      if (error is! String || error.trim().isEmpty) {
+        throw StateError(
+          'Frozen observation $id error must be a nonempty string',
+        );
+      }
+    } else {
+      _validateFrozenValue(id, method, outcome.payload);
+    }
   }
   final declared = declaredIds.toSet();
   if (ids.length != declared.length || !ids.containsAll(declared)) {
@@ -432,6 +516,37 @@ void _validateGoldenObservationIds(
       'Frozen golden observation ids differ from the declared corpus ids',
     );
   }
+}
+
+void _validateFrozenValue(String id, String method, Object? value) {
+  if (method == 'getStringList' || method == 'getStringListUrl') {
+    if (value != null &&
+        (value is! List || value.any((item) => item is! String))) {
+      throw StateError(
+        'Frozen list observation $id value must be a string list or null',
+      );
+    }
+  } else if (value != null && value is! String) {
+    throw StateError(
+      'Frozen scalar observation $id value must be a string or null',
+    );
+  }
+}
+
+/// The actual outcome kind and payload. Exactly one of `value`/`error` must be
+/// present; comparison uses the kind so equal text cannot hide one behind the
+/// other.
+typedef _Outcome = ({String kind, Object? payload});
+
+_Outcome _outcomeOf(Map item, String context) {
+  final hasValue = item.containsKey('value');
+  final hasError = item.containsKey('error');
+  if (hasValue == hasError) {
+    throw StateError('$context must carry exactly one of value or error');
+  }
+  return hasValue
+      ? (kind: 'value', payload: item['value'])
+      : (kind: 'error', payload: item['error']);
 }
 
 /// The HTML list value: the adapter's per-match `getStringList` answer. The

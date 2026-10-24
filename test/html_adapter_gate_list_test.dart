@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/native_library.dart';
@@ -9,17 +10,19 @@ import '../tool/html_adapter_gate.dart' as gate;
 import 'native_library.dart';
 
 /// The public boundary of the HTML capture: the committed `HTML-LIST-01` corpus
-/// through `tool/html_adapter_gate.dart`, plus synthetic controls that mutate a
-/// copy in the system temp directory. No control is a device golden.
-void main() {
-  late Directory scratch;
+/// through `tool/html_adapter_gate.dart`, plus synthetic admission controls.
+/// Every control lives only in the system temp directory and is explicitly
+/// synthetic: no record here is a device or frozen golden.
+late Directory _scratch;
+int _serial = 0;
 
+void main() {
   setUpAll(() async {
     await NativeLibrary.initialize(libraryPath: nativeLibraryPath());
-    scratch = Directory.systemTemp.createTempSync('liber-html-list-gate-');
+    _scratch = Directory.systemTemp.createTempSync('liber-html-list-gate-');
   });
   tearDownAll(() {
-    if (scratch.existsSync()) scratch.deleteSync(recursive: true);
+    if (_scratch.existsSync()) _scratch.deleteSync(recursive: true);
     NativeLibrary.dispose();
   });
 
@@ -35,7 +38,10 @@ void main() {
       expect(report['corpusPath'], gate.htmlListCorpusPath);
       expect(report['corpusFixtureId'], gate.htmlListFixtureId);
       expect(report['corpusVersion'], gate.htmlListCorpusVersion);
-      expect(report['corpusSha256'], _sha256(File(gate.htmlListCorpusPath)));
+      expect(
+        report['corpusSha256'],
+        _sha256File(File(gate.htmlListCorpusPath)),
+      );
       expect(report['fixturesSha256'], report['corpusSha256']);
       expect(report['frozenGolden'], 'not-run');
       expect(report['cases'], 11);
@@ -91,9 +97,23 @@ void main() {
     expect(report['corpusPath'], gate.legacyHtmlCorpusPath);
     expect(report['corpusFixtureId'], isNull);
     expect(report['corpusVersion'], isNull);
-    expect(report['corpusSha256'], _sha256(File(gate.legacyHtmlCorpusPath)));
+    expect(
+      report['corpusSha256'],
+      _sha256File(File(gate.legacyHtmlCorpusPath)),
+    );
     expect(report['cases'], 45);
     expect(report['expectationMismatches'], isEmpty);
+  });
+
+  test('the committed legacy golden still compares 45 cases', () async {
+    final report = await _run(
+      corpusPath: gate.legacyHtmlCorpusPath,
+      goldenPath: 'tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json',
+    );
+
+    expect(report['status'], 'pass');
+    expect(report['cases'], 45);
+    expect(report['frozenMismatches'], isEmpty);
   });
 
   test(
@@ -106,10 +126,7 @@ void main() {
       ]) {
         final corpus = _listCorpus();
         _case(corpus, 'html-list-ordered-hrefs')['expected'] = replacement;
-        final report = await gate.runHtmlAdapterGate(
-          libraryPath: nativeLibraryPath(),
-          corpusPath: _writeControl(scratch, 'value', corpus),
-        );
+        final report = await _run(corpusPath: _writeJson('value', corpus));
 
         expect(report['status'], 'fail');
         expect(_observedById(report)['html-list-ordered-hrefs'], [
@@ -131,10 +148,7 @@ void main() {
       final corpus = _listCorpus();
       _case(corpus, 'html-list-ordered-hrefs')['expected'] = '/1\n/2\n/3';
       await expectLater(
-        gate.runHtmlAdapterGate(
-          libraryPath: nativeLibraryPath(),
-          corpusPath: _writeControl(scratch, 'scalar-row', corpus),
-        ),
+        _run(corpusPath: _writeJson('scalar-row', corpus)),
         throwsA(
           isA<FormatException>().having(
             (error) => error.message,
@@ -158,6 +172,21 @@ void main() {
         corpus['corpusVersion'] = 2;
         return corpus;
       },
+      'fractional version': () {
+        final corpus = _listCorpus();
+        corpus['corpusVersion'] = 1.0;
+        return corpus;
+      },
+      'wrong schema': () {
+        final corpus = _listCorpus();
+        corpus['schemaVersion'] = 2;
+        return corpus;
+      },
+      'fractional schema': () {
+        final corpus = _listCorpus();
+        corpus['schemaVersion'] = 1.0;
+        return corpus;
+      },
       'duplicate id': () {
         final corpus = _listCorpus();
         final cases = (corpus['cases'] as List).cast<Map<String, dynamic>>();
@@ -177,9 +206,8 @@ void main() {
     };
     for (final control in controls.entries) {
       await expectLater(
-        gate.runHtmlAdapterGate(
-          libraryPath: nativeLibraryPath(),
-          corpusPath: _writeControl(scratch, 'metadata', control.value()),
+        _run(
+          corpusPath: _writeJson('metadata-${control.key}', control.value()),
         ),
         throwsA(isA<FormatException>()),
         reason: control.key,
@@ -187,41 +215,271 @@ void main() {
     }
   });
 
+  test('empty, downgraded and unknown corpora are refused', () async {
+    final empty = _clone(_listCorpus())..['cases'] = <Object?>[];
+    await expectLater(
+      _run(corpusPath: _writeJson('empty-corpus', empty)),
+      throwsA(isA<FormatException>()),
+    );
+
+    final downgraded = _clone(_listCorpus())
+      ..remove('fixtureId')
+      ..remove('corpusVersion');
+    await expectLater(
+      _run(corpusPath: _writeJson('downgraded-corpus', downgraded)),
+      throwsA(isA<FormatException>()),
+    );
+
+    final legacyBytes = File(gate.legacyHtmlCorpusPath).readAsBytesSync();
+    await expectLater(
+      _run(corpusPath: _writeBytes('modified-legacy', [...legacyBytes, 10])),
+      throwsA(isA<FormatException>()),
+    );
+
+    final copy = await _run(
+      corpusPath: _writeBytes('legacy-copy', legacyBytes),
+    );
+    expect(copy['status'], 'pass');
+    expect(copy['cases'], 45);
+  });
+
+  test('the actual producer envelope is admitted and compared', () async {
+    final report = await _run(
+      goldenPath: _writeJson('producer-envelope', _producerGolden()),
+    );
+
+    expect(report['status'], 'pass');
+    expect(report['cases'], 11);
+    expect(report['frozenMismatches'], isEmpty);
+  });
+
+  test('the retained hybrid producer shape is admitted', () async {
+    final report = await _run(
+      goldenPath: _writeJson('producer-hybrid', _hybridGolden()),
+    );
+
+    expect(report['status'], 'pass');
+    expect(report['cases'], 11);
+    expect(report['frozenMismatches'], isEmpty);
+  });
+
+  test('the nested measured binding and provenance are required', () async {
+    final mutations = <String, void Function(Map<String, dynamic>)>{
+      'wrong hash': (golden) {
+        _corpusBlock(golden)['sha256'] = List.filled(64, '0').join();
+      },
+      'wrong length': (golden) {
+        _corpusBlock(golden)['bytes'] =
+            (_corpusBlock(golden)['bytes'] as int) + 1;
+      },
+      'fractional length': (golden) {
+        _corpusBlock(golden)['bytes'] = (_corpusBlock(golden)['bytes'] as int)
+            .toDouble();
+      },
+      'wrong fixture': (golden) {
+        _corpusBlock(golden)['fixtureId'] = 'HTML-LIST-99';
+      },
+      'wrong version': (golden) {
+        _corpusBlock(golden)['corpusVersion'] = 2;
+      },
+      'fractional version': (golden) {
+        _corpusBlock(golden)['corpusVersion'] = 1.0;
+      },
+      'wrong schema': (golden) {
+        _corpusBlock(golden)['schemaVersion'] = 2;
+      },
+      'fractional schema': (golden) {
+        _corpusBlock(golden)['schemaVersion'] = 1.0;
+      },
+      'wrong asset': (golden) {
+        _corpusBlock(golden)['asset'] = 'other-fixtures.json';
+      },
+      'missing corpus metadata': (golden) {
+        golden.remove('corpus');
+      },
+      'missing observations': (golden) {
+        golden.remove('observations');
+      },
+      'missing fingerprint': (golden) {
+        golden.remove('fingerprint');
+      },
+      'empty fingerprint': (golden) {
+        golden['fingerprint'] = '   ';
+      },
+      'non-string fingerprint': (golden) {
+        golden['fingerprint'] = 7;
+      },
+    };
+    for (final control in mutations.entries) {
+      final golden = _hybridGolden();
+      control.value(golden);
+      await expectLater(
+        _run(goldenPath: _writeJson('binding-${control.key}', golden)),
+        throwsA(isA<StateError>()),
+        reason: control.key,
+      );
+    }
+  });
+
+  test(
+    'frozen observations require one typed outcome per declared id',
+    () async {
+      final mutations = <String, void Function(Map<String, dynamic>)>{
+        'contradictory value and error': (golden) {
+          _observations(golden).first['error'] = 'synthetic-contradictory';
+        },
+        'missing outcome': (golden) {
+          _observations(golden).first.remove('value');
+        },
+        'non-string error': (golden) {
+          _observations(golden).first
+            ..remove('value')
+            ..['error'] = 7;
+        },
+        'empty error': (golden) {
+          _observations(golden).first
+            ..remove('value')
+            ..['error'] = '';
+        },
+        'scalar value on list row': (golden) {
+          _row(golden, 'html-list-ordered-hrefs')['value'] = '/1\n/2\n/3';
+        },
+        'list value on scalar row': (golden) {
+          _row(golden, 'html-scalar-twin-ordered-hrefs')['value'] = [
+            '/1',
+            '/2',
+            '/3',
+          ];
+        },
+        'non-string list element': (golden) {
+          _row(golden, 'html-list-ordered-hrefs')['value'] = ['/1', 2];
+        },
+        'scalar numeric value': (golden) {
+          _row(golden, 'html-scalar-twin-ordered-hrefs')['value'] = 42;
+        },
+      };
+      for (final control in mutations.entries) {
+        final golden = _hybridGolden();
+        control.value(golden);
+        await expectLater(
+          _run(goldenPath: _writeJson('outcome-${control.key}', golden)),
+          throwsA(isA<StateError>()),
+          reason: control.key,
+        );
+      }
+    },
+  );
+
+  test('declared observation ids are exactly once in any row order', () async {
+    final base = _hybridGolden();
+    final rows = _observations(base);
+    final controls = <String, List<Map<String, dynamic>>>{
+      'missing': rows.sublist(0, rows.length - 1),
+      'duplicate': [...rows.sublist(0, rows.length - 1), rows.first],
+      'extra': [
+        ...rows,
+        {'id': 'synthetic-extra', 'value': ''},
+      ],
+    };
+    for (final control in controls.entries) {
+      final golden = _clone(base)..['observations'] = control.value;
+      await expectLater(
+        _run(goldenPath: _writeJson('ids-${control.key}', golden)),
+        throwsA(isA<StateError>()),
+        reason: control.key,
+      );
+    }
+  });
+
+  test('row order, explicit null values and outcome kinds remain real', () async {
+    final reordered = _hybridGolden();
+    _observations(
+      reordered,
+    ).setAll(0, _observations(reordered).reversed.toList());
+    final reorderedReport = await _run(
+      goldenPath: _writeJson('reordered', reordered),
+    );
+    expect(reorderedReport['status'], 'pass');
+
+    final nullValue = _hybridGolden();
+    _row(nullValue, 'html-list-ordered-hrefs')['value'] = null;
+    final nullReport = await _run(
+      goldenPath: _writeJson('null-value', nullValue),
+    );
+    expect(nullReport['status'], 'fail');
+    expect(
+      (nullReport['frozenMismatches'] as List).join('\n'),
+      contains('html-list-ordered-hrefs'),
+    );
+
+    // A value must not equal an error merely because its string renders the same.
+    final kind = _hybridGolden();
+    _row(kind, 'html-scalar-twin-ordered-hrefs')
+      ..remove('value')
+      ..['error'] = '/1\n/2\n/3';
+    final kindReport = await _run(goldenPath: _writeJson('outcome-kind', kind));
+    expect(kindReport['status'], 'fail');
+    expect(
+      (kindReport['frozenMismatches'] as List).join('\n'),
+      contains('html-scalar-twin-ordered-hrefs'),
+    );
+
+    final error = _hybridGolden();
+    _row(error, 'html-list-empty')
+      ..remove('value')
+      ..['error'] = 'java.lang.NullPointerException';
+    final errorReport = await _run(goldenPath: _writeJson('real-error', error));
+    expect(errorReport['status'], 'fail');
+    expect(
+      (errorReport['frozenMismatches'] as List).join('\n'),
+      contains('html-list-empty'),
+    );
+
+    final order = _hybridGolden();
+    _row(order, 'html-list-ordered-hrefs')['value'] = ['/2', '/1', '/3'];
+    final orderReport = await _run(goldenPath: _writeJson('list-order', order));
+    expect(orderReport['status'], 'fail');
+    expect(
+      (orderReport['frozenMismatches'] as List).join('\n'),
+      contains('html-list-ordered-hrefs'),
+    );
+  });
+
+  test('the legacy golden keeps its values and requires one outcome', () async {
+    const goldenPath =
+        'tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json';
+    final reported = await _run(
+      corpusPath: gate.legacyHtmlCorpusPath,
+      goldenPath: goldenPath,
+    );
+    expect(reported['status'], 'pass');
+    expect(reported['cases'], 45);
+
+    final damaged =
+        jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
+    _observations(damaged).first['error'] = 'synthetic-contradictory';
+    await expectLater(
+      _run(
+        corpusPath: gate.legacyHtmlCorpusPath,
+        goldenPath: _writeJson('legacy-contradiction', damaged),
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test(
     'a metadata-bearing golden must name exactly the declared ids',
     () async {
-      final report = await gate.runHtmlAdapterGate(
-        libraryPath: nativeLibraryPath(),
-        corpusPath: gate.htmlListCorpusPath,
-      );
-      final observations = [
-        for (final item in (report['observations'] as List).cast<Map>())
-          {'id': item['id'], 'value': item['value']},
-      ];
-      Map<String, dynamic> golden(List<Map<String, Object?>> rows) => {
-        'baselineCommit': gate.htmlOracleBaselineCommit,
-        'entryPoint': gate.htmlOracleEntryPoint,
-        'fixtureId': gate.htmlListFixtureId,
-        'corpusVersion': gate.htmlListCorpusVersion,
-        'observations': rows,
-      };
-      final controls = <String, List<Map<String, Object?>>>{
-        'missing': observations.sublist(0, observations.length - 1),
-        'duplicate': [
-          ...observations.sublist(0, observations.length - 1),
-          observations.first,
-        ],
+      final base = _hybridGolden();
+      final rows = _observations(base);
+      final controls = <String, List<Map<String, dynamic>>>{
+        'missing': rows.sublist(0, rows.length - 1),
+        'duplicate': [...rows.sublist(0, rows.length - 1), rows.first],
       };
       for (final control in controls.entries) {
-        final file = File(
-          '${scratch.path}/synthetic-control-golden-${control.key}.json',
-        )..writeAsStringSync(jsonEncode(golden(control.value)));
+        final golden = _clone(base)..['observations'] = control.value;
         await expectLater(
-          gate.runHtmlAdapterGate(
-            libraryPath: nativeLibraryPath(),
-            corpusPath: gate.htmlListCorpusPath,
-            goldenPath: file.path,
-          ),
+          _run(goldenPath: _writeJson('declared-ids-${control.key}', golden)),
           throwsA(isA<StateError>()),
           reason: control.key,
         );
@@ -231,9 +489,7 @@ void main() {
 
   test('the legacy golden is refused by the list family identity', () async {
     await expectLater(
-      gate.runHtmlAdapterGate(
-        libraryPath: nativeLibraryPath(),
-        corpusPath: gate.htmlListCorpusPath,
+      _run(
         goldenPath:
             'tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json',
       ),
@@ -250,10 +506,7 @@ void main() {
   test('a nonempty URL list stays the named product refusal', () async {
     final corpus = _listCorpus();
     _case(corpus, 'html-list-url-empty')['rule'] = '#list li@a@href';
-    final report = await gate.runHtmlAdapterGate(
-      libraryPath: nativeLibraryPath(),
-      corpusPath: _writeControl(scratch, 'url-nonempty', corpus),
-    );
+    final report = await _run(corpusPath: _writeJson('url-nonempty', corpus));
 
     expect(report['status'], 'fail');
     final row = (report['observations'] as List)
@@ -264,24 +517,80 @@ void main() {
   });
 }
 
+Future<Map<String, Object?>> _run({
+  String corpusPath = gate.htmlListCorpusPath,
+  String? goldenPath,
+}) => gate.runHtmlAdapterGate(
+  libraryPath: nativeLibraryPath(),
+  corpusPath: corpusPath,
+  goldenPath: goldenPath,
+);
+
 Map<String, dynamic> _listCorpus() =>
     jsonDecode(File(gate.htmlListCorpusPath).readAsStringSync())
         as Map<String, dynamic>;
+
+Map<String, dynamic> _clone(Map<String, dynamic> value) =>
+    jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
 
 Map<String, dynamic> _case(Map<String, dynamic> corpus, String id) =>
     (corpus['cases'] as List).cast<Map<String, dynamic>>().firstWhere(
       (entry) => entry['id'] == id,
     );
 
-String _writeControl(
-  Directory scratch,
-  String name,
-  Map<String, dynamic> corpus,
-) {
+Map<String, dynamic> _corpusBlock(Map<String, dynamic> golden) =>
+    golden['corpus'] as Map<String, dynamic>;
+
+List<Map<String, dynamic>> _observations(Map<String, dynamic> golden) =>
+    (golden['observations'] as List).cast<Map<String, dynamic>>();
+
+Map<String, dynamic> _row(Map<String, dynamic> golden, String id) =>
+    _observations(golden).firstWhere((row) => row['id'] == id);
+
+/// The actual producer envelope: family metadata nested under `corpus` and a
+/// measured raw asset binding, with source-derived expected values as values.
+/// The fingerprint names this record as a synthetic protocol control.
+Map<String, dynamic> _producerGolden() {
+  final corpus = _listCorpus();
+  final bytes = File(gate.htmlListCorpusPath).readAsBytesSync();
+  return {
+    'baselineCommit': corpus['baselineCommit'],
+    'entryPoint': corpus['entryPoint'],
+    'fingerprint': 'synthetic-protocol-control-not-device-evidence',
+    'corpus': {
+      'asset': 'html-fixtures.json',
+      'bytes': bytes.length,
+      'sha256': _sha256Bytes(bytes),
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'schemaVersion': corpus['schemaVersion'],
+    },
+    'observations': [
+      for (final row in (corpus['cases'] as List).cast<Map>())
+        {'id': row['id'], 'value': row['expected']},
+    ],
+  };
+}
+
+/// The actual producer envelope plus the old top-level family fields: a
+/// positive control that keeps both the nested and the hybrid shapes admissible.
+Map<String, dynamic> _hybridGolden() => _clone(_producerGolden())
+  ..['fixtureId'] = gate.htmlListFixtureId
+  ..['corpusVersion'] = gate.htmlListCorpusVersion;
+
+String _writeJson(String name, Object value) {
   final file = File(
-    '${scratch.path}/synthetic-control-$name-${corpus['cases'].hashCode}.json',
+    '${_scratch.path}/synthetic-control-${_serial++}-$name.json',
   );
-  file.writeAsStringSync(jsonEncode(corpus));
+  file.writeAsStringSync(jsonEncode(value));
+  return file.path;
+}
+
+String _writeBytes(String name, List<int> bytes) {
+  final file = File(
+    '${_scratch.path}/synthetic-control-${_serial++}-$name.json',
+  );
+  file.writeAsBytesSync(bytes);
   return file.path;
 }
 
@@ -292,7 +601,9 @@ Map<String, Object?> _observedById(Map<String, Object?> report) => {
         : item['error'],
 };
 
-String _sha256(File file) => SHA256Digest()
-    .process(file.readAsBytesSync())
+String _sha256File(File file) => _sha256Bytes(file.readAsBytesSync());
+
+String _sha256Bytes(List<int> bytes) => SHA256Digest()
+    .process(Uint8List.fromList(bytes))
     .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
     .join();
