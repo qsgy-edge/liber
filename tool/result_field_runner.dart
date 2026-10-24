@@ -145,10 +145,24 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         HttpSourceTransport(),
         hostState: state,
       );
+      final traceBase = trace.length;
+      final operations = <Map<String, Object?>>[];
+      void completedOperation(String name, int requestStart, int traceStart) {
+        operations.add({
+          'name': name,
+          'outcome': 'completed',
+          'requestStart': requestStart,
+          'requestEnd': server.requests.length,
+          'traceStart': traceStart,
+          'traceEnd': pipeline.trace.length,
+        });
+      }
+
       try {
         final record = <String, Object?>{
           'id': id,
           'terminal': terminal,
+          'operations': operations,
           'search': null,
           'bookInfo': null,
           'tableOfContents': null,
@@ -156,7 +170,9 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           'sourceProbes': {'vipProbe': null, 'payProbe': null},
         };
         final requestStart = server.requests.length;
+        final traceStart = pipeline.trace.length;
         final hits = await pipeline.search(entry['keyword'] as String);
+        completedOperation('search', requestStart, traceStart);
         record['search'] = {
           'results': [
             for (final hit in hits)
@@ -180,7 +196,10 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           continue;
         }
         final hit = hits.first;
+        final infoRequestStart = server.requests.length;
+        final infoTraceStart = pipeline.trace.length;
         final info = await pipeline.bookInfo(hit);
+        completedOperation('bookInfo', infoRequestStart, infoTraceStart);
         record['bookInfo'] = {
           'name': info.book.title,
           'author': info.book.author,
@@ -189,7 +208,10 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           'rawAddress': info.book.rawAddress,
           'tocUrl': info.tocAddress,
         };
+        final tocRequestStart = server.requests.length;
+        final tocTraceStart = pipeline.trace.length;
         final (book, chapters) = await pipeline.tableOfContents(info);
+        completedOperation('tableOfContents', tocRequestStart, tocTraceStart);
         record['tableOfContents'] = {
           'tocUrl': info.tocAddress,
           'chapters': [
@@ -217,7 +239,10 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           sourceRuleVariableKey(sourceRef, 'payProbe'),
         );
         record['sourceProbes'] = {'vipProbe': vipProbe, 'payProbe': payProbe};
+        final contentRequestStart = server.requests.length;
+        final contentTraceStart = pipeline.trace.length;
         final body = await pipeline.chapter(chapters.first, book: book);
+        completedOperation('content', contentRequestStart, contentTraceStart);
         record['chapter'] = {
           'title': body.title ?? chapters.first.name,
           'text': body.text,
@@ -233,6 +258,11 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           for (final observation in pipeline.trace)
             {'stage': observation.stage.name, 'path': observation.path},
         ]);
+        for (final operation in operations) {
+          operation['traceStart'] =
+              (operation['traceStart'] as int) + traceBase;
+          operation['traceEnd'] = (operation['traceEnd'] as int) + traceBase;
+        }
         pipeline.cancel();
       }
     }

@@ -303,7 +303,7 @@ public final class FieldOracle extends Instrumentation {
         }
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
         JSONObject probe = scratch.seedProbePreferences(
-            (android.content.Context) app, dataDir, "liber_fields_02_probe");
+            (android.content.Context) app, dataDir, "probe");
         if (probe.getBoolean("installationFile")
                 || !probe.getBoolean("registered")
                 || !probe.getBoolean("committed")
@@ -341,6 +341,8 @@ public final class FieldOracle extends Instrumentation {
             fenced &= scratch.fence(name);
         }
         cleanup.put("scratchRoot", scratch.root.getAbsolutePath())
+            .put("fixtureId", "FIELDS-02")
+            .put("corpusVersion", 1)
             .put("preferencesPrefix", scratch.preferencesPrefix())
             .put("rootExistedAtStart", scratch.rootExistedAtStart())
             .put("ownedPreferences", owned)
@@ -380,15 +382,19 @@ public final class FieldOracle extends Instrumentation {
             .put("bookInfo", JSONObject.NULL)
             .put("tableOfContents", JSONObject.NULL)
             .put("chapter", JSONObject.NULL)
+            .put("operations", new JSONArray())
             .put("sourceProbes", new JSONObject()
                 .put("vipProbe", JSONObject.NULL)
                 .put("payProbe", JSONObject.NULL));
 
         stage.set("search");
         log("stage search");
+        int searchRequestStart = requests.length();
+        int searchTraceStart = stageTrace.length();
         Object searchBooks = runSuspend(loader, continuation -> call(webBookClass, webBook,
             "searchBookAwait", 6,
             new Object[]{source, keyword, Integer.valueOf(1), null, null}, continuation));
+        recordOperation(observed, "search", searchRequestStart, searchTraceStart);
         if (!(searchBooks instanceof List)) {
             throw new IllegalStateException("search returned " + searchBooks);
         }
@@ -414,9 +420,12 @@ public final class FieldOracle extends Instrumentation {
 
         stage.set("bookInfo");
         log("stage bookInfo");
+        int infoRequestStart = requests.length();
+        int infoTraceStart = stageTrace.length();
         runSuspend(loader, continuation -> call(webBookClass, webBook,
             "getBookInfoAwait", 4,
             new Object[]{source, book, Boolean.TRUE}, continuation));
+        recordOperation(observed, "bookInfo", infoRequestStart, infoTraceStart);
         observed.put("bookInfo", new JSONObject()
             .put("name", str(bookClass, book, "getName"))
             .put("author", str(bookClass, book, "getAuthor"))
@@ -425,9 +434,12 @@ public final class FieldOracle extends Instrumentation {
 
         stage.set("tableOfContents");
         log("stage tableOfContents");
+        int tocRequestStart = requests.length();
+        int tocTraceStart = stageTrace.length();
         Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
             "getChapterListAwait", 4,
             new Object[]{source, book, Boolean.FALSE}, continuation));
+        recordOperation(observed, "tableOfContents", tocRequestStart, tocTraceStart);
         List<?> chapters = unwrapResult(tocResult);
         if (chapters.isEmpty()) {
             throw new IllegalStateException("table of contents returned no chapter");
@@ -452,14 +464,28 @@ public final class FieldOracle extends Instrumentation {
 
         stage.set("content");
         log("stage content");
+        int contentRequestStart = requests.length();
+        int contentTraceStart = stageTrace.length();
         Object text = runSuspend(loader, continuation -> call(webBookClass, webBook,
             "getContentAwait", 6,
             new Object[]{source, book, chapters.get(0), null, Boolean.FALSE}, continuation));
+        recordOperation(observed, "content", contentRequestStart, contentTraceStart);
         observed.put("chapter", new JSONObject()
             .put("title", str(chapterClass, chapters.get(0), "getTitle"))
             .put("text", text == null ? "" : text.toString()));
         observed.put("requests", requestSlice(requestStart));
         caseRecords.put(observed);
+    }
+
+    private void recordOperation(JSONObject observed, String name,
+            int requestStart, int traceStart) throws Exception {
+        observed.getJSONArray("operations").put(new JSONObject()
+            .put("name", name)
+            .put("outcome", "completed")
+            .put("requestStart", requestStart)
+            .put("requestEnd", requests.length())
+            .put("traceStart", traceStart)
+            .put("traceEnd", stageTrace.length()));
     }
 
     private JSONObject chapterObservation(Class<?> chapterClass, Object chapter) throws Exception {
@@ -485,8 +511,11 @@ public final class FieldOracle extends Instrumentation {
 
     private static JSONObject readAssetObject(Context context, String name) throws Exception {
         try (InputStream input = context.getAssets().open(name)) {
-            byte[] bytes = input.readAllBytes();
-            return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = input.read(chunk)) > 0) buffer.write(chunk, 0, read);
+            return new JSONObject(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
         }
     }
 

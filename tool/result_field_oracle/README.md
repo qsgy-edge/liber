@@ -79,23 +79,39 @@ five same-build inputs (`FieldOracle.java`, `StateSessionOracle.java`,
 actual `--apk` zip before installation and binds the embedded fixture/provenance
 to the selected fixture and measured source bytes; a matching loose `--asset` is
 not enough. The Dart comparator inspects the same APK with `archive`, and joins
-the embedded provenance to the capture manifest. Re-finalization keeps that
-historical artifact provenance instead of relabeling it with today's sources.
+the embedded provenance to the capture manifest. Re-finalization requires the original selected APK (`--apk`), independently
+inspects its unique embedded assets, and joins the complete historical source
+map; it never substitutes today's source hashes. The build source-consistency
+check runs again after packaging/signing and verifies the embedded corpus and
+provenance bytes. The Dart comparator also counts raw ZIP central-directory
+entries before using the archive decoder.
 
 Selected capture adds a storage-only Application over the existing
-`StateSessionOracle.ScratchContext`.
- It refuses a preexisting scratch root,
+`StateSessionOracle.ScratchContext`. It refuses a preexisting scratch root,
 field preference inventory, harness package or target process; it never
-pre-cleans or wildcard-removes. After the owned target is stopped, the driver
-reads the report and owner, verifies the exact target/harness/corpus/provenance
-bindings, preference-probe flags, preference inventory and attempt id, removes
-only those exact paths plus the owned scratch root with quoted single remote
-scripts, verifies absence, and requires a successful harness uninstall before
-promotion. The measured target-private root comes from the device rather than a
-string alias. FIELDS-02 snapshots the complete target data directory (files and
-directories) before and after; only the verified owned removal is expected. Any unavailable report, failed command, partial
-install, or out-of-scratch private-file change leaves ambiguous data in place
-and fails.
+pre-cleans or wildcard-removes. The report and owner are read while the owned
+process is alive, then the complete report/owner/artifact/family/version,
+preference inventory, attempt id and actual `seedPid` are checked before any
+stop. Only the exact verified paths plus the owned scratch root are removed with
+quoted single remote scripts; absence is verified before the harness uninstall.
+A different, unreadable or ambiguous process/owner and every failed command
+leave state in place. The preference caller passes the unscoped helper suffix
+`probe`, so the helper's actual scoped name is `liber_fields_02_probe`.
+
+FIELDS-02 records actual per-case operation facts (`search`, `bookInfo`,
+`tableOfContents`, `content`; empty search records only `search`) with the
+completed outcome and request/trace spans around each awaited call. Both
+consumers require the declared terminal, contiguous case/global request and
+trace ranges, typed indices and legal producer stage labels; cached zero-request
+operations and real redirects/nested diagnostics are admitted. The native
+report's `cases` and the product report's `caseRecords` remain separate shapes.
+
+FIELDS-02 snapshots the complete target data directory as typed `F`/`D`/`U`
+records: every enumeration/hash/format failure propagates, digests and canonical
+paths are unique, unsupported nodes are refused, and only the verified owned
+removal may change the private tree. The artifact/provenance admission checks
+every integer carrier and preservation fact, the approved harness package, and
+the exact duplicate-free preference inventory containing the probe.
 
 FIELDS-02 golden/report/manifest bytes are immutable once present: a conflicting
 report is refused before work; a failed finalize writes `finalize-failure.json`
@@ -154,12 +170,11 @@ corpus, or when the frozen application's own store (`databases/legado.db*`,
 install; the first two attempts on this handset were rejected with
 `INSTALL_FAILED_USER_RESTRICTED` before the operator confirmed the third.
 
-`capture.py --finalize --asset <build dir>/assets/field-fixtures.json` re-runs the
-report and privacy validation over an evidence directory that already holds the
-pulled report and its snapshots — the path this run used after its device step
-succeeded but the first validation pass was too strict (see
-`manifest.json` → `existingDataHashesUnchanged`, `privateFileChanges`,
-`frozenAppDataUnchanged`).
+`capture.py --finalize --apk <original build>/field-oracle.apk --asset <build
+dir>/assets/field-fixtures.json` re-runs report, typed-snapshot and original-APK
+validation over an evidence directory that already holds the pulled report and
+its snapshots. It does not read current build-source hashes for historical
+promotion; missing original APK refuses explicitly.
 
 ## The comparison
 

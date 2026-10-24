@@ -80,6 +80,7 @@ void main(List<String> args) {
       (manifest['corpus'] as Map?)?['sha256'] as String?;
   Map<String, dynamic>? harnessProvenance;
   String? harnessProvenanceSha256;
+  String? harnessAssetSha256;
   if (corpus['fixtureId'] == 'FIELDS-02') {
     if (selectedHarnessApk == null) {
       throw ArgumentError('--harness-apk is required for FIELDS-02');
@@ -87,6 +88,7 @@ void main(List<String> args) {
     final inspected = _inspectHarnessApk(selectedHarnessApk);
     harnessProvenance = inspected['provenance'] as Map<String, dynamic>;
     harnessProvenanceSha256 = inspected['provenanceSha256'] as String;
+    harnessAssetSha256 = inspected['selectedAssetSha256'] as String;
   }
   final report = corpus['fixtureId'] == 'FIELDS-02'
       ? compareBookUrlMarkers(
@@ -102,10 +104,9 @@ void main(List<String> args) {
             selectedHarnessApk,
             '--harness-apk',
           ),
-          expectedHarnessAssetSha256:
-              harnessProvenance!['corpus']['sha256'] as String,
+          expectedHarnessAssetSha256: harnessAssetSha256!,
           expectedProvenanceSha256: harnessProvenanceSha256!,
-          expectedProvenance: harnessProvenance,
+          expectedProvenance: harnessProvenance!,
           expectedLibrarySha256: _requiredMeasuredPath(
             selectedLibrary,
             '--library',
@@ -598,6 +599,7 @@ List<Map<String, Object?>> _requests(Map<String, dynamic> evidence) => [
 const bookUrlMarkersFixtureId = 'FIELDS-02';
 const bookUrlMarkersCorpusVersion = 1;
 const _ownedPreferencePrefix = 'liber_fields_02_';
+const _harnessPackage = 'io.liber.oracle.fields';
 
 /// Strict FIELDS-02 admission and comparison. The native report uses `cases`;
 /// the product report uses `caseRecords`. The two sides are admitted
@@ -729,6 +731,8 @@ Map<String, Object?> compareBookUrlMarkers({
     label: 'liber.stageTrace',
   );
   final origin = _requiredString(corpus, 'origin', 'corpus');
+  _admitOperationSpans(goldenCases, goldenRequests, goldenTrace, 'golden');
+  _admitOperationSpans(productCases, productRequests, productTrace, 'liber');
   _admitCausalRelationships(
     requestDifferences,
     'golden',
@@ -798,18 +802,61 @@ Map<String, Object?> compareBookUrlMarkers({
   };
 }
 
+List<String> _rawZipEntryNames(Uint8List bytes) {
+  final data = ByteData.sublistView(bytes);
+  int? eocd;
+  final minimum = bytes.length >= 22 ? bytes.length - 22 : -1;
+  for (var index = minimum; index >= 0; index--) {
+    if (data.getUint32(index, Endian.little) == 0x06054b50) {
+      eocd = index;
+      break;
+    }
+  }
+  if (eocd == null) throw StateError('selected APK has no ZIP end record');
+  final total = data.getUint16(eocd + 10, Endian.little);
+  final directoryOffset = data.getUint32(eocd + 16, Endian.little);
+  if (total == 0xffff) {
+    throw StateError('selected APK uses unsupported ZIP64 entry counts');
+  }
+  var cursor = directoryOffset;
+  final names = <String>[];
+  for (var index = 0; index < total; index++) {
+    if (cursor + 46 > bytes.length ||
+        data.getUint32(cursor, Endian.little) != 0x02014b50) {
+      throw StateError('selected APK central directory is malformed');
+    }
+    final nameLength = data.getUint16(cursor + 28, Endian.little);
+    final extraLength = data.getUint16(cursor + 30, Endian.little);
+    final commentLength = data.getUint16(cursor + 32, Endian.little);
+    final end = cursor + 46 + nameLength + extraLength + commentLength;
+    if (end > bytes.length) {
+      throw StateError('selected APK central directory entry is truncated');
+    }
+    names.add(
+      utf8.decode(bytes.sublist(cursor + 46, cursor + 46 + nameLength)),
+    );
+    cursor = end;
+  }
+  if (names.length != total) {
+    throw StateError('selected APK raw entry count differs');
+  }
+  return names;
+}
+
 Map<String, dynamic> inspectSelectedHarnessApk(String path) =>
     _inspectHarnessApk(path);
 
 Map<String, dynamic> _inspectHarnessApk(String path) {
   final bytes = File(path).readAsBytesSync();
+  final rawNames = _rawZipEntryNames(bytes);
   final archive = ZipDecoder().decodeBytes(bytes);
   final names = archive.files.map((file) => file.name).toList();
   for (final required in const [
     'assets/field-fixtures.json',
     'assets/field-provenance.json',
   ]) {
-    if (names.where((name) => name == required).length != 1) {
+    if (rawNames.where((name) => name == required).length != 1 ||
+        names.where((name) => name == required).length != 1) {
       throw StateError('selected APK must contain exactly one $required');
     }
   }
@@ -821,20 +868,16 @@ Map<String, dynamic> _inspectHarnessApk(String path) {
     throw StateError('embedded provenance is not an object');
   }
   final provenance = decoded.cast<String, dynamic>();
-  if (provenance['schemaVersion'] is! int || provenance['schemaVersion'] != 1) {
-    throw StateError('embedded provenance schemaVersion is not integer 1');
-  }
-  if (provenance['fixtureId'] != bookUrlMarkersFixtureId) {
-    throw StateError('embedded provenance fixtureId differs');
-  }
+  _admitProvenanceObject(provenance, 'provenance');
   final corpus = _map(provenance['corpus'], 'provenance.corpus');
-  if (corpus['asset'] != 'field-fixtures.json' ||
-      corpus['fixtureId'] != bookUrlMarkersFixtureId ||
-      corpus['corpusVersion'] is! int ||
-      corpus['corpusVersion'] != 1) {
-    throw StateError('embedded provenance corpus identity differs');
-  }
   final assetBytes = Uint8List.fromList(asset.content);
+  final embedded = jsonDecode(utf8.decode(assetBytes));
+  if (embedded is! Map ||
+      embedded['fixtureId'] != bookUrlMarkersFixtureId ||
+      embedded['corpusVersion'] is! int ||
+      embedded['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+    throw StateError('embedded corpus selection is not FIELDS-02 version 1');
+  }
   if (_requiredInt(corpus, 'bytes', 'provenance.corpus') != assetBytes.length ||
       corpus['sha256'] != _sha256(assetBytes) ||
       corpus['sha256Lf'] != _sha256(_lf(assetBytes))) {
@@ -859,9 +902,55 @@ Map<String, dynamic> _inspectHarnessApk(String path) {
   return {
     'apkSha256': _sha256(bytes),
     'assetBytes': assetBytes,
+    'selectedAssetSha256': _sha256(assetBytes),
+    'selectedAssetSha256Lf': _sha256(_lf(assetBytes)),
+    'selectedAssetBytes': assetBytes.length,
     'provenance': provenance,
     'provenanceSha256': _sha256(provenanceBytes),
   };
+}
+
+void _admitProvenanceObject(Map<String, dynamic> provenance, String label) {
+  if (_requiredInt(provenance, 'schemaVersion', label) != 1) {
+    throw StateError('$label.schemaVersion must be integer 1');
+  }
+  if (_requiredString(provenance, 'fixtureId', label) !=
+      bookUrlMarkersFixtureId) {
+    throw StateError('$label.fixtureId differs');
+  }
+  final corpus = _map(provenance['corpus'], '$label.corpus');
+  if (_requiredString(corpus, 'asset', '$label.corpus') !=
+          'field-fixtures.json' ||
+      _requiredString(corpus, 'fixtureId', '$label.corpus') !=
+          bookUrlMarkersFixtureId ||
+      _requiredInt(corpus, 'corpusVersion', '$label.corpus') != 1) {
+    throw StateError('$label corpus identity differs');
+  }
+  if (_requiredInt(corpus, 'bytes', '$label.corpus') < 0) {
+    throw StateError('$label corpus bytes are negative');
+  }
+  for (final field in ['sha256', 'sha256Lf']) {
+    final digest = _requiredString(corpus, field, '$label.corpus');
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw StateError('$label corpus digest is malformed');
+    }
+  }
+  final sources = _stringMap(provenance['sources'], '$label.sources');
+  if (sources.length != 5 ||
+      !sources.keys.toSet().containsAll(const [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+      ])) {
+    throw StateError('$label source key set differs');
+  }
+  for (final digest in sources.values) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw StateError('$label source digest is malformed');
+    }
+  }
 }
 
 void _admitExternalArtifact(
@@ -880,22 +969,65 @@ void _admitExternalArtifact(
   if (manifest.isEmpty) {
     throw StateError('external capture manifest is missing');
   }
+  if (manifest['status'] != 'observed' ||
+      manifest['existingDataHashesUnchanged'] != true ||
+      manifest['frozenAppDataUnchanged'] != true) {
+    throw StateError('external manifest does not record a successful capture');
+  }
+  final privateFileChanges = manifest['privateFileChanges'];
+  if (privateFileChanges is! Map || privateFileChanges.isNotEmpty) {
+    throw StateError('external manifest records private file changes');
+  }
   final artifact = _map(manifest['artifact'], 'manifest.artifact');
-  if (artifact['apkSha256'] != expectedHarnessApkSha256 ||
-      artifact['selectedAssetSha256'] != expectedHarnessAssetSha256 ||
-      artifact['selectedAssetSha256Lf'] != corpusSha256Lf ||
-      artifact['selectedAssetBytes'] != corpusByteCount) {
+  final artifactApkSha = _requiredString(
+    artifact,
+    'apkSha256',
+    'manifest.artifact',
+  );
+  final artifactAssetSha = _requiredString(
+    artifact,
+    'selectedAssetSha256',
+    'manifest.artifact',
+  );
+  final artifactAssetLfSha = _requiredString(
+    artifact,
+    'selectedAssetSha256Lf',
+    'manifest.artifact',
+  );
+  final artifactAssetBytes = _requiredInt(
+    artifact,
+    'selectedAssetBytes',
+    'manifest.artifact',
+  );
+  final artifactProvenanceSha = _requiredString(
+    artifact,
+    'provenanceSha256',
+    'manifest.artifact',
+  );
+  if (artifactApkSha != expectedHarnessApkSha256 ||
+      artifactAssetSha != expectedHarnessAssetSha256 ||
+      artifactAssetLfSha != corpusSha256Lf ||
+      artifactAssetBytes != corpusByteCount) {
     throw StateError(
       'external artifact bytes do not match the selected APK/corpus',
     );
   }
-  if (artifact['provenanceSha256'] != expectedProvenanceSha256 ||
-      !_deepEquals(artifact['provenance'], expectedProvenance)) {
+  if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(artifactProvenanceSha) ||
+      artifactProvenanceSha != expectedProvenanceSha256) {
+    throw StateError('external artifact provenance digest differs');
+  }
+  _admitProvenanceObject(expectedProvenance, 'provenance');
+  final artifactProvenance = _map(
+    artifact['provenance'],
+    'manifest.artifact.provenance',
+  );
+  _admitProvenanceObject(artifactProvenance, 'manifest.artifact.provenance');
+  if (!_deepEquals(artifactProvenance, expectedProvenance)) {
     throw StateError(
       'external artifact provenance differs from the selected APK',
     );
   }
-  final provenance = _map(expectedProvenance, 'provenance');
+  final provenance = expectedProvenance;
   final pcorpus = _map(provenance['corpus'], 'provenance.corpus');
   if (pcorpus['sha256'] != corpusSha256 ||
       pcorpus['sha256Lf'] != corpusSha256Lf ||
@@ -909,6 +1041,13 @@ void _admitExternalArtifact(
   final sources = _stringMap(provenance['sources'], 'provenance.sources');
   if (sources.length != 5) {
     throw StateError('embedded provenance source map is incomplete');
+  }
+  final manifestSources = _stringMap(
+    manifest['harnessSources'],
+    'manifest.harnessSources',
+  );
+  if (!_deepEquals(manifestSources, sources)) {
+    throw StateError('external manifest source map differs from the APK');
   }
   final isolation = _map(golden['isolation'], 'golden.isolation');
   if (isolation['harnessApkSha256'] != expectedHarnessApkSha256) {
@@ -927,7 +1066,10 @@ void _admitExternalArtifact(
   final scratchRoot = '$targetRoot/cache/liber-fields-02';
   final nativeCleanup = _map(golden['cleanup'], 'golden.cleanup');
   final nativeIsolation = _map(golden['isolation'], 'golden.isolation');
-  if (nativeIsolation['scratchRoot'] != scratchRoot ||
+  if (nativeCleanup['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(nativeCleanup, 'corpusVersion', 'golden.cleanup') != 1 ||
+      nativeIsolation['harnessPackage'] != _harnessPackage ||
+      nativeIsolation['scratchRoot'] != scratchRoot ||
       nativeIsolation['preferencesPrefix'] != _ownedPreferencePrefix ||
       nativeCleanup['scratchRoot'] != scratchRoot ||
       nativeCleanup['reportPath'] != '$scratchRoot/field-oracle.json') {
@@ -947,10 +1089,11 @@ void _admitExternalArtifact(
   }
   if (owner['complete'] != true ||
       owner['seedRunId'] != nativeCleanup['ownerRunId'] ||
+      _requiredInt(owner, 'seedPid', 'manifest.scratchOwner') <= 0 ||
       owner['fixtureId'] != bookUrlMarkersFixtureId ||
       _requiredInt(owner, 'corpusVersion', 'manifest.scratchOwner') != 1 ||
       owner['targetPackage'] != target['package'] ||
-      owner['harnessPackage'] != nativeIsolation['harnessPackage'] ||
+      owner['harnessPackage'] != _harnessPackage ||
       owner['targetApkSha256'] != target['apkSha256'] ||
       owner['harnessApkSha256'] != expectedHarnessApkSha256 ||
       owner['corpusSha256Lf'] != corpusSha256Lf) {
@@ -979,14 +1122,18 @@ void _admitExternalArtifact(
       ownerPrefs.toSet().length != ownerPrefs.length ||
       cleanupPrefs.toSet().length != cleanupPrefs.length ||
       !ownerPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
-      !cleanupPrefs.toSet().containsAll(nativePrefs.cast<Object?>())) {
+      !cleanupPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
+      !ownerPrefs.contains('${_ownedPreferencePrefix}probe') ||
+      !cleanupPrefs.contains('${_ownedPreferencePrefix}probe') ||
+      !nativePrefs.contains('${_ownedPreferencePrefix}probe')) {
     throw StateError('external owner/cleanup preference inventory differs');
   }
   final probe = _map(
     nativeIsolation['preferenceProbe'],
     'golden.isolation.preferenceProbe',
   );
-  if (probe['installationFile'] != false ||
+  if (probe['name'] != '${_ownedPreferencePrefix}probe' ||
+      probe['installationFile'] != false ||
       probe['registered'] != true ||
       probe['committed'] != true ||
       probe['scopedFile'] != true) {
@@ -1541,6 +1688,116 @@ String _expectedRawQuery(Map<String, dynamic> request) {
       .join('&');
 }
 
+void _admitOperationSpans(
+  List<Map<String, dynamic>> cases,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> trace,
+  String side,
+) {
+  var requestCursor = 0;
+  var traceCursor = 0;
+  for (final record in cases) {
+    final id = _requiredString(record, 'id', '$side.case');
+    final terminal = _requiredString(record, 'terminal', '$side.case.$id');
+    final expectedNames = terminal == 'search-empty'
+        ? const ['search']
+        : const ['search', 'bookInfo', 'tableOfContents', 'content'];
+    final operations = _requiredList(record, 'operations', '$side.case.$id');
+    if (operations.length != expectedNames.length) {
+      throw StateError('$side.$id operation set differs for its terminal');
+    }
+    var previousRequest = -1;
+    var previousTrace = -1;
+    var firstRequest = -1;
+    var lastRequest = -1;
+    var firstTrace = -1;
+    var lastTrace = -1;
+    for (var index = 0; index < operations.length; index++) {
+      final operation = _map(operations[index], '$side.$id.operations[$index]');
+      final name = _requiredString(
+        operation,
+        'name',
+        '$side.$id.operations[$index]',
+      );
+      if (name != expectedNames[index]) {
+        throw StateError('$side.$id operation name is not the declared term');
+      }
+      if (_requiredString(
+            operation,
+            'outcome',
+            '$side.$id.operations[$index]',
+          ) !=
+          'completed') {
+        throw StateError('$side.$id operation did not complete');
+      }
+      final requestStart = _requiredInt(
+        operation,
+        'requestStart',
+        '$side.$id.operations[$index]',
+      );
+      final requestEnd = _requiredInt(
+        operation,
+        'requestEnd',
+        '$side.$id.operations[$index]',
+      );
+      final traceStart = _requiredInt(
+        operation,
+        'traceStart',
+        '$side.$id.operations[$index]',
+      );
+      final traceEnd = _requiredInt(
+        operation,
+        'traceEnd',
+        '$side.$id.operations[$index]',
+      );
+      if (requestStart < 0 ||
+          requestEnd < requestStart ||
+          requestEnd > requests.length ||
+          traceStart < 0 ||
+          traceEnd < traceStart ||
+          traceEnd > trace.length) {
+        throw StateError('$side.$id operation span is outside its producer');
+      }
+      if (previousRequest >= 0 &&
+          (requestStart != previousRequest || traceStart != previousTrace)) {
+        throw StateError('$side.$id operation spans are not contiguous');
+      }
+      if (firstRequest < 0) {
+        firstRequest = requestStart;
+        firstTrace = traceStart;
+        if (firstRequest != requestCursor || firstTrace != traceCursor) {
+          throw StateError('$side.$id operation spans skip or overlap a case');
+        }
+      }
+      previousRequest = requestEnd;
+      previousTrace = traceEnd;
+      lastRequest = requestEnd;
+      lastTrace = traceEnd;
+    }
+    final caseRequests = _requiredList(
+      record,
+      'requests',
+      '$side.$id.requests',
+    );
+    final expectedRequests = firstRequest == lastRequest
+        ? const <Object?>[]
+        : requests.sublist(firstRequest, lastRequest);
+    if (!_deepEquals(caseRequests, expectedRequests)) {
+      throw StateError('$side.$id request slice is not its operation span');
+    }
+    if (lastTrace < firstTrace || lastTrace > trace.length) {
+      throw StateError('$side.$id trace span is outside the global trace');
+    }
+    requestCursor = lastRequest;
+    traceCursor = lastTrace;
+  }
+  if (requestCursor != requests.length || traceCursor != trace.length) {
+    throw StateError(
+      '$side operation spans do not cover the producer sequences',
+    );
+  }
+}
+
 void _admitCausalRelationships(
   List<Map<String, Object?>> differences,
   String side,
@@ -1752,7 +2009,15 @@ List<Map<String, dynamic>> _admitStageTrace({
   final out = <Map<String, dynamic>>[];
   for (var index = 0; index < values.length; index++) {
     final entry = _map(values[index], '$label[$index]');
-    _requiredString(entry, 'stage', '$label[$index]');
+    final stage = _requiredString(entry, 'stage', '$label[$index]');
+    if (!const {
+      'search',
+      'bookInfo',
+      'tableOfContents',
+      'content',
+    }.contains(stage)) {
+      throw StateError('$label[$index].stage is not a producer stage');
+    }
     _requiredString(entry, 'path', '$label[$index]');
     out.add(entry);
   }

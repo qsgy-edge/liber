@@ -126,7 +126,6 @@ void main() {
       'absolute target': 'chapters[0].absoluteUrl(vs url)',
       'vip probe': 'sourceProbes.vipProbe',
       'raw query bytes': 'golden.requests[0].rawQuery',
-      'request assigned to wrong case': 'golden.caseRequestSlices',
     };
     for (final entry in controls.entries) {
       final changed = _clone(base);
@@ -146,8 +145,6 @@ void main() {
           ((changed['requests'] as List).first as Map)['rawQuery'] =
               'different=bytes';
           _request(changed)['rawQuery'] = 'different=bytes';
-        case 'request assigned to wrong case':
-          _record(changed)['requests'] = [_requestJson('/wrong')];
       }
       final report = _compare(changed, product, corpus);
       expect(report['status'], 'fail', reason: entry.key);
@@ -177,6 +174,15 @@ void main() {
       'empty title': (g) => _chapters(g)[0]['title'] = '',
       'missing request receipt': (g) => _request(g).remove('receipt'),
       'truncated stage trace': (g) => g['stageTrace'] = <Object?>[],
+      'request assigned to wrong case': (g) =>
+          _record(g)['requests'] = [_requestJson('/wrong')],
+      'operation outcome error': (g) =>
+          (((_record(g)['operations'] as List).first) as Map)['outcome'] =
+              'error',
+      'operation span outside producer': (g) =>
+          (((_record(g)['operations'] as List).first) as Map)['requestEnd'] =
+              99,
+      'missing operation facts': (g) => _record(g).remove('operations'),
     };
     for (final entry in structural.entries) {
       final changed = _clone(base);
@@ -204,11 +210,9 @@ void main() {
 
     final unexpected = _clone(base);
     (unexpected['requests'] as List).add(_requestJson('/extra'));
-    final report = _compare(unexpected, product, corpus);
-    expect(report['status'], 'fail');
     expect(
-      (report['differences'] as List).map((item) => item['field']),
-      contains('golden.requests[1]'),
+      () => _compare(unexpected, product, corpus),
+      throwsA(isA<StateError>()),
     );
   });
 
@@ -302,6 +306,10 @@ Map<String, dynamic> _syntheticProvenance() => {
 Map<String, dynamic> _syntheticManifest(Map<String, dynamic> corpus) {
   final provenance = _syntheticProvenance();
   return {
+    'status': 'observed',
+    'existingDataHashesUnchanged': true,
+    'frozenAppDataUnchanged': true,
+    'privateFileChanges': <String, Object?>{},
     'targetPrivateRoot': '/data/data/io.legado.app.debug',
     'corpus': {'bytes': 123, 'sha256': 'a' * 64, 'sha256Lf': 'a' * 64},
     'artifact': {
@@ -320,6 +328,7 @@ Map<String, dynamic> _syntheticManifest(Map<String, dynamic> corpus) {
       'ownerRunId': 'synthetic-run',
       'reportedOwnedPreferences': ['liber_fields_02_probe'],
     },
+    'harnessSources': _syntheticProvenance()['sources'],
     'scratchOwner': {
       'fixtureId': 'FIELDS-02',
       'corpusVersion': 1,
@@ -330,6 +339,7 @@ Map<String, dynamic> _syntheticManifest(Map<String, dynamic> corpus) {
       'corpusSha256Lf': 'a' * 64,
       'complete': true,
       'seedRunId': 'synthetic-run',
+      'seedPid': 4242,
       'preferences': ['liber_fields_02_probe'],
     },
   };
@@ -384,6 +394,40 @@ Map<String, dynamic> _case() => {
   },
   'chapter': {'title': 'chapter', 'text': 'body'},
   'sourceProbes': {'vipProbe': null, 'payProbe': null},
+  'operations': [
+    {
+      'name': 'search',
+      'outcome': 'completed',
+      'requestStart': 0,
+      'requestEnd': 1,
+      'traceStart': 0,
+      'traceEnd': 1,
+    },
+    {
+      'name': 'bookInfo',
+      'outcome': 'completed',
+      'requestStart': 1,
+      'requestEnd': 1,
+      'traceStart': 1,
+      'traceEnd': 1,
+    },
+    {
+      'name': 'tableOfContents',
+      'outcome': 'completed',
+      'requestStart': 1,
+      'requestEnd': 1,
+      'traceStart': 1,
+      'traceEnd': 1,
+    },
+    {
+      'name': 'content',
+      'outcome': 'completed',
+      'requestStart': 1,
+      'requestEnd': 1,
+      'traceStart': 1,
+      'traceEnd': 1,
+    },
+  ],
   'requests': [_requestJson('/s')],
 };
 
@@ -423,6 +467,8 @@ Map<String, dynamic> _syntheticEnvelope(Map<String, dynamic> corpus) => {
     },
   },
   'cleanup': {
+    'fixtureId': 'FIELDS-02',
+    'corpusVersion': 1,
     'serverClosed': true,
     'ownerComplete': true,
     'rootRetained': true,

@@ -106,4 +106,35 @@ Invoke-Checked "$JavaHome/bin/jar.exe" @('uf',"$OutputDirectory/unsigned.apk",'-
 Invoke-Checked "$tools/zipalign.exe" @('-p','4',"$OutputDirectory/unsigned.apk","$OutputDirectory/aligned.apk")
 # Standard local Android debug key; its certificate must match the frozen APK.
 Invoke-Checked "$JavaHome/bin/java.exe" @('-jar',"$tools/lib/apksigner.jar",'sign','--ks',$DebugKeystore,'--ks-key-alias','androiddebugkey','--ks-pass','pass:android','--key-pass','pass:android','--out',"$OutputDirectory/field-oracle.apk","$OutputDirectory/aligned.apk")
+if ($isFields02) {
+  $sourceHashesFinal = Get-ProvenanceSourceHashes
+  if (($sourceHashesBefore | ConvertTo-Json -Compress) -ne ($sourceHashesFinal | ConvertTo-Json -Compress)) {
+    throw 'FIELDS build source inputs changed during packaging'
+  }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $archive = [System.IO.Compression.ZipFile]::OpenRead("$OutputDirectory/field-oracle.apk")
+  try {
+    $assetEntries = @($archive.Entries | Where-Object { $_.FullName -eq 'assets/field-fixtures.json' })
+    $provenanceEntries = @($archive.Entries | Where-Object { $_.FullName -eq 'assets/field-provenance.json' })
+    if ($assetEntries.Count -ne 1 -or $provenanceEntries.Count -ne 1) {
+      throw 'FIELDS APK must contain exactly one embedded corpus and provenance'
+    }
+    $assetStream = $assetEntries[0].Open()
+    try {
+      $sha = [System.Security.Cryptography.SHA256]::Create()
+      try { $embeddedAssetHash = ([System.BitConverter]::ToString($sha.ComputeHash($assetStream))).Replace('-', '').ToLowerInvariant() }
+      finally { $sha.Dispose() }
+    } finally { $assetStream.Dispose() }
+    if ($embeddedAssetHash -ne $sourceHash) { throw 'FIELDS APK embedded corpus differs from the build input' }
+    $provenanceStream = $provenanceEntries[0].Open()
+    try {
+      $sha = [System.Security.Cryptography.SHA256]::Create()
+      try { $embeddedProvenanceHash = ([System.BitConverter]::ToString($sha.ComputeHash($provenanceStream))).Replace('-', '').ToLowerInvariant() }
+      finally { $sha.Dispose() }
+    } finally { $provenanceStream.Dispose() }
+    if ($embeddedProvenanceHash -ne (Get-FileHash $provenancePath -Algorithm SHA256).Hash.ToLowerInvariant()) {
+      throw 'FIELDS APK embedded provenance differs from the generated asset'
+    }
+  } finally { $archive.Dispose() }
+}
 Get-FileHash "$OutputDirectory/field-oracle.apk" -Algorithm SHA256
