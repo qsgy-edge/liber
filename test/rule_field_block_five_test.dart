@@ -59,6 +59,14 @@ Map<String, dynamic> _source({bool json = false}) => {
   },
 };
 
+const _bookFixture = <String, String>{
+  '/book': '{"name":"root","item":{"name":"nested"}}',
+  '/toc': '{"list":[{"name":"chapter","href":"/chapter"}]}',
+};
+
+HtmlBook _oldBook() =>
+    HtmlBook(url: Uri.parse('$_origin/book'), title: 'old', author: 'old');
+
 String _expected(Map read) {
   final units = read['joinedUnits'] ?? (read['values'] as List).single;
   return String.fromCharCodes((units as List).cast<int>());
@@ -128,62 +136,129 @@ void main() {
       }
     });
 
-    for (final scenario in const <String, String?>{
-      'no-init': null,
-      'script-string': "@js:'body'",
-      'script-list': '@js:[1,2]',
-      'decoded-map': r'$.item',
+    // These five product call-site guards are distinct from the 37 frozen
+    // observations: they pin the supported simple-name/canonical-property
+    // boundary and the unsupported-shape refusal at the information/details
+    // caller, including the scripted-init deferred and ignored-field cases.
+    for (final scenario in const <String, ({String? init, String author})>{
+      'no-init': (init: null, author: 'root'),
+      'script-string': (init: "@js:'body'", author: 'old'),
+      'script-list': (init: '@js:[1,2]', author: 'old'),
+      'decoded-map': (init: r'$.item', author: 'nested'),
     }.entries) {
       test(
-        'bare-key refusal ${scenario.key} preserves its input boundary',
+        'supported bare-key ${scenario.key} preserves its input boundary',
         () async {
           final source = _source(json: true);
           final info = source['ruleBookInfo'] as Map;
           info['author'] = 'name';
-          if (scenario.value != null) info['init'] = scenario.value;
-          final pages = _Pages({'/book': '{"item":{"name":"body"}}'});
+          if (scenario.value.init != null) info['init'] = scenario.value.init;
+
+          final bookPages = _Pages(_bookFixture);
+          final infoResult = await JsonSourcePipeline(
+            source,
+            bookPages,
+          ).bookInfo(_oldBook());
+          expect(infoResult.book.author, scenario.value.author);
+          expect(infoResult.tocAddress, '/toc');
+          expect(bookPages.requests, ['$_origin/book']);
+
+          final detailPages = _Pages(_bookFixture);
+          final (book, chapters) = await JsonSourcePipeline(
+            source,
+            detailPages,
+          ).details(_oldBook());
+          expect(book.author, scenario.value.author);
+          expect(chapters, hasLength(1));
+          expect(chapters.single.name, 'chapter');
+          expect(chapters.single.rawAddress, '/chapter');
+          expect(detailPages.requests, ['$_origin/book', '$_origin/toc']);
+
+          // The unsupported shape is outside the simple-name grammar, so it is
+          // still a pre-request field refusal even for scripted init. The
+          // supported bare name above is the supported post-init deferred case.
+          final badSource = _source(json: true);
+          (badSource['ruleBookInfo'] as Map).addAll(<String, String>{
+            'author': 'foo bar',
+            if (scenario.value.init != null) 'init': scenario.value.init!,
+          });
+          final badPages = _Pages(_bookFixture);
           await expectLater(
-            JsonSourcePipeline(
-              source,
-              pages,
-            ).details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old')),
+            JsonSourcePipeline(badSource, badPages).bookInfo(_oldBook()),
             throwsA(
-              isA<UnsupportedError>().having(
-                (error) => '$error',
-                'field label',
-                contains('ruleBookInfo.author'),
-              ),
+              isA<UnsupportedError>()
+                  .having(
+                    (error) => '$error',
+                    'field label',
+                    contains('ruleBookInfo.author'),
+                  )
+                  .having(
+                    (error) => '$error',
+                    'rule text',
+                    contains('foo bar'),
+                  ),
             ),
           );
-          if (scenario.key == 'no-init' || scenario.key == 'decoded-map') {
-            expect(pages.requests, isEmpty);
-          }
+          expect(badPages.requests, isEmpty);
         },
       );
     }
 
-    test('ignored book-info field is not deferred for script init', () async {
-      final source = _source(json: true);
-      (source['ruleBookInfo'] as Map).addAll(<String, String>{
-        'init': '@js:({})',
-        'updateTime': 'name',
-      });
-      final pages = _Pages({'/book': '{}'});
-      await expectLater(
-        JsonSourcePipeline(
+    test(
+      'ignored book-info updateTime stays outside the native-object getter whitelist',
+      () async {
+        final source = _source(json: true);
+        (source['ruleBookInfo'] as Map).addAll(<String, String>{
+          'init': "@js:({toc:'/toc'})",
+          'tocUrl': 'toc',
+          'updateTime': 'name',
+        });
+
+        final bookPages = _Pages(_bookFixture);
+        final infoResult = await JsonSourcePipeline(
           source,
-          pages,
-        ).details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old')),
-        throwsA(
-          isA<UnsupportedError>().having(
-            (error) => '$error',
-            'field label',
-            contains('ruleBookInfo.updateTime'),
+          bookPages,
+        ).bookInfo(_oldBook());
+        expect(infoResult.book.author, 'old');
+        expect(infoResult.tocAddress, '/toc');
+        expect(bookPages.requests, ['$_origin/book']);
+
+        final detailPages = _Pages(_bookFixture);
+        final (book, chapters) = await JsonSourcePipeline(
+          source,
+          detailPages,
+        ).details(_oldBook());
+        expect(book.author, 'old');
+        expect(chapters, hasLength(1));
+        expect(chapters.single.name, 'chapter');
+        expect(chapters.single.rawAddress, '/chapter');
+        expect(detailPages.requests, ['$_origin/book', '$_origin/toc']);
+
+        // A supported static property in an ignored field is accepted and not
+        // read; no book-info updateTime getter is introduced. A genuinely
+        // unsupported ignored rule still refuses before the first request.
+        final badSource = _source(json: true);
+        (badSource['ruleBookInfo'] as Map).addAll(<String, String>{
+          'init': "@js:({toc:'/toc'})",
+          'tocUrl': 'toc',
+          'updateTime': 'foo bar',
+        });
+        final badPages = _Pages(_bookFixture);
+        await expectLater(
+          JsonSourcePipeline(badSource, badPages).bookInfo(_oldBook()),
+          throwsA(
+            isA<UnsupportedError>()
+                .having(
+                  (error) => '$error',
+                  'field label',
+                  contains('ruleBookInfo.updateTime'),
+                )
+                .having((error) => '$error', 'rule text', contains('foo bar')),
           ),
-        ),
-      );
-      expect(pages.requests, isEmpty);
-    });
+        );
+        expect(badPages.requests, isEmpty);
+      },
+    );
 
     test(
       'nested put keeps its existing named refusal without side effects',
