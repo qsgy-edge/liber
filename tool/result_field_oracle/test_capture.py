@@ -504,6 +504,22 @@ class FinalizeContractTest(unittest.TestCase):
             self.assertEqual((output / 'golden.json').read_bytes(), payload)
             self.assertEqual(manifest['status'], 'observed')
 
+    def test_incomplete_private_snapshot_refuses_promotion(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
+        incomplete = ''.join(
+            'a' * 64 + '  ' + path + chr(10)
+            for path in capture.FROZEN_APP_STORE).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            payload = json.dumps(report).encode()
+            (output / 'field-oracle.json').write_bytes(payload)
+            with self.assertRaises(ValueError):
+                capture.finalize(
+                    output, fixture, manifest, report, incomplete, incomplete,
+                    asset=fixture_path, scratch_cleanup=cleanup,
+                    fixture_bytes=fixture_bytes, report_bytes=payload)
+            self.assertFalse((output / 'golden.json').exists())
+
     def test_strict_types_and_changed_fixture_refuse_promotion(self):
         fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
         for mutate in [
