@@ -54,11 +54,12 @@ ids keep their values and six no-match rows are added. The entry is
 `tool/nested_oracle/HtmlOracle.java` (`io.liber.oracle.nested.HtmlOracle`), which
 loads `io.legado.app.model.analyzeRule.AnalyzeRule` from the installed,
 hash-pinned `io.legado.app.debug` (installed bytes `cc99040c…`), calls
-`setContent(document, baseUrl)` and the method selected per case, and writes
-`{"baselineCommit", "entryPoint", "fingerprint", "corpus", "observations":
-[{"id", "value"|"error"}]}`. The nested `corpus` block carries the selected
-asset name, its actual byte length and raw SHA-256, and its declared
-fixture/version/schema identity; it is never copied from a claimed corpus hash.
+`setContent(document, baseUrl)` and the method selected per case. The collector
+emits `{"baselineCommit", "entryPoint", "fingerprint", "corpus",
+"observations": [{"id", "value"|"error"}]}`. Its nested `corpus` block records
+the asset name, measured byte length and raw SHA-256, plus any declared
+fixture/version/schema fields. The committed 45-case golden retains its original
+envelope and raw bytes; the gate admits it through the byte-pinned legacy corpus.
 An empty corpus fails the capture instead of reporting zero observations. The
 original #51 run remains in Git history. Re-run the comparison on Windows:
 
@@ -147,17 +148,17 @@ claimed inside the corpus. `baselineCommit`, `entryPoint` and the device
 **not-run** here; building and inspecting the signed APK is preparation, not a
 golden.
 
-### Admission contract (repair)
+### Admission contract
 
 For `HTML-LIST-01` the gate requires the collector's actual nested record: the
 `corpus` block with `asset: "html-fixtures.json"`, integer `bytes` equal to the
 selected corpus bytes, `sha256` equal to the measured raw hash, string
 `fixtureId`, typed integer `corpusVersion`/`schemaVersion`, and a nonempty-string
-top-level `fingerprint`. Missing, fractional or contradictory metadata is
-refused; the old top-level family fields remain admissible only as an extra
-hybrid because the nested fields are still required. The legacy golden keeps
-its original baseline/entry-point admission and gets no fabricated nested
-fields; its raw bytes are the identity pin above.
+top-level `fingerprint`. Missing fields or mismatched and fractional values in
+this binding are refused. Additional top-level fields do not replace the required
+nested metadata. Each case must refer to a string-valued document; an empty
+string is valid. The legacy corpus is identified by the raw corpus hash above;
+its committed golden uses its original top-level baseline/entry-point fields.
 
 Every frozen row must have exactly one outcome, `value` or `error`. A value is
 validated against its declared method: scalar methods accept a string or an
