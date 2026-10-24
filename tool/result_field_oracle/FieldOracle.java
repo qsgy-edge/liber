@@ -73,6 +73,7 @@ public final class FieldOracle extends Instrumentation {
 
     private static final String ASSET = "field-fixtures.json";
     private static final String REPORT = "field-oracle.json";
+    private static final String FIELDS_01 = "FIELDS-01";
     private static final String FIELDS_02 = "FIELDS-02";
     private static final String SCRATCH_ROOT_NAME = "liber-fields-02";
     private static final String PREFERENCE_PREFIX = "liber_fields_02_";
@@ -101,17 +102,39 @@ public final class FieldOracle extends Instrumentation {
     @Override
     public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
-        // The argument context belongs to the target package; the selected
-        // corpus asset lives in the instrumentation package. getContext() is
-        // that package's context and is already available at this point.
-        Context harnessContext = getContext() != null ? getContext() : context;
-        newFamily = FIELDS_02.equals(peekFixtureId(harnessContext));
-        if (!newFamily) return super.newApplication(cl, name, context);
-        scratch = new StateSessionOracle.ScratchContext(context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
-        // HTTP_BOUNDARY-01's measured storage-only Application: frozen App.onCreate
-        // never runs, and the target app's files, database and prefs route under
-        // the bound scratch root.
-        return super.newApplication(cl, Application.class.getName(), scratch);
+        // Selection is decided before either the original target Application or
+        // the scratch Application exists. The argument context belongs to the
+        // target package; the selected corpus asset lives in the instrumentation
+        // package. Any unreadable, malformed or unsupported selection refuses
+        // here instead of falling back to the original target startup.
+        Context harnessContext = getContext();
+        if (harnessContext == null) {
+            throw new IllegalStateException("instrumentation context unavailable for selection");
+        }
+        JSONObject selection;
+        try {
+            selection = readAssetObject(harnessContext, ASSET);
+        } catch (Throwable error) {
+            throw new IllegalStateException("cannot read FIELDS asset selection", error);
+        }
+        String fixtureId = selection.optString("fixtureId", "");
+        if (FIELDS_02.equals(fixtureId)) {
+            if (selection.optInt("corpusVersion", -1) != 1) {
+                throw new IllegalStateException("unsupported FIELDS-02 corpusVersion");
+            }
+            newFamily = true;
+            scratch = new StateSessionOracle.ScratchContext(
+                context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
+            // HTTP_BOUNDARY-01's measured storage-only Application: frozen
+            // App.onCreate never runs, and the target app's files, database and
+            // prefs route under the bound scratch root.
+            return super.newApplication(cl, Application.class.getName(), scratch);
+        }
+        if (FIELDS_01.equals(fixtureId)) {
+            newFamily = false;
+            return super.newApplication(cl, name, context);
+        }
+        throw new IllegalStateException("unsupported FIELDS fixtureId: " + fixtureId);
     }
 
     @Override
@@ -189,6 +212,7 @@ public final class FieldOracle extends Instrumentation {
                     .put("asset", ASSET)
                     .put("bytes", asset.length)
                     .put("sha256", sha256(asset))
+                    .put("sha256Lf", sha256(lf(asset)))
                     .put("fixtureId", corpus.getString("fixtureId"))
                     .put("corpusVersion", corpus.getInt("corpusVersion"));
                 report.put("corpus", corpusIdentity).put("isolation", isolation);
@@ -316,8 +340,10 @@ public final class FieldOracle extends Instrumentation {
             .put("reportPath", output.getAbsolutePath())
             .put("rootRetained", scratch.root.exists());
         if (caseFailures.length() == 0) {
-            scratch.writeOwnerComplete(UUID.randomUUID().toString());
-            cleanup.put("ownerComplete", true);
+            String ownerRunId = UUID.randomUUID().toString();
+            scratch.writeOwnerComplete(ownerRunId);
+            cleanup.put("ownerRunId", ownerRunId)
+                .put("ownerComplete", true);
         } else {
             cleanup.put("ownerComplete", false);
         }
@@ -435,9 +461,9 @@ public final class FieldOracle extends Instrumentation {
             .put("url", str(chapterClass, chapter, "getUrl"))
             .put("absoluteUrl", (String) chapterClass.getMethod("getAbsoluteURL").invoke(chapter))
             .put("tag", tag == null ? JSONObject.NULL : tag)
-            .put("isVolume", Boolean.TRUE.equals(chapterClass.getMethod("getIsVolume").invoke(chapter)))
-            .put("isVip", Boolean.TRUE.equals(chapterClass.getMethod("getIsVip").invoke(chapter)))
-            .put("isPay", Boolean.TRUE.equals(chapterClass.getMethod("getIsPay").invoke(chapter)))
+            .put("isVolume", Boolean.TRUE.equals(chapterClass.getMethod("isVolume").invoke(chapter)))
+            .put("isVip", Boolean.TRUE.equals(chapterClass.getMethod("isVip").invoke(chapter)))
+            .put("isPay", Boolean.TRUE.equals(chapterClass.getMethod("isPay").invoke(chapter)))
             .put("bookUrl", str(chapterClass, chapter, "getBookUrl"));
     }
 
@@ -449,13 +475,10 @@ public final class FieldOracle extends Instrumentation {
         return slice;
     }
 
-    private static String peekFixtureId(Context context) {
-        try (InputStream input = context.getAssets().open(ASSET)) {
+    private static JSONObject readAssetObject(Context context, String name) throws Exception {
+        try (InputStream input = context.getAssets().open(name)) {
             byte[] bytes = input.readAllBytes();
-            return new JSONObject(new String(bytes, StandardCharsets.UTF_8))
-                .optString("fixtureId", "");
-        } catch (Throwable ignored) {
-            return "";
+            return new JSONObject(new String(bytes, StandardCharsets.UTF_8));
         }
     }
 
@@ -959,56 +982,72 @@ public final class FieldOracle extends Instrumentation {
                 }
                 OutputStream output = socket.getOutputStream();
                 JSONObject declared = match(method, path, query);
+                JSONObject receipt = null;
                 if (receipts) {
-                    JSONObject receipt = new JSONObject()
-                        .put("terminal", declared == null ? "unmatched" : "responded")
+                    receipt = new JSONObject()
+                        .put("terminal", "pending")
+                        .put("send", "pending")
                         .put("status", declared == null ? 404 : declared.optInt("status", 200))
                         .put("responseId", declared == null
-                            ? JSONObject.NULL : declared.optString("id"));
-                    JSONObject declaredHeaders = declared == null
+                            ? JSONObject.NULL : declared.optString("id"))
+                        .put("redirect", JSONObject.NULL);
+                    JSONObject receiptHeaders = declared == null
                         ? null : declared.optJSONObject("headers");
-                    if (declaredHeaders != null && declaredHeaders.has("Location")) {
-                        receipt.put("redirect", declaredHeaders.optString("Location"));
+                    if (receiptHeaders != null && receiptHeaders.has("Location")) {
+                        receipt.put("redirect", receiptHeaders.optString("Location"));
                     }
                     observed.put("receipt", receipt);
                 }
-                if (declared == null) {
-                    synchronized (unmatched) {
-                        unmatched.put(observed);
-                    }
-                    byte[] text = "undeclared replay request".getBytes(StandardCharsets.UTF_8);
-                    output.write(("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
-                        + "Content-Length: " + text.length + "\r\n\r\n")
-                        .getBytes(StandardCharsets.US_ASCII));
-                    output.write(text);
-                } else {
-                    byte[] bytes = declared.optString("body", "").getBytes(StandardCharsets.UTF_8);
-                    StringBuilder head = new StringBuilder();
-                    head.append("HTTP/1.1 ").append(declared.optInt("status", 200)).append(" OK\r\n");
-                    JSONObject declaredHeaders = declared.optJSONObject("headers");
-                    if (declaredHeaders != null) {
-                        Iterator<String> names = declaredHeaders.keys();
-                        while (names.hasNext()) {
-                            String name = names.next();
-                            head.append(name).append(": ")
-                                .append(declaredHeaders.optString(name)).append("\r\n");
+                try {
+                    if (declared == null) {
+                        synchronized (unmatched) {
+                            unmatched.put(observed);
                         }
-                    }
-                    JSONArray setCookies = declared.optJSONArray("setCookies");
-                    if (setCookies != null) {
-                        for (int index = 0; index < setCookies.length(); index++) {
-                            JSONObject cookie = setCookies.getJSONObject(index);
-                            head.append("Set-Cookie: ").append(cookie.optString("name"))
-                                .append('=').append(cookie.optString("value"))
-                                .append("; Path=").append(cookie.optString("path", "/"))
-                                .append("\r\n");
+                        byte[] text = "undeclared replay request".getBytes(StandardCharsets.UTF_8);
+                        output.write(("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n"
+                            + "Content-Length: " + text.length + "\r\n\r\n")
+                            .getBytes(StandardCharsets.US_ASCII));
+                        output.write(text);
+                    } else {
+                        byte[] bytes = declared.optString("body", "").getBytes(StandardCharsets.UTF_8);
+                        StringBuilder head = new StringBuilder();
+                        head.append("HTTP/1.1 ").append(declared.optInt("status", 200)).append(" OK\r\n");
+                        JSONObject declaredHeaders = declared.optJSONObject("headers");
+                        if (declaredHeaders != null) {
+                            Iterator<String> names = declaredHeaders.keys();
+                            while (names.hasNext()) {
+                                String name = names.next();
+                                head.append(name).append(": ")
+                                    .append(declaredHeaders.optString(name)).append("\r\n");
+                            }
                         }
+                        JSONArray setCookies = declared.optJSONArray("setCookies");
+                        if (setCookies != null) {
+                            for (int index = 0; index < setCookies.length(); index++) {
+                                JSONObject cookie = setCookies.getJSONObject(index);
+                                head.append("Set-Cookie: ").append(cookie.optString("name"))
+                                    .append('=').append(cookie.optString("value"))
+                                    .append("; Path=").append(cookie.optString("path", "/"))
+                                    .append("\r\n");
+                            }
+                        }
+                        head.append("Content-Length: ").append(bytes.length).append("\r\n\r\n");
+                        output.write(head.toString().getBytes(StandardCharsets.US_ASCII));
+                        output.write(bytes);
                     }
-                    head.append("Content-Length: ").append(bytes.length).append("\r\n\r\n");
-                    output.write(head.toString().getBytes(StandardCharsets.US_ASCII));
-                    output.write(bytes);
+                    output.flush();
+                    if (receipt != null) {
+                        receipt.put("terminal", declared == null ? "unmatched" : "responded")
+                            .put("send", "completed");
+                    }
+                } catch (Exception sendError) {
+                    if (receipt != null) {
+                        receipt.put("terminal", "send-failed")
+                            .put("send", "failed")
+                            .put("error", sendError.toString());
+                    }
+                    throw sendError;
                 }
-                output.flush();
             }
         }
 

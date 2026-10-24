@@ -1967,12 +1967,12 @@ public final class StateSessionOracle extends Instrumentation {
             return getBaseContext().getSharedPreferences(name, 0).edit().commit();
         }
 
-        public boolean deletePreference(String name) {
+        boolean deletePreference(String name) {
             boolean cleared = getBaseContext().getSharedPreferences(name, 0).edit().clear().commit();
             return getBaseContext().deleteSharedPreferences(name) && cleared;
         }
 
-        public boolean removeRoot() {
+        boolean removeRoot() {
             return remove(root);
         }
 

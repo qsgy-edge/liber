@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:pointycastle/export.dart';
 
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
@@ -11,6 +14,33 @@ import 'first_slice/runner.dart' show SliceReplayServer;
 /// The controlled corpus of the remaining result fields (ticket #41). See
 /// `tool/result_field_oracle/README.md`.
 const resultFieldFixturePath = 'tool/result_field_oracle/fixtures.json';
+
+/// Product source files whose measured bytes are bound into a FIELDS-02
+/// product observation. This is a bounded projection of the actual pipelines,
+/// not a dependency registry.
+const productSourcePaths = <String>[
+  'lib/source/book_source_pipeline.dart',
+  'lib/source/html_source_pipeline.dart',
+  'lib/source/json_source_pipeline.dart',
+  'lib/source/html_rule_adapter.dart',
+  'lib/source/json_source_rules.dart',
+  'lib/source/http_source_transport.dart',
+  'lib/source/source_host_state.dart',
+  'lib/source/js_source_runtime.dart',
+  'lib/source/source_url_rules.dart',
+];
+
+/// Measures the current bounded product sources. The report stores these bytes'
+/// hashes; a comparator receives the same measured map independently.
+Map<String, String> measureProductSources() => {
+  for (final path in productSourcePaths)
+    path: _sourceSha256(File(path).readAsBytesSync()),
+};
+
+String _sourceSha256(List<int> bytes) {
+  final digest = SHA256Digest().process(Uint8List.fromList(bytes));
+  return digest.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+}
 
 /// Loads the corpus. The caller passes the path explicitly so a re-recorded
 /// copy can be compared without editing the repository copy.
@@ -68,6 +98,7 @@ class BookUrlMarkersRun {
   const BookUrlMarkersRun({
     required this.requests,
     required this.unmatched,
+    required this.serverErrors,
     required this.stageTrace,
     required this.caseRecords,
     required this.caseFailures,
@@ -76,6 +107,7 @@ class BookUrlMarkersRun {
 
   final List<Map<String, Object?>> requests;
   final List<Map<String, Object?>> unmatched;
+  final List<String> serverErrors;
   final List<Map<String, String>> stageTrace;
   final List<Map<String, Object?>> caseRecords;
   final Map<String, String> caseFailures;
@@ -134,7 +166,6 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
                 'bookUrl': '${hit.url}',
                 'identityAddress': hit.identityAddress,
                 'rawAddress': hit.rawAddress,
-                'infoHtml': false,
               },
           ],
         };
@@ -211,23 +242,28 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
   return BookUrlMarkersRun(
     requests: List<Map<String, Object?>>.unmodifiable(server.requests),
     unmatched: List<Map<String, Object?>>.unmodifiable(server.unmatched),
+    serverErrors: List<String>.unmodifiable(server.serverErrors),
     stageTrace: trace,
     caseRecords: records,
     caseFailures: failures,
     invariants: _bookUrlMarkerInvariants(
       fixture: fixture,
+      requests: server.requests,
       records: records,
       failures: failures,
       unmatched: server.unmatched,
+      serverErrors: server.serverErrors,
     ),
   );
 }
 
 List<ResultFieldInvariant> _bookUrlMarkerInvariants({
   required Map<String, dynamic> fixture,
+  required List<Map<String, Object?>> requests,
   required List<Map<String, Object?>> records,
   required Map<String, String> failures,
   required List<Map<String, Object?>> unmatched,
+  required List<String> serverErrors,
 }) {
   final declared = [
     for (final entry in (fixture['cases'] as List).cast<Map>())
@@ -269,7 +305,51 @@ List<ResultFieldInvariant> _bookUrlMarkerInvariants({
   if (failures.isNotEmpty) {
     problems.add('case failures: ${failures.keys.join(', ')}');
   }
+  final declaredRequests = (fixture['expectedRequests'] as List).cast<Map>();
+  final requestProblems = <String>[];
+  if (requests.length != declaredRequests.length) {
+    requestProblems.add(
+      'declared ${declaredRequests.length}, observed ${requests.length}',
+    );
+  }
+  for (
+    var index = 0;
+    index < requests.length && index < declaredRequests.length;
+    index++
+  ) {
+    final observed = requests[index];
+    final expected = declaredRequests[index];
+    if (observed['method'] != expected['method'] ||
+        observed['path'] != expected['path']) {
+      requestProblems.add(
+        'request $index is ${observed['method']} ${observed['path']}',
+      );
+      continue;
+    }
+    final expectedQuery =
+        (expected['query'] as Map?)?.cast<String, String>() ??
+        const <String, String>{};
+    final observedQuery =
+        (observed['query'] as Map?)?.cast<String, String>() ??
+        const <String, String>{};
+    if (expectedQuery.length != observedQuery.length ||
+        !expectedQuery.entries.every(
+          (entry) => observedQuery[entry.key] == entry.value,
+        )) {
+      requestProblems.add('request $index query differs');
+    }
+  }
+  if (serverErrors.isNotEmpty) {
+    requestProblems.add('server errors: ${serverErrors.length}');
+  }
   return [
+    ResultFieldInvariant(
+      'declared-request-sequence',
+      requestProblems.isEmpty,
+      requestProblems.isEmpty
+          ? '${declaredRequests.length} declared requests observed in order'
+          : requestProblems.join('; '),
+    ),
     ResultFieldInvariant(
       'no-undeclared-request',
       unmatched.isEmpty,

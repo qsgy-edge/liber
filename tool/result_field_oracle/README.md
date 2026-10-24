@@ -56,6 +56,59 @@ Observed per case: the search results' `name`/`author`/`intro`/`lastChapter`/
 `title` (the content title replaced it, or the table of contents' own name
 stayed) plus its text.
 
+## FIELDS-02 selected corpus (preparation, not native acceptance)
+
+`book-url-markers-fixtures.json` selects a separate `FIELDS-02` corpus with
+`--fixture`/`-CorpusPath`. It covers the HTML `bookUrlPattern` match after a
+redirect, a JSON nonmatching pattern through a real list, the no-pattern
+empty-list information fallback, and a declared nonmatching-pattern empty-search
+terminal. The default build and every FIELDS-01 command remain the original
+corpus and comparison shape.
+
+The selected native report is a `cases` ARRAY. The product report is a
+`caseRecords` ARRAY. `capture.py` and `result_field_compare.dart` reject missing,
+duplicate, extra, wrong-type or incomplete observations independently on each
+side. Native `chapter.url` is compared with product `address`; native
+`chapter.absoluteUrl` with product `url`; provenance fields stay separate. The
+product's legacy `infoHtml` claim is not compared.
+
+Selected capture adds a storage-only Application over the existing
+`StateSessionOracle.ScratchContext`. It refuses a preexisting scratch root,
+field preference inventory, harness package or target process; it never
+pre-cleans or wildcard-removes. After the owned target is stopped, the driver
+reads the report and owner, verifies the exact preference inventory and attempt
+id, removes only those exact paths plus the owned scratch root with quoted
+single remote scripts, verifies absence, and requires a successful harness
+uninstall before promotion. Any unavailable report, failed command, partial
+install, or out-of-scratch private-file change leaves ambiguous data in place
+and fails.
+
+FIELDS-02 golden/report/manifest bytes are immutable once present: a conflicting
+report is refused before work; a failed finalize writes `finalize-failure.json`
+without rewriting the accepted artifacts; byte-identical validated reuse does
+not rewrite them. The legacy FIELDS-01 finalize/regeneration scope is unchanged.
+
+```
+pwsh tool/result_field_oracle/build.ps1 -OutputDirectory <fresh dir> \
+  -JavaHome <jdk 17> -CorpusPath tool/result_field_oracle/book-url-markers-fixtures.json
+python tool/result_field_oracle/capture.py --serial <serial> \
+  --apk <fresh dir>/field-oracle.apk --frozen-source <legado checkout> \
+  --fixture tool/result_field_oracle/book-url-markers-fixtures.json \
+  --asset <fresh dir>/assets/field-fixtures.json --output <fresh dir in evidence/>
+dart run tool/result_field_replay.dart <matching fjs.dll> \
+  --fixture tool/result_field_oracle/book-url-markers-fixtures.json --out <fresh report>
+dart run tool/result_field_compare.dart --fixture tool/result_field_oracle/book-url-markers-fixtures.json \
+  --library <matching fjs.dll> --harness-apk <fresh dir>/field-oracle.apk \
+  --product-source-root . <golden.json> <liber.json> <comparison.json>
+```
+
+The unmodified product currently emits **14** requests against the **12**
+declared FIELDS-02 requests (A and C each fetch information twice). The replay
+CLI therefore exits 1 with the failing `declared-request-sequence` invariant;
+that is an honest current product result, not a native 12-request execution and
+not a rewritten declaration. **FIELDS-02 native/device capture remains NOT-RUN**
+while the original handset is unavailable; no native golden is claimed.
+
 ## Destination side
 
 ```

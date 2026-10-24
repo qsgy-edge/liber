@@ -46,7 +46,13 @@ class SliceReplayServer {
       );
     }
     final instance = SliceReplayServer._(server, fixture, onResponse);
-    server.listen(instance._handle);
+    server.listen((request) async {
+      try {
+        await instance._handle(request);
+      } catch (error) {
+        instance.serverErrors.add('$error');
+      }
+    });
     return instance;
   }
 
@@ -59,6 +65,9 @@ class SliceReplayServer {
 
   /// Requests the corpus declares no response for.
   final unmatched = <Map<String, Object?>>[];
+
+  /// Handler/transport failures observed after the listener accepted a request.
+  final serverErrors = <String>[];
 
   Uri get origin =>
       Uri.parse('http://${_server.address.address}:${_server.port}');
@@ -88,52 +97,68 @@ class SliceReplayServer {
       request.uri.queryParameters,
     );
     final receipt = <String, Object?>{
-      'terminal': declared == null ? 'unmatched' : 'responded',
+      'terminal': 'pending',
+      'send': 'pending',
       'status': declared == null
           ? HttpStatus.notFound
           : declared['status'] as int? ?? 200,
+      'responseId': null,
+      'redirect': null,
     };
     if (declared != null) {
       receipt['responseId'] = declared['id'];
       final location = (declared['headers'] as Map?)?['Location'];
       if (location != null) receipt['redirect'] = '$location';
     }
-    if (_onResponse != null) {
-      observed['receipt'] = receipt;
-      _onResponse(observed, receipt);
-    }
-    if (declared == null) {
-      unmatched.add(observed);
-      request.response.statusCode = HttpStatus.notFound;
-      request.response.headers.contentType = ContentType.text;
-      request.response.add(utf8.encode('undeclared replay request'));
-      await request.response.close();
-      return;
-    }
-    request.response.statusCode = declared['status'] as int? ?? 200;
-    final declaredHeaders =
-        (declared['headers'] as Map?)?.cast<String, dynamic>() ?? const {};
-    for (final entry in declaredHeaders.entries) {
-      final name = entry.key.toLowerCase();
-      if (name == 'content-length' || name == 'transfer-encoding') continue;
-      if (name == 'content-type') {
-        request.response.headers.contentType = ContentType.parse(
-          '${entry.value}',
-        );
-      } else {
-        request.response.headers.set(entry.key, '${entry.value}');
+    Future<void> complete(String terminal, String send, [Object? error]) async {
+      receipt['terminal'] = terminal;
+      receipt['send'] = send;
+      if (error != null) receipt['error'] = '$error';
+      if (_onResponse != null) {
+        observed['receipt'] = receipt;
+        _onResponse(observed, receipt);
       }
     }
-    final declaredCookies =
-        (declared['setCookies'] as List?)?.cast<Map>() ?? const <Map>[];
-    for (final cookie in declaredCookies) {
-      request.response.cookies.add(
-        Cookie('${cookie['name']}', '${cookie['value']}')
-          ..path = cookie['path'] as String? ?? '/',
-      );
+
+    try {
+      if (declared == null) {
+        unmatched.add(observed);
+        request.response.statusCode = HttpStatus.notFound;
+        request.response.headers.contentType = ContentType.text;
+        request.response.add(utf8.encode('undeclared replay request'));
+        await request.response.close();
+        await complete('unmatched', 'completed');
+        return;
+      }
+      request.response.statusCode = declared['status'] as int? ?? 200;
+      final declaredHeaders =
+          (declared['headers'] as Map?)?.cast<String, dynamic>() ?? const {};
+      for (final entry in declaredHeaders.entries) {
+        final name = entry.key.toLowerCase();
+        if (name == 'content-length' || name == 'transfer-encoding') continue;
+        if (name == 'content-type') {
+          request.response.headers.contentType = ContentType.parse(
+            '${entry.value}',
+          );
+        } else {
+          request.response.headers.set(entry.key, '${entry.value}');
+        }
+      }
+      final declaredCookies =
+          (declared['setCookies'] as List?)?.cast<Map>() ?? const <Map>[];
+      for (final cookie in declaredCookies) {
+        request.response.cookies.add(
+          Cookie('${cookie['name']}', '${cookie['value']}')
+            ..path = cookie['path'] as String? ?? '/',
+        );
+      }
+      request.response.add(utf8.encode(declared['body'] as String? ?? ''));
+      await request.response.close();
+      await complete('responded', 'completed');
+    } catch (error) {
+      await complete('send-failed', 'failed', error);
+      rethrow;
     }
-    request.response.add(utf8.encode(declared['body'] as String? ?? ''));
-    await request.response.close();
   }
 
   /// The declared response for one request.

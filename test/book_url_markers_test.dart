@@ -17,203 +17,190 @@ void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
 
-  test('FIELDS-02 reaches its four real paths and empty terminal', () async {
-    final result = await runBookUrlMarkersCorpus(fixture: _fixture());
+  test(
+    'FIELDS-02 records the actual product and its declared-request failure',
+    () async {
+      final result = await runBookUrlMarkersCorpus(fixture: _fixture());
 
-    expect(result.scenarioPassed, isTrue);
-    expect(result.caseFailures, isEmpty);
-    expect(result.unmatched, isEmpty);
-    expect(result.caseRecords.map((record) => record['id']), [
-      'html-pattern-redirect-markers',
-      'json-pattern-nonmatch-list',
-      'json-no-pattern-empty-fallback',
-      'json-pattern-empty-terminal',
-    ]);
-    expect(result.requests, hasLength(14));
+      expect(result.caseFailures, isEmpty);
+      expect(result.unmatched, isEmpty);
+      expect(result.serverErrors, isEmpty);
+      expect(result.caseRecords.map((record) => record['id']), [
+        'html-pattern-redirect-markers',
+        'json-pattern-nonmatch-list',
+        'json-no-pattern-empty-fallback',
+        'json-pattern-empty-terminal',
+      ]);
+      expect(result.requests, hasLength(14));
+      expect(result.scenarioPassed, isFalse);
+      final requestInvariant = result.invariants.singleWhere(
+        (invariant) => invariant.id == 'declared-request-sequence',
+      );
+      expect(requestInvariant.ok, isFalse);
+      expect(requestInvariant.detail, contains('declared 12, observed 14'));
 
-    final a = result.caseRecords[0];
-    final aSearch = (a['search'] as Map)['results'] as List;
-    expect((aSearch.single as Map)['bookUrl'], '$_origin/a/detail/73');
-    expect((aSearch.single as Map)['infoHtml'], isFalse);
-    expect((a['bookInfo'] as Map)['bookUrl'], '$_origin/a/detail/73');
-    final aChapters = (a['tableOfContents'] as Map)['chapters'] as List;
-    expect(aChapters, hasLength(3));
-    expect((aChapters[0] as Map)['address'], '/a/c/1');
-    expect((aChapters[0] as Map)['url'], '$_origin/a/c/1');
-    expect((aChapters[0] as Map)['tag'], '2026-01-01');
-    expect((aChapters[0] as Map)['isVolume'], isFalse);
-    expect((aChapters[0] as Map)['isVip'], isTrue);
-    expect((aChapters[0] as Map)['isPay'], isFalse);
-    expect((aChapters[1] as Map)['address'], '第一卷1');
-    expect((aChapters[1] as Map)['url'], '$_origin/a/toc/1');
-    expect((aChapters[1] as Map)['isVolume'], isTrue);
-    expect((aChapters[2] as Map)['address'], '/a/toc/1');
-    expect((aChapters[2] as Map)['url'], '$_origin/a/toc/1');
-    expect((aChapters[2] as Map)['isVip'], isTrue);
-    expect((aChapters[2] as Map)['isPay'], isTrue);
-    expect(a['sourceProbes'], {'vipProbe': null, 'payProbe': null});
-    expect(a['requests'], hasLength(5));
+      final a = result.caseRecords[0];
+      final aSearch = (a['search'] as Map)['results'] as List;
+      expect((aSearch.single as Map)['bookUrl'], '$_origin/a/detail/73');
+      expect((aSearch.single as Map).containsKey('infoHtml'), isFalse);
+      expect((a['bookInfo'] as Map)['bookUrl'], '$_origin/a/detail/73');
+      final aChapters = (a['tableOfContents'] as Map)['chapters'] as List;
+      expect(aChapters, hasLength(3));
+      expect((aChapters[0] as Map)['address'], '/a/c/1');
+      expect((aChapters[0] as Map)['url'], '$_origin/a/c/1');
+      expect((aChapters[0] as Map)['tag'], '2026-01-01');
+      expect((aChapters[0] as Map)['isVolume'], isFalse);
+      expect((aChapters[0] as Map)['isVip'], isTrue);
+      expect((aChapters[0] as Map)['isPay'], isFalse);
+      expect((aChapters[1] as Map)['address'], '第一卷1');
+      expect((aChapters[1] as Map)['url'], '$_origin/a/toc/1');
+      expect((aChapters[1] as Map)['isVolume'], isTrue);
+      expect((aChapters[2] as Map)['address'], '/a/toc/1');
+      expect((aChapters[2] as Map)['url'], '$_origin/a/toc/1');
+      expect((aChapters[2] as Map)['isVip'], isTrue);
+      expect((aChapters[2] as Map)['isPay'], isTrue);
+      expect(a['sourceProbes'], {'vipProbe': null, 'payProbe': null});
+      expect(a['requests'], hasLength(5));
 
-    final b = result.caseRecords[1];
-    expect(
-      ((b['search'] as Map)['results'] as List).single['bookUrl'],
-      '$_origin/b/book/1',
-    );
-    expect((b['bookInfo'] as Map)['name'], '列表书');
-    expect((b['tableOfContents'] as Map)['chapters'], hasLength(3));
-    expect(b['requests'], hasLength(4));
-    expect(b['sourceProbes'], {'vipProbe': null, 'payProbe': null});
+      final b = result.caseRecords[1];
+      expect(
+        ((b['search'] as Map)['results'] as List).single['bookUrl'],
+        '$_origin/b/book/1',
+      );
+      expect((b['bookInfo'] as Map)['name'], '列表书');
+      expect((b['tableOfContents'] as Map)['chapters'], hasLength(3));
+      expect(b['requests'], hasLength(4));
+      expect(b['sourceProbes'], {'vipProbe': null, 'payProbe': null});
 
-    final c = result.caseRecords[2];
-    expect(
-      ((c['search'] as Map)['results'] as List).single['bookUrl'],
-      '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
-    );
-    expect(
-      (c['bookInfo'] as Map)['bookUrl'],
-      '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
-    );
-    expect((c['tableOfContents'] as Map)['chapters'], hasLength(1));
-    expect(
-      ((c['tableOfContents'] as Map)['chapters'] as List).single['tag'],
-      isNull,
-    );
-    expect(c['requests'], hasLength(4));
-    expect(c['sourceProbes'], {'vipProbe': null, 'payProbe': null});
+      final c = result.caseRecords[2];
+      expect(
+        ((c['search'] as Map)['results'] as List).single['bookUrl'],
+        '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
+      );
+      expect(
+        (c['bookInfo'] as Map)['bookUrl'],
+        '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
+      );
+      expect((c['tableOfContents'] as Map)['chapters'], hasLength(1));
+      expect(
+        ((c['tableOfContents'] as Map)['chapters'] as List).single['tag'],
+        isNull,
+      );
+      expect(c['requests'], hasLength(4));
+      expect(c['sourceProbes'], {'vipProbe': null, 'payProbe': null});
 
-    final d = result.caseRecords[3];
-    expect(((d['search'] as Map)['results'] as List), isEmpty);
-    expect(d['bookInfo'], isNull);
-    expect(d['tableOfContents'], isNull);
-    expect(d['chapter'], isNull);
-    expect(d['requests'], hasLength(1));
-    expect(d['sourceProbes'], {'vipProbe': null, 'payProbe': null});
+      final d = result.caseRecords[3];
+      expect(((d['search'] as Map)['results'] as List), isEmpty);
+      expect(d['bookInfo'], isNull);
+      expect(d['tableOfContents'], isNull);
+      expect(d['chapter'], isNull);
+      expect(d['requests'], hasLength(1));
+      expect(d['sourceProbes'], {'vipProbe': null, 'payProbe': null});
 
-    final receipt = (result.requests.first as Map)['receipt'] as Map;
-    expect(receipt['status'], 302);
-    expect(receipt['redirect'], '/a/detail/73');
-  });
+      final receipt = (result.requests.first as Map)['receipt'] as Map;
+      expect(receipt['status'], 302);
+      expect(receipt['send'], 'completed');
+      expect(receipt['redirect'], '/a/detail/73');
+    },
+  );
 
-  test('the FIELDS-02 comparator admits an equal synthetic record', () {
-    final caseRecord = _syntheticCase();
+  test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
-    final corpusSha = 'a' * 64;
-    final golden = _syntheticEnvelope(corpus, caseRecord, corpusSha);
-    final liber = _syntheticProduct(corpus, caseRecord, corpusSha);
-    final report = compareBookUrlMarkers(
-      golden: golden,
-      liber: liber,
-      goldenPath: 'synthetic-golden.json',
-      liberPath: 'synthetic-liber.json',
-      corpus: corpus,
-      corpusSha256: corpusSha,
-    );
+    final golden = _syntheticEnvelope(corpus);
+    final product = _syntheticProduct(corpus);
+    final report = _compare(golden, product, corpus);
     expect(report['status'], 'pass');
     expect(report['notCompared'], isEmpty);
   });
 
-  test('the FIELDS-02 comparator refuses damaged input and observations', () {
+  test('the comparator changes only its targeted C1 field', () {
     final corpus = _syntheticCorpus();
-    final corpusSha = 'a' * 64;
-    final positive = _syntheticCase();
-    _syntheticChapters({
-      'cases': [positive],
-    });
-    final base = _syntheticEnvelope(corpus, positive, corpusSha);
-    final product = _syntheticProduct(corpus, positive, corpusSha);
+    final base = _syntheticEnvelope(corpus);
+    final product = _syntheticProduct(corpus);
+    expect(_compare(base, product, corpus)['status'], 'pass');
 
-    final controls = <String, void Function(Map<String, dynamic>)>{
-      'wrong marker': (g) => _syntheticChapters(g)[0]['isVip'] = true,
-      'wrong tag': (g) => _syntheticChapters(g)[0]['tag'] = 'wrong',
-      'wrong raw address': (g) => _syntheticChapters(g)[0]['url'] = '/wrong',
-      'wrong absolute target': (g) =>
-          _syntheticChapters(g)[0]['absoluteUrl'] = 'http://wrong.test/c',
-      'wrong stage': (g) => _syntheticRecord(g)['bookInfo'] = null,
-      'wrong terminal': (g) => g['terminal'] = 'search-empty',
-      'wrong probe': (g) =>
-          (_syntheticRecord(g)['sourceProbes'] as Map)['vipProbe'] = 'read',
+    final controls = <String, String>{
+      'isVip': 'chapters[0].isVip',
+      'tag': 'chapters[0].tag',
+      'raw address': 'chapters[0].url(raw vs address)',
+      'absolute target': 'chapters[0].absoluteUrl(vs url)',
+      'vip probe': 'sourceProbes.vipProbe',
     };
-    for (final control in controls.entries) {
-      final golden = _deepClone(base);
-      control.value(golden);
-      final report = compareBookUrlMarkers(
-        golden: golden,
-        liber: product,
-        goldenPath: 'synthetic-golden.json',
-        liberPath: 'synthetic-liber.json',
-        corpus: corpus,
-        corpusSha256: corpusSha,
-      );
-      expect(report['status'], 'fail', reason: control.key);
-      expect(report['differences'], isNotEmpty, reason: control.key);
-    }
-
-    final malformed = <String, void Function(Map<String, dynamic>)>{
-      'missing id': (g) => g['cases'] = <Object?>[],
-      'duplicate id': (g) => g['cases'] = [_syntheticCase(), _syntheticCase()],
-      'extra id': (g) => (g['cases'] as List).add({
-        ..._syntheticCase(),
-        'id': 'synthetic-extra',
-      }),
-      'wrong type': (g) => _syntheticChapters(g)[0]['isVip'] = 'true',
-      'empty title': (g) => _syntheticChapters(g)[0]['title'] = '',
-    };
-    for (final control in malformed.entries) {
-      final golden = _deepClone(base);
-      control.value(golden);
+    for (final entry in controls.entries) {
+      final changed = _clone(base);
+      final chapter = _chapters(changed)[0];
+      switch (entry.key) {
+        case 'isVip':
+          chapter['isVip'] = true;
+        case 'tag':
+          chapter['tag'] = 'wrong';
+        case 'raw address':
+          chapter['url'] = '/wrong';
+        case 'absolute target':
+          chapter['absoluteUrl'] = 'http://wrong.test/c';
+        case 'vip probe':
+          (_record(changed)['sourceProbes'] as Map)['vipProbe'] = 'read';
+      }
+      final report = _compare(changed, product, corpus);
+      expect(report['status'], 'fail', reason: entry.key);
       expect(
-        () => compareBookUrlMarkers(
-          golden: golden,
-          liber: product,
-          goldenPath: 'synthetic-golden.json',
-          liberPath: 'synthetic-liber.json',
-          corpus: corpus,
-          corpusSha256: corpusSha,
-        ),
+        (report['differences'] as List).map((item) => item['field']),
+        contains(entry.value),
+        reason: entry.key,
+      );
+    }
+  });
+
+  test('the comparator refuses malformed/incomplete observations', () {
+    final corpus = _syntheticCorpus();
+    final base = _syntheticEnvelope(corpus);
+    final product = _syntheticProduct(corpus);
+
+    final structural = <String, void Function(Map<String, dynamic>)>{
+      'missing case id': (g) => g['cases'] = <Object?>[],
+      'duplicate case id': (g) => (g['cases'] as List).add(_case()),
+      'extra case id': (g) =>
+          (g['cases'] as List).add({..._case(), 'id': 'extra'}),
+      'wrong case terminal': (g) => _record(g)['terminal'] = 'search-empty',
+      'missing information stage': (g) => _record(g)['bookInfo'] = null,
+      'missing toc stage': (g) => _record(g)['tableOfContents'] = null,
+      'missing tag key': (g) => _chapters(g)[0].remove('tag'),
+      'wrong marker type': (g) => _chapters(g)[0]['isVip'] = 'true',
+      'empty title': (g) => _chapters(g)[0]['title'] = '',
+      'missing request receipt': (g) => _request(g).remove('receipt'),
+    };
+    for (final entry in structural.entries) {
+      final changed = _clone(base);
+      entry.value(changed);
+      expect(
+        () => _compare(changed, product, corpus),
         throwsA(isA<StateError>()),
-        reason: control.key,
+        reason: entry.key,
       );
     }
 
-    final binding = _deepClone(base);
+    final binding = _clone(base);
     (binding['corpus'] as Map)['sha256'] = 'b' * 64;
     expect(
-      () => compareBookUrlMarkers(
-        golden: binding,
-        liber: product,
-        goldenPath: 'synthetic-golden.json',
-        liberPath: 'synthetic-liber.json',
-        corpus: corpus,
-        corpusSha256: corpusSha,
-      ),
+      () => _compare(binding, product, corpus),
       throwsA(isA<StateError>()),
     );
 
-    final cleanup = _deepClone(base);
+    final cleanup = _clone(base);
     (cleanup['cleanup'] as Map)['serverClosed'] = false;
     expect(
-      () => compareBookUrlMarkers(
-        golden: cleanup,
-        liber: product,
-        goldenPath: 'synthetic-golden.json',
-        liberPath: 'synthetic-liber.json',
-        corpus: corpus,
-        corpusSha256: corpusSha,
-      ),
+      () => _compare(cleanup, product, corpus),
       throwsA(isA<StateError>()),
     );
 
-    final unexpected = _deepClone(base);
-    (unexpected['requests'] as List).add(_syntheticRequest('extra'));
-    final report = compareBookUrlMarkers(
-      golden: unexpected,
-      liber: product,
-      goldenPath: 'synthetic-golden.json',
-      liberPath: 'synthetic-liber.json',
-      corpus: corpus,
-      corpusSha256: corpusSha,
-    );
+    final unexpected = _clone(base);
+    (unexpected['requests'] as List).add(_requestJson('/extra'));
+    final report = _compare(unexpected, product, corpus);
     expect(report['status'], 'fail');
+    expect(
+      (report['differences'] as List).map((item) => item['field']),
+      contains('golden.requests[1]'),
+    );
   });
 
   test('the legacy FIELDS-01 corpus and golden remain present', () {
@@ -227,116 +214,225 @@ void main() {
   });
 }
 
+Map<String, dynamic> _compare(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> product,
+  Map<String, dynamic> corpus,
+) => compareBookUrlMarkers(
+  golden: golden,
+  liber: product,
+  goldenPath: 'synthetic-golden.json',
+  liberPath: 'synthetic-liber.json',
+  corpus: corpus,
+  corpusSha256: 'a' * 64,
+  corpusSha256Lf: 'a' * 64,
+  corpusByteCount: 123,
+  expectedHarnessApkSha256: 'harness',
+  expectedLibrarySha256: 'library',
+  expectedProductSources: const {'lib/source/test.dart': 'source-hash'},
+);
+
 Map<String, dynamic> _syntheticCorpus() => {
   'fixtureId': 'FIELDS-02',
   'corpusVersion': 1,
   'baselineCommit': 'synthetic-baseline',
   'entryPoint': 'synthetic-entry',
+  'origin': 'http://127.0.0.1:18733',
+  'target': {
+    'package': 'io.legado.app.debug',
+    'apkSha256': 'target-apk',
+    'deviceFingerprint': 'synthetic-fingerprint',
+  },
   'cases': [
-    {'id': 'synthetic-case'},
+    {
+      'id': 'synthetic-case',
+      'terminal': 'four-stage',
+      'keyword': 'k',
+      'source': <String, Object?>{},
+    },
+  ],
+  'expectedRequests': [
+    {'method': 'GET', 'path': '/s', 'query': <String, String>{}},
+  ],
+  'responses': [
+    {
+      'id': 'r1',
+      'method': 'GET',
+      'path': '/s',
+      'status': 200,
+      'headers': <String, Object?>{},
+      'body': '',
+    },
   ],
 };
 
-Map<String, dynamic> _syntheticCase() => {
-  'id': 'synthetic-case',
-  'terminal': 'search-empty',
-  'search': {'results': <Object?>[]},
-  'bookInfo': null,
-  'tableOfContents': null,
-  'chapter': null,
-  'sourceProbes': {'vipProbe': null, 'payProbe': null},
-  'requests': <Object?>[],
-};
-
-Map<String, dynamic> _syntheticEnvelope(
-  Map<String, dynamic> corpus,
-  Map<String, dynamic> caseRecord,
-  String corpusSha,
-) => {
-  'fixtureId': corpus['fixtureId'],
-  'corpusVersion': corpus['corpusVersion'],
-  'baselineCommit': corpus['baselineCommit'],
-  'entryPoint': corpus['entryPoint'],
-  'fingerprint': 'synthetic-test-only-not-device-evidence',
-  'corpus': {
-    'asset': 'field-fixtures.json',
-    'bytes': 1,
-    'sha256': corpusSha,
-    'fixtureId': corpus['fixtureId'],
-    'corpusVersion': corpus['corpusVersion'],
+Map<String, dynamic> _requestJson(String path) => {
+  'method': 'GET',
+  'path': path,
+  'query': <String, String>{},
+  'rawQuery': '',
+  'receipt': {
+    'terminal': 'responded',
+    'status': 200,
+    'responseId': 'r1',
+    'redirect': null,
+    'send': 'completed',
   },
-  'isolation': {'bound': true, 'filesRouted': true, 'databaseRouted': true},
-  'cleanup': {'serverClosed': true},
-  'caseFailures': <String, Object?>{},
-  'cases': [caseRecord],
-  'requests': <Object?>[],
-  'stageTrace': <Object?>[],
 };
 
-Map<String, dynamic> _syntheticProduct(
-  Map<String, dynamic> corpus,
-  Map<String, dynamic> caseRecord,
-  String corpusSha,
-) {
-  final product = _syntheticEnvelope(corpus, caseRecord, corpusSha)
-    ..remove('corpus')
-    ..remove('fingerprint')
-    ..remove('isolation')
-    ..remove('cases');
-  product['fixturesSha256'] = corpusSha;
-  product['librarySha256'] = 'library';
-  product['caseRecords'] = <Object?>[caseRecord];
-  return product;
-}
-
-List<Map<String, dynamic>> _syntheticChapters(Map<String, dynamic> golden) {
-  final record = (golden['cases'] as List).first as Map<String, dynamic>;
-  if (record['terminal'] == 'four-stage') {
-    return _chaptersOf(record);
-  }
-  record['terminal'] = 'four-stage';
-  record['bookInfo'] = {
-    'name': 'synthetic',
-    'author': 'synthetic',
+Map<String, dynamic> _case() => {
+  'id': 'synthetic-case',
+  'terminal': 'four-stage',
+  'search': {
+    'results': [
+      {
+        'name': 'name',
+        'author': 'author',
+        'bookUrl': 'http://synthetic.test/book',
+        'infoHtml': true,
+      },
+    ],
+  },
+  'bookInfo': {
+    'name': 'name',
+    'author': 'author',
     'bookUrl': 'http://synthetic.test/book',
     'tocUrl': '/toc',
-  };
-  record['tableOfContents'] = {
+  },
+  'tableOfContents': {
     'tocUrl': '/toc',
     'chapters': [
       {
         'title': 'chapter',
-        'url': '/c/1',
-        'absoluteUrl': 'http://synthetic.test/c/1',
-        'tag': 'tag',
+        'url': '/c',
+        'absoluteUrl': 'http://synthetic.test/c',
+        'tag': null,
         'isVolume': false,
         'isVip': false,
         'isPay': false,
-        'address': '/c/1',
-        'rawAddress': '/c/1',
-        'storeKey': 'http://synthetic.test/c/1',
-        'persistedAddress': 'http://synthetic.test/c/1',
       },
     ],
-  };
-  record['chapter'] = {'title': 'chapter', 'text': 'body'};
-  return _chaptersOf(record);
-}
-
-Map<String, dynamic> _syntheticRecord(Map<String, dynamic> golden) =>
-    (golden['cases'] as List).first as Map<String, dynamic>;
-
-List<Map<String, dynamic>> _chaptersOf(Map<String, dynamic> record) =>
-    ((record['tableOfContents'] as Map)['chapters'] as List)
-        .cast<Map<String, dynamic>>();
-
-Map<String, dynamic> _syntheticRequest(String path) => {
-  'method': 'GET',
-  'path': path,
-  'rawQuery': '',
-  'query': <String, String>{},
-  'receipt': {'terminal': 'responded', 'status': 200, 'responseId': path},
+  },
+  'chapter': {'title': 'chapter', 'text': 'body'},
+  'sourceProbes': {'vipProbe': null, 'payProbe': null},
+  'requests': [_requestJson('/s')],
 };
 
-Map<String, dynamic> _deepClone(Map<String, dynamic> value) =>
+Map<String, dynamic> _syntheticEnvelope(Map<String, dynamic> corpus) => {
+  'fixtureId': corpus['fixtureId'],
+  'corpusVersion': corpus['corpusVersion'],
+  'baselineCommit': corpus['baselineCommit'],
+  'entryPoint': corpus['entryPoint'],
+  'fingerprint': 'synthetic-fingerprint',
+  'corpus': {
+    'asset': 'field-fixtures.json',
+    'bytes': 123,
+    'sha256': 'a' * 64,
+    'sha256Lf': 'a' * 64,
+    'fixtureId': corpus['fixtureId'],
+    'corpusVersion': corpus['corpusVersion'],
+  },
+  'isolation': {
+    'bound': true,
+    'filesRouted': true,
+    'databaseRouted': true,
+    'deviceProtected': false,
+    'rootExistedAtStart': false,
+    'targetPackage': 'io.legado.app.debug',
+    'targetApkSha256': 'target-apk',
+    'harnessPackage': 'io.liber.oracle.fields',
+    'harnessApkSha256': 'harness',
+    'corpusSha256Lf': 'a' * 64,
+    'preferencesPrefix': 'liber_fields_02_',
+    'scratchRoot': '/data/data/io.legado.app.debug/cache/liber-fields-02',
+  },
+  'cleanup': {
+    'serverClosed': true,
+    'ownerComplete': true,
+    'rootRetained': true,
+    'preferencesFenced': true,
+    'ownerRunId': 'synthetic-run',
+    'scratchRoot': '/data/data/io.legado.app.debug/cache/liber-fields-02',
+    'reportPath':
+        '/data/data/io.legado.app.debug/cache/liber-fields-02/field-oracle.json',
+    'ownedPreferences': ['liber_fields_02_probe'],
+  },
+  'analysisFailure': null,
+  'caseFailures': <String, Object?>{},
+  'cases': [_case()],
+  'requests': [_requestJson('/s')],
+  'stageTrace': [
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
+  ],
+  'unmatchedRequests': <Object?>[],
+  'serverErrors': <Object?>[],
+};
+
+Map<String, dynamic> _syntheticProduct(Map<String, dynamic> corpus) => {
+  'fixtureId': corpus['fixtureId'],
+  'corpusVersion': corpus['corpusVersion'],
+  'baselineCommit': corpus['baselineCommit'],
+  'entryPoint': corpus['entryPoint'],
+  'fixturesBytes': 123,
+  'fixturesSha256': 'a' * 64,
+  'fixturesSha256Lf': 'a' * 64,
+  'fixturesPath': 'synthetic-fixture.json',
+  'productSources': const {'lib/source/test.dart': 'source-hash'},
+  'libraryPath': 'synthetic-fjs.dll',
+  'librarySha256': 'library',
+  'platform': 'windows',
+  'oracle': 'not-run',
+  'cleanup': {'serverClosed': true},
+  'analysisFailure': null,
+  'caseFailures': <String, Object?>{},
+  'caseRecords': [
+    {
+      ..._case(),
+      'search': {
+        'results': [
+          {
+            'name': 'name',
+            'author': 'author',
+            'bookUrl': 'http://synthetic.test/book',
+          },
+        ],
+      },
+      'tableOfContents': {
+        'tocUrl': '/toc',
+        'chapters': [
+          {
+            'title': 'chapter',
+            'url': 'http://synthetic.test/c',
+            'address': '/c',
+            'rawAddress': '/c',
+            'storeKey': 'http://synthetic.test/c',
+            'persistedAddress': 'http://synthetic.test/c',
+            'tag': null,
+            'isVolume': false,
+            'isVip': false,
+            'isPay': false,
+          },
+        ],
+      },
+    },
+  ],
+  'requests': [_requestJson('/s')],
+  'stageTrace': [
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
+  ],
+  'unmatchedRequests': <Object?>[],
+  'serverErrors': <Object?>[],
+};
+
+Map<String, dynamic> _record(Map<String, dynamic> envelope) =>
+    (envelope['cases'] as List).first as Map<String, dynamic>;
+
+List<Map<String, dynamic>> _chapters(Map<String, dynamic> envelope) =>
+    ((_record(envelope)['tableOfContents'] as Map)['chapters'] as List)
+        .cast<Map<String, dynamic>>();
+
+Map<String, dynamic> _request(Map<String, dynamic> envelope) =>
+    (_record(envelope)['requests'] as List).first as Map<String, dynamic>;
+
+Map<String, dynamic> _clone(Map<String, dynamic> value) =>
     jsonDecode(jsonEncode(value)) as Map<String, dynamic>;

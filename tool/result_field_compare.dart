@@ -20,6 +20,9 @@ import 'package:pointycastle/export.dart';
 ///   `dart run tool/result_field_compare.dart <golden.json> <liber.json> <report.json>`
 void main(List<String> args) {
   String? selectedCorpus;
+  String? selectedLibrary;
+  String? selectedHarnessApk;
+  var productSourceRoot = '.';
   final positional = <String>[];
   for (var index = 0; index < args.length; index++) {
     final arg = args[index];
@@ -30,13 +33,30 @@ void main(List<String> args) {
       selectedCorpus = args[index];
     } else if (arg.startsWith('--fixture=')) {
       selectedCorpus = arg.substring('--fixture='.length);
+    } else if (arg == '--library') {
+      if (++index >= args.length) {
+        throw ArgumentError('--library needs a value');
+      }
+      selectedLibrary = args[index];
+    } else if (arg == '--harness-apk') {
+      if (++index >= args.length) {
+        throw ArgumentError('--harness-apk needs a value');
+      }
+      selectedHarnessApk = args[index];
+    } else if (arg == '--product-source-root') {
+      if (++index >= args.length) {
+        throw ArgumentError('--product-source-root needs a value');
+      }
+      productSourceRoot = args[index];
     } else {
       positional.add(arg);
     }
   }
   if (positional.length != 3) {
     throw ArgumentError(
-      'Usage: [--fixture <corpus.json>] <golden.json> <liber.json> <report.json>',
+      'Usage: [--fixture <corpus.json>] [--library <fjs.dll>] '
+      '[--harness-apk <apk>] [--product-source-root <repo>] '
+      '<golden.json> <liber.json> <report.json>',
     );
   }
   final golden =
@@ -66,6 +86,17 @@ void main(List<String> args) {
           liberPath: positional[1],
           corpus: corpus,
           corpusSha256: _sha256(corpusBytes),
+          corpusSha256Lf: _sha256(_lf(corpusBytes)),
+          corpusByteCount: corpusBytes.length,
+          expectedHarnessApkSha256: _requiredMeasuredPath(
+            selectedHarnessApk,
+            '--harness-apk',
+          ),
+          expectedLibrarySha256: _requiredMeasuredPath(
+            selectedLibrary,
+            '--library',
+          ),
+          expectedProductSources: _measureProductSources(productSourceRoot),
           manifestCorpusSha256: manifestCorpusSha256,
         )
       : compareResultFields(
@@ -553,10 +584,10 @@ List<Map<String, Object?>> _requests(Map<String, dynamic> evidence) => [
 const bookUrlMarkersFixtureId = 'FIELDS-02';
 const bookUrlMarkersCorpusVersion = 1;
 
-/// Strict FIELDS-02 admission and comparison. Native case records are an array;
-/// the product record carries them under `caseRecords`. Missing, duplicate,
-/// extra or wrong-typed observations are admission refusals, never a
-/// `notCompared` pass.
+/// Strict FIELDS-02 admission and comparison. The native report uses `cases`;
+/// the product report uses `caseRecords`. The two sides are admitted
+/// independently before any equality row is produced. Missing facts are
+/// refusals; a real observed difference is a `fail` row named for its field.
 Map<String, Object?> compareBookUrlMarkers({
   required Map<String, dynamic> golden,
   required Map<String, dynamic> liber,
@@ -564,201 +595,137 @@ Map<String, Object?> compareBookUrlMarkers({
   required String liberPath,
   required Map<String, dynamic> corpus,
   required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+  required String expectedLibrarySha256,
+  required Map<String, String> expectedProductSources,
   String? manifestCorpusSha256,
 }) {
-  for (final field in [
-    'fixtureId',
-    'corpusVersion',
-    'baselineCommit',
-    'entryPoint',
-  ]) {
-    if (golden[field] != liber[field] || golden[field] != corpus[field]) {
-      throw StateError('Corpus identity mismatch on $field');
-    }
-  }
-  if (corpus['fixtureId'] != bookUrlMarkersFixtureId ||
-      corpus['corpusVersion'] != bookUrlMarkersCorpusVersion) {
-    throw StateError('Not the FIELDS-02 corpus');
-  }
-  if (golden['analysisFailure'] != null) {
-    throw StateError('Golden recorded an analysis failure');
-  }
-  if (liber['fixturesSha256'] != corpusSha256) {
-    throw StateError('Product corpus bytes do not match the selected corpus');
+  final corpusCases = _admitCorpus(
+    corpus,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+  );
+  final declaredIds = [for (final entry in corpusCases) entry['id'] as String];
+  final expectedRequests = _admitExpectedRequests(corpus);
+  final expectedResponses = _admitExpectedResponses(corpus);
+  if (expectedRequests.length != expectedResponses.length) {
+    throw StateError('corpus expectedRequests/responses are not aligned');
   }
   if (manifestCorpusSha256 != null && manifestCorpusSha256 != corpusSha256) {
-    throw StateError('Golden manifest corpus pin does not match the corpus');
+    throw StateError('golden manifest corpus pin does not match the corpus');
   }
-  final goldenCorpus = golden['corpus'];
-  if (goldenCorpus is! Map ||
-      goldenCorpus['asset'] != 'field-fixtures.json' ||
-      goldenCorpus['bytes'] is! int ||
-      goldenCorpus['sha256'] != corpusSha256 ||
-      goldenCorpus['fixtureId'] != bookUrlMarkersFixtureId ||
-      goldenCorpus['corpusVersion'] != bookUrlMarkersCorpusVersion) {
-    throw StateError('Golden corpus binding is malformed');
-  }
-  final fingerprint = golden['fingerprint'];
-  if (fingerprint is! String || fingerprint.isEmpty) {
-    throw StateError('Golden device fingerprint missing');
-  }
-  final librarySha = liber['librarySha256'];
-  if (librarySha is! String || librarySha.isEmpty || librarySha == 'unknown') {
-    throw StateError('Product library binding missing');
-  }
-  final goldenCleanup = _map(golden['cleanup'], 'golden.cleanup');
-  if (goldenCleanup['serverClosed'] != true) {
-    throw StateError('Golden cleanup did not close the replay server');
-  }
-  final goldenIsolation = _map(golden['isolation'], 'golden.isolation');
-  if (goldenIsolation['bound'] != true ||
-      goldenIsolation['filesRouted'] != true ||
-      goldenIsolation['databaseRouted'] != true) {
-    throw StateError('Golden scratch application is not bound/routed');
-  }
-  final liberCleanup = _map(liber['cleanup'], 'liber.cleanup');
-  if (liberCleanup['serverClosed'] is! bool) {
-    throw StateError('liber.cleanup.serverClosed must be boolean');
-  }
-  if (((golden['caseFailures'] as Map?) ?? const {}).isNotEmpty ||
-      ((liber['caseFailures'] as Map?) ?? const {}).isNotEmpty) {
-    throw StateError('A FIELDS-02 case did not complete');
-  }
-  final liberCases = _records(liber['caseRecords'], 'liber.caseRecords');
+  final target = _map(corpus['target'], 'corpus.target');
+  _admitGoldenIdentity(
+    golden,
+    corpus,
+    target: target,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedHarnessApkSha256: expectedHarnessApkSha256,
+  );
+  _admitProductIdentity(
+    liber,
+    corpus,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedLibrarySha256: expectedLibrarySha256,
+    expectedProductSources: expectedProductSources,
+  );
+
   final goldenCases = _records(golden['cases'], 'golden.cases');
-  final declared = [
-    for (final entry in (corpus['cases'] as List).cast<Map>())
-      entry['id'] as String,
-  ];
-  _admitExactIds(goldenCases, declared, 'golden');
-  _admitExactIds(liberCases, declared, 'liber');
+  final productCases = _records(liber['caseRecords'], 'liber.caseRecords');
+  if (goldenCases.isEmpty || productCases.isEmpty) {
+    throw StateError('both sides must carry a nonempty selected case array');
+  }
+  _admitExactIds(goldenCases, declaredIds, 'golden');
+  _admitExactIds(productCases, declaredIds, 'liber');
+  final goldenById = {for (final record in goldenCases) record['id']: record};
+  final productById = {for (final record in productCases) record['id']: record};
+  final corpusById = {for (final entry in corpusCases) entry['id']: entry};
+  for (final id in declaredIds) {
+    _admitCaseRecord(
+      goldenById[id]!,
+      corpusById[id]!,
+      'golden.$id',
+      native: true,
+    );
+    _admitCaseRecord(
+      productById[id]!,
+      corpusById[id]!,
+      'liber.$id',
+      native: false,
+    );
+  }
 
   final caseDifferences = <Map<String, Object?>>[];
-  final goldenById = {for (final record in goldenCases) record['id']: record};
-  final liberById = {for (final record in liberCases) record['id']: record};
-  for (final id in declared) {
+  for (final id in declaredIds) {
     final frozen = goldenById[id]!;
-    final product = liberById[id]!;
-    final terminal = _string(frozen, 'terminal');
-    _diff(
-      caseDifferences,
-      id,
-      'terminal',
-      terminal,
-      _string(product, 'terminal'),
-    );
-
-    final frozenSearch = _map(frozen['search'], '$id.search');
-    final productSearch = _map(product['search'], '$id.search');
-    final frozenResults = _list(frozenSearch['results'], '$id.search.results');
-    final productResults = _list(
-      productSearch['results'],
-      '$id.search.results',
-    );
-    _diff(
-      caseDifferences,
-      id,
-      'search.results.length',
-      frozenResults.length,
-      productResults.length,
-    );
-    final resultCount = frozenResults.length < productResults.length
-        ? frozenResults.length
-        : productResults.length;
-    for (var index = 0; index < resultCount; index++) {
-      final f = _map(frozenResults[index], '$id.search.results[$index]');
-      final p = _map(productResults[index], '$id.search.results[$index]');
-      for (final field in ['name', 'author', 'bookUrl']) {
-        _string(f, field);
-        _string(p, field);
-        _diff(
-          caseDifferences,
-          id,
-          'search.results[$index].$field',
-          f[field],
-          p[field],
-        );
-      }
-      if (f['infoHtml'] is! bool || p['infoHtml'] is! bool) {
-        throw StateError('$id.search.results[$index].infoHtml must be boolean');
-      }
-      _diff(
-        caseDifferences,
-        id,
-        'search.results[$index].infoHtml',
-        f['infoHtml'],
-        p['infoHtml'],
-      );
-    }
-
-    _compareStageMap(
-      caseDifferences,
-      id,
-      'bookInfo',
-      frozen['bookInfo'],
-      product['bookInfo'],
-      const ['name', 'author', 'bookUrl', 'tocUrl'],
-    );
-    _compareTableOfContents(
-      caseDifferences,
-      id,
-      frozen['tableOfContents'],
-      product['tableOfContents'],
-    );
-    _compareStageMap(
-      caseDifferences,
-      id,
-      'chapter',
-      frozen['chapter'],
-      product['chapter'],
-      const ['title', 'text'],
-    );
-    _compareProbes(caseDifferences, id, frozen, product);
-    _compareCaseRequests(caseDifferences, id, frozen, product);
+    final product = productById[id]!;
+    _compareCases(caseDifferences, id, frozen, product);
   }
 
   final requestDifferences = <Map<String, Object?>>[];
-  final frozenRequests = _list(golden['requests'], 'golden.requests');
-  final productRequests = _list(liber['requests'], 'liber.requests');
-  _diff(
+  final goldenRequests = _markerRequests(golden['requests'], 'golden.requests');
+  final productRequests = _markerRequests(liber['requests'], 'liber.requests');
+  _compareRequestsToDeclaration(
     requestDifferences,
-    'requests',
-    'requests.length',
-    frozenRequests.length,
-    productRequests.length,
+    'golden',
+    goldenRequests,
+    expectedRequests,
+    expectedResponses,
   );
-  final requestCount = frozenRequests.length < productRequests.length
-      ? frozenRequests.length
-      : productRequests.length;
-  for (var index = 0; index < requestCount; index++) {
-    _compareRequest(
-      requestDifferences,
-      index,
-      _map(frozenRequests[index], 'golden.requests[$index]'),
-      _map(productRequests[index], 'liber.requests[$index]'),
-    );
-  }
+  _compareRequestsToDeclaration(
+    requestDifferences,
+    'liber',
+    productRequests,
+    expectedRequests,
+    expectedResponses,
+  );
+
   final stageDifferences = <Map<String, Object?>>[];
+  final goldenTrace = _admitStageTrace(
+    trace: golden['stageTrace'],
+    label: 'golden.stageTrace',
+  );
+  final productTrace = _admitStageTrace(
+    trace: liber['stageTrace'],
+    label: 'liber.stageTrace',
+  );
   _diff(
     stageDifferences,
     'stageTrace',
     'stageTrace',
-    golden['stageTrace'] ?? const <Object?>[],
-    liber['stageTrace'] ?? const <Object?>[],
+    goldenTrace,
+    productTrace,
   );
+
   final cleanupDifferences = <Map<String, Object?>>[];
-  if (liberCleanup['serverClosed'] != true) {
-    cleanupDifferences.add({
-      'row': 'cleanup',
-      'field': 'liber.cleanup.serverClosed',
-      'frozen': true,
-      'liber': liberCleanup['serverClosed'],
-    });
-  }
+  final goldenCleanup = _map(golden['cleanup'], 'golden.cleanup');
+  final productCleanup = _map(liber['cleanup'], 'liber.cleanup');
+  _diff(
+    cleanupDifferences,
+    'cleanup',
+    'serverClosed',
+    goldenCleanup['serverClosed'],
+    productCleanup['serverClosed'],
+  );
 
   final rows = <Map<String, Object?>>[
-    _row('C1', 'case records and declared terminals', caseDifferences),
-    _row('C2', 'request identity and response receipts', requestDifferences),
+    _row(
+      'C1',
+      'case records, markers and fixed raw/resolved quantities',
+      caseDifferences,
+    ),
+    _row(
+      'C2',
+      'declared request sequence and actual response receipts',
+      requestDifferences,
+    ),
     _row('C3', 'actual stage trace', stageDifferences),
     _row('C4', 'isolation and cleanup', cleanupDifferences),
   ];
@@ -775,7 +742,624 @@ Map<String, Object?> compareBookUrlMarkers({
     'goldenPath': goldenPath,
     'liberPath': liberPath,
     'corpusSha256': corpusSha256,
+    'corpusSha256Lf': corpusSha256Lf,
+    'corpusByteCount': corpusByteCount,
+    'librarySha256': expectedLibrarySha256,
+    'harnessApkSha256': expectedHarnessApkSha256,
   };
+}
+
+List<Map<String, dynamic>> _admitCorpus(
+  Map<String, dynamic> corpus, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+}) {
+  if (corpus['fixtureId'] != bookUrlMarkersFixtureId) {
+    throw StateError('Not the FIELDS-02 corpus');
+  }
+  if (corpus['corpusVersion'] is! int ||
+      corpus['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+    throw StateError('FIELDS-02 corpusVersion must be integer 1');
+  }
+  _requiredString(corpus, 'baselineCommit', 'corpus');
+  _requiredString(corpus, 'entryPoint', 'corpus');
+  _requiredString(corpus, 'origin', 'corpus');
+  final target = _map(corpus['target'], 'corpus.target');
+  _requiredString(target, 'package', 'corpus.target');
+  _requiredString(target, 'apkSha256', 'corpus.target');
+  _requiredString(target, 'deviceFingerprint', 'corpus.target');
+  final cases = _requiredList(corpus, 'cases', 'corpus');
+  if (cases.isEmpty) {
+    throw StateError('corpus.cases must not be empty');
+  }
+  final records = <Map<String, dynamic>>[];
+  final ids = <String>{};
+  for (final value in cases) {
+    final entry = _map(value, 'corpus.cases[]');
+    final id = _requiredString(entry, 'id', 'corpus.cases[]');
+    if (id.isEmpty || !ids.add(id)) {
+      throw StateError('corpus case ids must be nonempty and unique');
+    }
+    final terminal = entry.containsKey('terminal')
+        ? _requiredString(entry, 'terminal', 'corpus.cases[$id]')
+        : 'four-stage';
+    if (terminal != 'four-stage' && terminal != 'search-empty') {
+      throw StateError('unsupported corpus terminal: $terminal');
+    }
+    _requiredString(entry, 'keyword', 'corpus.cases[$id]');
+    _map(entry['source'], 'corpus.cases[$id].source');
+    records.add(entry);
+  }
+  return records;
+}
+
+List<Map<String, dynamic>> _admitExpectedRequests(Map<String, dynamic> corpus) {
+  final values = _requiredList(corpus, 'expectedRequests', 'corpus');
+  if (values.isEmpty) {
+    throw StateError('corpus.expectedRequests must not be empty');
+  }
+  final requests = <Map<String, dynamic>>[];
+  for (var index = 0; index < values.length; index++) {
+    final request = _map(values[index], 'corpus.expectedRequests[$index]');
+    _requiredString(request, 'method', 'expectedRequests[$index]');
+    _requiredString(request, 'path', 'expectedRequests[$index]');
+    final query = request['query'];
+    if (query != null) _stringMap(query, 'expectedRequests[$index].query');
+    requests.add(request);
+  }
+  return requests;
+}
+
+List<Map<String, dynamic>> _admitExpectedResponses(
+  Map<String, dynamic> corpus,
+) {
+  final values = _requiredList(corpus, 'responses', 'corpus');
+  if (values.isEmpty) throw StateError('corpus.responses must not be empty');
+  final responses = <Map<String, dynamic>>[];
+  final ids = <String>{};
+  for (var index = 0; index < values.length; index++) {
+    final response = _map(values[index], 'corpus.responses[$index]');
+    final id = _requiredString(response, 'id', 'corpus.responses[$index]');
+    if (id.isEmpty || !ids.add(id)) {
+      throw StateError('response ids must be nonempty and unique');
+    }
+    _requiredString(response, 'method', 'corpus.responses[$index]');
+    _requiredString(response, 'path', 'corpus.responses[$index]');
+    if (_present(response, 'status', 'corpus.responses[$index]') is! int) {
+      throw StateError('response status must be integer');
+    }
+    final headers = response['headers'];
+    if (headers != null) {
+      final headersMap = _map(headers, 'response.headers');
+      for (final entry in headersMap.entries) {
+        if (entry.value is! String) {
+          throw StateError('response header values must be strings');
+        }
+      }
+    }
+    responses.add(response);
+  }
+  return responses;
+}
+
+void _admitGoldenIdentity(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus, {
+  required Map<String, dynamic> target,
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+}) {
+  _admitIdentityFields(golden, corpus, 'golden');
+  final fingerprint = _requiredString(golden, 'fingerprint', 'golden');
+  if (fingerprint != target['deviceFingerprint']) {
+    throw StateError('golden fingerprint does not match the approved target');
+  }
+  final corpusBlock = _map(golden['corpus'], 'golden.corpus');
+  if (corpusBlock['asset'] != 'field-fixtures.json' ||
+      corpusBlock['fixtureId'] != bookUrlMarkersFixtureId ||
+      corpusBlock['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+    throw StateError('golden corpus identity is malformed');
+  }
+  if (_present(corpusBlock, 'bytes', 'golden.corpus') != corpusByteCount) {
+    throw StateError('golden measured corpus byte count differs');
+  }
+  if (_present(corpusBlock, 'sha256', 'golden.corpus') != corpusSha256 ||
+      _present(corpusBlock, 'sha256Lf', 'golden.corpus') != corpusSha256Lf) {
+    throw StateError('golden measured corpus digest differs');
+  }
+  final isolation = _map(golden['isolation'], 'golden.isolation');
+  for (final field in ['bound', 'filesRouted', 'databaseRouted']) {
+    if (_present(isolation, field, 'golden.isolation') != true) {
+      throw StateError('golden isolation.$field must be true');
+    }
+  }
+  if (isolation['deviceProtected'] != false ||
+      isolation['rootExistedAtStart'] != false) {
+    throw StateError('golden used a preexisting or device-protected scratch');
+  }
+  if (isolation['targetPackage'] != target['package'] ||
+      isolation['targetApkSha256'] != target['apkSha256'] ||
+      isolation['harnessApkSha256'] != expectedHarnessApkSha256 ||
+      isolation['corpusSha256Lf'] != corpusSha256Lf) {
+    throw StateError(
+      'golden isolation identity does not bind to the selected input',
+    );
+  }
+  _requiredString(isolation, 'harnessPackage', 'golden.isolation');
+  _requiredString(isolation, 'preferencesPrefix', 'golden.isolation');
+  _requiredString(isolation, 'scratchRoot', 'golden.isolation');
+  final cleanup = _map(golden['cleanup'], 'golden.cleanup');
+  for (final field in [
+    'serverClosed',
+    'ownerComplete',
+    'rootRetained',
+    'preferencesFenced',
+  ]) {
+    if (_present(cleanup, field, 'golden.cleanup') != true) {
+      throw StateError('golden cleanup.$field must be true');
+    }
+  }
+  _requiredString(cleanup, 'ownerRunId', 'golden.cleanup');
+  _requiredString(cleanup, 'scratchRoot', 'golden.cleanup');
+  _requiredString(cleanup, 'reportPath', 'golden.cleanup');
+  final owned = _requiredList(cleanup, 'ownedPreferences', 'golden.cleanup');
+  if (owned.isEmpty ||
+      owned.any((value) => value is! String || value.isEmpty)) {
+    throw StateError(
+      'golden cleanup.ownedPreferences must be a nonempty string list',
+    );
+  }
+  _admitErrorFacts(golden, 'golden');
+}
+
+void _admitProductIdentity(
+  Map<String, dynamic> liber,
+  Map<String, dynamic> corpus, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedLibrarySha256,
+  required Map<String, String> expectedProductSources,
+}) {
+  _admitIdentityFields(liber, corpus, 'liber');
+  if (_present(liber, 'fixturesBytes', 'liber') != corpusByteCount ||
+      _present(liber, 'fixturesSha256', 'liber') != corpusSha256 ||
+      _present(liber, 'fixturesSha256Lf', 'liber') != corpusSha256Lf) {
+    throw StateError('product fixture measurement does not match the corpus');
+  }
+  _requiredString(liber, 'fixturesPath', 'liber');
+  _requiredString(liber, 'libraryPath', 'liber');
+  if (_present(liber, 'librarySha256', 'liber') != expectedLibrarySha256) {
+    throw StateError(
+      'product library digest does not match the selected library',
+    );
+  }
+  _requiredString(liber, 'platform', 'liber');
+  _requiredString(liber, 'oracle', 'liber');
+  final sources = _stringMap(liber['productSources'], 'liber.productSources');
+  if (expectedProductSources.isEmpty ||
+      sources.length != expectedProductSources.length) {
+    throw StateError('product source hash set differs from the measured set');
+  }
+  for (final entry in expectedProductSources.entries) {
+    if (sources[entry.key] != entry.value) {
+      throw StateError('product source hash differs: ${entry.key}');
+    }
+  }
+  final cleanup = _map(liber['cleanup'], 'liber.cleanup');
+  if (_present(cleanup, 'serverClosed', 'liber.cleanup') != true) {
+    throw StateError('product replay server did not close');
+  }
+  _admitErrorFacts(liber, 'liber');
+}
+
+void _admitIdentityFields(
+  Map<String, dynamic> record,
+  Map<String, dynamic> corpus,
+  String label,
+) {
+  for (final field in [
+    'fixtureId',
+    'corpusVersion',
+    'baselineCommit',
+    'entryPoint',
+  ]) {
+    if (_present(record, field, label) != corpus[field]) {
+      throw StateError('$label $field does not match the selected corpus');
+    }
+  }
+}
+
+void _admitErrorFacts(Map<String, dynamic> record, String label) {
+  if (!record.containsKey('analysisFailure') ||
+      record['analysisFailure'] != null) {
+    throw StateError('$label.analysisFailure must be present and null');
+  }
+  final failures = _map(record['caseFailures'], '$label.caseFailures');
+  if (failures.isNotEmpty) {
+    throw StateError('$label recorded failed cases');
+  }
+  final unmatched = _requiredList(record, 'unmatchedRequests', label);
+  final serverErrors = _requiredList(record, 'serverErrors', label);
+  if (unmatched.isNotEmpty || serverErrors.isNotEmpty) {
+    throw StateError('$label recorded undeclared requests or server errors');
+  }
+}
+
+void _admitCaseRecord(
+  Map<String, dynamic> record,
+  Map<String, dynamic> corpusEntry,
+  String label, {
+  required bool native,
+}) {
+  final id = _requiredString(record, 'id', label);
+  if (id != corpusEntry['id']) throw StateError('$label id differs');
+  final terminal = _requiredString(record, 'terminal', label);
+  final declaredTerminal = _requiredString(
+    corpusEntry,
+    'terminal',
+    'corpus.cases[$id]',
+  );
+  if (terminal != declaredTerminal) {
+    throw StateError('$label terminal differs from the declaration');
+  }
+  final search = _map(record['search'], '$label.search');
+  final results = _requiredList(search, 'results', '$label.search');
+  for (var index = 0; index < results.length; index++) {
+    _admitSearchResult(
+      results[index],
+      '$label.search.results[$index]',
+      native: native,
+    );
+  }
+  if (terminal == 'search-empty') {
+    if (results.isNotEmpty) {
+      throw StateError('$label empty terminal has results');
+    }
+    for (final field in ['bookInfo', 'tableOfContents', 'chapter']) {
+      if (!record.containsKey(field) || record[field] != null) {
+        throw StateError(
+          '$label empty terminal must carry explicit null $field',
+        );
+      }
+    }
+  } else {
+    if (results.isEmpty) {
+      throw StateError('$label positive case has no search result');
+    }
+    final bookInfo = _requiredMap(record, 'bookInfo', label);
+    for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
+      _requiredString(bookInfo, field, '$label.bookInfo');
+    }
+    final toc = _requiredMap(record, 'tableOfContents', label);
+    _requiredString(toc, 'tocUrl', '$label.tableOfContents');
+    final chapters = _requiredList(toc, 'chapters', '$label.tableOfContents');
+    if (chapters.isEmpty) {
+      throw StateError('$label positive case has no chapter observations');
+    }
+    for (var index = 0; index < chapters.length; index++) {
+      _admitChapter(
+        _map(chapters[index], '$label.chapters[$index]'),
+        '$label.chapters[$index]',
+        native: native,
+      );
+    }
+    final chapter = _requiredMap(record, 'chapter', label);
+    final title = _requiredString(chapter, 'title', '$label.chapter');
+    if (title.isEmpty) {
+      throw StateError('$label chapter title must not be empty');
+    }
+    _requiredString(chapter, 'text', '$label.chapter');
+  }
+  final probes = _requiredMap(record, 'sourceProbes', label);
+  for (final field in ['vipProbe', 'payProbe']) {
+    _nullableStringPresent(probes, field, '$label.sourceProbes');
+  }
+  final caseRequests = _requiredList(record, 'requests', label);
+  if (caseRequests.isEmpty) {
+    throw StateError('$label case has no request slice');
+  }
+  for (var index = 0; index < caseRequests.length; index++) {
+    _admitRequest(
+      _map(caseRequests[index], '$label.requests[$index]'),
+      '$label.requests[$index]',
+    );
+  }
+}
+
+void _admitSearchResult(Object? value, String label, {required bool native}) {
+  final result = _map(value, label);
+  for (final field in ['name', 'author', 'bookUrl']) {
+    _requiredString(result, field, label);
+  }
+  if (native && result.containsKey('infoHtml') && result['infoHtml'] is! bool) {
+    throw StateError('$label.infoHtml must be boolean when present');
+  }
+  for (final field in ['identityAddress', 'rawAddress']) {
+    if (result.containsKey(field) &&
+        result[field] != null &&
+        result[field] is! String) {
+      throw StateError('$label.$field must be string or null');
+    }
+  }
+}
+
+void _admitChapter(
+  Map<String, dynamic> chapter,
+  String label, {
+  required bool native,
+}) {
+  _requiredString(chapter, 'title', label);
+  if (_requiredString(chapter, 'title', label).isEmpty) {
+    throw StateError('$label.title must not be empty');
+  }
+  final values = native ? ['url', 'absoluteUrl'] : ['url', 'address'];
+  for (final field in values) {
+    _requiredString(chapter, field, label);
+  }
+  _nullableStringPresent(chapter, 'tag', label);
+  for (final field in ['isVolume', 'isVip', 'isPay']) {
+    if (_present(chapter, field, label) is! bool) {
+      throw StateError('$label.$field must be boolean');
+    }
+  }
+  if (native) {
+    if (chapter.containsKey('bookUrl') && chapter['bookUrl'] is! String) {
+      throw StateError('$label.bookUrl must be a string when present');
+    }
+  } else {
+    _nullableStringPresent(chapter, 'rawAddress', label);
+    _requiredString(chapter, 'storeKey', label);
+    _requiredString(chapter, 'persistedAddress', label);
+  }
+}
+
+void _admitRequest(Map<String, dynamic> request, String label) {
+  _requiredString(request, 'method', label);
+  _requiredString(request, 'path', label);
+  _requiredString(request, 'rawQuery', label);
+  _stringMap(request['query'], '$label.query');
+  final receipt = _requiredMap(request, 'receipt', label);
+  _requiredString(receipt, 'terminal', '$label.receipt');
+  if (_present(receipt, 'status', '$label.receipt') is! int) {
+    throw StateError('$label.receipt.status must be integer');
+  }
+  if (_present(receipt, 'send', '$label.receipt') != 'completed') {
+    throw StateError('$label.receipt.send must record actual completion');
+  }
+  _nullableStringPresent(receipt, 'responseId', '$label.receipt');
+  _nullableStringPresent(receipt, 'redirect', '$label.receipt');
+  if (receipt.containsKey('error') && receipt['error'] is! String) {
+    throw StateError('$label.receipt.error must be a string when present');
+  }
+}
+
+void _compareCases(
+  List<Map<String, Object?>> differences,
+  String id,
+  Map<String, dynamic> frozen,
+  Map<String, dynamic> product,
+) {
+  _diff(differences, id, 'terminal', frozen['terminal'], product['terminal']);
+  final frozenSearch = _map(frozen['search'], '$id.search');
+  final productSearch = _map(product['search'], '$id.search');
+  final frozenResults = _requiredList(
+    frozenSearch,
+    'results',
+    '$id.search.results',
+  );
+  final productResults = _requiredList(
+    productSearch,
+    'results',
+    '$id.search.results',
+  );
+  _diff(
+    differences,
+    id,
+    'search.results.length',
+    frozenResults.length,
+    productResults.length,
+  );
+  final resultCount = frozenResults.length < productResults.length
+      ? frozenResults.length
+      : productResults.length;
+  for (var index = 0; index < resultCount; index++) {
+    final f = _map(frozenResults[index], '$id.search.results[$index]');
+    final p = _map(productResults[index], '$id.search.results[$index]');
+    for (final field in ['name', 'author', 'bookUrl']) {
+      _diff(
+        differences,
+        id,
+        'search.results[$index].$field',
+        f[field],
+        p[field],
+      );
+    }
+  }
+
+  if (frozen['bookInfo'] == null || product['bookInfo'] == null) {
+    _diff(differences, id, 'bookInfo', frozen['bookInfo'], product['bookInfo']);
+  } else {
+    final f = _map(frozen['bookInfo'], '$id.bookInfo');
+    final p = _map(product['bookInfo'], '$id.bookInfo');
+    for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
+      _diff(differences, id, 'bookInfo.$field', f[field], p[field]);
+    }
+  }
+  if (frozen['tableOfContents'] == null || product['tableOfContents'] == null) {
+    _diff(
+      differences,
+      id,
+      'tableOfContents',
+      frozen['tableOfContents'],
+      product['tableOfContents'],
+    );
+  } else {
+    final f = _map(frozen['tableOfContents'], '$id.tableOfContents');
+    final p = _map(product['tableOfContents'], '$id.tableOfContents');
+    _diff(differences, id, 'tableOfContents.tocUrl', f['tocUrl'], p['tocUrl']);
+    final fChapters = _requiredList(f, 'chapters', '$id.tableOfContents');
+    final pChapters = _requiredList(p, 'chapters', '$id.tableOfContents');
+    _diff(
+      differences,
+      id,
+      'tableOfContents.chapters.length',
+      fChapters.length,
+      pChapters.length,
+    );
+    final count = fChapters.length < pChapters.length
+        ? fChapters.length
+        : pChapters.length;
+    for (var index = 0; index < count; index++) {
+      final fc = _map(fChapters[index], '$id.chapters[$index]');
+      final pc = _map(pChapters[index], '$id.chapters[$index]');
+      for (final field in ['title', 'tag', 'isVolume', 'isVip', 'isPay']) {
+        _diff(differences, id, 'chapters[$index].$field', fc[field], pc[field]);
+      }
+      _diff(
+        differences,
+        id,
+        'chapters[$index].url(raw vs address)',
+        fc['url'],
+        pc['address'],
+      );
+      _diff(
+        differences,
+        id,
+        'chapters[$index].absoluteUrl(vs url)',
+        fc['absoluteUrl'],
+        pc['url'],
+      );
+    }
+  }
+  if (frozen['chapter'] == null || product['chapter'] == null) {
+    _diff(differences, id, 'chapter', frozen['chapter'], product['chapter']);
+  } else {
+    final f = _map(frozen['chapter'], '$id.chapter');
+    final p = _map(product['chapter'], '$id.chapter');
+    for (final field in ['title', 'text']) {
+      _diff(differences, id, 'chapter.$field', f[field], p[field]);
+    }
+  }
+  final fProbes = _map(frozen['sourceProbes'], '$id.sourceProbes');
+  final pProbes = _map(product['sourceProbes'], '$id.sourceProbes');
+  for (final field in ['vipProbe', 'payProbe']) {
+    _diff(
+      differences,
+      id,
+      'sourceProbes.$field',
+      fProbes[field],
+      pProbes[field],
+    );
+  }
+}
+
+void _compareRequestsToDeclaration(
+  List<Map<String, Object?>> differences,
+  String side,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> expected,
+  List<Map<String, dynamic>> responses,
+) {
+  if (requests.length != expected.length) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests.length',
+      'frozen': expected.length,
+      'liber': requests.length,
+    });
+  }
+  final count = requests.length < expected.length
+      ? requests.length
+      : expected.length;
+  for (var index = 0; index < count; index++) {
+    final actual = requests[index];
+    final wanted = expected[index];
+    for (final field in ['method', 'path']) {
+      if (actual[field] != wanted[field]) {
+        differences.add({
+          'row': 'C2',
+          'field': '$side.requests[$index].$field',
+          'frozen': wanted[field],
+          'liber': actual[field],
+        });
+      }
+    }
+    final wantedQuery = wanted['query'] == null
+        ? <String, String>{}
+        : _stringMap(wanted['query'], 'expectedRequests[$index].query');
+    final actualQuery = _stringMap(
+      actual['query'],
+      '$side.requests[$index].query',
+    );
+    if (!_deepEquals(wantedQuery, actualQuery)) {
+      differences.add({
+        'row': 'C2',
+        'field': '$side.requests[$index].query',
+        'frozen': wantedQuery,
+        'liber': actualQuery,
+      });
+    }
+    final response = responses[index];
+    final receipt = _requiredMap(actual, 'receipt', '$side.requests[$index]');
+    final expectedId = response['id'];
+    final expectedStatus = response['status'];
+    final headers = response['headers'] is Map
+        ? _map(response['headers'], 'response.headers')
+        : <String, dynamic>{};
+    final expectedRedirect = headers['Location'];
+    for (final entry in <String, Object?>{
+      'terminal': 'responded',
+      'status': expectedStatus,
+      'responseId': expectedId,
+      'redirect': expectedRedirect,
+    }.entries) {
+      if (receipt[entry.key] != entry.value) {
+        differences.add({
+          'row': 'C2',
+          'field': '$side.requests[$index].receipt.${entry.key}',
+          'frozen': entry.value,
+          'liber': receipt[entry.key],
+        });
+      }
+    }
+  }
+  for (var index = count; index < requests.length; index++) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests[$index]',
+      'frozen': null,
+      'liber':
+          'unexpected: ${requests[index]['method']} ${requests[index]['path']}',
+    });
+  }
+  for (var index = count; index < expected.length; index++) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests[$index]',
+      'frozen': '${expected[index]['method']} ${expected[index]['path']}',
+      'liber': null,
+    });
+  }
+}
+
+List<Map<String, dynamic>> _admitStageTrace({
+  required Object? trace,
+  required String label,
+}) {
+  final values = _requiredListValue(trace, label);
+  if (values.isEmpty) throw StateError('$label must not be empty');
+  final out = <Map<String, dynamic>>[];
+  for (var index = 0; index < values.length; index++) {
+    final entry = _map(values[index], '$label[$index]');
+    _requiredString(entry, 'stage', '$label[$index]');
+    _requiredString(entry, 'path', '$label[$index]');
+    out.add(entry);
+  }
+  return out;
 }
 
 Map<String, Object?> _row(
@@ -797,7 +1381,10 @@ void _admitExactIds(
   List<String> declared,
   String side,
 ) {
-  final ids = [for (final record in records) _string(record, 'id')];
+  if (declared.isEmpty) throw StateError('$side declared case set is empty');
+  final ids = [
+    for (final record in records) _requiredString(record, 'id', side),
+  ];
   if (ids.length != declared.length ||
       ids.toSet().length != ids.length ||
       !ids.toSet().containsAll(declared)) {
@@ -810,40 +1397,72 @@ Map<String, dynamic> _map(Object? value, String label) {
   return value.cast<String, dynamic>();
 }
 
-List<Object?> _list(Object? value, String label) {
+Map<String, dynamic> _requiredMap(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) => _map(_present(map, key, label), '$label.$key');
+
+List<Object?> _requiredList(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) => _requiredListValue(_present(map, key, label), '$label.$key');
+
+List<Object?> _requiredListValue(Object? value, String label) {
   if (value is! List) throw StateError('$label must be an array');
   return value;
 }
 
-List<Map<String, dynamic>> _records(Object? value, String label) {
-  if (value is! List) throw StateError('$label must be an array');
-  return [
-    for (final raw in value)
-      if (raw is Map)
-        raw.cast<String, dynamic>()
-      else
-        throw StateError('$label must contain objects'),
-  ];
+Object? _present(Map<String, dynamic> map, String key, String label) {
+  if (!map.containsKey(key)) throw StateError('$label.$key is missing');
+  return map[key];
 }
 
-String _string(Map<String, dynamic> map, String field) {
-  final value = map[field];
-  if (value is! String) throw StateError('$field must be a string');
+String _requiredString(Map<String, dynamic> map, String key, String label) {
+  final value = _present(map, key, label);
+  if (value is! String) throw StateError('$label.$key must be a string');
   return value;
 }
 
-String? _nullableString(Map<String, dynamic> map, String field) {
-  final value = map[field];
+String? _nullableStringPresent(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) {
+  final value = _present(map, key, label);
   if (value != null && value is! String) {
-    throw StateError('$field must be a string or null');
+    throw StateError('$label.$key must be string or null');
   }
   return value as String?;
 }
 
-bool _bool(Map<String, dynamic> map, String field) {
-  final value = map[field];
-  if (value is! bool) throw StateError('$field must be boolean');
-  return value;
+Map<String, String> _stringMap(Object? value, String label) {
+  if (value is! Map) throw StateError('$label must be an object');
+  final out = <String, String>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || entry.value is! String) {
+      throw StateError('$label must contain string keys and values');
+    }
+    out[entry.key as String] = entry.value as String;
+  }
+  return out;
+}
+
+List<Map<String, dynamic>> _records(Object? value, String label) {
+  final values = _requiredListValue(value, label);
+  return [
+    for (var index = 0; index < values.length; index++)
+      _map(values[index], '$label[$index]'),
+  ];
+}
+
+List<Map<String, dynamic>> _markerRequests(Object? value, String label) {
+  final records = _records(value, label);
+  for (var index = 0; index < records.length; index++) {
+    _admitRequest(records[index], '$label[$index]');
+  }
+  return records;
 }
 
 void _diff(
@@ -861,183 +1480,6 @@ void _diff(
       'liber': product,
     });
   }
-}
-
-void _compareStageMap(
-  List<Map<String, Object?>> differences,
-  String id,
-  String name,
-  Object? frozenValue,
-  Object? productValue,
-  List<String> fields,
-) {
-  if (frozenValue == null || productValue == null) {
-    _diff(differences, id, name, frozenValue, productValue);
-    return;
-  }
-  final frozen = _map(frozenValue, '$id.$name');
-  final product = _map(productValue, '$id.$name');
-  for (final field in fields) {
-    _string(frozen, field);
-    _string(product, field);
-    _diff(differences, id, '$name.$field', frozen[field], product[field]);
-  }
-}
-
-void _compareTableOfContents(
-  List<Map<String, Object?>> differences,
-  String id,
-  Object? frozenValue,
-  Object? productValue,
-) {
-  if (frozenValue == null || productValue == null) {
-    _diff(differences, id, 'tableOfContents', frozenValue, productValue);
-    return;
-  }
-  final frozen = _map(frozenValue, '$id.tableOfContents');
-  final product = _map(productValue, '$id.tableOfContents');
-  _string(frozen, 'tocUrl');
-  _string(product, 'tocUrl');
-  _diff(
-    differences,
-    id,
-    'tableOfContents.tocUrl',
-    frozen['tocUrl'],
-    product['tocUrl'],
-  );
-  final frozenChapters = _list(frozen['chapters'], '$id.chapters');
-  final productChapters = _list(product['chapters'], '$id.chapters');
-  _diff(
-    differences,
-    id,
-    'tableOfContents.chapters.length',
-    frozenChapters.length,
-    productChapters.length,
-  );
-  final count = frozenChapters.length < productChapters.length
-      ? frozenChapters.length
-      : productChapters.length;
-  for (var index = 0; index < count; index++) {
-    final f = _map(frozenChapters[index], '$id.chapters[$index]');
-    final p = _map(productChapters[index], '$id.chapters[$index]');
-    for (final field in ['title', 'url', 'absoluteUrl']) {
-      if (_string(f, field).isEmpty) {
-        throw StateError('chapters[$index].$field must not be empty');
-      }
-    }
-    if (_string(p, 'title').isEmpty) {
-      throw StateError('chapters[$index].title must not be empty');
-    }
-    _string(p, 'url');
-    _string(p, 'address');
-    _nullableString(p, 'rawAddress');
-    _string(p, 'storeKey');
-    _string(p, 'persistedAddress');
-    _nullableString(f, 'tag');
-    _nullableString(p, 'tag');
-    for (final field in ['isVolume', 'isVip', 'isPay']) {
-      _bool(f, field);
-      _bool(p, field);
-    }
-    for (final field in ['title', 'tag', 'isVolume', 'isVip', 'isPay']) {
-      _diff(differences, id, 'chapters[$index].$field', f[field], p[field]);
-    }
-    _diff(
-      differences,
-      id,
-      'chapters[$index].url(raw vs address)',
-      f['url'],
-      p['address'],
-    );
-    _diff(
-      differences,
-      id,
-      'chapters[$index].absoluteUrl(vs url)',
-      f['absoluteUrl'],
-      p['url'],
-    );
-  }
-}
-
-void _compareProbes(
-  List<Map<String, Object?>> differences,
-  String id,
-  Map<String, dynamic> frozen,
-  Map<String, dynamic> product,
-) {
-  final f = _map(frozen['sourceProbes'], '$id.sourceProbes');
-  final p = _map(product['sourceProbes'], '$id.sourceProbes');
-  for (final field in ['vipProbe', 'payProbe']) {
-    _nullableString(f, field);
-    _nullableString(p, field);
-    _diff(differences, id, 'sourceProbes.$field', f[field], p[field]);
-  }
-}
-
-void _compareCaseRequests(
-  List<Map<String, Object?>> differences,
-  String id,
-  Map<String, dynamic> frozen,
-  Map<String, dynamic> product,
-) {
-  final f = _list(frozen['requests'], '$id.requests');
-  final p = _list(product['requests'], '$id.requests');
-  _diff(differences, id, 'requests.length', f.length, p.length);
-  final count = f.length < p.length ? f.length : p.length;
-  for (var index = 0; index < count; index++) {
-    _compareRequest(
-      differences,
-      index,
-      _map(f[index], '$id.requests[$index]'),
-      _map(p[index], '$id.requests[$index]'),
-      row: id,
-    );
-  }
-}
-
-void _compareRequest(
-  List<Map<String, Object?>> differences,
-  int index,
-  Map<String, dynamic> frozen,
-  Map<String, dynamic> product, {
-  String row = 'requests',
-}) {
-  for (final field in ['method', 'path', 'rawQuery']) {
-    _string(frozen, field);
-    _string(product, field);
-    _diff(differences, row, '[$index].$field', frozen[field], product[field]);
-  }
-  final frozenQuery = _map(frozen['query'], 'frozen.query');
-  final productQuery = _map(product['query'], 'liber.query');
-  for (final query in [frozenQuery, productQuery]) {
-    for (final value in query.values) {
-      if (value is! String) {
-        throw StateError('request query values must be strings');
-      }
-    }
-  }
-  _diff(differences, row, '[$index].query', frozen['query'], product['query']);
-  final fr = _map(frozen['receipt'], 'frozen.receipt');
-  final pr = _map(product['receipt'], 'liber.receipt');
-  _string(fr, 'terminal');
-  _string(pr, 'terminal');
-  if (fr['status'] is! int || pr['status'] is! int) {
-    throw StateError('request receipt status must be an integer');
-  }
-  _nullableString(fr, 'responseId');
-  _nullableString(pr, 'responseId');
-  _nullableString(fr, 'redirect');
-  _nullableString(pr, 'redirect');
-  for (final field in ['terminal', 'status', 'responseId']) {
-    _diff(differences, row, '[$index].receipt.$field', fr[field], pr[field]);
-  }
-  _diff(
-    differences,
-    row,
-    '[$index].receipt.redirect',
-    fr['redirect'],
-    pr['redirect'],
-  );
 }
 
 bool _deepEquals(Object? frozen, Object? product) {
@@ -1086,6 +1528,43 @@ String? _sequenceMismatch(
   }
   return null;
 }
+
+String _requiredMeasuredPath(String? path, String option) {
+  if (path == null) throw ArgumentError('$option is required for FIELDS-02');
+  final file = File(path);
+  if (!file.existsSync()) throw ArgumentError('$option does not exist: $path');
+  return _sha256(file.readAsBytesSync());
+}
+
+List<int> _lf(List<int> bytes) {
+  final out = <int>[];
+  for (var index = 0; index < bytes.length; index++) {
+    if (bytes[index] == 13 &&
+        index + 1 < bytes.length &&
+        bytes[index + 1] == 10) {
+      continue;
+    }
+    out.add(bytes[index]);
+  }
+  return out;
+}
+
+const _productSourcePaths = <String>[
+  'lib/source/book_source_pipeline.dart',
+  'lib/source/html_source_pipeline.dart',
+  'lib/source/json_source_pipeline.dart',
+  'lib/source/html_rule_adapter.dart',
+  'lib/source/json_source_rules.dart',
+  'lib/source/http_source_transport.dart',
+  'lib/source/source_host_state.dart',
+  'lib/source/js_source_runtime.dart',
+  'lib/source/source_url_rules.dart',
+];
+
+Map<String, String> _measureProductSources(String root) => {
+  for (final path in _productSourcePaths)
+    path: _sha256(File('$root/$path').readAsBytesSync()),
+};
 
 String _sha256(List<int> bytes) {
   final digest = SHA256Digest();
