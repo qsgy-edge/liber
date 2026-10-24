@@ -1520,10 +1520,10 @@ public final class StateSessionOracle extends Instrumentation {
      * binding failure releases every waiter with that failure, and a timeout refuses with
      * a visible message; nothing is retried.
      */
-    static final class ScratchContext extends ContextWrapper {
+    public static final class ScratchContext extends ContextWrapper {
         private static final long BINDING_WAIT_SECONDS = 30;
 
-        final File root;
+        public final File root;
         private final String preferencesPrefix;
         private final boolean rootExistedAtStart;
         private final Object stateLock = new Object();
@@ -1540,7 +1540,7 @@ public final class StateSessionOracle extends Instrumentation {
             this(base, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
         }
 
-        ScratchContext(Context base, String rootName, String preferencesPrefix) {
+        public ScratchContext(Context base, String rootName, String preferencesPrefix) {
             super(base);
             this.preferencesPrefix = preferencesPrefix;
             root = new File(base.getCacheDir(), rootName);
@@ -1552,7 +1552,7 @@ public final class StateSessionOracle extends Instrumentation {
          * the root and its owner manifest are published, otherwise with the failure every
          * waiter has to see.
          */
-        void bind(String requestedPhase, JSONObject identity) throws Exception {
+        public void bind(String requestedPhase, JSONObject identity) throws Exception {
             try {
                 bindInternal(requestedPhase, identity);
             } catch (Throwable error) {
@@ -1564,7 +1564,7 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         /** Releases every waiter with a refusal; used for bind and pre-bind failures. */
-        void refuseWaiters(String reason) {
+        public void refuseWaiters(String reason) {
             synchronized (stateLock) {
                 if (bound) return;
                 if (bindingFailure == null) bindingFailure = reason;
@@ -1666,17 +1666,17 @@ public final class StateSessionOracle extends Instrumentation {
             }
         }
 
-        boolean isBound() {
+        public boolean isBound() {
             synchronized (stateLock) {
                 return bound;
             }
         }
 
-        String preferencesPrefix() {
+        public String preferencesPrefix() {
             return preferencesPrefix;
         }
 
-        boolean rootExistedAtStart() {
+        public boolean rootExistedAtStart() {
             return rootExistedAtStart;
         }
 
@@ -1704,7 +1704,7 @@ public final class StateSessionOracle extends Instrumentation {
             }
         }
 
-        void writeOwnerComplete(String seedRunId) throws Exception {
+        public void writeOwnerComplete(String seedRunId) throws Exception {
             synchronized (stateLock) {
                 if (owner == null) return;
                 owner.put("seedRunId", seedRunId)
@@ -1717,7 +1717,7 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         /** A snapshot: the cleanup iterates it while a background callback may still write. */
-        Set<String> ownedPreferences() {
+        public Set<String> ownedPreferences() {
             synchronized (stateLock) {
                 Set<String> names = new LinkedHashSet<>(preferences);
                 names.addAll(ownedFromOwner);
@@ -1911,7 +1911,7 @@ public final class StateSessionOracle extends Instrumentation {
          * exactly once, and it stays in the owned set the restart cleanup removes. A probe
          * that already exists is refused, never overwritten and never deleted here.
          */
-        JSONObject seedProbePreferences(Context app, File dataDir, String probe)
+        public JSONObject seedProbePreferences(Context app, File dataDir, String probe)
                 throws Exception {
             String scoped = preferencesPrefix + probe;
             File installationFile = new File(dataDir, probe + ".xml");
@@ -1963,16 +1963,16 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         /** Flushes any buffered apply() write so the retained file holds the final value. */
-        boolean fence(String name) {
+        public boolean fence(String name) {
             return getBaseContext().getSharedPreferences(name, 0).edit().commit();
         }
 
-        boolean deletePreference(String name) {
+        public boolean deletePreference(String name) {
             boolean cleared = getBaseContext().getSharedPreferences(name, 0).edit().clear().commit();
             return getBaseContext().deleteSharedPreferences(name) && cleared;
         }
 
-        boolean removeRoot() {
+        public boolean removeRoot() {
             return remove(root);
         }
 

@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/js_source_runtime.dart';
+import 'package:liber/source/source_host_state.dart';
 
 import 'first_slice/runner.dart' show SliceReplayServer;
 
@@ -58,6 +60,238 @@ class ResultFieldRun {
   final List<ResultFieldInvariant> invariants;
 
   bool get scenarioPassed => invariants.every((invariant) => invariant.ok);
+}
+
+/// What one FIELDS-02 run observed: an array of actual case records, each with
+/// explicit IDs and present nullable stage slots; no map overwrite.
+class BookUrlMarkersRun {
+  const BookUrlMarkersRun({
+    required this.requests,
+    required this.unmatched,
+    required this.stageTrace,
+    required this.caseRecords,
+    required this.caseFailures,
+    required this.invariants,
+  });
+
+  final List<Map<String, Object?>> requests;
+  final List<Map<String, Object?>> unmatched;
+  final List<Map<String, String>> stageTrace;
+  final List<Map<String, Object?>> caseRecords;
+  final Map<String, String> caseFailures;
+  final List<ResultFieldInvariant> invariants;
+
+  bool get scenarioPassed => invariants.every((invariant) => invariant.ok);
+}
+
+/// Runs FIELDS-02 through the product's own four-stage pipeline and the existing
+/// loopback replay server. The server's optional receipt hook records the
+/// actual response status/redirect/terminal; the native expected values remain
+/// for a later approved capture.
+Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
+  required Map<String, dynamic> fixture,
+}) async {
+  final server = await SliceReplayServer.start(
+    fixture,
+    onResponse: (request, response) {
+      request['receipt'] = response;
+    },
+  );
+  final records = <Map<String, Object?>>[];
+  final failures = <String, String>{};
+  final trace = <Map<String, String>>[];
+  try {
+    for (final raw in (fixture['cases'] as List).cast<Map>()) {
+      final entry = raw.cast<String, dynamic>();
+      final id = entry['id'] as String;
+      final terminal = entry['terminal'] as String? ?? 'four-stage';
+      final source = (entry['source'] as Map).cast<String, dynamic>();
+      final sourceRef = '${source['bookSourceUrl']}';
+      final state = SourceHostState();
+      final pipeline = openBookSourcePipeline(
+        source,
+        HttpSourceTransport(),
+        hostState: state,
+      );
+      try {
+        final record = <String, Object?>{
+          'id': id,
+          'terminal': terminal,
+          'search': null,
+          'bookInfo': null,
+          'tableOfContents': null,
+          'chapter': null,
+          'sourceProbes': {'vipProbe': null, 'payProbe': null},
+        };
+        final requestStart = server.requests.length;
+        final hits = await pipeline.search(entry['keyword'] as String);
+        record['search'] = {
+          'results': [
+            for (final hit in hits)
+              {
+                'name': hit.title,
+                'author': hit.author,
+                'bookUrl': '${hit.url}',
+                'identityAddress': hit.identityAddress,
+                'rawAddress': hit.rawAddress,
+                'infoHtml': false,
+              },
+          ],
+        };
+        if (hits.isEmpty) {
+          if (terminal != 'search-empty') {
+            throw StateError('search returned no result');
+          }
+          record['requests'] = List<Map<String, Object?>>.unmodifiable(
+            server.requests.sublist(requestStart),
+          );
+          records.add(record);
+          continue;
+        }
+        final hit = hits.first;
+        final info = await pipeline.bookInfo(hit);
+        record['bookInfo'] = {
+          'name': info.book.title,
+          'author': info.book.author,
+          'bookUrl': '${info.book.url}',
+          'identityAddress': info.book.identityAddress,
+          'rawAddress': info.book.rawAddress,
+          'tocUrl': info.tocAddress,
+        };
+        final (book, chapters) = await pipeline.tableOfContents(info);
+        record['tableOfContents'] = {
+          'tocUrl': info.tocAddress,
+          'chapters': [
+            for (final chapter in chapters)
+              {
+                'title': chapter.name,
+                'url': '${chapter.url}',
+                'address': chapter.address,
+                'rawAddress': chapter.rawAddress,
+                'storeKey': chapter.storeKey,
+                'persistedAddress': chapter.persistedAddress,
+                'tag': chapter.tag,
+                'isVolume': chapter.isVolume,
+                'isVip': chapter.isVip,
+                'isPay': chapter.isPay,
+              },
+          ],
+        };
+        final vipProbe = await state.entry(
+          sourceRef,
+          sourceRuleVariableKey(sourceRef, 'vipProbe'),
+        );
+        final payProbe = await state.entry(
+          sourceRef,
+          sourceRuleVariableKey(sourceRef, 'payProbe'),
+        );
+        record['sourceProbes'] = {'vipProbe': vipProbe, 'payProbe': payProbe};
+        final body = await pipeline.chapter(chapters.first, book: book);
+        record['chapter'] = {
+          'title': body.title ?? chapters.first.name,
+          'text': body.text,
+        };
+        record['requests'] = List<Map<String, Object?>>.unmodifiable(
+          server.requests.sublist(requestStart),
+        );
+        records.add(record);
+      } on Object catch (error) {
+        failures[id] = '$error';
+      } finally {
+        trace.addAll([
+          for (final observation in pipeline.trace)
+            {'stage': observation.stage.name, 'path': observation.path},
+        ]);
+        pipeline.cancel();
+      }
+    }
+  } finally {
+    await server.close();
+  }
+  return BookUrlMarkersRun(
+    requests: List<Map<String, Object?>>.unmodifiable(server.requests),
+    unmatched: List<Map<String, Object?>>.unmodifiable(server.unmatched),
+    stageTrace: trace,
+    caseRecords: records,
+    caseFailures: failures,
+    invariants: _bookUrlMarkerInvariants(
+      fixture: fixture,
+      records: records,
+      failures: failures,
+      unmatched: server.unmatched,
+    ),
+  );
+}
+
+List<ResultFieldInvariant> _bookUrlMarkerInvariants({
+  required Map<String, dynamic> fixture,
+  required List<Map<String, Object?>> records,
+  required Map<String, String> failures,
+  required List<Map<String, Object?>> unmatched,
+}) {
+  final declared = [
+    for (final entry in (fixture['cases'] as List).cast<Map>())
+      entry['id'] as String,
+  ];
+  final observed = [for (final record in records) record['id'] as String];
+  final exactIds =
+      declared.toSet().length == declared.length &&
+      observed.length == declared.length &&
+      observed.toSet().length == observed.length &&
+      observed.toSet().containsAll(declared);
+  final problems = <String>[];
+  for (final record in records) {
+    final terminal = record['terminal'];
+    if (terminal == 'search-empty') {
+      final search = record['search'] as Map?;
+      final results = search?['results'] as List?;
+      if (results == null || results.isNotEmpty) {
+        problems.add('${record['id']}: empty terminal has search results');
+      }
+      if (record['bookInfo'] != null ||
+          record['tableOfContents'] != null ||
+          record['chapter'] != null) {
+        problems.add('${record['id']}: empty terminal reached later stages');
+      }
+    } else {
+      if (record['bookInfo'] == null ||
+          record['tableOfContents'] == null ||
+          record['chapter'] == null) {
+        problems.add('${record['id']}: four-stage case has a missing stage');
+      }
+      final chapters =
+          (record['tableOfContents'] as Map?)?['chapters'] as List?;
+      if (chapters == null || chapters.isEmpty) {
+        problems.add('${record['id']}: four-stage case has no chapter');
+      }
+    }
+  }
+  if (failures.isNotEmpty) {
+    problems.add('case failures: ${failures.keys.join(', ')}');
+  }
+  return [
+    ResultFieldInvariant(
+      'no-undeclared-request',
+      unmatched.isEmpty,
+      unmatched.isEmpty
+          ? 'every request had a declared response'
+          : 'undeclared: ${unmatched.length}',
+    ),
+    ResultFieldInvariant(
+      'exact-case-ids',
+      exactIds,
+      exactIds
+          ? '${declared.length} declared case ids observed once'
+          : 'case id mismatch',
+    ),
+    ResultFieldInvariant(
+      'case-terminal-completion',
+      problems.isEmpty,
+      problems.isEmpty
+          ? 'every case reached its declared terminal'
+          : problems.join('; '),
+    ),
+  ];
 }
 
 /// Runs the corpus through the product pipeline on the host platform.

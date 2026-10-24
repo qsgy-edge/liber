@@ -2,11 +2,15 @@ param(
   [Parameter(Mandatory=$true)][string]$OutputDirectory,
   [Parameter(Mandatory=$true)][string]$JavaHome,
   [string]$AndroidSdk = "$env:LOCALAPPDATA/Android/Sdk",
-  [string]$DebugKeystore = "$env:USERPROFILE/.android/debug.keystore"
+  [string]$DebugKeystore = "$env:USERPROFILE/.android/debug.keystore",
+  # Optional local selection of the FIELDS corpus only. The default remains
+  # FIELDS-01 under the harness' fixed field-fixtures.json asset name.
+  [string]$CorpusPath = "$PSScriptRoot/fixtures.json"
 )
-# Builds the disposable FIELDS-01 result-field oracle APK (ticket #41). Its own
-# package id and its own corpus asset: it never touches the nested_oracle,
-# replace_rule_oracle, first_slice or html_oracle corpora.
+# Builds the disposable FIELDS result-field oracle APK (default FIELDS-01, ticket
+# #41; an optional -CorpusPath selects FIELDS-02). Its own package id and its own
+# corpus asset: it never touches the nested_oracle, replace_rule_oracle,
+# first_slice or html_oracle corpora.
 $ErrorActionPreference = 'Stop'
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
   & $Program @Arguments
@@ -19,17 +23,23 @@ foreach ($directory in @('classes','dex','assets')) {
 }
 $tools = Join-Path $AndroidSdk 'build-tools/35.0.1'
 $androidJar = Join-Path $AndroidSdk 'platforms/android-35/android.jar'
-# The FIELDS-01 corpus travels inside the harness: the oracle serves it from the
-# device process on the port the corpus names, and the golden records this
-# file's hash as its corpus hash. The bytes are copied as they are on disk; a
-# Windows checkout that rewrote them to CRLF has to be normalised back to the
-# committed LF blob before the build, which is why both hashes are printed.
-[System.IO.File]::Copy("$PSScriptRoot/fixtures.json", "$OutputDirectory/assets/field-fixtures.json", $true)
-$sourceHash = (Get-FileHash "$PSScriptRoot/fixtures.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+# The selected FIELDS corpus travels inside the harness under the fixed asset
+# name: the oracle serves it from the device process on the port the corpus
+# names, and the report/golden records the selected file's hash as its corpus
+# hash. The bytes are copied as they are on disk; a Windows checkout that
+# rewrote them to CRLF has to be normalised back to the committed LF blob before
+# the build, which is why both hashes are printed.
+$selectedCorpus = (Resolve-Path $CorpusPath).Path
+[System.IO.File]::Copy($selectedCorpus, "$OutputDirectory/assets/field-fixtures.json", $true)
+$sourceHash = (Get-FileHash $selectedCorpus -Algorithm SHA256).Hash.ToLowerInvariant()
 $assetHash = (Get-FileHash "$OutputDirectory/assets/field-fixtures.json" -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($sourceHash -ne $assetHash) { throw "the corpus asset does not match the corpus file" }
+Write-Host "selected corpus: $selectedCorpus"
 Write-Host "corpus asset sha256: $assetHash"
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/FieldOracle.java")
+# FIELDS-02's storage-only Application reuses the existing STATE scratch helper;
+# compiling its source here keeps the two harnesses on the same visibility-only
+# helper bytes. The original nested build and assets are unchanged.
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/../nested_oracle/StateSessionOracle.java","$PSScriptRoot/FieldOracle.java")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
 Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")

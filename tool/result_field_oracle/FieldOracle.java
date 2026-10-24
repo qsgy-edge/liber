@@ -1,6 +1,8 @@
 package io.liber.oracle.fields;
 
+import android.app.Application;
 import android.app.Instrumentation;
+import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -27,6 +29,7 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -36,10 +39,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import io.liber.oracle.nested.StateSessionOracle;
 
 /**
  * The frozen side of the FIELDS-01 corpus (ticket #41): drives
@@ -67,12 +73,19 @@ public final class FieldOracle extends Instrumentation {
 
     private static final String ASSET = "field-fixtures.json";
     private static final String REPORT = "field-oracle.json";
+    private static final String FIELDS_02 = "FIELDS-02";
+    private static final String SCRATCH_ROOT_NAME = "liber-fields-02";
+    private static final String PREFERENCE_PREFIX = "liber_fields_02_";
 
     private final JSONArray requests = new JSONArray();
     private final JSONArray unmatched = new JSONArray();
     private final JSONArray serverErrors = new JSONArray();
     private final JSONArray stageTrace = new JSONArray();
     private final JSONObject cases = new JSONObject();
+    private final JSONArray caseRecords = new JSONArray();
+    private final JSONObject isolation = new JSONObject();
+    private boolean newFamily;
+    private StateSessionOracle.ScratchContext scratch;
     private final JSONObject caseFailures = new JSONObject();
     private final JSONObject checkKeyword = new JSONObject();
     private final JSONObject cleanup = new JSONObject();
@@ -84,6 +97,22 @@ public final class FieldOracle extends Instrumentation {
     private FieldReplay replay;
     private JSONObject report;
     private File output;
+
+    @Override
+    public Application newApplication(ClassLoader cl, String name, Context context)
+            throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+        // The argument context belongs to the target package; the selected
+        // corpus asset lives in the instrumentation package. getContext() is
+        // that package's context and is already available at this point.
+        Context harnessContext = getContext() != null ? getContext() : context;
+        newFamily = FIELDS_02.equals(peekFixtureId(harnessContext));
+        if (!newFamily) return super.newApplication(cl, name, context);
+        scratch = new StateSessionOracle.ScratchContext(context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
+        // HTTP_BOUNDARY-01's measured storage-only Application: frozen App.onCreate
+        // never runs, and the target app's files, database and prefs route under
+        // the bound scratch root.
+        return super.newApplication(cl, Application.class.getName(), scratch);
+    }
 
     @Override
     public void onCreate(Bundle args) {
@@ -127,28 +156,44 @@ public final class FieldOracle extends Instrumentation {
         Bundle status = new Bundle();
         try {
             log("harness start");
-            corpus = new JSONObject(readAsset(ASSET));
+            byte[] asset = readAssetBytes(ASSET);
+            corpus = new JSONObject(new String(asset, StandardCharsets.UTF_8));
             log("corpus loaded: " + corpus.getString("fixtureId"));
-            output = new File(getTargetContext().getExternalFilesDir(null), REPORT);
+            if (newFamily) {
+                bindScratch(asset);
+                output = new File(scratch.root, REPORT);
+            } else {
+                output = new File(getTargetContext().getExternalFilesDir(null), REPORT);
+            }
             report = new JSONObject()
                 .put("fixtureId", corpus.getString("fixtureId"))
                 .put("corpusVersion", corpus.getInt("corpusVersion"))
                 .put("baselineCommit", corpus.getString("baselineCommit"))
                 .put("entryPoint", corpus.getString("entryPoint"))
-                .put("checkKeywordEntryPoint", corpus.getString("checkKeywordEntryPoint"))
+                .put("checkKeywordEntryPoint", corpus.optString("checkKeywordEntryPoint", ""))
                 .put("platform", "android")
+                .put("origin", corpus.getString("origin"))
                 .put("fingerprint", Build.FINGERPRINT)
                 .put("recordedAt", timestamp())
                 .put("requests", requests)
                 .put("unmatchedRequests", unmatched)
                 .put("serverErrors", serverErrors)
                 .put("stageTrace", stageTrace)
-                .put("cases", cases)
+                .put("cases", newFamily ? caseRecords : cases)
                 .put("caseFailures", caseFailures)
                 .put("checkKeyword", checkKeyword)
                 .put("cleanup", cleanup)
                 .put("analysisFailure", JSONObject.NULL);
-            replay = new FieldReplay(corpus, requests, unmatched, serverErrors, stageTrace, stage);
+            if (newFamily) {
+                JSONObject corpusIdentity = new JSONObject()
+                    .put("asset", ASSET)
+                    .put("bytes", asset.length)
+                    .put("sha256", sha256(asset))
+                    .put("fixtureId", corpus.getString("fixtureId"))
+                    .put("corpusVersion", corpus.getInt("corpusVersion"));
+                report.put("corpus", corpusIdentity).put("isolation", isolation);
+            }
+            replay = new FieldReplay(corpus, requests, unmatched, serverErrors, stageTrace, stage, newFamily);
             replay.start();
             log("replay server bound to the corpus origin: " + corpus.getString("origin"));
 
@@ -160,7 +205,8 @@ public final class FieldOracle extends Instrumentation {
                 stage.set("case:" + id);
                 log("case " + id);
                 try {
-                    driveCase(entry, id);
+                    if (newFamily) driveCaseFields02(entry, id);
+                    else driveCase(entry, id);
                     log("case " + id + " done");
                 } catch (Throwable error) {
                     caseFailures.put(id, describe(error));
@@ -169,7 +215,7 @@ public final class FieldOracle extends Instrumentation {
                 // A freeze keeps every case that already finished.
                 writeReport();
             }
-            observeCheckKeywords();
+            if (!newFamily) observeCheckKeywords();
 
             // The report is written before the replay server is torn down: the
             // run's evidence must survive a host that freezes this process after
@@ -185,20 +231,271 @@ public final class FieldOracle extends Instrumentation {
                 cleanup.put("serverClosed", false);
                 log("cleanup failed: " + describe(error));
             }
+            if (newFamily) finishScratchCleanup();
+            int recorded = newFamily ? caseRecords.length() : cases.length();
             writeReport();
             log("report rewritten with cleanup=" + cleanup);
             status.putString("stream", "Fields oracle recorded " + requests.length()
-                + " requests and " + cases.length() + " cases"
+                + " requests and " + recorded + " cases"
                 + (caseFailures.length() == 0 ? "" : ", " + caseFailures.length() + " failed")
                 + "\n");
             finished.set(true);
             finish(caseFailures.length() == 0 ? -1 : 1, status);
         } catch (Throwable error) {
+            if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(describe(error));
             status.putString("stream", "Fields oracle harness error: " + describe(error) + "\n");
             log("harness error: " + describe(error));
             finished.set(true);
             finish(1, status);
         }
+    }
+
+    /**
+     * FIELDS-02's application/owner binding: actual target and harness APK hashes,
+     * the selected asset bytes and the scratch namespace. The storage-only
+     * Application is created by {@link #newApplication}.
+     */
+    private void bindScratch(byte[] asset) throws Exception {
+        JSONObject identity = new JSONObject()
+            .put("fixtureId", corpus.getString("fixtureId"))
+            .put("corpusVersion", corpus.getInt("corpusVersion"))
+            .put("corpusSha256Lf", sha256(lf(asset)))
+            .put("targetPackage", getTargetContext().getPackageName())
+            .put("targetApkSha256", sha256(new File(getTargetContext().getPackageCodePath())))
+            .put("harnessPackage", getContext().getPackageName())
+            .put("harnessApkSha256", sha256(new File(getContext().getPackageCodePath())));
+        scratch.bind("seed", identity);
+        Class<?> appCtx = getTargetContext().getClassLoader()
+            .loadClass("splitties.init.AppCtxKt");
+        Object app = appCtx.getMethod("getAppCtx").invoke(null);
+        boolean filesRouted = ((android.content.Context) app).getFilesDir()
+            .equals(scratch.getFilesDir());
+        boolean databaseRouted = ((android.content.Context) app).getDatabasePath("legado.db")
+            .equals(scratch.getDatabasePath("legado.db"));
+        boolean deviceProtected = ((android.content.Context) app).isDeviceProtectedStorage();
+        if (!filesRouted || !databaseRouted || deviceProtected) {
+            throw new IllegalStateException("target app did not route through the scratch context");
+        }
+        File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
+        JSONObject probe = scratch.seedProbePreferences(
+            (android.content.Context) app, dataDir, "liber_fields_02_probe");
+        isolation.put("bound", scratch.isBound())
+            .put("targetPackage", getTargetContext().getPackageName())
+            .put("targetApkSha256", identity.getString("targetApkSha256"))
+            .put("harnessPackage", getContext().getPackageName())
+            .put("harnessApkSha256", identity.getString("harnessApkSha256"))
+            .put("corpusSha256Lf", identity.getString("corpusSha256Lf"))
+            .put("appClass", app.getClass().getName())
+            .put("deviceProtected", deviceProtected)
+            .put("appFilesDir", ((android.content.Context) app).getFilesDir().getAbsolutePath())
+            .put("scratchFilesDir", scratch.getFilesDir().getAbsolutePath())
+            .put("filesRouted", filesRouted)
+            .put("appDatabasePath", ((android.content.Context) app).getDatabasePath("legado.db").getAbsolutePath())
+            .put("scratchDatabasePath", scratch.getDatabasePath("legado.db").getAbsolutePath())
+            .put("databaseRouted", databaseRouted)
+            .put("scratchRoot", scratch.root.getAbsolutePath())
+            .put("rootExistedAtStart", scratch.rootExistedAtStart())
+            .put("preferencesPrefix", scratch.preferencesPrefix())
+            .put("preferenceProbe", probe);
+    }
+
+    /** FIELDS-02 hands the owned scratch/report to the external capture driver. */
+    private void finishScratchCleanup() throws Exception {
+        if (scratch == null) return;
+        JSONArray owned = new JSONArray();
+        boolean fenced = true;
+        for (String name : scratch.ownedPreferences()) {
+            owned.put(name);
+            fenced &= scratch.fence(name);
+        }
+        cleanup.put("scratchRoot", scratch.root.getAbsolutePath())
+            .put("preferencesPrefix", scratch.preferencesPrefix())
+            .put("rootExistedAtStart", scratch.rootExistedAtStart())
+            .put("ownedPreferences", owned)
+            .put("preferencesFenced", fenced)
+            .put("reportPath", output.getAbsolutePath())
+            .put("rootRetained", scratch.root.exists());
+        if (caseFailures.length() == 0) {
+            scratch.writeOwnerComplete(UUID.randomUUID().toString());
+            cleanup.put("ownerComplete", true);
+        } else {
+            cleanup.put("ownerComplete", false);
+        }
+    }
+
+    /** FIELDS-02: one actual case record; stage slots are present and nullable. */
+    private void driveCaseFields02(JSONObject entry, String id) throws Exception {
+        int requestStart = requests.length();
+        ClassLoader loader = getTargetContext().getClassLoader();
+        JSONObject sourceJson = entry.getJSONObject("source");
+        String keyword = entry.getString("keyword");
+        Class<?> bookSourceClass = loader.loadClass("io.legado.app.data.entities.BookSource");
+        Class<?> searchBookClass = loader.loadClass("io.legado.app.data.entities.SearchBook");
+        Class<?> chapterClass = loader.loadClass("io.legado.app.data.entities.BookChapter");
+        Class<?> bookClass = loader.loadClass("io.legado.app.data.entities.Book");
+        Class<?> webBookClass = loader.loadClass("io.legado.app.model.webBook.WebBook");
+        Object webBook = webBookClass.getField("INSTANCE").get(null);
+        Object gson = loader.loadClass("com.google.gson.Gson").getConstructor().newInstance();
+        Object source = gson.getClass().getMethod("fromJson", String.class, Class.class)
+            .invoke(gson, sourceJson.toString(), bookSourceClass);
+
+        JSONObject observed = new JSONObject()
+            .put("id", id)
+            .put("terminal", entry.optString("terminal", "four-stage"))
+            .put("search", JSONObject.NULL)
+            .put("bookInfo", JSONObject.NULL)
+            .put("tableOfContents", JSONObject.NULL)
+            .put("chapter", JSONObject.NULL)
+            .put("sourceProbes", new JSONObject()
+                .put("vipProbe", JSONObject.NULL)
+                .put("payProbe", JSONObject.NULL));
+
+        stage.set("search");
+        log("stage search");
+        Object searchBooks = runSuspend(loader, continuation -> call(webBookClass, webBook,
+            "searchBookAwait", 6,
+            new Object[]{source, keyword, Integer.valueOf(1), null, null}, continuation));
+        if (!(searchBooks instanceof List)) {
+            throw new IllegalStateException("search returned " + searchBooks);
+        }
+        List<?> list = (List<?>) searchBooks;
+        JSONArray results = new JSONArray();
+        for (Object item : list) {
+            results.put(new JSONObject()
+                .put("name", str(searchBookClass, item, "getName"))
+                .put("author", str(searchBookClass, item, "getAuthor"))
+                .put("bookUrl", str(searchBookClass, item, "getBookUrl"))
+                .put("infoHtml", searchBookClass.getMethod("getInfoHtml").invoke(item) != null));
+        }
+        observed.put("search", new JSONObject().put("results", results));
+        if (list.isEmpty()) {
+            if (!"search-empty".equals(observed.getString("terminal"))) {
+                throw new IllegalStateException("search returned no result");
+            }
+            observed.put("requests", requestSlice(requestStart));
+            caseRecords.put(observed);
+            return;
+        }
+        Object book = searchBookClass.getMethod("toBook").invoke(list.get(0));
+
+        stage.set("bookInfo");
+        log("stage bookInfo");
+        runSuspend(loader, continuation -> call(webBookClass, webBook,
+            "getBookInfoAwait", 4,
+            new Object[]{source, book, Boolean.TRUE}, continuation));
+        observed.put("bookInfo", new JSONObject()
+            .put("name", str(bookClass, book, "getName"))
+            .put("author", str(bookClass, book, "getAuthor"))
+            .put("bookUrl", str(bookClass, book, "getBookUrl"))
+            .put("tocUrl", str(bookClass, book, "getTocUrl")));
+
+        stage.set("tableOfContents");
+        log("stage tableOfContents");
+        Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
+            "getChapterListAwait", 4,
+            new Object[]{source, book, Boolean.FALSE}, continuation));
+        List<?> chapters = unwrapResult(tocResult);
+        if (chapters.isEmpty()) {
+            throw new IllegalStateException("table of contents returned no chapter");
+        }
+        JSONArray chapterRows = new JSONArray();
+        for (Object chapter : chapters) {
+            chapterRows.put(chapterObservation(chapterClass, chapter));
+        }
+        observed.put("tableOfContents", new JSONObject()
+            .put("tocUrl", str(bookClass, book, "getTocUrl"))
+            .put("chapters", chapterRows));
+
+        String sourceKey = (String) bookSourceClass.getMethod("getKey").invoke(source);
+        Class<?> cacheClass = loader.loadClass("io.legado.app.help.CacheManager");
+        Object cache = cacheClass.getField("INSTANCE").get(null);
+        Method cacheGet = cacheClass.getMethod("get", String.class);
+        Object vipProbe = cacheGet.invoke(cache, "v_" + sourceKey + "_vipProbe");
+        Object payProbe = cacheGet.invoke(cache, "v_" + sourceKey + "_payProbe");
+        observed.put("sourceProbes", new JSONObject()
+            .put("vipProbe", vipProbe == null ? JSONObject.NULL : vipProbe)
+            .put("payProbe", payProbe == null ? JSONObject.NULL : payProbe));
+
+        stage.set("content");
+        log("stage content");
+        Object text = runSuspend(loader, continuation -> call(webBookClass, webBook,
+            "getContentAwait", 6,
+            new Object[]{source, book, chapters.get(0), null, Boolean.FALSE}, continuation));
+        observed.put("chapter", new JSONObject()
+            .put("title", str(chapterClass, chapters.get(0), "getTitle"))
+            .put("text", text == null ? "" : text.toString()));
+        observed.put("requests", requestSlice(requestStart));
+        caseRecords.put(observed);
+    }
+
+    private JSONObject chapterObservation(Class<?> chapterClass, Object chapter) throws Exception {
+        Object tag = chapterClass.getMethod("getTag").invoke(chapter);
+        return new JSONObject()
+            .put("title", str(chapterClass, chapter, "getTitle"))
+            .put("url", str(chapterClass, chapter, "getUrl"))
+            .put("absoluteUrl", (String) chapterClass.getMethod("getAbsoluteURL").invoke(chapter))
+            .put("tag", tag == null ? JSONObject.NULL : tag)
+            .put("isVolume", Boolean.TRUE.equals(chapterClass.getMethod("getIsVolume").invoke(chapter)))
+            .put("isVip", Boolean.TRUE.equals(chapterClass.getMethod("getIsVip").invoke(chapter)))
+            .put("isPay", Boolean.TRUE.equals(chapterClass.getMethod("getIsPay").invoke(chapter)))
+            .put("bookUrl", str(chapterClass, chapter, "getBookUrl"));
+    }
+
+    private JSONArray requestSlice(int start) throws JSONException {
+        JSONArray slice = new JSONArray();
+        for (int index = start; index < requests.length(); index++) {
+            slice.put(requests.getJSONObject(index));
+        }
+        return slice;
+    }
+
+    private static String peekFixtureId(Context context) {
+        try (InputStream input = context.getAssets().open(ASSET)) {
+            byte[] bytes = input.readAllBytes();
+            return new JSONObject(new String(bytes, StandardCharsets.UTF_8))
+                .optString("fixtureId", "");
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private byte[] readAssetBytes(String name) throws IOException {
+        try (InputStream input = getContext().getAssets().open(name)) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = input.read(chunk)) > 0) buffer.write(chunk, 0, read);
+            return buffer.toByteArray();
+        }
+    }
+
+    private static String sha256(byte[] bytes) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte value : digest) {
+            hex.append(Character.forDigit((value >> 4) & 0xf, 16));
+            hex.append(Character.forDigit(value & 0xf, 16));
+        }
+        return hex.toString();
+    }
+
+    private static String sha256(File file) throws Exception {
+        try (InputStream input = new java.io.FileInputStream(file)) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = input.read(chunk)) > 0) buffer.write(chunk, 0, read);
+            return sha256(buffer.toByteArray());
+        }
+    }
+
+    private static byte[] lf(byte[] bytes) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        for (int index = 0; index < bytes.length; index++) {
+            if (bytes[index] == '\r' && index + 1 < bytes.length && bytes[index + 1] == '\n') continue;
+            output.write(bytes[index]);
+        }
+        return output.toByteArray();
     }
 
     /** One corpus case: the four stages in order, through the frozen entry points. */
@@ -497,6 +794,7 @@ public final class FieldOracle extends Instrumentation {
         private final JSONArray serverErrors;
         private final JSONArray stageTrace;
         private final AtomicReference<String> stage;
+        private final boolean receipts;
         private final ExecutorService clients = Executors.newFixedThreadPool(4);
         private final java.util.Set<Socket> openSockets = new java.util.HashSet<>();
         private ServerSocket server;
@@ -506,13 +804,15 @@ public final class FieldOracle extends Instrumentation {
             new java.util.concurrent.atomic.AtomicInteger();
 
         FieldReplay(JSONObject corpus, JSONArray requests, JSONArray unmatched,
-                JSONArray serverErrors, JSONArray stageTrace, AtomicReference<String> stage) {
+                JSONArray serverErrors, JSONArray stageTrace, AtomicReference<String> stage,
+                boolean receipts) {
             this.corpus = corpus;
             this.requests = requests;
             this.unmatched = unmatched;
             this.serverErrors = serverErrors;
             this.stageTrace = stageTrace;
             this.stage = stage;
+            this.receipts = receipts;
         }
 
         void start() throws Exception {
@@ -659,6 +959,19 @@ public final class FieldOracle extends Instrumentation {
                 }
                 OutputStream output = socket.getOutputStream();
                 JSONObject declared = match(method, path, query);
+                if (receipts) {
+                    JSONObject receipt = new JSONObject()
+                        .put("terminal", declared == null ? "unmatched" : "responded")
+                        .put("status", declared == null ? 404 : declared.optInt("status", 200))
+                        .put("responseId", declared == null
+                            ? JSONObject.NULL : declared.optString("id"));
+                    JSONObject declaredHeaders = declared == null
+                        ? null : declared.optJSONObject("headers");
+                    if (declaredHeaders != null && declaredHeaders.has("Location")) {
+                        receipt.put("redirect", declaredHeaders.optString("Location"));
+                    }
+                    observed.put("receipt", receipt);
+                }
                 if (declared == null) {
                     synchronized (unmatched) {
                         unmatched.put(observed);

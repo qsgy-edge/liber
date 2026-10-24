@@ -15,14 +15,25 @@ const sliceFixturePath = 'tool/first_slice/fixtures.json';
 Map<String, dynamic> loadSliceFixture([String path = sliceFixturePath]) =>
     (jsonDecode(File(path).readAsStringSync()) as Map).cast<String, dynamic>();
 
+/// One actual replay response receipt, for callers that need the response
+/// status/redirect and terminal. The default server observer does not use it.
+typedef SliceResponseReceipt =
+    void Function(Map<String, Object?> request, Map<String, Object?> response);
+
 /// The replay server the corpus declares: every response comes from
 /// `responses`, an undeclared request is answered 404 and recorded, and the
 /// port is the one the fixture's `bookSourceUrl` names, because the source
 /// object is part of the compared inputs.
 class SliceReplayServer {
-  SliceReplayServer._(this._server, this._fixture);
+  SliceReplayServer._(this._server, this._fixture, this._onResponse);
 
-  static Future<SliceReplayServer> start(Map<String, dynamic> fixture) async {
+  /// Starts the one declared replay listener. [onResponse] is an optional
+  /// receipt hook for a caller that needs the actual response status/redirect
+  /// and terminal; the default observer and matching rules are unchanged.
+  static Future<SliceReplayServer> start(
+    Map<String, dynamic> fixture, {
+    SliceResponseReceipt? onResponse,
+  }) async {
     final origin = Uri.parse(fixture['origin'] as String);
     final HttpServer server;
     try {
@@ -34,13 +45,14 @@ class SliceReplayServer {
         'stop whatever holds it instead of moving the corpus.',
       );
     }
-    final instance = SliceReplayServer._(server, fixture);
+    final instance = SliceReplayServer._(server, fixture, onResponse);
     server.listen(instance._handle);
     return instance;
   }
 
   final HttpServer _server;
   final Map<String, dynamic> _fixture;
+  final SliceResponseReceipt? _onResponse;
 
   /// Every request the server received, in order, as observed.
   final requests = <Map<String, Object?>>[];
@@ -48,7 +60,8 @@ class SliceReplayServer {
   /// Requests the corpus declares no response for.
   final unmatched = <Map<String, Object?>>[];
 
-  Uri get origin => Uri.parse('http://${_server.address.address}:${_server.port}');
+  Uri get origin =>
+      Uri.parse('http://${_server.address.address}:${_server.port}');
 
   Future<void> _handle(HttpRequest request) async {
     final body = request.method == 'POST'
@@ -69,7 +82,26 @@ class SliceReplayServer {
       'body': body,
     };
     requests.add(observed);
-    final declared = _match(request.method, request.uri.path, request.uri.queryParameters);
+    final declared = _match(
+      request.method,
+      request.uri.path,
+      request.uri.queryParameters,
+    );
+    final receipt = <String, Object?>{
+      'terminal': declared == null ? 'unmatched' : 'responded',
+      'status': declared == null
+          ? HttpStatus.notFound
+          : declared['status'] as int? ?? 200,
+    };
+    if (declared != null) {
+      receipt['responseId'] = declared['id'];
+      final location = (declared['headers'] as Map?)?['Location'];
+      if (location != null) receipt['redirect'] = '$location';
+    }
+    if (_onResponse != null) {
+      observed['receipt'] = receipt;
+      _onResponse(observed, receipt);
+    }
     if (declared == null) {
       unmatched.add(observed);
       request.response.statusCode = HttpStatus.notFound;
@@ -85,7 +117,9 @@ class SliceReplayServer {
       final name = entry.key.toLowerCase();
       if (name == 'content-length' || name == 'transfer-encoding') continue;
       if (name == 'content-type') {
-        request.response.headers.contentType = ContentType.parse('${entry.value}');
+        request.response.headers.contentType = ContentType.parse(
+          '${entry.value}',
+        );
       } else {
         request.response.headers.set(entry.key, '${entry.value}');
       }
@@ -212,7 +246,8 @@ Future<SliceRunResult> runSliceFixture({
     stages['toc'] = {
       'pages': pipeline.tocPages,
       'chapters': [
-        for (final chapter in chapters) {'name': chapter.name, 'url': '${chapter.url}'},
+        for (final chapter in chapters)
+          {'name': chapter.name, 'url': '${chapter.url}'},
       ],
     };
     final body = await pipeline.chapter(chapters.first);
@@ -309,8 +344,10 @@ List<SliceInvariant> _invariants({
     final carries = header.contains(pair);
     final expectedCarry = index >= carriedFrom;
     if (carries != expectedCarry) {
-      cookieChecks.add('${_requestLine(requests[index])}: cookies='
-          '${header.isEmpty ? '(none)' : header}');
+      cookieChecks.add(
+        '${_requestLine(requests[index])}: cookies='
+        '${header.isEmpty ? '(none)' : header}',
+      );
     }
   }
   invariants.add(
@@ -357,8 +394,9 @@ List<SliceInvariant> _invariants({
 }
 
 String _sourceHeaderValue(Map<String, dynamic> fixture) {
-  final header = jsonDecode((fixture['source'] as Map)['header'] as String)
-      as Map<String, dynamic>;
+  final header =
+      jsonDecode((fixture['source'] as Map)['header'] as String)
+          as Map<String, dynamic>;
   return '${header['X-Slice-Corpus']}';
 }
 
@@ -378,12 +416,14 @@ String _header(Map<String, Object?> request, String name) {
 bool _requestMatches(Map expected, Map<String, Object?> observed) {
   if (expected['method'] != observed['method']) return false;
   if (expected['path'] != observed['path']) return false;
-  final expectedQuery = (expected['query'] as Map?)?.cast<String, String>() ??
+  final expectedQuery =
+      (expected['query'] as Map?)?.cast<String, String>() ??
       const <String, String>{};
   final observedQuery = (observed['query'] as Map).cast<String, String>();
   if (expectedQuery.length != observedQuery.length) return false;
-  return expectedQuery.entries
-      .every((entry) => observedQuery[entry.key] == entry.value);
+  return expectedQuery.entries.every(
+    (entry) => observedQuery[entry.key] == entry.value,
+  );
 }
 
 String _requestLine(Map request) {
