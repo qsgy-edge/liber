@@ -13,6 +13,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * The frozen side of the HTML extraction corpus: loads
@@ -29,7 +30,13 @@ import java.nio.charset.StandardCharsets;
  *
  * <p>The report's shape follows {@code NestedOracle}/{@code StateOracle} so
  * {@code tool/html_adapter_gate.dart} can read it against the Liber-side
- * observation.
+ * observation. It also binds every observation set to the raw bytes of the
+ * selected {@code html-fixtures.json} asset: the build may copy either the
+ * original corpus or the independently selected list corpus under that asset
+ * name, so the report carries the asset's actual byte count and SHA-256 and its
+ * declared fixture id/version/schema in the nested {@code corpus} block, never
+ * a hash copied from the corpus JSON. An empty corpus is a failed capture, not
+ * a successful zero-observation report.
  */
 public final class HtmlOracle extends Instrumentation {
     /** Fallback for a corpus without a {@code baseUrl}; relative-URL base only. */
@@ -41,12 +48,15 @@ public final class HtmlOracle extends Instrumentation {
         Bundle status = new Bundle();
         try {
             String fixture;
+            byte[] fixtureBytes;
             try (InputStream input = getContext().getAssets().open("html-fixtures.json")) {
-                fixture = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                fixtureBytes = input.readAllBytes();
+                fixture = new String(fixtureBytes, StandardCharsets.UTF_8);
             }
             JSONObject corpus = new JSONObject(fixture);
             JSONObject documents = corpus.getJSONObject("documents");
             JSONArray cases = corpus.getJSONArray("cases");
+            if (cases.length() == 0) throw new IllegalStateException("HTML oracle corpus has no cases");
             String baseUrl = corpus.optString("baseUrl", DEFAULT_BASE_URL);
             ClassLoader loader = getTargetContext().getClassLoader();
             Class<?> ruleClass = loader.loadClass("io.legado.app.model.analyzeRule.AnalyzeRule");
@@ -90,8 +100,16 @@ public final class HtmlOracle extends Instrumentation {
                 }
                 observations.put(result);
             }
+            JSONObject corpusIdentity = new JSONObject()
+                .put("asset", "html-fixtures.json")
+                .put("bytes", fixtureBytes.length)
+                .put("sha256", sha256(fixtureBytes));
+            if (corpus.has("fixtureId")) corpusIdentity.put("fixtureId", corpus.getString("fixtureId"));
+            if (corpus.has("corpusVersion")) corpusIdentity.put("corpusVersion", corpus.getInt("corpusVersion"));
+            if (corpus.has("schemaVersion")) corpusIdentity.put("schemaVersion", corpus.getInt("schemaVersion"));
             JSONObject report = new JSONObject().put("baselineCommit", corpus.getString("baselineCommit"))
                 .put("fingerprint", Build.FINGERPRINT).put("entryPoint", corpus.getString("entryPoint"))
+                .put("corpus", corpusIdentity)
                 .put("observations", observations);
             File output = new File(getTargetContext().getExternalFilesDir(null), "html-oracle.json");
             try (FileOutputStream stream = new FileOutputStream(output)) {
@@ -103,5 +121,16 @@ public final class HtmlOracle extends Instrumentation {
             status.putString("stream", error.toString() + "\n");
             finish(1, status);
         }
+    }
+
+    /** The selected asset's actual bytes, hex-encoded for the report binding. */
+    private static String sha256(byte[] bytes) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte value : digest) {
+            hex.append(Character.forDigit((value >> 4) & 0xf, 16));
+            hex.append(Character.forDigit(value & 0xf, 16));
+        }
+        return hex.toString();
     }
 }

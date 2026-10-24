@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:fjs/fjs.dart';
 import 'package:liber/source/html4_unescape.dart';
 import 'package:liber/source/html_rule_adapter.dart';
 import 'package:liber/source/json_source_rules.dart';
@@ -17,111 +16,161 @@ import 'package:pointycastle/export.dart';
 ///
 /// Usage:
 ///   dart run tool/html_adapter_gate.dart `<fjs library>` `[<frozen golden>]`
-///                                       `[<observations>]`
+///                                       `[<observations>]` `[<corpus>]`
 ///
-/// Without a frozen golden the run still checks the adapter against the corpus'
-/// expectations, which were derived by reading the frozen rule layer at the
-/// pinned commit. The committed device golden is
-/// `tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json`; see
-/// `tool/html_oracle/README.md`.
+/// The first three positional arguments keep their meaning: `-` as the golden
+/// means destination-only, and the third argument is the report path the run
+/// refuses to overwrite. The fourth selects a corpus; it defaults to the
+/// unchanged `tool/html_oracle/fixtures.json`, whose 45-case invocation and
+/// committed goldens stay verbatim.
+///
+/// `HTML-LIST-01` (`tool/html_oracle/list-fixtures.json`) is the independent
+/// nonempty-list family. Its metadata is at the corpus root and its frozen
+/// record is the collector's nested `corpus` block (`asset`, byte length, raw
+/// SHA-256, fixture/version/schema) plus a nonempty device fingerprint. The gate
+/// validates that measured binding before comparing, refuses an empty corpus or
+/// an unknown non-legacy corpus, and accepts only the byte-identical legacy
+/// corpus without those fields. Frozen rows must carry exactly one typed
+/// value/error outcome per declared unique id; row order is not a fact, explicit
+/// null is a value, and an outcome's kind is compared as well as its payload.
+/// The `getStringListUrl` form is a named product refusal when nonempty, so a
+/// corpus row of that shape is refused rather than rendered as a list.
 ///
 /// A case whose `path` is `rule` runs through the product's **rule-field path**
 /// (`lib/source/rule_field.dart` in front of the adapter), because its frozen
 /// entry point is `AnalyzeRule.getString` over a rule that carries an `@js:`
 /// segment, and the bare adapter deliberately refuses those (ticket #11).
-Future<void> main(List<String> args) async {
-  if (args.isEmpty || args.length > 3) {
-    throw ArgumentError(
-      'Usage: <library> [<frozen golden.json>] [<observations.json>]',
-    );
-  }
-  final output = args.length > 2 ? File(args[2]) : null;
+const legacyHtmlCorpusPath = 'tool/html_oracle/fixtures.json';
+const htmlListCorpusPath = 'tool/html_oracle/list-fixtures.json';
+
+/// The one immutable legacy corpus identity. A byte-identical copy is the same
+/// corpus wherever it is selected; any other corpus without family metadata is
+/// unknown, not a legacy downgrade.
+const legacyHtmlCorpusSha256 =
+    'e4853a8d5653db658608d5cbc4db6907015e894731fa90ac911f7283cbb20342';
+
+/// The harness packages the selected corpus under this one fixed asset name.
+const htmlOracleCorpusAsset = 'html-fixtures.json';
+
+/// The selected nonempty-list family this gate admits.
+const htmlListFixtureId = 'HTML-LIST-01';
+const htmlListCorpusVersion = 1;
+const htmlOracleSchemaVersion = 1;
+const htmlOracleBaselineCommit = '14dd24945b2914ce2708b8abaa4ee67ceef892af';
+const htmlOracleEntryPoint =
+    'AnalyzeRule.getString/getStringList (default and URL modes)';
+
+const _htmlOracleMethods = {
+  'getString',
+  'getStringUrl',
+  'getStringList',
+  'getStringListUrl',
+};
+
+/// One corpus read once: the path, the exact bytes that were parsed, the
+/// decoded object and, for a metadata-bearing family, its declared identity.
+class _HtmlCorpus {
+  _HtmlCorpus({
+    required this.path,
+    required this.bytes,
+    required this.json,
+    required this.family,
+  });
+
+  final String path;
+  final List<int> bytes;
+  final Map<String, dynamic> json;
+
+  /// `null` for the unchanged legacy corpus, which carries no fixture id.
+  final ({String fixtureId, int corpusVersion})? family;
+
+  Map<String, String> get documents =>
+      (json['documents'] as Map).cast<String, String>();
+
+  List<Map<String, dynamic>> get cases =>
+      (json['cases'] as List).cast<Map<String, dynamic>>();
+
+  /// The declared method of every case, used to type a frozen outcome.
+  Map<String, String> get caseMethods => {
+    for (final entry in cases)
+      entry['id'] as String: entry['method'] as String? ?? 'getString',
+  };
+}
+
+/// Runs one corpus and returns its report. The caller owns [NativeLibrary]:
+/// this function initializes it when needed but never disposes it.
+Future<Map<String, Object?>> runHtmlAdapterGate({
+  required String libraryPath,
+  String? goldenPath,
+  File? output,
+  String corpusPath = legacyHtmlCorpusPath,
+}) async {
   if (output != null && output.existsSync()) {
     throw StateError('Refusing to overwrite evidence: ${output.path}');
   }
-  final corpus =
-      jsonDecode(File('tool/html_oracle/fixtures.json').readAsStringSync())
-          as Map<String, dynamic>;
-  final documents = (corpus['documents'] as Map).cast<String, String>();
-  final cases = (corpus['cases'] as List).cast<Map<String, dynamic>>();
-
-  final goldenPath = args.length > 1 && args[1] != '-' ? args[1] : null;
+  final corpus = _readHtmlCorpus(corpusPath);
+  final caseMethods = corpus.caseMethods;
+  final declaredIds = [for (final entry in corpus.cases) entry['id'] as String];
   final golden = goldenPath == null
       ? null
       : jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
   if (golden != null) {
-    if (golden['baselineCommit'] != corpus['baselineCommit'] ||
-        golden['entryPoint'] != corpus['entryPoint']) {
-      throw StateError('Oracle identity mismatch');
+    _validateGoldenIdentity(golden, corpus);
+    final goldenObservations = golden['observations'];
+    if (goldenObservations is! List) {
+      throw StateError('Frozen golden observations missing');
     }
+    _validateFrozenObservations(
+      goldenObservations.cast<Map>(),
+      caseMethods,
+      declaredIds,
+    );
   }
 
-  await NativeLibrary.initialize(libraryPath: args[0]);
-  final baseUrl = corpus['baseUrl'] as String? ?? '';
+  await NativeLibrary.initialize(libraryPath: libraryPath);
+  final baseUrl = corpus.json['baseUrl'] as String? ?? '';
+  final documents = corpus.documents;
+  final cases = corpus.cases;
   final observations = <Map<String, Object?>>[];
   var failed = false;
   for (final entry in cases) {
     final id = entry['id'] as String;
     final rule = entry['rule'] as String;
     final method = entry['method'] as String? ?? 'getString';
-    final html = documents[entry['document']] ?? '';
+    final document = documents[entry['document']] ?? '';
     final observation = <String, Object?>{'id': id, 'rule': rule};
     try {
       if (entry['path'] == 'rule') {
         observation['value'] = await htmlAdapterRuleFieldValue(
-          html,
+          document,
           rule,
           baseUrl: baseUrl,
         );
       } else if (entry['path'] == 'json') {
-        final document = jsonDecode(html);
-        if (method == 'getStringListUrl' || method == 'getStringList') {
-          final values = JsonSourceRules.list(
-            document,
-            splitRuleFields(rule).rule,
-          );
-          if (values.isNotEmpty) {
-            throw UnsupportedError(
-              'The oracle corpus only compares empty URL lists',
-            );
-          }
-          observation['value'] = <String>[];
+        final jsonDocument = jsonDecode(document);
+        if (method == 'getStringList' || method == 'getStringListUrl') {
+          observation['value'] = _jsonListValues(jsonDocument, rule, method);
         } else if (method == 'getString' || method == 'getStringUrl') {
-          observation['value'] = JsonSourceRules.extract(document, rule);
+          observation['value'] = JsonSourceRules.extract(jsonDocument, rule);
         } else {
           throw UnsupportedError('Unknown oracle method: $method');
         }
       } else {
-        final outcomes = htmlAnalyze(
-          html: html,
-          jobs: [
-            HtmlRuleJob(
-              id: id,
-              rule: rule,
-              parent: null,
-              output: HtmlJobOutput.text,
-            ),
-          ],
-        );
-        final outcome = outcomes.single;
-        final failure = outcome.failure;
-        if (failure != null) {
-          observation['error'] = '${failure.kind}: ${failure.message}';
-        } else if (method == 'getStringListUrl' || method == 'getStringList') {
-          if (outcome.count != 0) {
-            throw UnsupportedError(
-              'The oracle corpus only compares empty URL lists',
-            );
-          }
-          observation['value'] = <String>[];
-        } else if (method == 'getStringUrl' && outcome.count == 0) {
-          observation['value'] = applyRuleReplacement(
-            '',
-            splitRuleFields(rule),
-            label: 'HTML',
-          );
-        } else if (method == 'getString' || method == 'getStringUrl') {
-          observation['value'] = outcome.values.firstOrNull ?? '';
+        final batch = HtmlRuleBatch(document);
+        if (method == 'getStringList' || method == 'getStringListUrl') {
+          final job = batch.documentTextList(id, rule);
+          await batch.run();
+          observation['value'] = _htmlListValues(job.values, method);
+        } else if (method == 'getStringUrl') {
+          final job = batch.documentText(id, rule);
+          await batch.run();
+          observation['value'] = job.hasMatch
+              ? job.value
+              : applyRuleReplacement('', splitRuleFields(rule), label: 'HTML');
+        } else if (method == 'getString') {
+          final job = batch.documentText(id, rule);
+          await batch.run();
+          observation['value'] = job.value;
         } else {
           throw UnsupportedError('Unknown oracle method: $method');
         }
@@ -132,18 +181,33 @@ Future<void> main(List<String> args) async {
     observations.add(observation);
   }
 
+  final family = corpus.family;
+  if (family != null) {
+    final observedIds = [for (final item in observations) item['id'] as String];
+    if (declaredIds.toSet().length != declaredIds.length ||
+        observedIds.length != declaredIds.length ||
+        observedIds.toSet().length != observedIds.length ||
+        !observedIds.toSet().containsAll(declaredIds)) {
+      throw StateError(
+        'Observation ids differ from the declared corpus ids: '
+        'expected ${declaredIds.length} unique ids',
+      );
+    }
+  }
+
   final expectedFailures = <String>[];
   for (final entry in cases) {
+    if (!entry.containsKey('expected')) continue;
     final id = entry['id'] as String;
     final expected = entry['expected'];
     final observed = observations.firstWhere((item) => item['id'] == id);
-    if (expected == null) continue;
-    if (!observed.containsKey('value') ||
-        jsonEncode(observed['value']) != jsonEncode(expected)) {
+    final outcome = _outcomeOf(observed, 'Observation $id');
+    if (outcome.kind != 'value' ||
+        jsonEncode(outcome.payload) != jsonEncode(expected)) {
       failed = true;
       expectedFailures.add(
         '$id\n  expected: ${jsonEncode(expected)}\n  observed: '
-        '${jsonEncode(observed['value'] ?? observed['error'])}',
+        '${jsonEncode(outcome.payload)} (${outcome.kind})',
       );
     }
   }
@@ -155,58 +219,378 @@ Future<void> main(List<String> args) async {
 
   final mismatches = <String>[];
   if (golden != null) {
-    final goldenValues = <String, Object?>{
+    final goldenRows = <String, Map>{
       for (final item in (golden['observations'] as List).cast<Map>())
-        item['id'] as String: item['value'] ?? item['error'],
+        item['id'] as String: item,
     };
     for (final item in observations) {
       final id = item['id'] as String;
-      final frozen = goldenValues[id];
-      if (frozen == null) {
+      final frozenRow = goldenRows[id];
+      if (frozenRow == null) {
         mismatches.add('$id: no frozen observation');
         continue;
       }
-      final observed = item['value'] ?? item['error'];
-      if (jsonEncode(observed) != jsonEncode(frozen)) {
+      final frozenOutcome = _outcomeOf(frozenRow, 'Frozen observation $id');
+      final observedOutcome = _outcomeOf(item, 'Observation $id');
+      if (frozenOutcome.kind != observedOutcome.kind ||
+          jsonEncode(frozenOutcome.payload) !=
+              jsonEncode(observedOutcome.payload)) {
         mismatches.add(
-          '$id: frozen=${jsonEncode(frozen)} windows=${jsonEncode(observed)}',
+          '$id: frozen=${jsonEncode(frozenOutcome.payload)} '
+          '(${frozenOutcome.kind}) windows='
+          '${jsonEncode(observedOutcome.payload)} '
+          '(${observedOutcome.kind})',
         );
       }
     }
     if (mismatches.isNotEmpty) failed = true;
   }
 
-  final library = File(args[0]);
+  final library = File(libraryPath);
+  final corpusSha256 = _sha256(corpus.bytes);
   final report = <String, Object?>{
     'platform': Platform.operatingSystem,
-    'baselineCommit': corpus['baselineCommit'],
-    'entryPoint': corpus['entryPoint'],
+    'corpusPath': corpus.path,
+    'corpusFixtureId': family?.fixtureId,
+    'corpusVersion': family?.corpusVersion,
+    'corpusSha256': corpusSha256,
+    'baselineCommit': corpus.json['baselineCommit'],
+    'entryPoint': corpus.json['entryPoint'],
     'status': failed ? 'fail' : 'pass',
     'frozenGolden': goldenPath ?? 'not-run',
     'librarySha256': library.existsSync()
         ? _sha256(library.readAsBytesSync())
         : 'unknown',
-    'fixturesSha256': _sha256(
-      File('tool/html_oracle/fixtures.json').readAsBytesSync(),
-    ),
+    // The selected corpus' raw bytes, not a hash copied from the corpus.
+    'fixturesSha256': corpusSha256,
     'cases': cases.length,
     'observations': observations,
     'expectationMismatches': expectedFailures,
     'frozenMismatches': mismatches,
   };
-  final encoded = const JsonEncoder.withIndent('  ').convert(report);
   if (output != null) {
-    output.writeAsStringSync('$encoded\n');
+    output.writeAsStringSync(
+      '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+    );
     stdout.writeln('Wrote ${output.path}');
-  } else {
-    stdout.writeln(encoded);
   }
-  NativeLibrary.dispose();
-  stdout.writeln(
-    'adapter corpus: ${failed ? 'fail' : 'pass'} '
-    '(${cases.length} cases, frozen golden ${golden == null ? 'not-run' : 'compared'})',
+  return report;
+}
+
+Future<void> main(List<String> args) async {
+  if (args.isEmpty || args.length > 4) {
+    throw ArgumentError(
+      'Usage: <library> [<frozen golden.json>] [<observations.json>] '
+      '[<corpus.json>]',
+    );
+  }
+  final output = args.length > 2 ? File(args[2]) : null;
+  if (output != null && output.existsSync()) {
+    throw StateError('Refusing to overwrite evidence: ${output.path}');
+  }
+  await NativeLibrary.initialize(libraryPath: args[0]);
+  try {
+    final report = await runHtmlAdapterGate(
+      libraryPath: args[0],
+      goldenPath: args.length > 1 && args[1] != '-' ? args[1] : null,
+      output: output,
+      corpusPath: args.length > 3 ? args[3] : legacyHtmlCorpusPath,
+    );
+    if (output == null) {
+      stdout.writeln(const JsonEncoder.withIndent('  ').convert(report));
+    }
+    final failed = report['status'] == 'fail';
+    stdout.writeln(
+      'adapter corpus: ${failed ? 'fail' : 'pass'} '
+      '(${report['cases']} cases, frozen golden '
+      '${report['frozenGolden'] == 'not-run' ? 'not-run' : 'compared'})',
+    );
+    if (failed) exitCode = 1;
+  } finally {
+    NativeLibrary.dispose();
+  }
+}
+
+/// The unchanged legacy corpus is the only corpus without family metadata, and
+/// only its pinned raw bytes are that corpus. A metadata-bearing corpus must
+/// name the one family this gate implements, carry typed integers, and have a
+/// nonempty row set. Every corpus is rejected before a rule runs when it is
+/// empty or unknown; a same-byte legacy copy remains the legacy corpus.
+_HtmlCorpus _readHtmlCorpus(String path) {
+  final bytes = File(path).readAsBytesSync();
+  final decoded = jsonDecode(utf8.decode(bytes));
+  if (decoded is! Map<String, dynamic>) {
+    throw const FormatException('HTML oracle corpus must be a JSON object');
+  }
+  final json = decoded;
+  final cases = json['cases'];
+  if (cases is! List || cases.isEmpty) {
+    throw const FormatException('HTML oracle corpus declares no cases');
+  }
+  final fixtureId = json['fixtureId'];
+  final corpusVersion = json['corpusVersion'];
+  ({String fixtureId, int corpusVersion})? family;
+  if (fixtureId != null || corpusVersion != null) {
+    if (fixtureId is! String || corpusVersion is! int) {
+      throw const FormatException(
+        'Corpus fixtureId/corpusVersion must both be present with their '
+        'declared types',
+      );
+    }
+    if (fixtureId != htmlListFixtureId ||
+        corpusVersion != htmlListCorpusVersion) {
+      throw FormatException(
+        'Unknown HTML oracle corpus family: $fixtureId v$corpusVersion',
+      );
+    }
+    final schemaVersion = json['schemaVersion'];
+    if (schemaVersion is! int || schemaVersion != htmlOracleSchemaVersion) {
+      throw const FormatException('Unsupported HTML-LIST-01 schemaVersion');
+    }
+    if (json['baselineCommit'] != htmlOracleBaselineCommit ||
+        json['entryPoint'] != htmlOracleEntryPoint) {
+      throw const FormatException(
+        'HTML-LIST-01 baseline/entryPoint metadata does not match the oracle',
+      );
+    }
+    family = (fixtureId: fixtureId, corpusVersion: corpusVersion);
+    _validateHtmlListRows(json);
+  } else if (_sha256(bytes) != legacyHtmlCorpusSha256) {
+    throw const FormatException(
+      'Unknown HTML oracle corpus: not the pinned legacy bytes',
+    );
+  }
+  final corpus = _HtmlCorpus(
+    path: path,
+    bytes: bytes,
+    json: json,
+    family: family,
   );
-  if (failed) exitCode = 1;
+  // Read the two shapes once so a malformed legacy corpus still fails before
+  // any rule runs, exactly as the previous casts did.
+  corpus.documents;
+  corpus.cases;
+  return corpus;
+}
+
+/// Validates the independent list family's rows: unique nonempty ids, declared
+/// documents/rules/methods, a supported HTML or JSON path, a present `expected`
+/// (an explicit null is legitimate) and the type that `expected` must have for
+/// its method.
+void _validateHtmlListRows(Map<String, dynamic> json) {
+  final documents = json['documents'];
+  final cases = json['cases'];
+  if (documents is! Map || cases is! List) {
+    throw const FormatException('HTML-LIST-01 documents/cases are malformed');
+  }
+  final ids = <String>{};
+  for (final raw in cases) {
+    if (raw is! Map) {
+      throw const FormatException('HTML-LIST-01 case is not an object');
+    }
+    final entry = raw.cast<String, dynamic>();
+    final id = entry['id'];
+    if (id is! String || id.isEmpty) {
+      throw const FormatException('HTML-LIST-01 case id must be nonempty');
+    }
+    if (!ids.add(id)) {
+      throw FormatException('Duplicate HTML-LIST-01 case id: $id');
+    }
+    final document = entry['document'];
+    if (document is! String || !documents.containsKey(document)) {
+      throw FormatException('HTML-LIST-01 case $id names an absent document');
+    }
+    final body = documents[document];
+    if (body is! String) {
+      throw FormatException(
+        'HTML-LIST-01 case $id references a non-string document: $document',
+      );
+    }
+    final rule = entry['rule'];
+    if (rule is! String || rule.isEmpty) {
+      throw FormatException('HTML-LIST-01 case $id has no rule');
+    }
+    final method = entry['method'] ?? 'getString';
+    if (!_htmlOracleMethods.contains(method)) {
+      throw FormatException('HTML-LIST-01 case $id has unknown method');
+    }
+    final path = entry['path'];
+    if (path != null && path != 'json') {
+      throw FormatException(
+        'HTML-LIST-01 case $id uses an unsupported path: $path',
+      );
+    }
+    if (!entry.containsKey('expected')) {
+      throw FormatException('HTML-LIST-01 case $id has no expected field');
+    }
+    final expected = entry['expected'];
+    if (method == 'getStringList' || method == 'getStringListUrl') {
+      if (expected != null &&
+          (expected is! List || expected.any((item) => item is! String))) {
+        throw FormatException(
+          'HTML-LIST-01 list case $id expected value must be a list of '
+          'strings or null',
+        );
+      }
+    } else if (expected != null && expected is! String) {
+      throw FormatException(
+        'HTML-LIST-01 scalar case $id expected value must be a string or null',
+      );
+    }
+  }
+}
+
+/// The new family's frozen record must carry the actual nested `corpus` block
+/// the collector emits: the one asset name, the measured byte length and raw
+/// SHA-256, typed fixture/version/schema identity and a nonempty device
+/// fingerprint. Legacy keeps its original top-level baseline/entryPoint
+/// admission and its committed golden with no fabricated nested fields.
+void _validateGoldenIdentity(Map<String, dynamic> golden, _HtmlCorpus corpus) {
+  if (golden['baselineCommit'] != corpus.json['baselineCommit'] ||
+      golden['entryPoint'] != corpus.json['entryPoint']) {
+    throw StateError('Oracle identity mismatch');
+  }
+  final family = corpus.family;
+  if (family == null) return;
+  final identity = golden['corpus'];
+  if (identity is! Map) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final measured = _sha256(corpus.bytes);
+  if (identity['asset'] != htmlOracleCorpusAsset) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final bytes = identity['bytes'];
+  if (bytes is! int || bytes != corpus.bytes.length) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final sha256 = identity['sha256'];
+  if (sha256 is! String || sha256 != measured) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final corpusVersion = identity['corpusVersion'];
+  final schemaVersion = identity['schemaVersion'];
+  if (identity['fixtureId'] != family.fixtureId ||
+      corpusVersion is! int ||
+      corpusVersion != family.corpusVersion ||
+      schemaVersion is! int ||
+      schemaVersion != htmlOracleSchemaVersion) {
+    throw StateError('Oracle corpus identity mismatch');
+  }
+  final fingerprint = golden['fingerprint'];
+  if (fingerprint is! String || fingerprint.trim().isEmpty) {
+    throw StateError('Frozen golden device fingerprint missing');
+  }
+}
+
+/// One frozen row: exactly one actual outcome, a declared id, and a value typed
+/// by that case's own method. An explicit null is a value; a missing or
+/// contradictory outcome is not backfilled. Row order is not a fact.
+void _validateFrozenObservations(
+  List<Map> observations,
+  Map<String, String> methods,
+  List<String> declaredIds,
+) {
+  final ids = <String>{};
+  for (final item in observations) {
+    final id = item['id'];
+    if (id is! String || id.isEmpty) {
+      throw StateError('Frozen golden observation id must be nonempty');
+    }
+    if (!ids.add(id)) {
+      throw StateError('Duplicate frozen golden observation id: $id');
+    }
+    final method = methods[id];
+    if (method == null) {
+      throw StateError('Frozen golden observation id is not declared: $id');
+    }
+    final outcome = _outcomeOf(item, 'Frozen observation $id');
+    if (outcome.kind == 'error') {
+      final error = outcome.payload;
+      if (error is! String || error.trim().isEmpty) {
+        throw StateError(
+          'Frozen observation $id error must be a nonempty string',
+        );
+      }
+    } else {
+      _validateFrozenValue(id, method, outcome.payload);
+    }
+  }
+  final declared = declaredIds.toSet();
+  if (ids.length != declared.length || !ids.containsAll(declared)) {
+    throw StateError(
+      'Frozen golden observation ids differ from the declared corpus ids',
+    );
+  }
+}
+
+void _validateFrozenValue(String id, String method, Object? value) {
+  if (method == 'getStringList' || method == 'getStringListUrl') {
+    if (value != null &&
+        (value is! List || value.any((item) => item is! String))) {
+      throw StateError(
+        'Frozen list observation $id value must be a string list or null',
+      );
+    }
+  } else if (value != null && value is! String) {
+    throw StateError(
+      'Frozen scalar observation $id value must be a string or null',
+    );
+  }
+}
+
+/// The actual outcome kind and payload. Exactly one of `value`/`error` must be
+/// present; comparison uses the kind so equal text cannot hide one behind the
+/// other.
+typedef _Outcome = ({String kind, Object? payload});
+
+_Outcome _outcomeOf(Map item, String context) {
+  final hasValue = item.containsKey('value');
+  final hasError = item.containsKey('error');
+  if (hasValue == hasError) {
+    throw StateError('$context must carry exactly one of value or error');
+  }
+  return hasValue
+      ? (kind: 'value', payload: item['value'])
+      : (kind: 'error', payload: item['error']);
+}
+
+/// The HTML list value: the adapter's per-match `getStringList` answer. The
+/// nonempty URL form is a named product refusal, so only its empty result is
+/// measurable through this product path.
+List<String> _htmlListValues(List<String> values, String method) {
+  if (method == 'getStringListUrl') {
+    if (values.isNotEmpty) {
+      throw UnsupportedError(
+        'The nonempty getStringListUrl form is a named product refusal (#90)',
+      );
+    }
+    return const <String>[];
+  }
+  return List<String>.of(values);
+}
+
+/// The JSON list value: the product's own raw matches (`JsonSourceRules.list`)
+/// rendered by its own `contentText`, with a field's `##` applied per item as
+/// `JsonSourcePipeline._resolvedStringList` does. The API is unchanged.
+List<String> _jsonListValues(Object? document, String rule, String method) {
+  final fields = splitRuleFields(rule);
+  final values = JsonSourceRules.list(document, fields.rule);
+  final texts = <String>[
+    for (final item in values)
+      fields.regex?.isNotEmpty == true
+          ? applyRuleReplacement(JsonSourceRules.contentText(item), fields)
+          : JsonSourceRules.contentText(item),
+  ];
+  if (method == 'getStringListUrl') {
+    if (texts.isNotEmpty) {
+      throw UnsupportedError(
+        'The nonempty getStringListUrl form is a named product refusal (#90)',
+      );
+    }
+    return const <String>[];
+  }
+  return texts;
 }
 
 /// One rule-field case through the product's own path: the shared
@@ -239,10 +623,17 @@ Future<String> htmlAdapterRuleFieldValue(
       ),
       extract: (_, nestedRule) => readScalar(value, nestedRule),
       readVariable: (key) async {
-        final stored = await state.entry(sourceRef, sourceRuleVariableKey(sourceRef, key));
+        final stored = await state.entry(
+          sourceRef,
+          sourceRuleVariableKey(sourceRef, key),
+        );
         return stored is String ? stored : '';
       },
-      writeVariable: (key, stored) => state.putEntry(sourceRef, sourceRuleVariableKey(sourceRef, key), stored),
+      writeVariable: (key, stored) => state.putEntry(
+        sourceRef,
+        sourceRuleVariableKey(sourceRef, key),
+        stored,
+      ),
     );
     final field = await RuleField.resolve(valueRule, context, content: value);
     final deferTail =
