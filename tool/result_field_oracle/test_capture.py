@@ -25,23 +25,44 @@ def _shell_path():
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
 
 
+def _child_tool_dirs(shell):
+    """Stable POSIX-first directories used by the formatter child on Windows."""
+    import shutil
+    dirs = [Path(shell).parent]
+    for command in ('od', 'tr'):
+        found = shutil.which(command)
+        if found:
+            candidate = Path(found).parent
+            if candidate not in dirs:
+                dirs.append(candidate)
+    return dirs
+
+
+def _resolved_tool(command, shell):
+    import shutil
+    for directory in _child_tool_dirs(shell):
+        for suffix in ('', '.exe'):
+            candidate = directory / (command + suffix)
+            if candidate.is_file():
+                return candidate
+    found = shutil.which(command)
+    if found:
+        return Path(found)
+    return Path(shell).parent / (command + ('.exe' if os.name == 'nt' else ''))
+
+
 def _run_snapshot_formatter(root, extra_path=None, env_overrides=None):
     shell = _shell_path()
     environment = os.environ.copy()
     if env_overrides:
         environment.update(env_overrides)
     if os.name == 'nt':
-        # Resolve real od/tr from the child search path, not by assuming they
-        # live beside the shell; fall back to the shell directory only when the
-        # process PATH cannot identify both installed tools.
-        import shutil
-        tool_dirs = {
-            str(Path(found).parent)
-            for found in (shutil.which('od'), shutil.which('tr'))
-            if found
-        }
-        prefix = os.pathsep.join(tool_dirs) if len(tool_dirs) == 1 else str(Path(shell).parent)
-        environment['PATH'] = prefix + os.pathsep + environment.get('PATH', '')
+        # POSIX find must precede System32's find.exe; real od/tr are resolved
+        # from the same stable child path, including split locations and the
+        # complete installed shell-directory fallback when only one is visible.
+        environment['PATH'] = os.pathsep.join(
+            str(directory) for directory in _child_tool_dirs(shell)
+        ) + os.pathsep + environment.get('PATH', '')
     if extra_path is not None:
         environment['PATH'] = str(extra_path) + os.pathsep + environment.get('PATH', '')
     return subprocess.run(
@@ -583,9 +604,8 @@ class FormatterFailureTest(unittest.TestCase):
 
     def test_actual_formatter_commands_fail_closed(self):
         shell = _shell_path()
-        import shutil
-        real_od = Path(shutil.which('od') or (Path(shell).parent / 'od'))
-        real_tr = Path(shutil.which('tr') or (Path(shell).parent / 'tr'))
+        real_od = _resolved_tool('od', shell)
+        real_tr = _resolved_tool('tr', shell)
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             root = self._make_root(base)
@@ -638,6 +658,37 @@ class FormatterFailureTest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             records = capture._snapshot_records(completed.stdout, 'repeated-name')
             self.assertIn('files/' + name, records)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows PATH precedence control')
+    def test_windows_posix_tools_keep_precedence_and_complete_fallback(self):
+        import shutil
+        from unittest import mock
+        shell = Path(_shell_path())
+        tool_root = shell.parent
+        dll = tool_root / 'msys-2.0.dll'
+        real_od = _resolved_tool('od', shell)
+        real_tr = _resolved_tool('tr', shell)
+        windows = Path(os.environ['SystemRoot'])
+        system32 = windows / 'System32'
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = self._make_root(base)
+            for phase, tools in [('both', [real_od, real_tr]), ('od', [real_od]), ('tr', [real_tr])]:
+                bin_dir = base / ('bin-' + phase)
+                bin_dir.mkdir()
+                for tool in [*tools, dll]:
+                    shutil.copy2(tool, bin_dir / tool.name)
+                paths = [str(bin_dir), str(system32)]
+                if phase == 'both':
+                    paths.append(str(tool_root))
+                paths.append(str(windows))
+                env = os.environ.copy()
+                env['PATH'] = os.pathsep.join(paths)
+                with mock.patch.dict(os.environ, env, clear=True):
+                    completed = _run_snapshot_formatter(root)
+                self.assertEqual(completed.returncode, 0, (phase, completed.stderr))
+                records = capture._snapshot_records(completed.stdout, phase)
+                self.assertIn('files/one', records, phase)
 
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:

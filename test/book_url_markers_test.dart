@@ -175,8 +175,6 @@ void main() {
       reason: jsonEncode(positive['differences']),
     );
     final damaged = _repeatedUriEnvelope(corpus, product: true);
-    (((damaged['caseRecords'] as List).first as Map)['operations'] as List)[2]
-        as Map;
     ((damaged['stageTrace'] as List)[2] as Map)['path'] =
         'http://127.0.0.1:18733/wrong';
     final report = _compare(golden, damaged, corpus);
@@ -379,9 +377,13 @@ Map<String, dynamic> _twoCaseCorpus() {
   return corpus;
 }
 
-Map<String, dynamic> _twoCaseGolden(Map<String, dynamic> corpus) {
-  final golden = _syntheticEnvelope(corpus);
-  final first = _clone(_record(golden));
+Map<String, dynamic> _twoCaseExpansion(
+  Map<String, dynamic> envelope, {
+  required bool product,
+}) {
+  final first = _clone(
+    product ? _record({'cases': envelope['caseRecords']}) : _record(envelope),
+  );
   final second = _clone(first);
   second['id'] = 'synthetic-other';
   final ops = (second['operations'] as List).cast<Map<String, dynamic>>();
@@ -392,46 +394,29 @@ Map<String, dynamic> _twoCaseGolden(Map<String, dynamic> corpus) {
     op['traceEnd'] = (op['traceEnd'] as int) + 1;
   }
   second['requests'] = [_requestFooter('/s2', responseId: 'r2')];
-  golden['cases'] = [first, second];
-  golden['requests'] = [
+  if (product) {
+    envelope['caseRecords'] = [first, second];
+  } else {
+    envelope['cases'] = [first, second];
+  }
+  envelope['requests'] = [
     _requestFooter('/s'),
     _requestFooter('/s2', responseId: 'r2'),
   ];
-  golden['stageTrace'] = [
+  envelope['stageTrace'] = [
     {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
     {'stage': 'search', 'path': 'http://127.0.0.1:18733/s2'},
   ];
-  first['requests'] = [golden['requests'][0]];
-  second['requests'] = [golden['requests'][1]];
-  return golden;
+  first['requests'] = [envelope['requests'][0]];
+  second['requests'] = [envelope['requests'][1]];
+  return envelope;
 }
 
-Map<String, dynamic> _twoCaseProduct(Map<String, dynamic> corpus) {
-  final product = _syntheticProduct(corpus);
-  final first = _clone(_record({'cases': product['caseRecords']}));
-  final second = _clone(first);
-  second['id'] = 'synthetic-other';
-  final ops = (second['operations'] as List).cast<Map<String, dynamic>>();
-  for (final op in ops) {
-    op['requestStart'] = (op['requestStart'] as int) + 1;
-    op['requestEnd'] = (op['requestEnd'] as int) + 1;
-    op['traceStart'] = (op['traceStart'] as int) + 1;
-    op['traceEnd'] = (op['traceEnd'] as int) + 1;
-  }
-  second['requests'] = [_requestFooter('/s2', responseId: 'r2')];
-  product['caseRecords'] = [first, second];
-  product['requests'] = [
-    _requestFooter('/s'),
-    _requestFooter('/s2', responseId: 'r2'),
-  ];
-  product['stageTrace'] = [
-    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
-    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s2'},
-  ];
-  first['requests'] = [product['requests'][0]];
-  second['requests'] = [product['requests'][1]];
-  return product;
-}
+Map<String, dynamic> _twoCaseGolden(Map<String, dynamic> corpus) =>
+    _twoCaseExpansion(_syntheticEnvelope(corpus), product: false);
+
+Map<String, dynamic> _twoCaseProduct(Map<String, dynamic> corpus) =>
+    _twoCaseExpansion(_syntheticProduct(corpus), product: true);
 
 Map<String, dynamic> _repeatedUriCorpus() {
   final corpus = _syntheticCorpus();
