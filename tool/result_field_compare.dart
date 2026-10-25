@@ -736,6 +736,7 @@ Map<String, Object?> compareBookUrlMarkers({
     goldenRequests,
     goldenTrace,
     'golden',
+    origin,
     nativeSide: true,
   );
   _admitOperationSpans(
@@ -743,6 +744,7 @@ Map<String, Object?> compareBookUrlMarkers({
     productRequests,
     productTrace,
     'liber',
+    origin,
     nativeSide: false,
   );
   _admitCausalRelationships(
@@ -1159,6 +1161,9 @@ List<Map<String, dynamic>> _admitCorpus(
     }
     _requiredString(entry, 'keyword', 'corpus.cases[$id]');
     _map(entry['source'], 'corpus.cases[$id].source');
+    // Materialize the validated ABSENT-only default for all internal users;
+    // the caller's frozen bytes are not rewritten.
+    entry['terminal'] = terminal;
     records.add(entry);
   }
   return records;
@@ -1670,7 +1675,8 @@ void _admitOperationSpans(
   List<Map<String, dynamic>> cases,
   List<Map<String, dynamic>> requests,
   List<Map<String, dynamic>> trace,
-  String side, {
+  String side,
+  String origin, {
   required bool nativeSide,
 }) {
   var requestCursor = 0;
@@ -1758,6 +1764,28 @@ void _admitOperationSpans(
               '$side.$id operation $name owns an unrelated request stage',
             );
           }
+          final request = requests[requestIndex];
+          final path = _requiredString(
+            request,
+            'path',
+            '$side.requests[$requestIndex]',
+          );
+          final raw = _requiredString(
+            request,
+            'rawQuery',
+            '$side.requests[$requestIndex]',
+          );
+          final traceEntry = trace[traceStart + (requestIndex - requestStart)];
+          final traced = _requiredString(
+            traceEntry,
+            'path',
+            '$side.trace[${traceStart + (requestIndex - requestStart)}]',
+          );
+          if (traced != '$origin$path${raw.isEmpty ? '' : '?$raw'}') {
+            throw StateError(
+              '$side.$id operation $name owns an unrelated request target',
+            );
+          }
         }
       }
       for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
@@ -1840,49 +1868,55 @@ void _admitCausalRelationships(
     });
   }
 
-  int? previous = -1;
-  for (var index = 0; index < trace.length; index++) {
-    final entry = trace[index];
-    final path = _requiredString(entry, 'path', '$side.trace[$index]');
-    var matched = -1;
-    for (var requestIndex = 0; requestIndex < requests.length; requestIndex++) {
-      final request = requests[requestIndex];
-      final requestPath = _requiredString(
-        request,
-        'path',
-        '$side.request[$requestIndex]',
-      );
-      final raw = _requiredString(
-        request,
-        'rawQuery',
-        '$side.request[$requestIndex]',
-      );
-      final candidates = <String>{
-        requestPath,
-        requestPath + (raw.isEmpty ? '' : '?$raw'),
-        origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
-      };
-      if (candidates.contains(path)) {
-        matched = requestIndex;
-        break;
+  if (side != 'golden') {
+    int? previous = -1;
+    for (var index = 0; index < trace.length; index++) {
+      final entry = trace[index];
+      final path = _requiredString(entry, 'path', '$side.trace[$index]');
+      var matched = -1;
+      for (
+        var requestIndex = 0;
+        requestIndex < requests.length;
+        requestIndex++
+      ) {
+        final request = requests[requestIndex];
+        final requestPath = _requiredString(
+          request,
+          'path',
+          '$side.request[$requestIndex]',
+        );
+        final raw = _requiredString(
+          request,
+          'rawQuery',
+          '$side.request[$requestIndex]',
+        );
+        final candidates = <String>{
+          requestPath,
+          requestPath + (raw.isEmpty ? '' : '?$raw'),
+          origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
+        };
+        if (candidates.contains(path)) {
+          matched = requestIndex;
+          break;
+        }
       }
-    }
-    if (matched < 0) {
-      differences.add({
-        'row': 'C3',
-        'field': '$side.trace[$index].path',
-        'frozen': 'actual request path',
-        'liber': path,
-      });
-    } else if (matched < previous!) {
-      differences.add({
-        'row': 'C3',
-        'field': '$side.trace[$index].order',
-        'frozen': 'request order',
-        'liber': 'trace order regressed',
-      });
-    } else {
-      previous = matched;
+      if (matched < 0) {
+        differences.add({
+          'row': 'C3',
+          'field': '$side.trace[$index].path',
+          'frozen': 'actual request path',
+          'liber': path,
+        });
+      } else if (matched < previous!) {
+        differences.add({
+          'row': 'C3',
+          'field': '$side.trace[$index].order',
+          'frozen': 'request order',
+          'liber': 'trace order regressed',
+        });
+      } else {
+        previous = matched;
+      }
     }
   }
 

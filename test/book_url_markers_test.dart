@@ -132,6 +132,17 @@ void main() {
     expect(result.requests, isEmpty);
   });
 
+  test('an absent terminal is materialized as four-stage', () {
+    final corpus = _syntheticCorpus();
+    ((corpus['cases'] as List).first as Map).remove('terminal');
+    final report = _compare(
+      _syntheticEnvelope(corpus),
+      _syntheticProduct(corpus),
+      corpus,
+    );
+    expect(report['status'], 'pass');
+  });
+
   test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
     final golden = _syntheticEnvelope(corpus);
@@ -173,6 +184,8 @@ void main() {
           ((changed['requests'] as List).first as Map)['rawQuery'] =
               'different=bytes';
           _request(changed)['rawQuery'] = 'different=bytes';
+          ((changed['stageTrace'] as List).first as Map)['path'] =
+              'http://127.0.0.1:18733/s?different=bytes';
       }
       final report = _compare(changed, product, corpus);
       expect(report['status'], 'fail', reason: entry.key);

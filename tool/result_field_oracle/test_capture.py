@@ -772,6 +772,22 @@ class FinalizeContractTest(unittest.TestCase):
         before = _snapshot_bytes(capture.FROZEN_APP_STORE, ['.', 'cache', 'databases', 'shared_prefs', 'files'])
         return fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before
 
+    def test_offline_finalize_requires_external_inventory(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            apk = self._selected_apk(directory, fixture_path, fixture, manifest, report)
+            payload = json.dumps(report).encode()
+            (output / 'field-oracle.json').write_bytes(payload)
+            cleanup['reportedOwnedPreferences'] = None
+            with self.assertRaises(ValueError):
+                capture.finalize(
+                    output, fixture, manifest, report, before, before,
+                    asset=fixture_path, scratch_cleanup=cleanup,
+                    fixture_bytes=fixture_bytes, report_bytes=payload,
+                    original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
+
     def test_offline_finalize_without_original_apk_refuses(self):
         fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
         with tempfile.TemporaryDirectory() as directory:
@@ -882,6 +898,7 @@ class FinalizeContractTest(unittest.TestCase):
             lambda r: r['corpus'].update(bytes=float(len(fixture_bytes))),
             lambda r: r['stageTrace'][0].update(stage='bookInfo'),
             lambda r: r['requests'][0].update(stage='bookInfo'),
+            lambda r: r['stageTrace'][0].update(path='http://127.0.0.1:18733/wrong'),
             lambda r: r['cases'][0]['operations'][0].update(outcome='error'),
             lambda r: r['cases'][0]['operations'][0].update(requestEnd=999),
             lambda r: r['cases'][0].pop('operations'),

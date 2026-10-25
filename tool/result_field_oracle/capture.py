@@ -106,8 +106,8 @@ def _admit_selected_shape(fixture, label):
         _required_string(case, 'keyword', case_label)
         if not isinstance(case.get('source'), dict):
             raise ValueError(case_label + '.source must be an object')
-        terminal = case.get('terminal', 'four-stage')
-        if terminal not in ('four-stage', 'search-empty'):
+        terminal = case['terminal'] if 'terminal' in case else 'four-stage'
+        if not isinstance(terminal, str) or terminal not in ('four-stage', 'search-empty'):
             raise ValueError(case_label + '.terminal is unsupported')
     return fixture
 
@@ -255,17 +255,26 @@ def _snapshot_records(output, label):
 
 
 def _fields_snapshot_script(root):
-    """Emit length-safe typed records; every path is hex, never raw framing."""
+    """Emit length-safe typed records; every child/pipeline/emission is checked."""
     return (
         'set -e; cd ' + shlex.quote(root) + '; '
-        "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 1; "
-        "p=$(printf \"%s\" \"$f\" | od -An -tx1 | tr -d \"[:space:]\"); "
-        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$p\"; done' sh {} +; "
-        "find . -type d -exec sh -c 'for d do p=$(printf \"%s\" \"$d\" | od -An -tx1 | tr -d \"[:space:]\"); "
-        "printf \"D\t-\t%s\n\" \"$p\"; done' sh {} +; "
-        "find . ! -type f ! -type d -exec sh -c 'for p do q=$(printf \"%s\" \"$p\" | od -An -tx1 | tr -d \"[:space:]\"); "
-        "printf \"U\t-\t%s\n\" \"$q\"; done' sh {} +"
+        "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 20; "
+        "p=$(printf \"%s\" \"$f\" | od -An -tx1) || exit 21; "
+        "p=$(printf \"%s\" \"$p\" | tr -d \"[:space:]\") || exit 22; "
+        "test -n \"$p\" || exit 24; "
+        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$p\" || exit 23; done' sh {} +; "
+        "find . -type d -exec sh -c 'for d do "
+        "p=$(printf \"%s\" \"$d\" | od -An -tx1) || exit 31; "
+        "p=$(printf \"%s\" \"$p\" | tr -d \"[:space:]\") || exit 32; "
+        "test -n \"$p\" || exit 34; "
+        "printf \"D\t-\t%s\n\" \"$p\" || exit 33; done' sh {} +; "
+        "find . ! -type f ! -type d -exec sh -c 'for p do "
+        "q=$(printf \"%s\" \"$p\" | od -An -tx1) || exit 41; "
+        "q=$(printf \"%s\" \"$q\" | tr -d \"[:space:]\") || exit 42; "
+        "test -n \"$q\" || exit 44; "
+        "printf \"U\t-\t%s\n\" \"$q\" || exit 43; done' sh {} +"
     )
+
 
 
 def _measured_pids(result, label):
@@ -601,52 +610,12 @@ def _admit_native_causality(cases, requests, trace, fixture):
     flattened = []
     for case in cases:
         slices = case.get('requests')
-        if not isinstance(slices, list):
-            raise ValueError('case request slice is missing')
+        if not isinstance(slices, list) or not slices:
+            raise ValueError('case request slice is missing or empty')
         flattened.extend(slices)
     if flattened != requests:
         raise ValueError('case request slices do not reconstruct the global sequence')
-    origin = fixture['origin']
-    previous = -1
-    for index, entry in enumerate(trace):
-        path = entry.get('path')
-        if not isinstance(path, str):
-            raise ValueError('trace path must be a string')
-        matched = -1
-        for request_index, request in enumerate(requests):
-            request_path = request.get('path')
-            raw = request.get('rawQuery')
-            if not isinstance(request_path, str) or not isinstance(raw, str):
-                raise ValueError('request path/rawQuery must be strings')
-            candidates = {
-                request_path,
-                request_path + ('' if not raw else '?' + raw),
-                origin + request_path + ('' if not raw else '?' + raw),
-            }
-            if path in candidates:
-                matched = request_index
-                break
-        if matched < 0:
-            raise ValueError('trace path does not match an actual request: ' + path)
-        if matched < previous:
-            raise ValueError('trace order regresses against the request sequence')
-        previous = matched
-    for case in cases:
-        slices = case.get('requests') or []
-        if not slices:
-            raise ValueError('case request slice is empty')
-        first = slices[0]
-        path = first.get('path')
-        raw = first.get('rawQuery')
-        if not isinstance(path, str) or not isinstance(raw, str):
-            raise ValueError('case first request path/rawQuery must be strings')
-        candidates = {
-            path,
-            path + ('' if not raw else '?' + raw),
-            origin + path + ('' if not raw else '?' + raw),
-        }
-        if not any(entry.get('path') in candidates for entry in trace):
-            raise ValueError('case search request is not represented in the trace')
+
 
 def _admit_native_operations(cases, requests, trace, fixture):
     request_cursor = 0
@@ -692,12 +661,20 @@ def _admit_native_operations(cases, requests, trace, fixture):
                     trace[trace_index], 'stage', f'report.stageTrace[{trace_index}]')
                 if actual_stage != expected[index]:
                     raise ValueError(op_label + ' owns an unrelated trace stage')
-            for request_index in range(request_start, request_end):
+            for offset, request_index in enumerate(range(request_start, request_end)):
+                request = requests[request_index]
                 actual_stage = _required_string(
-                    requests[request_index], 'stage',
-                    f'report.requests[{request_index}]')
+                    request, 'stage', f'report.requests[{request_index}]')
                 if actual_stage != expected[index]:
                     raise ValueError(op_label + ' owns an unrelated request stage')
+                trace_entry = trace[trace_start + offset]
+                traced = _required_string(
+                    trace_entry, 'path', f'report.stageTrace[{trace_start + offset}]')
+                path = _required_string(request, 'path', f'report.requests[{request_index}]')
+                raw = _required_string(request, 'rawQuery', f'report.requests[{request_index}]')
+                target = fixture['origin'] + path + ('' if not raw else '?' + raw)
+                if traced != target:
+                    raise ValueError(op_label + ' owns an unrelated request target')
             if previous_request >= 0 and (request_start != previous_request or trace_start != previous_trace):
                 raise ValueError(op_label + ' spans are not contiguous')
             if first_request < 0:
@@ -961,6 +938,8 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     if scratch_cleanup.get('ownerRunId') != cleanup.get('ownerRunId'):
         raise ValueError('the external cleanup attempt differs from the owner')
     receipt_owned = scratch_cleanup.get('reportedOwnedPreferences')
+    if not isinstance(receipt_owned, list) or not receipt_owned:
+        raise ValueError('the external cleanup inventory is missing')
     _admit_owner_inventories(
         _required_list(owner, 'preferences', 'manifest.scratchOwner'),
         owned, receipt_owned)
