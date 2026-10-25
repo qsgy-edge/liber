@@ -270,13 +270,16 @@ def _fields_snapshot_script(root):
 
 def _measured_pids(result, label):
     if result.returncode == 0:
+        if result.stderr.strip():
+            raise ValueError(label + ' returned success with an access error')
         pids = result.stdout.decode(errors='replace').split()
         if not pids:
             raise ValueError(label + ' returned empty output without proof of absence')
         return pids
-    if result.returncode == 1 and not result.stderr.strip():
+    if (result.returncode == 1 and not result.stdout.strip()
+            and not result.stderr.strip()):
         return []
-    raise ValueError(label + ' failed or carried an unreadable access error')
+    raise ValueError(label + ' failed or carried an unreadable/contradictory receipt')
 
 
 def _safe_owner_names(names, label):
@@ -689,6 +692,12 @@ def _admit_native_operations(cases, requests, trace, fixture):
                     trace[trace_index], 'stage', f'report.stageTrace[{trace_index}]')
                 if actual_stage != expected[index]:
                     raise ValueError(op_label + ' owns an unrelated trace stage')
+            for request_index in range(request_start, request_end):
+                actual_stage = _required_string(
+                    requests[request_index], 'stage',
+                    f'report.requests[{request_index}]')
+                if actual_stage != expected[index]:
+                    raise ValueError(op_label + ' owns an unrelated request stage')
             if previous_request >= 0 and (request_start != previous_request or trace_start != previous_trace):
                 raise ValueError(op_label + ' spans are not contiguous')
             if first_request < 0:
@@ -1268,6 +1277,8 @@ def main():
             raise ValueError('report target package differs before cleanup')
         if isolation.get('targetApkSha256') != manifest.get('baselineApkSha256'):
             raise ValueError('report target APK differs before cleanup')
+        if isolation.get('harnessPackage') != PACKAGE:
+            raise ValueError('report harness package differs before cleanup')
         if isolation.get('harnessApkSha256') != manifest.get('harnessApkSha256'):
             raise ValueError('report harness APK differs before cleanup')
         if isolation.get('scratchRoot') != root_path:

@@ -380,6 +380,7 @@ Map<String, dynamic> _requestJson(String path) => {
   'path': path,
   'query': <String, String>{},
   'rawQuery': '',
+  'stage': 'search',
   'receipt': {
     'terminal': 'responded',
     'status': 200,

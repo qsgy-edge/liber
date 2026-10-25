@@ -1742,6 +1742,24 @@ void _admitOperationSpans(
           '$side.$id operation request/trace span count differs',
         );
       }
+      if (nativeSide) {
+        for (
+          var requestIndex = requestStart;
+          requestIndex < requestEnd;
+          requestIndex++
+        ) {
+          final requestStage = _requiredString(
+            requests[requestIndex],
+            'stage',
+            '$side.requests[$requestIndex]',
+          );
+          if (requestStage != name) {
+            throw StateError(
+              '$side.$id operation $name owns an unrelated request stage',
+            );
+          }
+        }
+      }
       for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
         final stage = _requiredString(
           trace[traceIndex],

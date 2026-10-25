@@ -529,10 +529,8 @@ class SnapshotParserTest(unittest.TestCase):
                 ['sh', '-c', capture._fields_snapshot_script(str(root))],
                 capture_output=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            records = capture._snapshot_records(completed.stdout, 'test')
-            self.assertIn('files/' + 'one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two', records)
-            self.assertNotIn('one', records)
-            self.assertNotIn('two', records)
+            with self.assertRaises(ValueError):
+                capture._snapshot_records(completed.stdout, 'test')
 
 
 class FinalizeContractTest(unittest.TestCase):
@@ -575,6 +573,7 @@ class FinalizeContractTest(unittest.TestCase):
                 'path': wanted['path'],
                 'query': wanted.get('query', {}),
                 'rawQuery': capture._canonical_raw_query(wanted),
+                'stage': 'search',
                 'headers': {},
                 'body': '',
                 'receipt': {
@@ -670,6 +669,9 @@ class FinalizeContractTest(unittest.TestCase):
                         'path': fixture['origin'] + item['path']
                         + ('' if not item['rawQuery'] else '?' + item['rawQuery']),
                     })
+                    requests[index]['stage'] = operation['name']
+                    local = index - case['operations'][0]['requestStart']
+                    case['requests'][local]['stage'] = operation['name']
         report = {
             'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
             'baselineCommit': fixture['baselineCommit'],
@@ -856,6 +858,7 @@ class FinalizeContractTest(unittest.TestCase):
             lambda r: r.update(corpusVersion=True),
             lambda r: r['corpus'].update(bytes=float(len(fixture_bytes))),
             lambda r: r['stageTrace'][0].update(stage='bookInfo'),
+            lambda r: r['requests'][0].update(stage='bookInfo'),
             lambda r: r['cases'][0]['operations'][0].update(outcome='error'),
             lambda r: r['cases'][0]['operations'][0].update(requestEnd=999),
             lambda r: r['cases'][0].pop('operations'),

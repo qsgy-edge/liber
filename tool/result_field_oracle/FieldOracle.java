@@ -152,9 +152,10 @@ public final class FieldOracle extends Instrumentation {
             if (entry == null) {
                 throw new IllegalStateException("FIELDS-02 case is not an object");
             }
-            String id = entry.optString("id", "");
-            if (id.isEmpty() || !ids.add(id)) {
-                throw new IllegalStateException("FIELDS-02 case id is empty or repeated");
+            Object idValue = entry.opt("id");
+            if (!(idValue instanceof String) || ((String) idValue).isEmpty()
+                    || !ids.add((String) idValue)) {
+                throw new IllegalStateException("FIELDS-02 case id is empty, repeated or not a string");
             }
             if (!(entry.opt("keyword") instanceof String)) {
                 throw new IllegalStateException("FIELDS-02 case keyword is not a string");
@@ -162,8 +163,10 @@ public final class FieldOracle extends Instrumentation {
             if (!(entry.opt("source") instanceof JSONObject)) {
                 throw new IllegalStateException("FIELDS-02 case source is not an object");
             }
-            String terminal = entry.optString("terminal", "four-stage");
-            if (!"four-stage".equals(terminal) && !"search-empty".equals(terminal)) {
+            Object terminalValue = entry.has("terminal") ? entry.opt("terminal") : "four-stage";
+            if (!(terminalValue instanceof String)
+                    || (!"four-stage".equals(terminalValue)
+                        && !"search-empty".equals(terminalValue))) {
                 throw new IllegalStateException("FIELDS-02 case terminal is unsupported");
             }
         }
@@ -850,6 +853,9 @@ public final class FieldOracle extends Instrumentation {
     private static List<?> unwrapResult(Object result) throws Exception {
         if (result instanceof List) return (List<?>) result;
         if (result == null) throw new IllegalStateException("table of contents returned null");
+        if ("kotlin.Result$Failure".equals(result.getClass().getName())) {
+            throwFailure(result);
+        }
         Object payload = null;
         for (Method candidate : result.getClass().getDeclaredMethods()) {
             if (candidate.getName().startsWith("unbox-impl")
@@ -868,16 +874,21 @@ public final class FieldOracle extends Instrumentation {
         }
         if (payload instanceof List) return (List<?>) payload;
         if (payload != null && payload.getClass().getName().contains("Failure")) {
-            for (java.lang.reflect.Field field : payload.getClass().getDeclaredFields()) {
-                if (!field.getName().equals("exception")) continue;
-                field.setAccessible(true);
-                Object exception = field.get(payload);
-                if (exception instanceof Exception) throw (Exception) exception;
-                if (exception instanceof Throwable) throw new IllegalStateException((Throwable) exception);
-            }
+            throwFailure(payload);
         }
         throw new IllegalStateException("table of contents result is "
             + result.getClass().getName() + " payload=" + payload);
+    }
+
+    private static void throwFailure(Object failure) throws Exception {
+        for (java.lang.reflect.Field field : failure.getClass().getDeclaredFields()) {
+            if (!field.getName().equals("exception")) continue;
+            field.setAccessible(true);
+            Object exception = field.get(failure);
+            if (exception instanceof Exception) throw (Exception) exception;
+            if (exception instanceof Throwable) throw new IllegalStateException((Throwable) exception);
+        }
+        throw new IllegalStateException("Kotlin Result.Failure has no exception payload");
     }
 
     private static String str(Class<?> owner, Object instance, String getter) {
