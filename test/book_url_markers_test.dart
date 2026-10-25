@@ -204,6 +204,8 @@ void main() {
       'truncated stage trace': (g) => g['stageTrace'] = <Object?>[],
       'request assigned to wrong case': (g) =>
           _record(g)['requests'] = [_requestJson('/wrong')],
+      'legal wrong operation trace stage': (g) =>
+          ((g['stageTrace'] as List).first as Map)['stage'] = 'bookInfo',
       'operation outcome error': (g) =>
           (((_record(g)['operations'] as List).first) as Map)['outcome'] =
               'error',

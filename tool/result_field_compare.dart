@@ -731,8 +731,20 @@ Map<String, Object?> compareBookUrlMarkers({
     label: 'liber.stageTrace',
   );
   final origin = _requiredString(corpus, 'origin', 'corpus');
-  _admitOperationSpans(goldenCases, goldenRequests, goldenTrace, 'golden');
-  _admitOperationSpans(productCases, productRequests, productTrace, 'liber');
+  _admitOperationSpans(
+    goldenCases,
+    goldenRequests,
+    goldenTrace,
+    'golden',
+    nativeSide: true,
+  );
+  _admitOperationSpans(
+    productCases,
+    productRequests,
+    productTrace,
+    'liber',
+    nativeSide: false,
+  );
   _admitCausalRelationships(
     requestDifferences,
     'golden',
@@ -1064,27 +1076,31 @@ void _admitExternalArtifact(
   final ownerPrefs = owner['preferences'];
   final cleanupPrefs = cleanup['reportedOwnedPreferences'];
   final nativePrefs = nativeCleanup['ownedPreferences'];
+  bool safePrefs(List<dynamic> values) =>
+      values.isNotEmpty &&
+      values.every(
+        (value) =>
+            value is String &&
+            RegExp(
+              r'^liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.-]*$',
+            ).hasMatch(value) &&
+            !value.contains('/'),
+      );
   if (ownerPrefs is! List ||
       cleanupPrefs is! List ||
       nativePrefs is! List ||
-      ownerPrefs.any(
-        (value) =>
-            value is! String || !value.startsWith(_ownedPreferencePrefix),
-      ) ||
-      cleanupPrefs.any(
-        (value) =>
-            value is! String || !value.startsWith(_ownedPreferencePrefix),
-      ) ||
-      nativePrefs.any(
-        (value) =>
-            value is! String || !value.startsWith(_ownedPreferencePrefix),
-      ) ||
+      !safePrefs(ownerPrefs) ||
+      !safePrefs(cleanupPrefs) ||
+      !safePrefs(nativePrefs) ||
       ownerPrefs.length != nativePrefs.length ||
       cleanupPrefs.length != nativePrefs.length ||
       ownerPrefs.toSet().length != ownerPrefs.length ||
       cleanupPrefs.toSet().length != cleanupPrefs.length ||
+      nativePrefs.toSet().length != nativePrefs.length ||
       !ownerPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
-      !cleanupPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
+      !nativePrefs.toSet().containsAll(ownerPrefs.cast<Object?>()) ||
+      !cleanupPrefs.toSet().containsAll(ownerPrefs.cast<Object?>()) ||
+      !ownerPrefs.toSet().containsAll(cleanupPrefs.cast<Object?>()) ||
       !ownerPrefs.contains('${_ownedPreferencePrefix}probe') ||
       !cleanupPrefs.contains('${_ownedPreferencePrefix}probe') ||
       !nativePrefs.contains('${_ownedPreferencePrefix}probe')) {
@@ -1654,8 +1670,9 @@ void _admitOperationSpans(
   List<Map<String, dynamic>> cases,
   List<Map<String, dynamic>> requests,
   List<Map<String, dynamic>> trace,
-  String side,
-) {
+  String side, {
+  required bool nativeSide,
+}) {
   var requestCursor = 0;
   var traceCursor = 0;
   for (final record in cases) {
@@ -1719,6 +1736,23 @@ void _admitOperationSpans(
           traceEnd < traceStart ||
           traceEnd > trace.length) {
         throw StateError('$side.$id operation span is outside its producer');
+      }
+      if (nativeSide && requestEnd - requestStart != traceEnd - traceStart) {
+        throw StateError(
+          '$side.$id operation request/trace span count differs',
+        );
+      }
+      for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
+        final stage = _requiredString(
+          trace[traceIndex],
+          'stage',
+          '$side.trace[$traceIndex]',
+        );
+        if (stage != name) {
+          throw StateError(
+            '$side.$id operation $name owns an unrelated trace stage',
+          );
+        }
       }
       if (previousRequest >= 0 &&
           (requestStart != previousRequest || traceStart != previousTrace)) {

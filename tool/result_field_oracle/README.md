@@ -86,13 +86,18 @@ check runs again after packaging/signing and verifies the embedded corpus and
 provenance bytes. The Dart comparator also counts raw ZIP central-directory
 entries before using the archive decoder.
 
-Selected capture adds a storage-only Application over the existing
+Selection validates the supported family, strict integer version, case array,
+unique nonempty IDs, keyword/source/terminal types before installation and
+native scratch Application creation. Selected capture adds a storage-only Application over the existing
 `StateSessionOracle.ScratchContext`. It refuses a preexisting scratch root,
 field preference inventory, harness package or target process; it never
 pre-cleans or wildcard-removes. The report and owner are read while the owned
-process is alive, then the complete report/owner/artifact/family/version,
-preference inventory, attempt id and actual `seedPid` are checked before any
-stop. Only the exact verified paths plus the owned scratch root are removed with
+process is alive, then routing/package/artifact/family/version, typed positive
+`seedPid`, nonempty attempt and equal safe preference inventories containing the
+probe are checked before any stop. A failed case after a genuinely bound/fenced
+scratch still publishes its owner facts so cleanup can remove that known run;
+golden promotion still refuses it. PID queries distinguish proven empty absence,
+one matching owned PID and failed/ambiguous transport. Only the exact verified paths plus the owned scratch root are removed with
 quoted single remote scripts; absence is verified before the harness uninstall.
 A different, unreadable or ambiguous process/owner and every failed command
 leave state in place. The preference caller passes the unscoped helper suffix
@@ -100,16 +105,22 @@ leave state in place. The preference caller passes the unscoped helper suffix
 
 FIELDS-02 records actual per-case operation facts (`search`, `bookInfo`,
 `tableOfContents`, `content`; empty search records only `search`) with the
-completed outcome and request/trace spans around each awaited call. Both
+completed/error outcome and request/trace spans around each awaited call. Native
+TOC semantic `Result` decoding completes inside the observed operation; a
+returned failure is an error operation, not a completed one. Trace stages inside
+each operation span must agree with that operation; cached/zero-request and
+nested product diagnostics remain valid. Both
 consumers require the declared terminal, contiguous case/global request and
 trace ranges, typed indices and legal producer stage labels; cached zero-request
 operations and real redirects/nested diagnostics are admitted. The native
 report's `cases` and the product report's `caseRecords` remain separate shapes.
 
 FIELDS-02 snapshots the complete target data directory as typed `F`/`D`/`U`
-records: every enumeration/hash/format failure propagates, digests and canonical
-paths are unique, unsupported nodes are refused, and only the verified owned
-removal may change the private tree. The artifact/provenance admission checks
+records whose paths are UTF-8 hex-encoded, so LF/TAB-bearing names cannot forge
+records; the parser decodes the hex framing, requires the producer's `./` root,
+and refuses noncanonical/control-bearing paths. Every enumeration/hash/format
+failure propagates, digests and paths are unique, unsupported nodes are refused,
+and only the verified owned removal may change the private tree. The artifact/provenance admission checks
 every integer carrier and preservation fact, the approved harness package, and
 the exact duplicate-free preference inventory containing the probe.
 

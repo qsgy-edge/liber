@@ -11,6 +11,15 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capture  # noqa: E402
 
+def _snapshot_line(kind, path, digest='-'):
+    return kind + chr(9) + digest + chr(9) + path.encode().hex() + chr(10)
+
+
+def _snapshot_bytes(files, dirs):
+    return (''.join(_snapshot_line('F', p if p == '.' else './' + p, 'a' * 64) for p in files)
+            + ''.join(_snapshot_line('D', p if p == '.' else './' + p) for p in dirs)).encode()
+
+
 
 class CaptureBoundaryTest(unittest.TestCase):
     def test_remote_script_is_one_quoted_argument(self):
@@ -173,7 +182,8 @@ class DriverBoundaryTest(unittest.TestCase):
     def _run(self, root_state='ABSENT', install_code=0, stop_code=0,
              uninstall_code=0, partial=False, owner_mutator=None,
              snapshot_code=0, process_pid=None, installation_probe=False,
-             instrument_code=0):
+             instrument_code=0, process_pid_preflight=None, process_pid_owned=None,
+             process_pid_post=None, pid_stderr=False, snapshot_fail_on=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
@@ -188,6 +198,7 @@ class DriverBoundaryTest(unittest.TestCase):
         report_bytes = b''
         owner_bytes = b''
         actual_sha = capture.sha256
+        pid_calls = {'count': 0}
 
         def fake_sha(path):
             if Path(path).name == 'frozen.apk':
@@ -197,7 +208,7 @@ class DriverBoundaryTest(unittest.TestCase):
         def fake_run(args, **kwargs):
             commands.append(list(map(str, args)))
             text = ' '.join(map(str, args))
-            stdout, code = b'', 0
+            stdout, code, stderr = b'', 0, b''
             if args[0] == 'git':
                 if 'rev-parse' in args:
                     stdout = (fixture_data['baselineCommit'] + '\n').encode()
@@ -219,10 +230,19 @@ class DriverBoundaryTest(unittest.TestCase):
                     if partial and calls['install_attempted']:
                         stdout = b'package:/synthetic/partial.apk\n'
                 elif 'pidof' in args:
-                    if process_pid is None:
-                        code = 1
+                    pid_calls['count'] += 1
+                    if pid_calls['count'] == 1:
+                        chosen = process_pid_preflight if process_pid_preflight is not None else process_pid
+                    elif pid_calls['count'] == 2:
+                        chosen = process_pid_owned if process_pid_owned is not None else process_pid
                     else:
-                        stdout = (str(process_pid) + '\n').encode()
+                        chosen = process_pid_post if process_pid_post is not None else process_pid
+                    if chosen is None:
+                        code = 1
+                        if pid_stderr:
+                            stderr = b'query failed'
+                    else:
+                        stdout = (str(chosen) + chr(10)).encode()
                 elif args[-1:] == ['pwd']:
                     stdout = (target_root + '\n').encode()
                 elif 'install' in args:
@@ -248,15 +268,17 @@ class DriverBoundaryTest(unittest.TestCase):
                 elif 'run-as' in args:
                     script = args[-1]
                     if 'find . -type f' in script:
-                        code = snapshot_code
-                        stdout = before_lines if snapshot_code == 0 else b''
+                        calls['snapshot_calls'] = calls.get('snapshot_calls', 0) + 1
+                        fail = snapshot_code != 0 or snapshot_fail_on == calls['snapshot_calls']
+                        code = 1 if fail else 0
+                        stdout = b'' if fail else before_lines
                     elif 'probe.xml' in script:
                         stdout = (b'PRESENT' + chr(10)) if installation_probe else b''
                     elif 'scratch-root-check' in text or 'if [ -e ' in script:
                         stdout = (root_state + '\n').encode()
                     elif 'find ' in script:
                         stdout = b'' if ' -name ' in script else before_lines
-            return subprocess.CompletedProcess(args, code, stdout, b'')
+            return subprocess.CompletedProcess(args, code, stdout, stderr)
 
         with tempfile.TemporaryDirectory() as directory:
             # Build the actual original APK and compose the same evidence the
@@ -395,6 +417,30 @@ class DriverBoundaryTest(unittest.TestCase):
                              for cmd in commands))
         self.assertFalse(any('force-stop' in cmd for cmd in commands))
 
+    def test_wrong_post_owner_pid_preserves_before_stop(self):
+        exit_code, commands, calls = self._run(process_pid_owned=999999)
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(calls['finalize'], 0)
+        self.assertFalse(any('force-stop' in cmd for cmd in commands))
+        self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
+                             for cmd in commands))
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+
+    def test_failed_post_stop_pid_blocks_removal_and_promotion(self):
+        exit_code, commands, calls = self._run(process_pid_post=999999)
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(calls['finalize'], 0)
+        self.assertTrue(any('force-stop' in cmd for cmd in commands))
+        self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
+                             for cmd in commands))
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+
+    def test_second_snapshot_failure_does_not_promote(self):
+        exit_code, commands, calls = self._run(snapshot_fail_on=2)
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(calls['finalize'], 0)
+        self.assertFalse((calls.get('golden', False)))
+
     def test_preexisting_installation_probe_is_preserved_without_install(self):
         exit_code, commands, calls = self._run(installation_probe=True)
         self.assertEqual(exit_code, 1)
@@ -442,17 +488,51 @@ class DriverBoundaryTest(unittest.TestCase):
 
 class SnapshotParserTest(unittest.TestCase):
     def test_typed_parser_refuses_ambiguous_or_unsupported_nodes(self):
-        tab, newline = chr(9), chr(10)
         for payload in [
-            ('F' + tab + 'not-a-digest' + tab + 'file' + newline).encode(),
-            ('F' + tab + 'a' * 64 + tab + 'file' + newline +
-             'F' + tab + 'a' * 64 + tab + 'file' + newline).encode(),
-            ('U' + tab + '-' + tab + 'link' + newline).encode(),
-            ('F' + tab + 'a' * 64 + tab + '../escape' + newline).encode(),
-            ('plain sha output' + newline).encode(),
+            _snapshot_line('F', 'file', 'not-a-digest').encode(),
+            (_snapshot_line('F', 'file') + _snapshot_line('F', 'file')).encode(),
+            _snapshot_line('U', 'link').encode(),
+            _snapshot_line('F', './../escape').encode(),
+            _snapshot_line('D', './one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two').encode(),
+            _snapshot_line('F', './a/./b').encode(),
+            ('F' + chr(9) + 'a' * 64 + chr(9) + 'not-hex' + chr(10)).encode(),
         ]:
             with self.assertRaises(ValueError):
                 capture._snapshot_records(payload, 'test')
+
+    def test_snapshot_script_and_parser_round_trip_ordinary_names(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ['cache', 'files', 'databases', 'shared_prefs']:
+                (root / name).mkdir()
+            (root / 'databases' / 'legado.db').write_bytes(b'x')
+            completed = subprocess.run(
+                ['sh', '-c', capture._fields_snapshot_script(str(root))],
+                capture_output=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            records = capture._snapshot_records(completed.stdout, 'test')
+            self.assertIn('databases/legado.db', records)
+            self.assertIn('.', records)
+
+    @unittest.skipIf(__import__('os').name == 'nt', 'Windows cannot create LF fixture names')
+    def test_snapshot_script_and_parser_round_trip_record_breaking_names(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ['.', 'cache', 'files', 'databases', 'shared_prefs']:
+                (root if name == '.' else root / name).mkdir(exist_ok=True)
+            (root / 'databases' / 'legado.db').write_bytes(b'x')
+            weird = root / 'files' / ('one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two')
+            weird.write_bytes(b'y')
+            completed = subprocess.run(
+                ['sh', '-c', capture._fields_snapshot_script(str(root))],
+                capture_output=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            records = capture._snapshot_records(completed.stdout, 'test')
+            self.assertIn('files/' + 'one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two', records)
+            self.assertNotIn('one', records)
+            self.assertNotIn('two', records)
 
 
 class FinalizeContractTest(unittest.TestCase):
@@ -580,11 +660,16 @@ class FinalizeContractTest(unittest.TestCase):
                 })
             cases.append(record)
         requests = [request(index) for index in range(len(fixture['expectedRequests']))]
-        trace = [
-            {'stage': 'search', 'path': fixture['origin'] + item['path']
-             + ('' if not item['rawQuery'] else '?' + item['rawQuery'])}
-            for item in requests
-        ]
+        trace = []
+        for case in cases:
+            for operation in case['operations']:
+                for index in range(operation['requestStart'], operation['requestEnd']):
+                    item = requests[index]
+                    trace.append({
+                        'stage': operation['name'],
+                        'path': fixture['origin'] + item['path']
+                        + ('' if not item['rawQuery'] else '?' + item['rawQuery']),
+                    })
         report = {
             'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
             'baselineCommit': fixture['baselineCommit'],
@@ -659,11 +744,7 @@ class FinalizeContractTest(unittest.TestCase):
             'ownerRunId': 'run',
             'reportedOwnedPreferences': ['liber_fields_02_probe'],
         }
-        before = (''.join(
-            'F\t' + 'a' * 64 + '\t' + path + '\n'
-            for path in capture.FROZEN_APP_STORE)
-            + ''.join('D\t-\t' + path + '\n'
-                      for path in ['.', 'cache', 'databases', 'shared_prefs', 'files'])).encode()
+        before = _snapshot_bytes(capture.FROZEN_APP_STORE, ['.', 'cache', 'databases', 'shared_prefs', 'files'])
         return fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before
 
     def test_offline_finalize_without_original_apk_refuses(self):
@@ -736,6 +817,21 @@ class FinalizeContractTest(unittest.TestCase):
             self.assertEqual((output / 'golden.json').read_bytes(), payload)
             self.assertEqual(manifest['status'], 'observed')
 
+    def test_public_finalize_refuses_unknown_family(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
+        unknown = dict(fixture)
+        unknown['fixtureId'] = 'UNKNOWN-FAMILY'
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            payload = json.dumps(report).encode()
+            (output / 'field-oracle.json').write_bytes(payload)
+            with self.assertRaises(ValueError):
+                capture.finalize(
+                    output, unknown, manifest, report, before, before,
+                    asset=fixture_path, scratch_cleanup=cleanup,
+                    fixture_bytes=fixture_bytes, report_bytes=payload,
+                    original_apk=fixture_path)
+
     def test_incomplete_private_snapshot_refuses_promotion(self):
         fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
         incomplete = ''.join(
@@ -759,6 +855,7 @@ class FinalizeContractTest(unittest.TestCase):
         for mutate in [
             lambda r: r.update(corpusVersion=True),
             lambda r: r['corpus'].update(bytes=float(len(fixture_bytes))),
+            lambda r: r['stageTrace'][0].update(stage='bookInfo'),
             lambda r: r['cases'][0]['operations'][0].update(outcome='error'),
             lambda r: r['cases'][0]['operations'][0].update(requestEnd=999),
             lambda r: r['cases'][0].pop('operations'),

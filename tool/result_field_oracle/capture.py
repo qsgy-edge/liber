@@ -84,6 +84,34 @@ def harness_source_hashes():
     return {name: sha256(_source_path(name)) for name in HARNESS_SOURCE_KEYS}
 
 
+def _admit_selected_shape(fixture, label):
+    if not isinstance(fixture, dict):
+        raise ValueError(label + ' must be an object')
+    if fixture.get('fixtureId') != FIELDS_02:
+        raise ValueError(label + ' is not FIELDS-02')
+    if _require_int(fixture.get('corpusVersion'), label + '.corpusVersion') != 1:
+        raise ValueError(label + '.corpusVersion must be integer 1')
+    cases = fixture.get('cases')
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(label + '.cases must be a nonempty list')
+    ids = set()
+    for index, case in enumerate(cases):
+        case_label = f'{label}.cases[{index}]'
+        if not isinstance(case, dict):
+            raise ValueError(case_label + ' must be an object')
+        case_id = _required_string(case, 'id', case_label)
+        if not case_id or case_id in ids:
+            raise ValueError(case_label + '.id must be nonempty and unique')
+        ids.add(case_id)
+        _required_string(case, 'keyword', case_label)
+        if not isinstance(case.get('source'), dict):
+            raise ValueError(case_label + '.source must be an object')
+        terminal = case.get('terminal', 'four-stage')
+        if terminal not in ('four-stage', 'search-empty'):
+            raise ValueError(case_label + '.terminal is unsupported')
+    return fixture
+
+
 def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     """Read the actual selected APK zip and bind its corpus/provenance bytes."""
     apk_bytes = Path(apk_path).read_bytes()
@@ -106,6 +134,8 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     if asset_bytes != fixture_bytes:
         raise ValueError('selected APK embedded corpus differs from the selected fixture')
     parsed_fixture = json.loads(asset_bytes.decode('utf-8'))
+    _admit_selected_shape(parsed_fixture, 'embedded fixture')
+    _admit_selected_shape(fixture, 'selected fixture')
     if parsed_fixture != fixture:
         raise ValueError('selected APK parsed corpus differs from the selected fixture')
     if sha256_bytes(asset_bytes) != fixture_sha or sha256_bytes(lf_bytes(asset_bytes)) != fixture_sha_lf:
@@ -181,7 +211,7 @@ def _hash_lines(output):
 
 
 def _snapshot_records(output, label):
-    """Parse the typed private-node inventory; every node and digest is explicit."""
+    """Decode the producer's hex-framed typed private inventory."""
     if not isinstance(output, (bytes, bytearray)):
         raise ValueError(label + ' private inventory must be bytes')
     records = {}
@@ -189,16 +219,26 @@ def _snapshot_records(output, label):
         parts = line.split(chr(9), 2)
         if len(parts) != 3:
             raise ValueError(f'{label} private inventory line {line_number} is not typed')
-        kind, digest, raw_path = parts
+        kind, digest, encoded = parts
         if kind not in ('F', 'D', 'U'):
             raise ValueError(f'{label} private inventory line {line_number} has unknown kind')
-        if not raw_path or chr(0) in raw_path or chr(10) in raw_path or chr(13) in raw_path:
-            raise ValueError(f'{label} private inventory path is malformed')
-        path = raw_path[2:] if raw_path.startswith('./') else raw_path
-        if path == '':
+        if not re.fullmatch(r'(?:[0-9a-fA-F]{2})+', encoded):
+            raise ValueError(f'{label} private inventory path {line_number} is not hex-framed')
+        try:
+            raw_path = bytes.fromhex(encoded).decode('utf-8')
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ValueError(f'{label} private inventory path {line_number} is not UTF-8 hex') from error
+        if (raw_path == '.'):
             path = '.'
-        if path != '.' and (path.startswith('/') or '..' in path.split('/')):
-            raise ValueError(f'{label} private inventory path escapes its root')
+        elif raw_path.startswith('./'):
+            path = raw_path[2:]
+        else:
+            raise ValueError(f'{label} private inventory path is not rooted at ./')
+        if not path or chr(0) in path or chr(9) in path or chr(10) in path or chr(13) in path:
+            raise ValueError(f'{label} private inventory path is malformed')
+        components = path.split('/') if path != '.' else []
+        if any(component in ('', '.', '..') for component in components):
+            raise ValueError(f'{label} private inventory path is not canonical')
         if path in records:
             raise ValueError(f'{label} private inventory repeats {path}')
         if kind == 'U':
@@ -214,6 +254,58 @@ def _snapshot_records(output, label):
     return records
 
 
+def _fields_snapshot_script(root):
+    """Emit length-safe typed records; every path is hex, never raw framing."""
+    return (
+        'set -e; cd ' + shlex.quote(root) + '; '
+        "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 1; "
+        "p=$(printf \"%s\" \"$f\" | od -An -tx1 | tr -d \"[:space:]\"); "
+        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$p\"; done' sh {} +; "
+        "find . -type d -exec sh -c 'for d do p=$(printf \"%s\" \"$d\" | od -An -tx1 | tr -d \"[:space:]\"); "
+        "printf \"D\t-\t%s\n\" \"$p\"; done' sh {} +; "
+        "find . ! -type f ! -type d -exec sh -c 'for p do q=$(printf \"%s\" \"$p\" | od -An -tx1 | tr -d \"[:space:]\"); "
+        "printf \"U\t-\t%s\n\" \"$q\"; done' sh {} +"
+    )
+
+
+def _measured_pids(result, label):
+    if result.returncode == 0:
+        pids = result.stdout.decode(errors='replace').split()
+        if not pids:
+            raise ValueError(label + ' returned empty output without proof of absence')
+        return pids
+    if result.returncode == 1 and not result.stderr.strip():
+        return []
+    raise ValueError(label + ' failed or carried an unreadable access error')
+
+
+def _safe_owner_names(names, label):
+    if not isinstance(names, list) or not names:
+        raise ValueError(label + ' must be a nonempty list')
+    if len(set(names)) != len(names):
+        raise ValueError(label + ' contains duplicates')
+    if OWNED_PREFERENCE_PREFIX + 'probe' not in names:
+        raise ValueError(label + ' omits the registered probe')
+    for name in names:
+        if (not isinstance(name, str)
+                or not re.fullmatch(r'liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.-]*', name)
+                or '/' in name or name in ('liber_fields_02_.', 'liber_fields_02_..')):
+            raise ValueError(label + ' contains an unsafe preference name')
+    return list(names)
+
+
+def _admit_owner_inventories(owner_prefs, reported, receipt_prefs=None):
+    owner = _safe_owner_names(owner_prefs, 'owner.preferences')
+    report = _safe_owner_names(reported, 'cleanup.ownedPreferences')
+    if owner != report:
+        raise ValueError('the owner and report preference inventories differ')
+    if receipt_prefs is not None:
+        receipt = _safe_owner_names(receipt_prefs, 'scratchCleanup.reportedOwnedPreferences')
+        if owner != receipt:
+            raise ValueError('the external cleanup inventory differs from the owner')
+    return owner
+
+
 def finalize(output, fixture, manifest, report, before, after, asset=None,
              scratch_cleanup=None, fixture_bytes=None, report_bytes=None,
              original_apk=None):
@@ -224,7 +316,10 @@ def finalize(output, fixture, manifest, report, before, after, asset=None,
     capture whose device step was interrupted can be finalized from the raw
     report the device actually produced instead of re-running the instrument.
     """
+    if fixture.get('fixtureId') not in (FIELDS_01, FIELDS_02):
+        raise ValueError('unsupported FIELDS fixture family')
     if fixture.get('fixtureId') == FIELDS_02:
+        _admit_selected_shape(fixture, 'fixture')
         return _finalize_fields_02(output, fixture, manifest, report, before, after,
                                    asset=asset, scratch_cleanup=scratch_cleanup,
                                    fixture_bytes=fixture_bytes,
@@ -587,6 +682,13 @@ def _admit_native_operations(cases, requests, trace, fixture):
                 raise ValueError(op_label + ' request span is outside the request sequence')
             if trace_start < 0 or trace_end < trace_start or trace_end > len(trace):
                 raise ValueError(op_label + ' trace span is outside the stage trace')
+            if request_end - request_start != trace_end - trace_start:
+                raise ValueError(op_label + ' request/trace span count differs')
+            for trace_index in range(trace_start, trace_end):
+                actual_stage = _required_string(
+                    trace[trace_index], 'stage', f'report.stageTrace[{trace_index}]')
+                if actual_stage != expected[index]:
+                    raise ValueError(op_label + ' owns an unrelated trace stage')
             if previous_request >= 0 and (request_start != previous_request or trace_start != previous_trace):
                 raise ValueError(op_label + ' spans are not contiguous')
             if first_request < 0:
@@ -793,6 +895,10 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     root_path = target_root + '/cache/liber-fields-02'
     report_path = root_path + '/field-oracle.json'
     cleanup = _required_map(report, 'cleanup', 'report')
+    if cleanup.get('fixtureId') != FIELDS_02:
+        raise ValueError('the report cleanup family differs')
+    if _require_int(cleanup.get('corpusVersion'), 'report.cleanup.corpusVersion') != 1:
+        raise ValueError('the report cleanup corpus version differs')
     for field in ['serverClosed', 'ownerComplete', 'rootRetained', 'preferencesFenced']:
         if _required(cleanup, field, 'report.cleanup') is not True:
             raise ValueError('report.cleanup.' + field + ' must be true')
@@ -826,11 +932,12 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the scratch owner corpus binding differs')
     if owner.get('complete') is not True:
         raise ValueError('the scratch owner was not marked complete')
-    if owner.get('seedRunId') != owner_run_id:
+    if owner.get('seedRunId') != owner_run_id or not owner_run_id:
         raise ValueError('the scratch owner does not bind this attempt')
-    owner_prefs = _required_list(owner, 'preferences', 'manifest.scratchOwner')
-    if sorted(owner_prefs) != sorted(owned):
-        raise ValueError('the owner and report preference inventory differ')
+    if _require_int(owner.get('seedPid'), 'manifest.scratchOwner.seedPid') <= 0:
+        raise ValueError('the scratch owner seed PID must be positive')
+    _admit_owner_inventories(
+        _required_list(owner, 'preferences', 'manifest.scratchOwner'), owned)
 
     if not isinstance(scratch_cleanup, dict):
         raise ValueError('the external scratch cleanup receipt is missing')
@@ -845,8 +952,9 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     if scratch_cleanup.get('ownerRunId') != cleanup.get('ownerRunId'):
         raise ValueError('the external cleanup attempt differs from the owner')
     receipt_owned = scratch_cleanup.get('reportedOwnedPreferences')
-    if not isinstance(receipt_owned, list) or sorted(receipt_owned) != sorted(owned):
-        raise ValueError('the external cleanup inventory differs from the owner')
+    _admit_owner_inventories(
+        _required_list(owner, 'preferences', 'manifest.scratchOwner'),
+        owned, receipt_owned)
 
     frozen = _required_map(manifest, 'frozenSources', 'manifest')
     for source in fixture['frozenSources']:
@@ -1064,7 +1172,7 @@ def main():
     def preflight_fields_02():
         """Refuse any preexisting state; never delete or replace it."""
         process = adb('target-process', 'shell', 'pidof', TARGET_PACKAGE, checked=False)
-        if process.returncode not in (0, 1) or process.stdout.strip():
+        if _measured_pids(process, 'preflight target pid'):
             raise ValueError('a target process already exists; refusing an unowned run')
         root_result = adb('target-private-root', 'shell', 'run-as', TARGET_PACKAGE,
                           'pwd', checked=False)
@@ -1111,17 +1219,17 @@ def main():
         seed_pid = _require_int(_required(owner, 'seedPid', 'owner'), 'owner.seedPid')
         if seed_pid <= 0:
             raise ValueError('the owner seed PID is not a live process id')
-        present = adb('owned-pid', 'shell', 'pidof', TARGET_PACKAGE, checked=False)
-        if present.returncode not in (0, 1):
-            raise ValueError('cannot prove the owned target PID before stop')
-        pids = present.stdout.decode(errors='replace').split()
+        pids = _measured_pids(
+            adb('owned-pid', 'shell', 'pidof', TARGET_PACKAGE, checked=False),
+            'owned target pid')
         if pids and pids != [str(seed_pid)]:
             raise ValueError('the target process does not belong to the owner seed')
         stopped = adb('poststop', 'shell', 'am', 'force-stop', TARGET_PACKAGE, checked=False)
         if stopped.returncode != 0:
             raise ValueError('the owned target process could not be stopped')
-        check = adb('poststop-check', 'shell', 'pidof', TARGET_PACKAGE, checked=False)
-        if check.returncode not in (0, 1) or check.stdout.strip():
+        if _measured_pids(
+                adb('poststop-check', 'shell', 'pidof', TARGET_PACKAGE, checked=False),
+                'post-stop target pid'):
             raise ValueError('the target process is still present after the owned stop')
 
     def cleanup_fields_02(report, owner, manifest):
@@ -1141,6 +1249,13 @@ def main():
         pref_dir = target_root + '/shared_prefs'
         isolation = report.get('isolation') or {}
         artifact = manifest.get('artifact') or {}
+        for field in ['bound', 'filesRouted', 'databaseRouted']:
+            if _required_bool(isolation, field, 'report.isolation') is not True:
+                raise ValueError('report.isolation.' + field + ' must be true before cleanup')
+        if _required_bool(isolation, 'deviceProtected', 'report.isolation') is not False:
+            raise ValueError('device-protected storage differs before cleanup')
+        if _required_bool(isolation, 'rootExistedAtStart', 'report.isolation') is not False:
+            raise ValueError('preexisting scratch root differs before cleanup')
         if report.get('fixtureId') != FIELDS_02:
             raise ValueError('report family differs before cleanup')
         if _require_int(report.get('corpusVersion'), 'report.corpusVersion') != 1:
@@ -1223,23 +1338,10 @@ def main():
             raise ValueError('the harness did not publish an owner attempt id')
         if owner.get('seedRunId') != owner_run_id or owner.get('complete') is not True:
             raise ValueError('the scratch owner does not bind this attempt')
-        _require_int(owner.get('seedPid'), 'owner.seedPid')
-        owner_prefs = owner.get('preferences')
-        reported = cleanup.get('ownedPreferences')
-        if not isinstance(owner_prefs, list) or not isinstance(reported, list):
-            raise ValueError('the scratch preference inventory is missing')
-        if sorted(owner_prefs) != sorted(reported):
-            raise ValueError('the owner and report preference inventories differ')
-        if not owner_prefs:
-            raise ValueError('the scratch owner has no owned preference namespace')
-        for name in owner_prefs:
-            if not isinstance(name, str) or not re.fullmatch(
-                    r'liber_fields_02_[A-Za-z0-9_.-]+', name):
-                raise ValueError('unexpected owned preference name: ' + str(name))
-        if len(set(owner_prefs)) != len(owner_prefs):
-            raise ValueError('the scratch owner repeats a preference name')
-        if OWNED_PREFERENCE_PREFIX + 'probe' not in owner_prefs:
-            raise ValueError('the scratch owner does not contain the exact probe')
+        if _require_int(owner.get('seedPid'), 'owner.seedPid') <= 0:
+            raise ValueError('the owner seed PID must be positive')
+        owner_prefs = _admit_owner_inventories(
+            owner.get('preferences'), cleanup.get('ownedPreferences'))
 
         stop_owned_target(owner)
         for name in owner_prefs:
@@ -1338,13 +1440,7 @@ def main():
             manifest['targetPrivateRoot'] = target_private_root
         # Only hashes/paths leave the device; no private content is copied.
         if fields_02:
-            snapshot_script = (
-                'set -e; cd ' + shlex.quote(target_private_root) + '; '
-                "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 1; "
-                "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$f\"; done' sh {} +; "
-                "find . -type d -exec sh -c 'for d do printf \"D\t-\t%s\n\" \"$d\"; done' sh {} +; "
-                "find . ! -type f ! -type d -exec sh -c 'for p do printf \"U\t-\t%s\n\" \"$p\"; done' sh {} +"
-            )
+            snapshot_script = _fields_snapshot_script(target_private_root)
             before = remote_script('private-before', snapshot_script)
         else:
             snapshot = "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"

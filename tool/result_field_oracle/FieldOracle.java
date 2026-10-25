@@ -125,6 +125,7 @@ public final class FieldOracle extends Instrumentation {
             if (!(version instanceof Integer) || ((Integer) version) != 1) {
                 throw new IllegalStateException("unsupported FIELDS-02 corpusVersion");
             }
+            validateFields02Selection(selection);
             newFamily = true;
             scratch = new StateSessionOracle.ScratchContext(
                 context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
@@ -138,6 +139,34 @@ public final class FieldOracle extends Instrumentation {
             return super.newApplication(cl, name, context);
         }
         throw new IllegalStateException("unsupported FIELDS fixtureId: " + fixtureId);
+    }
+
+    private static void validateFields02Selection(JSONObject selection) {
+        JSONArray declared = selection.optJSONArray("cases");
+        if (declared == null || declared.length() == 0) {
+            throw new IllegalStateException("FIELDS-02 selection has no cases");
+        }
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (int index = 0; index < declared.length(); index++) {
+            JSONObject entry = declared.optJSONObject(index);
+            if (entry == null) {
+                throw new IllegalStateException("FIELDS-02 case is not an object");
+            }
+            String id = entry.optString("id", "");
+            if (id.isEmpty() || !ids.add(id)) {
+                throw new IllegalStateException("FIELDS-02 case id is empty or repeated");
+            }
+            if (!(entry.opt("keyword") instanceof String)) {
+                throw new IllegalStateException("FIELDS-02 case keyword is not a string");
+            }
+            if (!(entry.opt("source") instanceof JSONObject)) {
+                throw new IllegalStateException("FIELDS-02 case source is not an object");
+            }
+            String terminal = entry.optString("terminal", "four-stage");
+            if (!"four-stage".equals(terminal) && !"search-empty".equals(terminal)) {
+                throw new IllegalStateException("FIELDS-02 case terminal is unsupported");
+            }
+        }
     }
 
     @Override
@@ -364,7 +393,14 @@ public final class FieldOracle extends Instrumentation {
             .put("preferencesFenced", fenced)
             .put("reportPath", output.getAbsolutePath())
             .put("rootRetained", scratch.root.exists());
-        if (caseFailures.length() == 0) {
+        boolean ownershipProven = scratch.isBound() && scratch.root.exists()
+            && isolation.optBoolean("bound")
+            && isolation.optBoolean("filesRouted")
+            && isolation.optBoolean("databaseRouted")
+            && !isolation.optBoolean("deviceProtected")
+            && !isolation.optBoolean("rootExistedAtStart")
+            && fenced;
+        if (ownershipProven) {
             String ownerRunId = UUID.randomUUID().toString();
             scratch.writeOwnerComplete(ownerRunId);
             cleanup.put("ownerRunId", ownerRunId)
@@ -463,20 +499,20 @@ public final class FieldOracle extends Instrumentation {
         log("stage tableOfContents");
         int tocRequestStart = requests.length();
         int tocTraceStart = stageTrace.length();
-        Object tocResult;
+        List<?> chapters;
         try {
-            tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
+            Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
                 "getChapterListAwait", 4,
                 new Object[]{source, book, Boolean.FALSE}, continuation));
+            chapters = unwrapResult(tocResult);
+            if (chapters.isEmpty()) {
+                throw new IllegalStateException("table of contents returned no chapter");
+            }
         } catch (Exception error) {
             recordOperationError(observed, "tableOfContents", tocRequestStart, tocTraceStart, error);
             throw error;
         }
         recordOperation(observed, "tableOfContents", tocRequestStart, tocTraceStart);
-        List<?> chapters = unwrapResult(tocResult);
-        if (chapters.isEmpty()) {
-            throw new IllegalStateException("table of contents returned no chapter");
-        }
         JSONArray chapterRows = new JSONArray();
         for (Object chapter : chapters) {
             chapterRows.put(chapterObservation(chapterClass, chapter));
