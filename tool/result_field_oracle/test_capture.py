@@ -802,7 +802,6 @@ class FormatterFailureTest(unittest.TestCase):
         import shutil
         from unittest import mock
         complete = _complete_fixture_context()
-        complete_shell = complete / 'sh.exe'
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             for missing in ('find', 'sha256sum'):
@@ -820,7 +819,20 @@ class FormatterFailureTest(unittest.TestCase):
                     str(incomplete), str(complete), str(Path(os.environ['SystemRoot']) / 'System32'),
                     os.environ['SystemRoot'],
                 ])
-                with mock.patch.dict(os.environ, env, clear=True):
+                incomplete_shell = incomplete / 'sh.exe'
+                root_base = base / ('root-' + missing)
+                root_base.mkdir()
+                root = self._make_root(root_base)
+                with mock.patch.dict(os.environ, env, clear=True),                         mock.patch.object(
+                            sys.modules[__name__], '_shell_path',
+                            lambda: str(incomplete_shell),
+                        ):
+                    positive = _run_snapshot_formatter(root)
+                    self.assertEqual(positive.returncode, 0, (missing, positive.stderr))
+                    self.assertIn(
+                        'files/one',
+                        capture._snapshot_records(positive.stdout, missing),
+                    )
                     selected = _complete_fixture_context()
                     self.assertEqual(selected.resolve(), complete.resolve(), missing)
                     result = unittest.TestResult()
