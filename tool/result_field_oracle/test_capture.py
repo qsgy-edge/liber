@@ -25,6 +25,27 @@ def _shell_path():
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
 
 
+def _complete_fixture_context():
+    """Find a bounded installed shell/tool/runtime context for test fixtures."""
+    import shutil
+    candidates = [
+        Path(_shell_path()).parent,
+        Path(r'C:/Program Files/Git/usr/bin'),
+        Path(r'C:/Program Files/Git/bin'),
+    ]
+    for command in ('od', 'tr'):
+        found = shutil.which(command)
+        if found:
+            candidates.append(Path(found).parent)
+    suffix = '.exe' if os.name == 'nt' else ''
+    for directory in candidates:
+        if (all((directory / (name + suffix)).is_file()
+                for name in ('sh', 'od', 'tr'))
+                and (directory / 'msys-2.0.dll').is_file()):
+            return directory
+    raise unittest.SkipTest('complete installed shell/tool/runtime context unavailable')
+
+
 def _child_environment(shell, env_overrides=None):
     import shutil
     environment = os.environ.copy()
@@ -662,10 +683,11 @@ class FormatterFailureTest(unittest.TestCase):
         import shutil
         from unittest import mock
         shell = Path(_shell_path())
-        tool_root = shell.parent
+        tool_root = _complete_fixture_context()
         dll = tool_root / 'msys-2.0.dll'
-        real_od = _resolved_tool('od', shell)
-        real_tr = _resolved_tool('tr', shell)
+        complete_shell = tool_root / ('sh.exe' if os.name == 'nt' else 'sh')
+        real_od = _resolved_tool('od', str(complete_shell))
+        real_tr = _resolved_tool('tr', str(complete_shell))
         windows = Path(os.environ['SystemRoot'])
         system32 = windows / 'System32'
         with tempfile.TemporaryDirectory() as directory:
@@ -676,10 +698,7 @@ class FormatterFailureTest(unittest.TestCase):
                 bin_dir.mkdir()
                 for tool in [*tools, dll]:
                     shutil.copy2(tool, bin_dir / tool.name)
-                paths = [str(bin_dir), str(system32)]
-                if phase == 'both':
-                    paths.append(str(tool_root))
-                paths.append(str(windows))
+                paths = [str(bin_dir), str(tool_root), str(system32), str(windows)]
                 env = os.environ.copy()
                 env['PATH'] = os.pathsep.join(paths)
                 with mock.patch.dict(os.environ, env, clear=True):
@@ -694,8 +713,10 @@ class FormatterFailureTest(unittest.TestCase):
         import types
         from unittest import mock
         shell = Path(_shell_path())
-        real_od = _resolved_tool('od', shell)
-        dll = Path(shell).parent / 'msys-2.0.dll'
+        complete = _complete_fixture_context()
+        complete_shell = complete / ('sh.exe' if os.name == 'nt' else 'sh')
+        real_od = _resolved_tool('od', str(complete_shell))
+        dll = complete / 'msys-2.0.dll'
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             root = self._make_root(base)
@@ -707,7 +728,7 @@ class FormatterFailureTest(unittest.TestCase):
             env['PATH'] = (
                 str(preferred)
                 + os.pathsep
-                + str(Path(shell).parent)
+                + str(complete)
                 + os.pathsep
                 + env.get('PATH', '')
             )
@@ -722,6 +743,30 @@ class FormatterFailureTest(unittest.TestCase):
             self.assertEqual(selected.resolve(), (preferred / real_od.name).resolve())
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertIn('files/one', capture._snapshot_records(completed.stdout, 'preferred'))
+
+    @unittest.skipUnless(os.name == 'nt', 'split-shell permanent method control')
+    def test_split_shell_executes_both_permanent_methods(self):
+        import shutil
+        from unittest import mock
+        complete = _complete_fixture_context()
+        shell = complete / 'sh.exe'
+        with tempfile.TemporaryDirectory() as directory:
+            alias_dir = Path(directory) / 'shell-only'
+            alias_dir.mkdir()
+            shutil.copy2(shell, alias_dir / shell.name)
+            with mock.patch.object(
+                    sys.modules[__name__], '_shell_path',
+                    lambda: str(alias_dir / shell.name)):
+                for name in [
+                    'test_windows_posix_tools_keep_precedence_and_complete_fallback',
+                    'test_non_windows_branch_uses_preferred_child_path_tool',
+                ]:
+                    result = unittest.TestResult()
+                    FormatterFailureTest(name).run(result)
+                    self.assertEqual(result.testsRun, 1, name)
+                    self.assertEqual(result.errors, [], name)
+                    self.assertEqual(result.skipped, [], name)
+                    self.assertEqual(result.failures, [], name)
 
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:
