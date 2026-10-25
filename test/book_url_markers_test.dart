@@ -164,6 +164,33 @@ void main() {
     );
   });
 
+  test('repeated product URIs are matched forward within operations', () {
+    final corpus = _repeatedUriCorpus();
+    final golden = _repeatedUriEnvelope(corpus, product: false);
+    final product = _repeatedUriEnvelope(corpus, product: true);
+    final positive = _compare(golden, product, corpus);
+    expect(
+      positive['status'],
+      'pass',
+      reason: jsonEncode(positive['differences']),
+    );
+    final damaged = _repeatedUriEnvelope(corpus, product: true);
+    (((damaged['caseRecords'] as List).first as Map)['operations'] as List)[2]
+        as Map;
+    ((damaged['stageTrace'] as List)[2] as Map)['path'] =
+        'http://127.0.0.1:18733/wrong';
+    final report = _compare(golden, damaged, corpus);
+    expect(report['status'], 'fail');
+    expect(
+      (report['differences'] as List).cast<Map>().any(
+        (row) =>
+            row['field'] == 'liber.trace[2].path' &&
+            row['frozen'] == 'forward request context',
+      ),
+      isTrue,
+    );
+  });
+
   test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
     final golden = _syntheticEnvelope(corpus);
@@ -313,23 +340,26 @@ Map<String, dynamic> _compare(
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},
 );
 
-Map<String, dynamic> _requestFooter(String path, {String responseId = 'r1'}) =>
-    {
-      'method': 'GET',
-      'path': path,
-      'query': <String, String>{},
-      'rawQuery': '',
-      'stage': 'search',
-      'headers': <String, Object?>{},
-      'body': '',
-      'receipt': {
-        'terminal': 'responded',
-        'status': 200,
-        'responseId': responseId,
-        'redirect': null,
-        'send': 'completed',
-      },
-    };
+Map<String, dynamic> _requestFooter(
+  String path, {
+  String responseId = 'r1',
+  String method = 'GET',
+}) => {
+  'method': method,
+  'path': path,
+  'query': <String, String>{},
+  'rawQuery': '',
+  'stage': 'search',
+  'headers': <String, Object?>{},
+  'body': '',
+  'receipt': {
+    'terminal': 'responded',
+    'status': 200,
+    'responseId': responseId,
+    'redirect': null,
+    'send': 'completed',
+  },
+};
 
 Map<String, dynamic> _twoCaseCorpus() {
   final corpus = _syntheticCorpus();
@@ -401,6 +431,99 @@ Map<String, dynamic> _twoCaseProduct(Map<String, dynamic> corpus) {
   first['requests'] = [product['requests'][0]];
   second['requests'] = [product['requests'][1]];
   return product;
+}
+
+Map<String, dynamic> _repeatedUriCorpus() {
+  final corpus = _syntheticCorpus();
+  corpus['expectedRequests'] = [
+    {'method': 'POST', 'path': '/a', 'query': <String, String>{}},
+    {'method': 'GET', 'path': '/b', 'query': <String, String>{}},
+    {'method': 'GET', 'path': '/a', 'query': <String, String>{}},
+    {'method': 'GET', 'path': '/c', 'query': <String, String>{}},
+  ];
+  corpus['responses'] = [
+    {'id': 'r1', 'method': 'POST', 'path': '/a', 'status': 200},
+    {'id': 'r2', 'method': 'GET', 'path': '/b', 'status': 200},
+    {'id': 'r3', 'method': 'GET', 'path': '/a', 'status': 200},
+    {'id': 'r4', 'method': 'GET', 'path': '/c', 'status': 200},
+  ];
+  return corpus;
+}
+
+Map<String, dynamic> _repeatedUriEnvelope(
+  Map<String, dynamic> corpus, {
+  required bool product,
+}) {
+  final envelope = product
+      ? _syntheticProduct(corpus)
+      : _syntheticEnvelope(corpus);
+  final record = _clone(
+    _record(product ? {'cases': envelope['caseRecords']} : envelope),
+  );
+  record['requests'] = [
+    _requestFooter('/a', responseId: 'r1', method: 'POST'),
+    _requestFooter('/b', responseId: 'r2'),
+    _requestFooter('/a', responseId: 'r3'),
+    _requestFooter('/c', responseId: 'r4'),
+  ];
+  record['operations'] = [
+    {
+      'name': 'search',
+      'outcome': 'completed',
+      'requestStart': 0,
+      'requestEnd': 1,
+      'traceStart': 0,
+      'traceEnd': 1,
+    },
+    {
+      'name': 'bookInfo',
+      'outcome': 'completed',
+      'requestStart': 1,
+      'requestEnd': 2,
+      'traceStart': 1,
+      'traceEnd': 2,
+    },
+    {
+      'name': 'tableOfContents',
+      'outcome': 'completed',
+      'requestStart': 2,
+      'requestEnd': 3,
+      'traceStart': 2,
+      'traceEnd': 3,
+    },
+    {
+      'name': 'content',
+      'outcome': 'completed',
+      'requestStart': 3,
+      'requestEnd': 4,
+      'traceStart': 3,
+      'traceEnd': 4,
+    },
+  ];
+  final requests = record['requests'] as List;
+  for (var index = 0; index < requests.length; index++) {
+    (requests[index] as Map)['stage'] = [
+      'search',
+      'bookInfo',
+      'tableOfContents',
+      'content',
+    ][index];
+  }
+  final trace = [
+    for (var index = 0; index < requests.length; index++)
+      {
+        'stage': ['search', 'bookInfo', 'tableOfContents', 'content'][index],
+        'path': 'http://127.0.0.1:18733${(requests[index] as Map)['path']}',
+      },
+  ];
+  if (product) {
+    envelope['caseRecords'] = [record];
+  } else {
+    envelope['cases'] = [record];
+  }
+  envelope['requests'] = requests;
+  envelope['stageTrace'] = trace;
+  return envelope;
 }
 
 Map<String, dynamic> _syntheticCorpus() => {
