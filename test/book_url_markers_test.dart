@@ -143,6 +143,27 @@ void main() {
     expect(report['status'], 'pass');
   });
 
+  test('chronological case ids cannot be swapped under a coherent set', () {
+    final corpus = _twoCaseCorpus();
+    final golden = _twoCaseGolden(corpus);
+    final product = _twoCaseProduct(corpus);
+    expect(_compare(golden, product, corpus)['status'], 'pass');
+    final swappedGolden = _twoCaseGolden(corpus);
+    final swappedProduct = _twoCaseProduct(corpus);
+    final gCases = swappedGolden['cases'] as List;
+    final pCases = swappedProduct['caseRecords'] as List;
+    final firstG = (gCases[0] as Map)['id'];
+    final firstP = (pCases[0] as Map)['id'];
+    (gCases[0] as Map)['id'] = (gCases[1] as Map)['id'];
+    (gCases[1] as Map)['id'] = firstG;
+    (pCases[0] as Map)['id'] = (pCases[1] as Map)['id'];
+    (pCases[1] as Map)['id'] = firstP;
+    expect(
+      () => _compare(swappedGolden, swappedProduct, corpus),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
     final golden = _syntheticEnvelope(corpus);
@@ -291,6 +312,96 @@ Map<String, dynamic> _compare(
   externalManifest: _syntheticManifest(corpus),
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},
 );
+
+Map<String, dynamic> _requestFooter(String path, {String responseId = 'r1'}) =>
+    {
+      'method': 'GET',
+      'path': path,
+      'query': <String, String>{},
+      'rawQuery': '',
+      'stage': 'search',
+      'headers': <String, Object?>{},
+      'body': '',
+      'receipt': {
+        'terminal': 'responded',
+        'status': 200,
+        'responseId': responseId,
+        'redirect': null,
+        'send': 'completed',
+      },
+    };
+
+Map<String, dynamic> _twoCaseCorpus() {
+  final corpus = _syntheticCorpus();
+  final first = (corpus['cases'] as List).first as Map;
+  corpus['cases'] = [
+    first,
+    {...first, 'id': 'synthetic-other'},
+  ];
+  corpus['expectedRequests'] = [
+    {'method': 'GET', 'path': '/s', 'query': <String, String>{}},
+    {'method': 'GET', 'path': '/s2', 'query': <String, String>{}},
+  ];
+  corpus['responses'] = [
+    {'id': 'r1', 'method': 'GET', 'path': '/s', 'status': 200},
+    {'id': 'r2', 'method': 'GET', 'path': '/s2', 'status': 200},
+  ];
+  return corpus;
+}
+
+Map<String, dynamic> _twoCaseGolden(Map<String, dynamic> corpus) {
+  final golden = _syntheticEnvelope(corpus);
+  final first = _clone(_record(golden));
+  final second = _clone(first);
+  second['id'] = 'synthetic-other';
+  final ops = (second['operations'] as List).cast<Map<String, dynamic>>();
+  for (final op in ops) {
+    op['requestStart'] = (op['requestStart'] as int) + 1;
+    op['requestEnd'] = (op['requestEnd'] as int) + 1;
+    op['traceStart'] = (op['traceStart'] as int) + 1;
+    op['traceEnd'] = (op['traceEnd'] as int) + 1;
+  }
+  second['requests'] = [_requestFooter('/s2', responseId: 'r2')];
+  golden['cases'] = [first, second];
+  golden['requests'] = [
+    _requestFooter('/s'),
+    _requestFooter('/s2', responseId: 'r2'),
+  ];
+  golden['stageTrace'] = [
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s2'},
+  ];
+  first['requests'] = [golden['requests'][0]];
+  second['requests'] = [golden['requests'][1]];
+  return golden;
+}
+
+Map<String, dynamic> _twoCaseProduct(Map<String, dynamic> corpus) {
+  final product = _syntheticProduct(corpus);
+  final first = _clone(_record({'cases': product['caseRecords']}));
+  final second = _clone(first);
+  second['id'] = 'synthetic-other';
+  final ops = (second['operations'] as List).cast<Map<String, dynamic>>();
+  for (final op in ops) {
+    op['requestStart'] = (op['requestStart'] as int) + 1;
+    op['requestEnd'] = (op['requestEnd'] as int) + 1;
+    op['traceStart'] = (op['traceStart'] as int) + 1;
+    op['traceEnd'] = (op['traceEnd'] as int) + 1;
+  }
+  second['requests'] = [_requestFooter('/s2', responseId: 'r2')];
+  product['caseRecords'] = [first, second];
+  product['requests'] = [
+    _requestFooter('/s'),
+    _requestFooter('/s2', responseId: 'r2'),
+  ];
+  product['stageTrace'] = [
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s'},
+    {'stage': 'search', 'path': 'http://127.0.0.1:18733/s2'},
+  ];
+  first['requests'] = [product['requests'][0]];
+  second['requests'] = [product['requests'][1]];
+  return product;
+}
 
 Map<String, dynamic> _syntheticCorpus() => {
   'fixtureId': 'FIELDS-02',

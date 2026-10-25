@@ -31,10 +31,17 @@ def _run_snapshot_formatter(root, extra_path=None, env_overrides=None):
     if env_overrides:
         environment.update(env_overrides)
     if os.name == 'nt':
-        # The installed Git shell must resolve its own POSIX find/od/tr, not
-        # an earlier Windows utility from the parent's PATH. Keep the parent
-        # environment untouched and scope the directory to this child only.
-        environment['PATH'] = str(Path(shell).parent) + os.pathsep + environment.get('PATH', '')
+        # Resolve real od/tr from the child search path, not by assuming they
+        # live beside the shell; fall back to the shell directory only when the
+        # process PATH cannot identify both installed tools.
+        import shutil
+        tool_dirs = {
+            str(Path(found).parent)
+            for found in (shutil.which('od'), shutil.which('tr'))
+            if found
+        }
+        prefix = os.pathsep.join(tool_dirs) if len(tool_dirs) == 1 else str(Path(shell).parent)
+        environment['PATH'] = prefix + os.pathsep + environment.get('PATH', '')
     if extra_path is not None:
         environment['PATH'] = str(extra_path) + os.pathsep + environment.get('PATH', '')
     return subprocess.run(
@@ -576,9 +583,9 @@ class FormatterFailureTest(unittest.TestCase):
 
     def test_actual_formatter_commands_fail_closed(self):
         shell = _shell_path()
-        tools = Path(shell).parent
-        real_od = tools / 'od'
-        real_tr = tools / 'tr'
+        import shutil
+        real_od = Path(shutil.which('od') or (Path(shell).parent / 'od'))
+        real_tr = Path(shutil.which('tr') or (Path(shell).parent / 'tr'))
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             root = self._make_root(base)

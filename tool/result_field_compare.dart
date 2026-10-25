@@ -1867,54 +1867,84 @@ void _admitCausalRelationships(
     });
   }
 
-  if (side != 'golden') {
-    int? previous = -1;
-    for (var index = 0; index < trace.length; index++) {
-      final entry = trace[index];
-      final path = _requiredString(entry, 'path', '$side.trace[$index]');
-      var matched = -1;
-      for (
-        var requestIndex = 0;
-        requestIndex < requests.length;
-        requestIndex++
-      ) {
-        final request = requests[requestIndex];
-        final requestPath = _requiredString(
-          request,
-          'path',
-          '$side.request[$requestIndex]',
+  if (side == 'liber') {
+    for (final record in cases) {
+      final id = _requiredString(record, 'id', '$side.case');
+      final operations = _requiredList(
+        record,
+        'operations',
+        '$side.case.$id.operations',
+      );
+      for (var opIndex = 0; opIndex < operations.length; opIndex++) {
+        final operation = _map(
+          operations[opIndex],
+          '$side.case.$id.operations[$opIndex]',
         );
-        final raw = _requiredString(
-          request,
-          'rawQuery',
-          '$side.request[$requestIndex]',
+        final requestStart = _requiredInt(
+          operation,
+          'requestStart',
+          '$side.case.$id.operations[$opIndex]',
         );
-        final candidates = <String>{
-          requestPath,
-          requestPath + (raw.isEmpty ? '' : '?$raw'),
-          origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
-        };
-        if (candidates.contains(path)) {
-          matched = requestIndex;
-          break;
+        final requestEnd = _requiredInt(
+          operation,
+          'requestEnd',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final traceStart = _requiredInt(
+          operation,
+          'traceStart',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final traceEnd = _requiredInt(
+          operation,
+          'traceEnd',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        var cursor = requestStart;
+        for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
+          final path = _requiredString(
+            trace[traceIndex],
+            'path',
+            '$side.trace[$traceIndex]',
+          );
+          var matched = -1;
+          for (
+            var requestIndex = cursor;
+            requestIndex < requestEnd;
+            requestIndex++
+          ) {
+            final request = requests[requestIndex];
+            final requestPath = _requiredString(
+              request,
+              'path',
+              '$side.request[$requestIndex]',
+            );
+            final raw = _requiredString(
+              request,
+              'rawQuery',
+              '$side.request[$requestIndex]',
+            );
+            final candidates = <String>{
+              requestPath,
+              requestPath + (raw.isEmpty ? '' : '?$raw'),
+              origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
+            };
+            if (candidates.contains(path)) {
+              matched = requestIndex;
+              break;
+            }
+          }
+          if (matched < 0) {
+            differences.add({
+              'row': 'C3',
+              'field': '$side.trace[$traceIndex].path',
+              'frozen': 'forward request context',
+              'liber': path,
+            });
+            break;
+          }
+          cursor = matched;
         }
-      }
-      if (matched < 0) {
-        differences.add({
-          'row': 'C3',
-          'field': '$side.trace[$index].path',
-          'frozen': 'actual request path',
-          'liber': path,
-        });
-      } else if (matched < previous!) {
-        differences.add({
-          'row': 'C3',
-          'field': '$side.trace[$index].order',
-          'frozen': 'request order',
-          'liber': 'trace order regressed',
-        });
-      } else {
-        previous = matched;
       }
     }
   }
@@ -2096,8 +2126,9 @@ void _admitExactIds(
   ];
   if (ids.length != declared.length ||
       ids.toSet().length != ids.length ||
-      !ids.toSet().containsAll(declared)) {
-    throw StateError('$side case ids are not exactly the declared unique set');
+      !ids.toSet().containsAll(declared) ||
+      !_deepEquals(ids, declared)) {
+    throw StateError('$side case ids are not the declared chronological set');
   }
 }
 
