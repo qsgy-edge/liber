@@ -1161,10 +1161,9 @@ List<Map<String, dynamic>> _admitCorpus(
     }
     _requiredString(entry, 'keyword', 'corpus.cases[$id]');
     _map(entry['source'], 'corpus.cases[$id].source');
-    // Materialize the validated ABSENT-only default for all internal users;
-    // the caller's frozen bytes are not rewritten.
-    entry['terminal'] = terminal;
-    records.add(entry);
+    // Materialize the validated ABSENT-only default in an internal admitted
+    // entry; the caller's corpus object and frozen bytes remain untouched.
+    records.add({...entry, 'terminal': terminal});
   }
   return records;
 }
