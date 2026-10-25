@@ -56,6 +56,100 @@ Observed per case: the search results' `name`/`author`/`intro`/`lastChapter`/
 `title` (the content title replaced it, or the table of contents' own name
 stayed) plus its text.
 
+## FIELDS-02 selected corpus (preparation, not native acceptance)
+
+`book-url-markers-fixtures.json` selects a separate `FIELDS-02` corpus with
+`--fixture`/`-CorpusPath`. It covers the HTML `bookUrlPattern` match after a
+redirect, a JSON nonmatching pattern through a real list, the no-pattern
+empty-list information fallback, and a declared nonmatching-pattern empty-search
+terminal. The default build and every FIELDS-01 command remain the original
+corpus and comparison shape.
+
+The selected native report is a `cases` ARRAY. The product report is a
+`caseRecords` ARRAY. `capture.py` and `result_field_compare.dart` reject missing,
+duplicate, extra, wrong-type or incomplete observations independently on each
+side. Native `chapter.url` is compared with product `address`; native
+`chapter.absoluteUrl` with product `url`; provenance fields stay separate. The
+product's legacy `infoHtml` claim is not compared.
+
+Selected builds embed `assets/field-provenance.json` alongside the fixed
+`field-fixtures.json`: actual corpus raw/LF/byte measurements and hashes of the
+five same-build inputs (`FieldOracle.java`, `StateSessionOracle.java`,
+`AndroidManifest.xml`, `build.ps1`, `capture.py`). `capture.py` inspects the
+actual `--apk` zip before installation and binds the embedded fixture/provenance
+to the selected fixture and measured source bytes; a matching loose `--asset` is
+not enough. The Dart comparator inspects the same APK with `archive`, and joins
+the embedded provenance to the capture manifest. Re-finalization requires the original selected APK (`--apk`), independently
+inspects its unique embedded assets, and joins the complete historical source
+map; it never substitutes today's source hashes. The build source-consistency
+check runs again after packaging/signing and verifies the embedded corpus and
+provenance bytes. The Dart comparator also counts raw ZIP central-directory
+entries before using the archive decoder.
+
+Selection validates the supported family, strict integer version, case array,
+unique nonempty IDs, keyword/source/terminal types before installation and
+native scratch Application creation. Selected capture adds a storage-only Application over the existing
+`StateSessionOracle.ScratchContext`. It refuses a preexisting scratch root,
+field preference inventory, harness package or target process; it never
+pre-cleans or wildcard-removes. The report and owner are read while the owned
+process is alive, then routing/package/artifact/family/version, typed positive
+`seedPid`, nonempty attempt and equal safe preference inventories containing the
+probe are checked before any stop. A failed case after a genuinely bound/fenced
+scratch still publishes its owner facts so cleanup can remove that known run;
+golden promotion still refuses it. PID queries distinguish proven empty absence,
+one matching owned PID and failed/ambiguous transport. Only the exact verified paths plus the owned scratch root are removed with
+quoted single remote scripts; absence is verified before the harness uninstall.
+A different, unreadable or ambiguous process/owner and every failed command
+leave state in place. The preference caller passes the unscoped helper suffix
+`probe`, so the helper's actual scoped name is `liber_fields_02_probe`.
+
+FIELDS-02 records actual per-case operation facts (`search`, `bookInfo`,
+`tableOfContents`, `content`; empty search records only `search`) with the
+completed/error outcome and request/trace spans around each awaited call. Native
+TOC semantic `Result` decoding completes inside the observed operation; a
+returned failure is an error operation, not a completed one. Trace stages inside
+each operation span must agree with that operation; cached/zero-request and
+nested product diagnostics remain valid. Both
+consumers require the declared terminal, contiguous case/global request and
+trace ranges, typed indices and legal producer stage labels; cached zero-request
+operations and real redirects/nested diagnostics are admitted. The native
+report's `cases` and the product report's `caseRecords` remain separate shapes.
+
+FIELDS-02 snapshots the complete target data directory as typed `F`/`D`/`U`
+records whose paths are UTF-8 hex-encoded, so LF/TAB-bearing names cannot forge
+records; the parser decodes the hex framing, requires the producer's `./` root,
+and refuses noncanonical/control-bearing paths. Every enumeration/hash/format
+failure propagates, digests and paths are unique, unsupported nodes are refused,
+and only the verified owned removal may change the private tree. The artifact/provenance admission checks
+every integer carrier and preservation fact, the approved harness package, and
+the exact duplicate-free preference inventory containing the probe.
+
+FIELDS-02 golden/report/manifest bytes are immutable once present: a conflicting
+report is refused before work; a failed finalize writes `finalize-failure.json`
+without rewriting the accepted artifacts; byte-identical validated reuse does
+not rewrite them. The legacy FIELDS-01 finalize/regeneration scope is unchanged.
+
+```
+pwsh tool/result_field_oracle/build.ps1 -OutputDirectory <fresh dir> \
+  -JavaHome <jdk 17> -CorpusPath tool/result_field_oracle/book-url-markers-fixtures.json
+python tool/result_field_oracle/capture.py --serial <serial> \
+  --apk <fresh dir>/field-oracle.apk --frozen-source <legado checkout> \
+  --fixture tool/result_field_oracle/book-url-markers-fixtures.json \
+  --asset <fresh dir>/assets/field-fixtures.json --output <fresh dir in evidence/>
+dart run tool/result_field_replay.dart <matching fjs.dll> \
+  --fixture tool/result_field_oracle/book-url-markers-fixtures.json --out <fresh report>
+dart run tool/result_field_compare.dart --fixture tool/result_field_oracle/book-url-markers-fixtures.json \
+  --library <matching fjs.dll> --harness-apk <fresh dir>/field-oracle.apk \
+  --product-source-root . <golden.json> <liber.json> <comparison.json>
+```
+
+The unmodified product currently emits **14** requests against the **12**
+declared FIELDS-02 requests (A and C each fetch information twice). The replay
+CLI therefore exits 1 with the failing `declared-request-sequence` invariant;
+that is an honest current product result, not a native 12-request execution and
+not a rewritten declaration. **FIELDS-02 native/device capture remains NOT-RUN**
+while the original handset is unavailable; no native golden is claimed.
+
 ## Destination side
 
 ```
@@ -87,12 +181,11 @@ corpus, or when the frozen application's own store (`databases/legado.db*`,
 install; the first two attempts on this handset were rejected with
 `INSTALL_FAILED_USER_RESTRICTED` before the operator confirmed the third.
 
-`capture.py --finalize --asset <build dir>/assets/field-fixtures.json` re-runs the
-report and privacy validation over an evidence directory that already holds the
-pulled report and its snapshots — the path this run used after its device step
-succeeded but the first validation pass was too strict (see
-`manifest.json` → `existingDataHashesUnchanged`, `privateFileChanges`,
-`frozenAppDataUnchanged`).
+`capture.py --finalize --apk <original build>/field-oracle.apk --asset <build
+dir>/assets/field-fixtures.json` re-runs report, typed-snapshot and original-APK
+validation over an evidence directory that already holds the pulled report and
+its snapshots. It does not read current build-source hashes for historical
+promotion; missing original APK refuses explicitly.
 
 ## The comparison
 

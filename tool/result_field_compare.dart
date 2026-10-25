@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:pointycastle/export.dart';
 
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of
@@ -19,38 +20,112 @@ import 'package:pointycastle/export.dart';
 /// Usage:
 ///   `dart run tool/result_field_compare.dart <golden.json> <liber.json> <report.json>`
 void main(List<String> args) {
-  if (args.length != 3) {
-    throw ArgumentError('Usage: <golden.json> <liber.json> <report.json>');
+  String? selectedCorpus;
+  String? selectedLibrary;
+  String? selectedHarnessApk;
+  var productSourceRoot = '.';
+  final positional = <String>[];
+  for (var index = 0; index < args.length; index++) {
+    final arg = args[index];
+    if (arg == '--fixture') {
+      if (++index >= args.length) {
+        throw ArgumentError('--fixture needs a value');
+      }
+      selectedCorpus = args[index];
+    } else if (arg.startsWith('--fixture=')) {
+      selectedCorpus = arg.substring('--fixture='.length);
+    } else if (arg == '--library') {
+      if (++index >= args.length) {
+        throw ArgumentError('--library needs a value');
+      }
+      selectedLibrary = args[index];
+    } else if (arg == '--harness-apk') {
+      if (++index >= args.length) {
+        throw ArgumentError('--harness-apk needs a value');
+      }
+      selectedHarnessApk = args[index];
+    } else if (arg == '--product-source-root') {
+      if (++index >= args.length) {
+        throw ArgumentError('--product-source-root needs a value');
+      }
+      productSourceRoot = args[index];
+    } else {
+      positional.add(arg);
+    }
+  }
+  if (positional.length != 3) {
+    throw ArgumentError(
+      'Usage: [--fixture <corpus.json>] [--library <fjs.dll>] '
+      '[--harness-apk <apk>] [--product-source-root <repo>] '
+      '<golden.json> <liber.json> <report.json>',
+    );
   }
   final golden =
-      jsonDecode(File(args[0]).readAsStringSync()) as Map<String, dynamic>;
+      jsonDecode(File(positional[0]).readAsStringSync())
+          as Map<String, dynamic>;
   final liber =
-      jsonDecode(File(args[1]).readAsStringSync()) as Map<String, dynamic>;
-  final corpusBytes = File(corpusPath).readAsBytesSync();
+      jsonDecode(File(positional[1]).readAsStringSync())
+          as Map<String, dynamic>;
+  final corpusBytes = File(selectedCorpus ?? corpusPath).readAsBytesSync();
   final corpus = jsonDecode(utf8.decode(corpusBytes)) as Map<String, dynamic>;
   // The manifest beside the golden pins the corpus bytes this run compared; a
   // checkout that rewrote them (a CRLF conversion, a corpus edit) has to fail
   // here rather than compare against a different corpus than the one recorded.
-  final manifestFile = File('${File(args[0]).parent.path}/manifest.json');
-  String? manifestCorpusSha256;
-  if (manifestFile.existsSync()) {
-    final manifest = (jsonDecode(manifestFile.readAsStringSync()) as Map)
-        .cast<String, Object?>();
-    final corpusPin = (manifest['corpus'] as Map?)?.cast<String, Object?>();
-    manifestCorpusSha256 = corpusPin?['sha256'] as String?;
+  final manifestFile = File('${File(positional[0]).parent.path}/manifest.json');
+  final manifest = manifestFile.existsSync()
+      ? (jsonDecode(manifestFile.readAsStringSync()) as Map)
+            .cast<String, dynamic>()
+      : <String, dynamic>{};
+  final manifestCorpusSha256 =
+      (manifest['corpus'] as Map?)?['sha256'] as String?;
+  Map<String, dynamic>? harnessProvenance;
+  String? harnessProvenanceSha256;
+  String? harnessAssetSha256;
+  if (corpus['fixtureId'] == 'FIELDS-02') {
+    if (selectedHarnessApk == null) {
+      throw ArgumentError('--harness-apk is required for FIELDS-02');
+    }
+    final inspected = _inspectHarnessApk(selectedHarnessApk);
+    harnessProvenance = inspected['provenance'] as Map<String, dynamic>;
+    harnessProvenanceSha256 = inspected['provenanceSha256'] as String;
+    harnessAssetSha256 = inspected['selectedAssetSha256'] as String;
   }
-  final report = compareResultFields(
-    golden: golden,
-    liber: liber,
-    goldenPath: args[0],
-    liberPath: args[1],
-    corpus: corpus,
-    corpusSha256: _sha256(corpusBytes),
-    manifestCorpusSha256: manifestCorpusSha256,
-  );
-  final output = File(args[2]);
+  final report = corpus['fixtureId'] == 'FIELDS-02'
+      ? compareBookUrlMarkers(
+          golden: golden,
+          liber: liber,
+          goldenPath: positional[0],
+          liberPath: positional[1],
+          corpus: corpus,
+          corpusSha256: _sha256(corpusBytes),
+          corpusSha256Lf: _sha256(_lf(corpusBytes)),
+          corpusByteCount: corpusBytes.length,
+          expectedHarnessApkSha256: _requiredMeasuredPath(
+            selectedHarnessApk,
+            '--harness-apk',
+          ),
+          expectedHarnessAssetSha256: harnessAssetSha256!,
+          expectedProvenanceSha256: harnessProvenanceSha256!,
+          expectedProvenance: harnessProvenance!,
+          expectedLibrarySha256: _requiredMeasuredPath(
+            selectedLibrary,
+            '--library',
+          ),
+          expectedProductSources: _measureProductSources(productSourceRoot),
+          externalManifest: manifest,
+        )
+      : compareResultFields(
+          golden: golden,
+          liber: liber,
+          goldenPath: positional[0],
+          liberPath: positional[1],
+          corpus: corpus,
+          corpusSha256: _sha256(corpusBytes),
+          manifestCorpusSha256: manifestCorpusSha256,
+        );
+  final output = File(positional[2]);
   if (output.existsSync()) {
-    throw StateError('Refusing to overwrite a report: ${args[2]}');
+    throw StateError('Refusing to overwrite a report: ${positional[2]}');
   }
   output.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(report)}\n',
@@ -521,6 +596,1638 @@ List<Map<String, Object?>> _requests(Map<String, dynamic> evidence) => [
 
 /// Deep equality where array order matters and JSON object key order does not
 /// (contract, Matching Rules -> Outputs).
+const bookUrlMarkersFixtureId = 'FIELDS-02';
+const bookUrlMarkersCorpusVersion = 1;
+const _ownedPreferencePrefix = 'liber_fields_02_';
+const _harnessPackage = 'io.liber.oracle.fields';
+
+/// Strict FIELDS-02 admission and comparison. The native report uses `cases`;
+/// the product report uses `caseRecords`. The two sides are admitted
+/// independently before any equality row is produced. Missing facts are
+/// refusals; a real observed difference is a `fail` row named for its field.
+Map<String, Object?> compareBookUrlMarkers({
+  required Map<String, dynamic> golden,
+  required Map<String, dynamic> liber,
+  required String goldenPath,
+  required String liberPath,
+  required Map<String, dynamic> corpus,
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+  required String expectedHarnessAssetSha256,
+  required String expectedProvenanceSha256,
+  required Map<String, dynamic> expectedProvenance,
+  required String expectedLibrarySha256,
+  required Map<String, String> expectedProductSources,
+  required Map<String, dynamic> externalManifest,
+  String? manifestCorpusSha256,
+}) {
+  final corpusCases = _admitCorpus(
+    corpus,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+  );
+  final declaredIds = [for (final entry in corpusCases) entry['id'] as String];
+  final expectedRequests = _admitExpectedRequests(corpus);
+  final expectedResponses = _admitExpectedResponses(corpus);
+  if (expectedRequests.length != expectedResponses.length) {
+    throw StateError('corpus expectedRequests/responses are not aligned');
+  }
+  if (manifestCorpusSha256 != null && manifestCorpusSha256 != corpusSha256) {
+    throw StateError('golden manifest corpus pin does not match the corpus');
+  }
+  final target = _map(corpus['target'], 'corpus.target');
+  _admitGoldenIdentity(
+    golden,
+    corpus,
+    target: target,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedHarnessApkSha256: expectedHarnessApkSha256,
+  );
+  _admitProductIdentity(
+    liber,
+    corpus,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedLibrarySha256: expectedLibrarySha256,
+    expectedProductSources: expectedProductSources,
+  );
+  _admitExternalArtifact(
+    externalManifest,
+    golden,
+    corpus,
+    target,
+    corpusSha256: corpusSha256,
+    corpusSha256Lf: corpusSha256Lf,
+    corpusByteCount: corpusByteCount,
+    expectedHarnessApkSha256: expectedHarnessApkSha256,
+    expectedHarnessAssetSha256: expectedHarnessAssetSha256,
+    expectedProvenanceSha256: expectedProvenanceSha256,
+    expectedProvenance: expectedProvenance,
+  );
+
+  final goldenCases = _records(golden['cases'], 'golden.cases');
+  final productCases = _records(liber['caseRecords'], 'liber.caseRecords');
+  if (goldenCases.isEmpty || productCases.isEmpty) {
+    throw StateError('both sides must carry a nonempty selected case array');
+  }
+  _admitExactIds(goldenCases, declaredIds, 'golden');
+  _admitExactIds(productCases, declaredIds, 'liber');
+  final goldenById = {for (final record in goldenCases) record['id']: record};
+  final productById = {for (final record in productCases) record['id']: record};
+  final corpusById = {for (final entry in corpusCases) entry['id']: entry};
+  for (final id in declaredIds) {
+    _admitCaseRecord(
+      goldenById[id]!,
+      corpusById[id]!,
+      'golden.$id',
+      native: true,
+    );
+    _admitCaseRecord(
+      productById[id]!,
+      corpusById[id]!,
+      'liber.$id',
+      native: false,
+    );
+  }
+
+  final caseDifferences = <Map<String, Object?>>[];
+  for (final id in declaredIds) {
+    final frozen = goldenById[id]!;
+    final product = productById[id]!;
+    _compareCases(caseDifferences, id, frozen, product);
+  }
+
+  final requestDifferences = <Map<String, Object?>>[];
+  final goldenRequests = _markerRequests(golden['requests'], 'golden.requests');
+  final productRequests = _markerRequests(liber['requests'], 'liber.requests');
+  _compareRequestsToDeclaration(
+    requestDifferences,
+    'golden',
+    goldenRequests,
+    expectedRequests,
+    expectedResponses,
+  );
+  _compareRequestsToDeclaration(
+    requestDifferences,
+    'liber',
+    productRequests,
+    expectedRequests,
+    expectedResponses,
+  );
+
+  final stageDifferences = <Map<String, Object?>>[];
+  final goldenTrace = _admitStageTrace(
+    trace: golden['stageTrace'],
+    label: 'golden.stageTrace',
+  );
+  final productTrace = _admitStageTrace(
+    trace: liber['stageTrace'],
+    label: 'liber.stageTrace',
+  );
+  final origin = _requiredString(corpus, 'origin', 'corpus');
+  _admitOperationSpans(
+    goldenCases,
+    goldenRequests,
+    goldenTrace,
+    'golden',
+    origin,
+    nativeSide: true,
+  );
+  _admitOperationSpans(
+    productCases,
+    productRequests,
+    productTrace,
+    'liber',
+    origin,
+    nativeSide: false,
+  );
+  _admitCausalRelationships(
+    requestDifferences,
+    'golden',
+    goldenRequests,
+    goldenCases,
+    goldenTrace,
+    origin,
+  );
+  _admitCausalRelationships(
+    requestDifferences,
+    'liber',
+    productRequests,
+    productCases,
+    productTrace,
+    origin,
+  );
+  _diff(
+    stageDifferences,
+    'stageTrace',
+    'stageTrace',
+    goldenTrace,
+    productTrace,
+  );
+
+  final cleanupDifferences = <Map<String, Object?>>[];
+  final goldenCleanup = _map(golden['cleanup'], 'golden.cleanup');
+  final productCleanup = _map(liber['cleanup'], 'liber.cleanup');
+  _diff(
+    cleanupDifferences,
+    'cleanup',
+    'serverClosed',
+    goldenCleanup['serverClosed'],
+    productCleanup['serverClosed'],
+  );
+
+  final rows = <Map<String, Object?>>[
+    _row(
+      'C1',
+      'case records, markers and fixed raw/resolved quantities',
+      caseDifferences,
+    ),
+    _row(
+      'C2',
+      'declared request sequence and actual response receipts',
+      requestDifferences,
+    ),
+    _row('C3', 'actual stage trace', stageDifferences),
+    _row('C4', 'isolation and cleanup', cleanupDifferences),
+  ];
+  final differences = [
+    for (final row in rows) ...(row['differences'] as List).cast<Map>(),
+  ];
+  return {
+    'fixtureId': bookUrlMarkersFixtureId,
+    'corpusVersion': bookUrlMarkersCorpusVersion,
+    'status': differences.isEmpty ? 'pass' : 'fail',
+    'rows': rows,
+    'differences': differences,
+    'notCompared': <Object?>[],
+    'goldenPath': goldenPath,
+    'liberPath': liberPath,
+    'corpusSha256': corpusSha256,
+    'corpusSha256Lf': corpusSha256Lf,
+    'corpusByteCount': corpusByteCount,
+    'librarySha256': expectedLibrarySha256,
+    'harnessApkSha256': expectedHarnessApkSha256,
+  };
+}
+
+Map<String, dynamic> inspectSelectedHarnessApk(String path) =>
+    _inspectHarnessApk(path);
+
+Map<String, dynamic> _inspectHarnessApk(String path) {
+  final bytes = File(path).readAsBytesSync();
+  final decoder = ZipDecoder();
+  final archive = decoder.decodeBytes(bytes);
+  final rawNames = [
+    for (final header in decoder.directory.fileHeaders) header.filename,
+  ];
+  final names = archive.files.map((file) => file.name).toList();
+  for (final required in const [
+    'assets/field-fixtures.json',
+    'assets/field-provenance.json',
+  ]) {
+    if (rawNames.where((name) => name == required).length != 1 ||
+        names.where((name) => name == required).length != 1) {
+      throw StateError('selected APK must contain exactly one $required');
+    }
+  }
+  final asset = archive.findFile('assets/field-fixtures.json')!;
+  final provenanceFile = archive.findFile('assets/field-provenance.json')!;
+  final provenanceBytes = Uint8List.fromList(provenanceFile.content);
+  final decoded = jsonDecode(utf8.decode(provenanceBytes));
+  if (decoded is! Map) {
+    throw StateError('embedded provenance is not an object');
+  }
+  final provenance = decoded.cast<String, dynamic>();
+  _admitProvenanceObject(provenance, 'provenance');
+  final corpus = _map(provenance['corpus'], 'provenance.corpus');
+  final assetBytes = Uint8List.fromList(asset.content);
+  final embedded = jsonDecode(utf8.decode(assetBytes));
+  if (embedded is! Map ||
+      embedded['fixtureId'] != bookUrlMarkersFixtureId ||
+      embedded['corpusVersion'] is! int ||
+      embedded['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+    throw StateError('embedded corpus selection is not FIELDS-02 version 1');
+  }
+  if (_requiredInt(corpus, 'bytes', 'provenance.corpus') != assetBytes.length ||
+      corpus['sha256'] != _sha256(assetBytes) ||
+      corpus['sha256Lf'] != _sha256(_lf(assetBytes))) {
+    throw StateError('embedded provenance does not bind embedded corpus bytes');
+  }
+  final sources = _stringMap(provenance['sources'], 'provenance.sources');
+  if (sources.length != 5 ||
+      !sources.keys.toSet().containsAll(const [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+      ])) {
+    throw StateError('embedded provenance source key set differs');
+  }
+  for (final entry in sources.entries) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(entry.value)) {
+      throw StateError('embedded provenance source hash is malformed');
+    }
+  }
+  return {
+    'apkSha256': _sha256(bytes),
+    'assetBytes': assetBytes,
+    'selectedAssetSha256': _sha256(assetBytes),
+    'selectedAssetSha256Lf': _sha256(_lf(assetBytes)),
+    'selectedAssetBytes': assetBytes.length,
+    'provenance': provenance,
+    'provenanceSha256': _sha256(provenanceBytes),
+  };
+}
+
+void _admitProvenanceObject(Map<String, dynamic> provenance, String label) {
+  if (_requiredInt(provenance, 'schemaVersion', label) != 1) {
+    throw StateError('$label.schemaVersion must be integer 1');
+  }
+  if (_requiredString(provenance, 'fixtureId', label) !=
+      bookUrlMarkersFixtureId) {
+    throw StateError('$label.fixtureId differs');
+  }
+  final corpus = _map(provenance['corpus'], '$label.corpus');
+  if (_requiredString(corpus, 'asset', '$label.corpus') !=
+          'field-fixtures.json' ||
+      _requiredString(corpus, 'fixtureId', '$label.corpus') !=
+          bookUrlMarkersFixtureId ||
+      _requiredInt(corpus, 'corpusVersion', '$label.corpus') != 1) {
+    throw StateError('$label corpus identity differs');
+  }
+  if (_requiredInt(corpus, 'bytes', '$label.corpus') < 0) {
+    throw StateError('$label corpus bytes are negative');
+  }
+  for (final field in ['sha256', 'sha256Lf']) {
+    final digest = _requiredString(corpus, field, '$label.corpus');
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw StateError('$label corpus digest is malformed');
+    }
+  }
+  final sources = _stringMap(provenance['sources'], '$label.sources');
+  if (sources.length != 5 ||
+      !sources.keys.toSet().containsAll(const [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+      ])) {
+    throw StateError('$label source key set differs');
+  }
+  for (final digest in sources.values) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw StateError('$label source digest is malformed');
+    }
+  }
+}
+
+void _admitExternalArtifact(
+  Map<String, dynamic> manifest,
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> target, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+  required String expectedHarnessAssetSha256,
+  required String expectedProvenanceSha256,
+  required Map<String, dynamic> expectedProvenance,
+}) {
+  if (manifest.isEmpty) {
+    throw StateError('external capture manifest is missing');
+  }
+  if (manifest['status'] != 'observed' ||
+      manifest['existingDataHashesUnchanged'] != true ||
+      manifest['frozenAppDataUnchanged'] != true) {
+    throw StateError('external manifest does not record a successful capture');
+  }
+  final privateFileChanges = manifest['privateFileChanges'];
+  if (privateFileChanges is! Map || privateFileChanges.isNotEmpty) {
+    throw StateError('external manifest records private file changes');
+  }
+  final artifact = _map(manifest['artifact'], 'manifest.artifact');
+  final artifactApkSha = _requiredString(
+    artifact,
+    'apkSha256',
+    'manifest.artifact',
+  );
+  final artifactAssetSha = _requiredString(
+    artifact,
+    'selectedAssetSha256',
+    'manifest.artifact',
+  );
+  final artifactAssetLfSha = _requiredString(
+    artifact,
+    'selectedAssetSha256Lf',
+    'manifest.artifact',
+  );
+  final artifactAssetBytes = _requiredInt(
+    artifact,
+    'selectedAssetBytes',
+    'manifest.artifact',
+  );
+  final artifactProvenanceSha = _requiredString(
+    artifact,
+    'provenanceSha256',
+    'manifest.artifact',
+  );
+  if (artifactApkSha != expectedHarnessApkSha256 ||
+      artifactAssetSha != expectedHarnessAssetSha256 ||
+      artifactAssetLfSha != corpusSha256Lf ||
+      artifactAssetBytes != corpusByteCount) {
+    throw StateError(
+      'external artifact bytes do not match the selected APK/corpus',
+    );
+  }
+  if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(artifactProvenanceSha) ||
+      artifactProvenanceSha != expectedProvenanceSha256) {
+    throw StateError('external artifact provenance digest differs');
+  }
+  _admitProvenanceObject(expectedProvenance, 'provenance');
+  final artifactProvenance = _map(
+    artifact['provenance'],
+    'manifest.artifact.provenance',
+  );
+  _admitProvenanceObject(artifactProvenance, 'manifest.artifact.provenance');
+  if (!_deepEquals(artifactProvenance, expectedProvenance)) {
+    throw StateError(
+      'external artifact provenance differs from the selected APK',
+    );
+  }
+  final provenance = expectedProvenance;
+  final pcorpus = _map(provenance['corpus'], 'provenance.corpus');
+  if (pcorpus['sha256'] != corpusSha256 ||
+      pcorpus['sha256Lf'] != corpusSha256Lf ||
+      pcorpus['bytes'] != corpusByteCount ||
+      pcorpus['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(pcorpus, 'corpusVersion', 'provenance.corpus') != 1) {
+    throw StateError(
+      'embedded provenance corpus does not match selected bytes',
+    );
+  }
+  final sources = _stringMap(provenance['sources'], 'provenance.sources');
+  if (sources.length != 5) {
+    throw StateError('embedded provenance source map is incomplete');
+  }
+  final manifestSources = _stringMap(
+    manifest['harnessSources'],
+    'manifest.harnessSources',
+  );
+  if (!_deepEquals(manifestSources, sources)) {
+    throw StateError('external manifest source map differs from the APK');
+  }
+  final isolation = _map(golden['isolation'], 'golden.isolation');
+  if (isolation['harnessApkSha256'] != expectedHarnessApkSha256) {
+    throw StateError('golden harness APK differs from selected APK');
+  }
+  final manifestCorpus = _map(manifest['corpus'], 'manifest.corpus');
+  if (_requiredInt(manifestCorpus, 'bytes', 'manifest.corpus') !=
+          corpusByteCount ||
+      manifestCorpus['sha256'] != corpusSha256 ||
+      manifestCorpus['sha256Lf'] != corpusSha256Lf) {
+    throw StateError('external manifest corpus measurement differs');
+  }
+  final cleanup = _map(manifest['scratchCleanup'], 'manifest.scratchCleanup');
+  final owner = _map(manifest['scratchOwner'], 'manifest.scratchOwner');
+  final targetRoot = _requiredString(manifest, 'targetPrivateRoot', 'manifest');
+  final scratchRoot = '$targetRoot/cache/liber-fields-02';
+  final nativeCleanup = _map(golden['cleanup'], 'golden.cleanup');
+  final nativeIsolation = _map(golden['isolation'], 'golden.isolation');
+  if (nativeCleanup['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(nativeCleanup, 'corpusVersion', 'golden.cleanup') != 1 ||
+      nativeIsolation['harnessPackage'] != _harnessPackage ||
+      nativeIsolation['scratchRoot'] != scratchRoot ||
+      nativeIsolation['preferencesPrefix'] != _ownedPreferencePrefix ||
+      nativeCleanup['scratchRoot'] != scratchRoot ||
+      nativeCleanup['reportPath'] != '$scratchRoot/field-oracle.json') {
+    throw StateError(
+      'native cleanup/root is not the measured target-private relation',
+    );
+  }
+  if (nativeCleanup['ownerRunId'] != cleanup['ownerRunId']) {
+    throw StateError('external and native cleanup attempts differ');
+  }
+  if (cleanup['postStop'] != true ||
+      cleanup['rootAbsent'] != true ||
+      cleanup['ownedPreferencesAbsent'] != true ||
+      cleanup['root'] != scratchRoot ||
+      cleanup['ownerRunId'] != nativeCleanup['ownerRunId']) {
+    throw StateError('external post-stop cleanup proof is incomplete');
+  }
+  if (owner['complete'] != true ||
+      owner['seedRunId'] != nativeCleanup['ownerRunId'] ||
+      _requiredInt(owner, 'seedPid', 'manifest.scratchOwner') <= 0 ||
+      owner['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(owner, 'corpusVersion', 'manifest.scratchOwner') != 1 ||
+      owner['targetPackage'] != target['package'] ||
+      owner['harnessPackage'] != _harnessPackage ||
+      owner['targetApkSha256'] != target['apkSha256'] ||
+      owner['harnessApkSha256'] != expectedHarnessApkSha256 ||
+      owner['corpusSha256Lf'] != corpusSha256Lf) {
+    throw StateError('external owner proof is not bound to selected evidence');
+  }
+  final ownerPrefs = owner['preferences'];
+  final cleanupPrefs = cleanup['reportedOwnedPreferences'];
+  final nativePrefs = nativeCleanup['ownedPreferences'];
+  bool safePrefs(List<dynamic> values) =>
+      values.isNotEmpty &&
+      values.every(
+        (value) =>
+            value is String &&
+            RegExp(
+              r'^liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.-]*$',
+            ).hasMatch(value) &&
+            !value.contains('/'),
+      );
+  if (ownerPrefs is! List ||
+      cleanupPrefs is! List ||
+      nativePrefs is! List ||
+      !safePrefs(ownerPrefs) ||
+      !safePrefs(cleanupPrefs) ||
+      !safePrefs(nativePrefs) ||
+      ownerPrefs.length != nativePrefs.length ||
+      cleanupPrefs.length != nativePrefs.length ||
+      ownerPrefs.toSet().length != ownerPrefs.length ||
+      cleanupPrefs.toSet().length != cleanupPrefs.length ||
+      nativePrefs.toSet().length != nativePrefs.length ||
+      !ownerPrefs.toSet().containsAll(nativePrefs.cast<Object?>()) ||
+      !nativePrefs.toSet().containsAll(ownerPrefs.cast<Object?>()) ||
+      !cleanupPrefs.toSet().containsAll(ownerPrefs.cast<Object?>()) ||
+      !ownerPrefs.toSet().containsAll(cleanupPrefs.cast<Object?>()) ||
+      !ownerPrefs.contains('${_ownedPreferencePrefix}probe') ||
+      !cleanupPrefs.contains('${_ownedPreferencePrefix}probe') ||
+      !nativePrefs.contains('${_ownedPreferencePrefix}probe')) {
+    throw StateError('external owner/cleanup preference inventory differs');
+  }
+  final probe = _map(
+    nativeIsolation['preferenceProbe'],
+    'golden.isolation.preferenceProbe',
+  );
+  if (probe['name'] != '${_ownedPreferencePrefix}probe' ||
+      probe['installationFile'] != false ||
+      probe['registered'] != true ||
+      probe['committed'] != true ||
+      probe['scopedFile'] != true) {
+    throw StateError('native preference probe flags are incomplete');
+  }
+}
+
+List<Map<String, dynamic>> _admitCorpus(
+  Map<String, dynamic> corpus, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+}) {
+  if (corpus['fixtureId'] != bookUrlMarkersFixtureId) {
+    throw StateError('Not the FIELDS-02 corpus');
+  }
+  if (corpus['corpusVersion'] is! int ||
+      corpus['corpusVersion'] != bookUrlMarkersCorpusVersion) {
+    throw StateError('FIELDS-02 corpusVersion must be integer 1');
+  }
+  _requiredString(corpus, 'baselineCommit', 'corpus');
+  _requiredString(corpus, 'entryPoint', 'corpus');
+  _requiredString(corpus, 'origin', 'corpus');
+  final target = _map(corpus['target'], 'corpus.target');
+  _requiredString(target, 'package', 'corpus.target');
+  _requiredString(target, 'apkSha256', 'corpus.target');
+  _requiredString(target, 'deviceFingerprint', 'corpus.target');
+  final cases = _requiredList(corpus, 'cases', 'corpus');
+  if (cases.isEmpty) {
+    throw StateError('corpus.cases must not be empty');
+  }
+  final records = <Map<String, dynamic>>[];
+  final ids = <String>{};
+  for (final value in cases) {
+    final entry = _map(value, 'corpus.cases[]');
+    final id = _requiredString(entry, 'id', 'corpus.cases[]');
+    if (id.isEmpty || !ids.add(id)) {
+      throw StateError('corpus case ids must be nonempty and unique');
+    }
+    final terminal = entry.containsKey('terminal')
+        ? _requiredString(entry, 'terminal', 'corpus.cases[$id]')
+        : 'four-stage';
+    if (terminal != 'four-stage' && terminal != 'search-empty') {
+      throw StateError('unsupported corpus terminal: $terminal');
+    }
+    _requiredString(entry, 'keyword', 'corpus.cases[$id]');
+    _map(entry['source'], 'corpus.cases[$id].source');
+    // Materialize the validated ABSENT-only default in an internal admitted
+    // entry; the caller's corpus object and frozen bytes remain untouched.
+    records.add({...entry, 'terminal': terminal});
+  }
+  return records;
+}
+
+List<Map<String, dynamic>> _admitExpectedRequests(Map<String, dynamic> corpus) {
+  final values = _requiredList(corpus, 'expectedRequests', 'corpus');
+  if (values.isEmpty) {
+    throw StateError('corpus.expectedRequests must not be empty');
+  }
+  final requests = <Map<String, dynamic>>[];
+  for (var index = 0; index < values.length; index++) {
+    final request = _map(values[index], 'corpus.expectedRequests[$index]');
+    _requiredString(request, 'method', 'expectedRequests[$index]');
+    _requiredString(request, 'path', 'expectedRequests[$index]');
+    final query = request['query'];
+    if (query != null) _stringMap(query, 'expectedRequests[$index].query');
+    requests.add(request);
+  }
+  return requests;
+}
+
+List<Map<String, dynamic>> _admitExpectedResponses(
+  Map<String, dynamic> corpus,
+) {
+  final values = _requiredList(corpus, 'responses', 'corpus');
+  if (values.isEmpty) throw StateError('corpus.responses must not be empty');
+  final responses = <Map<String, dynamic>>[];
+  final ids = <String>{};
+  for (var index = 0; index < values.length; index++) {
+    final response = _map(values[index], 'corpus.responses[$index]');
+    final id = _requiredString(response, 'id', 'corpus.responses[$index]');
+    if (id.isEmpty || !ids.add(id)) {
+      throw StateError('response ids must be nonempty and unique');
+    }
+    _requiredString(response, 'method', 'corpus.responses[$index]');
+    _requiredString(response, 'path', 'corpus.responses[$index]');
+    if (_present(response, 'status', 'corpus.responses[$index]') is! int) {
+      throw StateError('response status must be integer');
+    }
+    final headers = response['headers'];
+    if (headers != null) {
+      final headersMap = _map(headers, 'response.headers');
+      for (final entry in headersMap.entries) {
+        if (entry.value is! String) {
+          throw StateError('response header values must be strings');
+        }
+      }
+    }
+    responses.add(response);
+  }
+  return responses;
+}
+
+void _admitGoldenIdentity(
+  Map<String, dynamic> golden,
+  Map<String, dynamic> corpus, {
+  required Map<String, dynamic> target,
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedHarnessApkSha256,
+}) {
+  _admitIdentityFields(golden, corpus, 'golden');
+  final fingerprint = _requiredString(golden, 'fingerprint', 'golden');
+  if (fingerprint != target['deviceFingerprint']) {
+    throw StateError('golden fingerprint does not match the approved target');
+  }
+  final corpusBlock = _map(golden['corpus'], 'golden.corpus');
+  if (corpusBlock['asset'] != 'field-fixtures.json' ||
+      corpusBlock['fixtureId'] != bookUrlMarkersFixtureId ||
+      _requiredInt(corpusBlock, 'corpusVersion', 'golden.corpus') !=
+          bookUrlMarkersCorpusVersion) {
+    throw StateError('golden corpus identity is malformed');
+  }
+  if (_requiredInt(corpusBlock, 'bytes', 'golden.corpus') != corpusByteCount) {
+    throw StateError('golden measured corpus byte count differs');
+  }
+  if (_present(corpusBlock, 'sha256', 'golden.corpus') != corpusSha256 ||
+      _present(corpusBlock, 'sha256Lf', 'golden.corpus') != corpusSha256Lf) {
+    throw StateError('golden measured corpus digest differs');
+  }
+  final isolation = _map(golden['isolation'], 'golden.isolation');
+  for (final field in ['bound', 'filesRouted', 'databaseRouted']) {
+    if (_present(isolation, field, 'golden.isolation') != true) {
+      throw StateError('golden isolation.$field must be true');
+    }
+  }
+  if (isolation['deviceProtected'] != false ||
+      isolation['rootExistedAtStart'] != false) {
+    throw StateError('golden used a preexisting or device-protected scratch');
+  }
+  if (isolation['targetPackage'] != target['package'] ||
+      isolation['targetApkSha256'] != target['apkSha256'] ||
+      isolation['harnessApkSha256'] != expectedHarnessApkSha256 ||
+      isolation['corpusSha256Lf'] != corpusSha256Lf) {
+    throw StateError(
+      'golden isolation identity does not bind to the selected input',
+    );
+  }
+  _requiredString(isolation, 'harnessPackage', 'golden.isolation');
+  _requiredString(isolation, 'preferencesPrefix', 'golden.isolation');
+  _requiredString(isolation, 'scratchRoot', 'golden.isolation');
+  final cleanup = _map(golden['cleanup'], 'golden.cleanup');
+  for (final field in [
+    'serverClosed',
+    'ownerComplete',
+    'rootRetained',
+    'preferencesFenced',
+  ]) {
+    if (_present(cleanup, field, 'golden.cleanup') != true) {
+      throw StateError('golden cleanup.$field must be true');
+    }
+  }
+  final ownerRunId = _requiredString(cleanup, 'ownerRunId', 'golden.cleanup');
+  if (ownerRunId.isEmpty) {
+    throw StateError('golden ownerRunId must not be empty');
+  }
+  _requiredString(cleanup, 'scratchRoot', 'golden.cleanup');
+  _requiredString(cleanup, 'reportPath', 'golden.cleanup');
+  final owned = _requiredList(cleanup, 'ownedPreferences', 'golden.cleanup');
+  if (owned.isEmpty ||
+      owned.any(
+        (value) =>
+            value is! String ||
+            !value.startsWith(_ownedPreferencePrefix) ||
+            value.length == _ownedPreferencePrefix.length,
+      )) {
+    throw StateError(
+      'golden cleanup.ownedPreferences must be owned, nonempty names',
+    );
+  }
+  if (isolation['preferencesPrefix'] != _ownedPreferencePrefix) {
+    throw StateError('golden preference namespace differs');
+  }
+  final probe = _map(
+    isolation['preferenceProbe'],
+    'golden.isolation.preferenceProbe',
+  );
+  if (probe['installationFile'] != false ||
+      probe['registered'] != true ||
+      probe['committed'] != true ||
+      probe['scopedFile'] != true) {
+    throw StateError('golden preference probe flags are incomplete');
+  }
+  _admitErrorFacts(golden, 'golden');
+}
+
+void _admitProductIdentity(
+  Map<String, dynamic> liber,
+  Map<String, dynamic> corpus, {
+  required String corpusSha256,
+  required String corpusSha256Lf,
+  required int corpusByteCount,
+  required String expectedLibrarySha256,
+  required Map<String, String> expectedProductSources,
+}) {
+  _admitIdentityFields(liber, corpus, 'liber');
+  if (_requiredInt(liber, 'fixturesBytes', 'liber') != corpusByteCount ||
+      _present(liber, 'fixturesSha256', 'liber') != corpusSha256 ||
+      _present(liber, 'fixturesSha256Lf', 'liber') != corpusSha256Lf) {
+    throw StateError('product fixture measurement does not match the corpus');
+  }
+  _requiredString(liber, 'fixturesPath', 'liber');
+  _requiredString(liber, 'libraryPath', 'liber');
+  if (_present(liber, 'librarySha256', 'liber') != expectedLibrarySha256) {
+    throw StateError(
+      'product library digest does not match the selected library',
+    );
+  }
+  _requiredString(liber, 'platform', 'liber');
+  _requiredString(liber, 'oracle', 'liber');
+  final sources = _stringMap(liber['productSources'], 'liber.productSources');
+  if (expectedProductSources.isEmpty ||
+      sources.length != expectedProductSources.length) {
+    throw StateError('product source hash set differs from the measured set');
+  }
+  for (final entry in expectedProductSources.entries) {
+    if (sources[entry.key] != entry.value) {
+      throw StateError('product source hash differs: ${entry.key}');
+    }
+  }
+  final cleanup = _map(liber['cleanup'], 'liber.cleanup');
+  if (_present(cleanup, 'serverClosed', 'liber.cleanup') != true) {
+    throw StateError('product replay server did not close');
+  }
+  _admitErrorFacts(liber, 'liber');
+}
+
+void _admitIdentityFields(
+  Map<String, dynamic> record,
+  Map<String, dynamic> corpus,
+  String label,
+) {
+  for (final field in [
+    'fixtureId',
+    'corpusVersion',
+    'baselineCommit',
+    'entryPoint',
+  ]) {
+    if (field == 'corpusVersion') {
+      if (_requiredInt(record, field, label) !=
+          _requiredInt(corpus, field, 'corpus')) {
+        throw StateError('$label $field does not match the selected corpus');
+      }
+    } else if (_present(record, field, label) != corpus[field]) {
+      throw StateError('$label $field does not match the selected corpus');
+    }
+  }
+}
+
+void _admitErrorFacts(Map<String, dynamic> record, String label) {
+  if (!record.containsKey('analysisFailure') ||
+      record['analysisFailure'] != null) {
+    throw StateError('$label.analysisFailure must be present and null');
+  }
+  final failures = _map(record['caseFailures'], '$label.caseFailures');
+  if (failures.isNotEmpty) {
+    throw StateError('$label recorded failed cases');
+  }
+  final unmatched = _requiredList(record, 'unmatchedRequests', label);
+  final serverErrors = _requiredList(record, 'serverErrors', label);
+  if (unmatched.isNotEmpty || serverErrors.isNotEmpty) {
+    throw StateError('$label recorded undeclared requests or server errors');
+  }
+}
+
+void _admitCaseRecord(
+  Map<String, dynamic> record,
+  Map<String, dynamic> corpusEntry,
+  String label, {
+  required bool native,
+}) {
+  final id = _requiredString(record, 'id', label);
+  if (id != corpusEntry['id']) throw StateError('$label id differs');
+  final terminal = _requiredString(record, 'terminal', label);
+  final declaredTerminal = _requiredString(
+    corpusEntry,
+    'terminal',
+    'corpus.cases[$id]',
+  );
+  if (terminal != declaredTerminal) {
+    throw StateError('$label terminal differs from the declaration');
+  }
+  final search = _map(record['search'], '$label.search');
+  final results = _requiredList(search, 'results', '$label.search');
+  for (var index = 0; index < results.length; index++) {
+    _admitSearchResult(
+      results[index],
+      '$label.search.results[$index]',
+      native: native,
+    );
+  }
+  if (terminal == 'search-empty') {
+    if (results.isNotEmpty) {
+      throw StateError('$label empty terminal has results');
+    }
+    for (final field in ['bookInfo', 'tableOfContents', 'chapter']) {
+      if (!record.containsKey(field) || record[field] != null) {
+        throw StateError(
+          '$label empty terminal must carry explicit null $field',
+        );
+      }
+    }
+  } else {
+    if (results.isEmpty) {
+      throw StateError('$label positive case has no search result');
+    }
+    final bookInfo = _requiredMap(record, 'bookInfo', label);
+    for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
+      _requiredString(bookInfo, field, '$label.bookInfo');
+    }
+    final toc = _requiredMap(record, 'tableOfContents', label);
+    _requiredString(toc, 'tocUrl', '$label.tableOfContents');
+    final chapters = _requiredList(toc, 'chapters', '$label.tableOfContents');
+    if (chapters.isEmpty) {
+      throw StateError('$label positive case has no chapter observations');
+    }
+    for (var index = 0; index < chapters.length; index++) {
+      _admitChapter(
+        _map(chapters[index], '$label.chapters[$index]'),
+        '$label.chapters[$index]',
+        native: native,
+      );
+    }
+    final chapter = _requiredMap(record, 'chapter', label);
+    final title = _requiredString(chapter, 'title', '$label.chapter');
+    if (title.isEmpty) {
+      throw StateError('$label chapter title must not be empty');
+    }
+    _requiredString(chapter, 'text', '$label.chapter');
+  }
+  final probes = _requiredMap(record, 'sourceProbes', label);
+  for (final field in ['vipProbe', 'payProbe']) {
+    _nullableStringPresent(probes, field, '$label.sourceProbes');
+  }
+  final caseRequests = _requiredList(record, 'requests', label);
+  if (caseRequests.isEmpty) {
+    throw StateError('$label case has no request slice');
+  }
+  for (var index = 0; index < caseRequests.length; index++) {
+    _admitRequest(
+      _map(caseRequests[index], '$label.requests[$index]'),
+      '$label.requests[$index]',
+    );
+  }
+}
+
+void _admitSearchResult(Object? value, String label, {required bool native}) {
+  final result = _map(value, label);
+  for (final field in ['name', 'author', 'bookUrl']) {
+    _requiredString(result, field, label);
+  }
+  if (native && result.containsKey('infoHtml') && result['infoHtml'] is! bool) {
+    throw StateError('$label.infoHtml must be boolean when present');
+  }
+  for (final field in ['identityAddress', 'rawAddress']) {
+    if (result.containsKey(field) &&
+        result[field] != null &&
+        result[field] is! String) {
+      throw StateError('$label.$field must be string or null');
+    }
+  }
+}
+
+void _admitChapter(
+  Map<String, dynamic> chapter,
+  String label, {
+  required bool native,
+}) {
+  _requiredString(chapter, 'title', label);
+  if (_requiredString(chapter, 'title', label).isEmpty) {
+    throw StateError('$label.title must not be empty');
+  }
+  final values = native ? ['url', 'absoluteUrl'] : ['url', 'address'];
+  for (final field in values) {
+    _requiredString(chapter, field, label);
+  }
+  _nullableStringPresent(chapter, 'tag', label);
+  for (final field in ['isVolume', 'isVip', 'isPay']) {
+    if (_present(chapter, field, label) is! bool) {
+      throw StateError('$label.$field must be boolean');
+    }
+  }
+  if (native) {
+    if (chapter.containsKey('bookUrl') && chapter['bookUrl'] is! String) {
+      throw StateError('$label.bookUrl must be a string when present');
+    }
+  } else {
+    _nullableStringPresent(chapter, 'rawAddress', label);
+    _requiredString(chapter, 'storeKey', label);
+    _requiredString(chapter, 'persistedAddress', label);
+  }
+}
+
+void _admitRequest(Map<String, dynamic> request, String label) {
+  _requiredString(request, 'method', label);
+  _requiredString(request, 'path', label);
+  _requiredString(request, 'rawQuery', label);
+  _stringMap(request['query'], '$label.query');
+  final receipt = _requiredMap(request, 'receipt', label);
+  _requiredString(receipt, 'terminal', '$label.receipt');
+  if (_present(receipt, 'status', '$label.receipt') is! int) {
+    throw StateError('$label.receipt.status must be integer');
+  }
+  if (_present(receipt, 'send', '$label.receipt') != 'completed') {
+    throw StateError('$label.receipt.send must record actual completion');
+  }
+  _nullableStringPresent(receipt, 'responseId', '$label.receipt');
+  _nullableStringPresent(receipt, 'redirect', '$label.receipt');
+  if (receipt.containsKey('error') && receipt['error'] is! String) {
+    throw StateError('$label.receipt.error must be a string when present');
+  }
+}
+
+void _compareCases(
+  List<Map<String, Object?>> differences,
+  String id,
+  Map<String, dynamic> frozen,
+  Map<String, dynamic> product,
+) {
+  _diff(differences, id, 'terminal', frozen['terminal'], product['terminal']);
+  final frozenSearch = _map(frozen['search'], '$id.search');
+  final productSearch = _map(product['search'], '$id.search');
+  final frozenResults = _requiredList(
+    frozenSearch,
+    'results',
+    '$id.search.results',
+  );
+  final productResults = _requiredList(
+    productSearch,
+    'results',
+    '$id.search.results',
+  );
+  _diff(
+    differences,
+    id,
+    'search.results.length',
+    frozenResults.length,
+    productResults.length,
+  );
+  final resultCount = frozenResults.length < productResults.length
+      ? frozenResults.length
+      : productResults.length;
+  for (var index = 0; index < resultCount; index++) {
+    final f = _map(frozenResults[index], '$id.search.results[$index]');
+    final p = _map(productResults[index], '$id.search.results[$index]');
+    for (final field in ['name', 'author', 'bookUrl']) {
+      _diff(
+        differences,
+        id,
+        'search.results[$index].$field',
+        f[field],
+        p[field],
+      );
+    }
+  }
+
+  if (frozen['bookInfo'] == null || product['bookInfo'] == null) {
+    _diff(differences, id, 'bookInfo', frozen['bookInfo'], product['bookInfo']);
+  } else {
+    final f = _map(frozen['bookInfo'], '$id.bookInfo');
+    final p = _map(product['bookInfo'], '$id.bookInfo');
+    for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
+      _diff(differences, id, 'bookInfo.$field', f[field], p[field]);
+    }
+  }
+  if (frozen['tableOfContents'] == null || product['tableOfContents'] == null) {
+    _diff(
+      differences,
+      id,
+      'tableOfContents',
+      frozen['tableOfContents'],
+      product['tableOfContents'],
+    );
+  } else {
+    final f = _map(frozen['tableOfContents'], '$id.tableOfContents');
+    final p = _map(product['tableOfContents'], '$id.tableOfContents');
+    _diff(differences, id, 'tableOfContents.tocUrl', f['tocUrl'], p['tocUrl']);
+    final fChapters = _requiredList(f, 'chapters', '$id.tableOfContents');
+    final pChapters = _requiredList(p, 'chapters', '$id.tableOfContents');
+    _diff(
+      differences,
+      id,
+      'tableOfContents.chapters.length',
+      fChapters.length,
+      pChapters.length,
+    );
+    final count = fChapters.length < pChapters.length
+        ? fChapters.length
+        : pChapters.length;
+    for (var index = 0; index < count; index++) {
+      final fc = _map(fChapters[index], '$id.chapters[$index]');
+      final pc = _map(pChapters[index], '$id.chapters[$index]');
+      for (final field in ['title', 'tag', 'isVolume', 'isVip', 'isPay']) {
+        _diff(differences, id, 'chapters[$index].$field', fc[field], pc[field]);
+      }
+      _diff(
+        differences,
+        id,
+        'chapters[$index].url(raw vs address)',
+        fc['url'],
+        pc['address'],
+      );
+      _diff(
+        differences,
+        id,
+        'chapters[$index].absoluteUrl(vs url)',
+        fc['absoluteUrl'],
+        pc['url'],
+      );
+    }
+  }
+  if (frozen['chapter'] == null || product['chapter'] == null) {
+    _diff(differences, id, 'chapter', frozen['chapter'], product['chapter']);
+  } else {
+    final f = _map(frozen['chapter'], '$id.chapter');
+    final p = _map(product['chapter'], '$id.chapter');
+    for (final field in ['title', 'text']) {
+      _diff(differences, id, 'chapter.$field', f[field], p[field]);
+    }
+  }
+  final fProbes = _map(frozen['sourceProbes'], '$id.sourceProbes');
+  final pProbes = _map(product['sourceProbes'], '$id.sourceProbes');
+  for (final field in ['vipProbe', 'payProbe']) {
+    _diff(
+      differences,
+      id,
+      'sourceProbes.$field',
+      fProbes[field],
+      pProbes[field],
+    );
+  }
+}
+
+String _expectedRawQuery(Map<String, dynamic> request) {
+  final query = request['query'];
+  if (query == null) return '';
+  final map = _stringMap(query, 'expected.query');
+  return map.entries
+      .map(
+        (entry) =>
+            '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
+      )
+      .join('&');
+}
+
+void _admitOperationSpans(
+  List<Map<String, dynamic>> cases,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> trace,
+  String side,
+  String origin, {
+  required bool nativeSide,
+}) {
+  var requestCursor = 0;
+  var traceCursor = 0;
+  for (final record in cases) {
+    final id = _requiredString(record, 'id', '$side.case');
+    final terminal = _requiredString(record, 'terminal', '$side.case.$id');
+    final expectedNames = terminal == 'search-empty'
+        ? const ['search']
+        : const ['search', 'bookInfo', 'tableOfContents', 'content'];
+    final operations = _requiredList(record, 'operations', '$side.case.$id');
+    if (operations.length != expectedNames.length) {
+      throw StateError('$side.$id operation set differs for its terminal');
+    }
+    var previousRequest = -1;
+    var previousTrace = -1;
+    var firstRequest = -1;
+    var lastRequest = -1;
+    var firstTrace = -1;
+    var lastTrace = -1;
+    for (var index = 0; index < operations.length; index++) {
+      final operation = _map(operations[index], '$side.$id.operations[$index]');
+      final name = _requiredString(
+        operation,
+        'name',
+        '$side.$id.operations[$index]',
+      );
+      if (name != expectedNames[index]) {
+        throw StateError('$side.$id operation name is not the declared term');
+      }
+      if (_requiredString(
+            operation,
+            'outcome',
+            '$side.$id.operations[$index]',
+          ) !=
+          'completed') {
+        throw StateError('$side.$id operation did not complete');
+      }
+      final requestStart = _requiredInt(
+        operation,
+        'requestStart',
+        '$side.$id.operations[$index]',
+      );
+      final requestEnd = _requiredInt(
+        operation,
+        'requestEnd',
+        '$side.$id.operations[$index]',
+      );
+      final traceStart = _requiredInt(
+        operation,
+        'traceStart',
+        '$side.$id.operations[$index]',
+      );
+      final traceEnd = _requiredInt(
+        operation,
+        'traceEnd',
+        '$side.$id.operations[$index]',
+      );
+      if (requestStart < 0 ||
+          requestEnd < requestStart ||
+          requestEnd > requests.length ||
+          traceStart < 0 ||
+          traceEnd < traceStart ||
+          traceEnd > trace.length) {
+        throw StateError('$side.$id operation span is outside its producer');
+      }
+      if (nativeSide && requestEnd - requestStart != traceEnd - traceStart) {
+        throw StateError(
+          '$side.$id operation request/trace span count differs',
+        );
+      }
+      if (nativeSide) {
+        for (
+          var requestIndex = requestStart;
+          requestIndex < requestEnd;
+          requestIndex++
+        ) {
+          final requestStage = _requiredString(
+            requests[requestIndex],
+            'stage',
+            '$side.requests[$requestIndex]',
+          );
+          if (requestStage != name) {
+            throw StateError(
+              '$side.$id operation $name owns an unrelated request stage',
+            );
+          }
+          final request = requests[requestIndex];
+          final path = _requiredString(
+            request,
+            'path',
+            '$side.requests[$requestIndex]',
+          );
+          final raw = _requiredString(
+            request,
+            'rawQuery',
+            '$side.requests[$requestIndex]',
+          );
+          final traceEntry = trace[traceStart + (requestIndex - requestStart)];
+          final traced = _requiredString(
+            traceEntry,
+            'path',
+            '$side.trace[${traceStart + (requestIndex - requestStart)}]',
+          );
+          if (traced != '$origin$path${raw.isEmpty ? '' : '?$raw'}') {
+            throw StateError(
+              '$side.$id operation $name owns an unrelated request target',
+            );
+          }
+        }
+      }
+      for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
+        final stage = _requiredString(
+          trace[traceIndex],
+          'stage',
+          '$side.trace[$traceIndex]',
+        );
+        if (stage != name) {
+          throw StateError(
+            '$side.$id operation $name owns an unrelated trace stage',
+          );
+        }
+      }
+      if (previousRequest >= 0 &&
+          (requestStart != previousRequest || traceStart != previousTrace)) {
+        throw StateError('$side.$id operation spans are not contiguous');
+      }
+      if (firstRequest < 0) {
+        firstRequest = requestStart;
+        firstTrace = traceStart;
+        if (firstRequest != requestCursor || firstTrace != traceCursor) {
+          throw StateError('$side.$id operation spans skip or overlap a case');
+        }
+      }
+      previousRequest = requestEnd;
+      previousTrace = traceEnd;
+      lastRequest = requestEnd;
+      lastTrace = traceEnd;
+    }
+    final caseRequests = _requiredList(
+      record,
+      'requests',
+      '$side.$id.requests',
+    );
+    final expectedRequests = firstRequest == lastRequest
+        ? const <Object?>[]
+        : requests.sublist(firstRequest, lastRequest);
+    if (!_deepEquals(caseRequests, expectedRequests)) {
+      throw StateError('$side.$id request slice is not its operation span');
+    }
+    if (lastTrace < firstTrace || lastTrace > trace.length) {
+      throw StateError('$side.$id trace span is outside the global trace');
+    }
+    requestCursor = lastRequest;
+    traceCursor = lastTrace;
+  }
+  if (requestCursor != requests.length || traceCursor != trace.length) {
+    throw StateError(
+      '$side operation spans do not cover the producer sequences',
+    );
+  }
+}
+
+void _admitCausalRelationships(
+  List<Map<String, Object?>> differences,
+  String side,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> cases,
+  List<Map<String, dynamic>> trace,
+  String origin,
+) {
+  final concatenated = <Map<String, dynamic>>[];
+  for (final record in cases) {
+    final slices = _requiredList(
+      record,
+      'requests',
+      '$side.case.${record['id']}',
+    );
+    for (final value in slices) {
+      concatenated.add(_map(value, '$side.case.${record['id']}.requests[]'));
+    }
+  }
+  if (!_deepEquals(concatenated, requests)) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.caseRequestSlices',
+      'frozen': 'global request sequence',
+      'liber': 'case slices do not reconstruct the global sequence',
+    });
+  }
+
+  if (side == 'liber') {
+    for (final record in cases) {
+      final id = _requiredString(record, 'id', '$side.case');
+      final operations = _requiredList(
+        record,
+        'operations',
+        '$side.case.$id.operations',
+      );
+      for (var opIndex = 0; opIndex < operations.length; opIndex++) {
+        final operation = _map(
+          operations[opIndex],
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final requestStart = _requiredInt(
+          operation,
+          'requestStart',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final requestEnd = _requiredInt(
+          operation,
+          'requestEnd',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final traceStart = _requiredInt(
+          operation,
+          'traceStart',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        final traceEnd = _requiredInt(
+          operation,
+          'traceEnd',
+          '$side.case.$id.operations[$opIndex]',
+        );
+        var cursor = requestStart;
+        for (var traceIndex = traceStart; traceIndex < traceEnd; traceIndex++) {
+          final path = _requiredString(
+            trace[traceIndex],
+            'path',
+            '$side.trace[$traceIndex]',
+          );
+          var matched = -1;
+          for (
+            var requestIndex = cursor;
+            requestIndex < requestEnd;
+            requestIndex++
+          ) {
+            final request = requests[requestIndex];
+            final requestPath = _requiredString(
+              request,
+              'path',
+              '$side.request[$requestIndex]',
+            );
+            final raw = _requiredString(
+              request,
+              'rawQuery',
+              '$side.request[$requestIndex]',
+            );
+            final candidates = <String>{
+              requestPath,
+              requestPath + (raw.isEmpty ? '' : '?$raw'),
+              origin + requestPath + (raw.isEmpty ? '' : '?$raw'),
+            };
+            if (candidates.contains(path)) {
+              matched = requestIndex;
+              break;
+            }
+          }
+          if (matched < 0) {
+            differences.add({
+              'row': 'C3',
+              'field': '$side.trace[$traceIndex].path',
+              'frozen': 'forward request context',
+              'liber': path,
+            });
+            break;
+          }
+          cursor = matched;
+        }
+      }
+    }
+  }
+
+  for (final record in cases) {
+    final id = _requiredString(record, 'id', '$side.case');
+    final slices = _requiredList(record, 'requests', '$side.case.$id.requests');
+    if (slices.isEmpty) continue;
+    final first = _map(slices.first, '$side.case.$id.requests[0]');
+    final path = _requiredString(first, 'path', '$side.case.$id.requests[0]');
+    final raw = _requiredString(
+      first,
+      'rawQuery',
+      '$side.case.$id.requests[0]',
+    );
+    final candidates = <String>{
+      path,
+      path + (raw.isEmpty ? '' : '?$raw'),
+      origin + path + (raw.isEmpty ? '' : '?$raw'),
+    };
+    final traced = trace.any(
+      (entry) => entry['path'] is String && candidates.contains(entry['path']),
+    );
+    if (!traced) {
+      differences.add({
+        'row': 'C3',
+        'field': '$side.trace.case.$id',
+        'frozen': 'case search request traced',
+        'liber': 'missing case trace evidence',
+      });
+    }
+  }
+}
+
+void _compareRequestsToDeclaration(
+  List<Map<String, Object?>> differences,
+  String side,
+  List<Map<String, dynamic>> requests,
+  List<Map<String, dynamic>> expected,
+  List<Map<String, dynamic>> responses,
+) {
+  if (requests.length != expected.length) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests.length',
+      'frozen': expected.length,
+      'liber': requests.length,
+    });
+  }
+  final count = requests.length < expected.length
+      ? requests.length
+      : expected.length;
+  for (var index = 0; index < count; index++) {
+    final actual = requests[index];
+    final wanted = expected[index];
+    for (final field in ['method', 'path']) {
+      if (actual[field] != wanted[field]) {
+        differences.add({
+          'row': 'C2',
+          'field': '$side.requests[$index].$field',
+          'frozen': wanted[field],
+          'liber': actual[field],
+        });
+      }
+    }
+    final wantedQuery = wanted['query'] == null
+        ? <String, String>{}
+        : _stringMap(wanted['query'], 'expectedRequests[$index].query');
+    final actualQuery = _stringMap(
+      actual['query'],
+      '$side.requests[$index].query',
+    );
+    if (!_deepEquals(wantedQuery, actualQuery)) {
+      differences.add({
+        'row': 'C2',
+        'field': '$side.requests[$index].query',
+        'frozen': wantedQuery,
+        'liber': actualQuery,
+      });
+    }
+    final expectedRawQuery = _expectedRawQuery(wanted);
+    if (actual['rawQuery'] != expectedRawQuery) {
+      differences.add({
+        'row': 'C2',
+        'field': '$side.requests[$index].rawQuery',
+        'frozen': expectedRawQuery,
+        'liber': actual['rawQuery'],
+      });
+    }
+    final response = responses[index];
+    final receipt = _requiredMap(actual, 'receipt', '$side.requests[$index]');
+    final expectedId = response['id'];
+    final expectedStatus = response['status'];
+    final headers = response['headers'] is Map
+        ? _map(response['headers'], 'response.headers')
+        : <String, dynamic>{};
+    final expectedRedirect = headers['Location'];
+    for (final entry in <String, Object?>{
+      'terminal': 'responded',
+      'status': expectedStatus,
+      'responseId': expectedId,
+      'redirect': expectedRedirect,
+    }.entries) {
+      if (receipt[entry.key] != entry.value) {
+        differences.add({
+          'row': 'C2',
+          'field': '$side.requests[$index].receipt.${entry.key}',
+          'frozen': entry.value,
+          'liber': receipt[entry.key],
+        });
+      }
+    }
+  }
+  for (var index = count; index < requests.length; index++) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests[$index]',
+      'frozen': null,
+      'liber':
+          'unexpected: ${requests[index]['method']} ${requests[index]['path']}',
+    });
+  }
+  for (var index = count; index < expected.length; index++) {
+    differences.add({
+      'row': 'C2',
+      'field': '$side.requests[$index]',
+      'frozen': '${expected[index]['method']} ${expected[index]['path']}',
+      'liber': null,
+    });
+  }
+}
+
+List<Map<String, dynamic>> _admitStageTrace({
+  required Object? trace,
+  required String label,
+}) {
+  final values = _requiredListValue(trace, label);
+  if (values.isEmpty) throw StateError('$label must not be empty');
+  final out = <Map<String, dynamic>>[];
+  for (var index = 0; index < values.length; index++) {
+    final entry = _map(values[index], '$label[$index]');
+    final stage = _requiredString(entry, 'stage', '$label[$index]');
+    if (!const {
+      'search',
+      'bookInfo',
+      'tableOfContents',
+      'content',
+    }.contains(stage)) {
+      throw StateError('$label[$index].stage is not a producer stage');
+    }
+    _requiredString(entry, 'path', '$label[$index]');
+    out.add(entry);
+  }
+  return out;
+}
+
+Map<String, Object?> _row(
+  String id,
+  String title,
+  List<Map<String, Object?>> differences,
+) => {
+  'id': id,
+  'title': title,
+  'status': differences.isEmpty ? 'pass' : 'fail',
+  'detail': differences.isEmpty
+      ? 'matched'
+      : '${differences.length} difference(s)',
+  'differences': differences,
+};
+
+void _admitExactIds(
+  List<Map<String, dynamic>> records,
+  List<String> declared,
+  String side,
+) {
+  if (declared.isEmpty) throw StateError('$side declared case set is empty');
+  final ids = [
+    for (final record in records) _requiredString(record, 'id', side),
+  ];
+  if (ids.length != declared.length ||
+      ids.toSet().length != ids.length ||
+      !ids.toSet().containsAll(declared) ||
+      !_deepEquals(ids, declared)) {
+    throw StateError('$side case ids are not the declared chronological set');
+  }
+}
+
+Map<String, dynamic> _map(Object? value, String label) {
+  if (value is! Map) throw StateError('$label must be an object');
+  return value.cast<String, dynamic>();
+}
+
+Map<String, dynamic> _requiredMap(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) => _map(_present(map, key, label), '$label.$key');
+
+List<Object?> _requiredList(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) => _requiredListValue(_present(map, key, label), '$label.$key');
+
+List<Object?> _requiredListValue(Object? value, String label) {
+  if (value is! List) throw StateError('$label must be an array');
+  return value;
+}
+
+Object? _present(Map<String, dynamic> map, String key, String label) {
+  if (!map.containsKey(key)) throw StateError('$label.$key is missing');
+  return map[key];
+}
+
+String _requiredString(Map<String, dynamic> map, String key, String label) {
+  final value = _present(map, key, label);
+  if (value is! String) throw StateError('$label.$key must be a string');
+  return value;
+}
+
+int _requiredInt(Map<String, dynamic> map, String key, String label) {
+  final value = _present(map, key, label);
+  if (value is! int) throw StateError('$label.$key must be an integer');
+  return value;
+}
+
+String? _nullableStringPresent(
+  Map<String, dynamic> map,
+  String key,
+  String label,
+) {
+  final value = _present(map, key, label);
+  if (value != null && value is! String) {
+    throw StateError('$label.$key must be string or null');
+  }
+  return value as String?;
+}
+
+Map<String, String> _stringMap(Object? value, String label) {
+  if (value is! Map) throw StateError('$label must be an object');
+  final out = <String, String>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || entry.value is! String) {
+      throw StateError('$label must contain string keys and values');
+    }
+    out[entry.key as String] = entry.value as String;
+  }
+  return out;
+}
+
+List<Map<String, dynamic>> _records(Object? value, String label) {
+  final values = _requiredListValue(value, label);
+  return [
+    for (var index = 0; index < values.length; index++)
+      _map(values[index], '$label[$index]'),
+  ];
+}
+
+List<Map<String, dynamic>> _markerRequests(Object? value, String label) {
+  final records = _records(value, label);
+  for (var index = 0; index < records.length; index++) {
+    _admitRequest(records[index], '$label[$index]');
+  }
+  return records;
+}
+
+void _diff(
+  List<Map<String, Object?>> differences,
+  String row,
+  String field,
+  Object? frozen,
+  Object? product,
+) {
+  if (!_deepEquals(frozen, product)) {
+    differences.add({
+      'row': row,
+      'field': field,
+      'frozen': frozen,
+      'liber': product,
+    });
+  }
+}
+
 bool _deepEquals(Object? frozen, Object? product) {
   if (frozen is Map && product is Map) {
     if (frozen.length != product.length) return false;
@@ -567,6 +2274,43 @@ String? _sequenceMismatch(
   }
   return null;
 }
+
+String _requiredMeasuredPath(String? path, String option) {
+  if (path == null) throw ArgumentError('$option is required for FIELDS-02');
+  final file = File(path);
+  if (!file.existsSync()) throw ArgumentError('$option does not exist: $path');
+  return _sha256(file.readAsBytesSync());
+}
+
+List<int> _lf(List<int> bytes) {
+  final out = <int>[];
+  for (var index = 0; index < bytes.length; index++) {
+    if (bytes[index] == 13 &&
+        index + 1 < bytes.length &&
+        bytes[index + 1] == 10) {
+      continue;
+    }
+    out.add(bytes[index]);
+  }
+  return out;
+}
+
+const _productSourcePaths = <String>[
+  'lib/source/book_source_pipeline.dart',
+  'lib/source/html_source_pipeline.dart',
+  'lib/source/json_source_pipeline.dart',
+  'lib/source/html_rule_adapter.dart',
+  'lib/source/json_source_rules.dart',
+  'lib/source/http_source_transport.dart',
+  'lib/source/source_host_state.dart',
+  'lib/source/js_source_runtime.dart',
+  'lib/source/source_url_rules.dart',
+];
+
+Map<String, String> _measureProductSources(String root) => {
+  for (final path in _productSourcePaths)
+    path: _sha256(File('$root/$path').readAsBytesSync()),
+};
 
 String _sha256(List<int> bytes) {
   final digest = SHA256Digest();

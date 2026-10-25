@@ -18,6 +18,7 @@ tool/first_slice/fixtures.json text eol=lf
 # the same way: the comparator refuses to compare when the corpus bytes hash to
 # anything but the value the observation and manifest recorded.
 tool/result_field_oracle/fixtures.json text eol=lf
+tool/result_field_oracle/book-url-markers-fixtures.json text eol=lf
 tool/result_field_oracle/evidence/** text eol=lf
 # The harness serves the corpus out of its assets, so the runner is not shipped;
 # this line keeps the matching-rule reference byte-stable alongside it.
