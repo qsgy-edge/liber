@@ -1,5 +1,6 @@
 """Small stdlib regressions for the FIELDS-02 capture boundary."""
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -22,6 +23,19 @@ def _shell_path():
         if Path(candidate).is_file():
             return candidate
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
+
+
+def _run_snapshot_formatter(root):
+    shell = _shell_path()
+    environment = os.environ.copy()
+    if os.name == 'nt':
+        # The installed Git shell must resolve its own POSIX find/od/tr, not
+        # an earlier Windows utility from the parent's PATH. Keep the parent
+        # environment untouched and scope the directory to this child only.
+        environment['PATH'] = str(Path(shell).parent) + os.pathsep + environment.get('PATH', '')
+    return subprocess.run(
+        [shell, '-c', capture._fields_snapshot_script(str(root))],
+        capture_output=True, env=environment)
 
 
 def _snapshot_line(kind, path, digest='-'):
@@ -520,9 +534,7 @@ class SnapshotParserTest(unittest.TestCase):
             for name in ['cache', 'files', 'databases', 'shared_prefs']:
                 (root / name).mkdir()
             (root / 'databases' / 'legado.db').write_bytes(b'x')
-            completed = subprocess.run(
-                [_shell_path(), '-c', capture._fields_snapshot_script(str(root))],
-                capture_output=True)
+            completed = _run_snapshot_formatter(root)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             records = capture._snapshot_records(completed.stdout, 'test')
             self.assertIn('databases/legado.db', records)
@@ -538,9 +550,7 @@ class SnapshotParserTest(unittest.TestCase):
             (root / 'databases' / 'legado.db').write_bytes(b'x')
             weird = root / 'files' / ('one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two')
             weird.write_bytes(b'y')
-            completed = subprocess.run(
-                [_shell_path(), '-c', capture._fields_snapshot_script(str(root))],
-                capture_output=True)
+            completed = _run_snapshot_formatter(root)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             with self.assertRaises(ValueError):
                 capture._snapshot_records(completed.stdout, 'test')
