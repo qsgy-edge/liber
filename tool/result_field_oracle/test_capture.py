@@ -11,6 +11,19 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capture  # noqa: E402
 
+def _shell_path():
+    import shutil
+    found = shutil.which('sh')
+    if found:
+        return found
+    for candidate in (
+            r'C:/Program Files/Git/usr/bin/sh.exe',
+            r'C:/Program Files/Git/bin/sh.exe'):
+        if Path(candidate).is_file():
+            return candidate
+    raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
+
+
 def _snapshot_line(kind, path, digest='-'):
     return kind + chr(9) + digest + chr(9) + path.encode().hex() + chr(10)
 
@@ -508,7 +521,7 @@ class SnapshotParserTest(unittest.TestCase):
                 (root / name).mkdir()
             (root / 'databases' / 'legado.db').write_bytes(b'x')
             completed = subprocess.run(
-                ['sh', '-c', capture._fields_snapshot_script(str(root))],
+                [_shell_path(), '-c', capture._fields_snapshot_script(str(root))],
                 capture_output=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             records = capture._snapshot_records(completed.stdout, 'test')
@@ -526,7 +539,7 @@ class SnapshotParserTest(unittest.TestCase):
             weird = root / 'files' / ('one' + chr(10) + 'D' + chr(9) + '-' + chr(9) + 'two')
             weird.write_bytes(b'y')
             completed = subprocess.run(
-                ['sh', '-c', capture._fields_snapshot_script(str(root))],
+                [_shell_path(), '-c', capture._fields_snapshot_script(str(root))],
                 capture_output=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             with self.assertRaises(ValueError):
