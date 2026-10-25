@@ -936,14 +936,14 @@ class FormatterFailureTest(unittest.TestCase):
                 self.assertEqual(result.failures, [])
                 self.assertEqual(
                     sorted(set(aliases)), sorted(canonical.keys()))
-            result = unittest.TestResult()
-            FormatterFailureTest(
-                'test_incomplete_first_context_uses_complete_fallback'
-            ).run(result)
-            self.assertEqual(result.testsRun, 1)
-            self.assertEqual(result.errors, [])
-            self.assertEqual(result.skipped, [])
-            self.assertEqual(result.failures, [])
+                result = unittest.TestResult()
+                FormatterFailureTest(
+                    'test_incomplete_first_context_uses_complete_fallback'
+                ).run(result)
+                self.assertEqual(result.testsRun, 1)
+                self.assertEqual(result.errors, [])
+                self.assertEqual(result.skipped, [])
+                self.assertEqual(result.failures, [])
             for original, digest in originals.items():
                 self.assertEqual(
                     hashlib.sha256(original.read_bytes()).hexdigest(), digest)
