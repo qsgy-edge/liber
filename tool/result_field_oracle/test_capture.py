@@ -40,7 +40,7 @@ def _complete_fixture_context():
     suffix = '.exe' if os.name == 'nt' else ''
     for directory in candidates:
         if (all((directory / (name + suffix)).is_file()
-                for name in ('sh', 'od', 'tr'))
+                for name in ('sh', 'find', 'sha256sum', 'od', 'tr'))
                 and (directory / 'msys-2.0.dll').is_file()):
             return directory
     raise unittest.SkipTest('complete installed shell/tool/runtime context unavailable')
@@ -796,6 +796,41 @@ class FormatterFailureTest(unittest.TestCase):
                     self.assertEqual(result.errors, [], name)
                     self.assertEqual(result.skipped, [], name)
                     self.assertEqual(result.failures, [], name)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows incomplete-first context control')
+    def test_incomplete_first_context_uses_complete_fallback(self):
+        import shutil
+        from unittest import mock
+        complete = _complete_fixture_context()
+        complete_shell = complete / 'sh.exe'
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            for missing in ('find', 'sha256sum'):
+                incomplete = base / ('incomplete-' + missing)
+                incomplete.mkdir()
+                for name in ('sh', 'od', 'tr'):
+                    shutil.copy2(complete / (name + '.exe'), incomplete / (name + '.exe'))
+                shutil.copy2(complete / 'msys-2.0.dll', incomplete / 'msys-2.0.dll')
+                if missing != 'find':
+                    shutil.copy2(complete / 'find.exe', incomplete / 'find.exe')
+                if missing != 'sha256sum':
+                    shutil.copy2(complete / 'sha256sum.exe', incomplete / 'sha256sum.exe')
+                env = os.environ.copy()
+                env['PATH'] = os.pathsep.join([
+                    str(incomplete), str(complete), str(Path(os.environ['SystemRoot']) / 'System32'),
+                    os.environ['SystemRoot'],
+                ])
+                with mock.patch.dict(os.environ, env, clear=True):
+                    selected = _complete_fixture_context()
+                    self.assertEqual(selected.resolve(), complete.resolve(), missing)
+                    result = unittest.TestResult()
+                    FormatterFailureTest(
+                        'test_windows_posix_tools_keep_precedence_and_complete_fallback'
+                    ).run(result)
+                self.assertEqual(result.testsRun, 1, missing)
+                self.assertEqual(result.errors, [], missing)
+                self.assertEqual(result.skipped, [], missing)
+                self.assertEqual(result.failures, [], missing)
 
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:
