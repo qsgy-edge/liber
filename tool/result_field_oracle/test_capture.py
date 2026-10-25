@@ -33,7 +33,7 @@ def _complete_fixture_context():
         Path(r'C:/Program Files/Git/usr/bin'),
         Path(r'C:/Program Files/Git/bin'),
     ]
-    for command in ('od', 'tr'):
+    for command in ('sh', 'find', 'sha256sum', 'od', 'tr'):
         found = shutil.which(command)
         if found:
             candidates.append(Path(found).parent)
@@ -834,7 +834,18 @@ class FormatterFailureTest(unittest.TestCase):
                         capture._snapshot_records(positive.stdout, missing),
                     )
                     selected = _complete_fixture_context()
-                    self.assertEqual(selected.resolve(), complete.resolve(), missing)
+                    self.assertNotEqual(selected.resolve(), incomplete.resolve(), missing)
+                    selected_shell = selected / 'sh.exe'
+                    with mock.patch.object(
+                            sys.modules[__name__], '_shell_path',
+                            lambda: str(selected_shell),
+                        ):
+                        fallback = _run_snapshot_formatter(root)
+                    self.assertEqual(fallback.returncode, 0, (missing, fallback.stderr))
+                    self.assertIn(
+                        'files/one',
+                        capture._snapshot_records(fallback.stdout, missing + '-fallback'),
+                    )
                     result = unittest.TestResult()
                     FormatterFailureTest(
                         'test_windows_posix_tools_keep_precedence_and_complete_fallback'
@@ -843,6 +854,99 @@ class FormatterFailureTest(unittest.TestCase):
                 self.assertEqual(result.errors, [], missing)
                 self.assertEqual(result.skipped, [], missing)
                 self.assertEqual(result.failures, [], missing)
+
+    def test_alternative_complete_contexts_remain_usable(self):
+        import hashlib
+        import shutil
+        from unittest import mock
+        installed = _complete_fixture_context()
+        names = ('sh', 'find', 'sha256sum', 'od', 'tr')
+        runtime = [installed / (name + '.exe') for name in names]
+        runtime.append(installed / 'bash.exe')
+        runtime.extend(sorted(installed.glob('*.dll')))
+        self.assertIn(installed / 'msys-2.0.dll', runtime)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            alternative = base / 'nondefault-installation' / 'usr' / 'bin'
+            alternative.mkdir(parents=True)
+            (alternative.parent.parent / 'tmp').mkdir()
+            originals = {
+                original: hashlib.sha256(original.read_bytes()).hexdigest()
+                for original in runtime
+            }
+            for original, digest in originals.items():
+                shutil.copy2(original, alternative / original.name)
+                self.assertEqual(
+                    (alternative / original.name).read_bytes(), original.read_bytes())
+                self.assertEqual(
+                    hashlib.sha256((alternative / original.name).read_bytes()).hexdigest(),
+                    digest)
+            windows = Path(os.environ['SystemRoot'])
+            installed_root = base / 'installed-positive'
+            installed_root.mkdir()
+            root = self._make_root(installed_root)
+            installed_positive = _run_snapshot_formatter(root)
+            self.assertEqual(installed_positive.returncode, 0, installed_positive.stderr)
+            self.assertIn(
+                'files/one',
+                capture._snapshot_records(installed_positive.stdout, 'installed-positive'),
+            )
+            alternative_env = os.environ.copy()
+            alternative_env['PATH'] = os.pathsep.join([
+                str(alternative), str(windows / 'System32'), str(windows)])
+            alternative_root = base / 'alternative-positive'
+            alternative_root.mkdir()
+            alternative_root = self._make_root(alternative_root)
+            with mock.patch.dict(os.environ, alternative_env, clear=True), \
+                    mock.patch.object(
+                        sys.modules[__name__], '_shell_path',
+                        lambda: str(alternative / 'sh.exe'),
+                    ):
+                alternative_positive = _run_snapshot_formatter(alternative_root)
+                self.assertEqual(
+                    alternative_positive.returncode, 0, alternative_positive.stderr)
+                self.assertIn(
+                    'files/one',
+                    capture._snapshot_records(
+                        alternative_positive.stdout, 'alternative-positive'),
+                )
+                canonical = {
+                    'c:/program files/git/usr/bin': base / 'absent-canonical-usr-bin',
+                    'c:/program files/git/bin': base / 'absent-canonical-bin',
+                }
+                real_path = Path
+                aliases = []
+                def bounded_path(value):
+                    if isinstance(value, str):
+                        name = value.replace(chr(92), '/').lower().rstrip('/')
+                        if name in canonical:
+                            aliases.append(name)
+                            return canonical[name]
+                    return real_path(value)
+                with mock.patch.object(sys.modules[__name__], 'Path', bounded_path):
+                    selected = _complete_fixture_context()
+                    self.assertEqual(selected.resolve(), alternative.resolve())
+                    result = unittest.TestResult()
+                    FormatterFailureTest(
+                        'test_incomplete_first_context_uses_complete_fallback'
+                    ).run(result)
+                self.assertEqual(result.testsRun, 1)
+                self.assertEqual(result.errors, [])
+                self.assertEqual(result.skipped, [])
+                self.assertEqual(result.failures, [])
+                self.assertEqual(
+                    sorted(set(aliases)), sorted(canonical.keys()))
+            result = unittest.TestResult()
+            FormatterFailureTest(
+                'test_incomplete_first_context_uses_complete_fallback'
+            ).run(result)
+            self.assertEqual(result.testsRun, 1)
+            self.assertEqual(result.errors, [])
+            self.assertEqual(result.skipped, [])
+            self.assertEqual(result.failures, [])
+            for original, digest in originals.items():
+                self.assertEqual(
+                    hashlib.sha256(original.read_bytes()).hexdigest(), digest)
 
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:
