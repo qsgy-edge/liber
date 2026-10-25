@@ -255,24 +255,26 @@ def _snapshot_records(output, label):
 
 
 def _fields_snapshot_script(root):
-    """Emit length-safe typed records; every child/pipeline/emission is checked."""
+    """Emit hex-framed typed records with every producer status checked."""
+    encoder = (
+        "printf \"%s\" \"$f\" >/dev/null || exit __CODE__; "
+        "hex=; i=0; q=$(printf \"\\047\") || exit __CODE__; "
+        "while [ \"$i\" -lt \"${#f}\" ]; do c=${f:$i:1}; "
+        "ch=$(printf \"%02x\" \"$q$c\") || exit __CODE__; "
+        "hex=$hex$ch; i=$((i+1)); done; test -n \"$hex\" || exit __EMPTY__; "
+        "printf \"%s\" \"$hex\" >/dev/null || exit __CODE__; "
+    )
+    def encode(code, empty):
+        return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty))
     return (
-        'set -e; cd ' + shlex.quote(root) + '; '
+        'LC_ALL=C; set -e; cd ' + shlex.quote(root) + '; '
         "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 20; "
-        "p=$(printf \"%s\" \"$f\" | od -An -tx1) || exit 21; "
-        "p=$(printf \"%s\" \"$p\" | tr -d \"[:space:]\") || exit 22; "
-        "test -n \"$p\" || exit 24; "
-        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$p\" || exit 23; done' sh {} +; "
-        "find . -type d -exec sh -c 'for d do "
-        "p=$(printf \"%s\" \"$d\" | od -An -tx1) || exit 31; "
-        "p=$(printf \"%s\" \"$p\" | tr -d \"[:space:]\") || exit 32; "
-        "test -n \"$p\" || exit 34; "
-        "printf \"D\t-\t%s\n\" \"$p\" || exit 33; done' sh {} +; "
-        "find . ! -type f ! -type d -exec sh -c 'for p do "
-        "q=$(printf \"%s\" \"$p\" | od -An -tx1) || exit 41; "
-        "q=$(printf \"%s\" \"$q\" | tr -d \"[:space:]\") || exit 42; "
-        "test -n \"$q\" || exit 44; "
-        "printf \"U\t-\t%s\n\" \"$q\" || exit 43; done' sh {} +"
+        + encode(21, 24) +
+        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$hex\" || exit 23; done' sh {} +; "
+        "find . -type d -exec sh -c 'for f do " + encode(31, 34) +
+        "printf \"D\t-\t%s\n\" \"$hex\" || exit 33; done' sh {} +; "
+        "find . ! -type f ! -type d -exec sh -c 'for f do " + encode(41, 44) +
+        "printf \"U\t-\t%s\n\" \"$hex\" || exit 43; done' sh {} +"
     )
 
 

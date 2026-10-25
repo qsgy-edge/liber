@@ -25,7 +25,7 @@ def _shell_path():
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
 
 
-def _run_snapshot_formatter(root):
+def _run_snapshot_formatter(root, extra_path=None):
     shell = _shell_path()
     environment = os.environ.copy()
     if os.name == 'nt':
@@ -33,6 +33,8 @@ def _run_snapshot_formatter(root):
         # an earlier Windows utility from the parent's PATH. Keep the parent
         # environment untouched and scope the directory to this child only.
         environment['PATH'] = str(Path(shell).parent) + os.pathsep + environment.get('PATH', '')
+    if extra_path is not None:
+        environment['PATH'] = str(extra_path) + os.pathsep + environment.get('PATH', '')
     return subprocess.run(
         [shell, '-c', capture._fields_snapshot_script(str(root))],
         capture_output=True, env=environment)
@@ -556,6 +558,41 @@ class SnapshotParserTest(unittest.TestCase):
                 capture._snapshot_records(completed.stdout, 'test')
 
 
+class FormatterFailureTest(unittest.TestCase):
+    def test_actual_upstream_producer_failure_is_not_masked(self):
+        shell = _shell_path()
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / 'private'
+            for name in ['.', 'cache', 'databases', 'files', 'shared_prefs']:
+                (root if name == '.' else root / name).mkdir(exist_ok=True)
+            (root / 'databases' / 'legado.db').write_bytes(b'x')
+            for phase, pattern in [('raw', '.*'), ('hex', '*')]:
+                bin_dir = base / ('bin-' + phase)
+                bin_dir.mkdir()
+                marker = base / (phase + '.log')
+                if phase == 'raw':
+                    condition = 'case "$2" in .|./*) command printf fault >> ' + shlex.quote(str(marker)) + '; return 27;; esac;'
+                else:
+                    condition = 'case "$2" in .|./*) :;; *) command printf fault >> ' + shlex.quote(str(marker)) + '; return 27;; esac;'
+                prefix = ('printf() { command printf "$@"; rc=$?; [ "$rc" -eq 0 ] || return "$rc"; '
+                          'if [ "$1" = "%s" ]; then ' + condition + ' fi; return 0; }; ')
+                wrapper = bin_dir / 'sh'
+                wrapper.write_text(
+                    '#!/bin/sh' + chr(10) +
+                    'if [ "$1" = "-c" ]; then' + chr(10) +
+                    ' code=$2' + chr(10) + ' shift 2' + chr(10) +
+                    ' exec ' + shlex.quote(str(Path(shell).as_posix())) +
+                    ' -c ' + shlex.quote(prefix) + '"$code" "$@"' + chr(10) +
+                    'fi' + chr(10) +
+                    'exec ' + shlex.quote(str(Path(shell).as_posix())) + ' "$@"' + chr(10),
+                    encoding='utf-8')
+                wrapper.chmod(0o755)
+                completed = _run_snapshot_formatter(root, extra_path=bin_dir)
+                self.assertNotEqual(completed.returncode, 0, phase)
+                self.assertTrue(marker.exists() and marker.read_text(), phase)
+
+
 class FinalizeContractTest(unittest.TestCase):
     def _evidence(self):
         fixture_path = Path(__file__).resolve().with_name(
@@ -899,6 +936,9 @@ class FinalizeContractTest(unittest.TestCase):
             lambda r: r['stageTrace'][0].update(stage='bookInfo'),
             lambda r: r['requests'][0].update(stage='bookInfo'),
             lambda r: r['stageTrace'][0].update(path='http://127.0.0.1:18733/wrong'),
+            lambda r: r['stageTrace'][1].update(path=r['stageTrace'][0]['path']),
+            lambda r: r['stageTrace'][2].update(path=r['stageTrace'][3]['path']),
+            lambda r: r['stageTrace'][0].update(path=r['requests'][0]['path']),
             lambda r: r['cases'][0]['operations'][0].update(outcome='error'),
             lambda r: r['cases'][0]['operations'][0].update(requestEnd=999),
             lambda r: r['cases'][0].pop('operations'),
