@@ -698,10 +698,39 @@ class FormatterFailureTest(unittest.TestCase):
                 bin_dir.mkdir()
                 for tool in [*tools, dll]:
                     shutil.copy2(tool, bin_dir / tool.name)
-                paths = [str(bin_dir), str(tool_root), str(system32), str(windows)]
+                if phase == 'both':
+                    paths = [
+                        str(bin_dir), str(system32), str(tool_root), str(windows)
+                    ]
+                else:
+                    paths = [str(bin_dir), str(system32), str(windows)]
                 env = os.environ.copy()
                 env['PATH'] = os.pathsep.join(paths)
-                with mock.patch.dict(os.environ, env, clear=True):
+                # Premises must be visible in the parent PATH before the
+                # unchanged helper adds its complete POSIX tool-root prefix.
+                if phase == 'od':
+                    self.assertIsNone(
+                        __import__('shutil').which('tr', path=env['PATH'])
+                    )
+                elif phase == 'tr':
+                    self.assertIsNone(
+                        __import__('shutil').which('od', path=env['PATH'])
+                    )
+                else:
+                    visible_find = __import__('shutil').which(
+                        'find', path=env['PATH']
+                    )
+                    self.assertIsNotNone(visible_find)
+                    self.assertEqual(
+                        Path(visible_find).parent.name.lower(), 'system32'
+                    )
+                complete_shell = tool_root / (
+                    'sh.exe' if os.name == 'nt' else 'sh'
+                )
+                with mock.patch.dict(os.environ, env, clear=True),                         mock.patch.object(
+                            sys.modules[__name__], '_shell_path',
+                            lambda: str(complete_shell),
+                        ):
                     completed = _run_snapshot_formatter(root)
                 self.assertEqual(completed.returncode, 0, (phase, completed.stderr))
                 records = capture._snapshot_records(completed.stdout, phase)
