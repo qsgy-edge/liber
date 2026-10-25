@@ -704,7 +704,13 @@ class FormatterFailureTest(unittest.TestCase):
             shutil.copy2(real_od, preferred / real_od.name)
             shutil.copy2(dll, preferred / dll.name)
             env = os.environ.copy()
-            env['PATH'] = str(preferred) + os.pathsep + env.get('PATH', '')
+            env['PATH'] = (
+                str(preferred)
+                + os.pathsep
+                + str(Path(shell).parent)
+                + os.pathsep
+                + env.get('PATH', '')
+            )
             proxy = types.SimpleNamespace(
                 name='posix', environ=os.environ, pathsep=os.pathsep
             )
