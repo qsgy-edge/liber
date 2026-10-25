@@ -158,8 +158,35 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         });
       }
 
+      Future<T> observed<T>(
+        String name,
+        int requestStart,
+        int traceStart,
+        Future<T> Function() action,
+      ) async {
+        try {
+          final value = await action();
+          completedOperation(name, requestStart, traceStart);
+          return value;
+        } on Object catch (error) {
+          operations.add({
+            'name': name,
+            'outcome': 'error',
+            'requestStart': requestStart,
+            'requestEnd': server.requests.length,
+            'traceStart': traceStart,
+            'traceEnd': pipeline.trace.length,
+            'error': '$error',
+          });
+          rethrow;
+        }
+      }
+
+      late final Map<String, Object?> record;
+      var failed = false;
+      final requestStart = server.requests.length;
       try {
-        final record = <String, Object?>{
+        record = <String, Object?>{
           'id': id,
           'terminal': terminal,
           'operations': operations,
@@ -169,10 +196,13 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           'chapter': null,
           'sourceProbes': {'vipProbe': null, 'payProbe': null},
         };
-        final requestStart = server.requests.length;
         final traceStart = pipeline.trace.length;
-        final hits = await pipeline.search(entry['keyword'] as String);
-        completedOperation('search', requestStart, traceStart);
+        final hits = await observed(
+          'search',
+          requestStart,
+          traceStart,
+          () => pipeline.search(entry['keyword'] as String),
+        );
         record['search'] = {
           'results': [
             for (final hit in hits)
@@ -198,8 +228,12 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         final hit = hits.first;
         final infoRequestStart = server.requests.length;
         final infoTraceStart = pipeline.trace.length;
-        final info = await pipeline.bookInfo(hit);
-        completedOperation('bookInfo', infoRequestStart, infoTraceStart);
+        final info = await observed(
+          'bookInfo',
+          infoRequestStart,
+          infoTraceStart,
+          () => pipeline.bookInfo(hit),
+        );
         record['bookInfo'] = {
           'name': info.book.title,
           'author': info.book.author,
@@ -210,8 +244,12 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         };
         final tocRequestStart = server.requests.length;
         final tocTraceStart = pipeline.trace.length;
-        final (book, chapters) = await pipeline.tableOfContents(info);
-        completedOperation('tableOfContents', tocRequestStart, tocTraceStart);
+        final (book, chapters) = await observed(
+          'tableOfContents',
+          tocRequestStart,
+          tocTraceStart,
+          () => pipeline.tableOfContents(info),
+        );
         record['tableOfContents'] = {
           'tocUrl': info.tocAddress,
           'chapters': [
@@ -241,8 +279,12 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         record['sourceProbes'] = {'vipProbe': vipProbe, 'payProbe': payProbe};
         final contentRequestStart = server.requests.length;
         final contentTraceStart = pipeline.trace.length;
-        final body = await pipeline.chapter(chapters.first, book: book);
-        completedOperation('content', contentRequestStart, contentTraceStart);
+        final body = await observed(
+          'content',
+          contentRequestStart,
+          contentTraceStart,
+          () => pipeline.chapter(chapters.first, book: book),
+        );
         record['chapter'] = {
           'title': body.title ?? chapters.first.name,
           'text': body.text,
@@ -253,6 +295,11 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         records.add(record);
       } on Object catch (error) {
         failures[id] = '$error';
+        failed = true;
+        record['failure'] = '$error';
+        record['requests'] = List<Map<String, Object?>>.unmodifiable(
+          server.requests.sublist(requestStart),
+        );
       } finally {
         trace.addAll([
           for (final observation in pipeline.trace)
@@ -263,6 +310,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
               (operation['traceStart'] as int) + traceBase;
           operation['traceEnd'] = (operation['traceEnd'] as int) + traceBase;
         }
+        if (failed) records.add(record);
         pipeline.cancel();
       }
     }

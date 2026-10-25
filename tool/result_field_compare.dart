@@ -802,54 +802,16 @@ Map<String, Object?> compareBookUrlMarkers({
   };
 }
 
-List<String> _rawZipEntryNames(Uint8List bytes) {
-  final data = ByteData.sublistView(bytes);
-  int? eocd;
-  final minimum = bytes.length >= 22 ? bytes.length - 22 : -1;
-  for (var index = minimum; index >= 0; index--) {
-    if (data.getUint32(index, Endian.little) == 0x06054b50) {
-      eocd = index;
-      break;
-    }
-  }
-  if (eocd == null) throw StateError('selected APK has no ZIP end record');
-  final total = data.getUint16(eocd + 10, Endian.little);
-  final directoryOffset = data.getUint32(eocd + 16, Endian.little);
-  if (total == 0xffff) {
-    throw StateError('selected APK uses unsupported ZIP64 entry counts');
-  }
-  var cursor = directoryOffset;
-  final names = <String>[];
-  for (var index = 0; index < total; index++) {
-    if (cursor + 46 > bytes.length ||
-        data.getUint32(cursor, Endian.little) != 0x02014b50) {
-      throw StateError('selected APK central directory is malformed');
-    }
-    final nameLength = data.getUint16(cursor + 28, Endian.little);
-    final extraLength = data.getUint16(cursor + 30, Endian.little);
-    final commentLength = data.getUint16(cursor + 32, Endian.little);
-    final end = cursor + 46 + nameLength + extraLength + commentLength;
-    if (end > bytes.length) {
-      throw StateError('selected APK central directory entry is truncated');
-    }
-    names.add(
-      utf8.decode(bytes.sublist(cursor + 46, cursor + 46 + nameLength)),
-    );
-    cursor = end;
-  }
-  if (names.length != total) {
-    throw StateError('selected APK raw entry count differs');
-  }
-  return names;
-}
-
 Map<String, dynamic> inspectSelectedHarnessApk(String path) =>
     _inspectHarnessApk(path);
 
 Map<String, dynamic> _inspectHarnessApk(String path) {
   final bytes = File(path).readAsBytesSync();
-  final rawNames = _rawZipEntryNames(bytes);
-  final archive = ZipDecoder().decodeBytes(bytes);
+  final decoder = ZipDecoder();
+  final archive = decoder.decodeBytes(bytes);
+  final rawNames = [
+    for (final header in decoder.directory.fileHeaders) header.filename,
+  ];
   final names = archive.files.map((file) => file.name).toList();
   for (final required in const [
     'assets/field-fixtures.json',

@@ -104,6 +104,34 @@ void main() {
     },
   );
 
+  test('a failed awaited operation retains its partial error facts', () async {
+    final fixture = jsonDecode(jsonEncode(_fixture())) as Map<String, dynamic>;
+    final first = ((fixture['cases'] as List).first as Map)
+        .cast<String, dynamic>();
+    (first['source'] as Map)['searchUrl'] =
+        "@js: throw new Error('FAILED_SEARCH_MARKER')";
+    fixture['cases'] = [first];
+    final result = await runBookUrlMarkersCorpus(fixture: fixture);
+    final id = first['id'] as String;
+    expect(result.caseFailures.keys, contains(id));
+    expect(result.caseFailures[id], contains('FAILED_SEARCH_MARKER'));
+    final failed = result.caseRecords.singleWhere(
+      (record) => record['id'] == id,
+    );
+    expect(failed['failure'], contains('FAILED_SEARCH_MARKER'));
+    final operations = (failed['operations'] as List).cast<Map>();
+    expect(operations, hasLength(1));
+    expect(operations.single['name'], 'search');
+    expect(operations.single['outcome'], 'error');
+    expect(operations.single['error'], contains('FAILED_SEARCH_MARKER'));
+    expect(operations.single['requestStart'], 0);
+    expect(operations.single['requestEnd'], 0);
+    expect(operations.single['traceStart'], 0);
+    expect(operations.single['traceEnd'], 0);
+    expect(failed['requests'], isEmpty);
+    expect(result.requests, isEmpty);
+  });
+
   test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
     final golden = _syntheticEnvelope(corpus);
