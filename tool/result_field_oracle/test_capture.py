@@ -688,6 +688,35 @@ class FormatterFailureTest(unittest.TestCase):
                 records = capture._snapshot_records(completed.stdout, phase)
                 self.assertIn('files/one', records, phase)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows host non-Windows branch control')
+    def test_non_windows_branch_uses_preferred_child_path_tool(self):
+        import shutil
+        import types
+        from unittest import mock
+        shell = Path(_shell_path())
+        real_od = _resolved_tool('od', shell)
+        dll = Path(shell).parent / 'msys-2.0.dll'
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = self._make_root(base)
+            preferred = base / 'preferred'
+            preferred.mkdir()
+            shutil.copy2(real_od, preferred / real_od.name)
+            shutil.copy2(dll, preferred / dll.name)
+            env = os.environ.copy()
+            env['PATH'] = str(preferred) + os.pathsep + env.get('PATH', '')
+            proxy = types.SimpleNamespace(
+                name='posix', environ=os.environ, pathsep=os.pathsep
+            )
+            with mock.patch.dict(os.environ, env, clear=True),                     mock.patch.object(
+                        sys.modules[__name__], 'os', proxy, create=True
+                    ):
+                selected = _resolved_tool('od', str(shell))
+                completed = _run_snapshot_formatter(root)
+            self.assertEqual(selected.resolve(), (preferred / real_od.name).resolve())
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('files/one', capture._snapshot_records(completed.stdout, 'preferred'))
+
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             root = self._make_root(Path(directory))
