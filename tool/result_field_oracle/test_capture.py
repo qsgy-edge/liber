@@ -622,6 +622,16 @@ class FormatterFailureTest(unittest.TestCase):
                 marker = base / (phase + '.marker')
                 self.assertTrue(marker.exists() and marker.read_text(), phase)
 
+    def test_repeated_byte_filename_is_not_abbreviated_by_od(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._make_root(Path(directory))
+            name = 'a' * 100
+            (root / 'files' / name).write_bytes(b'r')
+            completed = _run_snapshot_formatter(root)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            records = capture._snapshot_records(completed.stdout, 'repeated-name')
+            self.assertIn('files/' + name, records)
+
     def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             root = self._make_root(Path(directory))

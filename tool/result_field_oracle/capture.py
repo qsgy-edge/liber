@@ -259,7 +259,7 @@ def _fields_snapshot_script(root):
     nl = chr(10)
     encoder = (
         "encode_path() { "
-        "encoded=$(od -An -tx1 <<LIBER_FIELDS_PATH_BYTES" + nl +
+        "encoded=$(od -An -v -tx1 <<LIBER_FIELDS_PATH_BYTES" + nl +
         "$1" + nl + "LIBER_FIELDS_PATH_BYTES" + nl +
         ") || return __CODE__; "
         "encoded=$(tr -d \"[:space:]\" <<LIBER_FIELDS_HEX_BYTES" + nl +
