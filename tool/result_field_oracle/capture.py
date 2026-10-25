@@ -255,25 +255,34 @@ def _snapshot_records(output, label):
 
 
 def _fields_snapshot_script(root):
-    """Emit hex-framed typed records with every producer status checked."""
+    """Emit hex-framed typed records with checked existing byte primitives."""
+    nl = chr(10)
     encoder = (
-        "printf \"%s\" \"$f\" >/dev/null || exit __CODE__; "
-        "hex=; i=0; q=$(printf \"\\047\") || exit __CODE__; "
-        "while [ \"$i\" -lt \"${#f}\" ]; do c=${f:$i:1}; "
-        "ch=$(printf \"%02x\" \"$q$c\") || exit __CODE__; "
-        "hex=$hex$ch; i=$((i+1)); done; test -n \"$hex\" || exit __EMPTY__; "
-        "printf \"%s\" \"$hex\" >/dev/null || exit __CODE__; "
+        "encode_path() { "
+        "encoded=$(od -An -tx1 <<LIBER_FIELDS_PATH_BYTES" + nl +
+        "$1" + nl + "LIBER_FIELDS_PATH_BYTES" + nl +
+        ") || return __CODE__; "
+        "encoded=$(tr -d \"[:space:]\" <<LIBER_FIELDS_HEX_BYTES" + nl +
+        "$encoded" + nl + "LIBER_FIELDS_HEX_BYTES" + nl +
+        ") || return __CODE__; "
+        "case \"$encoded\" in *0a) encoded=${encoded%0a};; *) return __EMPTY__;; esac; "
+        "test -n \"$encoded\" || return __EMPTY__; "
+        "printf \"%s\" \"$encoded\" || return __CODE__; "
+        "}; "
     )
     def encode(code, empty):
         return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty))
     return (
-        'LC_ALL=C; set -e; cd ' + shlex.quote(root) + '; '
+        'set -e; cd ' + shlex.quote(root) + '; '
         "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 20; "
         + encode(21, 24) +
+        "hex=$(encode_path \"$f\") || exit 21; "
         "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$hex\" || exit 23; done' sh {} +; "
         "find . -type d -exec sh -c 'for f do " + encode(31, 34) +
+        "hex=$(encode_path \"$f\") || exit 31; "
         "printf \"D\t-\t%s\n\" \"$hex\" || exit 33; done' sh {} +; "
         "find . ! -type f ! -type d -exec sh -c 'for f do " + encode(41, 44) +
+        "hex=$(encode_path \"$f\") || exit 41; "
         "printf \"U\t-\t%s\n\" \"$hex\" || exit 43; done' sh {} +"
     )
 

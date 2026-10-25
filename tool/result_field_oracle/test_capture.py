@@ -25,9 +25,11 @@ def _shell_path():
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
 
 
-def _run_snapshot_formatter(root, extra_path=None):
+def _run_snapshot_formatter(root, extra_path=None, env_overrides=None):
     shell = _shell_path()
     environment = os.environ.copy()
+    if env_overrides:
+        environment.update(env_overrides)
     if os.name == 'nt':
         # The installed Git shell must resolve its own POSIX find/od/tr, not
         # an earlier Windows utility from the parent's PATH. Keep the parent
@@ -559,38 +561,86 @@ class SnapshotParserTest(unittest.TestCase):
 
 
 class FormatterFailureTest(unittest.TestCase):
-    def test_actual_upstream_producer_failure_is_not_masked(self):
+    def _make_root(self, base):
+        root = base / 'private'
+        for name in ['.', 'cache', 'databases', 'files', 'shared_prefs']:
+            (root if name == '.' else root / name).mkdir(exist_ok=True)
+        (root / 'databases' / 'legado.db').write_bytes(b'x')
+        (root / 'files' / 'one').write_bytes(b'y')
+        return root
+
+    def _wrapper(self, path, body):
+        path.write_text('#!/bin/sh' + chr(10) + body + chr(10), encoding='utf-8')
+        path.chmod(0o755)
+        return path
+
+    def test_actual_formatter_commands_fail_closed(self):
         shell = _shell_path()
+        tools = Path(shell).parent
+        real_od = tools / 'od'
+        real_tr = tools / 'tr'
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            root = base / 'private'
-            for name in ['.', 'cache', 'databases', 'files', 'shared_prefs']:
-                (root if name == '.' else root / name).mkdir(exist_ok=True)
-            (root / 'databases' / 'legado.db').write_bytes(b'x')
-            for phase, pattern in [('raw', '.*'), ('hex', '*')]:
-                bin_dir = base / ('bin-' + phase)
+            root = self._make_root(base)
+            good = _run_snapshot_formatter(root)
+            self.assertEqual(good.returncode, 0, good.stderr)
+            canonical = capture._snapshot_records(good.stdout, 'positive')
+            self.assertIn('files/one', canonical)
+            for command, real in [('od', real_od), ('tr', real_tr)]:
+                bin_dir = base / (command + '-bin')
                 bin_dir.mkdir()
-                marker = base / (phase + '.log')
-                if phase == 'raw':
-                    condition = 'case "$2" in .|./*) command printf fault >> ' + shlex.quote(str(marker)) + '; return 27;; esac;'
-                else:
-                    condition = 'case "$2" in .|./*) :;; *) command printf fault >> ' + shlex.quote(str(marker)) + '; return 27;; esac;'
+                marker = base / (command + '.marker')
+                wrapper = self._wrapper(
+                    bin_dir / command,
+                    shlex.quote(str(real)) + ' "$@"' + chr(10) +
+                    'rc=$?' + chr(10) + '[ "$rc" -eq 0 ] || exit "$rc"' + chr(10) +
+                    'printf fault >> ' + shlex.quote(str(marker)) + chr(10) +
+                    'exit 17')
+                completed = _run_snapshot_formatter(root, extra_path=bin_dir)
+                self.assertNotEqual(completed.returncode, 0, command)
+                self.assertTrue(marker.exists() and marker.read_text(), command)
+            # Encoder-output printf and record-emission printf have distinct
+            # actual call sites; make each fired branch visible via a marker.
+            for phase, condition in [
+                ('encoder', 'case "$1" in %s) printf fault >> ' + shlex.quote(str(base / 'encoder.marker')) + '; return 17;; esac;'),
+                ('record', 'case "$1" in F*) printf fault >> ' + shlex.quote(str(base / 'record.marker')) + '; return 19;; esac;'),
+            ]:
+                bin_dir = base / (phase + '-bin')
+                bin_dir.mkdir()
                 prefix = ('printf() { command printf "$@"; rc=$?; [ "$rc" -eq 0 ] || return "$rc"; '
-                          'if [ "$1" = "%s" ]; then ' + condition + ' fi; return 0; }; ')
-                wrapper = bin_dir / 'sh'
-                wrapper.write_text(
-                    '#!/bin/sh' + chr(10) +
+                          + condition + ' return 0; }; ')
+                self._wrapper(
+                    bin_dir / 'sh',
                     'if [ "$1" = "-c" ]; then' + chr(10) +
                     ' code=$2' + chr(10) + ' shift 2' + chr(10) +
                     ' exec ' + shlex.quote(str(Path(shell).as_posix())) +
                     ' -c ' + shlex.quote(prefix) + '"$code" "$@"' + chr(10) +
                     'fi' + chr(10) +
-                    'exec ' + shlex.quote(str(Path(shell).as_posix())) + ' "$@"' + chr(10),
-                    encoding='utf-8')
-                wrapper.chmod(0o755)
+                    'exec ' + shlex.quote(str(Path(shell).as_posix())) + ' "$@"')
                 completed = _run_snapshot_formatter(root, extra_path=bin_dir)
                 self.assertNotEqual(completed.returncode, 0, phase)
+                marker = base / (phase + '.marker')
                 self.assertTrue(marker.exists() and marker.read_text(), phase)
+
+    def test_utf8_filename_is_not_transliterated_and_rename_is_visible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._make_root(Path(directory))
+            chinese = root / 'files' / '汉'
+            chinese.write_bytes(b'z')
+            env = os.environ.copy()
+            env.pop('LC_ALL', None)
+            env.update({'LANG': 'en_US.UTF-8', 'LC_CTYPE': 'en_US.UTF-8'})
+            before = _run_snapshot_formatter(root, env_overrides=env)
+            self.assertEqual(before.returncode, 0, before.stderr)
+            before_records = capture._snapshot_records(before.stdout, 'utf8-before')
+            self.assertIn('files/汉', before_records)
+            self.assertNotIn('files/lI', before_records)
+            chinese.rename(root / 'files' / 'lI')
+            after = _run_snapshot_formatter(root, env_overrides=env)
+            self.assertEqual(after.returncode, 0, after.stderr)
+            after_records = capture._snapshot_records(after.stdout, 'utf8-after')
+            self.assertIn('files/lI', after_records)
+            self.assertNotEqual(before_records, after_records)
 
 
 class FinalizeContractTest(unittest.TestCase):
