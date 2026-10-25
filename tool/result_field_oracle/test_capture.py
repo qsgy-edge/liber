@@ -25,46 +25,44 @@ def _shell_path():
     raise unittest.SkipTest('existing Git/POSIX sh is unavailable for formatter control')
 
 
-def _child_tool_dirs(shell):
-    """Stable POSIX-first directories used by the formatter child on Windows."""
+def _child_environment(shell, env_overrides=None):
     import shutil
-    dirs = [Path(shell).parent]
-    for command in ('od', 'tr'):
-        found = shutil.which(command)
-        if found:
-            candidate = Path(found).parent
-            if candidate not in dirs:
-                dirs.append(candidate)
-    return dirs
-
-
-def _resolved_tool(command, shell):
-    import shutil
-    for directory in _child_tool_dirs(shell):
-        for suffix in ('', '.exe'):
-            candidate = directory / (command + suffix)
-            if candidate.is_file():
-                return candidate
-    found = shutil.which(command)
-    if found:
-        return Path(found)
-    return Path(shell).parent / (command + ('.exe' if os.name == 'nt' else ''))
-
-
-def _run_snapshot_formatter(root, extra_path=None, env_overrides=None):
-    shell = _shell_path()
     environment = os.environ.copy()
     if env_overrides:
         environment.update(env_overrides)
     if os.name == 'nt':
-        # POSIX find must precede System32's find.exe; real od/tr are resolved
-        # from the same stable child path, including split locations and the
-        # complete installed shell-directory fallback when only one is visible.
+        base = environment.get('PATH', '')
+        dirs = [Path(shell).parent]
+        for command in ('od', 'tr'):
+            found = shutil.which(command, path=base)
+            if found:
+                candidate = Path(found).parent
+                if candidate not in dirs:
+                    dirs.append(candidate)
         environment['PATH'] = os.pathsep.join(
-            str(directory) for directory in _child_tool_dirs(shell)
-        ) + os.pathsep + environment.get('PATH', '')
+            [*(str(directory) for directory in dirs), base]
+        )
+    return environment
+
+
+def _resolved_tool(command, shell, environment=None):
+    import shutil
+    if environment is None:
+        environment = _child_environment(shell)
+    found = shutil.which(command, path=environment.get('PATH', ''))
+    if found:
+        return Path(found)
+    candidate = Path(shell).parent / (command + ('.exe' if os.name == 'nt' else ''))
+    return candidate
+
+
+def _run_snapshot_formatter(root, extra_path=None, env_overrides=None):
+    shell = _shell_path()
+    environment = _child_environment(shell, env_overrides)
     if extra_path is not None:
-        environment['PATH'] = str(extra_path) + os.pathsep + environment.get('PATH', '')
+        environment['PATH'] = (
+            str(extra_path) + os.pathsep + environment.get('PATH', '')
+        )
     return subprocess.run(
         [shell, '-c', capture._fields_snapshot_script(str(root))],
         capture_output=True, env=environment)
