@@ -1084,7 +1084,7 @@ void _admitExternalArtifact(
         (value) =>
             value is String &&
             RegExp(
-              r'^liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.-]*$',
+              r'^liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.:+-]*$',
             ).hasMatch(value) &&
             !value.contains('/'),
       );

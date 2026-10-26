@@ -12,6 +12,16 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capture  # noqa: E402
 
+ACTUAL_OWNER_PREFERENCES = [
+    'liber_fields_02_FirebasePerfSharedPrefs',
+    'liber_fields_02_probe',
+    'liber_fields_02_FirebaseHeartBeatW0RFRkFVTFRd+MTo0NTMzOTIyNzQ3OTA6YW5kcm9pZDpjNGVhYzE0YjE0MTBlZWM1ZjYyNGE3',
+    'liber_fields_02_frc_1:453392274790:android:c4eac14b1410eec5f624a7_firebase_settings',
+    'liber_fields_02_com.google.android.gms.measurement.prefs',
+    'liber_fields_02_io.legado.app.debug_preferences',
+    'liber_fields_02_com.google.android.gms.appid',
+]
+
 def _shell_path():
     import shutil
     found = shutil.which('sh')
@@ -263,7 +273,8 @@ class DriverBoundaryTest(unittest.TestCase):
              instrument_code=0, process_pid_preflight=None, process_pid_owned=None,
              process_pid_post=None, pid_stderr=False, snapshot_fail_on=None,
              existing_harness=False, package_query_code=0,
-             package_query_stderr=b'', package_query_stdout=None):
+             package_query_stderr=b'', package_query_stdout=None,
+             owner_preferences=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
@@ -424,6 +435,9 @@ class DriverBoundaryTest(unittest.TestCase):
                 'complete': True, 'seedRunId': 'run', 'seedPid': 4242,
                 'preferences': ['liber_fields_02_probe'],
             })
+            if owner_preferences is not None:
+                report['cleanup']['ownedPreferences'] = list(owner_preferences)
+                owner['preferences'] = list(owner_preferences)
             if owner_mutator is not None:
                 owner_mutator(owner)
             report_bytes = json.dumps(report).encode()
@@ -456,8 +470,10 @@ class DriverBoundaryTest(unittest.TestCase):
                 exit_code = capture.main()
             calls['golden'] = (output / 'golden.json').exists()
             if (output / 'manifest.json').exists():
-                calls['manifest_status'] = json.loads(
-                    (output / 'manifest.json').read_text(encoding='utf-8'))['status']
+                manifest = json.loads(
+                    (output / 'manifest.json').read_text(encoding='utf-8'))
+                calls['manifest_status'] = manifest['status']
+                calls['manifest_commands'] = manifest.get('commands', [])
         return exit_code, commands, calls
 
     def test_successful_driver_uses_exact_quoted_cleanup_and_uninstall(self):
@@ -510,6 +526,38 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
                              for cmd in commands))
         self.assertFalse(any('force-stop' in cmd for cmd in commands))
+
+    def test_actual_android_owner_names_are_admitted_and_logged_by_index(self):
+        exit_code, commands, calls = self._run(
+            owner_preferences=ACTUAL_OWNER_PREFERENCES)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls['finalize'], 1)
+        self.assertTrue(calls['golden'])
+        self.assertEqual(calls['manifest_status'], 'observed')
+        labels = [' '.join(cmd) for cmd in commands]
+        logs = [item.get('log') for item in calls.get('manifest_commands', [])]
+        for index in range(1, len(ACTUAL_OWNER_PREFERENCES) + 1):
+            self.assertIn('scratch-remove-' + str(index) + '.log', logs)
+            self.assertIn('scratch-absent-' + str(index) + '.log', logs)
+        for name in ACTUAL_OWNER_PREFERENCES:
+            path = '/data/user/0/io.legado.app.debug/shared_prefs/' + name + '.xml'
+            self.assertTrue(any(shlex.quote(path) in label for label in labels), name)
+        for name in ACTUAL_OWNER_PREFERENCES:
+            self.assertFalse(any('scratch-remove-' + name in label for label in labels))
+
+    def test_owner_name_admission_accepts_actual_and_rejects_separators(self):
+        self.assertEqual(
+            capture._safe_owner_names(ACTUAL_OWNER_PREFERENCES, 'owner.preferences'),
+            ACTUAL_OWNER_PREFERENCES,
+        )
+        for bad in ('liber_fields_02_evil/name', 'liber_fields_02_evil\name',
+                    'liber_fields_02_..', 'liber_other_probe',
+                    'liber_fields_02_probe/', 'liber_fields_02_probe' + chr(10)):
+            with self.assertRaises(ValueError):
+                capture._safe_owner_names([bad], 'owner.preferences')
+        with self.assertRaises(ValueError):
+            capture._admit_owner_inventories(
+                ACTUAL_OWNER_PREFERENCES, ACTUAL_OWNER_PREFERENCES[:-1])
 
     def test_wrong_post_owner_pid_preserves_before_stop(self):
         exit_code, commands, calls = self._run(process_pid_owned=999999)
