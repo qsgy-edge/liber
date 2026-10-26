@@ -10,6 +10,7 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_host_state.dart';
 
 import 'native_library.dart';
 
@@ -126,6 +127,70 @@ Map<String, dynamic> _jsonSource(
   },
   'ruleContent': {'content': r'$.text'},
 };
+
+const _continuationOrigin = 'http://same-page.test';
+String _continuationBody(bool json) => json
+    ? jsonEncode({
+        'title': 'Book',
+        'toc': '/book',
+        'chapters': [
+          {'name': 'One', 'url': '/c/1'},
+        ],
+      })
+    : '<h1>Book</h1><a class="toc" href="/book">目录</a>'
+          '<div class="chapters"><a href="/c/1">One</a></div>';
+Map<String, dynamic> _continuationSource(bool json, {String? tocRule}) => {
+  'bookSourceUrl': _continuationOrigin,
+  'searchUrl': '/book,{"headers":{"X-Probe":"keep"}}',
+  'bookUrlPattern': r'.*/book',
+  'ruleSearch': {
+    'bookList': json ? r'$.missing[*]' : '.missing',
+    'name': json ? r'$.title' : 'h1@text',
+    'bookUrl': json ? r'$.url' : 'a@href',
+  },
+  'ruleBookInfo': {
+    'name': json ? r'$.title' : 'h1@text',
+    'tocUrl': tocRule ?? (json ? r'$.toc' : 'a.toc@href'),
+  },
+  'ruleToc': {
+    'chapterList': json ? r'$.chapters[*]' : '.chapters a',
+    'chapterName': json ? r'$.name' : 'a@text',
+    'chapterUrl': json ? r'$.url' : 'a@href',
+  },
+};
+
+class _ContinuationPages implements BookSourceTransport, SourceHttpTransport {
+  _ContinuationPages(this.document);
+  final String document;
+  final requests = <SourceHttpRequest>[];
+  @override
+  Future<String> request({
+    required BookSourceStage stage,
+    required String path,
+  }) => throw StateError('Real send required');
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    if (!['/book', '/else'].contains(request.url.path)) {
+      throw StateError('Unexpected ${request.url}');
+    }
+    requests.add(request);
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: document,
+      url: request.url,
+    );
+  }
+}
+
+BookSourcePipeline _openContinuation(
+  bool json,
+  Map<String, dynamic> data,
+  _ContinuationPages transport, {
+  SourceHostState? state,
+}) => json
+    ? JsonSourcePipeline(data, transport, hostState: state)
+    : HtmlSourcePipeline(data, transport, hostState: state);
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
@@ -507,57 +572,68 @@ void main() {
     // (万生痴魔's source, found by the operator's run). The frozen reads it into
     // `book.downloadUrls`; this product defers downloads (ADR 0011 §4), so the
     // field must be accepted and ignored instead of failing the details stage.
-    test('a JSON source with a non-rule downloadUrls still reads details',
-        () async {
-      final document = jsonEncode({
-        'author': '作者甲',
-        'chapters': [
-          {'name': '第一章', 'url': '/c/1'},
-        ],
-      });
-      final (book, chapters) = await JsonSourcePipeline({
-        'bookSourceUrl': 'http://example.test',
-        'ruleBookInfo': {
-          'author': r'$.author',
-          'downloadUrls': 'http://api.example.test/',
-        },
-        'ruleToc': {
-          'chapterList': r'$.chapters[*]',
-          'chapterName': r'$.name',
-          'chapterUrl': r'$.url',
-        },
-      }, _Pages({'/book/7': document})).details(
-        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
-      );
-      expect(book.author, '作者甲');
-      expect(chapters.map((chapter) => chapter.name), ['第一章']);
-    });
+    test(
+      'a JSON source with a non-rule downloadUrls still reads details',
+      () async {
+        final document = jsonEncode({
+          'author': '作者甲',
+          'chapters': [
+            {'name': '第一章', 'url': '/c/1'},
+          ],
+        });
+        final (
+          book,
+          chapters,
+        ) = await JsonSourcePipeline({
+          'bookSourceUrl': 'http://example.test',
+          'ruleBookInfo': {
+            'author': r'$.author',
+            'downloadUrls': 'http://api.example.test/',
+          },
+          'ruleToc': {
+            'chapterList': r'$.chapters[*]',
+            'chapterName': r'$.name',
+            'chapterUrl': r'$.url',
+          },
+        }, _Pages({'/book/7': document})).details(
+          HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+        );
+        expect(book.author, '作者甲');
+        expect(chapters.map((chapter) => chapter.name), ['第一章']);
+      },
+    );
 
     // A chapter whose URL rule carries an option tail keeps it: the raw address
     // is what the store holds and what the chapter's own fetch parses
     // (`SourceChapter.options`). The TOC builder used to refuse such a tail by
     // name (零点看书's `ruleToc.chapterUrl` ends in `##$##,{"headers": …}`).
-    test('a chapter address with a header tail reaches the chapter list',
-        () async {
-      final transport = _Pages({
-        '/book/7': '<ul class="chapters">'
-            '<li><a href="/c/1##\$##,{&quot;headers&quot;:{&quot;X-Test&quot;:&quot;1&quot;}}">第一章</a></li>'
-            '</ul>',
-      });
-      final (_, chapters) = await HtmlSourcePipeline({
-        'bookSourceUrl': 'http://example.test',
-        'ruleBookInfo': {'intro': 'p.intro@text'},
-        'ruleToc': {
-          'chapterList': 'ul.chapters li',
-          'chapterName': 'a@text',
-          'chapterUrl': 'a@href',
-        },
-      }, transport).details(
-        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
-      );
-      expect(chapters.single.options.headers, {'X-Test': '1'});
-      expect('${chapters.single.url}', 'http://example.test/c/1');
-    });
+    test(
+      'a chapter address with a header tail reaches the chapter list',
+      () async {
+        final transport = _Pages({
+          '/book/7':
+              '<ul class="chapters">'
+              '<li><a href="/c/1##\$##,{&quot;headers&quot;:{&quot;X-Test&quot;:&quot;1&quot;}}">第一章</a></li>'
+              '</ul>',
+        });
+        final (
+          _,
+          chapters,
+        ) = await HtmlSourcePipeline({
+          'bookSourceUrl': 'http://example.test',
+          'ruleBookInfo': {'intro': 'p.intro@text'},
+          'ruleToc': {
+            'chapterList': 'ul.chapters li',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        }, transport).details(
+          HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+        );
+        expect(chapters.single.options.headers, {'X-Test': '1'});
+        expect('${chapters.single.url}', 'http://example.test/c/1');
+      },
+    );
   });
 
   group('the frozen shapes the product refused (#83)', () {
@@ -565,47 +641,55 @@ void main() {
     // is an index key and a `baseUrl`), so a label identity with absolute rules
     // must read its stages; a fetchable target is required only where a request
     // is built.
-    test('a label identity with absolute rules reads its details and chapters',
-        () async {
-      final pages = _Pages({
-        '/search': '<div class="item"><h3><a href="http://example.test/book/7">'
-            '书</a></h3></div>',
-        '/book/7': '<ul class="chapters"><li>'
-            '<a href="http://example.test/c/1">第一章</a></li></ul>',
-      });
-      final source = <String, dynamic>{
-        // A display label, not a URL: no scheme, no host.
-        'bookSourceUrl': '书架·标签',
-        'searchUrl': 'http://example.test/search?key={{key}}',
-        'ruleSearch': {
-          'bookList': 'div.item',
-          'name': 'h3 a@text',
-          'bookUrl': 'h3 a@href',
-        },
-        'ruleToc': {
-          'chapterList': 'ul.chapters li',
-          'chapterName': 'a@text',
-          'chapterUrl': 'a@href',
-        },
-      };
-      final pipeline = HtmlSourcePipeline(source, pages);
-      final hits = await pipeline.search('书');
-      expect(hits.single.title, '书');
-      final (_, chapters) = await pipeline.details(hits.single);
-      expect(chapters.single.name, '第一章');
-      expect('${chapters.single.url}', 'http://example.test/c/1');
-    });
+    test(
+      'a label identity with absolute rules reads its details and chapters',
+      () async {
+        final pages = _Pages({
+          '/search':
+              '<div class="item"><h3><a href="http://example.test/book/7">'
+              '书</a></h3></div>',
+          '/book/7':
+              '<ul class="chapters"><li>'
+              '<a href="http://example.test/c/1">第一章</a></li></ul>',
+        });
+        final source = <String, dynamic>{
+          // A display label, not a URL: no scheme, no host.
+          'bookSourceUrl': '书架·标签',
+          'searchUrl': 'http://example.test/search?key={{key}}',
+          'ruleSearch': {
+            'bookList': 'div.item',
+            'name': 'h3 a@text',
+            'bookUrl': 'h3 a@href',
+          },
+          'ruleToc': {
+            'chapterList': 'ul.chapters li',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        };
+        final pipeline = HtmlSourcePipeline(source, pages);
+        final hits = await pipeline.search('书');
+        expect(hits.single.title, '书');
+        final (_, chapters) = await pipeline.details(hits.single);
+        expect(chapters.single.name, '第一章');
+        expect('${chapters.single.url}', 'http://example.test/c/1');
+      },
+    );
 
     // 4. A blank `ruleToc.chapterUrl` is not a refusal: the frozen reads the
     // empty rule list as `""` and takes the empty-URL fallback
     // (`BookChapterList.kt:229-243`), which this TOC builder already applies.
     test('a blank chapterUrl takes the TOC page address', () async {
       final pages = _Pages({
-        '/book/7': '<ul class="chapters">'
+        '/book/7':
+            '<ul class="chapters">'
             '<li><a>第一章</a></li>'
             '</ul>',
       });
-      final (_, chapters) = await HtmlSourcePipeline({
+      final (
+        _,
+        chapters,
+      ) = await HtmlSourcePipeline({
         'bookSourceUrl': 'http://example.test',
         'ruleBookInfo': {'intro': 'p.intro@text'},
         'ruleToc': {
@@ -624,58 +708,276 @@ void main() {
     // fields the JSON adapter refused as "unsupported" and validated as
     // extractions; `imageStyle` is a value this tree reads, and `replaceRegex`
     // is a frozen field the JSON path does not execute.
-    test('a JSON source declaring imageStyle and replaceRegex reads its stages',
-        () async {
-      final transport = _Pages({
-        '/book/7': jsonEncode({
-          'author': '作者甲',
-          'chapters': [
-            {'name': '第一章', 'url': '/c/1'},
-          ],
-        }),
-        '/c/1': jsonEncode({'body': '正文'}),
-      });
-      final source = <String, dynamic>{
-        'bookSourceUrl': 'http://example.test',
-        'ruleBookInfo': {'author': r'$.author'},
-        'ruleToc': {
-          'chapterList': r'$.chapters[*]',
-          'chapterName': r'$.name',
-          'chapterUrl': r'$.url',
-        },
-        'ruleContent': {
-          'content': r'$.body',
-          'imageStyle': 'FULL',
-          'replaceRegex': r'##a##b',
-        },
-      };
-      final pipeline = JsonSourcePipeline(source, transport);
-      final (book, chapters) = await pipeline.details(
-        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
-      );
-      expect(book.author, '作者甲');
-      expect(chapters.single.name, '第一章');
-      // `imageStyle` is a value this product already reads off the source.
-      expect(sourceImageStyle(source), SourceImageStyle.full);
-      // `replaceRegex` is accepted and left unexecuted on the JSON path (a
-      // recorded deferral), so the content stage reads its own rule.
-      final body = await pipeline.chapter(chapters.single);
-      expect(body.text, contains('正文'));
-    });
+    test(
+      'a JSON source declaring imageStyle and replaceRegex reads its stages',
+      () async {
+        final transport = _Pages({
+          '/book/7': jsonEncode({
+            'author': '作者甲',
+            'chapters': [
+              {'name': '第一章', 'url': '/c/1'},
+            ],
+          }),
+          '/c/1': jsonEncode({'body': '正文'}),
+        });
+        final source = <String, dynamic>{
+          'bookSourceUrl': 'http://example.test',
+          'ruleBookInfo': {'author': r'$.author'},
+          'ruleToc': {
+            'chapterList': r'$.chapters[*]',
+            'chapterName': r'$.name',
+            'chapterUrl': r'$.url',
+          },
+          'ruleContent': {
+            'content': r'$.body',
+            'imageStyle': 'FULL',
+            'replaceRegex': r'##a##b',
+          },
+        };
+        final pipeline = JsonSourcePipeline(source, transport);
+        final (book, chapters) = await pipeline.details(
+          HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+        );
+        expect(book.author, '作者甲');
+        expect(chapters.single.name, '第一章');
+        // `imageStyle` is a value this product already reads off the source.
+        expect(sourceImageStyle(source), SourceImageStyle.full);
+        // `replaceRegex` is accepted and left unexecuted on the JSON path (a
+        // recorded deferral), so the content stage reads its own rule.
+        final body = await pipeline.chapter(chapters.single);
+        expect(body.text, contains('正文'));
+      },
+    );
 
     // 3. A field whose text has nothing left to parse is read by this tree's
     // own runtime; only the product's `validate` refused it.
-    test('a JSON content rule that is an @get: token reads its content',
-        () async {
-      final transport = _Pages({'/c/1': jsonEncode({})});
-      final source = <String, dynamic>{
-        'bookSourceUrl': 'http://example.test',
-        'ruleContent': {'content': '@get:title'},
-      };
-      final body = await JsonSourcePipeline(source, transport).chapter(
-        SourceChapter('第一章', Uri.parse('http://example.test/c/1')),
+    test(
+      'a JSON content rule that is an @get: token reads its content',
+      () async {
+        final transport = _Pages({'/c/1': jsonEncode({})});
+        final source = <String, dynamic>{
+          'bookSourceUrl': 'http://example.test',
+          'ruleContent': {'content': '@get:title'},
+        };
+        final body = await JsonSourcePipeline(
+          source,
+          transport,
+        ).chapter(SourceChapter('第一章', Uri.parse('http://example.test/c/1')));
+        expect(body.text, '第一章');
+      },
+    );
+  });
+
+  group('retained search and same-page information responses', () {
+    test(
+      'HTML detail and deferred handoff reuse nonempty search text',
+      () async {
+        final origin = 'http://example.test';
+        final transport = _Pages({'/detail/73': _detailPage});
+        final source = _htmlSource(
+          origin,
+          searchUrl: '/detail/73?key={{key}}',
+          bookUrlPattern: r'.*/detail/\d+.*',
+        );
+        final pipeline = HtmlSourcePipeline(source, transport);
+        final hit = (await pipeline.search('书')).single;
+        expect(transport.requests, ['$origin/detail/73?key=%E4%B9%A6']);
+        final info = await pipeline.bookInfo(hit);
+        expect(info.book.title, '真实标题');
+        expect(transport.requests, ['$origin/detail/73?key=%E4%B9%A6']);
+        final deferred = HtmlSourcePipeline(source, transport);
+        try {
+          final deferredInfo = await deferred.bookInfo(
+            hit.withVariable('{"k":1}'),
+          );
+          expect(deferredInfo.book.title, '真实标题');
+          expect(transport.requests, ['$origin/detail/73?key=%E4%B9%A6']);
+        } finally {
+          deferred.cancel();
+        }
+        pipeline.cancel();
+      },
+    );
+
+    test('JSON empty-list fallback reuses nonempty search text', () async {
+      final origin = 'http://example.test';
+      final transport = _Pages({'/detail/73': jsonEncode(_detailDocument)});
+      final pipeline = JsonSourcePipeline(
+        _jsonSource(origin, searchUrl: '/detail/73?key={{key}}'),
+        transport,
       );
-      expect(body.text, '第一章');
+      final hit = (await pipeline.search('书')).single;
+      final info = await pipeline.bookInfo(hit);
+      expect(info.book.title, '真实标题');
+      expect(transport.requests, ['$origin/detail/73?key=%E4%B9%A6']);
+      pipeline.cancel();
+    });
+
+    test(
+      'unrelated ordinary list hit still fetches its information page',
+      () async {
+        final origin = 'http://example.test';
+        final transport = _Pages({
+          '/search': _listPage,
+          '/book/1': _detailPage,
+        });
+        final pipeline = HtmlSourcePipeline(_htmlSource(origin), transport);
+        final hit = (await pipeline.search('书')).single;
+        expect(transport.requests, ['$origin/search?key=%E4%B9%A6']);
+        await pipeline.bookInfo(hit);
+        expect(transport.requests, [
+          '$origin/search?key=%E4%B9%A6',
+          '$origin/book/1',
+        ]);
+        pipeline.cancel();
+      },
+    );
+
+    test('cached information skips a second login check', () async {
+      final origin = 'http://example.test';
+      final transport = _Pages({'/detail/73': _detailPage});
+      final state = SourceHostState();
+      final source =
+          _htmlSource(
+              origin,
+              searchUrl: '/detail/73?key={{key}}',
+              bookUrlPattern: r'.*/detail/\d+.*',
+            )
+            ..['loginCheckJs'] =
+                "source.put('loginChecks', String(Number(source.get('loginChecks')||'0')+1)); result";
+      final pipeline = HtmlSourcePipeline(source, transport, hostState: state);
+      final hit = (await pipeline.search('书')).single;
+      final key = sourceRuleVariableKey(origin, 'loginChecks');
+      expect(await state.entry(origin, key), '1');
+      await pipeline.bookInfo(hit);
+      expect(await state.entry(origin, key), '1');
+      final deferred = HtmlSourcePipeline(source, transport, hostState: state);
+      try {
+        await deferred.bookInfo(hit);
+        expect(await state.entry(origin, key), '1');
+      } finally {
+        deferred.cancel();
+      }
+      pipeline.cancel();
+    });
+
+    test('HTML same-page TOC reuses only the first response', () async {
+      final origin = 'http://example.test';
+      final transport = _Pages({
+        '/search': '<div class="item"><a href="/book/7">书</a></div>',
+        '/book/7': '<h1>书</h1><div id="list"><a href="/c/1">章</a></div>',
+      });
+      final source = <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/search?key={{key}}',
+        'ruleSearch': {
+          'bookList': 'div.item',
+          'name': 'a@text',
+          'bookUrl': 'a@href',
+        },
+        'ruleBookInfo': {'name': 'h1@text'},
+        'ruleToc': {
+          'chapterList': '#list@a',
+          'chapterName': '@text',
+          'chapterUrl': '@href',
+        },
+      };
+      final pipeline = HtmlSourcePipeline(source, transport);
+      final hit = (await pipeline.search('书')).single;
+      expect(transport.requests, ['$origin/search?key=%E4%B9%A6']);
+      final info = await pipeline.bookInfo(hit);
+      expect(transport.requests, [
+        '$origin/search?key=%E4%B9%A6',
+        '$origin/book/7',
+      ]);
+      final (_, chapters) = await pipeline.tableOfContents(info);
+      expect(chapters.single.name, '章');
+      expect(transport.requests, [
+        '$origin/search?key=%E4%B9%A6',
+        '$origin/book/7',
+      ]);
+      pipeline.cancel();
+    });
+  });
+
+  group('actual fallback and retained TOC identity', () {
+    for (final json in [false, true]) {
+      test(
+        'unredirected identity retains no-query options json=$json',
+        () async {
+          final transport = _ContinuationPages(_continuationBody(json));
+          final pipeline = _openContinuation(
+            json,
+            _continuationSource(json),
+            transport,
+          );
+          try {
+            final hit = (await pipeline.search('Book')).single;
+            expect(transport.requests.single.headers['X-Probe'], 'keep');
+            expect(
+              hit.identityAddress,
+              '$_continuationOrigin/book,{"headers":{"X-Probe":"keep"}}',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+      test(
+        'explicit relative same-page TOC reuses one response json=$json',
+        () async {
+          final transport = _ContinuationPages(_continuationBody(json));
+          final pipeline = _openContinuation(
+            json,
+            _continuationSource(json, tocRule: json ? r'$.toc' : 'a.toc@href'),
+            transport,
+          );
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(
+                url: Uri.parse('$_continuationOrigin/book'),
+                title: 'Book',
+              ),
+            );
+            expect(info.tocUrl, '$_continuationOrigin/book');
+            expect(transport.requests, hasLength(1));
+            await pipeline.tableOfContents(info);
+            expect(transport.requests, hasLength(1));
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+    }
+    test('JSON retained same-page TOC bypasses URL option JS', () async {
+      final state = SourceHostState();
+      final identity =
+          '$_continuationOrigin/book,{"js":"source.put(\'tocOption\',\'ran\'); \'$_continuationOrigin/book\'"}';
+      final transport = _ContinuationPages(_continuationBody(true));
+      final pipeline = _openContinuation(
+        true,
+        _continuationSource(true, tocRule: '@js:${jsonEncode(identity)}'),
+        transport,
+        state: state,
+      );
+      final key = sourceRuleVariableKey(_continuationOrigin, 'tocOption');
+      try {
+        final info = await pipeline.bookInfo(
+          HtmlBook(
+            url: Uri.parse('$_continuationOrigin/book'),
+            rawAddress: identity,
+            title: 'Book',
+            infoHtml: _continuationBody(true),
+          ),
+        );
+        expect(info.tocUrl, identity);
+        expect(await state.entry(_continuationOrigin, key), isNull);
+        await pipeline.tableOfContents(info);
+        expect(await state.entry(_continuationOrigin, key), isNull);
+        expect(transport.requests, isEmpty);
+      } finally {
+        pipeline.cancel();
+      }
     });
   });
 
@@ -692,55 +994,66 @@ void main() {
         '<li><a href="/c/2">第二章</a></li>'
         '</ul>';
 
-    test('the HTML pipeline reads details and takes the TOC from the book URL',
-        () async {
-      final pages = _Pages({'/book/7': page});
-      final (book, chapters) = await HtmlSourcePipeline({
-        'bookSourceUrl': 'http://example.test',
-        'ruleBookInfo': {'author': 'p.author@text'},
-        'ruleToc': {
-          'chapterList': 'ul.chapters li',
-          'chapterName': 'a@text',
-          'chapterUrl': 'a@href',
-        },
-      }, pages).details(
-        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
-      );
-      expect(book.title, '书架标题', reason: 'an empty name rule keeps the title');
-      expect(book.author, '作者甲');
-      expect(
-        chapters.map((chapter) => chapter.name),
-        ['第一章', '第二章'],
-      );
-      expect(
-        pages.requests,
-        contains('http://example.test/book/7'),
-        reason: 'the TOC is read from the book URL when tocUrl is empty',
-      );
-    });
+    test(
+      'the HTML pipeline reads details and takes the TOC from the book URL',
+      () async {
+        final pages = _Pages({'/book/7': page});
+        final (
+          book,
+          chapters,
+        ) = await HtmlSourcePipeline({
+          'bookSourceUrl': 'http://example.test',
+          'ruleBookInfo': {'author': 'p.author@text'},
+          'ruleToc': {
+            'chapterList': 'ul.chapters li',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        }, pages).details(
+          HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+        );
+        expect(
+          book.title,
+          '书架标题',
+          reason: 'an empty name rule keeps the title',
+        );
+        expect(book.author, '作者甲');
+        expect(chapters.map((chapter) => chapter.name), ['第一章', '第二章']);
+        expect(
+          pages.requests,
+          contains('http://example.test/book/7'),
+          reason: 'the TOC is read from the book URL when tocUrl is empty',
+        );
+      },
+    );
 
-    test('the JSON pipeline reads details with neither field declared',
-        () async {
-      final document = jsonEncode({
-        'author': '作者甲',
-        'chapters': [
-          {'name': '第一章', 'url': '/c/1'},
-        ],
-      });
-      final (book, chapters) = await JsonSourcePipeline({
-        'bookSourceUrl': 'http://example.test',
-        'ruleBookInfo': {'author': r'$.author'},
-        'ruleToc': {
-          'chapterList': r'$.chapters[*]',
-          'chapterName': r'$.name',
-          'chapterUrl': r'$.url',
-        },
-      }, _Pages({'/book/7': document})).details(
-        HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
-      );
-      expect(book.title, '书架标题');
-      expect(book.author, '作者甲');
-      expect(chapters.map((chapter) => chapter.name), ['第一章']);
-    });
+    test(
+      'the JSON pipeline reads details with neither field declared',
+      () async {
+        final document = jsonEncode({
+          'author': '作者甲',
+          'chapters': [
+            {'name': '第一章', 'url': '/c/1'},
+          ],
+        });
+        final (
+          book,
+          chapters,
+        ) = await JsonSourcePipeline({
+          'bookSourceUrl': 'http://example.test',
+          'ruleBookInfo': {'author': r'$.author'},
+          'ruleToc': {
+            'chapterList': r'$.chapters[*]',
+            'chapterName': r'$.name',
+            'chapterUrl': r'$.url',
+          },
+        }, _Pages({'/book/7': document})).details(
+          HtmlBook(url: Uri.parse('http://example.test/book/7'), title: '书架标题'),
+        );
+        expect(book.title, '书架标题');
+        expect(book.author, '作者甲');
+        expect(chapters.map((chapter) => chapter.name), ['第一章']);
+      },
+    );
   });
 }

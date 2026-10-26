@@ -269,6 +269,7 @@ class SourceBookInfo {
     required this.bookAddress,
     required this.keyword,
     required this.page,
+    this.tocHtml,
   });
 
   /// The book the information stage produced, with the variable text its
@@ -298,9 +299,39 @@ class SourceBookInfo {
   final String keyword;
   final int? page;
 
+  /// The nonempty information response retained for a same-page TOC handoff.
+  /// It is ephemeral result state, not persisted or shared by URL.
+  final String? tocHtml;
+
   /// The frozen `Book.tocUrl` value: the declared address, or the book's own
-  /// address text when the page declared none (`BookInfo.kt:150-152`).
-  String get tocUrl => tocAddress.isEmpty ? bookAddress : tocAddress;
+  /// address text when the page declared none (`BookInfo.kt:150-152`), resolved
+  /// against the actual information base and retaining the option tail.
+  String get tocUrl {
+    final value = tocAddress.isEmpty ? bookAddress : tocAddress;
+    final split = splitSourceUrlOptions(value);
+    final parsed = Uri.tryParse(split.path);
+    final target = parsed != null && parsed.hasScheme
+        ? split.path
+        : '${tocBase.resolve(split.path)}';
+    return '$target${split.tail}';
+  }
+}
+
+/// The resolved target of a TOC address, without its request-option tail.
+///
+/// Used to test same-page identity; the raw tail remains in [SourceBookInfo.tocUrl].
+String resolveSourceTocTarget({
+  required String address,
+  required Uri base,
+  required String fallbackAddress,
+}) {
+  final split = splitSourceUrlOptions(
+    address.isEmpty ? fallbackAddress : address,
+  );
+  final parsed = Uri.tryParse(split.path);
+  return parsed != null && parsed.hasScheme
+      ? split.path
+      : '${base.resolve(split.path)}';
 }
 
 /// One analysis of one Book Source, as the pages that run a source hold it.

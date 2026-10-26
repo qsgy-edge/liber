@@ -790,6 +790,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
             ),
       );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
+      if ('${response.url}' != '$url') {
+        trace.add(BookSourceTraceEntry(stage: stage, path: '${response.url}'));
+      }
       _cancellation.throwIfCancelled();
       return SourceStageResponse(
         body: response.body,
@@ -979,10 +982,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _page = page;
     final search = _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
     _activeHeaders = await _ensureHeaders();
+    late Uri searchPreOptionUrl;
+    late String searchIdentityAddress;
     final (url, options) = await _request(
       _base,
       source['searchUrl'] as String,
       keyword,
+      captureIdentity: (preOptionUrl, expandedAddress) {
+        searchPreOptionUrl = preOptionUrl;
+        searchIdentityAddress = expandedAddress;
+      },
     );
     final checked = await _loginCheck(
       await _fetch(
@@ -995,6 +1004,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = _document(BookSourceStage.search, checked);
     final finalUrl = checked.url;
+    final searchParts = splitSourceUrlOptions(searchIdentityAddress);
+    final identityAddress = '$finalUrl' == '$url'
+        ? sourceUrlTextWithRawQuery(searchPreOptionUrl, searchParts.path) +
+              searchParts.tail
+        : '$finalUrl';
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1005,7 +1019,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
           '$finalUrl',
           label: 'bookUrlPattern',
         )) {
-      return _detailPageBooks(document, finalUrl);
+      return _detailPageBooks(
+        document,
+        finalUrl,
+        identityAddress: identityAddress,
+        infoHtml: checked.body,
+      );
     }
     final found = await _elementList(
       document,
@@ -1015,7 +1034,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // The frozen companion to the branch above: an empty element list and no
     // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
     if (found.isEmpty && bookUrlPattern.isEmpty) {
-      return _detailPageBooks(document, finalUrl);
+      return _detailPageBooks(
+        document,
+        finalUrl,
+        identityAddress: identityAddress,
+        infoHtml: checked.body,
+      );
     }
     final books = <HtmlBook>[];
     for (final entry in found) {
@@ -1086,6 +1110,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
           kind: kind,
+          infoHtml: '$bookUrl' == '$finalUrl' ? checked.body : null,
         ),
       );
     }
@@ -1094,14 +1119,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
-    final info = await _beginInformation(hit);
-    return _fetchInformation(hit, info);
+    final retained = hit.infoHtml;
+    final info = await _beginInformation(
+      hit,
+      evaluateHeaders: retained == null || retained.isEmpty,
+    );
+    return _fetchInformation(hit, info, retainedInfo: retained);
   }
 
   /// The information stage's pre-request setup, in the frozen composed order:
   /// source validation, the entity state the candidate carries, header
   /// evaluation, then the information rule group.
-  Future<Map<String, String>> _beginInformation(HtmlBook hit) async {
+  Future<Map<String, String>> _beginInformation(
+    HtmlBook hit, {
+    bool evaluateHeaders = true,
+  }) async {
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1116,7 +1148,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     _validate();
     _page = null;
-    _activeHeaders = await _ensureHeaders();
+    if (evaluateHeaders) _activeHeaders = await _ensureHeaders();
     return _rules('ruleBookInfo', const []);
   }
 
@@ -1124,8 +1156,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// already ran.
   Future<SourceBookInfo> _fetchInformation(
     HtmlBook hit,
-    Map<String, String> info,
-  ) async {
+    Map<String, String> info, {
+    String? retainedInfo,
+  }) async {
     final bookRequest = _bookRequests.remove(hit.url);
     // The book's own address text is what this request analyzes, the way the
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
@@ -1144,18 +1177,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // target rather than re-resolving a relative rule text against [_base]. A
     // carrier without a recorded target keeps its raw text.
     final bookAddressText = bookRequest?.address ?? hit.identityAddress;
-    final (bookUrl, bookOptions) = bookRequest == null
+    final cached = retainedInfo != null && retainedInfo.isNotEmpty;
+    final (bookUrl, bookOptions) = cached
+        ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
+        : bookRequest == null
         ? await _request(_base, bookAddressText, '')
         : (hit.url, bookRequest.options);
-    final bookInfo = await _loginCheck(
-      await _fetch(
-        BookSourceStage.bookInfo,
-        bookUrl,
-        options: bookOptions,
-        address: bookAddressText,
-        base: bookRequest?.base ?? _base,
-      ),
-    );
+    final bookInfo = retainedInfo != null && retainedInfo.isNotEmpty
+        ? SourceStageResponse(body: retainedInfo, url: hit.url)
+        : await _loginCheck(
+            await _fetch(
+              BookSourceStage.bookInfo,
+              bookUrl,
+              options: bookOptions,
+              address: bookAddressText,
+              base: bookRequest?.base ?? _base,
+            ),
+          );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, tocAddress) = await _readBookInfo(document, hit, info);
     return SourceBookInfo(
@@ -1167,6 +1205,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       bookAddress: bookAddressText,
       keyword: _keyword,
       page: _page,
+      tocHtml:
+          resolveSourceTocTarget(
+                address: tocAddress,
+                base: hit.url,
+                fallbackAddress: bookAddressText,
+              ) ==
+              '$bookUrl'
+          ? bookInfo.body
+          : null,
     );
   }
 
@@ -1191,7 +1238,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final bookOptions = info.bookOptions;
     final bookAddressText = info.bookAddress;
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
-    final (tocUrl, tocOptions) = info.tocAddress.isEmpty
+    final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    final (tocUrl, tocOptions) = retainedFirstPage
+        ? (bookUrl, const SourceUrlOptions())
+        : info.tocAddress.isEmpty
         ? (bookUrl, bookOptions)
         : await _request(info.tocBase, info.tocAddress, _keyword);
     final chapters = <SourceChapter>[];
@@ -1252,17 +1302,25 @@ class JsonSourcePipeline implements BookSourcePipeline {
       visit: (request, {required readNext}) async {
         clearTocChapter();
         try {
-          var tocPage = await _fetch(
-            BookSourceStage.tableOfContents,
-            request.url,
-            options: request.options,
-            address: request.address,
-            base: request.base,
-          );
+          final cachedFirstPage =
+              firstPage &&
+              info.tocHtml != null &&
+              info.tocHtml!.isNotEmpty &&
+              request.url == info.bookUrl;
+          var tocPage = cachedFirstPage
+              ? SourceStageResponse(body: info.tocHtml!, url: request.url)
+              : await _fetch(
+                  BookSourceStage.tableOfContents,
+                  request.url,
+                  options: request.options,
+                  address: request.address,
+                  base: request.base,
+                );
           // The frozen TOC stage checks login once, on its first response
-          // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check.
+          // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check. A
+          // retained same-page body has no request/check/header work to repeat.
           if (firstPage) {
-            tocPage = await _loginCheck(tocPage);
+            if (!cachedFirstPage) tocPage = await _loginCheck(tocPage);
             firstPage = false;
           }
           finalTocResponse = tocPage;
@@ -1364,15 +1422,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         name,
                         index,
                         tocUrl: tocPage.url,
-                        tag: tag.isEmpty ? null : tag,
+                        tag: tag,
                         isVip: isVip,
                         isPay: isPay,
                       )
                     : SourceChapter(
                         name,
                         tocPage.url,
-                        rawAddress: request.address,
-                        tag: tag.isEmpty ? null : tag,
+                        rawAddress: ordinaryFallbackAddress,
+                        tag: tag,
                         isVip: isVip,
                         isPay: isPay,
                       );
@@ -1386,7 +1444,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   name,
                   resolved,
                   rawAddress: chapterUrl,
-                  tag: tag.isEmpty ? null : tag,
+                  tag: tag,
                   isVolume: isVolume,
                   isVip: isVip,
                   isPay: isPay,
@@ -1445,9 +1503,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // group first, then the TOC rule group, all before any request. A bad
     // source, header or information rule is never replaced by a later TOC
     // group error.
-    final info = await _beginInformation(hit);
+    final retained = hit.infoHtml;
+    final info = await _beginInformation(
+      hit,
+      evaluateHeaders: retained == null || retained.isEmpty,
+    );
     _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
-    return tableOfContents(await _fetchInformation(hit, info));
+    return tableOfContents(
+      await _fetchInformation(hit, info, retainedInfo: retained),
+    );
   }
 
   /// The single book a response that is a book detail page describes, or an
@@ -1467,8 +1531,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// to read here, where the details stage would refuse the missing field.
   Future<List<HtmlBook>> _detailPageBooks(
     Object? document,
-    Uri finalUrl,
-  ) async {
+    Uri finalUrl, {
+    required String identityAddress,
+    required String infoHtml,
+  }) async {
     final infoRules = source['ruleBookInfo'];
     final nameRule = infoRules is Map ? infoRules['name'] : null;
     if (nameRule == null || nameRule == '') {
@@ -1476,7 +1542,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final (book, _) = await _readBookInfo(
       document,
-      HtmlBook(url: finalUrl, title: ''),
+      HtmlBook(
+        url: finalUrl,
+        rawAddress: identityAddress,
+        title: '',
+        infoHtml: infoHtml,
+      ),
       _rules('ruleBookInfo', const []),
     );
     if (book.title.isEmpty) return const <HtmlBook>[];
@@ -1565,8 +1636,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
             : current.lastChapter,
         intro: intro != null && intro.isNotEmpty ? intro : current.intro,
         cover: cover != null && cover.isNotEmpty ? cover : current.cover,
-        // A metadata copy does not clear the variable it started from (#132).
+        // A metadata copy does not clear the variable or retained search
+        // response it started from (#132, retained-body handoff).
         variable: current.variable,
+        infoHtml: current.infoHtml,
       );
     }
 

@@ -1,4 +1,4 @@
-// Four executed relative isUrl getter observations; pipeline raw carriers and
+// Four executed relative/fallback isUrl observations; pipeline raw carriers and
 // normalized final URLs remain separate controls, not whole entity parity.
 import 'dart:convert';
 import 'dart:io';
@@ -139,8 +139,8 @@ void main() {
           if (next) row['inputBase'] as String,
           target,
         ];
-        // Return carriers retain their existing raw relative text/current URI;
-        // only temporary getter value is compared to the actual auxiliary base.
+        // Ordinary empty-URL fallback carriers publish the actual absolute
+        // fallback text; nonempty relative raw text/current URI remain controls.
         expect(
           {
             'beforeUnits': '$before'.codeUnits,
@@ -159,7 +159,7 @@ void main() {
             'header': row['options'] == true ? 'keep' : null,
           },
         );
-        expect(chapters.last.rawAddress, relative);
+        expect(chapters.last.rawAddress, absolute);
         expect(chapters.last.url, Uri.parse(row['responseUrl'] as String));
         expect(chapters.last.name, 'chapter');
         if (next) {

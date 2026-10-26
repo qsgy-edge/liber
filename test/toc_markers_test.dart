@@ -199,7 +199,8 @@ void main() {
     // TOC page it was read from (`BookChapterList.kt:237`).
     final second = chapters[2];
     expect(second.url, _tocUrl);
-    expect(second.rawAddress, '/toc/1');
+    expect(second.rawAddress, '$_base/toc/1');
+    expect(second.tag, '');
     expect(second.isVolume, isFalse);
     expect(second.isVip, isFalse);
 
@@ -249,7 +250,8 @@ void main() {
 
     final second = chapters[2];
     expect(second.url, _tocUrl);
-    expect(second.rawAddress, '/toc/1');
+    expect(second.rawAddress, '$_base/toc/1');
+    expect(second.tag, '');
 
     final requests = transport.requests.length;
     final body = await pipeline.chapter(volume);
