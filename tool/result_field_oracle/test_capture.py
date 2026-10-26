@@ -325,14 +325,13 @@ class DriverBoundaryTest(unittest.TestCase):
                     else:
                         code = 1
                 elif args[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]:
+                    code = package_query_code
+                    stderr = package_query_stderr
                     if package_query_stdout is not None:
                         stdout = package_query_stdout
-                    elif package_query_code:
-                        code = package_query_code
-                        stderr = package_query_stderr
-                    elif existing_harness and not calls['install_attempted']:
+                    elif not package_query_code and existing_harness and not calls['install_attempted']:
                         stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
-                    elif partial and calls['install_attempted']:
+                    elif not package_query_code and partial and calls['install_attempted']:
                         stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
                 elif 'pidof' in args:
                     pid_calls['count'] += 1
@@ -474,6 +473,7 @@ class DriverBoundaryTest(unittest.TestCase):
                     (output / 'manifest.json').read_text(encoding='utf-8'))
                 calls['manifest_status'] = manifest['status']
                 calls['manifest_commands'] = manifest.get('commands', [])
+                calls['manifest_error'] = manifest.get('error')
         return exit_code, commands, calls
 
     def test_successful_driver_uses_exact_quoted_cleanup_and_uninstall(self):
@@ -550,12 +550,20 @@ class DriverBoundaryTest(unittest.TestCase):
             capture._safe_owner_names(ACTUAL_OWNER_PREFERENCES, 'owner.preferences'),
             ACTUAL_OWNER_PREFERENCES,
         )
-        for bad in ('liber_fields_02_evil/name', 'liber_fields_02_evil\name',
-                    'liber_fields_02_..', 'liber_other_probe',
-                    'liber_fields_02_probe/', 'liber_fields_02_probe' + chr(10)):
-            with self.assertRaises(ValueError):
-                capture._safe_owner_names([bad], 'owner.preferences')
-        with self.assertRaises(ValueError):
+        for bad in (
+            'liber_fields_02_evil/name',
+            r'liber_fields_02_evil\name',
+            'liber_fields_02_..',
+            'liber_other_probe',
+            'liber_fields_02_probe/',
+            'liber_fields_02_probe' + chr(10),
+        ):
+            with self.assertRaisesRegex(ValueError, 'unsafe preference name'):
+                capture._safe_owner_names(
+                    ['liber_fields_02_probe', bad], 'owner.preferences')
+        with self.assertRaisesRegex(ValueError, 'omits the registered probe'):
+            capture._safe_owner_names(['liber_fields_02_evil/name'], 'owner.preferences')
+        with self.assertRaisesRegex(ValueError, 'inventories differ'):
             capture._admit_owner_inventories(
                 ACTUAL_OWNER_PREFERENCES, ACTUAL_OWNER_PREFERENCES[:-1])
 
@@ -648,6 +656,7 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertFalse(calls['install_attempted'])
         self.assertEqual(calls['finalize'], 0)
+        self.assertIn('malformed package record', calls['manifest_error'])
 
     def test_contradictory_package_inventory_is_refused(self):
         exit_code, commands, calls = self._run(
@@ -656,6 +665,15 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertFalse(calls['install_attempted'])
         self.assertEqual(calls['finalize'], 0)
+
+    def test_successful_inventory_with_stderr_is_not_absence(self):
+        exit_code, commands, calls = self._run(
+            package_query_stderr=b'permission denied')
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query reported an error', calls['manifest_error'])
+        self.assertIn('permission denied', calls['manifest_error'])
 
     def test_rejected_install_with_verified_absence_is_blocked(self):
         exit_code, commands, calls = self._run(install_code=1)
