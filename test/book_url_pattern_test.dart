@@ -1108,7 +1108,7 @@ void main() {
         () async {
           final state = SourceHostState();
           const optionScript =
-              "source.put('observedHeader',String(source.get('headerRuns'))); result";
+              "var seen=String(source.get('observedHeader')||''); if(seen==='') source.put('observedHeader','seen:'+String(source.get('headerRuns'))); result";
           final next =
               '$_continuationOrigin/else,${jsonEncode({'js': optionScript})}';
           final data = _continuationSource(
@@ -1158,7 +1158,7 @@ void main() {
                 _continuationOrigin,
                 sourceRuleVariableKey(_continuationOrigin, 'observedHeader'),
               ),
-              'ready',
+              'seen:ready',
               reason: 'The URL script must observe the completed header run',
             );
           } finally {
