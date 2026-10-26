@@ -393,8 +393,9 @@ abstract interface class BookSourcePipeline {
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   ///
   /// The composition of [bookInfo] and [tableOfContents], which is what the
-  /// shelf, the browser and the reader run: one call, the information request
-  /// then the TOC request, exactly as before the stages were separated.
+  /// shelf, the browser and the reader run: one call, the information stage then
+  /// the TOC stage, consuming retained bodies where the carrier has them and
+  /// making the corresponding requests otherwise.
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit);
 
   /// `ruleContent`: one chapter's text. A reader supplies its selected [book]
