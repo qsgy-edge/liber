@@ -184,6 +184,7 @@ class SourceStageResponse {
     this.statusCode = 200,
     this.headers = const {},
     this.httpResponse,
+    this.wasRedirected,
   });
 
   /// The frozen `StrResponse(analyzeUrl.url, body)` a rendered document comes
@@ -241,6 +242,9 @@ class SourceStageResponse {
   /// Trusted transport facts; never serialized into the source's payload.
   final SourceStageHttpDetails? httpResponse;
 
+  /// Trusted transport redirect provenance; null for legacy/source payloads.
+  final bool? wasRedirected;
+
   Map<String, Object?> toJson() => {
     'statusCode': statusCode,
     'headers': headers,
@@ -252,19 +256,21 @@ class SourceStageResponse {
 /// Only one loginCheck invocation owns these handles. Bodies and source
 /// payloads stay out of the table, and source JSON never registers a handle.
 class _StageResponseProvenance {
-  final _details = <int, SourceStageHttpDetails>{};
+  final _details = <int, SourceStageHttpDetails?>{};
+  final _redirects = <int, bool?>{};
   int _next = 0;
 
-  int? register(SourceStageHttpDetails? details) {
-    if (details == null) return null;
+  int? register(SourceStageHttpDetails? details, bool? wasRedirected) {
+    if (details == null && wasRedirected == null) return null;
     final handle = _next++;
     _details[handle] = details;
+    _redirects[handle] = wasRedirected;
     return handle;
   }
 
   Map<String, Object?> encode(SourceStageResponse response) => {
     'payload': response.toJson(),
-    'handle': register(response.httpResponse),
+    'handle': register(response.httpResponse, response.wasRedirected),
   };
 
   SourceStageResponse selected(Object? envelope) {
@@ -279,10 +285,16 @@ class _StageResponseProvenance {
       statusCode: response.statusCode,
       headers: response.headers,
       httpResponse: handle is num && handle.isFinite ? _details[handle] : null,
+      wasRedirected: handle is num && handle.isFinite
+          ? _redirects[handle]
+          : null,
     );
   }
 
-  void clear() => _details.clear();
+  void clear() {
+    _details.clear();
+    _redirects.clear();
+  }
 }
 
 /// The two things only the pipeline can do for a `loginCheckJs` hook.
@@ -694,6 +706,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final provenance = checkResponse ? _StageResponseProvenance() : null;
     final initialHandle = provenance?.register(
       stage?.initialResponse?.httpResponse,
+      stage?.initialResponse?.wasRedirected,
     );
     final sourceRef = input['sourceKey'] is String
         ? input['sourceKey'] as String

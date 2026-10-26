@@ -197,6 +197,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// `header` rule, then the caller's. Read once per analysis and before the
   /// first request, because a `<js>` header rule can itself reach the network.
   Map<String, String> _activeHeaders = const {};
+  bool _headersInitialized = false;
   Future<Map<String, String>>? _resolvedHeaders;
 
   @override
@@ -683,19 +684,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final expandedAddress = await _expand(template, keyword);
     final split = splitSourceUrlOptions(expandedAddress);
     var url = _url(base, split.path);
-    if (captureIdentity != null) {
-      var preOptionUrl = url;
-      if (!split.options.isPost) {
-        preOptionUrl = _url(
-          base,
-          await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(url, split.path),
-            charset: split.options.charset,
-          ),
-        ).removeFragment();
-      }
-      captureIdentity(preOptionUrl, expandedAddress);
-    }
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`: `evalJS(jsStr, url)
@@ -714,6 +702,22 @@ class JsonSourcePipeline implements BookSourcePipeline {
           charset: split.options.charset,
         ),
       );
+    }
+    if (captureIdentity != null) {
+      final identityBase = Uri.tryParse(split.path)?.hasScheme == true
+          ? base
+          : url;
+      var preOptionUrl = _url(identityBase, split.path);
+      if (!split.options.isPost) {
+        preOptionUrl = _url(
+          identityBase,
+          await encodeSourceQuery(
+            sourceUrlTextWithRawQuery(preOptionUrl, split.path),
+            charset: split.options.charset,
+          ),
+        ).removeFragment();
+      }
+      captureIdentity(preOptionUrl, expandedAddress);
     }
     return (url, split.options);
   }
@@ -743,6 +747,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       base: base ?? url,
     );
     _cancellation.throwIfCancelled();
+    if (!_headersInitialized) {
+      _activeHeaders = await _ensureHeaders();
+      _headersInitialized = true;
+      _cancellation.throwIfCancelled();
+    }
     final merged = {..._activeHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
         await sourceRequestShape(options, merged);
@@ -804,6 +813,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           bodyByteLength: response.bodyByteLength,
           url: response.url,
         ),
+        wasRedirected: response.wasRedirected,
       );
     }
     if (method != 'GET' || headers.isNotEmpty) {
@@ -982,6 +992,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _page = page;
     final search = _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
     _activeHeaders = await _ensureHeaders();
+    _headersInitialized = true;
     late Uri searchPreOptionUrl;
     late String searchIdentityAddress;
     final (url, options) = await _request(
@@ -1005,10 +1016,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final document = _document(BookSourceStage.search, checked);
     final finalUrl = checked.url;
     final searchParts = splitSourceUrlOptions(searchIdentityAddress);
-    final identityAddress = '$finalUrl' == '$url'
-        ? sourceUrlTextWithRawQuery(searchPreOptionUrl, searchParts.path) +
-              searchParts.tail
-        : '$finalUrl';
+    final redirected = checked.wasRedirected ?? ('$finalUrl' != '$url');
+    final identityAddress = redirected
+        ? '$finalUrl'
+        : sourceUrlTextWithRawQuery(searchPreOptionUrl, searchParts.path) +
+              searchParts.tail;
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1110,7 +1122,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
           kind: kind,
-          infoHtml: '$bookUrl' == '$finalUrl' ? checked.body : null,
+          infoHtml:
+              HtmlBook(
+                    url: bookUrl,
+                    preOptionUrl: preOptionUrl,
+                    rawAddress: expandedBookAddress,
+                    title: name,
+                  ).identityAddress ==
+                  '$finalUrl'
+              ? checked.body
+              : null,
         ),
       );
     }
@@ -1119,6 +1140,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
+    _cancellation.throwIfCancelled();
     final retained = hit.infoHtml;
     final info = await _beginInformation(
       hit,
@@ -1148,7 +1170,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     _validate();
     _page = null;
-    if (evaluateHeaders) _activeHeaders = await _ensureHeaders();
+    if (evaluateHeaders) {
+      _activeHeaders = await _ensureHeaders();
+      _headersInitialized = true;
+    }
     return _rules('ruleBookInfo', const []);
   }
 
@@ -1221,6 +1246,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, List<SourceChapter>)> tableOfContents(
     SourceBookInfo info,
   ) async {
+    _cancellation.throwIfCancelled();
     // The information stage's book is the one this stage's rules and scripts
     // read (`book.*`), so a TOC run that follows another analysis still names
     // the book its own information result carries.
@@ -1273,7 +1299,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
     String tocFallbackAddress(SourcePageRequest request) {
       if (request.address.isEmpty) {
-        return bookAddressText;
+        return resolveSourceTocUrl(
+          address: '',
+          base: request.url,
+          fallbackAddress: bookAddressText,
+        );
       }
       final parts = splitSourceUrlOptions(request.address);
       final address = Uri.parse(parts.path);
@@ -1778,6 +1808,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
     }
     _activeHeaders = await _ensureHeaders();
+    _headersInitialized = true;
     final parts = <String>[];
     String? contentTitle;
     var firstPage = true;
@@ -2146,8 +2177,9 @@ class SourceChapter {
   /// Existing store identity; new TOC chapters still key by their resolved URL.
   final String? storedKey;
 
-  /// The `ruleToc.updateTime` value (the frozen `BookChapter.tag`), null when
-  /// the source declares no such rule or the rule matched nothing.
+  /// The `ruleToc.updateTime` value (the frozen `BookChapter.tag`). A parsed
+  /// rule result is retained exactly, including the empty string; null remains
+  /// the manual/imported default when this carrier has no parsed value.
   final String? tag;
 
   /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).

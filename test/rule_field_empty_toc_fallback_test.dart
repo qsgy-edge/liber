@@ -92,7 +92,6 @@ void main() {
               .toList(),
           [
             ['GET', '$_origin/book?keep=1', 'fallback'],
-            ['GET', '$_origin/book?keep=1', 'fallback'],
           ],
         );
         // This controls temporary publication; final rawAddress carrier is not

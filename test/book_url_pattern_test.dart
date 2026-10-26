@@ -192,6 +192,15 @@ BookSourcePipeline _openContinuation(
     ? JsonSourcePipeline(data, transport, hostState: state)
     : HtmlSourcePipeline(data, transport, hostState: state);
 
+Future<Object?> _errorOrNull(Future<dynamic> future) async {
+  try {
+    await future;
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
@@ -1041,6 +1050,107 @@ void main() {
         },
       );
     }
+  });
+
+  group('review repair controls', () {
+    test(
+      'cancelled retained information and TOC refuse before effects',
+      () async {
+        final pages = _ContinuationPages(_continuationBody(false));
+        final pipeline = _openContinuation(
+          false,
+          _continuationSource(false),
+          pages,
+        );
+        pipeline.cancel();
+        final info = await _errorOrNull(
+          pipeline.bookInfo(
+            HtmlBook(
+              url: Uri.parse('$_continuationOrigin/book'),
+              title: 'Book',
+              infoHtml: _continuationBody(false),
+            ),
+          ),
+        );
+        expect(info, isA<SourceRequestCancelled>());
+        expect(pages.requests, isEmpty);
+        final tocPages = _ContinuationPages(_continuationBody(false));
+        final tocPipeline = _openContinuation(
+          false,
+          _continuationSource(false),
+          tocPages,
+        );
+        final retained = await tocPipeline.bookInfo(
+          HtmlBook(url: Uri.parse('$_continuationOrigin/book'), title: 'Book'),
+        );
+        tocPipeline.cancel();
+        final tocError = await _errorOrNull(
+          tocPipeline.tableOfContents(retained),
+        );
+        expect(tocError, isA<SourceRequestCancelled>());
+        expect(tocPages.requests, hasLength(1));
+        tocPipeline.cancel();
+        pipeline.cancel();
+      },
+    );
+
+    test(
+      'ordinary same-path different full identity performs information work',
+      () async {
+        final pages = _ContinuationPages(
+          '<h1>Book</h1><div class="item"><a href="book?x=1">Book</a></div>'
+          '<div class="chapters"><a href="/c/1">One</a></div>',
+        );
+        final source = <String, dynamic>{
+          'bookSourceUrl': _continuationOrigin,
+          'searchUrl': '/book',
+          'ruleSearch': {
+            'bookList': '.item',
+            'name': 'a@text',
+            'bookUrl': 'a@href',
+          },
+          'ruleBookInfo': {'name': 'h1@text'},
+          'ruleToc': {
+            'chapterList': '.chapters a',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        };
+        final pipeline = HtmlSourcePipeline(source, pages);
+        final hit = (await pipeline.search('Book')).single;
+        expect(pages.requests, hasLength(1));
+        final info = await pipeline.bookInfo(hit);
+        expect(info.book.title, 'Book');
+        expect(pages.requests, hasLength(2));
+        pipeline.cancel();
+      },
+    );
+
+    test(
+      'fresh JSON retained information initializes headers for real TOC',
+      () async {
+        final body = _continuationBody(true);
+        final pages = _ContinuationPages(body);
+        final source = _continuationSource(
+          true,
+          tocRule: '@js:${jsonEncode('$_continuationOrigin/else')}',
+        );
+        source['header'] = '{"X-Source":"keep"}';
+        final pipeline = JsonSourcePipeline(source, pages);
+        final info = await pipeline.bookInfo(
+          HtmlBook(
+            url: Uri.parse('$_continuationOrigin/book'),
+            title: 'Book',
+            infoHtml: body,
+          ),
+        );
+        expect(pages.requests, isEmpty);
+        await pipeline.tableOfContents(info);
+        expect(pages.requests.single.url.path, '/else');
+        expect(pages.requests.single.headers['X-Source'], 'keep');
+        pipeline.cancel();
+      },
+    );
   });
 
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {

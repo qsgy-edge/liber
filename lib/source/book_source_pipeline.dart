@@ -313,37 +313,23 @@ class SourceBookInfo {
   );
 }
 
-/// The full resolved TOC identity, including its request-option tail.
+/// The full resolved TOC identity, including its requested raw query and its
+/// untouched request-option tail. The option text is delimited textually; it is
+/// not parsed or validated during information publication.
 String resolveSourceTocUrl({
   required String address,
   required Uri base,
   required String fallbackAddress,
 }) {
-  final split = splitSourceUrlOptions(
-    address.isEmpty ? fallbackAddress : address,
-  );
-  final parsed = Uri.tryParse(split.path);
-  final target = parsed != null && parsed.hasScheme
-      ? split.path
-      : '${base.resolve(split.path)}';
-  return '$target${split.tail}';
-}
-
-/// The resolved target of a TOC address, without its request-option tail.
-///
-/// Used to test same-page identity; the raw tail remains in [SourceBookInfo.tocUrl].
-String resolveSourceTocTarget({
-  required String address,
-  required Uri base,
-  required String fallbackAddress,
-}) {
-  final split = splitSourceUrlOptions(
-    address.isEmpty ? fallbackAddress : address,
-  );
-  final parsed = Uri.tryParse(split.path);
-  return parsed != null && parsed.hasScheme
-      ? split.path
-      : '${base.resolve(split.path)}';
+  final value = address.isEmpty ? fallbackAddress : address;
+  final boundary = sourceUrlOptionBoundaryOf(value);
+  final path = boundary == null
+      ? value.trim()
+      : value.substring(0, boundary).trim();
+  final tail = boundary == null ? '' : value.substring(boundary);
+  final resolved = base.resolve(path);
+  final text = sourceUrlTextWithRawQuery(resolved, path);
+  return '$text$tail';
 }
 
 /// One analysis of one Book Source, as the pages that run a source hold it.

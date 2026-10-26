@@ -1317,19 +1317,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
+    final rawTarget = _resolve(base, split.path, keepFragment: true);
     final text = script == null
         ? split.path
-        : (await _evalJs(
-                script,
-                keyword,
-                '${_resolve(base, split.path, keepFragment: true)}',
-              ))?.toString() ??
+        : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
-    captureIdentity?.call(
-      url,
-      sourceUrlTextWithRawQuery(url, split.path) + split.tail,
-    );
     if (!split.options.isPost) {
       url = _resolve(
         base,
@@ -1339,6 +1332,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ),
       );
     }
+    final identityBase = Uri.tryParse(split.path)?.hasScheme == true
+        ? base
+        : url;
+    final identityTarget = _resolve(
+      identityBase,
+      split.path,
+      keepFragment: true,
+    );
+    captureIdentity?.call(
+      identityTarget,
+      sourceUrlTextWithRawQuery(identityTarget, split.path) + split.tail,
+    );
     return (url, split.options);
   }
 
@@ -1452,6 +1457,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     var statusCode = 200;
     var responseHeaders = const <String, List<String>>{};
     SourceStageHttpDetails? httpResponse;
+    bool? wasRedirected;
     if (host != null) {
       final response = await sourceStageRequest(
         diagnose: diagnoseRequest,
@@ -1471,6 +1477,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       finalUrl = response.url;
       statusCode = response.statusCode;
       responseHeaders = response.headers;
+      wasRedirected = response.wasRedirected;
       httpResponse = (
         statusCode: response.statusCode,
         bodyByteLength: response.bodyByteLength,
@@ -1498,6 +1505,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       statusCode: statusCode,
       headers: responseHeaders,
       httpResponse: httpResponse,
+      wasRedirected: wasRedirected,
     );
   }
 
@@ -1536,9 +1544,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final html = checked.body;
     final finalUrl = checked.url;
-    final identityAddress = '$finalUrl' == '$url'
-        ? searchIdentityAddress
-        : '$finalUrl';
+    final redirected = checked.wasRedirected ?? ('$finalUrl' != '$url');
+    final identityAddress = redirected ? '$finalUrl' : searchIdentityAddress;
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1726,18 +1733,29 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
+      final candidate = HtmlBook(
+        url: bookUrlTarget,
+        preOptionUrl: bookUrlTarget,
+        rawAddress: bookAddress,
+        title: _required([title], 0, 'ruleSearch.name'),
+        author: authorValue,
+        intro: formatSourceIntro(introValue),
+        lastChapter: lastChapterValue,
+        wordCount: formatSourceWordCount(wordCountValue),
+        kind: kindValue,
+      );
       books.add(
         HtmlBook(
           url: bookUrlTarget,
           preOptionUrl: bookUrlTarget,
           rawAddress: bookAddress,
-          title: _required([title], 0, 'ruleSearch.name'),
-          author: authorValue,
-          intro: formatSourceIntro(introValue),
-          lastChapter: lastChapterValue,
-          wordCount: formatSourceWordCount(wordCountValue),
-          kind: kindValue,
-          infoHtml: '$bookUrlTarget' == '$finalUrl' ? html : null,
+          title: candidate.title,
+          author: candidate.author,
+          intro: candidate.intro,
+          lastChapter: candidate.lastChapter,
+          wordCount: candidate.wordCount,
+          kind: candidate.kind,
+          infoHtml: candidate.identityAddress == '$finalUrl' ? html : null,
         ),
       );
     }
@@ -1746,6 +1764,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   @override
   Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
+    _cancellation.throwIfCancelled();
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1823,6 +1842,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, List<SourceChapter>)> tableOfContents(
     SourceBookInfo info,
   ) async {
+    _cancellation.throwIfCancelled();
     // The information stage's book is the one this stage's rules and scripts
     // read (`book.*`), so a TOC run that follows another analysis still names
     // the book its own information result carries.
@@ -1874,7 +1894,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
     String tocFallbackAddress(SourcePageRequest request) {
       if (request.address.isEmpty) {
-        return bookAddressText;
+        return resolveSourceTocUrl(
+          address: '',
+          base: request.url,
+          fallbackAddress: bookAddressText,
+        );
       }
       final parts = splitSourceUrlOptions(request.address);
       final address = Uri.parse(parts.path);

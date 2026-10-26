@@ -421,7 +421,9 @@ class ShelfService {
   /// value (including null) replaces the old one.
   ///
   /// This is the one preparation both the manual precise-search pick and the
-  /// automatic switch call before their details/TOC stages; the analysis runs
+  /// automatic switch call before their details/TOC stages; the transient
+  /// `candidate.infoHtml` body is retained with the seeded variable, never
+  /// stored or serialized. The analysis runs
   /// with deferred entity variables, so the seeded draft never touches a stored
   /// row until [switchSource] publishes the final carriers.
   HtmlBook associationCandidate(
@@ -463,6 +465,7 @@ class ShelfService {
       lastChapter: candidate.lastChapter,
       wordCount: candidate.wordCount,
       variable: seeded,
+      infoHtml: candidate.infoHtml,
     );
   }
 
