@@ -306,15 +306,27 @@ class SourceBookInfo {
   /// The frozen `Book.tocUrl` value: the declared address, or the book's own
   /// address text when the page declared none (`BookInfo.kt:150-152`), resolved
   /// against the actual information base and retaining the option tail.
-  String get tocUrl {
-    final value = tocAddress.isEmpty ? bookAddress : tocAddress;
-    final split = splitSourceUrlOptions(value);
-    final parsed = Uri.tryParse(split.path);
-    final target = parsed != null && parsed.hasScheme
-        ? split.path
-        : '${tocBase.resolve(split.path)}';
-    return '$target${split.tail}';
-  }
+  String get tocUrl => resolveSourceTocUrl(
+    address: tocAddress,
+    base: tocBase,
+    fallbackAddress: bookAddress,
+  );
+}
+
+/// The full resolved TOC identity, including its request-option tail.
+String resolveSourceTocUrl({
+  required String address,
+  required Uri base,
+  required String fallbackAddress,
+}) {
+  final split = splitSourceUrlOptions(
+    address.isEmpty ? fallbackAddress : address,
+  );
+  final parsed = Uri.tryParse(split.path);
+  final target = parsed != null && parsed.hasScheme
+      ? split.path
+      : '${base.resolve(split.path)}';
+  return '$target${split.tail}';
 }
 
 /// The resolved target of a TOC address, without its request-option tail.

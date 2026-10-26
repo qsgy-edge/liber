@@ -1206,12 +1206,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
       keyword: _keyword,
       page: _page,
       tocHtml:
-          resolveSourceTocTarget(
+          resolveSourceTocUrl(
                 address: tocAddress,
                 base: hit.url,
                 fallbackAddress: bookAddressText,
               ) ==
-              '$bookUrl'
+              hit.identityAddress
           ? bookInfo.body
           : null,
     );

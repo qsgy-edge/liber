@@ -1808,12 +1808,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       keyword: _keyword,
       page: _page,
       tocHtml:
-          resolveSourceTocTarget(
+          resolveSourceTocUrl(
                 address: tocText,
                 base: infoUrl,
                 fallbackAddress: bookAddressText,
               ) ==
-              '$bookUrl'
+              hit.identityAddress
           ? html
           : null,
     );
@@ -1852,7 +1852,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ? (bookUrl, const SourceUrlOptions())
         : info.tocAddress.isEmpty
         ? (bookUrl, bookOptions)
-        : await _extracted(info.tocBase, info.tocAddress);
+        : await _request(info.tocBase, info.tocAddress, _keyword);
     final chapterKeys = <String>{};
     final chapters = <SourceChapter>[];
     SourceStageResponse? finalTocResponse;

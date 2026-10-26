@@ -981,6 +981,68 @@ void main() {
     });
   });
 
+  group('different TOC option tails remain ordinary work', () {
+    for (final json in [false, true]) {
+      test(
+        'different header options force a real TOC request json=$json',
+        () async {
+          final origin = _continuationOrigin;
+          final identity =
+              '$origin/book,${jsonEncode({
+                'headers': {'X-TOC': 'new'},
+              })}';
+          final transport = _ContinuationPages(_continuationBody(json));
+          final pipeline = _openContinuation(
+            json,
+            _continuationSource(json, tocRule: '@js:${jsonEncode(identity)}'),
+            transport,
+          );
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+            );
+            expect(info.tocUrl, identity);
+            expect(transport.requests, hasLength(1));
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            expect(chapters.single.name, 'One');
+            expect(transport.requests, hasLength(2));
+            expect(transport.requests.last.headers['X-TOC'], 'new');
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+      test(
+        'different URL script runs its ordinary side effect json=$json',
+        () async {
+          final origin = _continuationOrigin;
+          final state = SourceHostState();
+          final script = "source.put('ordinaryToc','ran'); '$origin/else'";
+          final identity = '$origin/book,${jsonEncode({'js': script})}';
+          final transport = _ContinuationPages(_continuationBody(json));
+          final pipeline = _openContinuation(
+            json,
+            _continuationSource(json, tocRule: '@js:${jsonEncode(identity)}'),
+            transport,
+            state: state,
+          );
+          final key = sourceRuleVariableKey(origin, 'ordinaryToc');
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+            );
+            expect(info.tocUrl, identity);
+            await pipeline.tableOfContents(info);
+            expect(await state.entry(origin, key), 'ran');
+            expect(transport.requests.last.url.path, '/else');
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+    }
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an
