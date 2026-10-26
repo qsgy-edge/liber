@@ -1265,6 +1265,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final bookAddressText = info.bookAddress;
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
     final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    if (!retainedFirstPage && !_headersInitialized) {
+      _activeHeaders = await _ensureHeaders();
+      _headersInitialized = true;
+      _cancellation.throwIfCancelled();
+    }
     final (tocUrl, tocOptions) = retainedFirstPage
         ? (bookUrl, const SourceUrlOptions())
         : info.tocAddress.isEmpty
@@ -1326,6 +1331,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // (`BookChapterList.kt:96-100`).
       dropSelf: true,
       resolve: (address, pageUrl) async {
+        if (!_headersInitialized) {
+          _activeHeaders = await _ensureHeaders();
+          _headersInitialized = true;
+          _cancellation.throwIfCancelled();
+        }
         final (url, options) = await _request(pageUrl, address, _keyword);
         return (url: url, options: options);
       },

@@ -1098,7 +1098,7 @@ void main() {
       'ordinary same-path different full identity performs information work',
       () async {
         final pages = _ContinuationPages(
-          '<h1>Book</h1><div class="item"><a href="book?x=1">Book</a></div>'
+          '<h1>Book</h1><div class="item"><a href="book,{&quot;method&quot;:&quot;POST&quot;,&quot;body&quot;:&quot;x=1&quot;,&quot;headers&quot;:{&quot;X-Detail&quot;:&quot;new&quot;}}">Book</a></div>'
           '<div class="chapters"><a href="/c/1">One</a></div>',
         );
         final source = <String, dynamic>{
@@ -1122,6 +1122,9 @@ void main() {
         final info = await pipeline.bookInfo(hit);
         expect(info.book.title, 'Book');
         expect(pages.requests, hasLength(2));
+        expect(pages.requests.last.method, 'POST');
+        expect(pages.requests.last.body, 'x=1');
+        expect(pages.requests.last.headers['X-Detail'], 'new');
         pipeline.cancel();
       },
     );

@@ -2412,6 +2412,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               bodyByteLength: response.bodyByteLength,
               url: response.url,
             ),
+            wasRedirected: response.wasRedirected,
           ),
         )
       : {

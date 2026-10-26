@@ -327,8 +327,10 @@ String resolveSourceTocUrl({
       ? value.trim()
       : value.substring(0, boundary).trim();
   final tail = boundary == null ? '' : value.substring(boundary);
-  final resolved = base.resolve(path);
-  final text = sourceUrlTextWithRawQuery(resolved, path);
+  final parsed = Uri.tryParse(path);
+  final text = parsed != null && parsed.hasScheme
+      ? path
+      : sourceUrlTextWithRawQuery(base.resolve(path), path);
   return '$text$tail';
 }
 

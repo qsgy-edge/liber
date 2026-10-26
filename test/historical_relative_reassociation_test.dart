@@ -152,6 +152,37 @@ void main() {
   }
 
   test(
+    'association candidate keeps retained information through a fresh pipeline',
+    () async {
+      final entry = await storedRelativeBook();
+      final candidate = HtmlBook(
+        url: Uri.parse('$origin/book/b29'),
+        title: name,
+        author: author,
+        infoHtml: '{"title":"Book","toc":"/toc/b29"}',
+      );
+      final prepared = shelf.associationCandidate(
+        entry,
+        sourceJson(origin),
+        candidate,
+      );
+      expect(prepared.infoHtml, candidate.infoHtml);
+      final site = _Site({
+        '$origin/book/b29': const _Route('{"title":"Book","toc":"/toc/b29"}'),
+      });
+      final pipeline = JsonSourcePipeline(sourceJson(origin), site);
+      try {
+        final info = await pipeline.bookInfo(prepared);
+        expect(info.book.title, 'Book');
+        expect(info.tocAddress, '/toc/b29');
+        expect(site.requests, isEmpty);
+      } finally {
+        pipeline.cancel();
+      }
+    },
+  );
+
+  test(
     'same-source historical relative row recovers through search -> details -> shelf',
     () async {
       final before = await storedRelativeBook(
