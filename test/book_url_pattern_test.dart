@@ -1306,6 +1306,72 @@ void main() {
     );
   });
 
+  group('native textual identity and ordinary retention', () {
+    for (final json in [false, true]) {
+      for (final rawQuery in [false, true]) {
+        test(
+          'ordinary native textual equality gates retention json=$json raw=$rawQuery',
+          () async {
+            final raw = rawQuery ? '/book?q=书' : '/book?q=%E4%B9%A6';
+            const origin = 'http://source.test';
+            final body = json
+                ? jsonEncode({
+                    'title': 'Book',
+                    'toc': '',
+                    'items': [
+                      {'title': 'Book', 'url': raw},
+                    ],
+                  })
+                : '<h2>Book</h2><div class="item"><a href="$raw">Book</a></div>';
+            final pages = _Pages({'/book': body});
+            final state = SourceHostState();
+            final source = <String, dynamic>{
+              'bookSourceUrl': origin,
+              'searchUrl': '/book?q=%E4%B9%A6',
+              'bookUrlPattern': r'$^',
+              'loginCheckJs':
+                  "source.put('loginChecks', String(Number(source.get('loginChecks')||'0')+1)); result",
+              'ruleSearch': json
+                  ? {
+                      'bookList': r'$.items[*]',
+                      'name': r'$.title',
+                      'bookUrl': r'$.url',
+                    }
+                  : {
+                      'bookList': '.item',
+                      'name': 'a@text',
+                      'bookUrl': 'a@href',
+                    },
+              'ruleBookInfo': json
+                  ? {'name': r'$.title', 'tocUrl': r'$.toc'}
+                  : {'name': 'h2@text', 'tocUrl': '#toc@href'},
+            };
+            final pipeline = json
+                ? JsonSourcePipeline(source, pages, hostState: state)
+                : HtmlSourcePipeline(source, pages, hostState: state);
+            try {
+              final hit = (await pipeline.search('x')).single;
+              expect(hit.title, 'Book');
+              expect(hit.identityAddress, '$origin/book?q=%E4%B9%A6');
+              final info = await pipeline.bookInfo(hit);
+              expect(info.book.title, 'Book');
+              expect(pages.requests, hasLength(rawQuery ? 2 : 1));
+              expect(
+                await state.entry(
+                  origin,
+                  sourceRuleVariableKey(origin, 'loginChecks'),
+                ),
+                rawQuery ? '2' : '1',
+              );
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an

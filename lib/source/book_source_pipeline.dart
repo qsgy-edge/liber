@@ -330,7 +330,7 @@ String resolveSourceTocUrl({
   final parsed = Uri.tryParse(path);
   final text = parsed != null && parsed.hasScheme
       ? path
-      : sourceUrlTextWithRawQuery(base.resolve(path), path);
+      : sourceUrlTextResolved(base, path);
   return '$text$tail';
 }
 
@@ -371,20 +371,23 @@ abstract interface class BookSourcePipeline {
 
   /// `ruleBookInfo` alone: the book's own page and the TOC address it declares.
   ///
-  /// This is the frozen `WebBook.getBookInfoAwait` stage on its own: it fetches,
-  /// runs the source's `loginCheckJs` on that response and parses the
-  /// information rules, and it makes no TOC request. [tableOfContents] continues
-  /// from its result. The hit's variable text is the candidate a deferred
-  /// analysis reads and writes; nothing is stored by this stage.
+  /// This is the frozen `WebBook.getBookInfoAwait` stage on its own. It fetches
+  /// and runs the source's `loginCheckJs` when the hit has no retained
+  /// information response; a retained response is consumed without another
+  /// request or check. It parses the information rules and makes no TOC
+  /// request. [tableOfContents] continues from its result. The hit's variable
+  /// text is the candidate a deferred analysis reads and writes; nothing is
+  /// stored by this stage.
   Future<SourceBookInfo> bookInfo(HtmlBook hit);
 
   /// `ruleToc` alone: the chapter list, continued from [info].
   ///
   /// This is the frozen `WebBook.getChapterListAwait` stage: it fetches the
   /// declared TOC address (or the book's own address when the page declared
-  /// none), runs the `loginCheckJs` on its first response, walks the declared
-  /// pages and returns the resulting book and chapter list. It does not repeat
-  /// the information request, its check or its URL-option evaluation.
+  /// none), runs the `loginCheckJs` on its first page and walks the declared
+  /// pages. A retained first-page body is consumed without another request or
+  /// check, and the stage never repeats the information request, its check or
+  /// its URL-option evaluation.
   Future<(HtmlBook, List<SourceChapter>)> tableOfContents(SourceBookInfo info);
 
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.

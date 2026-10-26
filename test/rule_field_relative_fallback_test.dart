@@ -85,6 +85,49 @@ void main() {
     expect(m['deviceRows'], 'not-run');
   });
   for (final json in [false, true]) {
+    test(
+      'ordinary empty chapter keeps published raw query json=$json',
+      () async {
+        const origin = 'https://fallback-get.test';
+        const toc = '/toc?q=书';
+        final pages = _Pages({
+          '/book': json
+              ? jsonEncode({'title': 'book', 'toc': toc})
+              : '<h2>book</h2><a id="toc" href="$toc">toc</a>',
+          '/toc': json
+              ? jsonEncode({
+                  'list': [
+                    {'name': 'chapter', 'href': ''},
+                  ],
+                })
+              : '<ul id="list"><li><a href="">chapter</a></li></ul>',
+        }, {});
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'ruleBookInfo': {
+            'name': json ? r'$.title' : 'h2@text',
+            'tocUrl': json ? r'$.toc' : 'a@href',
+          },
+          'ruleToc': {
+            'chapterList': json ? r'$.list' : 'li',
+            'chapterName': json ? r'$.name' : 'a@text',
+            'chapterUrl': json ? r'$.href' : 'a@href',
+          },
+        };
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        final (_, chapters) = await pipeline.details(
+          HtmlBook(url: Uri.parse('$origin/book'), title: 'book'),
+        );
+        expect(chapters.single.address, '$origin/toc?q=书');
+        expect(pages.requests.last.url.toString(), '$origin/toc?q=%E4%B9%A6');
+        pipeline.cancel();
+      },
+    );
+  }
+
+  for (final json in [false, true]) {
     for (final row in _rows) {
       test('H1 ${row['name']} actual relative fallback json=$json', () async {
         final next = row['stage'] == 'next';

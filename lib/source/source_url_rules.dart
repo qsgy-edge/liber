@@ -463,7 +463,9 @@ Map<String, Object?>? _decodeUrlOptionTail(String optionText) {
     try {
       final strict = jsonDecode(optionText.substring(0, end));
       if (strict is Map) {
-        return {for (final entry in strict.entries) '${entry.key}': entry.value};
+        return {
+          for (final entry in strict.entries) '${entry.key}': entry.value,
+        };
       }
     } on FormatException {
       // The reader below is what decides.
@@ -824,6 +826,58 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
   final text = '$resolved';
   final encoded = text.indexOf('?');
   return '${encoded < 0 ? text : text.substring(0, encoded)}${raw.substring(at)}';
+}
+
+/// The textual URL the pinned native `URL(base, relativePath).toString()`
+/// publishes: an already absolute [raw] is returned verbatim, otherwise the
+/// base's authority stays and the relative path/query/fragment stay raw. This
+/// is publication text, not a wire target; callers validate the actual request
+/// separately.
+String sourceUrlTextResolved(Uri base, String raw) {
+  final trimmed = raw.trim();
+  if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
+  var path = trimmed;
+  String? query;
+  String? fragment;
+  final hash = path.indexOf('#');
+  if (hash >= 0) {
+    fragment = path.substring(hash + 1);
+    path = path.substring(0, hash);
+  }
+  final question = path.indexOf('?');
+  if (question >= 0) {
+    query = path.substring(question + 1);
+    path = path.substring(0, question);
+  }
+  final String resolvedPath;
+  if (path.startsWith('/')) {
+    resolvedPath = _normalizeRawPath(path);
+  } else if (path.isEmpty) {
+    resolvedPath = base.path.isEmpty ? '/' : base.path;
+  } else {
+    final basePath = base.path.endsWith('/')
+        ? base.path
+        : base.path.substring(0, base.path.lastIndexOf('/') + 1);
+    resolvedPath = _normalizeRawPath('$basePath$path');
+  }
+  final authority = base.hasAuthority ? base.authority : base.host;
+  final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
+  if (query != null) output.write('?$query');
+  if (fragment != null) output.write('#$fragment');
+  return output.toString();
+}
+
+String _normalizeRawPath(String path) {
+  final parts = <String>[];
+  for (final part in path.split('/')) {
+    if (part == '.' || part.isEmpty) continue;
+    if (part == '..') {
+      if (parts.isNotEmpty) parts.removeLast();
+    } else {
+      parts.add(part);
+    }
+  }
+  return '/${parts.join('/')}';
 }
 
 /// Frozen `replaceKeyPageJs` page-list step: each `<a,b,c>` becomes the page-th

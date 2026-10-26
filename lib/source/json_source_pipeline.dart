@@ -683,6 +683,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     final expandedAddress = await _expand(template, keyword);
     final split = splitSourceUrlOptions(expandedAddress);
+    var preOptionUrl = _url(base, split.path);
+    if (!split.options.isPost) {
+      preOptionUrl = _url(
+        base,
+        await encodeSourceQuery(
+          sourceUrlTextWithRawQuery(preOptionUrl, split.path),
+          charset: split.options.charset,
+        ),
+      ).removeFragment();
+    }
     var url = _url(base, split.path);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
@@ -704,20 +714,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
     }
     if (captureIdentity != null) {
-      final identityBase = Uri.tryParse(split.path)?.hasScheme == true
-          ? base
-          : url;
-      var preOptionUrl = _url(identityBase, split.path);
-      if (!split.options.isPost) {
-        preOptionUrl = _url(
-          identityBase,
-          await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(preOptionUrl, split.path),
-            charset: split.options.charset,
-          ),
-        ).removeFragment();
-      }
-      captureIdentity(preOptionUrl, expandedAddress);
+      // A URL option script changes the target the native AnalyzeUrl analyzes;
+      // a relative original then resolves against that actual target. Without a
+      // script the pre-option target is the one the request already resolved,
+      // so it must not be resolved a second time.
+      final changedOrigin = script != null && url.origin != preOptionUrl.origin;
+      final identityBase = changedOrigin ? url : base;
+      final identityTarget = changedOrigin
+          ? _url(identityBase, split.path)
+          : preOptionUrl;
+      captureIdentity(identityTarget, expandedAddress);
     }
     return (url, split.options);
   }
@@ -1019,7 +1025,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final redirected = checked.wasRedirected ?? ('$finalUrl' != '$url');
     final identityAddress = redirected
         ? '$finalUrl'
-        : sourceUrlTextWithRawQuery(searchPreOptionUrl, searchParts.path) +
+        : (Uri.tryParse(searchParts.path)?.hasScheme == true
+                  ? searchParts.path
+                  : sourceUrlTextWithRawQuery(
+                      searchPreOptionUrl,
+                      searchParts.path,
+                    )) +
               searchParts.tail;
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
@@ -1109,6 +1120,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
+      final nativeParts = splitSourceUrlOptions(expandedBookAddress);
+      final nativeBookAddress =
+          '${sourceUrlTextResolved(finalUrl, nativeParts.path)}${nativeParts.tail}';
       books.add(
         HtmlBook(
           url: bookUrl,
@@ -1122,16 +1136,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
           kind: kind,
-          infoHtml:
-              HtmlBook(
-                    url: bookUrl,
-                    preOptionUrl: preOptionUrl,
-                    rawAddress: expandedBookAddress,
-                    title: name,
-                  ).identityAddress ==
-                  '$finalUrl'
-              ? checked.body
-              : null,
+          infoHtml: nativeBookAddress == '$finalUrl' ? checked.body : null,
         ),
       );
     }
@@ -1202,6 +1207,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // target rather than re-resolving a relative rule text against [_base]. A
     // carrier without a recorded target keeps its raw text.
     final bookAddressText = bookRequest?.address ?? hit.identityAddress;
+    final bookParts = splitSourceUrlOptions(bookAddressText);
+    final nativeBookAddress = bookRequest == null
+        ? hit.identityAddress
+        : '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
     final cached = retainedInfo != null && retainedInfo.isNotEmpty;
     final (bookUrl, bookOptions) = cached
         ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
@@ -1227,16 +1236,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
       tocBase: hit.url,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
-      bookAddress: bookAddressText,
+      bookAddress: nativeBookAddress,
       keyword: _keyword,
       page: _page,
       tocHtml:
           resolveSourceTocUrl(
                 address: tocAddress,
                 base: hit.url,
-                fallbackAddress: bookAddressText,
+                fallbackAddress: nativeBookAddress,
               ) ==
-              hit.identityAddress
+              nativeBookAddress
           ? bookInfo.body
           : null,
     );
@@ -1315,7 +1324,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       if (address.hasScheme) {
         return request.address;
       }
-      return '${request.base.resolveUri(address)}${parts.tail}';
+      return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
     }
 
     await walkSourcePages(

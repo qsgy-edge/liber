@@ -1340,10 +1340,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       split.path,
       keepFragment: true,
     );
-    captureIdentity?.call(
-      identityTarget,
-      sourceUrlTextWithRawQuery(identityTarget, split.path) + split.tail,
-    );
+    final identityText = Uri.tryParse(split.path)?.hasScheme == true
+        ? split.path
+        : sourceUrlTextWithRawQuery(identityTarget, split.path);
+    captureIdentity?.call(identityTarget, '$identityText${split.tail}');
     return (url, split.options);
   }
 
@@ -1728,6 +1728,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         finalUrl,
         bookAddress,
       );
+      final nativeParts = splitSourceUrlOptions(bookAddress);
+      final nativeBookAddress =
+          '${sourceUrlTextResolved(finalUrl, nativeParts.path)}${nativeParts.tail}';
       _bookRequests[bookUrlTarget] = (
         address: bookAddress,
         base: finalUrl,
@@ -1755,7 +1758,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           lastChapter: candidate.lastChapter,
           wordCount: candidate.wordCount,
           kind: candidate.kind,
-          infoHtml: candidate.identityAddress == '$finalUrl' ? html : null,
+          infoHtml: nativeBookAddress == '$finalUrl' ? html : null,
         ),
       );
     }
@@ -1796,6 +1799,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // target rather than re-resolving a relative rule text against
     // [sourceUrl]. A carrier without a recorded target keeps its raw text.
     final bookAddressText = bookRequest?.address ?? hit.identityAddress;
+    final bookParts = splitSourceUrlOptions(bookAddressText);
+    final nativeBookAddress = bookRequest == null
+        ? hit.identityAddress
+        : '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
     final retained = hit.infoHtml;
     final cached = retained != null && retained.isNotEmpty;
     final (bookUrl, bookOptions) = cached
@@ -1823,16 +1830,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       tocBase: infoUrl,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
-      bookAddress: bookAddressText,
+      bookAddress: nativeBookAddress,
       keyword: _keyword,
       page: _page,
       tocHtml:
           resolveSourceTocUrl(
                 address: tocText,
                 base: infoUrl,
-                fallbackAddress: bookAddressText,
+                fallbackAddress: nativeBookAddress,
               ) ==
-              hit.identityAddress
+              nativeBookAddress
           ? html
           : null,
     );
@@ -1905,7 +1912,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       if (address.hasScheme) {
         return request.address;
       }
-      return '${request.base.resolveUri(address)}${parts.tail}';
+      return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
     }
 
     await walkSourcePages(
