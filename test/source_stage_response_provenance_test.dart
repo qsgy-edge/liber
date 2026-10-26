@@ -12,7 +12,7 @@ import 'native_library.dart';
 // Protocol controls are separate from the controller's frozen 74 pipeline rows.
 // These typed responses test provenance, not transport byte measurement (which
 // the loopback/BOM rows in source_stage_response_diagnostic_test.dart cover).
-SourceStageResponse _initial({int status = 403}) {
+SourceStageResponse _initial({int status = 403, bool? wasRedirected}) {
   final url = Uri.parse('https://fixture.test/initial');
   return SourceStageResponse(
     body: 'initial',
@@ -22,6 +22,7 @@ SourceStageResponse _initial({int status = 403}) {
       'x-values': ['one', 'two'],
     },
     httpResponse: (statusCode: status, bodyByteLength: 7, url: url),
+    wasRedirected: wasRedirected,
   );
 }
 
@@ -83,6 +84,21 @@ Future<Object?> _eval(InProcessSourceScriptRuntime runtime, String script) =>
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  test(
+    'trusted redirect provenance survives the check response handoff',
+    () async {
+      final runtime = InProcessSourceScriptRuntime();
+      final response = await _check(
+        runtime,
+        'result',
+        initial: _initial(wasRedirected: true),
+      );
+      expect(response.wasRedirected, isTrue);
+      final legacy = SourceStageResponse.fromJson(_initial().toJson());
+      expect(legacy.wasRedirected, isNull);
+    },
+  );
 
   test('initial wrapper keeps facts and only the four source fields', () async {
     final runtime = InProcessSourceScriptRuntime();
