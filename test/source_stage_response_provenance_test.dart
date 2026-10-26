@@ -37,8 +37,9 @@ SourceStageResponse _replacement() {
 }
 
 class _HostResponses implements SourceHttpTransport {
-  _HostResponses({this.includeLength = true});
+  _HostResponses({this.includeLength = true, this.redirectFact});
   final bool includeLength;
+  final bool? redirectFact;
   final requests = <SourceHttpRequest>[];
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
@@ -52,6 +53,7 @@ class _HostResponses implements SourceHttpTransport {
       body: body,
       bodyByteLength: includeLength ? body.length : null,
       url: request.url,
+      wasRedirected: redirectFact,
     );
   }
 }
@@ -166,6 +168,71 @@ result;
       },
     );
   }
+
+  for (final fact in [false, true]) {
+    test('host connect converts the selected redirect fact $fact', () async {
+      final transport = _HostResponses(redirectFact: fact);
+      final runtime = InProcessSourceScriptRuntime(
+        dispatcher: SourceHostDispatcher(transport: transport),
+      );
+      final response = await _check(
+        runtime,
+        'java.connect("https://fixture.test/second");',
+        initial: _initial(wasRedirected: !fact),
+      );
+      expect(transport.requests.single.url.path, '/second');
+      expect(transport.requests.single.method, 'GET');
+      expect(response.statusCode, 502);
+      expect(response.body, isEmpty);
+      expect(response.url.path, '/second');
+      expect(response.httpResponse?.statusCode, 502);
+      expect(response.httpResponse?.bodyByteLength, 0);
+      expect(response.httpResponse?.url.path, '/second');
+      expect(
+        response.toJson().keys,
+        unorderedEquals(['body', 'url', 'statusCode', 'headers']),
+      );
+      expect(
+        response.wasRedirected,
+        fact,
+        reason:
+            'The selected host response owns the fact, not the initial envelope',
+      );
+    });
+  }
+
+  test('host ajaxAll selection converts the selected redirect fact', () async {
+    final transport = _HostResponses(redirectFact: true);
+    final runtime = InProcessSourceScriptRuntime(
+      dispatcher: SourceHostDispatcher(transport: transport),
+    );
+    final response = await _check(
+      runtime,
+      'java.ajaxAll(["https://fixture.test/first","https://fixture.test/second"])[1];',
+      initial: _initial(wasRedirected: false),
+    );
+    expect(transport.requests.map((request) => request.url.path), [
+      '/first',
+      '/second',
+    ]);
+    expect(
+      transport.requests.map((request) => request.method),
+      everyElement('GET'),
+    );
+    expect(response.statusCode, 502);
+    expect(response.body, isEmpty);
+    expect(response.url.path, '/second');
+    expect(response.httpResponse?.url.path, '/second');
+    expect(
+      response.toJson().keys,
+      unorderedEquals(['body', 'url', 'statusCode', 'headers']),
+    );
+    expect(
+      response.wasRedirected,
+      isTrue,
+      reason: 'Array selection must retain its selected response fact',
+    );
+  });
 
   test(
     'older HTTP transport retains known status without inventing byte length',

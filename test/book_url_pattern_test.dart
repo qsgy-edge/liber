@@ -129,15 +129,18 @@ Map<String, dynamic> _jsonSource(
 };
 
 const _continuationOrigin = 'http://same-page.test';
-String _continuationBody(bool json) => json
+String _continuationBody(bool json, {String toc = '/book', String next = ''}) =>
+    json
     ? jsonEncode({
         'title': 'Book',
-        'toc': '/book',
+        'toc': toc,
+        'next': next,
         'chapters': [
           {'name': 'One', 'url': '/c/1'},
         ],
       })
-    : '<h1>Book</h1><a class="toc" href="/book">目录</a>'
+    : '<h1>Book</h1>'
+          '<a class="toc" href="${HtmlEscape().convert(toc)}">目录</a>'
           '<div class="chapters"><a href="/c/1">One</a></div>';
 Map<String, dynamic> _continuationSource(bool json, {String? tocRule}) => {
   'bookSourceUrl': _continuationOrigin,
@@ -1053,46 +1056,146 @@ void main() {
   });
 
   group('review repair controls', () {
-    test(
-      'cancelled retained information and TOC refuse before effects',
-      () async {
-        final pages = _ContinuationPages(_continuationBody(false));
-        final pipeline = _openContinuation(
-          false,
-          _continuationSource(false),
-          pages,
-        );
-        pipeline.cancel();
-        final info = await _errorOrNull(
-          pipeline.bookInfo(
+    for (final json in [false, true]) {
+      test(
+        'cancelled retained information and TOC refuse before effects json=$json',
+        () async {
+          final pages = _ContinuationPages(_continuationBody(json));
+          final pipeline = _openContinuation(
+            json,
+            _continuationSource(json),
+            pages,
+          );
+          pipeline.cancel();
+          final info = await _errorOrNull(
+            pipeline.bookInfo(
+              HtmlBook(
+                url: Uri.parse('$_continuationOrigin/book'),
+                title: 'Book',
+                infoHtml: _continuationBody(json),
+              ),
+            ),
+          );
+          expect(info, isA<SourceRequestCancelled>());
+          expect(pages.requests, isEmpty);
+          final tocPages = _ContinuationPages(_continuationBody(json));
+          final tocPipeline = _openContinuation(
+            json,
+            _continuationSource(json),
+            tocPages,
+          );
+          final retained = await tocPipeline.bookInfo(
             HtmlBook(
               url: Uri.parse('$_continuationOrigin/book'),
               title: 'Book',
-              infoHtml: _continuationBody(false),
             ),
-          ),
+          );
+          tocPipeline.cancel();
+          final tocError = await _errorOrNull(
+            tocPipeline.tableOfContents(retained),
+          );
+          expect(tocError, isA<SourceRequestCancelled>());
+          expect(tocPages.requests, hasLength(1));
+          tocPipeline.cancel();
+          pipeline.cancel();
+        },
+      );
+    }
+
+    for (final retainedFirst in [false, true]) {
+      test(
+        'actual JSON header precedes first uncached TOC URL script retainedFirst=$retainedFirst',
+        () async {
+          final state = SourceHostState();
+          const optionScript =
+              "source.put('observedHeader',String(source.get('headerRuns'))); result";
+          final next =
+              '$_continuationOrigin/else,${jsonEncode({'js': optionScript})}';
+          final data = _continuationSource(
+            true,
+            tocRule:
+                '@js:${jsonEncode(retainedFirst ? '$_continuationOrigin/book' : next)}',
+          );
+          data['header'] =
+              '@js:source.put("headerRuns","ready"); JSON.stringify({"X-Source":"keep"})';
+          if (retainedFirst) {
+            (data['ruleToc'] as Map<String, dynamic>)['nextTocUrl'] = r'$.next';
+          }
+          final body = _continuationBody(true, next: retainedFirst ? next : '');
+          final pages = _ContinuationPages(body);
+          final pipeline = JsonSourcePipeline(data, pages, hostState: state);
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(
+                url: Uri.parse('$_continuationOrigin/book'),
+                title: 'Book',
+                infoHtml: body,
+              ),
+            );
+            expect(info.book.title, 'Book');
+            expect(pages.requests, isEmpty);
+            expect(
+              await state.entry(
+                _continuationOrigin,
+                sourceRuleVariableKey(_continuationOrigin, 'headerRuns'),
+              ),
+              isNull,
+              reason: 'Retained information must not eagerly evaluate headers',
+            );
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            expect(chapters, isNotEmpty);
+            expect(pages.requests.single.url.path, '/else');
+            expect(pages.requests.single.headers['X-Source'], 'keep');
+            expect(
+              await state.entry(
+                _continuationOrigin,
+                sourceRuleVariableKey(_continuationOrigin, 'headerRuns'),
+              ),
+              'ready',
+            );
+            expect(
+              await state.entry(
+                _continuationOrigin,
+                sourceRuleVariableKey(_continuationOrigin, 'observedHeader'),
+              ),
+              'ready',
+              reason: 'The URL script must observe the completed header run',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+    }
+
+    for (final json in [false, true]) {
+      test('absolute published TOC keeps native text json=$json', () async {
+        const address =
+            'http://UPPER.test/目录?q=书,{"headers":{"X-Value":"keep"}}';
+        final body = _continuationBody(json, toc: address);
+        final pages = _ContinuationPages(body);
+        final pipeline = _openContinuation(
+          json,
+          _continuationSource(json),
+          pages,
         );
-        expect(info, isA<SourceRequestCancelled>());
-        expect(pages.requests, isEmpty);
-        final tocPages = _ContinuationPages(_continuationBody(false));
-        final tocPipeline = _openContinuation(
-          false,
-          _continuationSource(false),
-          tocPages,
-        );
-        final retained = await tocPipeline.bookInfo(
-          HtmlBook(url: Uri.parse('$_continuationOrigin/book'), title: 'Book'),
-        );
-        tocPipeline.cancel();
-        final tocError = await _errorOrNull(
-          tocPipeline.tableOfContents(retained),
-        );
-        expect(tocError, isA<SourceRequestCancelled>());
-        expect(tocPages.requests, hasLength(1));
-        tocPipeline.cancel();
-        pipeline.cancel();
-      },
-    );
+        try {
+          final info = await pipeline.bookInfo(
+            HtmlBook(
+              url: Uri.parse('$_continuationOrigin/book'),
+              title: 'Book',
+              infoHtml: body,
+            ),
+          );
+          expect(info.book.title, 'Book');
+          expect(pages.requests, isEmpty);
+          expect(info.tocAddress, address);
+          expect(info.tocUrl, address);
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
 
     test(
       'ordinary same-path different full identity performs information work',
@@ -1117,6 +1220,53 @@ void main() {
           },
         };
         final pipeline = HtmlSourcePipeline(source, pages);
+        final hit = (await pipeline.search('Book')).single;
+        expect(pages.requests, hasLength(1));
+        final info = await pipeline.bookInfo(hit);
+        expect(info.book.title, 'Book');
+        expect(pages.requests, hasLength(2));
+        expect(pages.requests.last.method, 'POST');
+        expect(pages.requests.last.body, 'x=1');
+        expect(pages.requests.last.headers['X-Detail'], 'new');
+        pipeline.cancel();
+      },
+    );
+
+    test(
+      'ordinary same-path different full identity performs JSON information work',
+      () async {
+        final pages = _ContinuationPages(
+          jsonEncode({
+            'items': [
+              {
+                'name': 'Book',
+                'url':
+                    'book,{"method":"POST","body":"x=1","headers":{"X-Detail":"new"}}',
+              },
+            ],
+            'title': 'Book',
+            'toc': '/book',
+            'chapters': [
+              {'name': 'One', 'url': '/c/1'},
+            ],
+          }),
+        );
+        final source = <String, dynamic>{
+          'bookSourceUrl': _continuationOrigin,
+          'searchUrl': '/book',
+          'ruleSearch': {
+            'bookList': r'$.items[*]',
+            'name': r'$.name',
+            'bookUrl': r'$.url',
+          },
+          'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+          'ruleToc': {
+            'chapterList': r'$.chapters[*]',
+            'chapterName': r'$.name',
+            'chapterUrl': r'$.url',
+          },
+        };
+        final pipeline = JsonSourcePipeline(source, pages);
         final hit = (await pipeline.search('Book')).single;
         expect(pages.requests, hasLength(1));
         final info = await pipeline.bookInfo(hit);
