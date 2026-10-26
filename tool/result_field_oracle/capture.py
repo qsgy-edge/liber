@@ -256,36 +256,21 @@ def _snapshot_records(output, label):
 
 def _fields_snapshot_script(root):
     """Emit hex-framed typed records with checked existing byte primitives."""
-    nl = chr(10)
-    encoder = (
-        "encode_path() { "
-        "encoded=$(od -An -v -tx1 <<LIBER_FIELDS_PATH_BYTES" + nl +
-        "$1" + nl + "LIBER_FIELDS_PATH_BYTES" + nl +
-        ") || return __CODE__; "
-        "encoded=$(tr -d \"[:space:]\" <<LIBER_FIELDS_HEX_BYTES" + nl +
-        "$encoded" + nl + "LIBER_FIELDS_HEX_BYTES" + nl +
-        ") || return __CODE__; "
-        "case \"$encoded\" in *0a) encoded=${encoded%0a};; *) return __EMPTY__;; esac; "
-        "test -n \"$encoded\" || return __EMPTY__; "
-        "printf \"%s\" \"$encoded\" || return __CODE__; "
-        "}; "
-    )
+    # Producer/od status uses fd3; encoded hex uses fd4. Both are actual
+    # channels; no temporary file or non-POSIX pipe option is involved.
+    encoder = 'encode_path() {\n    encoded=$(\n        exec 4>&1\n        statuses=$(\n            exec 3>&1\n            { printf "%s\\n" "$1"; status=$?; command printf "p:%s\\n" "$status" >&3; } |\n            { od -An -v -tx1; status=$?; command printf "o:%s\\n" "$status" >&3; } |\n            tr -d "[:space:]" >&4\n        ) || exit __CODE__\n        case "$statuses" in\n            "p:0\no:0") ;;\n            "o:0\np:0") ;;\n            *) exit __CODE__ ;;\n        esac\n    ) || return __CODE__\n    case "$encoded" in\n        *0a) encoded=${encoded%0a} ;;\n        *) return __EMPTY__ ;;\n    esac\n    test -n "$encoded" || return __EMPTY__\n    printf "%s" "$encoded" || return __CODE__\n}'
     def encode(code, empty):
-        return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty))
+        return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty)) + '; '
     return (
         'set -e; cd ' + shlex.quote(root) + '; '
-        "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 20; "
+        r'''find . -type f -exec sh -c 'for f do h=$(sha256sum "$f") || exit 20; '''
         + encode(21, 24) +
-        "hex=$(encode_path \"$f\") || exit 21; "
-        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$hex\" || exit 23; done' sh {} +; "
-        "find . -type d -exec sh -c 'for f do " + encode(31, 34) +
-        "hex=$(encode_path \"$f\") || exit 31; "
-        "printf \"D\t-\t%s\n\" \"$hex\" || exit 33; done' sh {} +; "
-        "find . ! -type f ! -type d -exec sh -c 'for f do " + encode(41, 44) +
-        "hex=$(encode_path \"$f\") || exit 41; "
-        "printf \"U\t-\t%s\n\" \"$hex\" || exit 43; done' sh {} +"
+        r'''hex=$(encode_path "$f") || exit 21; printf "F\t%s\t%s\n" "${h%% *}" "$hex" || exit 23; done' sh {} +; '''
+        r'''find . -type d -exec sh -c 'for f do ''' + encode(31, 34) +
+        r'''hex=$(encode_path "$f") || exit 31; printf "D\t-\t%s\n" "$hex" || exit 33; done' sh {} +; '''
+        r'''find . ! -type f ! -type d -exec sh -c 'for f do ''' + encode(41, 44) +
+        r'''hex=$(encode_path "$f") || exit 41; printf "U\t-\t%s\n" "$hex" || exit 43; done' sh {} +'''
     )
-
 
 
 def _measured_pids(result, label):

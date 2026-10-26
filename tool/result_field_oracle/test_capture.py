@@ -744,6 +744,17 @@ class FormatterFailureTest(unittest.TestCase):
             records = capture._snapshot_records(completed.stdout, 'repeated-name')
             self.assertIn('files/' + name, records)
 
+    def test_formatter_does_not_require_a_writable_tmp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = self._make_root(base)
+            env = os.environ.copy()
+            env['TMPDIR'] = str(base / 'unwritable-tmp')
+            self.assertFalse(Path(env['TMPDIR']).exists())
+            completed = _run_snapshot_formatter(root, env_overrides=env)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('files/one', capture._snapshot_records(completed.stdout, 'no-temp'))
+
     @unittest.skipUnless(os.name == 'nt', 'Windows PATH precedence control')
     def test_windows_posix_tools_keep_precedence_and_complete_fallback(self):
         import shutil
