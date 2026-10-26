@@ -649,6 +649,8 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertFalse(any('install' in cmd for cmd in commands
                              if 'field-oracle.apk' in ' '.join(cmd)))
         self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query failed (exit 1)', calls['manifest_error'])
+        self.assertIn('permission denied', calls['manifest_error'])
 
     def test_malformed_package_inventory_is_refused(self):
         exit_code, commands, calls = self._run(
@@ -665,6 +667,7 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertFalse(calls['install_attempted'])
         self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query failed (exit 1)', calls['manifest_error'])
 
     def test_successful_inventory_with_stderr_is_not_absence(self):
         exit_code, commands, calls = self._run(
