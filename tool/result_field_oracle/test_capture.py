@@ -12,6 +12,16 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capture  # noqa: E402
 
+ACTUAL_OWNER_PREFERENCES = [
+    'liber_fields_02_FirebasePerfSharedPrefs',
+    'liber_fields_02_probe',
+    'liber_fields_02_FirebaseHeartBeatW0RFRkFVTFRd+MTo0NTMzOTIyNzQ3OTA6YW5kcm9pZDpjNGVhYzE0YjE0MTBlZWM1ZjYyNGE3',
+    'liber_fields_02_frc_1:453392274790:android:c4eac14b1410eec5f624a7_firebase_settings',
+    'liber_fields_02_com.google.android.gms.measurement.prefs',
+    'liber_fields_02_io.legado.app.debug_preferences',
+    'liber_fields_02_com.google.android.gms.appid',
+]
+
 def _shell_path():
     import shutil
     found = shutil.which('sh')
@@ -261,7 +271,10 @@ class DriverBoundaryTest(unittest.TestCase):
              uninstall_code=0, partial=False, owner_mutator=None,
              snapshot_code=0, process_pid=None, installation_probe=False,
              instrument_code=0, process_pid_preflight=None, process_pid_owned=None,
-             process_pid_post=None, pid_stderr=False, snapshot_fail_on=None):
+             process_pid_post=None, pid_stderr=False, snapshot_fail_on=None,
+             existing_harness=False, package_query_code=0,
+             package_query_stderr=b'', package_query_stdout=None,
+             owner_preferences=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
@@ -305,8 +318,21 @@ class DriverBoundaryTest(unittest.TestCase):
                 elif args[-3:] == ['pm', 'path', capture.TARGET_PACKAGE]:
                     stdout = b'package:/synthetic/frozen.apk\n'
                 elif args[-3:] == ['pm', 'path', capture.PACKAGE]:
-                    if partial and calls['install_attempted']:
-                        stdout = b'package:/synthetic/partial.apk\n'
+                    if existing_harness and not calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    elif partial and calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    else:
+                        code = 1
+                elif args[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]:
+                    code = package_query_code
+                    stderr = package_query_stderr
+                    if package_query_stdout is not None:
+                        stdout = package_query_stdout
+                    elif not package_query_code and existing_harness and not calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    elif not package_query_code and partial and calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
                 elif 'pidof' in args:
                     pid_calls['count'] += 1
                     if pid_calls['count'] == 1:
@@ -408,6 +434,9 @@ class DriverBoundaryTest(unittest.TestCase):
                 'complete': True, 'seedRunId': 'run', 'seedPid': 4242,
                 'preferences': ['liber_fields_02_probe'],
             })
+            if owner_preferences is not None:
+                report['cleanup']['ownedPreferences'] = list(owner_preferences)
+                owner['preferences'] = list(owner_preferences)
             if owner_mutator is not None:
                 owner_mutator(owner)
             report_bytes = json.dumps(report).encode()
@@ -440,8 +469,11 @@ class DriverBoundaryTest(unittest.TestCase):
                 exit_code = capture.main()
             calls['golden'] = (output / 'golden.json').exists()
             if (output / 'manifest.json').exists():
-                calls['manifest_status'] = json.loads(
-                    (output / 'manifest.json').read_text(encoding='utf-8'))['status']
+                manifest = json.loads(
+                    (output / 'manifest.json').read_text(encoding='utf-8'))
+                calls['manifest_status'] = manifest['status']
+                calls['manifest_commands'] = manifest.get('commands', [])
+                calls['manifest_error'] = manifest.get('error')
         return exit_code, commands, calls
 
     def test_successful_driver_uses_exact_quoted_cleanup_and_uninstall(self):
@@ -494,6 +526,46 @@ class DriverBoundaryTest(unittest.TestCase):
         self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
                              for cmd in commands))
         self.assertFalse(any('force-stop' in cmd for cmd in commands))
+
+    def test_actual_android_owner_names_are_admitted_and_logged_by_index(self):
+        exit_code, commands, calls = self._run(
+            owner_preferences=ACTUAL_OWNER_PREFERENCES)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls['finalize'], 1)
+        self.assertTrue(calls['golden'])
+        self.assertEqual(calls['manifest_status'], 'observed')
+        labels = [' '.join(cmd) for cmd in commands]
+        logs = [item.get('log') for item in calls.get('manifest_commands', [])]
+        for index in range(1, len(ACTUAL_OWNER_PREFERENCES) + 1):
+            self.assertIn('scratch-remove-' + str(index) + '.log', logs)
+            self.assertIn('scratch-absent-' + str(index) + '.log', logs)
+        for name in ACTUAL_OWNER_PREFERENCES:
+            path = '/data/user/0/io.legado.app.debug/shared_prefs/' + name + '.xml'
+            self.assertTrue(any(shlex.quote(path) in label for label in labels), name)
+        for name in ACTUAL_OWNER_PREFERENCES:
+            self.assertFalse(any('scratch-remove-' + name in label for label in labels))
+
+    def test_owner_name_admission_accepts_actual_and_rejects_separators(self):
+        self.assertEqual(
+            capture._safe_owner_names(ACTUAL_OWNER_PREFERENCES, 'owner.preferences'),
+            ACTUAL_OWNER_PREFERENCES,
+        )
+        for bad in (
+            'liber_fields_02_evil/name',
+            r'liber_fields_02_evil\name',
+            'liber_fields_02_..',
+            'liber_other_probe',
+            'liber_fields_02_probe/',
+            'liber_fields_02_probe' + chr(10),
+        ):
+            with self.assertRaisesRegex(ValueError, 'unsafe preference name'):
+                capture._safe_owner_names(
+                    ['liber_fields_02_probe', bad], 'owner.preferences')
+        with self.assertRaisesRegex(ValueError, 'omits the registered probe'):
+            capture._safe_owner_names(['liber_fields_02_evil/name'], 'owner.preferences')
+        with self.assertRaisesRegex(ValueError, 'inventories differ'):
+            capture._admit_owner_inventories(
+                ACTUAL_OWNER_PREFERENCES, ACTUAL_OWNER_PREFERENCES[:-1])
 
     def test_wrong_post_owner_pid_preserves_before_stop(self):
         exit_code, commands, calls = self._run(process_pid_owned=999999)
@@ -553,11 +625,74 @@ class DriverBoundaryTest(unittest.TestCase):
                              for cmd in commands))
         self.assertFalse(any('uninstall' in cmd for cmd in commands))
 
+    def test_absent_harness_inventory_allows_install(self):
+        exit_code, commands, calls = self._run()
+        self.assertEqual(exit_code, 0)
+        inventory = [cmd for cmd in commands
+                     if cmd[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]]
+        self.assertEqual(len(inventory), 1)
+        self.assertTrue(calls['install_attempted'])
+
+    def test_existing_harness_inventory_refuses_without_install(self):
+        exit_code, commands, calls = self._run(existing_harness=True)
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertTrue(any(cmd[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]
+                            for cmd in commands))
+
+    def test_package_inventory_access_error_is_not_absence(self):
+        exit_code, commands, calls = self._run(
+            package_query_code=1, package_query_stderr=b'permission denied')
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertFalse(any('install' in cmd for cmd in commands
+                             if 'field-oracle.apk' in ' '.join(cmd)))
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query failed (exit 1)', calls['manifest_error'])
+        self.assertIn('permission denied', calls['manifest_error'])
+
+    def test_malformed_package_inventory_is_refused(self):
+        exit_code, commands, calls = self._run(
+            package_query_stdout=b'package:' + bytes([10]))
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('malformed package record', calls['manifest_error'])
+
+    def test_contradictory_package_inventory_is_refused(self):
+        exit_code, commands, calls = self._run(
+            package_query_code=1,
+            package_query_stdout=b'package:' + capture.PACKAGE.encode() + bytes([10]))
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query failed (exit 1)', calls['manifest_error'])
+
+    def test_successful_inventory_with_stderr_is_not_absence(self):
+        exit_code, commands, calls = self._run(
+            package_query_stderr=b'permission denied')
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('query reported an error', calls['manifest_error'])
+        self.assertIn('permission denied', calls['manifest_error'])
+
+    def test_rejected_install_with_verified_absence_is_blocked(self):
+        exit_code, commands, calls = self._run(install_code=1)
+        self.assertEqual(exit_code, 2)
+        self.assertTrue(calls['install_attempted'])
+        self.assertEqual(calls['manifest_status'], 'blocked')
+        self.assertEqual(calls['finalize'], 0)
+        self.assertFalse(any('force-stop' in cmd for cmd in commands))
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+
     def test_partial_install_is_preserved_or_refused(self):
         exit_code, commands, calls = self._run(install_code=1, partial=True)
         self.assertEqual(exit_code, 1)
         self.assertEqual(calls['finalize'], 0)
         self.assertTrue(calls['install_attempted'])
+        self.assertEqual(calls['manifest_status'], 'failed')
         self.assertFalse(any('force-stop' in cmd for cmd in commands))
         self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
                              for cmd in commands))
@@ -677,6 +812,17 @@ class FormatterFailureTest(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             records = capture._snapshot_records(completed.stdout, 'repeated-name')
             self.assertIn('files/' + name, records)
+
+    def test_formatter_does_not_require_a_writable_tmp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = self._make_root(base)
+            env = os.environ.copy()
+            env['TMPDIR'] = str(base / 'unwritable-tmp')
+            self.assertFalse(Path(env['TMPDIR']).exists())
+            completed = _run_snapshot_formatter(root, env_overrides=env)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('files/one', capture._snapshot_records(completed.stdout, 'no-temp'))
 
     @unittest.skipUnless(os.name == 'nt', 'Windows PATH precedence control')
     def test_windows_posix_tools_keep_precedence_and_complete_fallback(self):

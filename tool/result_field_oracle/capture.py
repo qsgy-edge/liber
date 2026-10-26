@@ -256,36 +256,21 @@ def _snapshot_records(output, label):
 
 def _fields_snapshot_script(root):
     """Emit hex-framed typed records with checked existing byte primitives."""
-    nl = chr(10)
-    encoder = (
-        "encode_path() { "
-        "encoded=$(od -An -v -tx1 <<LIBER_FIELDS_PATH_BYTES" + nl +
-        "$1" + nl + "LIBER_FIELDS_PATH_BYTES" + nl +
-        ") || return __CODE__; "
-        "encoded=$(tr -d \"[:space:]\" <<LIBER_FIELDS_HEX_BYTES" + nl +
-        "$encoded" + nl + "LIBER_FIELDS_HEX_BYTES" + nl +
-        ") || return __CODE__; "
-        "case \"$encoded\" in *0a) encoded=${encoded%0a};; *) return __EMPTY__;; esac; "
-        "test -n \"$encoded\" || return __EMPTY__; "
-        "printf \"%s\" \"$encoded\" || return __CODE__; "
-        "}; "
-    )
+    # Producer/od status uses fd3; encoded hex uses fd4. Both are actual
+    # channels; no temporary file or non-POSIX pipe option is involved.
+    encoder = 'encode_path() {\n    encoded=$(\n        exec 4>&1\n        statuses=$(\n            exec 3>&1\n            { printf "%s\\n" "$1"; status=$?; command printf "p:%s\\n" "$status" >&3; } |\n            { od -An -v -tx1; status=$?; command printf "o:%s\\n" "$status" >&3; } |\n            tr -d "[:space:]" >&4\n        ) || exit __CODE__\n        case "$statuses" in\n            "p:0\no:0") ;;\n            "o:0\np:0") ;;\n            *) exit __CODE__ ;;\n        esac\n    ) || return __CODE__\n    case "$encoded" in\n        *0a) encoded=${encoded%0a} ;;\n        *) return __EMPTY__ ;;\n    esac\n    test -n "$encoded" || return __EMPTY__\n    printf "%s" "$encoded" || return __CODE__\n}'
     def encode(code, empty):
-        return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty))
+        return encoder.replace('__CODE__', str(code)).replace('__EMPTY__', str(empty)) + '; '
     return (
         'set -e; cd ' + shlex.quote(root) + '; '
-        "find . -type f -exec sh -c 'for f do h=$(sha256sum \"$f\") || exit 20; "
+        r'''find . -type f -exec sh -c 'for f do h=$(sha256sum "$f") || exit 20; '''
         + encode(21, 24) +
-        "hex=$(encode_path \"$f\") || exit 21; "
-        "printf \"F\t%s\t%s\n\" \"${h%% *}\" \"$hex\" || exit 23; done' sh {} +; "
-        "find . -type d -exec sh -c 'for f do " + encode(31, 34) +
-        "hex=$(encode_path \"$f\") || exit 31; "
-        "printf \"D\t-\t%s\n\" \"$hex\" || exit 33; done' sh {} +; "
-        "find . ! -type f ! -type d -exec sh -c 'for f do " + encode(41, 44) +
-        "hex=$(encode_path \"$f\") || exit 41; "
-        "printf \"U\t-\t%s\n\" \"$hex\" || exit 43; done' sh {} +"
+        r'''hex=$(encode_path "$f") || exit 21; printf "F\t%s\t%s\n" "${h%% *}" "$hex" || exit 23; done' sh {} +; '''
+        r'''find . -type d -exec sh -c 'for f do ''' + encode(31, 34) +
+        r'''hex=$(encode_path "$f") || exit 31; printf "D\t-\t%s\n" "$hex" || exit 33; done' sh {} +; '''
+        r'''find . ! -type f ! -type d -exec sh -c 'for f do ''' + encode(41, 44) +
+        r'''hex=$(encode_path "$f") || exit 41; printf "U\t-\t%s\n" "$hex" || exit 43; done' sh {} +'''
     )
-
 
 
 def _measured_pids(result, label):
@@ -302,6 +287,31 @@ def _measured_pids(result, label):
     raise ValueError(label + ' failed or carried an unreadable/contradictory receipt')
 
 
+def _package_is_present(result, package, label):
+    """Resolve an exact package record from a reliable filtered inventory.
+
+    An absent package is an empty successful `pm list packages <package>` receipt.
+    A nonzero exit, stderr, malformed line or contradictory receipt is unknown and
+    must be refused rather than interpreted as absence.
+    """
+    if result.returncode:
+        diagnostic = result.stderr.decode(errors='replace').strip()
+        raise ValueError(f'{label} query failed (exit {result.returncode}): '
+                         + (diagnostic or 'no diagnostic'))
+    if result.stderr.strip():
+        raise ValueError(f'{label} query reported an error: '
+                         + result.stderr.decode(errors='replace').strip())
+    present = False
+    for line in result.stdout.decode(errors='replace').splitlines():
+        if not line:
+            continue
+        if not line.startswith('package:') or not line[len('package:'):]:
+            raise ValueError(f'{label} query returned a malformed package record')
+        if line == 'package:' + package:
+            present = True
+    return present
+
+
 def _safe_owner_names(names, label):
     if not isinstance(names, list) or not names:
         raise ValueError(label + ' must be a nonempty list')
@@ -311,7 +321,7 @@ def _safe_owner_names(names, label):
         raise ValueError(label + ' omits the registered probe')
     for name in names:
         if (not isinstance(name, str)
-                or not re.fullmatch(r'liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.-]*', name)
+                or not re.fullmatch(r'liber_fields_02_[A-Za-z0-9][A-Za-z0-9_.:+-]*', name)
                 or '/' in name or name in ('liber_fields_02_.', 'liber_fields_02_..')):
             raise ValueError(label + ' contains an unsafe preference name')
     return list(names)
@@ -906,7 +916,7 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     owner_run_id = _required_string(cleanup, 'ownerRunId', 'report.cleanup')
     owned = _required_list(cleanup, 'ownedPreferences', 'report.cleanup')
     if not owned or any(
-            not re.fullmatch(r'liber_fields_02_[A-Za-z0-9_.-]+', str(name))
+            not re.fullmatch(r'liber_fields_02_[A-Za-z0-9_.:+-]+', str(name))
             for name in owned):
         raise ValueError('the scratch owned-preference list is malformed')
     if len(set(owned)) != len(owned):
@@ -1345,9 +1355,9 @@ def main():
             owner.get('preferences'), cleanup.get('ownedPreferences'))
 
         stop_owned_target(owner)
-        for name in owner_prefs:
+        for index, name in enumerate(owner_prefs, 1):
             path = pref_dir + '/' + name + '.xml'
-            removed = remote_script('scratch-remove-' + name,
+            removed = remote_script('scratch-remove-' + str(index),
                                     'rm -f -- ' + shlex.quote(path),
                                     checked=False)
             if removed.returncode != 0:
@@ -1357,9 +1367,9 @@ def main():
                                      checked=False)
         if root_removed.returncode != 0:
             raise ValueError('could not remove the owned scratch root')
-        for name in owner_prefs:
+        for index, name in enumerate(owner_prefs, 1):
             path = pref_dir + '/' + name + '.xml'
-            absent = remote_script('scratch-absent-' + name,
+            absent = remote_script('scratch-absent-' + str(index),
                                    'test ! -e ' + shlex.quote(path),
                                    checked=False)
             if absent.returncode != 0:
@@ -1428,10 +1438,9 @@ def main():
         manifest['baselineApkSha256'] = sha256(scratch / 'frozen.apk')
         if manifest['baselineApkSha256'] != expected_apk:
             raise ValueError('installed baseline APK differs')
-        existing = adb('harness-existing', 'shell', 'pm', 'path', PACKAGE, checked=False)
-        if fields_02 and existing.returncode != 0:
-            raise ValueError('cannot determine whether a harness package already exists')
-        if b'package:' in existing.stdout:
+        existing = adb('harness-existing', 'shell', 'pm', 'list', 'packages',
+                       PACKAGE, checked=False)
+        if _package_is_present(existing, PACKAGE, 'harness-existing'):
             raise ValueError('harness package already exists; do not replace unowned install')
         target_private_root = None
         if fields_02:
@@ -1453,12 +1462,21 @@ def main():
             manifest['status'] = 'blocked'
             manifest['blocker'] = installed_result.stderr.decode(errors='replace')
             if fields_02:
-                partial = adb('partial-harness', 'shell', 'pm', 'path', PACKAGE,
-                              checked=False)
-                if partial.returncode != 0 or b'package:' in partial.stdout:
+                partial = adb('partial-harness', 'shell', 'pm', 'list', 'packages',
+                              PACKAGE, checked=False)
+                try:
+                    partial_present = _package_is_present(
+                        partial, PACKAGE, 'partial-harness')
+                except ValueError as error:
                     manifest['status'] = 'failed'
                     manifest['error'] = ('install returned nonzero and package state is '
-                                         'ambiguous; preserving it for inspection')
+                                         'ambiguous; preserving it for inspection: '
+                                         + str(error))
+                else:
+                    if partial_present:
+                        manifest['status'] = 'failed'
+                        manifest['error'] = ('install returned nonzero and package state is '
+                                             'ambiguous; preserving it for inspection')
             return 2 if manifest['status'] == 'blocked' else 1
         installed = True
         adb('logcat-clear', 'logcat', '-c', checked=False)

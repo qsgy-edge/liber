@@ -198,6 +198,49 @@ void main() {
     expect(report['notCompared'], isEmpty);
   });
 
+  test('actual Android preference punctuation is admitted coherently', () {
+    const names = [
+      'liber_fields_02_FirebasePerfSharedPrefs',
+      'liber_fields_02_probe',
+      'liber_fields_02_FirebaseHeartBeatW0RFRkFVTFRd+MTo0NTMzOTIyNzQ3OTA6YW5kcm9pZDpjNGVhYzE0YjE0MTBlZWM1ZjYyNGE3',
+      'liber_fields_02_frc_1:453392274790:android:c4eac14b1410eec5f624a7_firebase_settings',
+      'liber_fields_02_com.google.android.gms.measurement.prefs',
+      'liber_fields_02_io.legado.app.debug_preferences',
+      'liber_fields_02_com.google.android.gms.appid',
+    ];
+    final corpus = _syntheticCorpus();
+    final golden = _syntheticEnvelope(corpus);
+    final manifest = _syntheticManifest(corpus);
+    (golden['cleanup'] as Map)['ownedPreferences'] = names;
+    (manifest['scratchOwner'] as Map)['preferences'] = names;
+    (manifest['scratchCleanup'] as Map)['reportedOwnedPreferences'] = names;
+    final report = _compare(
+      golden,
+      _syntheticProduct(corpus),
+      corpus,
+      externalManifest: manifest,
+    );
+    expect(report['status'], 'pass');
+
+    final invalid = [...names]
+      ..[2] = 'liber_fields_02_FirebaseHeartBeat+/bad/name';
+    final badGolden = _clone(golden);
+    final badManifest = _clone(manifest);
+    (badGolden['cleanup'] as Map)['ownedPreferences'] = invalid;
+    (badManifest['scratchOwner'] as Map)['preferences'] = invalid;
+    (badManifest['scratchCleanup'] as Map)['reportedOwnedPreferences'] =
+        invalid;
+    expect(
+      () => _compare(
+        badGolden,
+        _syntheticProduct(corpus),
+        corpus,
+        externalManifest: badManifest,
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('the comparator changes only its targeted C1 field', () {
     final corpus = _syntheticCorpus();
     final base = _syntheticEnvelope(corpus);
@@ -319,8 +362,9 @@ void main() {
 Map<String, dynamic> _compare(
   Map<String, dynamic> golden,
   Map<String, dynamic> product,
-  Map<String, dynamic> corpus,
-) => compareBookUrlMarkers(
+  Map<String, dynamic> corpus, {
+  Map<String, dynamic>? externalManifest,
+}) => compareBookUrlMarkers(
   golden: golden,
   liber: product,
   goldenPath: 'synthetic-golden.json',
@@ -334,7 +378,7 @@ Map<String, dynamic> _compare(
   expectedProvenanceSha256: 'b' * 64,
   expectedProvenance: _syntheticProvenance(),
   expectedLibrarySha256: 'library',
-  externalManifest: _syntheticManifest(corpus),
+  externalManifest: externalManifest ?? _syntheticManifest(corpus),
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},
 );
 
