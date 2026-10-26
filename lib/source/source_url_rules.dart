@@ -849,18 +849,28 @@ String sourceUrlTextResolved(Uri base, String raw) {
     query = path.substring(question + 1);
     path = path.substring(0, question);
   }
+  String authority;
   final String resolvedPath;
-  if (path.startsWith('/')) {
-    resolvedPath = _normalizeRawPath(path);
-  } else if (path.isEmpty) {
-    resolvedPath = base.path.isEmpty ? '/' : base.path;
+  if (path.startsWith('//')) {
+    final slash = path.indexOf('/', 2);
+    authority = slash < 0 ? path.substring(2) : path.substring(2, slash);
+    final authorityPath = slash < 0 ? '' : path.substring(slash);
+    resolvedPath = _normalizeRawPath(
+      authorityPath.isEmpty ? '/' : authorityPath,
+    );
   } else {
-    final basePath = base.path.endsWith('/')
-        ? base.path
-        : base.path.substring(0, base.path.lastIndexOf('/') + 1);
-    resolvedPath = _normalizeRawPath('$basePath$path');
+    authority = base.hasAuthority ? base.authority : base.host;
+    if (path.startsWith('/')) {
+      resolvedPath = _normalizeRawPath(path);
+    } else if (path.isEmpty) {
+      resolvedPath = base.path.isEmpty ? '/' : base.path;
+    } else {
+      final basePath = base.path.endsWith('/')
+          ? base.path
+          : base.path.substring(0, base.path.lastIndexOf('/') + 1);
+      resolvedPath = _normalizeRawPath('$basePath$path');
+    }
   }
-  final authority = base.hasAuthority ? base.authority : base.host;
   final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
   if (query != null) output.write('?$query');
   if (fragment != null) output.write('#$fragment');
@@ -868,16 +878,26 @@ String sourceUrlTextResolved(Uri base, String raw) {
 }
 
 String _normalizeRawPath(String path) {
+  final input = path.split('/');
   final parts = <String>[];
-  for (final part in path.split('/')) {
-    if (part == '.' || part.isEmpty) continue;
-    if (part == '..') {
-      if (parts.isNotEmpty) parts.removeLast();
-    } else {
-      parts.add(part);
+  for (var i = 0; i < input.length; i++) {
+    final part = input[i];
+    final last = i == input.length - 1;
+    if (part == '.') {
+      if (last) parts.add('');
+      continue;
     }
+    if (part == '..') {
+      if (parts.length > 1) parts.removeLast();
+      if (last) parts.add('');
+      continue;
+    }
+    parts.add(part);
   }
-  return '/${parts.join('/')}';
+  if (parts.isEmpty) return '/';
+  if (parts.first.isNotEmpty) parts.insert(0, '');
+  final result = parts.join('/');
+  return result.isEmpty ? '/' : result;
 }
 
 /// Frozen `replaceKeyPageJs` page-list step: each `<a,b,c>` becomes the page-th

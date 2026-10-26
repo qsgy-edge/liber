@@ -196,6 +196,53 @@ void main() {
     }
   }
 
+  for (final json in [false, true]) {
+    for (final (raw, expected) in [
+      ('toc/', 'http://source.test/exact/toc/'),
+      ('toc//nested', 'http://source.test/exact/toc//nested'),
+      ('//cdn.test/toc', 'http://cdn.test/toc'),
+    ]) {
+      test('published TOC keeps native raw path $raw json=$json', () async {
+        const origin = 'http://source.test';
+        final body = json
+            ? jsonEncode({
+                'title': 'Book',
+                'toc': raw,
+                'list': [
+                  {'name': 'Chapter', 'url': '/c/1'},
+                ],
+              })
+            : '<h2>Book</h2><a class="toc" href="$raw">toc</a>'
+                  '<ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
+        final pages = _Pages({
+          '/exact/book': body,
+          raw.startsWith('//') ? '/toc' : '/exact/$raw': body,
+        });
+        final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+          ..['ruleBookInfo'] = json
+              ? {'name': r'$.title', 'tocUrl': r'$.toc'}
+              : {'name': 'h2@text', 'tocUrl': 'a.toc@href'};
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        try {
+          final (_, chapters) = await pipeline.details(
+            HtmlBook(url: Uri.parse('$origin/exact/book'), title: 'Book'),
+          );
+          expect(chapters.single.name, 'Chapter');
+          expect(
+            (await pipeline.bookInfo(
+              HtmlBook(url: Uri.parse('$origin/exact/book'), title: 'Book'),
+            )).tocUrl,
+            expected,
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  }
+
   const expandedTail = ''' ,{
   "js": "result + '/next'"
 }''';

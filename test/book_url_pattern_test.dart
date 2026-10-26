@@ -1307,6 +1307,52 @@ void main() {
   });
 
   group('native textual identity and ordinary retention', () {
+    for (final crossOrigin in [false, true]) {
+      test(
+        'ordinary JSON ${crossOrigin ? 'other-origin' : 'same-origin'} script keeps pre-option identity',
+        () async {
+          const origin = 'http://source.test';
+          final target = crossOrigin
+              ? 'http://other.test/wire'
+              : '$origin/wire';
+          final tail = ',${jsonEncode({'js': jsonEncode(target)})}';
+          final raw = 'detail?q=书$tail';
+          final body = jsonEncode({
+            'items': [
+              {'title': 'Book', 'url': raw},
+            ],
+          });
+          final pages = _Pages({'/catalog/search': body});
+          final source = <String, dynamic>{
+            'bookSourceUrl': origin,
+            'searchUrl': '/catalog/search',
+            'ruleSearch': {
+              'bookList': r'$.items[*]',
+              'name': r'$.title',
+              'bookUrl': r'$.url',
+            },
+          };
+          final pipeline = JsonSourcePipeline(source, pages);
+          try {
+            final hit = (await pipeline.search('x')).single;
+            expect(hit.title, 'Book');
+            expect(hit.url.toString(), target);
+            expect(
+              hit.preOptionUrl.toString(),
+              '$origin/catalog/detail?q=%E4%B9%A6',
+            );
+            expect(
+              hit.identityAddress,
+              '$origin/catalog/detail?q=%E4%B9%A6$tail',
+            );
+            expect(pages.requests.single, '$origin/catalog/search');
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+    }
+
     for (final json in [false, true]) {
       for (final rawQuery in [false, true]) {
         test(

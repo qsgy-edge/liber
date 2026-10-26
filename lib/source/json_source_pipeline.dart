@@ -714,16 +714,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
     }
     if (captureIdentity != null) {
-      // A URL option script changes the target the native AnalyzeUrl analyzes;
-      // a relative original then resolves against that actual target. Without a
-      // script the pre-option target is the one the request already resolved,
-      // so it must not be resolved a second time.
-      final changedOrigin = script != null && url.origin != preOptionUrl.origin;
-      final identityBase = changedOrigin ? url : base;
-      final identityTarget = changedOrigin
-          ? _url(identityBase, split.path)
-          : preOptionUrl;
-      captureIdentity(identityTarget, expandedAddress);
+      // Ordinary book identity is the single-expanded pre-option target. The
+      // direct-detail/fallback consumer applies its own actual-target rule.
+      captureIdentity(preOptionUrl, expandedAddress);
     }
     return (url, split.options);
   }
@@ -999,14 +992,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final search = _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
     _activeHeaders = await _ensureHeaders();
     _headersInitialized = true;
-    late Uri searchPreOptionUrl;
     late String searchIdentityAddress;
     final (url, options) = await _request(
       _base,
       source['searchUrl'] as String,
       keyword,
-      captureIdentity: (preOptionUrl, expandedAddress) {
-        searchPreOptionUrl = preOptionUrl;
+      captureIdentity: (_, expandedAddress) {
         searchIdentityAddress = expandedAddress;
       },
     );
@@ -1027,10 +1018,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? '$finalUrl'
         : (Uri.tryParse(searchParts.path)?.hasScheme == true
                   ? searchParts.path
-                  : sourceUrlTextWithRawQuery(
-                      searchPreOptionUrl,
-                      searchParts.path,
-                    )) +
+                  : sourceUrlTextResolved(url, searchParts.path)) +
               searchParts.tail;
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
