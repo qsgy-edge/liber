@@ -302,6 +302,31 @@ def _measured_pids(result, label):
     raise ValueError(label + ' failed or carried an unreadable/contradictory receipt')
 
 
+def _package_is_present(result, package, label):
+    """Resolve an exact package record from a reliable filtered inventory.
+
+    An absent package is an empty successful `pm list packages <package>` receipt.
+    A nonzero exit, stderr, malformed line or contradictory receipt is unknown and
+    must be refused rather than interpreted as absence.
+    """
+    if result.returncode:
+        diagnostic = result.stderr.decode(errors='replace').strip()
+        raise ValueError(f'{label} query failed (exit {result.returncode}): '
+                         + (diagnostic or 'no diagnostic'))
+    if result.stderr.strip():
+        raise ValueError(f'{label} query reported an error: '
+                         + result.stderr.decode(errors='replace').strip())
+    present = False
+    for line in result.stdout.decode(errors='replace').splitlines():
+        if not line:
+            continue
+        if not line.startswith('package:') or not line[len('package:'):]:
+            raise ValueError(f'{label} query returned a malformed package record')
+        if line == 'package:' + package:
+            present = True
+    return present
+
+
 def _safe_owner_names(names, label):
     if not isinstance(names, list) or not names:
         raise ValueError(label + ' must be a nonempty list')
@@ -1428,10 +1453,9 @@ def main():
         manifest['baselineApkSha256'] = sha256(scratch / 'frozen.apk')
         if manifest['baselineApkSha256'] != expected_apk:
             raise ValueError('installed baseline APK differs')
-        existing = adb('harness-existing', 'shell', 'pm', 'path', PACKAGE, checked=False)
-        if fields_02 and existing.returncode != 0:
-            raise ValueError('cannot determine whether a harness package already exists')
-        if b'package:' in existing.stdout:
+        existing = adb('harness-existing', 'shell', 'pm', 'list', 'packages',
+                       PACKAGE, checked=False)
+        if _package_is_present(existing, PACKAGE, 'harness-existing'):
             raise ValueError('harness package already exists; do not replace unowned install')
         target_private_root = None
         if fields_02:
@@ -1453,12 +1477,21 @@ def main():
             manifest['status'] = 'blocked'
             manifest['blocker'] = installed_result.stderr.decode(errors='replace')
             if fields_02:
-                partial = adb('partial-harness', 'shell', 'pm', 'path', PACKAGE,
-                              checked=False)
-                if partial.returncode != 0 or b'package:' in partial.stdout:
+                partial = adb('partial-harness', 'shell', 'pm', 'list', 'packages',
+                              PACKAGE, checked=False)
+                try:
+                    partial_present = _package_is_present(
+                        partial, PACKAGE, 'partial-harness')
+                except ValueError as error:
                     manifest['status'] = 'failed'
                     manifest['error'] = ('install returned nonzero and package state is '
-                                         'ambiguous; preserving it for inspection')
+                                         'ambiguous; preserving it for inspection: '
+                                         + str(error))
+                else:
+                    if partial_present:
+                        manifest['status'] = 'failed'
+                        manifest['error'] = ('install returned nonzero and package state is '
+                                             'ambiguous; preserving it for inspection')
             return 2 if manifest['status'] == 'blocked' else 1
         installed = True
         adb('logcat-clear', 'logcat', '-c', checked=False)

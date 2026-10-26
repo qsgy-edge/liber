@@ -261,7 +261,9 @@ class DriverBoundaryTest(unittest.TestCase):
              uninstall_code=0, partial=False, owner_mutator=None,
              snapshot_code=0, process_pid=None, installation_probe=False,
              instrument_code=0, process_pid_preflight=None, process_pid_owned=None,
-             process_pid_post=None, pid_stderr=False, snapshot_fail_on=None):
+             process_pid_post=None, pid_stderr=False, snapshot_fail_on=None,
+             existing_harness=False, package_query_code=0,
+             package_query_stderr=b'', package_query_stdout=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
@@ -305,8 +307,22 @@ class DriverBoundaryTest(unittest.TestCase):
                 elif args[-3:] == ['pm', 'path', capture.TARGET_PACKAGE]:
                     stdout = b'package:/synthetic/frozen.apk\n'
                 elif args[-3:] == ['pm', 'path', capture.PACKAGE]:
-                    if partial and calls['install_attempted']:
-                        stdout = b'package:/synthetic/partial.apk\n'
+                    if existing_harness and not calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    elif partial and calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    else:
+                        code = 1
+                elif args[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]:
+                    if package_query_stdout is not None:
+                        stdout = package_query_stdout
+                    elif package_query_code:
+                        code = package_query_code
+                        stderr = package_query_stderr
+                    elif existing_harness and not calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
+                    elif partial and calls['install_attempted']:
+                        stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
                 elif 'pidof' in args:
                     pid_calls['count'] += 1
                     if pid_calls['count'] == 1:
@@ -553,11 +569,61 @@ class DriverBoundaryTest(unittest.TestCase):
                              for cmd in commands))
         self.assertFalse(any('uninstall' in cmd for cmd in commands))
 
+    def test_absent_harness_inventory_allows_install(self):
+        exit_code, commands, calls = self._run()
+        self.assertEqual(exit_code, 0)
+        inventory = [cmd for cmd in commands
+                     if cmd[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]]
+        self.assertEqual(len(inventory), 1)
+        self.assertTrue(calls['install_attempted'])
+
+    def test_existing_harness_inventory_refuses_without_install(self):
+        exit_code, commands, calls = self._run(existing_harness=True)
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertTrue(any(cmd[-4:] == ['pm', 'list', 'packages', capture.PACKAGE]
+                            for cmd in commands))
+
+    def test_package_inventory_access_error_is_not_absence(self):
+        exit_code, commands, calls = self._run(
+            package_query_code=1, package_query_stderr=b'permission denied')
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertFalse(any('install' in cmd for cmd in commands
+                             if 'field-oracle.apk' in ' '.join(cmd)))
+        self.assertEqual(calls['finalize'], 0)
+
+    def test_malformed_package_inventory_is_refused(self):
+        exit_code, commands, calls = self._run(
+            package_query_stdout=b'package:' + bytes([10]))
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+
+    def test_contradictory_package_inventory_is_refused(self):
+        exit_code, commands, calls = self._run(
+            package_query_code=1,
+            package_query_stdout=b'package:' + capture.PACKAGE.encode() + bytes([10]))
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['install_attempted'])
+        self.assertEqual(calls['finalize'], 0)
+
+    def test_rejected_install_with_verified_absence_is_blocked(self):
+        exit_code, commands, calls = self._run(install_code=1)
+        self.assertEqual(exit_code, 2)
+        self.assertTrue(calls['install_attempted'])
+        self.assertEqual(calls['manifest_status'], 'blocked')
+        self.assertEqual(calls['finalize'], 0)
+        self.assertFalse(any('force-stop' in cmd for cmd in commands))
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+
     def test_partial_install_is_preserved_or_refused(self):
         exit_code, commands, calls = self._run(install_code=1, partial=True)
         self.assertEqual(exit_code, 1)
         self.assertEqual(calls['finalize'], 0)
         self.assertTrue(calls['install_attempted'])
+        self.assertEqual(calls['manifest_status'], 'failed')
         self.assertFalse(any('force-stop' in cmd for cmd in commands))
         self.assertFalse(any('rm -f ' in ' '.join(cmd) or 'rm -rf ' in ' '.join(cmd)
                              for cmd in commands))
