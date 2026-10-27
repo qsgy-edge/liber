@@ -34,6 +34,7 @@ class HtmlBook {
     this.wordCount = '',
     this.variable,
     this.infoHtml,
+    this.addressContext,
   });
   final Uri url;
 
@@ -91,6 +92,11 @@ class HtmlBook {
   /// the frozen `BookList` already parsed on the same hit.
   final String? infoHtml;
 
+  /// The native comparison and expanded publication facts captured at the
+  /// search boundary, when a fresh analysis needs both distinct meanings.
+  /// Ephemeral handoff state only: never serialized or source-script visible.
+  final ({String comparisonAddress, String publicationAddress})? addressContext;
+
   /// The book row's own variable text (the frozen `Book.variable` column,
   /// `Book.kt:115`), or null when this carrier carries none.
   ///
@@ -115,6 +121,7 @@ class HtmlBook {
     wordCount: wordCount,
     variable: variable,
     infoHtml: infoHtml,
+    addressContext: addressContext,
   );
 
   Map<String, dynamic> toJson() => {
@@ -986,6 +993,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String raw = '',
     bool url = false,
     bool forStringList = false,
+    void Function(String raw)? onRaw,
   }) async {
     final Object? content = item.content;
     final field =
@@ -1067,6 +1075,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       }
     }
     if (!forStringList && !deferTail && extracted is String) {
+      onRaw?.call(extracted);
       extracted = _urlFallback(field, extracted, url);
     }
     final applied = await field.apply(
@@ -1342,7 +1351,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final identityText = Uri.tryParse(split.path)?.hasScheme == true
         ? split.path
-        : sourceUrlTextWithRawQuery(identityTarget, split.path);
+        : sourceUrlTextResolved(base, split.path);
     captureIdentity?.call(identityTarget, '$identityText${split.tail}');
     return (url, split.options);
   }
@@ -1665,7 +1674,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       await kindBatch.run();
     }
 
-    Future<String> fieldValue(String key, int index, {bool url = false}) async {
+    Future<String> fieldValue(
+      String key,
+      int index, {
+      bool url = false,
+      void Function(String raw)? onRaw,
+    }) async {
       if (key == 'kind' && _rule('ruleSearch', key, optional: true).isEmpty) {
         return '';
       }
@@ -1700,6 +1714,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           raw: _rule('ruleSearch', key, optional: true),
           url: url,
           forStringList: key == 'kind',
+          onRaw: onRaw,
         );
       }
       return (await _perElement(field, [
@@ -1717,7 +1732,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final wordCountValue = await fieldValue('wordCount', index);
       final lastChapterValue = await fieldValue('lastChapter', index);
       final introValue = await fieldValue('intro', index);
-      final link = await fieldValue('bookUrl', index, url: true);
+      String? bookRawScalar;
+      final link = await fieldValue(
+        'bookUrl',
+        index,
+        url: true,
+        onRaw: (raw) => bookRawScalar = raw,
+      );
       // The address text the rule produced, option tail included: it is what
       // this book keeps ([HtmlBook.rawAddress]) and what the details request
       // parses, exactly as the frozen stores `book.bookUrl` (#97).
@@ -1728,7 +1749,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         finalUrl,
         bookAddress,
       );
-      final nativeParts = splitSourceUrlOptions(bookAddress);
+      final nativeParts = splitSourceUrlOptions(
+        bookRawScalar == null || bookRawScalar!.isEmpty
+            ? bookAddress
+            : bookRawScalar!,
+      );
       final nativeBookAddress =
           '${sourceUrlTextResolved(finalUrl, nativeParts.path)}${nativeParts.tail}';
       _bookRequests[bookUrlTarget] = (
@@ -1746,6 +1771,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         lastChapter: lastChapterValue,
         wordCount: formatSourceWordCount(wordCountValue),
         kind: kindValue,
+        addressContext: (
+          comparisonAddress: nativeBookAddress,
+          publicationAddress: bookAddress,
+        ),
       );
       books.add(
         HtmlBook(
@@ -1759,6 +1788,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           wordCount: candidate.wordCount,
           kind: candidate.kind,
           infoHtml: nativeBookAddress == '$finalUrl' ? html : null,
+          addressContext: candidate.addressContext,
         ),
       );
     }
@@ -1799,10 +1829,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // target rather than re-resolving a relative rule text against
     // [sourceUrl]. A carrier without a recorded target keeps its raw text.
     final bookAddressText = bookRequest?.address ?? hit.identityAddress;
-    final bookParts = splitSourceUrlOptions(bookAddressText);
-    final nativeBookAddress = bookRequest == null
-        ? hit.identityAddress
-        : '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+    final context = hit.addressContext;
+    final String nativeBookAddress;
+    if (context != null) {
+      nativeBookAddress = context.comparisonAddress;
+    } else if (bookRequest == null) {
+      nativeBookAddress = hit.identityAddress;
+    } else {
+      final bookParts = splitSourceUrlOptions(bookAddressText);
+      nativeBookAddress =
+          '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+    }
+    final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
     final retained = hit.infoHtml;
     final cached = retained != null && retained.isNotEmpty;
     final (bookUrl, bookOptions) = cached
@@ -1830,7 +1868,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       tocBase: infoUrl,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
-      bookAddress: nativeBookAddress,
+      bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
       tocHtml:
@@ -2262,6 +2300,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         rawAddress: identityAddress,
         title: '',
         infoHtml: html,
+        addressContext: (
+          comparisonAddress: identityAddress,
+          publicationAddress: identityAddress,
+        ),
       ),
     );
     if (book.title.isEmpty) return const <HtmlBook>[];
@@ -2405,6 +2447,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         // it started from (#132, retained-body handoff).
         variable: current.variable,
         infoHtml: current.infoHtml,
+        addressContext: current.addressContext,
       );
     }
 

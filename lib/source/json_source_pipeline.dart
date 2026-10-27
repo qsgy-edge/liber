@@ -683,16 +683,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     final expandedAddress = await _expand(template, keyword);
     final split = splitSourceUrlOptions(expandedAddress);
-    var preOptionUrl = _url(base, split.path);
-    if (!split.options.isPost) {
-      preOptionUrl = _url(
-        base,
-        await encodeSourceQuery(
-          sourceUrlTextWithRawQuery(preOptionUrl, split.path),
-          charset: split.options.charset,
-        ),
-      ).removeFragment();
-    }
     var url = _url(base, split.path);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
@@ -714,8 +704,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
     }
     if (captureIdentity != null) {
-      // Ordinary book identity is the single-expanded pre-option target. The
-      // direct-detail/fallback consumer applies its own actual-target rule.
+      // The extra pre-option identity is needed only when a caller captures
+      // ordinary identity; a no-capture request must not validate or encode
+      // this unused target before its option script runs.
+      var preOptionUrl = _url(base, split.path);
+      if (!split.options.isPost) {
+        preOptionUrl = _url(
+          base,
+          await encodeSourceQuery(
+            sourceUrlTextWithRawQuery(preOptionUrl, split.path),
+            charset: split.options.charset,
+          ),
+        ).removeFragment();
+      }
       captureIdentity(preOptionUrl, expandedAddress);
     }
     return (url, split.options);
@@ -1108,9 +1109,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
-      final nativeParts = splitSourceUrlOptions(expandedBookAddress);
+      final wrapper = bookAddress.trim();
+      final comparisonScalar = wrapper.contains('{{')
+          ? bookAddress
+          : wrapper.toLowerCase().startsWith('@js:') ||
+                wrapper.toLowerCase().startsWith('<js>') ||
+                wrapper.startsWith('[') ||
+                wrapper.startsWith('{')
+          ? expandedBookAddress
+          : bookAddress;
+      final comparisonParts = splitSourceUrlOptions(comparisonScalar);
       final nativeBookAddress =
-          '${sourceUrlTextResolved(finalUrl, nativeParts.path)}${nativeParts.tail}';
+          '${sourceUrlTextResolved(finalUrl, comparisonParts.path)}${comparisonParts.tail}';
+      final publicationParts = splitSourceUrlOptions(expandedBookAddress);
+      final publicationAddress =
+          '${sourceUrlTextResolved(finalUrl, publicationParts.path)}${publicationParts.tail}';
       books.add(
         HtmlBook(
           url: bookUrl,
@@ -1125,6 +1138,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
           wordCount: formatSourceWordCount(wordCount),
           kind: kind,
           infoHtml: nativeBookAddress == '$finalUrl' ? checked.body : null,
+          addressContext: (
+            comparisonAddress: nativeBookAddress,
+            publicationAddress: publicationAddress,
+          ),
         ),
       );
     }
@@ -1195,10 +1212,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // target rather than re-resolving a relative rule text against [_base]. A
     // carrier without a recorded target keeps its raw text.
     final bookAddressText = bookRequest?.address ?? hit.identityAddress;
-    final bookParts = splitSourceUrlOptions(bookAddressText);
-    final nativeBookAddress = bookRequest == null
-        ? hit.identityAddress
-        : '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+    final context = hit.addressContext;
+    final String nativeBookAddress;
+    if (context != null) {
+      nativeBookAddress = context.comparisonAddress;
+    } else if (bookRequest == null) {
+      nativeBookAddress = hit.identityAddress;
+    } else {
+      final bookParts = splitSourceUrlOptions(bookAddressText);
+      nativeBookAddress =
+          '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+    }
+    final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
     final cached = retainedInfo != null && retainedInfo.isNotEmpty;
     final (bookUrl, bookOptions) = cached
         ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
@@ -1224,7 +1249,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       tocBase: hit.url,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
-      bookAddress: nativeBookAddress,
+      bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
       tocHtml:
@@ -1584,6 +1609,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
         rawAddress: identityAddress,
         title: '',
         infoHtml: infoHtml,
+        addressContext: (
+          comparisonAddress: identityAddress,
+          publicationAddress: identityAddress,
+        ),
       ),
       _rules('ruleBookInfo', const []),
     );
@@ -1677,6 +1706,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         // response it started from (#132, retained-body handoff).
         variable: current.variable,
         infoHtml: current.infoHtml,
+        addressContext: current.addressContext,
       );
     }
 

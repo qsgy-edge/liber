@@ -855,26 +855,41 @@ String sourceUrlTextResolved(Uri base, String raw) {
     final slash = path.indexOf('/', 2);
     authority = slash < 0 ? path.substring(2) : path.substring(2, slash);
     final authorityPath = slash < 0 ? '' : path.substring(slash);
-    resolvedPath = _normalizeRawPath(
-      authorityPath.isEmpty ? '/' : authorityPath,
-    );
+    resolvedPath = authorityPath;
   } else {
     authority = base.hasAuthority ? base.authority : base.host;
     if (path.startsWith('/')) {
-      resolvedPath = _normalizeRawPath(path);
+      // java.net.URL keeps a rooted path's dot components as written.
+      resolvedPath = path;
     } else if (path.isEmpty) {
-      resolvedPath = base.path.isEmpty ? '/' : base.path;
+      // A query-only relative reference takes the base directory; a
+      // fragment-only one keeps the base path and query.
+      resolvedPath = query != null
+          ? _baseDirectory(base.path)
+          : (base.path.isEmpty ? '/' : base.path);
     } else {
-      final basePath = base.path.endsWith('/')
-          ? base.path
-          : base.path.substring(0, base.path.lastIndexOf('/') + 1);
+      final basePath = _baseDirectory(base.path);
       resolvedPath = _normalizeRawPath('$basePath$path');
     }
   }
+  var outputQuery = query;
+  if (outputQuery == null &&
+      path.isEmpty &&
+      fragment != null &&
+      base.query.isNotEmpty) {
+    outputQuery = base.query.replaceFirst(RegExp(r'%23.*$'), '');
+  }
   final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
-  if (query != null) output.write('?$query');
+  if (outputQuery != null) output.write('?$outputQuery');
   if (fragment != null) output.write('#$fragment');
   return output.toString();
+}
+
+String _baseDirectory(String path) {
+  if (path.isEmpty) return '/';
+  return path.endsWith('/')
+      ? path
+      : path.substring(0, path.lastIndexOf('/') + 1);
 }
 
 String _normalizeRawPath(String path) {
@@ -888,8 +903,11 @@ String _normalizeRawPath(String path) {
       continue;
     }
     if (part == '..') {
-      if (parts.length > 1) parts.removeLast();
-      if (last) parts.add('');
+      if (parts.length > 1 && parts.last != '..') {
+        parts.removeLast();
+      } else {
+        parts.add('..');
+      }
       continue;
     }
     parts.add(part);

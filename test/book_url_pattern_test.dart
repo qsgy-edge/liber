@@ -1307,6 +1307,66 @@ void main() {
   });
 
   group('native textual identity and ordinary retention', () {
+    for (final template in [false, true]) {
+      test(
+        'address context preserves native comparison across fresh handoff template=$template',
+        () async {
+          const origin = 'http://source.test';
+          final raw = template ? '/book/{{key}}' : '/book/1';
+          final body = jsonEncode({
+            'title': 'Book',
+            'toc': '/book/1',
+            'items': [
+              {'title': 'Book', 'url': raw},
+            ],
+            'list': [
+              {'name': 'Chapter', 'url': '/c/1'},
+            ],
+          });
+          final pages = _Pages({'/search': body, '/book/1': body});
+          final source = <String, dynamic>{
+            'bookSourceUrl': origin,
+            'searchUrl': '/search',
+            'bookUrlPattern': r'$^',
+            'ruleSearch': {
+              'bookList': r'$.items[*]',
+              'name': r'$.title',
+              'bookUrl': r'$.url',
+            },
+            'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+            'ruleToc': {
+              'chapterList': r'$.list[*]',
+              'chapterName': r'$.name',
+              'chapterUrl': r'$.url',
+            },
+          };
+          final same = JsonSourcePipeline(source, pages);
+          final fresh = JsonSourcePipeline(source, pages);
+          try {
+            final hit = (await same.search('1')).single;
+            expect(hit.addressContext, isNotNull);
+            expect(
+              hit.addressContext!.comparisonAddress,
+              template ? '$origin/book/{{key}}' : '$origin/book/1',
+            );
+            expect(hit.addressContext!.publicationAddress, '$origin/book/1');
+            expect(hit.toJson().containsKey('addressContext'), isFalse);
+            expect(
+              hit.withVariable('{"seed":"x"}').addressContext,
+              hit.addressContext,
+            );
+            final sameInfo = await same.bookInfo(hit);
+            final freshInfo = await fresh.bookInfo(hit);
+            expect(sameInfo.tocHtml, template ? isNull : isNotNull);
+            expect(freshInfo.tocHtml, sameInfo.tocHtml);
+          } finally {
+            same.cancel();
+            fresh.cancel();
+          }
+        },
+      );
+    }
+
     for (final crossOrigin in [false, true]) {
       test(
         'ordinary JSON ${crossOrigin ? 'other-origin' : 'same-origin'} script keeps pre-option identity',

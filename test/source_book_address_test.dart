@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart'
@@ -195,6 +196,25 @@ void main() {
       );
     }
   }
+
+  test('published textual components follow the native URL operation', () {
+    final base = Uri.parse('http://source.test/exact/book?q=old#base');
+    for (final (raw, expected) in [
+      ('#next', 'http://source.test/exact/book?q=old#next'),
+      ('?q=new', 'http://source.test/exact/?q=new'),
+      ('//cdn.test', 'http://cdn.test'),
+      ('/../../toc', 'http://source.test/../../toc'),
+      ('../..', 'http://source.test/..'),
+      ('../../toc', 'http://source.test/../toc'),
+      ('toc', 'http://source.test/exact/toc'),
+    ]) {
+      expect(
+        resolveSourceTocUrl(address: raw, base: base, fallbackAddress: ''),
+        expected,
+        reason: raw,
+      );
+    }
+  });
 
   for (final json in [false, true]) {
     for (final (raw, expected) in [
@@ -537,6 +557,29 @@ void main() {
       );
     },
   );
+
+  test('shelf association preserves the ephemeral address context', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = ShelfService(store);
+    const origin = 'http://source.test';
+    final source = _jsonSource(origin);
+    final context = (
+      comparisonAddress: '$origin/book/{{key}}',
+      publicationAddress: '$origin/book/1',
+    );
+    final candidate = HtmlBook(
+      url: Uri.parse('$origin/book/1'),
+      rawAddress: '/book/1',
+      title: 'Book',
+      addressContext: context,
+    );
+    await shelf.add(source, candidate);
+    final entry = (await shelf.onlineShelf()).single;
+    final prepared = shelf.associationCandidate(entry, source, candidate);
+    expect(prepared.addressContext, context);
+    expect(prepared.toJson().containsKey('addressContext'), isFalse);
+  });
 
   test(
     'a fresh JSON search hit reaches its subdirectory target and TOC',

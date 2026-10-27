@@ -466,6 +466,7 @@ class ShelfService {
       wordCount: candidate.wordCount,
       variable: seeded,
       infoHtml: candidate.infoHtml,
+      addressContext: candidate.addressContext,
     );
   }
 
