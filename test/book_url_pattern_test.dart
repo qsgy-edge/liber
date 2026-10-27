@@ -1367,6 +1367,106 @@ void main() {
       );
     }
 
+    for (final raw in ['/book/1', "@js: '/book/1'", "<js>'/book/1'</js>"]) {
+      test('JSON literal native admission scalar=$raw', () async {
+        const origin = 'http://source.test';
+        final body = jsonEncode({
+          'title': 'Book',
+          'toc': '/toc',
+          'items': [
+            {'title': 'Book', 'url': raw},
+          ],
+          'list': [
+            {'name': 'Chapter', 'url': '/c/1'},
+          ],
+        });
+        final pages = _Pages({'/book/1': body});
+        final state = SourceHostState();
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'searchUrl': '/book/1',
+          'bookUrlPattern': r'$^',
+          'loginCheckJs':
+              "source.put('checks', String(Number(source.get('checks')||'0')+1)); result",
+          'ruleSearch': {
+            'bookList': r'$.items[*]',
+            'name': r'$.title',
+            'bookUrl': r'$.url',
+          },
+          'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+          'ruleToc': {
+            'chapterList': r'$.list[*]',
+            'chapterName': r'$.name',
+            'chapterUrl': r'$.url',
+          },
+        };
+        final pipeline = JsonSourcePipeline(source, pages, hostState: state);
+        try {
+          final hit = (await pipeline.search('1')).single;
+          expect(hit.title, 'Book');
+          expect(hit.identityAddress, '$origin/book/1');
+          final info = await pipeline.bookInfo(hit);
+          expect(info.book.title, 'Book');
+          final literal = raw == '/book/1';
+          expect(hit.infoHtml != null, literal);
+          expect(pages.requests, hasLength(literal ? 1 : 2));
+          expect(
+            await state.entry(origin, sourceRuleVariableKey(origin, 'checks')),
+            literal ? '1' : '2',
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+
+    for (final seed in ['/book/1', '/seed']) {
+      test('HTML finished field scalar seed=$seed', () async {
+        const origin = 'http://source.test';
+        final body =
+            '<h2>Book</h2><ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
+        final pages = _Pages({'/book/1': body});
+        final state = SourceHostState();
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'searchUrl': '/book/1',
+          'loginCheckJs':
+              "source.put('checks', String(Number(source.get('checks')||'0')+1)); result",
+          'ruleSearch': {
+            'bookList': '@js:${jsonEncode([seed])}',
+            'name': "@js:'Book'",
+            'bookUrl':
+                "@js:source.put('urlReads', String(Number(source.get('urlReads')||'0')+1)); '/book/1'",
+          },
+          'ruleBookInfo': {'name': 'h2@text', 'tocUrl': '#toc@href'},
+          'ruleToc': {
+            'chapterList': '#list li',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        };
+        final pipeline = HtmlSourcePipeline(source, pages, hostState: state);
+        try {
+          final hit = (await pipeline.search('x')).single;
+          expect(hit.title, 'Book');
+          expect(hit.identityAddress, '$origin/book/1');
+          final info = await pipeline.bookInfo(hit);
+          expect(info.book.title, 'Book');
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'urlReads'),
+            ),
+            '1',
+          );
+          expect(hit.infoHtml, isNotNull);
+          expect(pages.requests, hasLength(1));
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+
     for (final crossOrigin in [false, true]) {
       test(
         'ordinary JSON ${crossOrigin ? 'other-origin' : 'same-origin'} script keeps pre-option identity',

@@ -214,6 +214,28 @@ void main() {
         reason: raw,
       );
     }
+    for (final (baseText, raw, expected) in [
+      (
+        'http://source.test/exact/book?keep=a%23tail&x=1',
+        '#next',
+        'http://source.test/exact/book?keep=a%23tail&x=1#next',
+      ),
+      (
+        'http://source.test/exact/book',
+        'child/..',
+        'http://source.test/exact/',
+      ),
+    ]) {
+      expect(
+        resolveSourceTocUrl(
+          address: raw,
+          base: Uri.parse(baseText),
+          fallbackAddress: '',
+        ),
+        expected,
+        reason: '$baseText $raw',
+      );
+    }
   });
 
   for (final json in [false, true]) {
