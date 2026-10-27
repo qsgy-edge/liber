@@ -3262,4 +3262,458 @@ void main() {
       });
     }
   }
+
+  group('repair07 native consumers', () {
+    // The retained cover and the nonempty relative chapter target both reach
+    // the frozen String URL overload (`NetworkUtils.kt:160-169`), which builds
+    // its URL object from the base before the first comma; the option tail of
+    // the book's raw text therefore never becomes a directory. The next-page
+    // stage keeps resolving against the whole logical stage.
+    for (final json in [false, true]) {
+      for (final slash in [false, true]) {
+        for (final feature in ['cover', 'relativeChapter']) {
+          test(
+            'repair07 String base json=$json slash=$slash feature=$feature',
+            () async {
+              const origin = 'http://source.test';
+              final header = slash ? 'a/b' : 'ab';
+              final tail =
+                  ',${jsonEncode({
+                    'headers': {'X-Text': header},
+                  })}';
+              final raw = '$origin/catalog/book$tail';
+              final document = _repair06Page(
+                json,
+                cover: 'cover.jpg',
+                chapter: 'child',
+              );
+              final pages = _ContinuationPages(
+                document,
+                allowedPaths: const ['/catalog/book'],
+              );
+              final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+                ..['searchUrl'] = raw
+                ..['bookUrlPattern'] = '.*';
+              final pipeline = _openContinuation(json, source, pages);
+              try {
+                final hit = (await pipeline.search('1')).single;
+                expect(hit.title, 'Book', reason: 'premise: detail title');
+                expect(
+                  hit.infoHtml,
+                  isNotEmpty,
+                  reason: 'premise: retained information',
+                );
+                expect(
+                  hit.addressContext?.publicationAddress,
+                  raw,
+                  reason: 'premise: exact raw fact',
+                );
+                expect(
+                  pages.requests.single.url.toString(),
+                  '$origin/catalog/book',
+                  reason: 'premise: real request target',
+                );
+                expect(
+                  {
+                    for (final entry in pages.requests.single.headers.entries)
+                      entry.key.toLowerCase(): entry.value,
+                  }['x-text'],
+                  header,
+                  reason: 'premise: option header executed',
+                );
+                final info = await pipeline.bookInfo(hit);
+                expect(info.book.title, 'Book');
+                expect(
+                  info.tocHtml,
+                  isNotEmpty,
+                  reason: 'premise: blank self TOC',
+                );
+                expect(
+                  info.tocUrl,
+                  raw,
+                  reason: 'premise: whole publication retained',
+                );
+                expect(pages.requests.length, 1);
+                if (feature == 'cover') {
+                  expect(
+                    info.book.cover,
+                    '$origin/catalog/cover.jpg',
+                    reason: 'target: cover String-base consumer',
+                  );
+                } else {
+                  final (_, chapters) = await pipeline.tableOfContents(info);
+                  final chapter = chapters.single;
+                  expect(chapter.name, 'Chapter');
+                  expect(
+                    chapter.address,
+                    'child',
+                    reason: 'premise: nonempty raw chapter',
+                  );
+                  expect(
+                    pages.requests.length,
+                    1,
+                    reason: 'premise: no TOC network work',
+                  );
+                  expect(
+                    chapter.url.toString(),
+                    '$origin/catalog/child',
+                    reason: 'target: nonempty chapter String-base consumer',
+                  );
+                  expect(chapter.storeKey, '$origin/catalog/child');
+                  expect(chapter.persistedAddress, '$origin/catalog/child');
+                }
+              } finally {
+                pipeline.cancel();
+              }
+            },
+          );
+        }
+      }
+    }
+
+    // An ordinary empty chapter URL publishes the TOC page's own text
+    // (`BookChapterList.kt:229-243`), so the target comes from the fact that
+    // text carries: the once-expanded publication (#99, JSON only) and the
+    // request's own charset encoding, never the native comparison scalar.
+    for (final json in [false, true]) {
+      for (final template in [false, true]) {
+        // The single-expansion follow-up is JSON-only: HTML return templates are
+        // untouched (`sources/policy-99/comment-01.md`).
+        if (!json && template) continue;
+        test('repair07 empty expanded json=$json template=$template', () async {
+          const origin = 'http://source.test';
+          final raw = template ? r'/book/{{key}}' : '/book/1';
+          final page = _repair06Page(json, book: raw, chapter: '');
+          final document = json
+              ? jsonEncode({
+                  ...jsonDecode(page) as Map<String, dynamic>,
+                  'content': 'Body',
+                })
+              : '$page<div id="content">Body</div>';
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const ['/search', '/book/1'],
+          );
+          final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+            ..['searchUrl'] = '/search'
+            ..['bookUrlPattern'] = r'$^'
+            ..['ruleContent'] = {
+              'content': json ? r'$.content' : '#content@text',
+            };
+          final pipeline = _openContinuation(json, source, pages);
+          try {
+            final hit = (await pipeline.search('1')).single;
+            expect(hit.title, 'Book');
+            expect(hit.infoHtml, isNull, reason: 'premise: ordinary list');
+            expect(
+              hit.addressContext?.publicationAddress,
+              '$origin/book/1',
+              reason: 'premise: expansion fact',
+            );
+            final info = await pipeline.bookInfo(hit);
+            expect(info.tocHtml, isNotEmpty);
+            expect(info.tocUrl, '$origin/book/1');
+            expect(pages.requests.map((request) => request.url.path), [
+              '/search',
+              '/book/1',
+            ]);
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            final chapter = chapters.single;
+            expect(
+              chapter.address,
+              '$origin/book/1',
+              reason: 'premise: raw fallback publication',
+            );
+            expect(
+              chapter.url.toString(),
+              '$origin/book/1',
+              reason: 'target: empty target uses the expanded fact',
+            );
+            expect(chapter.storeKey, '$origin/book/1');
+            expect(chapter.persistedAddress, '$origin/book/1');
+            await pipeline.chapter(chapter, book: info.book);
+            expect(pages.requests.last.url.toString(), '$origin/book/1');
+            expect(pages.requests.length, 3);
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+
+    // The same empty chapter keeps the query the information request actually
+    // sent: the supported `charset` option of its own tail decides the target's
+    // encoding once, while the stored text keeps its raw spelling.
+    for (final json in [false, true]) {
+      for (final value in ['unicode', 'preencoded', 'ascii']) {
+        test('repair07 empty charset json=$json value=$value', () async {
+          const origin = 'http://source.test';
+          final query = value == 'unicode'
+              ? '中'
+              : value == 'preencoded'
+              ? '%D6%D0'
+              : 'word';
+          final encoded = value == 'ascii' ? 'word' : '%D6%D0';
+          final tail =
+              ',${jsonEncode({
+                'charset': 'gbk',
+                'headers': {'X-Book': 'fallback'},
+              })}';
+          final raw = '$origin/book?q=$query$tail';
+          final wire = '$origin/book?q=$encoded';
+          final page = _repair06Page(json, chapter: '');
+          final document = json
+              ? jsonEncode({
+                  ...jsonDecode(page) as Map<String, dynamic>,
+                  'content': 'Body',
+                })
+              : '$page<div id="content">Body</div>';
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const ['/book'],
+          );
+          final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+            ..['ruleContent'] = {
+              'content': json ? r'$.content' : '#content@text',
+            };
+          final pipeline = _openContinuation(json, source, pages);
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(
+                url: Uri.parse(wire),
+                preOptionUrl: Uri.parse(wire),
+                rawAddress: raw,
+                title: 'Book',
+              ),
+            );
+            expect(info.book.title, 'Book');
+            expect(
+              info.tocHtml,
+              isNotEmpty,
+              reason: 'premise: information reused as TOC',
+            );
+            expect(info.tocUrl, raw, reason: 'premise: raw options and query');
+            expect(
+              pages.requests.single.url.toString(),
+              wire,
+              reason: 'premise: real named charset request',
+            );
+            expect(
+              {
+                for (final entry in pages.requests.single.headers.entries)
+                  entry.key.toLowerCase(): entry.value,
+              }['x-book'],
+              'fallback',
+            );
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            final chapter = chapters.single;
+            expect(chapter.address, raw);
+            expect(
+              chapter.options.charset,
+              'gbk',
+              reason: 'premise: charset option remains',
+            );
+            expect(
+              chapter.url.toString(),
+              wire,
+              reason: 'target: named charset target',
+            );
+            expect(chapter.storeKey, wire);
+            expect(chapter.persistedAddress, '$wire$tail');
+            await pipeline.chapter(chapter, book: info.book);
+            expect(pages.requests.length, 2);
+            expect(
+              pages.requests.last.url.toString(),
+              wire,
+              reason: 'target: actual content request',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+
+    // The native comparison keeps the finished scalar as read: the Kotlin blank
+    // test decides the fallback, and a nonblank value reaches the URL operation
+    // with its own Unicode text, so retention and the repeated information
+    // request follow it.
+    for (final json in [false, true]) {
+      for (final suffix in [false, true]) {
+        test('repair07 ordinary whitespace json=$json suffix=$suffix', () async {
+          const origin = 'http://source.test';
+          final scalar = 'book${suffix ? '\u2000' : ''}';
+          final pages = _ContinuationPages(
+            _repair06Page(json, book: scalar),
+            allowedPaths: const ['/catalog/book'],
+          );
+          final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+            ..['searchUrl'] = '/catalog/book'
+            ..['bookUrlPattern'] = r'$^'
+            ..['loginCheckJs'] =
+                "source.put('r07Checks',String(Number(source.get('r07Checks')||'0')+1)); result";
+          final state = SourceHostState();
+          final pipeline = _openContinuation(json, source, pages, state: state);
+          try {
+            final hit = (await pipeline.search('1')).single;
+            expect(hit.title, 'Book');
+            expect(
+              pages.requests.single.url.toString(),
+              '$origin/catalog/book',
+            );
+            expect(
+              await state.entry(
+                origin,
+                sourceRuleVariableKey(origin, 'r07Checks'),
+              ),
+              '1',
+              reason: 'premise: one search login check',
+            );
+            expect(
+              hit.addressContext?.comparisonAddress,
+              '$origin/catalog/$scalar',
+              reason: 'target: native comparison keeps the nonblank scalar',
+            );
+            final info = await pipeline.bookInfo(hit);
+            expect(info.book.title, 'Book');
+            expect(
+              hit.infoHtml != null,
+              !suffix,
+              reason: 'target: comparison controls information retention',
+            );
+            expect(pages.requests.length, suffix ? 2 : 1);
+            expect(
+              await state.entry(
+                origin,
+                sourceRuleVariableKey(origin, 'r07Checks'),
+              ),
+              suffix ? '2' : '1',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+
+    // A response the search stage reads as a detail page keeps one native URL
+    // operation over the whole once-expanded rule text (`BookList.kt:159-163`
+    // over `AnalyzeUrl.ruleUrl`), so a dot in the option tail takes part in the
+    // comparison while the published address keeps its exact tail and the
+    // actual search request keeps its own options.
+    for (final json in [false, true]) {
+      for (final fallback in [false, true]) {
+        for (final dot in [false, true]) {
+          test(
+            'repair07 special scalar json=$json fallback=$fallback dot=$dot',
+            () async {
+              const origin = 'http://source.test';
+              final header = dot ? 'a/../b' : 'ab';
+              final tail =
+                  ',${jsonEncode({
+                    'headers': {'X-Text': header},
+                  })}';
+              final raw = 'book/1$tail';
+              final publication = '$origin/catalog/book/book/1$tail';
+              final native = dot
+                  ? '$origin/catalog/book/book/b"}}'
+                  : publication;
+              final pages = _ContinuationPages(
+                _repair06Page(json, toc: native),
+                allowedPaths: [
+                  '/catalog/book/1',
+                  '/catalog/book/book/b"}}',
+                  '/catalog/book/book/1',
+                ],
+              );
+              final state = SourceHostState();
+              final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+                ..['bookSourceUrl'] = '$origin/catalog/search'
+                ..['searchUrl'] = raw
+                ..['bookUrlPattern'] = fallback ? null : '.*'
+                ..['loginCheckJs'] =
+                    "source.put('r07Special',String(Number(source.get('r07Special')||'0')+1)); result"
+                ..['ruleSearch'] = <String, dynamic>{
+                  'bookList': fallback
+                      ? (json ? r'$.missing[*]' : '.missing')
+                      : (json ? r'$.listing[*]' : 'div.item'),
+                  'name': json ? r'$.name' : 'h3 a@text',
+                  'bookUrl': json ? r'$.url' : 'h3 a@href',
+                };
+              final pipeline = _openContinuation(
+                json,
+                source,
+                pages,
+                state: state,
+              );
+              try {
+                final hit = (await pipeline.search('1')).single;
+                expect(hit.title, 'Book');
+                expect(hit.infoHtml, isNotEmpty);
+                expect(
+                  hit.addressContext?.publicationAddress,
+                  publication,
+                  reason: 'premise: published exact tail',
+                );
+                expect(
+                  hit.identityAddress,
+                  publication,
+                  reason: 'premise: approved stored identity',
+                );
+                expect(
+                  pages.requests.single.url.toString(),
+                  '$origin/catalog/book/1',
+                );
+                expect(
+                  {
+                    for (final entry in pages.requests.single.headers.entries)
+                      entry.key.toLowerCase(): entry.value,
+                  }['x-text'],
+                  header,
+                );
+                final info = await pipeline.bookInfo(hit);
+                expect(info.book.title, 'Book');
+                expect(
+                  info.tocAddress,
+                  native,
+                  reason: 'premise: finished TOC scalar',
+                );
+                expect(
+                  hit.addressContext?.comparisonAddress,
+                  native,
+                  reason: 'target: special whole scalar comparison',
+                );
+                expect(
+                  info.tocHtml,
+                  isNotEmpty,
+                  reason: 'target: native same page retained',
+                );
+                final (_, chapters) = await pipeline.tableOfContents(info);
+                expect(chapters.single.name, 'Chapter');
+                expect(chapters.single.url.path, '/c/1');
+                expect(
+                  pages.requests.length,
+                  1,
+                  reason: 'target: no extra TOC request',
+                );
+                expect(
+                  await state.entry(
+                    '$origin/catalog/search',
+                    sourceRuleVariableKey(
+                      '$origin/catalog/search',
+                      'r07Special',
+                    ),
+                  ),
+                  '1',
+                  reason: 'target: no extra login',
+                );
+              } finally {
+                pipeline.cancel();
+              }
+            },
+          );
+        }
+      }
+    }
+  });
 }
