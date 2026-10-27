@@ -20,21 +20,45 @@ import 'source_stage_diagnostic.dart';
 
 export 'source_stage_diagnostic.dart';
 
+/// The base text the frozen `NetworkUtils.getAbsoluteURL(String?, String)`
+/// overload builds its URL object from: everything before the first comma
+/// (`NetworkUtils.kt:160-169`), so a `,{…}` option tail inside a base text never
+/// becomes part of a resolved directory.
+String _sourceUrlStringBase(String text) {
+  final comma = text.indexOf(',');
+  return comma < 0 ? text : text.substring(0, comma);
+}
+
 /// The request target an ordinary empty chapter keeps when the TOC page's own
 /// address stands in for a rule that answered nothing.
 ///
 /// The frozen empty-URL fallback writes the page's own finished address as the
 /// chapter text (`BookChapterList.kt:229-243`), and this carrier keeps that text
-/// in `rawAddress` so its options persist exactly once. The chapter's resolved
-/// `url` is the wire target inside that text — the part before a `,{…}` option
-/// boundary — so an option tail never reaches the target or the store key. The
-/// boundary is read textually and the prefix is taken as written: no option
-/// object is parsed or validated and no trim is applied. An address without a
-/// boundary keeps the established page URI.
-Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
+/// in `rawAddress` so its options persist exactly once. The content stage then
+/// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
+/// before the `,{…}` boundary, resolved against the same finished text, with its
+/// query encoded by the tail's own supported `charset` option
+/// (`AnalyzeUrl.kt:214-222`, `:279-334`). The boundary stays textual for the
+/// target text; only the tail's existing option reader supplies the charset, and
+/// no second expansion, field read or option script runs here.
+Future<Uri> _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) async {
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
-  if (boundary == null) return pageUrl;
-  return Uri.tryParse(fallbackAddress.substring(0, boundary)) ?? pageUrl;
+  final path = boundary == null
+      ? fallbackAddress
+      : fallbackAddress.substring(0, boundary);
+  final charset = boundary == null
+      ? null
+      : splitSourceUrlOptions(
+          fallbackAddress.substring(boundary),
+        ).options.charset;
+  // The native absolute shortcut is the Kotlin trim; a relative text keeps the
+  // URL constructor's own original spelling.
+  final trimmed = sourceKotlinTrim(path);
+  final parsed = Uri.tryParse(trimmed);
+  final resolved = parsed != null && parsed.hasScheme ? parsed : pageUrl;
+  final text = sourceUrlTextWithRawQuery(resolved, path);
+  return Uri.tryParse(await encodeSourceQuery(text, charset: charset)) ??
+      pageUrl;
 }
 
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
@@ -1038,6 +1062,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   ? searchParts.path
                   : sourceUrlTextResolved(url, searchParts.path)) +
               searchParts.tail;
+    // The frozen `getInfoItem` keeps `book.bookUrl` from one native URL operation
+    // over the whole once-expanded rule text (`BookList.kt:159-163` over
+    // `AnalyzeUrl.ruleUrl`), not from a resolution of its option-stripped path; a
+    // redirected response keeps the URL it landed on.
+    final comparisonAddress = redirected
+        ? '$finalUrl'
+        : sourceUrlTextResolved(url, searchIdentityAddress);
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1052,6 +1083,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         document,
         finalUrl,
         identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
         infoHtml: checked.body,
       );
     }
@@ -1067,6 +1099,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         document,
         finalUrl,
         identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
         infoHtml: checked.body,
       );
     }
@@ -1107,7 +1140,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final bookAddressValue = search['bookUrl']!.trim().isEmpty
           ? ''
           : '${await _field(entry, search['bookUrl']!, label: 'ruleSearch.bookUrl') ?? ''}';
-      final bookAddress = bookAddressValue.trim().isEmpty
+      // The frozen `AnalyzeRule.getString(rule, isUrl = true)` answers the
+      // analyser's base URL text for a Kotlin-blank result and keeps every other
+      // finished scalar exactly as it was read (`AnalyzeRule.kt:315-323`).
+      final bookAddress = sourceKotlinIsBlank(bookAddressValue)
           ? '$finalUrl'
           : bookAddressValue;
       late Uri preOptionUrl;
@@ -1126,8 +1162,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
-      final wrapper = bookAddress.trim();
-      final nativeBookAddress = sourceUrlTextResolved(finalUrl, wrapper);
+      final nativeBookAddress = sourceUrlTextResolved(finalUrl, bookAddress);
       final publicationScalar = expandedBookAddress;
       final publicationParts = splitSourceUrlOptions(publicationScalar);
       final publicationAddress =
@@ -1329,6 +1364,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
             info.book.addressContext?.comparisonAddress ??
                 info.book.identityAddress,
           )
+        : null;
+    // A retained chapter's own base is the published TOC text, which the frozen
+    // chapter constructor hands to the String overload (`BookChapterList.kt:219-222`
+    // over `BookChapter.kt:143-149`): that overload builds its URL object from
+    // the base before its first comma (`NetworkUtils.kt:160-169`). The page's own
+    // URL stays the whole logical stage for the next-page walk.
+    final retainedChapterBase = retainedFirstPage
+        ? Uri.tryParse(_sourceUrlStringBase(info.tocUrl)) ?? retainedPageUrl
         : null;
     if (!retainedFirstPage && !_headersInitialized) {
       _activeHeaders = await _ensureHeaders();
@@ -1551,7 +1594,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         // chapter text; a fetched TOC page keeps its actual
                         // response target.
                         cachedFirstPage
-                            ? _ordinaryChapterTarget(
+                            ? await _ordinaryChapterTarget(
                                 ordinaryFallbackAddress,
                                 tocPage.url,
                               )
@@ -1563,7 +1606,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       );
               } else {
                 final (resolved, _) = await _request(
-                  tocPage.url,
+                  cachedFirstPage
+                      ? (retainedChapterBase ?? tocPage.url)
+                      : tocPage.url,
                   chapterUrl,
                   _keyword,
                 );
@@ -1660,6 +1705,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     Object? document,
     Uri finalUrl, {
     required String identityAddress,
+    required String comparisonAddress,
     required String infoHtml,
   }) async {
     final infoRules = source['ruleBookInfo'];
@@ -1675,7 +1721,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         title: '',
         infoHtml: infoHtml,
         addressContext: (
-          comparisonAddress: identityAddress,
+          comparisonAddress: comparisonAddress,
           publicationAddress: identityAddress,
         ),
       ),
@@ -1837,7 +1883,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           : sourceUrlTextResolved(
               parseBase ?? hit.url,
               cover,
-              rawBase: coverRawBase,
+              rawBase: _sourceUrlStringBase(coverRawBase),
             ),
     );
     final book = _book!;

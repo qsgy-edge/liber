@@ -291,21 +291,45 @@ class _ListStep {
         };
 }
 
+/// The base text the frozen `NetworkUtils.getAbsoluteURL(String?, String)`
+/// overload builds its URL object from: everything before the first comma
+/// (`NetworkUtils.kt:160-169`), so a `,{…}` option tail inside a base text never
+/// becomes part of a resolved directory.
+String _sourceUrlStringBase(String text) {
+  final comma = text.indexOf(',');
+  return comma < 0 ? text : text.substring(0, comma);
+}
+
 /// The request target an ordinary empty chapter keeps when the TOC page's own
 /// address stands in for a rule that answered nothing.
 ///
 /// The frozen empty-URL fallback writes the page's own finished address as the
 /// chapter text (`BookChapterList.kt:229-243`), and this carrier keeps that text
-/// in `rawAddress` so its options persist exactly once. The chapter's resolved
-/// `url` is the wire target inside that text — the part before a `,{…}` option
-/// boundary — so an option tail never reaches the target or the store key. The
-/// boundary is read textually and the prefix is taken as written: no option
-/// object is parsed or validated and no trim is applied. An address without a
-/// boundary keeps the established page URI.
-Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
+/// in `rawAddress` so its options persist exactly once. The content stage then
+/// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
+/// before the `,{…}` boundary, resolved against the same finished text, with its
+/// query encoded by the tail's own supported `charset` option
+/// (`AnalyzeUrl.kt:214-222`, `:279-334`). The boundary stays textual for the
+/// target text; only the tail's existing option reader supplies the charset, and
+/// no second expansion, field read or option script runs here.
+Future<Uri> _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) async {
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
-  if (boundary == null) return pageUrl;
-  return Uri.tryParse(fallbackAddress.substring(0, boundary)) ?? pageUrl;
+  final path = boundary == null
+      ? fallbackAddress
+      : fallbackAddress.substring(0, boundary);
+  final charset = boundary == null
+      ? null
+      : splitSourceUrlOptions(
+          fallbackAddress.substring(boundary),
+        ).options.charset;
+  // The native absolute shortcut is the Kotlin trim; a relative text keeps the
+  // URL constructor's own original spelling.
+  final trimmed = sourceKotlinTrim(path);
+  final parsed = Uri.tryParse(trimmed);
+  final resolved = parsed != null && parsed.hasScheme ? parsed : pageUrl;
+  final text = sourceUrlTextWithRawQuery(resolved, path);
+  return Uri.tryParse(await encodeSourceQuery(text, charset: charset)) ??
+      pageUrl;
 }
 
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
@@ -1343,9 +1367,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Uri base,
     String template,
     String keyword, {
-    void Function(Uri target, String address)? captureIdentity,
+    void Function(Uri target, String address, String expandedAddress)?
+    captureIdentity,
   }) async {
-    final split = splitSourceUrlOptions(await _expand(template, keyword));
+    final expandedAddress = await _expand(template, keyword);
+    final split = splitSourceUrlOptions(expandedAddress);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
@@ -1381,7 +1407,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final identityText = Uri.tryParse(split.path)?.hasScheme == true
         ? split.path
         : sourceUrlTextResolved(url, split.path);
-    captureIdentity?.call(identityTarget, '$identityText${split.tail}');
+    captureIdentity?.call(
+      identityTarget,
+      '$identityText${split.tail}',
+      expandedAddress,
+    );
     return (url, split.options);
   }
 
@@ -1561,12 +1591,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _chapterTitle = null;
     final base = SourceHttpUri.parse(source['bookSourceUrl'] as String);
     late String searchIdentityAddress;
+    late String searchExpandedAddress;
     final (url, options) = await _request(
       base,
       source['searchUrl'] as String,
       keyword,
-      captureIdentity: (target, address) {
+      captureIdentity: (target, address, expanded) {
         searchIdentityAddress = address;
+        searchExpandedAddress = expanded;
       },
     );
     // The check sees the stage's own response and may replace it, so the rules
@@ -1584,6 +1616,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final finalUrl = checked.url;
     final redirected = checked.wasRedirected ?? ('$finalUrl' != '$url');
     final identityAddress = redirected ? '$finalUrl' : searchIdentityAddress;
+    // The frozen `getInfoItem` keeps `book.bookUrl` from one native URL operation
+    // over the whole once-expanded rule text (`BookList.kt:159-163` over
+    // `AnalyzeUrl.ruleUrl`), not from a resolution of its option-stripped path; a
+    // redirected response keeps the URL it landed on.
+    final comparisonAddress = redirected
+        ? '$finalUrl'
+        : sourceUrlTextResolved(url, searchExpandedAddress);
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1594,7 +1633,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           '$finalUrl',
           label: 'bookUrlPattern',
         )) {
-      return _detailPageBooks(finalUrl, html, identityAddress: identityAddress);
+      return _detailPageBooks(
+        finalUrl,
+        html,
+        identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
+      );
     }
     final rawList = _rule('ruleSearch', 'bookList');
     final listRule = await _field(
@@ -1675,7 +1719,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // The frozen companion to the branch above: an empty element list and no
     // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
     if (count == 0 && bookUrlPattern.isEmpty) {
-      return _detailPageBooks(finalUrl, html, identityAddress: identityAddress);
+      return _detailPageBooks(
+        finalUrl,
+        html,
+        identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
+      );
     }
 
     final kindJobs = <HtmlStringList>[];
@@ -1988,6 +2037,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 info.book.identityAddress,
           )
         : null;
+    // A retained chapter's own base is the published TOC text, which the frozen
+    // chapter constructor hands to the String overload (`BookChapterList.kt:219-222`
+    // over `BookChapter.kt:143-149`): that overload builds its URL object from
+    // the base before its first comma (`NetworkUtils.kt:160-169`). The page's own
+    // URL stays the whole logical stage for the next-page walk.
+    final retainedChapterBase = retainedFirstPage
+        ? Uri.tryParse(_sourceUrlStringBase(info.tocUrl)) ?? retainedPageUrl
+        : null;
     final (tocTarget, tocOptions) = retainedFirstPage
         ? (bookUrl, const SourceUrlOptions())
         : info.tocAddress.isEmpty
@@ -2284,7 +2341,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                         // chapter text; a fetched TOC page keeps its actual
                         // response target.
                         cachedFirstPage
-                            ? _ordinaryChapterTarget(
+                            ? await _ordinaryChapterTarget(
                                 ordinaryFallbackAddress,
                                 pageUrl,
                               )
@@ -2301,7 +2358,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 // `AnalyzeUrl` parses (`AnalyzeUrl.kt:214-222`).
                 final rawAddress = address;
                 final (chapterUrl, chapterOptions) = await _extracted(
-                  pageUrl,
+                  cachedFirstPage ? (retainedChapterBase ?? pageUrl) : pageUrl,
                   rawAddress,
                 );
                 // The address text's options are the chapter's own: the frozen
@@ -2385,6 +2442,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Uri finalUrl,
     String html, {
     required String identityAddress,
+    required String comparisonAddress,
   }) async {
     if (_rule('ruleBookInfo', 'name', optional: true).isEmpty) {
       return const <HtmlBook>[];
@@ -2398,7 +2456,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         title: '',
         infoHtml: html,
         addressContext: (
-          comparisonAddress: identityAddress,
+          comparisonAddress: comparisonAddress,
           publicationAddress: identityAddress,
         ),
       ),
@@ -2579,7 +2637,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           ? ''
           : coverRawBase == null
           ? '${_resolve(infoUrl, coverText)}'
-          : sourceUrlTextResolved(infoUrl, coverText, rawBase: coverRawBase),
+          // The frozen `BookInfo.kt:137-145` cover call is the String-base
+          // overload `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, whose URL
+          // object is built from the base before its first comma
+          // (`NetworkUtils.kt:160-169`).
+          : sourceUrlTextResolved(
+              infoUrl,
+              coverText,
+              rawBase: _sourceUrlStringBase(coverRawBase),
+            ),
     );
     final book = _book!;
     final tocText = await read('tocUrl', url: true);
