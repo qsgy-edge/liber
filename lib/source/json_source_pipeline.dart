@@ -1547,10 +1547,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       )
                     : SourceChapter(
                         name,
-                        _ordinaryChapterTarget(
-                          ordinaryFallbackAddress,
-                          tocPage.url,
-                        ),
+                        // Only a retained page's own address stands in for the
+                        // chapter text; a fetched TOC page keeps its actual
+                        // response target.
+                        cachedFirstPage
+                            ? _ordinaryChapterTarget(
+                                ordinaryFallbackAddress,
+                                tocPage.url,
+                              )
+                            : tocPage.url,
                         rawAddress: ordinaryFallbackAddress,
                         tag: tag,
                         isVip: isVip,

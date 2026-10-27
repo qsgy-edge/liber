@@ -2280,10 +2280,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                       )
                     : SourceChapter(
                         title,
-                        _ordinaryChapterTarget(
-                          ordinaryFallbackAddress,
-                          pageUrl,
-                        ),
+                        // Only a retained page's own address stands in for the
+                        // chapter text; a fetched TOC page keeps its actual
+                        // response target.
+                        cachedFirstPage
+                            ? _ordinaryChapterTarget(
+                                ordinaryFallbackAddress,
+                                pageUrl,
+                              )
+                            : pageUrl,
                         rawAddress: ordinaryFallbackAddress,
                         tag: tag,
                         isVip: isVip,
