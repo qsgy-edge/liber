@@ -163,8 +163,12 @@ Map<String, dynamic> _continuationSource(bool json, {String? tocRule}) => {
 };
 
 class _ContinuationPages implements BookSourceTransport, SourceHttpTransport {
-  _ContinuationPages(this.document);
+  _ContinuationPages(
+    this.document, {
+    this.allowedPaths = const ['/book', '/else'],
+  });
   final String document;
+  final List<String> allowedPaths;
   final requests = <SourceHttpRequest>[];
   @override
   Future<String> request({
@@ -173,7 +177,7 @@ class _ContinuationPages implements BookSourceTransport, SourceHttpTransport {
   }) => throw StateError('Real send required');
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
-    if (!['/book', '/else'].contains(request.url.path)) {
+    if (!allowedPaths.contains(request.url.path)) {
       throw StateError('Unexpected ${request.url}');
     }
     requests.add(request);
@@ -1924,7 +1928,7 @@ void main() {
       });
       final state = SourceHostState();
       final tail =
-          ',${jsonEncode({'charset': 'utf-8', 'js': "source.put('capturedEffect','ran'); '$origin/queryless'"})}';
+          ',${jsonEncode({'charset': 'utf-8', 'js': "source.put('capturedEffect', String(Number(source.get('capturedEffect')||'0')+1)); '$origin/queryless'"})}';
       final source = <String, dynamic>{
         'bookSourceUrl': origin,
         'searchUrl': '/book?q=x$tail',
@@ -1939,14 +1943,16 @@ void main() {
       try {
         final hit = (await pipeline.search('1')).single;
         expect(hit.title, 'Book');
-        expect(hit.url.toString(), '$origin/queryless');
+        expect(hit.url.toString(), '$origin/book/1');
+        expect(hit.identityAddress, '$origin/book/1');
+        expect(hit.addressContext?.publicationAddress, '$origin/book/1');
         expect(pages.requests, ['$origin/queryless']);
         expect(
           await state.entry(
             origin,
             sourceRuleVariableKey(origin, 'capturedEffect'),
           ),
-          'ran',
+          '1',
         );
       } finally {
         pipeline.cancel();
@@ -2163,11 +2169,16 @@ void main() {
         };
         final pipeline = JsonSourcePipeline(source, pages);
         try {
-          final hit = (await pipeline.search('1')).single;
+          List<HtmlBook>? hits;
+          final failure = await _errorOrNull(
+            pipeline.search('1').then((value) => hits = value),
+          );
+          expect(failure, isNull);
+          final hit = hits!.single;
           expect(hit.title, 'Book');
           expect(hit.rawAddress, '/book/1');
           expect(hit.identityAddress, '$origin/book/1');
-          expect(hit.addressContext?.comparisonAddress, '$origin/book/1');
+          expect(hit.addressContext?.comparisonAddress, '$origin/$returned');
           expect(hit.addressContext?.publicationAddress, '$origin/book/1');
           expect(hit.infoHtml, isNull);
           expect(pages.requests, ['$origin/search']);
@@ -2208,10 +2219,10 @@ void main() {
                       '<div class="item"><a href="${HtmlEscape().convert(raw)}">Book</a></div>'
                       '<a class="toc" href="${HtmlEscape().convert(toc)}">TOC</a>'
                       '<ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
-            final pages = _Pages({
-              '/catalog/search': body,
-              '/catalog/book': body,
-            });
+            final pages = _ContinuationPages(
+              body,
+              allowedPaths: const ['/catalog/search', '/catalog/book'],
+            );
             final source = <String, dynamic>{
               'bookSourceUrl': origin,
               'searchUrl': '/catalog/search',
@@ -2261,6 +2272,11 @@ void main() {
               );
               expect(hit.infoHtml, isNull);
               final info = await pipeline.bookInfo(hit);
+              final detailHeaders = {
+                for (final entry in pages.requests.last.headers.entries)
+                  entry.key.toLowerCase(): entry.value,
+              };
+              expect(detailHeaders['x-text'], embeddedDot ? 'a/../b' : 'ab');
               expect(info.book.title, 'Book');
               expect(info.tocUrl, '$origin/catalog/book$tail');
               final (_, chapters) = await pipeline.tableOfContents(info);
