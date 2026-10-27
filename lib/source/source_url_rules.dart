@@ -62,6 +62,45 @@ const _unsupportedUrlOptions = <String, String>{
   'serverID': 'serverID 选项需要多服务器书源支持',
 };
 
+/// Kotlin's `String.trim()`, which is `trim(Char::isWhitespace)`.
+String sourceKotlinTrim(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && sourceIsKotlinWhitespace(value.codeUnitAt(start))) {
+    start++;
+  }
+  while (end > start && sourceIsKotlinWhitespace(value.codeUnitAt(end - 1))) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
+/// Kotlin's `isBlank()`: every code unit is `Char.isWhitespace()`.
+bool sourceKotlinIsBlank(String value) =>
+    value.codeUnits.every(sourceIsKotlinWhitespace);
+
+/// `Character.isWhitespace(c) || Character.isSpaceChar(c)`, the Kotlin
+/// `Char.isWhitespace()` predicate. The `isSpaceChar` half is the full Zs/Zl/Zp
+/// set, so the non-breaking spaces (`0xA0`, `0x2007` — inside `0x2000`–`0x200A`
+/// — and `0x202F`) are members, where Java's `isWhitespace` alone excludes them.
+/// The ASCII controls Java counts (`0x09`–`0x0D`, `0x1C`–`0x1F`) are members and
+/// `0x85` is not, which is what the frozen blank tests see; Dart's own `trim()`
+/// is the other way round on both. The Unicode version behind the table is the
+/// runtime's, so a code point that changed category between versions (U+180E) is
+/// not covered by a claim here.
+bool sourceIsKotlinWhitespace(int unit) =>
+    (unit >= 0x09 && unit <= 0x0D) ||
+    (unit >= 0x1C && unit <= 0x1F) ||
+    unit == 0x20 ||
+    unit == 0xA0 ||
+    unit == 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x200A) ||
+    unit == 0x2028 ||
+    unit == 0x2029 ||
+    unit == 0x202F ||
+    unit == 0x205F ||
+    unit == 0x3000;
+
 /// Frozen `AnalyzeUrl.analyzeFields`/`analyzeQuery` (`AnalyzeUrl.kt:279-292`)
 /// over `encodeParams` (`AnalyzeUrl.kt:294-334`).
 ///
@@ -835,7 +874,7 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
 /// is publication text, not a wire target; callers validate the actual request
 /// separately.
 String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
-  final trimmed = raw.trim();
+  final trimmed = sourceKotlinTrim(raw);
   if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
   if (rawBase != null) return _resolveAgainstRawBase(rawBase, trimmed);
   var path = trimmed;
@@ -873,10 +912,12 @@ String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
     }
   }
   var outputQuery = query;
+  // The base's own query is a `hasQuery` fact, not a `?` character somewhere in
+  // the text: a fragment may hold one without the base carrying a query.
   if (outputQuery == null &&
       path.isEmpty &&
       fragment != null &&
-      base.toString().contains('?')) {
+      base.hasQuery) {
     outputQuery = base.query;
   }
   final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
@@ -885,12 +926,24 @@ String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
   return output.toString();
 }
 
+/// The frozen `AnalyzeRule.getString(rule, isUrl = true)` text for one finished
+/// rule result (`AnalyzeRule.kt:315-323`): an absolute value stays verbatim,
+/// every other value goes through the native URL operation. A blank result is
+/// the analyser's own base URL there, so callers answer that before asking.
+String sourceUrlNativeText(String scalar, Uri base, {String? rawBase}) {
+  final trimmed = sourceKotlinTrim(scalar);
+  if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
+  return sourceUrlTextResolved(base, trimmed, rawBase: rawBase);
+}
+
 String _resolveAgainstRawBase(String baseText, String raw) {
   final match = RegExp(
     r'^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$',
-  ).firstMatch(baseText.trim());
+  ).firstMatch(sourceKotlinTrim(baseText));
   if (match == null) return raw;
-  final scheme = match.group(1)!;
+  // The native URL object lower-cases its protocol and keeps the authority,
+  // path and query as they were written.
+  final scheme = match.group(1)!.toLowerCase();
   final authority = match.group(2)!;
   final basePath = match.group(3) ?? '';
   final baseQuery = match.group(4);

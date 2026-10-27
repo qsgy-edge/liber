@@ -1244,14 +1244,28 @@ class JsonSourcePipeline implements BookSourcePipeline {
       hit,
       info,
       parseBase: parseBase,
+      coverRawBase: retainedBody ? publicationAddress : null,
     );
-    final effectiveTocAddress = tocAddress.trim().isEmpty ? '' : tocAddress;
+    final effectiveTocAddress = sourceKotlinIsBlank(tocAddress)
+        ? ''
+        : tocAddress;
     final Uri tocBase;
     if (retainedBody) {
       tocBase = logicalBase ?? bookInfo.url;
     } else {
       tocBase = hit.url.hasScheme ? bookInfo.url : hit.url;
     }
+    final comparisonBase = retainedBody ? (logicalBase ?? tocBase) : tocBase;
+    // The frozen `BookInfo.kt:150-157` compares the finished TOC text with the
+    // book's own finished text: one native URL operation over the whole rule
+    // result, not a resolution of its option-stripped path.
+    final tocNativeText = effectiveTocAddress.isEmpty
+        ? nativeBookAddress
+        : sourceUrlNativeText(
+            effectiveTocAddress,
+            comparisonBase,
+            rawBase: retainedBody ? publicationAddress : null,
+          );
     return SourceBookInfo(
       book: book,
       tocAddress: effectiveTocAddress,
@@ -1261,16 +1275,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       keyword: _keyword,
       page: _page,
       tocBase: tocBase,
-      tocHtml:
-          resolveSourceTocUrl(
-                address: effectiveTocAddress,
-                base: retainedBody ? (logicalBase ?? tocBase) : tocBase,
-                fallbackAddress: nativeBookAddress,
-                rawBase: retainedBody ? publicationAddress : null,
-              ) ==
-              nativeBookAddress
-          ? bookInfo.body
-          : null,
+      tocHtml: tocNativeText == nativeBookAddress ? bookInfo.body : null,
     );
   }
 
@@ -1297,6 +1302,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final bookAddressText = info.bookAddress;
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
     final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    // A retained page is read at the book's own finished native text
+    // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
+    // relative chapters and next-page addresses resolve there rather than at the
+    // response URL a redirect landed on. The information stage keeps reporting
+    // the response it actually fetched.
+    final retainedPageUrl = retainedFirstPage
+        ? Uri.tryParse(
+            info.book.addressContext?.comparisonAddress ??
+                info.book.identityAddress,
+          )
+        : null;
     if (!retainedFirstPage && !_headersInitialized) {
       _activeHeaders = await _ensureHeaders();
       _headersInitialized = true;
@@ -1334,7 +1350,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
-    String tocFallbackAddress(SourcePageRequest request) {
+    /// The frozen `bookChapter.url = baseUrl` fallback (`BookChapterList.kt:229-243`)
+    /// writes the page's own finished TOC text into an empty chapter URL. A
+    /// retained first page publishes the approved TOC value; a fetched page
+    /// resolves the address it was read for.
+    String tocFallbackAddress(
+      SourcePageRequest request, {
+      bool retained = false,
+    }) {
+      if (retained) return info.tocUrl;
       if (request.address.isEmpty) {
         return resolveSourceTocUrl(
           address: '',
@@ -1380,7 +1404,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
           var tocPage = cachedFirstPage
-              ? SourceStageResponse(body: info.tocHtml!, url: info.tocBase)
+              ? SourceStageResponse(
+                  body: info.tocHtml!,
+                  url: retainedPageUrl ?? info.tocBase,
+                )
               : await _fetch(
                   BookSourceStage.tableOfContents,
                   request.url,
@@ -1413,7 +1440,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.nextTocUrl',
                 );
           // Only ordinary empty URLs need this text; cache it lazily per page.
-          late final ordinaryFallbackAddress = tocFallbackAddress(request);
+          late final ordinaryFallbackAddress = tocFallbackAddress(
+            request,
+            retained: cachedFirstPage,
+          );
           for (var index = 0; index < entries.length; index++) {
             publishTocChapter('', '');
             // One rebuilt item's chapter variables start empty and keep only
@@ -1654,6 +1684,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     HtmlBook hit,
     Map<String, String> info, {
     Uri? parseBase,
+    String? coverRawBase,
   }) async {
     _book = hit;
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
@@ -1769,8 +1800,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
       info['coverUrl'] ?? '',
       label: 'ruleBookInfo.coverUrl',
     );
+    // The frozen `BookInfo.kt:137-145` cover call is the String-base overload
+    // `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, so a retained response
+    // resolves against the book's raw logical text and a fetched one against the
+    // response URL it actually came from.
     publishBook(
-      cover: cover.isEmpty ? '' : '${_url(parseBase ?? hit.url, cover)}',
+      cover: cover.isEmpty
+          ? ''
+          : coverRawBase == null
+          ? '${_url(parseBase ?? hit.url, cover)}'
+          : sourceUrlTextResolved(
+              parseBase ?? hit.url,
+              cover,
+              rawBase: coverRawBase,
+            ),
     );
     final book = _book!;
     final tocAddress = await _optional(

@@ -1357,9 +1357,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       split.path,
       keepFragment: true,
     );
+    // The frozen `BookList.getInfoItem` identity is one native resolution of
+    // the rule's own text against the URL the search request actually reached
+    // (`BookList.kt:159-163`, `AnalyzeRule.kt:317-323`), so a relative rule under
+    // a resolved directory keeps exactly that directory once.
     final identityText = Uri.tryParse(split.path)?.hasScheme == true
         ? split.path
-        : sourceUrlTextResolved(identityTarget, split.path);
+        : sourceUrlTextResolved(url, split.path);
     captureIdentity?.call(identityTarget, '$identityText${split.tail}');
     return (url, split.options);
   }
@@ -1761,9 +1765,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           ? bookAddress
           : bookRawScalar!;
       final nativeParts = splitSourceUrlOptions(nativeScalar);
-      final nativeBookAddress = sourceUrlTextResolved(finalUrl, nativeScalar);
-      final publicationAddress =
-          sourceUrlTextResolved(finalUrl, nativeParts.path) + nativeParts.tail;
+      // The frozen `getString(bookUrlRule, isUrl = true)` answers the
+      // analyser's base URL text for a Kotlin-blank result
+      // (`AnalyzeRule.kt:315-323`), which is the search response's whole
+      // address — its query included.
+      final blankScalar = sourceKotlinIsBlank(nativeScalar);
+      final nativeBookAddress = blankScalar
+          ? '$finalUrl'
+          : sourceUrlTextResolved(finalUrl, nativeScalar);
+      final publicationAddress = blankScalar
+          ? nativeBookAddress
+          : sourceUrlTextResolved(finalUrl, nativeParts.path) +
+                nativeParts.tail;
       _bookRequests[bookUrlTarget] = (
         address: bookAddress,
         base: finalUrl,
@@ -1871,12 +1884,39 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
     final retainedBody = retained != null && retained.isNotEmpty;
+    // The logical base is the book's finished native text before its option
+    // boundary, taken as text: publication never parses the option object it
+    // came from.
+    final nativeBoundary = sourceUrlOptionBoundaryOf(nativeBookAddress);
     final logicalBase = Uri.tryParse(
-      splitSourceUrlOptions(nativeBookAddress).path,
+      sourceKotlinTrim(
+        nativeBoundary == null
+            ? nativeBookAddress
+            : nativeBookAddress.substring(0, nativeBoundary),
+      ),
     );
     final parseBase = retainedBody ? (logicalBase ?? infoUrl) : infoUrl;
-    final (book, tocText) = await _readBookInfo(html, parseBase, hit);
-    final effectiveTocText = tocText.trim().isEmpty ? '' : tocText;
+    final (book, tocText) = await _readBookInfo(
+      html,
+      parseBase,
+      hit,
+      coverRawBase: retainedBody ? publicationAddress : null,
+    );
+    final effectiveTocText = sourceKotlinIsBlank(tocText) ? '' : tocText;
+    final comparisonBase = retainedBody
+        ? (logicalBase ?? parseBase)
+        : parseBase;
+    // The frozen `BookInfo.kt:150-157` compares the finished TOC text with the
+    // book's own finished text. One native URL operation over the whole rule
+    // result decides it, so an option tail that holds a dot segment takes part
+    // in the comparison instead of being appended after a separate resolution.
+    final tocNativeText = effectiveTocText.isEmpty
+        ? nativeBookAddress
+        : sourceUrlNativeText(
+            effectiveTocText,
+            comparisonBase,
+            rawBase: retainedBody ? publicationAddress : null,
+          );
     return SourceBookInfo(
       book: book,
       tocAddress: effectiveTocText,
@@ -1886,21 +1926,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       keyword: _keyword,
       page: _page,
       tocBase: parseBase,
-      tocHtml:
-          resolveSourceTocUrl(
-                address: effectiveTocText,
-                base: retainedBody
-                    ? (Uri.tryParse(
-                            splitSourceUrlOptions(nativeBookAddress).path,
-                          ) ??
-                          parseBase)
-                    : parseBase,
-                fallbackAddress: nativeBookAddress,
-                rawBase: retainedBody ? publicationAddress : null,
-              ) ==
-              nativeBookAddress
-          ? html
-          : null,
+      tocHtml: tocNativeText == nativeBookAddress ? html : null,
     );
   }
 
@@ -1934,6 +1960,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // options the TOC fetch parses again. The declared address's own options
     // are evaluated now, at the TOC stage, and never in the information stage.
     final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    // A retained page is read at the book's own finished native text
+    // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
+    // relative chapters and next-page addresses resolve there rather than at the
+    // response URL a redirect landed on. The information stage keeps reporting
+    // the response it actually fetched.
+    final retainedPageUrl = retainedFirstPage
+        ? Uri.tryParse(
+            info.book.addressContext?.comparisonAddress ??
+                info.book.identityAddress,
+          )
+        : null;
     final (tocTarget, tocOptions) = retainedFirstPage
         ? (bookUrl, const SourceUrlOptions())
         : info.tocAddress.isEmpty
@@ -1958,7 +1995,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
-    String tocFallbackAddress(SourcePageRequest request) {
+    /// The frozen `bookChapter.url = baseUrl` fallback (`BookChapterList.kt:229-243`)
+    /// writes the page's own finished TOC text into an empty chapter URL. A
+    /// retained first page publishes the approved TOC value; a fetched page
+    /// resolves the address it was read for.
+    String tocFallbackAddress(
+      SourcePageRequest request, {
+      bool retained = false,
+    }) {
+      if (retained) return info.tocUrl;
       if (request.address.isEmpty) {
         return resolveSourceTocUrl(
           address: '',
@@ -1999,7 +2044,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
           var fetched = cachedFirstPage
-              ? SourceStageResponse(body: info.tocHtml!, url: info.tocBase)
+              ? SourceStageResponse(
+                  body: info.tocHtml!,
+                  url: retainedPageUrl ?? info.tocBase,
+                )
               : await _fetch(
                   request.url,
                   BookSourceStage.tableOfContents,
@@ -2161,7 +2209,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           }
 
           // Only ordinary empty URLs need this text; cache it lazily per page.
-          late final ordinaryFallbackAddress = tocFallbackAddress(request);
+          late final ordinaryFallbackAddress = tocFallbackAddress(
+            request,
+            retained: cachedFirstPage,
+          );
           for (var index = 0; index < count; index++) {
             publishTocChapter('', '');
             // One rebuilt item's chapter variables start empty and keep only
@@ -2353,8 +2404,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, String)> _readBookInfo(
     String html,
     Uri infoUrl,
-    HtmlBook hit,
-  ) async {
+    HtmlBook hit, {
+    String? coverRawBase,
+  }) async {
     _book = hit;
     final batch = HtmlRuleBatch(html);
     final rawFields = <String, String>{
@@ -2493,8 +2545,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final detailsIntro = formatSourceIntro(await read('intro'));
     publishBook(intro: detailsIntro);
     final coverText = await read('coverUrl', url: true);
+    // The frozen `BookInfo.kt:137-145` cover call is the String-base overload
+    // `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, so a retained response
+    // resolves against the book's raw logical text and a fetched one against the
+    // response URL it actually came from.
     publishBook(
-      cover: coverText.isEmpty ? '' : '${_resolve(infoUrl, coverText)}',
+      cover: coverText.isEmpty
+          ? ''
+          : coverRawBase == null
+          ? '${_resolve(infoUrl, coverText)}'
+          : sourceUrlTextResolved(infoUrl, coverText, rawBase: coverRawBase),
     );
     final book = _book!;
     final tocText = await read('tocUrl', url: true);
