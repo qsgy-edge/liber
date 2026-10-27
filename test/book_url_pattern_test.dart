@@ -1758,6 +1758,88 @@ void main() {
     }
   });
 
+  group('finished scalar and resolved publication', () {
+    test(
+      'HTML ordinary publication resolves against the search page',
+      () async {
+        const origin = 'http://source.test';
+        final body =
+            '<div class="item"><a href="book/1">Book</a></div>'
+            '<h2>Book</h2><ul id="list"><li><a href="">Chapter</a></li></ul>';
+        final pages = _Pages({
+          '/catalog/search': body,
+          '/catalog/book/1': body,
+        });
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'searchUrl': '/catalog/search',
+          'ruleSearch': {
+            'bookList': '.item',
+            'name': 'a@text',
+            'bookUrl': 'a@href',
+          },
+          'ruleBookInfo': {'name': 'h2@text', 'tocUrl': ''},
+          'ruleToc': {
+            'chapterList': '#list li',
+            'chapterName': 'a@text',
+            'chapterUrl': 'a@href',
+          },
+        };
+        final pipeline = HtmlSourcePipeline(source, pages);
+        try {
+          final hit = (await pipeline.search('1')).single;
+          expect(hit.title, 'Book');
+          expect(
+            hit.addressContext?.publicationAddress,
+            '$origin/catalog/book/1',
+          );
+          final info = await pipeline.bookInfo(hit);
+          final (_, chapters) = await pipeline.tableOfContents(info);
+          expect(info.tocUrl, '$origin/catalog/book/1');
+          expect(chapters.single.address, '$origin/catalog/book/1');
+        } finally {
+          pipeline.cancel();
+        }
+      },
+    );
+
+    test('HTML interpolation admission uses the finished scalar once', () async {
+      const origin = 'http://source.test';
+      final body =
+          '<h2>Book</h2><ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
+      final pages = _Pages({'/book/1': body});
+      final state = SourceHostState();
+      final source = <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/book/1',
+        'loginCheckJs':
+            "source.put('checks', String(Number(source.get('checks')||'0')+1)); result",
+        'ruleSearch': {
+          'bookList': '@js:${jsonEncode(['/seed'])}',
+          'name': "@js:'Book'",
+          'bookUrl': '{{"/book/1"}}',
+        },
+        'ruleBookInfo': {'name': 'h2@text', 'tocUrl': ''},
+      };
+      final pipeline = HtmlSourcePipeline(source, pages, hostState: state);
+      try {
+        final hit = (await pipeline.search('1')).single;
+        expect(hit.title, 'Book');
+        expect(hit.identityAddress, '$origin/book/1');
+        expect(hit.addressContext?.comparisonAddress, '$origin/book/1');
+        final info = await pipeline.bookInfo(hit);
+        expect(info.book.title, 'Book');
+        expect(hit.infoHtml, isNotNull);
+        expect(
+          await state.entry(origin, sourceRuleVariableKey(origin, 'checks')),
+          '1',
+        );
+      } finally {
+        pipeline.cancel();
+      }
+    });
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an

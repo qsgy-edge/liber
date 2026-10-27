@@ -310,7 +310,16 @@ class SourceBookInfo {
     address: tocAddress,
     base: tocBase,
     fallbackAddress: bookAddress,
+    rawBase: _rawBaseForPublication(bookAddress),
   );
+}
+
+String? _rawBaseForPublication(String address) {
+  final text = address.trim();
+  if (text.isEmpty) return null;
+  final host = Uri.tryParse(text)?.host ?? '';
+  final unicode = text.codeUnits.any((unit) => unit > 127);
+  return unicode || host != host.toLowerCase() ? text : null;
 }
 
 /// The full resolved TOC identity, including its requested raw query and its
@@ -320,6 +329,7 @@ String resolveSourceTocUrl({
   required String address,
   required Uri base,
   required String fallbackAddress,
+  String? rawBase,
 }) {
   final value = address.isEmpty ? fallbackAddress : address;
   final boundary = sourceUrlOptionBoundaryOf(value);
@@ -330,7 +340,7 @@ String resolveSourceTocUrl({
   final parsed = Uri.tryParse(path);
   final text = parsed != null && parsed.hasScheme
       ? path
-      : sourceUrlTextResolved(base, path);
+      : sourceUrlTextResolved(base, path, rawBase: rawBase);
   return '$text$tail';
 }
 

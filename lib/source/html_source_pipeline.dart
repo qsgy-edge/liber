@@ -1085,7 +1085,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       forStringList: forStringList,
     );
     final finished = _scalarTail(field, applied);
-    onRaw?.call(field.scripts.isEmpty ? (rawInput ?? finished) : finished);
+    onRaw?.call(
+      field.scripts.isEmpty &&
+              !field.isLiteralValue &&
+              !splitRuleFields(field.extractionRule ?? '').hasReplacement
+          ? (rawInput ?? finished)
+          : finished,
+    );
     if (forStringList) return _kindTexts(applied).join(',');
     return finished;
   }
@@ -1751,13 +1757,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         finalUrl,
         bookAddress,
       );
-      final nativeParts = splitSourceUrlOptions(
-        bookRawScalar == null || bookRawScalar!.isEmpty
-            ? bookAddress
-            : bookRawScalar!,
-      );
-      final nativeBookAddress =
-          '${sourceUrlTextResolved(finalUrl, nativeParts.path)}${nativeParts.tail}';
+      final nativeScalar = bookRawScalar == null || bookRawScalar!.isEmpty
+          ? bookAddress
+          : bookRawScalar!;
+      final nativeParts = splitSourceUrlOptions(nativeScalar);
+      final nativeBookAddress = sourceUrlTextResolved(finalUrl, nativeScalar);
+      final publicationAddress =
+          sourceUrlTextResolved(finalUrl, nativeParts.path) + nativeParts.tail;
       _bookRequests[bookUrlTarget] = (
         address: bookAddress,
         base: finalUrl,
@@ -1775,7 +1781,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         kind: kindValue,
         addressContext: (
           comparisonAddress: nativeBookAddress,
-          publicationAddress: bookAddress,
+          publicationAddress: publicationAddress,
         ),
       );
       books.add(
@@ -1838,9 +1844,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     } else if (bookRequest == null) {
       nativeBookAddress = hit.identityAddress;
     } else {
-      final bookParts = splitSourceUrlOptions(bookAddressText);
-      nativeBookAddress =
-          '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+      nativeBookAddress = sourceUrlTextResolved(
+        bookRequest.base,
+        bookAddressText,
+      );
     }
     final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
     final retained = hit.infoHtml;
@@ -1863,25 +1870,33 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           );
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
-    final (book, tocText) = await _readBookInfo(html, infoUrl, hit);
     final retainedBody = retained != null && retained.isNotEmpty;
+    final logicalBase = Uri.tryParse(
+      splitSourceUrlOptions(nativeBookAddress).path,
+    );
+    final parseBase = retainedBody ? (logicalBase ?? infoUrl) : infoUrl;
+    final (book, tocText) = await _readBookInfo(html, parseBase, hit);
+    final effectiveTocText = tocText.trim().isEmpty ? '' : tocText;
     return SourceBookInfo(
       book: book,
-      tocAddress: tocText,
+      tocAddress: effectiveTocText,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
-      tocBase: retainedBody
-          ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
-                infoUrl)
-          : infoUrl,
+      tocBase: parseBase,
       tocHtml:
           resolveSourceTocUrl(
-                address: tocText,
-                base: infoUrl,
+                address: effectiveTocText,
+                base: retainedBody
+                    ? (Uri.tryParse(
+                            splitSourceUrlOptions(nativeBookAddress).path,
+                          ) ??
+                          parseBase)
+                    : parseBase,
                 fallbackAddress: nativeBookAddress,
+                rawBase: retainedBody ? publicationAddress : null,
               ) ==
               nativeBookAddress
           ? html
@@ -1984,7 +1999,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
           var fetched = cachedFirstPage
-              ? SourceStageResponse(body: info.tocHtml!, url: request.url)
+              ? SourceStageResponse(body: info.tocHtml!, url: info.tocBase)
               : await _fetch(
                   request.url,
                   BookSourceStage.tableOfContents,

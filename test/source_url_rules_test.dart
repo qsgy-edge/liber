@@ -108,6 +108,21 @@ void main() {
     );
   });
 
+  test('inherited empty path and query presence follow native URL text', () {
+    for (final (base, expected) in [
+      ('http://a/book?', 'http://a/book?#next'),
+      ('http://a', 'http://a#next'),
+      ('http://a?keep=1', 'http://a?keep=1#next'),
+      ('http://a/book?keep=1', 'http://a/book?keep=1#next'),
+    ]) {
+      expect(
+        sourceUrlTextResolved(Uri.parse(base), '#next'),
+        expected,
+        reason: base,
+      );
+    }
+  });
+
   test('query skip rule accepts a trailing escape but not a broken one', () {
     expect(sourceQueryLooksEncoded(r'a=%2B'), isTrue);
     expect(sourceQueryLooksEncoded(r'a=%2'), isFalse);

@@ -683,6 +683,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
   }) async {
     final expandedAddress = await _expand(template, keyword);
     final split = splitSourceUrlOptions(expandedAddress);
+    Uri? capturedPreOption;
+    if (captureIdentity != null) {
+      capturedPreOption = _url(base, split.path);
+      if (!split.options.isPost) {
+        capturedPreOption = _url(
+          base,
+          await encodeSourceQuery(
+            sourceUrlTextWithRawQuery(capturedPreOption, split.path),
+            charset: split.options.charset,
+          ),
+        ).removeFragment();
+      }
+    }
     var url = _url(base, split.path);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
@@ -704,20 +717,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
     }
     if (captureIdentity != null) {
-      // The extra pre-option identity is needed only when a caller captures
-      // ordinary identity; a no-capture request must not validate or encode
-      // this unused target before its option script runs.
-      var preOptionUrl = _url(base, split.path);
-      if (!split.options.isPost) {
-        preOptionUrl = _url(
-          base,
-          await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(preOptionUrl, split.path),
-            charset: split.options.charset,
-          ),
-        ).removeFragment();
-      }
-      captureIdentity(preOptionUrl, expandedAddress);
+      captureIdentity(capturedPreOption!, expandedAddress);
     }
     return (url, split.options);
   }
@@ -1110,19 +1110,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
         options: bookOptions,
       );
       final wrapper = bookAddress.trim();
-      final isWrapper =
-          !wrapper.contains('{{') &&
-          (wrapper.toLowerCase().startsWith('@js:') ||
-              wrapper.toLowerCase().startsWith('<js>') ||
-              wrapper.startsWith('[') ||
-              wrapper.startsWith('{'));
-      final nativeBookAddress = isWrapper
-          ? sourceUrlTextResolved(finalUrl, wrapper)
-          : () {
-              final comparisonParts = splitSourceUrlOptions(bookAddress);
-              return '${sourceUrlTextResolved(finalUrl, comparisonParts.path)}${comparisonParts.tail}';
-            }();
-      final publicationScalar = isWrapper ? '$bookUrl' : expandedBookAddress;
+      final nativeBookAddress = sourceUrlTextResolved(finalUrl, wrapper);
+      final publicationScalar = expandedBookAddress;
       final publicationParts = splitSourceUrlOptions(publicationScalar);
       final publicationAddress =
           '${sourceUrlTextResolved(finalUrl, publicationParts.path)}${publicationParts.tail}';
@@ -1221,9 +1210,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     } else if (bookRequest == null) {
       nativeBookAddress = hit.identityAddress;
     } else {
-      final bookParts = splitSourceUrlOptions(bookAddressText);
-      nativeBookAddress =
-          '${sourceUrlTextResolved(bookRequest.base, bookParts.path)}${bookParts.tail}';
+      nativeBookAddress = sourceUrlTextResolved(
+        bookRequest.base,
+        bookAddressText,
+      );
     }
     final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
     final cached = retainedInfo != null && retainedInfo.isNotEmpty;
@@ -1244,18 +1234,27 @@ class JsonSourcePipeline implements BookSourcePipeline {
             ),
           );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
-    final (book, tocAddress) = await _readBookInfo(document, hit, info);
     final retainedBody = retainedInfo != null && retainedInfo.isNotEmpty;
+    final logicalBase = retainedBody
+        ? _jsonNativeBaseUri(nativeBookAddress)
+        : null;
+    final parseBase = retainedBody ? (logicalBase ?? hit.url) : hit.url;
+    final (book, tocAddress) = await _readBookInfo(
+      document,
+      hit,
+      info,
+      parseBase: parseBase,
+    );
+    final effectiveTocAddress = tocAddress.trim().isEmpty ? '' : tocAddress;
     final Uri tocBase;
     if (retainedBody) {
-      final retainedParts = splitSourceUrlOptions(nativeBookAddress);
-      tocBase = Uri.tryParse(retainedParts.path) ?? bookInfo.url;
+      tocBase = logicalBase ?? bookInfo.url;
     } else {
       tocBase = hit.url.hasScheme ? bookInfo.url : hit.url;
     }
     return SourceBookInfo(
       book: book,
-      tocAddress: tocAddress,
+      tocAddress: effectiveTocAddress,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: publicationAddress,
@@ -1264,9 +1263,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       tocBase: tocBase,
       tocHtml:
           resolveSourceTocUrl(
-                address: tocAddress,
-                base: tocBase,
+                address: effectiveTocAddress,
+                base: retainedBody ? (logicalBase ?? tocBase) : tocBase,
                 fallbackAddress: nativeBookAddress,
+                rawBase: retainedBody ? publicationAddress : null,
               ) ==
               nativeBookAddress
           ? bookInfo.body
@@ -1380,7 +1380,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
           var tocPage = cachedFirstPage
-              ? SourceStageResponse(body: info.tocHtml!, url: request.url)
+              ? SourceStageResponse(body: info.tocHtml!, url: info.tocBase)
               : await _fetch(
                   BookSourceStage.tableOfContents,
                   request.url,
@@ -1652,8 +1652,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, String)> _readBookInfo(
     Object? document,
     HtmlBook hit,
-    Map<String, String> info,
-  ) async {
+    Map<String, String> info, {
+    Uri? parseBase,
+  }) async {
     _book = hit;
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
     // read into a subtree of the response; it is a rule field too, so a `@js:`
@@ -1768,7 +1769,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       info['coverUrl'] ?? '',
       label: 'ruleBookInfo.coverUrl',
     );
-    publishBook(cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}');
+    publishBook(
+      cover: cover.isEmpty ? '' : '${_url(parseBase ?? hit.url, cover)}',
+    );
     final book = _book!;
     final tocAddress = await _optional(
       page,
@@ -2318,4 +2321,15 @@ class SourceReadingResult {
   final List<SourceChapter> chapters;
   final String content;
   final List<BookSourceTraceEntry> trace;
+}
+
+Uri? _jsonNativeBaseUri(String text) {
+  final value = text.trim();
+  if (value.startsWith('@js:') ||
+      value.toLowerCase().startsWith('<js>') ||
+      value.startsWith('[') ||
+      value.startsWith('{')) {
+    return Uri.tryParse(value);
+  }
+  return Uri.tryParse(splitSourceUrlOptions(value).path);
 }

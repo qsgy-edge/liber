@@ -834,9 +834,10 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
 /// fragment stay raw. This
 /// is publication text, not a wire target; callers validate the actual request
 /// separately.
-String sourceUrlTextResolved(Uri base, String raw) {
+String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
   final trimmed = raw.trim();
   if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
+  if (rawBase != null) return _resolveAgainstRawBase(rawBase, trimmed);
   var path = trimmed;
   String? query;
   String? fragment;
@@ -865,9 +866,7 @@ String sourceUrlTextResolved(Uri base, String raw) {
     } else if (path.isEmpty) {
       // A query-only relative reference takes the base directory; a
       // fragment-only one keeps the base path and query.
-      resolvedPath = query != null
-          ? _baseDirectory(base.path)
-          : (base.path.isEmpty ? '/' : base.path);
+      resolvedPath = query != null ? _baseDirectory(base.path) : base.path;
     } else {
       final basePath = _baseDirectory(base.path);
       resolvedPath = _normalizeRawPath('$basePath$path');
@@ -877,10 +876,60 @@ String sourceUrlTextResolved(Uri base, String raw) {
   if (outputQuery == null &&
       path.isEmpty &&
       fragment != null &&
-      base.query.isNotEmpty) {
+      base.toString().contains('?')) {
     outputQuery = base.query;
   }
   final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
+  if (outputQuery != null) output.write('?$outputQuery');
+  if (fragment != null) output.write('#$fragment');
+  return output.toString();
+}
+
+String _resolveAgainstRawBase(String baseText, String raw) {
+  final match = RegExp(
+    r'^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$',
+  ).firstMatch(baseText.trim());
+  if (match == null) return raw;
+  final scheme = match.group(1)!;
+  final authority = match.group(2)!;
+  final basePath = match.group(3) ?? '';
+  final baseQuery = match.group(4);
+  var path = raw;
+  String? query;
+  String? fragment;
+  final hash = path.indexOf('#');
+  if (hash >= 0) {
+    fragment = path.substring(hash + 1);
+    path = path.substring(0, hash);
+  }
+  final question = path.indexOf('?');
+  if (question >= 0) {
+    query = path.substring(question + 1);
+    path = path.substring(0, question);
+  }
+  String resolvedAuthority = authority;
+  String resolvedPath;
+  if (path.startsWith('//')) {
+    final slash = path.indexOf('/', 2);
+    resolvedAuthority = slash < 0
+        ? path.substring(2)
+        : path.substring(2, slash);
+    resolvedPath = slash < 0 ? '' : path.substring(slash);
+  } else if (path.startsWith('/')) {
+    resolvedPath = path;
+  } else if (path.isEmpty) {
+    resolvedPath = query != null ? _baseDirectory(basePath) : basePath;
+  } else {
+    resolvedPath = _normalizeRawPath('${_baseDirectory(basePath)}$path');
+  }
+  var outputQuery = query;
+  if (outputQuery == null &&
+      path.isEmpty &&
+      fragment != null &&
+      baseQuery != null) {
+    outputQuery = baseQuery.substring(1);
+  }
+  final output = StringBuffer('$scheme://$resolvedAuthority$resolvedPath');
   if (outputQuery != null) output.write('?$outputQuery');
   if (fragment != null) output.write('#$fragment');
   return output.toString();
