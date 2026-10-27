@@ -1678,7 +1678,7 @@ void main() {
     }
   });
 
-  group('JSON fetched response URL base', () {
+  group('repair05 JSON fetched response URL base', () {
     for (final scenario in ['plain', 'redirect', 'retain', 'empty']) {
       test('real loopback scenario=$scenario', () async {
         final redirected = scenario != 'plain';
@@ -1758,7 +1758,7 @@ void main() {
     }
   });
 
-  group('finished scalar and resolved publication', () {
+  group('repair05 finished scalar and resolved publication', () {
     test(
       'HTML ordinary publication resolves against the search page',
       () async {
@@ -1840,7 +1840,7 @@ void main() {
     });
   });
 
-  group('retained native bases and captured-key order', () {
+  group('repair05 retained native bases and captured-key order', () {
     test('retained raw uppercase authority survives publication', () async {
       const origin = 'http://UPPER.test/catalog/book?keep=word';
       final body = '<h2>Book</h2><a id="toc" href="#next">TOC</a>';
@@ -1897,6 +1897,95 @@ void main() {
         pipeline.cancel();
       }
     });
+  });
+
+  group('repair05 same-path response provenance', () {
+    for (final json in [false, true]) {
+      for (final scenario in ['query', 'authority']) {
+        test('real same-path $scenario json=$json', () async {
+          final first = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          final second = scenario == 'authority'
+              ? await HttpServer.bind(InternetAddress.loopbackIPv4, 0)
+              : null;
+          final origin = 'http://127.0.0.1:${first.port}';
+          final finalOrigin = second == null
+              ? origin
+              : 'http://127.0.0.1:${second.port}';
+          final toc = scenario == 'authority' ? 'toc' : '#next';
+          final seen = <Map<String, String>>[];
+          final body = json
+              ? jsonEncode({
+                  'title': 'Book',
+                  'toc': toc,
+                  'items': [
+                    {'title': 'Book', 'url': '/book/1?q=word'},
+                  ],
+                })
+              : '<h2>Book</h2><div class="item"><a href="/book/1?q=word">Book</a></div>'
+                    '<a id="toc" href="$toc">TOC</a>';
+          Future<void> respond(HttpRequest request, String server) async {
+            seen.add({'server': server, 'target': '${request.uri}'});
+            final redirect = server == 'first' && request.uri.path == '/book/1';
+            if (redirect) {
+              request.response.statusCode = 302;
+              request.response.headers.set(
+                'Location',
+                scenario == 'query'
+                    ? '/book/1?q=final'
+                    : '$finalOrigin/book/1?q=word',
+              );
+            } else {
+              request.response.headers.contentType = ContentType(
+                json ? 'application' : 'text',
+                json ? 'json' : 'html',
+              );
+              request.response.write(body);
+            }
+            await request.response.close();
+          }
+
+          first.listen((request) => respond(request, 'first'));
+          second?.listen((request) => respond(request, 'second'));
+          final source = <String, dynamic>{
+            'bookSourceUrl': origin,
+            'searchUrl': '/search',
+            'bookUrlPattern': r'$^',
+            'ruleSearch': json
+                ? {
+                    'bookList': r'$.items[*]',
+                    'name': r'$.title',
+                    'bookUrl': r'$.url',
+                  }
+                : {'bookList': '.item', 'name': 'a@text', 'bookUrl': 'a@href'},
+            'ruleBookInfo': json
+                ? {'name': r'$.title', 'tocUrl': r'$.toc'}
+                : {'name': 'h2@text', 'tocUrl': '#toc@href'},
+          };
+          final pipeline = json
+              ? JsonSourcePipeline(source, HttpSourceTransport())
+              : HtmlSourcePipeline(source, HttpSourceTransport());
+          try {
+            final hit = (await pipeline.search('1')).single;
+            expect(hit.title, 'Book');
+            final info = await pipeline.bookInfo(hit);
+            final finalAddress =
+                '$finalOrigin/book/1?q=${scenario == 'query' ? 'final' : 'word'}';
+            expect(info.tocBase.toString(), finalAddress);
+            expect(
+              info.tocUrl,
+              scenario == 'authority'
+                  ? '$finalOrigin/book/toc'
+                  : '$finalAddress#next',
+            );
+            expect(seen.map((e) => e['target']), contains('/search'));
+          } finally {
+            pipeline.cancel();
+            await first.close(force: true);
+            if (second != null) await second.close(force: true);
+          }
+        });
+      }
+    }
   });
 
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {

@@ -280,9 +280,10 @@ class SourceBookInfo {
   /// declared none.
   final String tocAddress;
 
-  /// The base [tocAddress] resolves against: the response the information stage
-  /// actually read (HTML) or the book's own URL (JSON), as that adapter's TOC
-  /// walk has always resolved it.
+  /// The base [tocAddress] resolves against: the native logical book/TOC text
+  /// for a retained information body, or the actual fetched response URL for a
+  /// fetched information response. The historical-relative legacy branch keeps
+  /// its original missing-base behavior.
   final Uri tocBase;
 
   /// The book request's own target, options and address text. The frozen TOC
@@ -317,9 +318,15 @@ class SourceBookInfo {
 String? _rawBaseForPublication(String address, Uri base) {
   final text = address.trim();
   if (text.isEmpty) return null;
-  final parts = splitSourceUrlOptions(text);
-  final parsed = Uri.tryParse(parts.path);
-  if (parsed == null || parsed.path != base.path) return null;
+  final parsed = Uri.tryParse(splitSourceUrlOptions(text).path);
+  if (parsed == null ||
+      parsed.scheme != base.scheme ||
+      parsed.host.toLowerCase() != base.host.toLowerCase() ||
+      parsed.port != base.port ||
+      parsed.path != base.path ||
+      parsed.query != base.query) {
+    return null;
+  }
   return text;
 }
 
