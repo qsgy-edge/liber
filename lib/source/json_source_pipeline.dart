@@ -20,6 +20,23 @@ import 'source_stage_diagnostic.dart';
 
 export 'source_stage_diagnostic.dart';
 
+/// The request target an ordinary empty chapter keeps when the TOC page's own
+/// address stands in for a rule that answered nothing.
+///
+/// The frozen empty-URL fallback writes the page's own finished address as the
+/// chapter text (`BookChapterList.kt:229-243`), and this carrier keeps that text
+/// in `rawAddress` so its options persist exactly once. The chapter's resolved
+/// `url` is the wire target inside that text — the part before a `,{…}` option
+/// boundary — so an option tail never reaches the target or the store key. The
+/// boundary is read textually and the prefix is taken as written: no option
+/// object is parsed or validated and no trim is applied. An address without a
+/// boundary keeps the established page URI.
+Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
+  final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
+  if (boundary == null) return pageUrl;
+  return Uri.tryParse(fallbackAddress.substring(0, boundary)) ?? pageUrl;
+}
+
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
 ///
 /// A JSON Book Source runs the same four stages over the same HTTP semantics as
@@ -1530,7 +1547,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       )
                     : SourceChapter(
                         name,
-                        tocPage.url,
+                        _ordinaryChapterTarget(
+                          ordinaryFallbackAddress,
+                          tocPage.url,
+                        ),
                         rawAddress: ordinaryFallbackAddress,
                         tag: tag,
                         isVip: isVip,
