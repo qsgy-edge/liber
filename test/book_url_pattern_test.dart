@@ -11,6 +11,7 @@ import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_url_rules.dart';
 
 import 'native_library.dart';
 
@@ -3713,6 +3714,267 @@ void main() {
             },
           );
         }
+      }
+    }
+  });
+
+  group('repair07completion native logical bases', () {
+    // A detail page the search stage keeps carries two different address facts:
+    // the native logical whole-scalar text (`BookList.kt:159-163` over
+    // `AnalyzeUrl.ruleUrl`) and the exact published tail. The retained cover and
+    // the nonempty relative chapter reach the frozen String overload
+    // (`NetworkUtils.kt:160-169`), so both resolve against the native logical
+    // text before its first comma — not against the expanded publication. The
+    // ordinary empty chapter keeps publishing the expanded fact.
+    for (final json in [false, true]) {
+      for (final deep in [false, true]) {
+        for (final feature in ['cover', 'chapter']) {
+          test(
+            'repair07completion String consumer json=$json deep=$deep feature=$feature',
+            () async {
+              const origin = 'http://source.test';
+              final header = deep ? 'a/../../b' : 'ab';
+              final tail =
+                  ',${jsonEncode({
+                    'headers': {'X-Text': header},
+                  })}';
+              final publication = '$origin/catalog/book/book/1$tail';
+              final comparison = deep
+                  ? '$origin/catalog/book/b"}}'
+                  : publication;
+              final directory = deep
+                  ? '$origin/catalog/book'
+                  : '$origin/catalog/book/book';
+              final page = _repair06Page(
+                json,
+                chapter: 'child',
+                cover: 'cover.jpg',
+              );
+              final document = json
+                  ? jsonEncode({
+                      ...jsonDecode(page) as Map<String, dynamic>,
+                      'content': 'Body',
+                    })
+                  : '$page<div id="content">Body</div>';
+              final pages = _ContinuationPages(
+                document,
+                allowedPaths: const [
+                  '/catalog/book/1',
+                  '/catalog/book/child',
+                  '/catalog/book/book/child',
+                ],
+              );
+              final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+                ..['bookSourceUrl'] = '$origin/catalog/search'
+                ..['searchUrl'] = 'book/1$tail'
+                ..['bookUrlPattern'] = '.*'
+                ..['ruleContent'] = {
+                  'content': json ? r'$.content' : '#content@text',
+                };
+              final pipeline = _openContinuation(json, source, pages);
+              try {
+                final hit = (await pipeline.search('1')).single;
+                expect(hit.title, 'Book', reason: 'premise: detail title');
+                expect(
+                  hit.infoHtml,
+                  isNotEmpty,
+                  reason: 'premise: retained detail body',
+                );
+                expect(
+                  hit.addressContext?.comparisonAddress,
+                  comparison,
+                  reason: 'premise: genuine whole expanded scalar comparison',
+                );
+                expect(
+                  hit.addressContext?.publicationAddress,
+                  publication,
+                  reason: 'premise: exact publication remains independent',
+                );
+                expect(
+                  hit.identityAddress,
+                  publication,
+                  reason: 'premise: approved stored identity',
+                );
+                expect(
+                  pages.requests.single.url.toString(),
+                  '$origin/catalog/book/1',
+                  reason: 'premise: real search target',
+                );
+                expect(
+                  {
+                    for (final entry in pages.requests.single.headers.entries)
+                      entry.key.toLowerCase(): entry.value,
+                  }['x-text'],
+                  header,
+                  reason: 'premise: option header executed',
+                );
+                final info = await pipeline.bookInfo(hit);
+                expect(
+                  info.tocHtml,
+                  isNotEmpty,
+                  reason: 'premise: retained TOC body',
+                );
+                expect(info.tocAddress, '');
+                expect(
+                  info.tocUrl,
+                  publication,
+                  reason: 'premise: publication text unchanged',
+                );
+                expect(pages.requests.length, 1);
+                if (feature == 'cover') {
+                  expect(
+                    info.book.cover,
+                    '$directory/cover.jpg',
+                    reason: 'target: cover uses the native logical String base',
+                  );
+                } else {
+                  final (_, chapters) = await pipeline.tableOfContents(info);
+                  final chapter = chapters.single;
+                  expect(chapter.name, 'Chapter');
+                  expect(
+                    chapter.address,
+                    'child',
+                    reason: 'premise: nonempty relative chapter',
+                  );
+                  expect(
+                    pages.requests.length,
+                    1,
+                    reason: 'premise: no TOC network work',
+                  );
+                  await pipeline.chapter(chapter, book: info.book);
+                  expect(pages.requests.length, 2);
+                  expect(
+                    chapter.url.toString(),
+                    '$directory/child',
+                    reason:
+                        'target: relative chapter uses the native logical String base',
+                  );
+                  expect(
+                    pages.requests.last.url.toString(),
+                    '$directory/child',
+                    reason:
+                        'target: actual content request uses the native logical String base',
+                  );
+                  expect(chapter.storeKey, '$directory/child');
+                }
+              } finally {
+                pipeline.cancel();
+              }
+            },
+          );
+        }
+      }
+    }
+
+    // A typed legacy `SourceBookInfo` already carries the evaluated request
+    // options of the text its retained TOC page publishes. An empty chapter's
+    // target is that text analyzed as a URL, so building it must not re-read and
+    // re-validate the whole raw option tail: an unsupported family still refuses
+    // when the chapter's own options are explicitly consumed
+    // (`SourceChapter.options`), which is the request consumer's place.
+    for (final json in [false, true]) {
+      for (final future in [false, true]) {
+        test(
+          'repair07completion legacy option admission json=$json future=$future',
+          () async {
+            const origin = 'http://source.test';
+            const wire = '$origin/book/1';
+            final tail =
+                ',${jsonEncode({
+                  'headers': {'X-Book': 'carry'},
+                  if (future) 'serverID': 'future',
+                })}';
+            final raw = '$wire$tail';
+            final document = _repair06Page(json, chapter: '');
+            final pages = _ContinuationPages(
+              document,
+              allowedPaths: const ['/book/1'],
+            );
+            final source = json ? _jsonSource(origin) : _htmlSource(origin);
+            final pipeline = _openContinuation(json, source, pages);
+            final info = SourceBookInfo(
+              book: HtmlBook(
+                url: Uri.parse(wire),
+                rawAddress: raw,
+                title: 'Book',
+                infoHtml: document,
+                addressContext: (
+                  comparisonAddress: raw,
+                  publicationAddress: raw,
+                ),
+              ),
+              tocAddress: '',
+              tocBase: Uri.parse(wire),
+              bookUrl: Uri.parse(wire),
+              bookOptions: const SourceUrlOptions(headers: {'X-Book': 'carry'}),
+              bookAddress: raw,
+              keyword: '1',
+              page: null,
+              tocHtml: document,
+            );
+            try {
+              expect(info.tocUrl, raw, reason: 'premise: raw text and options');
+              expect(
+                info.tocHtml,
+                isNotEmpty,
+                reason: 'premise: retained TOC body',
+              );
+              expect(
+                pages.requests,
+                isEmpty,
+                reason: 'premise: no request yet',
+              );
+              Object? failure;
+              List<SourceChapter>? values;
+              try {
+                final (_, chapters) = await pipeline.tableOfContents(info);
+                values = chapters;
+              } catch (error) {
+                failure = error;
+              }
+              expect(
+                failure,
+                isNull,
+                reason:
+                    'target: typed legacy retained TOC does not revalidate the raw request family',
+              );
+              final chapter = values!.single;
+              expect(
+                pages.requests,
+                isEmpty,
+                reason: 'target: no request for the empty chapter',
+              );
+              expect(
+                chapter.address,
+                raw,
+                reason: 'target: raw address text kept',
+              );
+              expect(
+                chapter.url.toString(),
+                wire,
+                reason: 'target: target from the evaluated request fact',
+              );
+              if (future) {
+                expect(
+                  () => chapter.options,
+                  throwsA(
+                    isA<UnsupportedError>().having(
+                      (error) => '${error.message}',
+                      'message',
+                      contains('serverID'),
+                    ),
+                  ),
+                  reason:
+                      'target: explicit option consumption keeps the named refusal',
+                );
+              } else {
+                expect(chapter.options.headers['X-Book'], 'carry');
+              }
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
       }
     }
   });
