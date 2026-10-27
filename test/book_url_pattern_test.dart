@@ -3983,10 +3983,11 @@ void main() {
     // An ordinary empty chapter's target is its own fallback text analyzed as a
     // URL (`WebBook.kt:320-330` over `AnalyzeUrl.kt:214-222`), so the charset it
     // consumes is the one that text declares — not the information request's.
-    // The frozen search-stage detail path records the request it made in
-    // `_bookRequests`; a special pattern hit, an empty-list fallback and a fresh
-    // pipeline handoff never do, and the fallback text's own `gbk` still decides
-    // its target, store key, persisted tail and first content request.
+    // This adapter's own book-request map is what a retained information page
+    // usually lacks here: a special pattern hit, an empty-list fallback and a
+    // fresh pipeline handoff keep no entry, so the carrying request's evaluated
+    // options never arrive and the fallback text's own `gbk` still decides its
+    // target, store key, persisted tail and first content request.
     for (final json in [false, true]) {
       for (final flow in ['pattern', 'fallback', 'fresh-pattern']) {
         for (final valueCase in ['unicode', 'preencoded', 'ascii']) {
@@ -3997,12 +3998,12 @@ void main() {
               final value = valueCase == 'unicode'
                   ? '中'
                   : valueCase == 'preencoded'
-                  ? '%D6%AD'
+                  ? '%D6%D0'
                   : 'word';
               final tail = ',${jsonEncode({'charset': 'gbk'})}';
               final raw = '$origin/book?q=$value$tail';
               final wire =
-                  '$origin/book?q=${valueCase == 'ascii' ? 'word' : '%D6%AD'}';
+                  '$origin/book?q=${valueCase == 'ascii' ? 'word' : '%D6%D0'}';
               final page = _repair06Page(json, chapter: '', hit: false);
               final document = json
                   ? jsonEncode({
@@ -4105,7 +4106,7 @@ void main() {
             final book =
                 'book/1,{"charset":"$first"}/../target?q=中,{"charset":"gbk"}';
             const rawToc = '$origin/catalog/book/target?q=中,{"charset":"gbk"}';
-            const wire = '$origin/catalog/book/target?q=%D6%AD';
+            const wire = '$origin/catalog/book/target?q=%D6%D0';
             final page = _repair06Page(
               json,
               book: book,
@@ -4183,6 +4184,103 @@ void main() {
               expect(chapter.persistedAddress, '$wire,{"charset":"gbk"}');
               await pipeline.chapter(chapter, book: info.book);
               expect('${pages.requests.last.url}', wire);
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
+    // A declared TOC address is the TOC page's own text, not the text of the
+    // information request that returned it: its method, charset and option
+    // script are its own facts, and a script in it has not run. The empty
+    // chapter still targets its own `gbk` query, and no information request's
+    // query history reaches it.
+    for (final json in [false, true]) {
+      for (final scripted in [false, true]) {
+        test(
+          'repair08 declared TOC script json=$json scripted=$scripted',
+          () async {
+            const origin = 'http://source.test';
+            final tail =
+                ',${jsonEncode({'charset': 'gbk', if (scripted) 'js': 'result'})}';
+            final rawToc = '$origin/catalog/book/target?q=中$tail';
+            final book = 'book/1,{"charset":"gbk"}/../target?q=中$tail';
+            final pages = _ContinuationPages(
+              _repair06Page(json, book: book, toc: rawToc, chapter: ''),
+              allowedPaths: const ['/catalog/search', '/catalog/book/1'],
+            );
+            final source = json
+                ? _jsonSource(
+                    '$origin/catalog/search',
+                    searchUrl: '/catalog/search',
+                  )
+                : _htmlSource(
+                    '$origin/catalog/search',
+                    searchUrl: '/catalog/search',
+                  );
+            final pipeline = _openContinuation(json, source, pages);
+            try {
+              final hit = (await pipeline.search('1')).single;
+              expect(hit.title, 'Book');
+              expect(hit.infoHtml, isNull, reason: 'premise: ordinary list');
+              expect(hit.addressContext?.comparisonAddress, rawToc);
+              final info = await pipeline.bookInfo(hit);
+              expect(
+                info.bookOptions.charset,
+                'gbk',
+                reason: 'premise: the information request keeps its charset',
+              );
+              expect(
+                info.bookOptions.js,
+                isNull,
+                reason:
+                    'premise: the information request carried no option script',
+              );
+              expect(
+                info.bookUrl.hasQuery,
+                isFalse,
+                reason: 'premise: the information request had no query',
+              );
+              expect(
+                info.tocAddress,
+                rawToc,
+                reason: 'premise: a declared TOC address, not the book address',
+              );
+              expect(
+                info.tocHtml,
+                isNotEmpty,
+                reason: 'premise: information reused as TOC',
+              );
+              expect(info.tocUrl, rawToc);
+              expect(
+                pages.requests.map((request) => '${request.url}').toList(),
+                ['$origin/catalog/search', '$origin/catalog/book/1'],
+              );
+              final (_, chapters) = await pipeline.tableOfContents(info);
+              final chapter = chapters.single;
+              expect(chapter.address, rawToc);
+              expect(chapter.options.charset, 'gbk');
+              expect(
+                chapter.options.js,
+                scripted ? 'result' : null,
+                reason: 'premise: the declared TOC keeps its own script',
+              );
+              const expected = '$origin/catalog/book/target?q=%D6%D0';
+              expect(
+                '${chapter.url}',
+                expected,
+                reason:
+                    'control: the declared TOC query does not depend on the information request',
+              );
+              expect(chapter.storeKey, expected);
+              expect(chapter.persistedAddress, '$expected$tail');
+              expect(
+                pages.requests.length,
+                2,
+                reason: 'control: no extra request for the declared TOC',
+              );
             } finally {
               pipeline.cancel();
             }
@@ -4580,7 +4678,7 @@ void main() {
             expect(info.tocUrl, raw, reason: 'premise: raw fallback text');
             expect(
               '${pages.requests.single.url}',
-              keepQuery ? '$origin/wire?q=%D6%AD' : '$origin/wire',
+              keepQuery ? '$origin/wire?q=%D6%D0' : '$origin/wire',
               reason: 'premise: the script result decided the real request',
             );
             expect(
@@ -4591,7 +4689,7 @@ void main() {
             final (_, chapters) = await pipeline.tableOfContents(info);
             final chapter = chapters.single;
             final expected =
-                '$origin/book?q=${keepQuery ? '%D6%AD' : '%E4%B8%AD'}';
+                '$origin/book?q=${keepQuery ? '%D6%D0' : '%E4%B8%AD'}';
             expect(chapter.address, raw);
             expect(
               '${chapter.url}',
