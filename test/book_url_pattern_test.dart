@@ -1678,6 +1678,86 @@ void main() {
     }
   });
 
+  group('JSON fetched response URL base', () {
+    for (final scenario in ['plain', 'redirect', 'retain', 'empty']) {
+      test('real loopback scenario=$scenario', () async {
+        final redirected = scenario != 'plain';
+        final toc = scenario == 'retain'
+            ? '../../book/1'
+            : scenario == 'empty'
+            ? ''
+            : 'toc';
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final base = 'http://127.0.0.1:${server.port}';
+        final seen = <String>[];
+        final body = jsonEncode({
+          'title': 'Book',
+          'toc': toc,
+          'items': [
+            {'title': 'Book', 'url': '/book/1'},
+          ],
+        });
+        server.listen((request) async {
+          seen.add(request.uri.path);
+          if (redirected && request.uri.path == '/book/1') {
+            request.response.statusCode = 302;
+            request.response.headers.set('Location', '/alt/deep/info');
+          } else {
+            request.response.headers.contentType = ContentType.json;
+            request.response.write(body);
+          }
+          await request.response.close();
+        });
+        final source = <String, dynamic>{
+          'bookSourceUrl': base,
+          'searchUrl': '/search',
+          'bookUrlPattern': r'$^',
+          'ruleSearch': {
+            'bookList': r'$.items[*]',
+            'name': r'$.title',
+            'bookUrl': r'$.url',
+          },
+          'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+        };
+        final pipeline = JsonSourcePipeline(source, HttpSourceTransport());
+        try {
+          final hit = (await pipeline.search('1')).single;
+          expect(hit.title, 'Book');
+          expect(hit.url.toString(), '$base/book/1');
+          final info = await pipeline.bookInfo(hit);
+          expect(info.book.title, 'Book');
+          expect(info.tocAddress, toc);
+          expect(
+            seen,
+            redirected
+                ? ['/search', '/book/1', '/alt/deep/info']
+                : ['/search', '/book/1'],
+          );
+          if (toc.isNotEmpty) {
+            final expectedBase =
+                '$base/${redirected ? 'alt/deep/info' : 'book/1'}';
+            expect(info.tocBase.toString(), expectedBase);
+            expect(
+              info.tocUrl,
+              scenario == 'retain'
+                  ? '$base/book/1'
+                  : '$base/${redirected ? 'alt/deep' : 'book'}/toc',
+            );
+          } else {
+            expect(info.tocUrl, '$base/book/1');
+          }
+          expect(
+            info.tocHtml != null,
+            scenario == 'retain' || scenario == 'empty',
+          );
+        } finally {
+          pipeline.cancel();
+          await server.close(force: true);
+        }
+      });
+    }
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an

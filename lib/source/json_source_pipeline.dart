@@ -1246,6 +1246,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, tocAddress) = await _readBookInfo(document, hit, info);
     final retainedBody = retainedInfo != null && retainedInfo.isNotEmpty;
+    final Uri tocBase;
+    if (retainedBody) {
+      final retainedParts = splitSourceUrlOptions(nativeBookAddress);
+      tocBase = Uri.tryParse(retainedParts.path) ?? bookInfo.url;
+    } else {
+      tocBase = hit.url.hasScheme ? bookInfo.url : hit.url;
+    }
     return SourceBookInfo(
       book: book,
       tocAddress: tocAddress,
@@ -1254,14 +1261,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
-      tocBase: retainedBody
-          ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
-                hit.url)
-          : hit.url,
+      tocBase: tocBase,
       tocHtml:
           resolveSourceTocUrl(
                 address: tocAddress,
-                base: hit.url,
+                base: tocBase,
                 fallbackAddress: nativeBookAddress,
               ) ==
               nativeBookAddress
