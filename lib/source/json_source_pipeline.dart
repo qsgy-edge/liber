@@ -37,16 +37,25 @@ String _sourceUrlStringBase(String text) {
 /// in `rawAddress` so its options persist exactly once. The content stage then
 /// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
 /// before the `,{…}` boundary, resolved against the same finished text, with its
-/// query encoded by the request's own evaluated `charset` option
-/// (`AnalyzeUrl.kt:214-222`, `:279-334`). That option arrived already evaluated
-/// with the carrying request ([charset]), so this conversion reads no option
-/// family again: an unsupported one stays the fetch consumer's refusal
-/// (`SourceChapter.options`), not this target conversion's.
+/// query encoded by the `charset` option that text declares
+/// (`AnalyzeUrl.kt:214-222`, `:279-334`).
+///
+/// Only the method and charset that text declares are read, not the rest of its
+/// options: an unsupported family stays the fetch consumer's refusal
+/// (`SourceChapter.options`), not this conversion's. Whether the query is
+/// consumed at all is the completed request's fact. [informationAddress] says
+/// whether this text is the information request's own address — the frozen
+/// `book.tocUrl = baseUrl` fallback — and a `js` option in such a text already
+/// replaced that request's URL, so then only [completedRequest]'s surviving
+/// query says whether a query was consumed. A declared TOC address was never
+/// that request's text and keeps its own declaration. No script runs here.
 Future<Uri> _ordinaryChapterTarget(
   String fallbackAddress,
   Uri pageUrl, {
-  required String? charset,
+  required bool informationAddress,
+  required Uri completedRequest,
 }) async {
+  final facts = sourceUrlTargetOptionFacts(fallbackAddress);
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
   final path = boundary == null
       ? fallbackAddress
@@ -57,8 +66,16 @@ Future<Uri> _ordinaryChapterTarget(
   final parsed = Uri.tryParse(trimmed);
   final resolved = parsed != null && parsed.hasScheme ? parsed : pageUrl;
   final text = sourceUrlTextWithRawQuery(resolved, path);
-  return Uri.tryParse(await encodeSourceQuery(text, charset: charset)) ??
-      pageUrl;
+  // The frozen `AnalyzeUrl.kt:248-260` analyzes the query only on the GET path,
+  // and a text no request consumed costs no charset: an unused unknown name is
+  // not resolved here.
+  final consumesQuery =
+      facts.method != 'POST' &&
+      (!facts.scripted || !informationAddress || completedRequest.hasQuery);
+  final target = consumesQuery
+      ? await encodeSourceQuery(text, charset: facts.charset)
+      : text;
+  return Uri.tryParse(target) ?? pageUrl;
 }
 
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
@@ -1321,7 +1338,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         : sourceUrlNativeText(
             effectiveTocAddress,
             comparisonBase,
-            rawBase: retainedBody ? publicationAddress : null,
+            rawBase: retainedBody ? nativeBookAddress : null,
           );
     return SourceBookInfo(
       book: book,
@@ -1602,7 +1619,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
                             ? await _ordinaryChapterTarget(
                                 ordinaryFallbackAddress,
                                 tocPage.url,
-                                charset: bookOptions.charset,
+                                informationAddress: info.tocAddress.isEmpty,
+                                completedRequest: bookUrl,
                               )
                             : tocPage.url,
                         rawAddress: ordinaryFallbackAddress,
@@ -2443,6 +2461,14 @@ class SourceReadingResult {
   final List<BookSourceTraceEntry> trace;
 }
 
+/// The book's own finished comparison text as a base URL.
+///
+/// The frozen retained `WebBook` hands `book.bookUrl` to `BookInfo` and
+/// `AnalyzeRule.setRedirectUrl` only constructs a URL from it: no `AnalyzeUrl`
+/// and no request option object is created there, so the comparison text's own
+/// `,{…}` boundary is a text boundary alone. A boundary a legal header value left
+/// in the finished text is data; the request parsers and `SourceChapter.options`
+/// keep their named refusal of an unsupported family.
 Uri? _jsonNativeBaseUri(String text) {
   final value = text.trim();
   if (value.startsWith('@js:') ||
@@ -2451,5 +2477,8 @@ Uri? _jsonNativeBaseUri(String text) {
       value.startsWith('{')) {
     return Uri.tryParse(value);
   }
-  return Uri.tryParse(splitSourceUrlOptions(value).path);
+  final boundary = sourceUrlOptionBoundaryOf(value);
+  return Uri.tryParse(
+    boundary == null ? value : value.substring(0, boundary).trim(),
+  );
 }

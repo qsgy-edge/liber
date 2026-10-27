@@ -498,6 +498,46 @@ String sourceUrlTargetOf(String address) => splitSourceUrlOptions(address).path;
 String sourceUrlOptionTailOf(String address) =>
     splitSourceUrlOptions(address).tail;
 
+/// The request facts a target conversion reads from an address text's own
+/// `,{…}` option tail: the method the frozen request would use, the charset its
+/// GET query encoder would consume, and whether that tail declares an option
+/// script.
+///
+/// This is the same first-object read [splitSourceUrlOptions] performs, with the
+/// same decoder, but it reads only the three facts a target conversion consumes:
+/// no option family is validated, no unsupported option is refused and no
+/// charset is resolved. A tail the reader cannot read is "no options", exactly
+/// as it is there.
+///
+/// [scripted] is the presence of the `js` option alone. That option replaces the
+/// request URL when a request runs it, so text that already was a request's own
+/// address must take its query-consumption fact from that request instead of
+/// reading the script again.
+({String method, String? charset, bool scripted}) sourceUrlTargetOptionFacts(
+  String address,
+) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final Object? decoded = boundary == null
+      ? null
+      : _decodeUrlOptionTail(address.substring(address.indexOf('{', boundary)));
+  if (decoded is! Map) {
+    return (method: 'GET', charset: null, scripted: false);
+  }
+  final rawCharset = decoded['charset'];
+  return (
+    // Frozen `UrlOption.setMethod`'s branch: only `POST` leaves the GET path.
+    method: '${decoded['method'] ?? ''}'.toUpperCase() == 'POST'
+        ? 'POST'
+        : 'GET',
+    // Frozen `UrlOption.setCharset`: a null or blank value is the default
+    // branch, and a non-blank one is the name the encoder resolves.
+    charset: rawCharset is String && rawCharset.trim().isNotEmpty
+        ? rawCharset
+        : null,
+    scripted: decoded['js'] != null,
+  );
+}
+
 /// Decodes a URL option tail the way the frozen Gson reader does, or null when
 /// it is not an object.
 ///
