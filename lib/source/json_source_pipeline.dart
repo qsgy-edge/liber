@@ -1110,18 +1110,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
         options: bookOptions,
       );
       final wrapper = bookAddress.trim();
-      final comparisonScalar = wrapper.contains('{{')
-          ? bookAddress
-          : wrapper.toLowerCase().startsWith('@js:') ||
-                wrapper.toLowerCase().startsWith('<js>') ||
-                wrapper.startsWith('[') ||
-                wrapper.startsWith('{')
-          ? expandedBookAddress
-          : bookAddress;
-      final comparisonParts = splitSourceUrlOptions(comparisonScalar);
-      final nativeBookAddress =
-          '${sourceUrlTextResolved(finalUrl, comparisonParts.path)}${comparisonParts.tail}';
-      final publicationParts = splitSourceUrlOptions(expandedBookAddress);
+      final isWrapper =
+          !wrapper.contains('{{') &&
+          (wrapper.toLowerCase().startsWith('@js:') ||
+              wrapper.toLowerCase().startsWith('<js>') ||
+              wrapper.startsWith('[') ||
+              wrapper.startsWith('{'));
+      final nativeBookAddress = isWrapper
+          ? sourceUrlTextResolved(finalUrl, wrapper)
+          : () {
+              final comparisonParts = splitSourceUrlOptions(bookAddress);
+              return '${sourceUrlTextResolved(finalUrl, comparisonParts.path)}${comparisonParts.tail}';
+            }();
+      final publicationScalar = isWrapper ? '$bookUrl' : expandedBookAddress;
+      final publicationParts = splitSourceUrlOptions(publicationScalar);
       final publicationAddress =
           '${sourceUrlTextResolved(finalUrl, publicationParts.path)}${publicationParts.tail}';
       books.add(
@@ -1246,12 +1248,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return SourceBookInfo(
       book: book,
       tocAddress: tocAddress,
-      tocBase: hit.url,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
+      tocBase: hit.url.query.contains('%23')
+          ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
+                hit.url)
+          : hit.url,
       tocHtml:
           resolveSourceTocUrl(
                 address: tocAddress,

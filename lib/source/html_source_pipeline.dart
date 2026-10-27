@@ -1074,8 +1074,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         extracted = value.value;
       }
     }
+    final rawInput = extracted is String ? extracted : null;
     if (!forStringList && !deferTail && extracted is String) {
-      onRaw?.call(extracted);
       extracted = _urlFallback(field, extracted, url);
     }
     final applied = await field.apply(
@@ -1084,8 +1084,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       contentText: contentText,
       forStringList: forStringList,
     );
+    final finished = _scalarTail(field, applied);
+    onRaw?.call(field.scripts.isEmpty ? (rawInput ?? finished) : finished);
     if (forStringList) return _kindTexts(applied).join(',');
-    return _scalarTail(field, applied);
+    return finished;
   }
 
   Future<String> _itemContentText(_ListItem item) async {
@@ -1351,9 +1353,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final identityText = Uri.tryParse(split.path)?.hasScheme == true
         ? split.path
-        : split.path.startsWith('/')
-        ? sourceUrlTextResolved(base, split.path)
-        : sourceUrlTextWithRawQuery(identityTarget, split.path);
+        : sourceUrlTextResolved(identityTarget, split.path);
     captureIdentity?.call(identityTarget, '$identityText${split.tail}');
     return (url, split.options);
   }
@@ -1867,12 +1867,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     return SourceBookInfo(
       book: book,
       tocAddress: tocText,
-      tocBase: infoUrl,
       bookUrl: bookUrl,
       bookOptions: bookOptions,
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
+      tocBase: infoUrl.query.contains('%23')
+          ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
+                infoUrl)
+          : infoUrl,
       tocHtml:
           resolveSourceTocUrl(
                 address: tocText,

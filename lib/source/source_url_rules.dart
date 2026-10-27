@@ -877,7 +877,7 @@ String sourceUrlTextResolved(Uri base, String raw) {
       path.isEmpty &&
       fragment != null &&
       base.query.isNotEmpty) {
-    outputQuery = base.query.replaceFirst(RegExp(r'%23.*$'), '');
+    outputQuery = base.query;
   }
   final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
   if (outputQuery != null) output.write('?$outputQuery');
@@ -905,6 +905,7 @@ String _normalizeRawPath(String path) {
     if (part == '..') {
       if (parts.length > 1 && parts.last != '..') {
         parts.removeLast();
+        if (last) parts.add('');
       } else {
         parts.add('..');
       }
