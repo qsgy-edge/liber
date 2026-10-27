@@ -3978,4 +3978,640 @@ void main() {
       }
     }
   });
+
+  group('repair08 fallback target and comparison consumers', () {
+    // An ordinary empty chapter's target is its own fallback text analyzed as a
+    // URL (`WebBook.kt:320-330` over `AnalyzeUrl.kt:214-222`), so the charset it
+    // consumes is the one that text declares — not the information request's.
+    // The frozen search-stage detail path records the request it made in
+    // `_bookRequests`; a special pattern hit, an empty-list fallback and a fresh
+    // pipeline handoff never do, and the fallback text's own `gbk` still decides
+    // its target, store key, persisted tail and first content request.
+    for (final json in [false, true]) {
+      for (final flow in ['pattern', 'fallback', 'fresh-pattern']) {
+        for (final valueCase in ['unicode', 'preencoded', 'ascii']) {
+          test(
+            'repair08 special charset json=$json flow=$flow value=$valueCase',
+            () async {
+              const origin = 'http://source.test';
+              final value = valueCase == 'unicode'
+                  ? '中'
+                  : valueCase == 'preencoded'
+                  ? '%D6%AD'
+                  : 'word';
+              final tail = ',${jsonEncode({'charset': 'gbk'})}';
+              final raw = '$origin/book?q=$value$tail';
+              final wire =
+                  '$origin/book?q=${valueCase == 'ascii' ? 'word' : '%D6%AD'}';
+              final page = _repair06Page(json, chapter: '', hit: false);
+              final document = json
+                  ? jsonEncode({
+                      ...jsonDecode(page) as Map<String, dynamic>,
+                      'text': 'Body',
+                    })
+                  : '$page<div id="content">Body</div>';
+              final pages = _ContinuationPages(
+                document,
+                allowedPaths: const ['/book'],
+              );
+              final source = json
+                  ? _jsonSource(
+                      origin,
+                      searchUrl: raw,
+                      bookUrlPattern: flow == 'fallback' ? null : '.*',
+                      bookList: flow == 'fallback'
+                          ? r'$.missing[*]'
+                          : r'$.listing[*]',
+                    )
+                  : _htmlSource(
+                      origin,
+                      searchUrl: raw,
+                      bookUrlPattern: flow == 'fallback' ? null : '.*',
+                      bookList: flow == 'fallback' ? '.missing' : 'div.item',
+                    );
+              final search = _openContinuation(json, source, pages);
+              var pipeline = search;
+              try {
+                final hit = (await search.search('1')).single;
+                expect(hit.title, 'Book');
+                expect(hit.infoHtml, isNotEmpty);
+                expect(hit.addressContext?.comparisonAddress, raw);
+                expect(hit.addressContext?.publicationAddress, raw);
+                expect(hit.identityAddress, raw);
+                expect(
+                  pages.requests.single.url.toString(),
+                  wire,
+                  reason:
+                      'premise: the real search applied the declared GBK charset',
+                );
+                if (flow == 'fresh-pattern') {
+                  pipeline = _openContinuation(json, source, pages);
+                }
+                final info = await pipeline.bookInfo(hit);
+                expect(
+                  info.tocHtml,
+                  isNotEmpty,
+                  reason: 'premise: information reused as TOC',
+                );
+                expect(info.tocAddress, '');
+                expect(info.tocUrl, raw, reason: 'premise: raw fallback text');
+                expect(
+                  pages.requests.length,
+                  1,
+                  reason: 'premise: retained page, no TOC request',
+                );
+                final (_, chapters) = await pipeline.tableOfContents(info);
+                final chapter = chapters.single;
+                expect(chapter.address, raw);
+                expect(
+                  chapter.options.charset,
+                  'gbk',
+                  reason: 'premise: the fallback text keeps its option',
+                );
+                expect(
+                  '${chapter.url}',
+                  wire,
+                  reason:
+                      'target: the empty target uses the charset its own fallback text declares',
+                );
+                expect(chapter.storeKey, wire);
+                expect(chapter.persistedAddress, '$wire$tail');
+                await pipeline.chapter(chapter, book: info.book);
+                expect(
+                  pages.requests.map((request) => '${request.url}').toList(),
+                  [wire, wire],
+                );
+              } finally {
+                pipeline.cancel();
+                if (!identical(pipeline, search)) search.cancel();
+              }
+            },
+          );
+        }
+      }
+    }
+
+    // The information request and the TOC text it returns can declare different
+    // charsets: the first option object of the book scalar decides the request,
+    // the whole scalar decides the comparison, and the retained TOC text's own
+    // `gbk` still decides the empty chapter's target.
+    for (final json in [false, true]) {
+      for (final sameCharset in [false, true]) {
+        test(
+          'repair08 distinct fallback charset json=$json same=$sameCharset',
+          () async {
+            const origin = 'http://source.test';
+            final first = sameCharset ? 'gbk' : 'UTF-8';
+            final book =
+                'book/1,{"charset":"$first"}/../target?q=中,{"charset":"gbk"}';
+            const rawToc = '$origin/catalog/book/target?q=中,{"charset":"gbk"}';
+            const wire = '$origin/catalog/book/target?q=%D6%AD';
+            final page = _repair06Page(
+              json,
+              book: book,
+              toc: rawToc,
+              chapter: '',
+            );
+            final document = json
+                ? jsonEncode({
+                    ...jsonDecode(page) as Map<String, dynamic>,
+                    'text': 'Body',
+                  })
+                : '$page<div id="content">Body</div>';
+            final pages = _ContinuationPages(
+              document,
+              allowedPaths: const [
+                '/catalog/search',
+                '/catalog/book/1',
+                '/catalog/book/target',
+              ],
+            );
+            final source = json
+                ? _jsonSource(
+                    '$origin/catalog/search',
+                    searchUrl: '/catalog/search',
+                  )
+                : _htmlSource(
+                    '$origin/catalog/search',
+                    searchUrl: '/catalog/search',
+                  );
+            final pipeline = _openContinuation(json, source, pages);
+            try {
+              final hit = (await pipeline.search('1')).single;
+              expect(hit.title, 'Book');
+              expect(hit.infoHtml, isNull, reason: 'premise: ordinary list');
+              expect(
+                hit.addressContext?.comparisonAddress,
+                rawToc,
+                reason:
+                    'premise: the native whole scalar resolves to the declared TOC',
+              );
+              final info = await pipeline.bookInfo(hit);
+              expect(info.book.title, 'Book');
+              expect(
+                info.bookOptions.charset,
+                first,
+                reason:
+                    'premise: the information request keeps its own charset',
+              );
+              expect(info.tocAddress, rawToc);
+              expect(
+                info.tocHtml,
+                isNotEmpty,
+                reason: 'premise: information reused as TOC',
+              );
+              expect(info.tocUrl, rawToc);
+              expect(
+                pages.requests.map((request) => '${request.url}').toList(),
+                ['$origin/catalog/search', '$origin/catalog/book/1'],
+              );
+              final (_, chapters) = await pipeline.tableOfContents(info);
+              final chapter = chapters.single;
+              expect(chapter.address, rawToc);
+              expect(
+                chapter.options.charset,
+                'gbk',
+                reason: 'premise: the fallback text keeps its own option',
+              );
+              expect(
+                '${chapter.url}',
+                wire,
+                reason:
+                    'target: the empty target consumes its own fallback charset',
+              );
+              expect(chapter.storeKey, wire);
+              expect(chapter.persistedAddress, '$wire,{"charset":"gbk"}');
+              await pipeline.chapter(chapter, book: info.book);
+              expect('${pages.requests.last.url}', wire);
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
+    // A POST request's charset lives in its body branch (`AnalyzeUrl.kt:248-260`),
+    // so a POST fallback text never puts its query through the GET encoder: the
+    // target keeps the URI's own UTF-8 representation, a structured body keeps
+    // its JSON body, and a charset nothing consumes is not resolved at all.
+    for (final json in [false, true]) {
+      for (final scenario in [
+        'known-unicode',
+        'unknown-structured',
+        'utf8-control',
+        'ascii-control',
+      ]) {
+        test('repair08 POST empty json=$json scenario=$scenario', () async {
+          const origin = 'http://source.test';
+          final unknown = scenario == 'unknown-structured';
+          final unicode =
+              scenario == 'known-unicode' || scenario == 'utf8-control';
+          final charset = unknown
+              ? 'x-no-such-charset'
+              : scenario == 'utf8-control'
+              ? 'UTF-8'
+              : 'gbk';
+          final prefix = '$origin/book?q=${unicode ? '中' : 'x'}';
+          final wire = '$origin/book?q=${unicode ? '%E4%B8%AD' : 'x'}';
+          final tail =
+              ',${jsonEncode({
+                'method': 'POST',
+                'body': {'x': 1},
+                'charset': charset,
+              })}';
+          final raw = '$prefix$tail';
+          final page = _repair06Page(json, chapter: '');
+          final document = json
+              ? jsonEncode({
+                  ...jsonDecode(page) as Map<String, dynamic>,
+                  'text': 'Body',
+                })
+              : '$page<div id="content">Body</div>';
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const ['/book'],
+          );
+          final source = json ? _jsonSource(origin) : _htmlSource(origin);
+          final pipeline = _openContinuation(json, source, pages);
+          try {
+            final hit = HtmlBook(
+              url: Uri.parse(prefix),
+              rawAddress: raw,
+              title: 'Book',
+            );
+            final info = await pipeline.bookInfo(hit);
+            expect(info.book.title, 'Book');
+            expect(info.bookOptions.isPost, isTrue);
+            expect(info.bookOptions.charset, charset);
+            expect(
+              info.tocHtml,
+              isNotEmpty,
+              reason: 'premise: information reused as TOC',
+            );
+            expect(info.tocUrl, raw);
+            expect('${pages.requests.single.url}', wire);
+            expect(pages.requests.single.method, 'POST');
+            expect(pages.requests.single.body, '{"x":1}');
+            Object? failure;
+            List<SourceChapter>? values;
+            try {
+              final (_, chapters) = await pipeline.tableOfContents(info);
+              values = chapters;
+            } catch (error) {
+              failure = error;
+            }
+            expect(
+              failure,
+              isNull,
+              reason:
+                  'target: a POST empty target consumes no GET query charset',
+            );
+            final chapter = values!.single;
+            expect(
+              '${chapter.url}',
+              wire,
+              reason:
+                  'target: the POST query keeps its existing URI representation',
+            );
+            expect(chapter.address, raw);
+            expect(chapter.storeKey, wire);
+            expect(chapter.persistedAddress, '$wire$tail');
+            await pipeline.chapter(chapter, book: info.book);
+            expect('${pages.requests.last.url}', wire);
+            expect(pages.requests.last.method, 'POST');
+            expect(pages.requests.last.body, '{"x":1}');
+            expect(pages.requests.length, 2);
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+
+    // An option script that replaced the request URL already dropped its query,
+    // so the empty chapter's target does not resolve the discarded charset: the
+    // completed request, its one script effect and the stored text are the facts
+    // that remain.
+    for (final json in [false, true]) {
+      for (final unknown in [false, true]) {
+        test(
+          'repair08 no-capture discarded query json=$json unknown=$unknown',
+          () async {
+            const origin = 'http://source.test';
+            final tail =
+                ',${jsonEncode({'charset': unknown ? 'x-no-such-charset' : 'UTF-8', 'js': "source.put('once',String(Number(source.get('once')||'0')+1)); '$origin/wire'"})}';
+            final raw = '$origin/book?q=x$tail';
+            final state = SourceHostState();
+            final pages = _ContinuationPages(
+              _repair06Page(json, chapter: ''),
+              allowedPaths: const ['/wire'],
+            );
+            final source = json ? _jsonSource(origin) : _htmlSource(origin);
+            final pipeline = _openContinuation(
+              json,
+              source,
+              pages,
+              state: state,
+            );
+            try {
+              final info = await pipeline.bookInfo(
+                HtmlBook(
+                  url: Uri.parse('$origin/book?q=x'),
+                  rawAddress: raw,
+                  title: 'Book',
+                ),
+              );
+              expect(info.book.title, 'Book');
+              expect(
+                info.tocHtml,
+                isNotEmpty,
+                reason: 'premise: information reused as TOC',
+              );
+              expect(info.tocUrl, raw, reason: 'premise: raw fallback text');
+              expect(
+                '${pages.requests.single.url}',
+                '$origin/wire',
+                reason: 'premise: the option script replaced the request URL',
+              );
+              expect(
+                await state.entry(
+                  origin,
+                  sourceRuleVariableKey(origin, 'once'),
+                ),
+                '1',
+                reason: 'premise: one script effect for the request',
+              );
+              Object? failure;
+              List<SourceChapter>? values;
+              try {
+                final (_, chapters) = await pipeline.tableOfContents(info);
+                values = chapters;
+              } catch (error) {
+                failure = error;
+              }
+              expect(
+                failure,
+                isNull,
+                reason:
+                    'target: the TOC does not newly validate the discarded query charset',
+              );
+              expect(values!.single.address, raw);
+              expect('${values.single.url}', '$origin/book?q=x');
+              expect(pages.requests.length, 1);
+              expect(
+                await state.entry(
+                  origin,
+                  sourceRuleVariableKey(origin, 'once'),
+                ),
+                '1',
+                reason: 'target: the script is not re-executed',
+              );
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
+    // A retained same-page TOC compares its fragment-only scalar against the
+    // native logical text (`WebBook.kt:157-165` over `AnalyzeRule.kt:315-323`),
+    // not against the expanded publication, so the body is retained and no extra
+    // TOC request or login check runs.
+    for (final json in [false, true]) {
+      for (final deep in [false, true]) {
+        test('repair08 self fragment json=$json deep=$deep', () async {
+          const origin = 'http://source.test';
+          final header = deep ? 'a/../../b#anchor' : 'ab#anchor';
+          final tail =
+              ',${jsonEncode({
+                'headers': {'X-Text': header},
+              })}';
+          final publication = '$origin/catalog/book/book/1$tail';
+          final comparison = deep
+              ? '$origin/catalog/book/b#anchor"}}'
+              : publication;
+          const toc = '#anchor"}}';
+          final pages = _ContinuationPages(
+            _repair06Page(json, toc: toc, chapter: '$origin/chapter'),
+            allowedPaths: const ['/catalog/book/1'],
+          );
+          final state = SourceHostState();
+          final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+            ..['bookSourceUrl'] = '$origin/catalog/search'
+            ..['searchUrl'] = 'book/1$tail'
+            ..['bookUrlPattern'] = '.*'
+            ..['loginCheckJs'] =
+                "source.put('login',String(Number(source.get('login')||'0')+1)); result";
+          final pipeline = _openContinuation(json, source, pages, state: state);
+          try {
+            final hit = (await pipeline.search('1')).single;
+            expect(hit.title, 'Book');
+            expect(hit.infoHtml, isNotEmpty);
+            expect(
+              hit.addressContext?.comparisonAddress,
+              comparison,
+              reason: 'premise: the native whole scalar',
+            );
+            expect(
+              hit.addressContext?.publicationAddress,
+              publication,
+              reason: 'premise: the exact published tail',
+            );
+            expect('${pages.requests.single.url}', '$origin/catalog/book/1');
+            expect(
+              {
+                for (final entry in pages.requests.single.headers.entries)
+                  entry.key.toLowerCase(): entry.value,
+              }['x-text'],
+              header,
+            );
+            final info = await pipeline.bookInfo(hit);
+            expect(info.book.title, 'Book');
+            expect(info.tocAddress, toc, reason: 'premise: fragment-only TOC');
+            expect(info.tocUrl, publication);
+            expect(pages.requests.length, 1);
+            expect(
+              await state.entry(
+                '$origin/catalog/search',
+                sourceRuleVariableKey('$origin/catalog/search', 'login'),
+              ),
+              '1',
+            );
+            expect(
+              info.tocHtml,
+              isNotEmpty,
+              reason:
+                  'target: the fragment compares against the native logical base',
+            );
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            expect(chapters.single.url.toString(), '$origin/chapter');
+            expect(pages.requests.length, 1);
+            expect(
+              await state.entry(
+                '$origin/catalog/search',
+                sourceRuleVariableKey('$origin/catalog/search', 'login'),
+              ),
+              '1',
+              reason: 'target: no extra login check',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+
+    // The comparison text a retained page carries is a finished scalar, not a
+    // request: a `,{'serverID':…}` boundary the native URL operation left in it
+    // is data. Only the request parsers and `SourceChapter.options` refuse an
+    // unsupported family by name.
+    for (final json in [false, true]) {
+      for (final future in [false, true]) {
+        test(
+          'repair08 comparison option-shaped data json=$json future=$future',
+          () async {
+            const origin = 'http://source.test';
+            final header = future
+                ? "a/../target,{'serverID':'future'}"
+                : 'a/../target';
+            final tail =
+                ',${jsonEncode({
+                  'headers': {'X-Text': header},
+                })}';
+            final publication = '$origin/catalog/book/book/1$tail';
+            final comparison =
+                '$origin/catalog/book/book/target${future ? ",{'serverID':'future'}" : ''}"}}';
+            final pages = _ContinuationPages(
+              _repair06Page(json, chapter: '$origin/chapter'),
+              allowedPaths: const ['/catalog/book/1'],
+            );
+            final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+              ..['bookSourceUrl'] = '$origin/catalog/search'
+              ..['searchUrl'] = 'book/1$tail'
+              ..['bookUrlPattern'] = '.*';
+            final pipeline = _openContinuation(json, source, pages);
+            try {
+              final hit = (await pipeline.search('1')).single;
+              expect(hit.title, 'Book');
+              expect(hit.infoHtml, isNotEmpty);
+              expect(
+                hit.addressContext?.comparisonAddress,
+                comparison,
+                reason: 'premise: the native whole scalar',
+              );
+              expect(hit.addressContext?.publicationAddress, publication);
+              expect('${pages.requests.single.url}', '$origin/catalog/book/1');
+              expect(
+                {
+                  for (final entry in pages.requests.single.headers.entries)
+                    entry.key.toLowerCase(): entry.value,
+                }['x-text'],
+                header,
+              );
+              Object? failure;
+              SourceBookInfo? info;
+              try {
+                info = await pipeline.bookInfo(hit);
+              } catch (error) {
+                failure = error;
+              }
+              expect(
+                failure,
+                isNull,
+                reason:
+                    'target: logical comparison data is not a request option object',
+              );
+              expect(info!.book.title, 'Book');
+              expect(
+                info.tocHtml,
+                isNotEmpty,
+                reason: 'target: the retained body is read',
+              );
+              final (_, chapters) = await pipeline.tableOfContents(info);
+              expect(chapters.single.url.toString(), '$origin/chapter');
+              expect(pages.requests.length, 1);
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
+    // Whether the completed request consumed its query decides whether the
+    // empty chapter's own query is encoded: the kept-query script control keeps
+    // the GBK target, and the discarded one keeps the URI's default spelling.
+    for (final json in [false, true]) {
+      for (final keepQuery in [false, true]) {
+        test('repair08 query consumption json=$json kept=$keepQuery', () async {
+          const origin = 'http://source.test';
+          final replacement = keepQuery ? '$origin/wire?q=中' : '$origin/wire';
+          final tail =
+              ',${jsonEncode({'charset': 'gbk', 'js': "source.put('once',String(Number(source.get('once')||'0')+1)); '$replacement'"})}';
+          final raw = '$origin/book?q=中$tail';
+          final pages = _ContinuationPages(
+            _repair06Page(json, chapter: ''),
+            allowedPaths: const ['/wire'],
+          );
+          final source = json ? _jsonSource(origin) : _htmlSource(origin);
+          final state = SourceHostState();
+          final pipeline = _openContinuation(json, source, pages, state: state);
+          try {
+            final info = await pipeline.bookInfo(
+              HtmlBook(
+                url: Uri.parse('$origin/book?q=中'),
+                rawAddress: raw,
+                title: 'Book',
+              ),
+            );
+            expect(info.book.title, 'Book');
+            expect(
+              info.bookOptions.charset,
+              'gbk',
+              reason: 'premise: the request kept its charset option',
+            );
+            expect(
+              info.tocHtml,
+              isNotEmpty,
+              reason: 'premise: information reused as TOC',
+            );
+            expect(info.tocUrl, raw, reason: 'premise: raw fallback text');
+            expect(
+              '${pages.requests.single.url}',
+              keepQuery ? '$origin/wire?q=%D6%AD' : '$origin/wire',
+              reason: 'premise: the script result decided the real request',
+            );
+            expect(
+              await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
+              '1',
+              reason: 'premise: one script effect for the request',
+            );
+            final (_, chapters) = await pipeline.tableOfContents(info);
+            final chapter = chapters.single;
+            final expected =
+                '$origin/book?q=${keepQuery ? '%D6%AD' : '%E4%B8%AD'}';
+            expect(chapter.address, raw);
+            expect(
+              '${chapter.url}',
+              expected,
+              reason:
+                  'target: the conversion keeps whether the request consumed its query',
+            );
+            expect(chapter.storeKey, expected);
+            expect(chapter.persistedAddress, '$expected$tail');
+            expect(pages.requests.length, 1);
+            expect(
+              await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
+              '1',
+              reason: 'target: the script is not re-executed',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+  });
 }
