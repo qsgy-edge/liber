@@ -310,16 +310,17 @@ class SourceBookInfo {
     address: tocAddress,
     base: tocBase,
     fallbackAddress: bookAddress,
-    rawBase: _rawBaseForPublication(bookAddress),
+    rawBase: _rawBaseForPublication(bookAddress, tocBase),
   );
 }
 
-String? _rawBaseForPublication(String address) {
+String? _rawBaseForPublication(String address, Uri base) {
   final text = address.trim();
   if (text.isEmpty) return null;
-  final host = Uri.tryParse(text)?.host ?? '';
-  final unicode = text.codeUnits.any((unit) => unit > 127);
-  return unicode || host != host.toLowerCase() ? text : null;
+  final parts = splitSourceUrlOptions(text);
+  final parsed = Uri.tryParse(parts.path);
+  if (parsed == null || parsed.path != base.path) return null;
+  return text;
 }
 
 /// The full resolved TOC identity, including its requested raw query and its

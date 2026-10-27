@@ -1840,6 +1840,65 @@ void main() {
     });
   });
 
+  group('retained native bases and captured-key order', () {
+    test('retained raw uppercase authority survives publication', () async {
+      const origin = 'http://UPPER.test/catalog/book?keep=word';
+      final body = '<h2>Book</h2><a id="toc" href="#next">TOC</a>';
+      final pages = _Pages({'/catalog/book': body});
+      final source = <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': origin,
+        'bookUrlPattern': '.*',
+        'ruleBookInfo': {'name': 'h2@text', 'tocUrl': '#toc@href'},
+      };
+      final pipeline = HtmlSourcePipeline(source, pages);
+      try {
+        final hit = (await pipeline.search('1')).single;
+        final info = await pipeline.bookInfo(hit);
+        expect(info.tocUrl, '$origin#next');
+      } finally {
+        pipeline.cancel();
+      }
+    });
+
+    test('captured key refusal precedes option effects', () async {
+      const origin = 'http://source.test';
+      final body = jsonEncode({
+        'title': 'Book',
+        'items': [
+          {'title': 'Book', 'url': '/book/1'},
+        ],
+      });
+      final pages = _Pages({'/book': body});
+      final state = SourceHostState();
+      final tail =
+          ',${jsonEncode({'charset': 'x-no-such-charset', 'js': "source.put('marker','ran'); '$origin/queryless'"})}';
+      final source = <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/book?q=x$tail',
+        'ruleSearch': {
+          'bookList': r'$.items[*]',
+          'name': r'$.title',
+          'bookUrl': r'$.url',
+        },
+      };
+      final pipeline = JsonSourcePipeline(source, pages, hostState: state);
+      try {
+        await expectLater(
+          pipeline.search('1'),
+          throwsA(isA<UnsupportedError>()),
+        );
+        expect(
+          await state.entry(origin, sourceRuleVariableKey(origin, 'marker')),
+          isNull,
+        );
+        expect(pages.requests, isEmpty);
+      } finally {
+        pipeline.cancel();
+      }
+    });
+  });
+
   group('a source whose ruleBookInfo omits name and tocUrl (#80)', () {
     // The frozen keeps the book's existing name for an empty `name` rule
     // (`BookInfo.kt:64-70`) and falls back to the book's own address for an
