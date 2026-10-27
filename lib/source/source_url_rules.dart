@@ -830,7 +830,8 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
 
 /// The textual URL the pinned native `URL(base, relativePath).toString()`
 /// publishes: an already absolute [raw] is returned verbatim, otherwise the
-/// base's authority stays and the relative path/query/fragment stay raw. This
+/// base's authority stays unless the input is protocol-relative; path/query/
+/// fragment stay raw. This
 /// is publication text, not a wire target; callers validate the actual request
 /// separately.
 String sourceUrlTextResolved(Uri base, String raw) {

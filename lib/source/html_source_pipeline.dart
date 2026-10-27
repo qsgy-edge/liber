@@ -1864,6 +1864,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final html = bookInfo.body;
     final infoUrl = bookInfo.url;
     final (book, tocText) = await _readBookInfo(html, infoUrl, hit);
+    final retainedBody = retained != null && retained.isNotEmpty;
     return SourceBookInfo(
       book: book,
       tocAddress: tocText,
@@ -1872,7 +1873,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
-      tocBase: infoUrl.query.contains('%23')
+      tocBase: retainedBody
           ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
                 infoUrl)
           : infoUrl,

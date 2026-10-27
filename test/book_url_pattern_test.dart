@@ -1511,6 +1511,62 @@ void main() {
       });
     }
 
+    for (final fresh in [false, true]) {
+      for (final template in [false, true]) {
+        test(
+          'encoded query fetched base sameFresh=$fresh template=$template',
+          () async {
+            const origin = 'http://source.test';
+            final raw = '/book/${template ? '{{key}}' : '1'}?keep=a%23tail&x=1';
+            final body = jsonEncode({
+              'title': 'Book',
+              'toc': '#next',
+              'items': [
+                {'title': 'Book', 'url': raw},
+              ],
+              'list': [
+                {'name': 'Chapter', 'url': '/c/1'},
+              ],
+            });
+            final pages = _Pages({'/search': body, '/book/1': body});
+            final source = <String, dynamic>{
+              'bookSourceUrl': origin,
+              'searchUrl': '/search',
+              'bookUrlPattern': r'$^',
+              'ruleSearch': {
+                'bookList': r'$.items[*]',
+                'name': r'$.title',
+                'bookUrl': r'$.url',
+              },
+              'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+              'ruleToc': {
+                'chapterList': r'$.list[*]',
+                'chapterName': r'$.name',
+                'chapterUrl': r'$.url',
+              },
+            };
+            final pipeline = JsonSourcePipeline(source, pages);
+            final next = fresh ? JsonSourcePipeline(source, pages) : pipeline;
+            try {
+              final hit = (await pipeline.search('1')).single;
+              expect(hit.title, 'Book');
+              expect(hit.identityAddress, '$origin/book/1?keep=a%23tail&x=1');
+              expect(hit.infoHtml, isNull);
+              final info = await next.bookInfo(hit);
+              expect(info.book.title, 'Book');
+              expect(info.tocAddress, '#next');
+              expect(pages.requests, hasLength(2));
+              expect(pages.requests.last, '$origin/book/1?keep=a%23tail&x=1');
+              expect(info.tocUrl, '$origin/book/1?keep=a%23tail&x=1#next');
+            } finally {
+              if (fresh) next.cancel();
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
     for (final crossOrigin in [false, true]) {
       test(
         'ordinary JSON ${crossOrigin ? 'other-origin' : 'same-origin'} script keeps pre-option identity',

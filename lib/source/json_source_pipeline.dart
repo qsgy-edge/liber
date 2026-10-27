@@ -1245,6 +1245,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
     final (book, tocAddress) = await _readBookInfo(document, hit, info);
+    final retainedBody = retainedInfo != null && retainedInfo.isNotEmpty;
     return SourceBookInfo(
       book: book,
       tocAddress: tocAddress,
@@ -1253,7 +1254,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       bookAddress: publicationAddress,
       keyword: _keyword,
       page: _page,
-      tocBase: hit.url.query.contains('%23')
+      tocBase: retainedBody
           ? (Uri.tryParse(splitSourceUrlOptions(nativeBookAddress).path) ??
                 hit.url)
           : hit.url,
