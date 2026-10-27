@@ -291,8 +291,10 @@ class SourceBookInfo {
   String? get _retainedRawBase {
     final retained = book.infoHtml;
     if (retained == null || retained.isEmpty) return null;
-    final text = sourceKotlinTrim(bookAddress);
-    return text.isEmpty ? null : text;
+    if (sourceKotlinIsBlank(bookAddress)) return null;
+    // The base text is kept as the book carried it: the URL constructor's own
+    // edge trim stops at U+0020, so a Unicode space is part of the base.
+    return bookAddress;
   }
 }
 
@@ -307,13 +309,14 @@ String resolveSourceTocUrl({
 }) {
   final value = address.isEmpty ? fallbackAddress : address;
   final boundary = sourceUrlOptionBoundaryOf(value);
-  final path = boundary == null
-      ? sourceKotlinTrim(value)
-      : sourceKotlinTrim(value.substring(0, boundary));
-  final tail = boundary == null ? '' : value.substring(boundary);
-  final parsed = Uri.tryParse(path);
+  final path = boundary == null ? value : value.substring(0, boundary);
+  // The Kotlin trim belongs to the frozen absolute shortcut only; the relative
+  // branch keeps the address text as the rule wrote it, so a Unicode space at
+  // either edge is not discarded before the URL constructor sees it.
+  final trimmed = sourceKotlinTrim(path);
+  final parsed = Uri.tryParse(trimmed);
   final text = parsed != null && parsed.hasScheme
-      ? path
+      ? trimmed
       : sourceUrlTextResolved(base, path, rawBase: rawBase);
   return '$text$tail';
 }

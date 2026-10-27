@@ -101,6 +101,24 @@ bool sourceIsKotlinWhitespace(int unit) =>
     unit == 0x205F ||
     unit == 0x3000;
 
+/// Java's `String.trim()`, the edge trim the pinned `java.net.URL` constructor
+/// applies to the text it receives: every leading and trailing code unit
+/// `<= U+0020`. It is not the Kotlin `trim()` of [sourceKotlinTrim]: a Unicode
+/// space such as U+2000 stays in the URL text, which is what the frozen relative
+/// branch relies on because it hands `URL(baseURL, relativePath)` the original
+/// relative text (and the String-base overload builds its base the same way).
+String _javaUrlEdgeText(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && value.codeUnitAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && value.codeUnitAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
 /// Frozen `AnalyzeUrl.analyzeFields`/`analyzeQuery` (`AnalyzeUrl.kt:279-292`)
 /// over `encodeParams` (`AnalyzeUrl.kt:294-334`).
 ///
@@ -874,10 +892,14 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
 /// is publication text, not a wire target; callers validate the actual request
 /// separately.
 String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
+  // The Kotlin trim is the frozen admission test and absolute shortcut, not a
+  // trim of the text the constructor sees: the relative branch keeps the
+  // original text for the URL constructor, whose own edge trim stops at U+0020.
   final trimmed = sourceKotlinTrim(raw);
   if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
-  if (rawBase != null) return _resolveAgainstRawBase(rawBase, trimmed);
-  var path = trimmed;
+  final relative = _javaUrlEdgeText(raw);
+  if (rawBase != null) return _resolveAgainstRawBase(rawBase, relative);
+  var path = relative;
   String? query;
   String? fragment;
   final hash = path.indexOf('#');
@@ -931,15 +953,17 @@ String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
 /// every other value goes through the native URL operation. A blank result is
 /// the analyser's own base URL there, so callers answer that before asking.
 String sourceUrlNativeText(String scalar, Uri base, {String? rawBase}) {
+  // Only the frozen absolute shortcut trims; a relative result reaches the URL
+  // constructor as the original text, exactly as the caller's rule wrote it.
   final trimmed = sourceKotlinTrim(scalar);
   if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
-  return sourceUrlTextResolved(base, trimmed, rawBase: rawBase);
+  return sourceUrlTextResolved(base, scalar, rawBase: rawBase);
 }
 
 String _resolveAgainstRawBase(String baseText, String raw) {
   final match = RegExp(
     r'^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$',
-  ).firstMatch(sourceKotlinTrim(baseText));
+  ).firstMatch(_javaUrlEdgeText(baseText));
   if (match == null) return raw;
   // The native URL object lower-cases its protocol and keeps the authority,
   // path and query as they were written.
