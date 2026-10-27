@@ -324,7 +324,8 @@ String? _rawBaseForPublication(String address, Uri base) {
       parsed.host.toLowerCase() != base.host.toLowerCase() ||
       parsed.port != base.port ||
       parsed.path != base.path ||
-      parsed.query != base.query) {
+      parsed.query != base.query ||
+      parsed.hasQuery != base.hasQuery) {
     return null;
   }
   return text;
