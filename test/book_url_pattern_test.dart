@@ -3218,4 +3218,48 @@ void main() {
       }
     }
   });
+
+  // The pinned URL overload reaches the base with the original relative text, so
+  // a nonblank scalar that ends in a Unicode space keeps it through the public
+  // information and TOC stages.
+  for (final json in [false, true]) {
+    for (final suffix in [false, true]) {
+      test('repair06whitespace pipeline json=$json suffix=$suffix', () async {
+        const origin = 'http://source.test';
+        const logical = '$origin/book/1?keep=x';
+        final value = 'child${suffix ? '\u2000' : ''}';
+        final pages = _Pages({'/book/1': _repair06Page(json)});
+        final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+          ..['searchUrl'] = logical
+          ..['bookUrlPattern'] = '.*';
+        final infoRule = Map<String, dynamic>.from(
+          source['ruleBookInfo'] as Map,
+        );
+        infoRule['tocUrl'] = '@js: ${jsonEncode(value)}';
+        source['ruleBookInfo'] = infoRule;
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        try {
+          final hit = (await pipeline.search('1')).single;
+          expect(hit.title, 'Book');
+          expect(hit.infoHtml, isNotEmpty);
+          expect(hit.addressContext?.comparisonAddress, logical);
+          final info = await pipeline.bookInfo(hit);
+          expect(info.book.title, 'Book');
+          expect(info.tocAddress, value);
+          expect(info.tocBase.toString(), logical);
+          expect(info.tocHtml, isNull);
+          expect(pages.requests, [logical]);
+          expect(
+            info.tocUrl,
+            '$origin/book/$value',
+            reason: 'a nonblank relative scalar keeps its Unicode text',
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  }
 }

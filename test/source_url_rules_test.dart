@@ -173,4 +173,45 @@ void main() {
       'HTTP://UPPER.test/catalog/toc',
     );
   });
+
+  // The pinned `NetworkUtils.kt:173-191` URL overload trims with Kotlin only for
+  // its null-base fallback and its absolute/data/javascript admission; the
+  // relative branch hands the original text to `URL(base, relativePath)`, whose
+  // own edge trim stops at U+0020. A Unicode space is therefore URL text, while a
+  // C0 control is not.
+  for (final (label, raw, expected) in [
+    ('suffix', 'child\u2000', 'http://source.test/book/child\u2000'),
+    ('prefix', '\u2000child', 'http://source.test/book/\u2000child'),
+    ('ascii-control', '\u001cchild\u001c', 'http://source.test/book/child'),
+    (
+      'absolute-control',
+      'http://UPPER.test/toc\u2000',
+      'http://UPPER.test/toc',
+    ),
+  ]) {
+    test('repair06whitespace URL text $label', () {
+      final base = Uri.parse('http://source.test/book/1?keep=x');
+      expect(
+        sourceUrlTextResolved(base, raw),
+        expected,
+        reason: 'the URL constructor receives the original relative text',
+      );
+      expect(
+        sourceUrlNativeText(raw, base),
+        expected,
+        reason: 'the frozen scalar helper follows the same exact operation',
+      );
+    });
+  }
+
+  for (final suffix in [false, true]) {
+    test('repair06whitespace raw base suffix=$suffix', () {
+      final rawBase = 'http://UPPER.test/book/1${suffix ? '\u2000' : ''}';
+      expect(
+        sourceUrlTextResolved(Uri.parse(rawBase), '#next', rawBase: rawBase),
+        '$rawBase#next',
+        reason: 'the base constructor keeps a Unicode path character',
+      );
+    });
+  }
 }
