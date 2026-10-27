@@ -133,4 +133,44 @@ void main() {
     expect(sourceQueryLooksEncoded('a=~b!c'), isTrue);
     expect(sourceQueryLooksEncoded('a=书'), isFalse);
   });
+
+  test('repair06 fragment question mark is not query presence', () {
+    // The frozen `URL(base, "#next")` keeps the base's own query and never
+    // invents an empty one from a `?` the fragment happens to hold.
+    final fragmentOnly = Uri.parse('http://source.test/book#old?marker');
+    expect(fragmentOnly.hasQuery, isFalse);
+    expect(
+      sourceUrlTextResolved(fragmentOnly, '#next'),
+      'http://source.test/book#next',
+    );
+    // An explicit empty query stays one, as the retained positive case says.
+    final explicitEmpty = Uri.parse('http://source.test/book?#old?marker');
+    expect(explicitEmpty.hasQuery, isTrue);
+    expect(
+      sourceUrlTextResolved(explicitEmpty, '#next'),
+      'http://source.test/book?#next',
+    );
+  });
+
+  test('repair06 raw base inherits the native protocol', () {
+    for (final (base, expected) in [
+      ('HTTP://UPPER.test/catalog/book', 'http://UPPER.test/catalog/toc'),
+      ('http://UPPER.test/catalog/book', 'http://UPPER.test/catalog/toc'),
+    ]) {
+      expect(
+        sourceUrlTextResolved(Uri.parse(base), 'toc', rawBase: base),
+        expected,
+        reason: base,
+      );
+    }
+    // An already absolute field stays verbatim, whatever its own scheme case.
+    expect(
+      sourceUrlTextResolved(
+        Uri.parse('HTTP://UPPER.test/catalog/book'),
+        'HTTP://UPPER.test/catalog/toc',
+        rawBase: 'HTTP://UPPER.test/catalog/book',
+      ),
+      'HTTP://UPPER.test/catalog/toc',
+    );
+  });
 }

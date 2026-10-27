@@ -11,6 +11,7 @@ import 'package:liber/source/js_source_runtime.dart'
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_url_rules.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
@@ -699,6 +700,37 @@ void main() {
       );
     },
   );
+
+  // Reading the published TOC address is boundary-only: the frozen
+  // `BookInfo.kt:150-157` compares the finished text and never parses the book
+  // program's request options, so an option family the request path refuses
+  // must not make the getter throw.
+  for (final future in [false, true]) {
+    test('repair06 publication is boundary only future=$future', () {
+      const origin = 'http://source.test';
+      final tail =
+          ',${jsonEncode(future ? {'futureRequestOption': true} : {'headers': <String, String>{}})}';
+      final info = SourceBookInfo(
+        book: HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+        tocAddress: '$origin/toc',
+        tocBase: Uri.parse('$origin/book'),
+        bookUrl: Uri.parse('$origin/book'),
+        bookOptions: const SourceUrlOptions(),
+        bookAddress: '$origin/book$tail',
+        keyword: '',
+        page: null,
+      );
+      String? value;
+      Object? error;
+      try {
+        value = info.tocUrl;
+      } catch (exception) {
+        error = exception;
+      }
+      expect(error, isNull, reason: 'publication reads no request options');
+      expect(value, '$origin/toc');
+    });
+  }
 }
 
 /// A source whose search page names the address text a hit keeps: [tail] is
