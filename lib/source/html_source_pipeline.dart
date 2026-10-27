@@ -1351,7 +1351,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     );
     final identityText = Uri.tryParse(split.path)?.hasScheme == true
         ? split.path
-        : sourceUrlTextResolved(base, split.path);
+        : split.path.startsWith('/')
+        ? sourceUrlTextResolved(base, split.path)
+        : sourceUrlTextWithRawQuery(identityTarget, split.path);
     captureIdentity?.call(identityTarget, '$identityText${split.tail}');
     return (url, split.options);
   }
