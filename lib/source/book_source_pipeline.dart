@@ -310,6 +310,7 @@ String resolveSourceTocUrl({
   final value = address.isEmpty ? fallbackAddress : address;
   final boundary = sourceUrlOptionBoundaryOf(value);
   final path = boundary == null ? value : value.substring(0, boundary);
+  final tail = boundary == null ? '' : value.substring(boundary);
   // The Kotlin trim belongs to the frozen absolute shortcut only; the relative
   // branch keeps the address text as the rule wrote it, so a Unicode space at
   // either edge is not discarded before the URL constructor sees it.
