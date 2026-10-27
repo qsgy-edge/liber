@@ -1367,6 +1367,50 @@ void main() {
       );
     }
 
+    for (final fallback in [false, true]) {
+      for (final rooted in [false, true]) {
+        test(
+          'HTML relative special publication fallback=$fallback rooted=$rooted',
+          () async {
+            const origin = 'http://source.test';
+            const targetOrigin = 'http://other.test';
+            final raw = '${rooted ? '/' : ''}目录?q=书';
+            final tail =
+                ',${jsonEncode({'js': "source.put('specialRuns', String(Number(source.get('specialRuns')||'0')+1)); '$targetOrigin/wire'"})}';
+            final body =
+                '<h2>Book</h2><a id="toc" href="/toc">TOC</a>'
+                '<ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
+            final pages = _Pages({'/wire': body});
+            final source = <String, dynamic>{
+              'bookSourceUrl': origin,
+              'searchUrl': raw + tail,
+              'bookUrlPattern': fallback ? '' : '.*',
+              'ruleSearch': {
+                'bookList': '.missing',
+                'name': 'h2@text',
+                'bookUrl': 'a@href',
+              },
+              'ruleBookInfo': {'name': 'h2@text', 'tocUrl': '#toc@href'},
+              'ruleToc': {
+                'chapterList': '#list li',
+                'chapterName': 'a@text',
+                'chapterUrl': 'a@href',
+              },
+            };
+            final pipeline = HtmlSourcePipeline(source, pages);
+            try {
+              final hit = (await pipeline.search('x')).single;
+              expect(hit.title, 'Book');
+              expect(hit.url.toString(), '$targetOrigin/wire');
+              expect(hit.identityAddress, '$targetOrigin/目录?q=书$tail');
+            } finally {
+              pipeline.cancel();
+            }
+          },
+        );
+      }
+    }
+
     for (final raw in ['/book/1', "@js: '/book/1'", "<js>'/book/1'</js>"]) {
       test('JSON literal native admission scalar=$raw', () async {
         const origin = 'http://source.test';
