@@ -1356,9 +1356,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
     // A retained page is read at the book's own finished native text
     // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
-    // relative chapters and next-page addresses resolve there rather than at the
-    // response URL a redirect landed on. The information stage keeps reporting
-    // the response it actually fetched.
+    // next-page addresses resolve there rather than at the response URL a
+    // redirect landed on, while its chapter targets are built from that same
+    // text's String base below. The information stage keeps reporting the
+    // response it actually fetched.
     final retainedPageUrl = retainedFirstPage
         ? Uri.tryParse(
             info.book.addressContext?.comparisonAddress ??
