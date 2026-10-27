@@ -308,20 +308,20 @@ String _sourceUrlStringBase(String text) {
 /// in `rawAddress` so its options persist exactly once. The content stage then
 /// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
 /// before the `,{…}` boundary, resolved against the same finished text, with its
-/// query encoded by the tail's own supported `charset` option
-/// (`AnalyzeUrl.kt:214-222`, `:279-334`). The boundary stays textual for the
-/// target text; only the tail's existing option reader supplies the charset, and
-/// no second expansion, field read or option script runs here.
-Future<Uri> _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) async {
+/// query encoded by the request's own evaluated `charset` option
+/// (`AnalyzeUrl.kt:214-222`, `:279-334`). That option arrived already evaluated
+/// with the carrying request ([charset]), so this conversion reads no option
+/// family again: an unsupported one stays the fetch consumer's refusal
+/// (`SourceChapter.options`), not this target conversion's.
+Future<Uri> _ordinaryChapterTarget(
+  String fallbackAddress,
+  Uri pageUrl, {
+  required String? charset,
+}) async {
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
   final path = boundary == null
       ? fallbackAddress
       : fallbackAddress.substring(0, boundary);
-  final charset = boundary == null
-      ? null
-      : splitSourceUrlOptions(
-          fallbackAddress.substring(boundary),
-        ).options.charset;
   // The native absolute shortcut is the Kotlin trim; a relative text keeps the
   // URL constructor's own original spelling.
   final trimmed = sourceKotlinTrim(path);
@@ -1966,7 +1966,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       html,
       parseBase,
       hit,
-      coverRawBase: retainedBody ? publicationAddress : null,
+      // The frozen `BookInfo.kt:137-145` cover call is the String-base overload
+      // `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, whose base is the
+      // book's native logical text (`book.bookUrl`), not the expanded
+      // publication; the overload builds its URL object before the base's first
+      // comma (`NetworkUtils.kt:160-169`).
+      coverRawBase: retainedBody ? nativeBookAddress : null,
     );
     final effectiveTocText = sourceKotlinIsBlank(tocText) ? '' : tocText;
     final comparisonBase = retainedBody
@@ -2029,22 +2034,21 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // A retained page is read at the book's own finished native text
     // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
     // next-page addresses resolve there rather than at the response URL a
-    // redirect landed on, while its chapter targets are built from that same
-    // text's String base below. The information stage keeps reporting the
-    // response it actually fetched.
+    // redirect landed on. `book.bookUrl` is that native logical text, which the
+    // frozen chapter constructor hands to the String overload
+    // (`BookChapterList.kt:219-222` over `BookChapter.kt:143-149`), and that
+    // overload builds its URL object from the text before its first comma
+    // (`NetworkUtils.kt:160-169`). The expanded publication stays the ordinary
+    // empty chapter's own fact below, not this base.
+    final retainedLogicalText =
+        info.book.addressContext?.comparisonAddress ??
+        info.book.identityAddress;
     final retainedPageUrl = retainedFirstPage
-        ? Uri.tryParse(
-            info.book.addressContext?.comparisonAddress ??
-                info.book.identityAddress,
-          )
+        ? Uri.tryParse(retainedLogicalText)
         : null;
-    // A retained chapter's own base is the published TOC text, which the frozen
-    // chapter constructor hands to the String overload (`BookChapterList.kt:219-222`
-    // over `BookChapter.kt:143-149`): that overload builds its URL object from
-    // the base before its first comma (`NetworkUtils.kt:160-169`). The page's own
-    // URL stays the whole logical stage for the next-page walk.
     final retainedChapterBase = retainedFirstPage
-        ? Uri.tryParse(_sourceUrlStringBase(info.tocUrl)) ?? retainedPageUrl
+        ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
+              retainedPageUrl
         : null;
     final (tocTarget, tocOptions) = retainedFirstPage
         ? (bookUrl, const SourceUrlOptions())
@@ -2345,6 +2349,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                             ? await _ordinaryChapterTarget(
                                 ordinaryFallbackAddress,
                                 pageUrl,
+                                charset: bookOptions.charset,
                               )
                             : pageUrl,
                         rawAddress: ordinaryFallbackAddress,
