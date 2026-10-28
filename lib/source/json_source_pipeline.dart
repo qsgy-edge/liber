@@ -60,6 +60,19 @@ String _sourceAbsoluteText(String address, Uri base) {
   return '${sourceUrlTextResolved(base, parts.before)}${parts.tail}';
 }
 
+/// Whether an address text is pending analysis rather than a URI: a `{{…}}`
+/// template or a whole `@js:` request program.
+///
+/// Such text is carried, saved and rebuilt verbatim. It is never read as a URI —
+/// a program's `@js:` is not a scheme, and a template's braces are not escapes —
+/// and it runs only in the request that actually analyses it.
+bool _isPendingAddressText(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final path = (boundary == null ? address : address.substring(0, boundary))
+      .trim();
+  return path.contains('{{') || path.startsWith('@js:');
+}
+
 /// The request target an ordinary empty chapter keeps when the TOC page's own
 /// address stands in for a rule that answered nothing.
 ///
@@ -1105,7 +1118,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       fallbackAddress: address,
     );
     final bare = splitSourceUrlOptions(resolved).path;
-    if (!parts.path.contains('{{') && !parts.path.startsWith('@js:')) {
+    if (!_isPendingAddressText(address)) {
       return (text: resolved, target: _url(base, bare));
     }
     return (
@@ -2553,6 +2566,10 @@ class SourceChapter {
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
   /// their owning book at fetch time; the raw address remains the store's key.
+  ///
+  /// A saved `{{…}}` template or `@js:` program is pending text rather than a
+  /// URI: it resolves against the book as text alone, so rebuilding it runs
+  /// nothing and never reads the program's `@js:` as a scheme.
   factory SourceChapter.fromAddress(
     String name,
     String address, {
@@ -2565,9 +2582,18 @@ class SourceChapter {
     String? variable,
   }) {
     final target = sourceUrlTargetOf(address);
+    final base = bookUrl;
+    final Uri url;
+    if (base == null) {
+      url = SourceHttpUri.parse(target);
+    } else if (_isPendingAddressText(address)) {
+      url = JsonSourcePipeline._pendingChapterAddress(base, address).target;
+    } else {
+      url = SourceHttpUri.parse('${base.resolve(target)}');
+    }
     return SourceChapter(
       name,
-      SourceHttpUri.parse('${bookUrl?.resolve(target) ?? target}'),
+      url,
       rawAddress: address,
       storedKey: chapterKey,
       addressBase: bookUrl,
@@ -2673,13 +2699,22 @@ class SourceChapter {
   /// and the URL a request targets are the same either way, and a row written by
   /// [SourceChapter.fromAddress] keeps parsing to itself.
   ///
+  /// A stored `{{…}}` template or `@js:` program is the exception: that text is
+  /// pending analysis, so the row keeps it exactly as it was saved. Re-deriving
+  /// it from [url] would re-encode its braces and pipes and lose the form the
+  /// request has to analyse.
+  ///
   /// A volume the rules left without a URL has no target to write absolute
   /// (`rendersTagAsContent`): the frozen keeps the identity text
   /// `title + index` as that chapter's whole state, so the row keeps it too and
   /// the shortcut reads it again after a restart.
-  String get persistedAddress => rendersTagAsContent
-      ? address
-      : fetchContext?.requestAddress ?? '$url${sourceUrlOptionTailOf(address)}';
+  String get persistedAddress {
+    if (rendersTagAsContent) return address;
+    final context = fetchContext;
+    if (context != null) return context.requestAddress;
+    if (_isPendingAddressText(address)) return address;
+    return '$url${sourceUrlOptionTailOf(address)}';
+  }
 
   /// The frozen `WebBook.getContentAwait` volume shortcut
   /// (`WebBook.kt:307-310`): a volume chapter whose own URL text starts with its
