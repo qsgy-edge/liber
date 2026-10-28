@@ -1039,6 +1039,31 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return url;
   }
 
+  /// One chapter address whose own request program has not run yet: the text
+  /// that request will analyse, and the key this chapter names right now.
+  ///
+  /// A TOC chapter address is a completed rule value, not the request itself, so
+  /// a `{{…}}` template or a leading `@js:` program it still carries belongs to
+  /// the request that fetches the chapter: this keeps that exact text for the
+  /// request and parses it as the chapter's own address instead of executing it
+  /// to obtain a key. [_url] keeps refusing such a text wherever a request
+  /// actually resolves its target.
+  static ({String text, Uri target}) _pendingChapterAddress(
+    Uri base,
+    String address,
+  ) {
+    final parts = splitSourceUrlOptions(address);
+    if (parts.path.contains('{{') || parts.path.startsWith('@js:')) {
+      return (text: address, target: SourceHttpUri.parse(parts.path));
+    }
+    final text = resolveSourceTocUrl(
+      address: address,
+      base: base,
+      fallbackAddress: address,
+    );
+    return (text: text, target: _url(base, splitSourceUrlOptions(text).path));
+  }
+
   /// `ruleSearch`: the books a keyword search returns.
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
@@ -1630,24 +1655,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       );
               } else {
                 // The chapter keeps its rule's finished text, and the request it
-                // will make is that text resolved before any request option runs
-                // (approved A): the supported option script, method and charset
-                // belong to the actual content request (`chapter`), so building
-                // this chapter analyses none of them. Expanding the field's
-                // template is the TOC stage's own once-only step, and the option
-                // tail stays verbatim behind the bare target.
+                // will make is that same text: a `{{…}}` template or an `@js:`
+                // program it carries belongs to that request, so building this
+                // chapter runs neither. The key is the pending address parsed as
+                // its own text, and the option tail stays verbatim behind it.
                 final chapterBase = cachedFirstPage
                     ? (retainedChapterBase ?? tocPage.url)
                     : tocPage.url;
-                final completedAddress = await _expand(chapterUrl, _keyword);
-                final requestAddress = resolveSourceTocUrl(
-                  address: completedAddress,
-                  base: chapterBase,
-                  fallbackAddress: completedAddress,
-                );
+                final pending = _pendingChapterAddress(chapterBase, chapterUrl);
                 chapter = SourceChapter(
                   name,
-                  _url(chapterBase, splitSourceUrlOptions(requestAddress).path),
+                  pending.target,
                   rawAddress: chapterUrl,
                   addressBase: chapterBase,
                   tag: tag,
@@ -1655,7 +1673,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isVip: isVip,
                   isPay: isPay,
                   fetchContext: (
-                    requestAddress: requestAddress,
+                    requestAddress: pending.text,
                     retainedPage: null,
                   ),
                 );
@@ -2018,13 +2036,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     //
     // A newly generated chapter carries [SourceChapter.fetchContext], whose
     // complete request text is what its own request analyses: the supported
-    // option script, method and charset run here, once, for the actual content
-    // request (approved A), which is why the whole text and its base stay this
+    // template, option script, method and charset run here, once, for the actual
+    // content request, which is why the whole text and its base stay this
     // request's own facts for the login check and for `java.initUrl`. The target
     // that analysis selects is this request's alone — the chapter's stable URL,
-    // key and saved text keep the pre-option facts. A chapter without that
-    // context (stored, imported or an empty-target fallback) already carries the
-    // target and options it is fetched with.
+    // key and saved text keep the pending facts. A chapter without that context
+    // (stored, imported or an empty-target fallback) already carries the target
+    // and options it is fetched with.
     final chapterContext = chapter.fetchContext;
     final chapterBase = chapter.addressBase ?? chapter.url;
     final (firstUrl, firstOptions) = chapterContext == null
@@ -2460,7 +2478,7 @@ class SourceChapter {
 
   /// The rule's own address text when it was kept. A bare URL carries no
   /// options, so it parses to itself. A chapter that carries [fetchContext]
-  /// fetches its complete approved request text instead.
+  /// fetches its complete pending request text instead.
   String get address => rawAddress ?? '$url';
 
   /// The options this chapter's own request applies. Parsed where the chapter
@@ -2471,7 +2489,7 @@ class SourceChapter {
   /// The address text to persist: the target before request-option execution,
   /// resolved, with the exact option tail kept verbatim.
   ///
-  /// A chapter that carries [fetchContext] keeps exactly its approved
+  /// A chapter that carries [fetchContext] keeps exactly its
   /// `fetchContext.requestAddress`, which is that complete text: the key stays
   /// the bare target while the row keeps the options the content stage
   /// reanalyses. Every other chapter keeps the tail behind [url].
