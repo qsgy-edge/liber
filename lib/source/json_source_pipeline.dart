@@ -1629,29 +1629,42 @@ class JsonSourcePipeline implements BookSourcePipeline {
                         isPay: isPay,
                       );
               } else {
-                final (resolved, _) = await _request(
-                  cachedFirstPage
-                      ? (retainedChapterBase ?? tocPage.url)
-                      : tocPage.url,
-                  chapterUrl,
-                  _keyword,
+                // The chapter keeps its rule's finished text, and the request it
+                // will make is that text resolved before any request option runs
+                // (approved A): the supported option script, method and charset
+                // belong to the actual content request (`chapter`), so building
+                // this chapter analyses none of them. Expanding the field's
+                // template is the TOC stage's own once-only step, and the option
+                // tail stays verbatim behind the bare target.
+                final chapterBase = cachedFirstPage
+                    ? (retainedChapterBase ?? tocPage.url)
+                    : tocPage.url;
+                final completedAddress = await _expand(chapterUrl, _keyword);
+                final requestAddress = resolveSourceTocUrl(
+                  address: completedAddress,
+                  base: chapterBase,
+                  fallbackAddress: completedAddress,
                 );
                 chapter = SourceChapter(
                   name,
-                  resolved,
+                  _url(chapterBase, splitSourceUrlOptions(requestAddress).path),
                   rawAddress: chapterUrl,
+                  addressBase: chapterBase,
                   tag: tag,
                   isVolume: isVolume,
                   isVip: isVip,
                   isPay: isPay,
+                  fetchContext: (
+                    requestAddress: requestAddress,
+                    retainedPage: null,
+                  ),
                 );
               }
-              // The chapter's own variable text, read after all the item's
-              // address and rule analysis: a supported chapterUrl option `js`
-              // runs inside `_request` above and may write it, keyed by the same
-              // raw address the script bound as `chapter.url` (#132). Reading
-              // here does not run that option script again, and the item's own
-              // capture is the write alone.
+              // The chapter's own variable text, read after the item's own rule
+              // analysis: the item's rule scripts write it now (#132), and a
+              // supported `chapterUrl` option `js` writes it later, when the
+              // actual content request runs that address (`chapter`). Reading
+              // here runs no option script.
               final chapterVariable = _entityVariables.chapterText;
               // A repeated chapter address is kept, as this path always has: the frozen
               // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
@@ -2002,14 +2015,27 @@ class JsonSourcePipeline implements BookSourcePipeline {
     var firstPage = true;
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
+    //
+    // A newly generated chapter carries [SourceChapter.fetchContext], whose
+    // complete request text is what its own request analyses: the supported
+    // option script, method and charset run here, once, for the actual content
+    // request (approved A), which is why the whole text and its base stay this
+    // request's own facts for the login check and for `java.initUrl`. The target
+    // that analysis selects is this request's alone — the chapter's stable URL,
+    // key and saved text keep the pre-option facts. A chapter without that
+    // context (stored, imported or an empty-target fallback) already carries the
+    // target and options it is fetched with.
+    final chapterContext = chapter.fetchContext;
+    final chapterBase = chapter.addressBase ?? chapter.url;
+    final (firstUrl, firstOptions) = chapterContext == null
+        ? (chapter.url, chapter.options)
+        : await _request(chapterBase, chapterContext.requestAddress, _keyword);
     final pages = await walkSourcePages(
       first: (
-        url: chapter.url,
-        // The chapter's own address text carries its options (the frozen
-        // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
-        options: chapter.options,
-        address: chapter.address,
-        base: chapter.addressBase ?? chapter.url,
+        url: firstUrl,
+        options: firstOptions,
+        address: chapterContext?.requestAddress ?? chapter.address,
+        base: chapterBase,
       ),
       maxPages: 20,
       cycleError: 'Content page cycle',
@@ -2056,6 +2082,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               storedKey: chapter.storedKey,
               addressBase: chapter.addressBase,
               variable: chapter.variable,
+              fetchContext: chapter.fetchContext,
             );
           }
         }
@@ -2277,11 +2304,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
 /// One chapter of a source's table of contents.
 ///
-/// [url] is the resolved request target, without any option tail. [rawAddress]
-/// is the address text the TOC rule produced, options included — the frozen
-/// `BookChapter.url` (`BookChapterList.kt:222`) — so the request that fetches
-/// the chapter can parse its options the way the frozen `AnalyzeUrl` does
-/// (`AnalyzeUrl.kt:214-222`).
+/// [url] is the resolved target before request-option execution, without the
+/// option tail: a newly generated chapter keys by its rule's own address
+/// resolved, while the options its request applies belong to that request
+/// ([fetchContext]). [rawAddress] is the address text the TOC rule produced,
+/// options included — the frozen `BookChapter.url` (`BookChapterList.kt:222`) —
+/// so the request that fetches the chapter can parse its options the way the
+/// frozen `AnalyzeUrl` does (`AnalyzeUrl.kt:214-222`).
 ///
 /// [tag], [isVolume], [isVip] and [isPay] are the frozen `BookChapter` marker
 /// fields: `ruleToc.updateTime`/`isVolume`/`isVip`/`isPay` read through the
@@ -2298,6 +2327,7 @@ class SourceChapter {
     this.isVip = false,
     this.isPay = false,
     this.variable,
+    this.fetchContext,
   });
 
   /// A volume chapter whose URL rule produced nothing.
@@ -2388,6 +2418,18 @@ class SourceChapter {
   /// `chapter.url`, never this field directly.
   final String? variable;
 
+  /// The request a newly generated chapter's own content stage runs: the
+  /// complete request text before request-option execution and, only where the
+  /// frozen content-reuse condition holds, an existing response.
+  ///
+  /// [requestAddress] is the address's bare target resolved with the exact
+  /// option tail kept verbatim, so this chapter's identity and saved text never
+  /// depend on the target those options produce. The record is memory-only — no
+  /// JSON, database or source-script shape carries it — and a chapter rebuilt
+  /// from a stored address, an import or an empty-target fallback has none.
+  final ({String requestAddress, SourceStageResponse? retainedPage})?
+  fetchContext;
+
   /// This carrier with [variable] replaced, every identity, address and marker
   /// field retained. A metadata or content-stage copy must not drop the
   /// variable it started from.
@@ -2402,6 +2444,7 @@ class SourceChapter {
     isVip: isVip,
     isPay: isPay,
     variable: variable,
+    fetchContext: fetchContext,
   );
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
@@ -2415,8 +2458,9 @@ class SourceChapter {
   /// Base used to reanalyse a stored address via `java.initUrl()`.
   final Uri? addressBase;
 
-  /// The text a fetch parses: the rule's address when it was kept. A bare URL
-  /// carries no options, so it parses to itself.
+  /// The rule's own address text when it was kept. A bare URL carries no
+  /// options, so it parses to itself. A chapter that carries [fetchContext]
+  /// fetches its complete approved request text instead.
   String get address => rawAddress ?? '$url';
 
   /// The options this chapter's own request applies. Parsed where the chapter
@@ -2424,8 +2468,13 @@ class SourceChapter {
   /// restart once the address text is what the store holds.
   SourceUrlOptions get options => splitSourceUrlOptions(address).options;
 
-  /// The address text to persist: the request target resolved, the option tail
-  /// kept verbatim.
+  /// The address text to persist: the target before request-option execution,
+  /// resolved, with the exact option tail kept verbatim.
+  ///
+  /// A chapter that carries [fetchContext] keeps exactly its approved
+  /// `fetchContext.requestAddress`, which is that complete text: the key stays
+  /// the bare target while the row keeps the options the content stage
+  /// reanalyses. Every other chapter keeps the tail behind [url].
   ///
   /// A stored row has no TOC page left to resolve a relative address against, so
   /// the target is written absolute. The frozen stores the rule's own text and
@@ -2437,8 +2486,9 @@ class SourceChapter {
   /// (`rendersTagAsContent`): the frozen keeps the identity text
   /// `title + index` as that chapter's whole state, so the row keeps it too and
   /// the shortcut reads it again after a restart.
-  String get persistedAddress =>
-      rendersTagAsContent ? address : '$url${sourceUrlOptionTailOf(address)}';
+  String get persistedAddress => rendersTagAsContent
+      ? address
+      : fetchContext?.requestAddress ?? '$url${sourceUrlOptionTailOf(address)}';
 
   /// The frozen `WebBook.getContentAwait` volume shortcut
   /// (`WebBook.kt:307-310`): a volume chapter whose own URL text starts with its

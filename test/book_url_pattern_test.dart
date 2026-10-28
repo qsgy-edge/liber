@@ -4713,11 +4713,11 @@ void main() {
     }
   });
 
-  // The approved chapter lifecycle separates a new chapter's identity and saved
-  // request text from the target its own request options produce: the TOC keeps
-  // the rule's finished text, the key and the saved address are the resolved
-  // pre-option target plus that exact tail once, and the option script runs for
-  // the actual content request alone.
+  // The approved chapter lifecycle separates a new chapter's identity from the
+  // target its own request options produce: the TOC keeps the rule's finished
+  // text, the key is the bare resolved pre-option target, the saved request text
+  // appends that exact option tail once, and the option script runs for the
+  // actual content request alone.
   group('chapterLifecycle', () {
     const origin = 'http://source.test';
     const bookAddress = 'http://source.test/catalog/book/1';
