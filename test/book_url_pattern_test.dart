@@ -3483,7 +3483,10 @@ void main() {
               reason: 'target: empty target uses the expanded fact',
             );
             expect(chapter.storeKey, '$origin/book/1');
-            expect(chapter.persistedAddress, '$origin/book/1');
+            expect(
+              chapter.persistedAddress,
+              json ? '$origin$raw' : '$origin/book/1',
+            );
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
             expect(pages.requests.last.url.toString(), '$origin/book/1');
@@ -3573,7 +3576,7 @@ void main() {
               reason: 'target: named charset target',
             );
             expect(chapter.storeKey, wire);
-            expect(chapter.persistedAddress, '$wire$tail');
+            expect(chapter.persistedAddress, json ? raw : '$wire$tail');
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
             expect(pages.requests.length, json ? 1 : 2);
@@ -4130,7 +4133,7 @@ void main() {
                       'target: the empty target uses the charset its own fallback text declares',
                 );
                 expect(chapter.storeKey, wire);
-                expect(chapter.persistedAddress, '$wire$tail');
+                expect(chapter.persistedAddress, json ? raw : '$wire$tail');
                 final body = await pipeline.chapter(chapter, book: info.book);
                 expect(body.text, 'Body');
                 expect(
@@ -4236,7 +4239,10 @@ void main() {
                     'target: the empty target consumes its own fallback charset',
               );
               expect(chapter.storeKey, wire);
-              expect(chapter.persistedAddress, '$wire,{"charset":"gbk"}');
+              expect(
+                chapter.persistedAddress,
+                json ? rawToc : '$wire,{"charset":"gbk"}',
+              );
               final body = await pipeline.chapter(chapter, book: info.book);
               expect(body.text, 'Body');
               expect(
@@ -4338,7 +4344,10 @@ void main() {
                     'control: the declared TOC query does not depend on the information request',
               );
               expect(chapter.storeKey, expected);
-              expect(chapter.persistedAddress, '$expected$tail');
+              expect(
+                chapter.persistedAddress,
+                json ? rawToc : '$expected$tail',
+              );
               expect(
                 pages.requests.length,
                 2,
@@ -4437,7 +4446,7 @@ void main() {
             );
             expect(chapter.address, raw);
             expect(chapter.storeKey, wire);
-            expect(chapter.persistedAddress, '$wire$tail');
+            expect(chapter.persistedAddress, json ? raw : '$wire$tail');
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
             expect('${pages.requests.last.url}', wire);
@@ -4762,7 +4771,7 @@ void main() {
                   'target: the conversion keeps whether the request consumed its query',
             );
             expect(chapter.storeKey, expected);
-            expect(chapter.persistedAddress, '$expected$tail');
+            expect(chapter.persistedAddress, json ? raw : '$expected$tail');
             expect(pages.requests.length, 1);
             expect(
               await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
