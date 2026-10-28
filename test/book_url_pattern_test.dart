@@ -4879,7 +4879,7 @@ void main() {
             'once',
             reason: 'target: the option header on the actual request',
           );
-          final Object? expectedRuns = script == null ? isNull : '1';
+          final Object expectedRuns = script == null ? isNull : '1';
           expect(
             await state.entry(origin, runsKey),
             expectedRuns,
@@ -5068,6 +5068,253 @@ void main() {
               reason:
                   'target: the generated result marker remains URL data, expanded once',
             );
+          } finally {
+            first.cancel();
+            second?.cancel();
+          }
+        });
+      }
+    }
+  });
+
+  // A pending chapter address is resolved against the TOC page's own base before
+  // its request program runs: the chapter names an absolute identity now, keeps
+  // that resolved base in its saved request text, and the single actual request
+  // executes whatever program the address still carries.
+  group('chapterPendingAddress', () {
+    const origin = 'http://source.test';
+    const query = '{{String.fromCharCode(97,115,99,105,105)}}';
+    const tail = ',{"headers":{"X-Chapter":"once"}}';
+
+    for (final fresh in [false, true]) {
+      for (final relative in [false, true]) {
+        test('resolved identity fresh=$fresh relative=$relative', () async {
+          final raw = relative
+              ? '../content?q=$query$tail'
+              : '$origin/catalog/content?q=$query$tail';
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/catalog/deep/toc',
+            chapter: raw,
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/deep/toc',
+              '/catalog/content',
+            ],
+          );
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^';
+          final first = _openContinuation(true, source, pages);
+          BookSourcePipeline? second;
+          try {
+            final hit = (await first.search('ascii')).single;
+            final info = await first.bookInfo(hit);
+            final (book, chapters) = await first.tableOfContents(info);
+            expect(book.title, 'Book');
+            expect(info.tocUrl, '$origin/catalog/deep/toc');
+            expect(pages.requests.map((request) => request.url.path), [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/deep/toc',
+            ]);
+            final chapter = chapters.single.withVariable('{"seed":"kept"}');
+            expect(chapter.address, raw);
+            expect(chapter.addressBase?.path, '/catalog/deep/toc');
+            final keyBefore = chapter.storeKey;
+            final reader = fresh
+                ? (second = _openContinuation(true, source, pages))
+                : first;
+            final body = await reader.chapter(chapter, book: book);
+            expect(
+              body.text,
+              'Body',
+              reason: 'premise: the actual chapter request works',
+            );
+            expect(pages.requests.length, 4);
+            expect(
+              '${pages.requests.last.url}',
+              '$origin/catalog/content?q=ascii',
+            );
+            expect(pages.requests.last.headers['X-Chapter'], 'once');
+            expect(chapter.storeKey, keyBefore);
+            expect(
+              chapter.url.isAbsolute,
+              isTrue,
+              reason:
+                  'target: pending relative chapter identity is resolved before request execution',
+            );
+            expect(chapter.url.path, '/catalog/content');
+            expect(chapter.storeKey, startsWith('$origin/catalog/content?'));
+            expect(
+              chapter.persistedAddress,
+              '$origin/catalog/content?q=$query$tail',
+              reason:
+                  'target: saved request text keeps its resolved base and unexecuted template',
+            );
+          } finally {
+            first.cancel();
+            second?.cancel();
+          }
+        });
+      }
+    }
+
+    for (final relative in [false, true]) {
+      test('different TOC bases remain distinct relative=$relative', () async {
+        final keys = <String>[];
+        for (final directory in ['catalog', 'other']) {
+          final raw = relative
+              ? '../content?q=$query$tail'
+              : '$origin/$directory/content?q=$query$tail';
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/$directory/deep/toc',
+            chapter: raw,
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/$directory/deep/toc',
+              '/$directory/content',
+            ],
+          );
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^';
+          final pipeline = _openContinuation(true, source, pages);
+          try {
+            final hit = (await pipeline.search('ascii')).single;
+            final info = await pipeline.bookInfo(hit);
+            final (book, chapters) = await pipeline.tableOfContents(info);
+            expect(book.identityAddress, '$origin/catalog/book/1');
+            final chapter = chapters.single;
+            expect(chapter.addressBase?.path, '/$directory/deep/toc');
+            final body = await pipeline.chapter(chapter, book: book);
+            expect(body.text, 'Body');
+            expect(pages.requests.length, 4);
+            expect(
+              '${pages.requests.last.url}',
+              '$origin/$directory/content?q=ascii',
+              reason: 'premise: distinct actual targets',
+            );
+            keys.add(chapter.storeKey);
+          } finally {
+            pipeline.cancel();
+          }
+        }
+        expect(
+          keys.toSet(),
+          hasLength(2),
+          reason:
+              'target: different logical bases cannot collapse to one chapter key',
+        );
+      });
+    }
+
+    for (final fresh in [false, true]) {
+      for (final programmed in [false, true]) {
+        test('whole request program fresh=$fresh programmed=$programmed', () async {
+          final raw = programmed
+              ? "@js:source.put('programRuns',String(Number(source.get('programRuns')||'0')+1));'$origin/catalog/content?q=ascii'"
+              : '$origin/catalog/content?q=ascii';
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/catalog/deep/toc',
+            chapter: raw,
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/deep/toc',
+              '/catalog/content',
+            ],
+          );
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^';
+          final state = SourceHostState();
+          final first = _openContinuation(true, source, pages, state: state);
+          BookSourcePipeline? second;
+          final key = sourceRuleVariableKey(origin, 'programRuns');
+          try {
+            final hit = (await first.search('ascii')).single;
+            final info = await first.bookInfo(hit);
+            expect(info.book.title, 'Book');
+            expect(info.tocUrl, '$origin/catalog/deep/toc');
+            expect(pages.requests.map((request) => request.url.path), [
+              '/catalog/search',
+              '/catalog/book/1',
+            ]);
+            final directory = first.tableOfContents(info).catchError((
+              Object error,
+              StackTrace stack,
+            ) {
+              if (error is FormatException &&
+                  error.message ==
+                      'Scheme not starting with alphabetic character') {
+                fail(
+                  'target: a supported pending request program is not parsed as a URI scheme at TOC: ${error.message}',
+                );
+              }
+              Error.throwWithStackTrace(error, stack);
+            });
+            final (book, chapters) = await directory;
+            final chapter = chapters.single.withVariable('{"seed":"kept"}');
+            expect(chapter.address, raw);
+            expect(pages.requests.map((request) => request.url.path), [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/deep/toc',
+            ]);
+            expect(
+              await state.entry(origin, key),
+              isNull,
+              reason: 'target: no request-program effects at TOC',
+            );
+            final stableKey = chapter.storeKey;
+            final saved = chapter.persistedAddress;
+            final reader = fresh
+                ? (second = _openContinuation(
+                    true,
+                    source,
+                    pages,
+                    state: state,
+                  ))
+                : first;
+            final body = await reader.chapter(chapter, book: book);
+            expect(body.text, 'Body');
+            expect(pages.requests.length, 4);
+            expect(
+              '${pages.requests.last.url}',
+              '$origin/catalog/content?q=ascii',
+            );
+            expect(await state.entry(origin, key), programmed ? '1' : isNull);
+            expect(chapter.storeKey, stableKey);
+            expect(chapter.persistedAddress, saved);
           } finally {
             first.cancel();
             second?.cancel();
