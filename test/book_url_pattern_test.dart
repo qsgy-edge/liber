@@ -265,6 +265,29 @@ class _RetainedPagingPages extends _ContinuationPages {
   }
 }
 
+/// One TOC (or page-walk) sequence answered in order: each request gets the
+/// next body and every later request repeats the last one. The TOC stage's own
+/// retained first page and its fetched later page therefore carry different
+/// bodies, and both next-page targets answer a valid body, so a wrong target or
+/// a wrong page fails its own assertion instead of a fixture refusal.
+class _RetainedSequencePages extends _ContinuationPages {
+  _RetainedSequencePages(this.responses) : super('');
+
+  final List<String> responses;
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    requests.add(request);
+    final index = requests.length - 1;
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: responses[index < responses.length ? index : responses.length - 1],
+      url: request.url,
+    );
+  }
+}
+
 Future<Object?> _errorOrNull(Future<dynamic> future) async {
   try {
     await future;
@@ -5765,6 +5788,143 @@ void main() {
           receiver?.cancel();
         }
       });
+    }
+  });
+
+  // Reuse reads the page the chapter was actually read from: a fetched later TOC
+  // page's ordinary empty chapter fetches its own address instead of the first
+  // retained body, and a retained first page hands a later-page rule its complete
+  // native base, whose raw text survives until that request splits its own
+  // options.
+  group('chapterRetainedBoundaries', () {
+    const origin = 'http://source.test';
+    const bookAddress = '$origin/catalog/book/1';
+
+    for (final fresh in [false, true]) {
+      for (final empty in [false, true]) {
+        test('later TOC fresh=$fresh empty=$empty', () async {
+          final first = jsonEncode({
+            ...jsonDecode(_repair06Page(true, chapter: '/catalog/first'))
+                as Map<String, dynamic>,
+            'text': 'First',
+            'tocNext': '/catalog/dir/toc2',
+          });
+          final second = jsonEncode({
+            ...jsonDecode(
+                  _repair06Page(
+                    true,
+                    chapter: empty ? '' : '/catalog/nextcontent',
+                  ),
+                )
+                as Map<String, dynamic>,
+            'text': 'Second',
+            'tocNext': '',
+          });
+          final pages = _RetainedSequencePages([first, second, second]);
+          final source = _jsonSource(origin);
+          (source['ruleToc'] as Map<String, dynamic>)['nextTocUrl'] =
+              r'$.tocNext';
+          final producer = _openContinuation(true, source, pages);
+          BookSourcePipeline? receiver;
+          try {
+            final info = await producer.bookInfo(
+              HtmlBook(
+                url: Uri.parse(bookAddress),
+                rawAddress: bookAddress,
+                title: 'Book',
+              ),
+            );
+            expect(info.tocHtml, isNotEmpty);
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(chapters.length, 2);
+            expect(pages.requests.map((request) => request.url.path).toList(), [
+              '/catalog/book/1',
+              '/catalog/dir/toc2',
+            ]);
+            final selected = chapters.last;
+            expect(
+              selected.address,
+              empty ? '$origin/catalog/dir/toc2' : '/catalog/nextcontent',
+            );
+            final reader = fresh
+                ? (receiver = _openContinuation(true, source, pages))
+                : producer;
+            final body = await reader.chapter(selected, book: book);
+            expect(
+              body.text,
+              'Second',
+              reason:
+                  'target: fetched TOC fallback must not reuse the first retained body',
+            );
+            expect(pages.requests.length, 3);
+            expect(
+              pages.requests.last.url.path,
+              empty ? '/catalog/dir/toc2' : '/catalog/nextcontent',
+            );
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+
+    for (final fresh in [false, true]) {
+      for (final tail in [false, true]) {
+        test('fragment next fresh=$fresh tail=$tail', () async {
+          final suffix = tail
+              ? ',${jsonEncode({
+                  'headers': {'X-Route': 'part/../../end'},
+                })}'
+              : '';
+          final raw = '$bookAddress$suffix';
+          final first = jsonEncode({
+            ...jsonDecode(_repair06Page(true, chapter: ''))
+                as Map<String, dynamic>,
+            'text': 'First',
+            'next': '#next',
+          });
+          final pages = _RetainedSequencePages([
+            first,
+            jsonEncode({'text': 'Second', 'next': ''}),
+          ]);
+          final source = _jsonSource(origin)
+            ..['ruleContent'] = {
+              'content': r'$.text',
+              'nextContentUrl': r'$.next',
+            };
+          final producer = _openContinuation(true, source, pages);
+          BookSourcePipeline? receiver;
+          try {
+            final info = await producer.bookInfo(
+              HtmlBook(
+                url: Uri.parse(bookAddress),
+                rawAddress: raw,
+                title: 'Book',
+              ),
+            );
+            expect(info.tocHtml, isNotEmpty);
+            expect(info.tocUrl, raw);
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(pages.requests.length, 1);
+            final reader = fresh
+                ? (receiver = _openContinuation(true, source, pages))
+                : producer;
+            final body = await reader.chapter(chapters.single, book: book);
+            expect(body.text, 'First\nSecond');
+            expect(pages.requests.length, 2);
+            expect(
+              pages.requests.last.url.path,
+              '/catalog/book/1',
+              reason:
+                  'target: fragment next preserves complete raw base until request option splitting',
+            );
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
     }
   });
 }
