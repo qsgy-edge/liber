@@ -4907,4 +4907,173 @@ void main() {
       });
     }
   });
+
+  // The chapter address's own request program belongs to the actual content
+  // request: the TOC keeps the rule's finished text, and the one request that
+  // fetches the chapter expands that text once.
+  group('chapterRequestExpansion', () {
+    const origin = 'http://source.test';
+    const tail = ',{"headers":{"X-Chapter":"once"}}';
+
+    for (final fresh in [false, true]) {
+      for (final scripted in [false, true]) {
+        test('request template timing fresh=$fresh scripted=$scripted', () async {
+          final raw = scripted
+              ? "$origin/catalog/content?q={{source.put('addressRuns',String(Number(source.get('addressRuns')||'0')+1));'ascii'}}$tail"
+              : '$origin/catalog/content?q=ascii$tail';
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/catalog/book/1',
+            chapter: raw,
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/content',
+            ],
+          );
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^';
+          final state = SourceHostState();
+          final first = _openContinuation(true, source, pages, state: state);
+          BookSourcePipeline? second;
+          final runsKey = sourceRuleVariableKey(origin, 'addressRuns');
+          try {
+            final hit = (await first.search('ascii')).single;
+            final info = await first.bookInfo(hit);
+            final (book, chapters) = await first.tableOfContents(info);
+            expect(book.title, 'Book', reason: 'premise: valid book');
+            expect(
+              pages.requests.map((request) => request.url.path),
+              ['/catalog/search', '/catalog/book/1'],
+              reason: 'premise: no content request yet',
+            );
+            final chapter = chapters.single.withVariable('{"seed":"kept"}');
+            expect(
+              chapter.address,
+              raw,
+              reason: 'premise: rule scalar preserved',
+            );
+            expect(
+              chapter.options.headers['X-Chapter'],
+              'once',
+              reason: 'premise: chapter options',
+            );
+            final key = chapter.storeKey;
+            expect(
+              await state.entry(origin, runsKey),
+              isNull,
+              reason: 'target: request template is not evaluated at TOC',
+            );
+            final reader = fresh
+                ? (second = _openContinuation(
+                    true,
+                    source,
+                    pages,
+                    state: state,
+                  ))
+                : first;
+            final body = await reader.chapter(chapter, book: book);
+            expect(body.text, 'Body');
+            expect(pages.requests.length, 3);
+            expect(
+              '${pages.requests.last.url}',
+              '$origin/catalog/content?q=ascii',
+            );
+            expect(pages.requests.last.headers['X-Chapter'], 'once');
+            expect(
+              await state.entry(origin, runsKey),
+              scripted ? '1' : isNull,
+              reason: 'target: template executes once at actual request',
+            );
+            expect(chapter.storeKey, key);
+          } finally {
+            first.cancel();
+            second?.cancel();
+          }
+        });
+      }
+
+      for (final generated in [false, true]) {
+        test('generated result marker fresh=$fresh generated=$generated', () async {
+          final raw = generated
+              ? '$origin/catalog/content?q={{String.fromCharCode(64,114,101,115,117,108,116)}}$tail'
+              : '$origin/catalog/content?q=%40result$tail';
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/catalog/book/1',
+            chapter: raw,
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/content',
+            ],
+          );
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^';
+          final first = _openContinuation(true, source, pages);
+          BookSourcePipeline? second;
+          try {
+            final hit = (await first.search('ascii')).single;
+            final info = await first.bookInfo(hit);
+            final (book, chapters) = await first.tableOfContents(info);
+            expect(book.title, 'Book');
+            expect(pages.requests.map((request) => request.url.path), [
+              '/catalog/search',
+              '/catalog/book/1',
+            ]);
+            final chapter = chapters.single.withVariable('{"seed":"kept"}');
+            expect(chapter.address, raw);
+            final reader = fresh
+                ? (second = _openContinuation(true, source, pages))
+                : first;
+            final body = await reader.chapter(chapter, book: book);
+            expect(
+              body.text,
+              'Body',
+              reason: 'premise: content request succeeded',
+            );
+            expect(
+              pages.requests.length,
+              3,
+              reason: 'premise: one content request',
+            );
+            expect(
+              pages.requests.last.headers['X-Chapter'],
+              'once',
+              reason: 'premise: own request header',
+            );
+            expect(
+              '${pages.requests.last.url}',
+              generated
+                  ? '$origin/catalog/content?q=@result'
+                  : '$origin/catalog/content?q=%40result',
+              reason:
+                  'target: the generated result marker remains URL data, expanded once',
+            );
+          } finally {
+            first.cancel();
+            second?.cancel();
+          }
+        });
+      }
+    }
+  });
 }

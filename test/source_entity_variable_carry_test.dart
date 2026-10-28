@@ -476,14 +476,28 @@ void main() {
         deferEntityVariables: true,
       );
 
-      final (_, chapters) = await pipeline.details(hitWith(null));
-      expect(variableMapOf(chapters.single.variable), {
-        'addressToken': 'ready',
-      });
+      final (book, chapters) = await pipeline.details(hitWith(null));
+      expect(
+        variableMapOf(chapters.single.variable),
+        isEmpty,
+        reason:
+            'the address-option write belongs to the actual content request',
+      );
+      expect(
+        await state.entry(origin, sourceRuleVariableKey(origin, 'addressRuns')),
+        isNull,
+        reason: 'the address option script has not run at TOC',
+      );
+      final body = await pipeline.chapter(chapters.single, book: book);
+      expect(
+        variableMapOf(body.chapterVariable),
+        {'addressToken': 'ready'},
+        reason: 'the actual content request returns its own option variable',
+      );
       expect(
         await state.entry(origin, sourceRuleVariableKey(origin, 'addressRuns')),
         '1',
-        reason: 'the address option script ran once',
+        reason: 'the address option script ran exactly once, at that request',
       );
     },
   );
@@ -986,8 +1000,9 @@ void main() {
       const addressScript = 'chapter.putVariable(\'token\',\'t1\'); void 0';
       final address = '/c/1,${jsonEncode({'js': addressScript})}';
       // The first item's rule writes while `chapter.url` is still the raw address
-      // the directory declared; the address-option script then writes again. Both
-      // belong to that item. The second item starts empty.
+      // the directory declared; that write belongs to the item. The address-option
+      // script runs for the actual content request instead, and the second item
+      // starts empty.
       const tocScript =
           '@js:if (java.get("tocRuns") !== "1") { '
           'java.put("tocRuns","1"); '
@@ -998,7 +1013,7 @@ void main() {
         jsonSource(
           infoScript: '@js:""',
           tocScript: tocScript,
-          contentScript: '@js:""',
+          contentScript: '@js:"正文"',
         ),
         _Pages({
           '/book': '{"title":"书","toc":"/toc"}',
@@ -1014,19 +1029,31 @@ void main() {
         deferEntityVariables: true,
       );
 
-      final (_, chapters) = await pipeline.details(hitWith(null));
+      final (book, chapters) = await pipeline.details(hitWith(null));
 
       expect(chapters, hasLength(2));
       expect(
         variableMapOf(chapters[0].variable),
-        {'one': 'first', 'token': 't1'},
-        reason: 'the item rule write and the address-option write both stay',
+        {'one': 'first'},
+        reason: 'only the item rule has written when the TOC completes',
       );
       expect(
         variableMapOf(chapters[1].variable),
         {'leak': 'none'},
         reason:
             'the second item starts empty and does not see the first item\'s write',
+      );
+      final firstBody = await pipeline.chapter(chapters[0], book: book);
+      expect(
+        variableMapOf(firstBody.chapterVariable),
+        {'one': 'first', 'token': 't1'},
+        reason: 'the first content request adds its own option variable',
+      );
+      final secondBody = await pipeline.chapter(chapters[1], book: book);
+      expect(
+        variableMapOf(secondBody.chapterVariable),
+        {'leak': 'none'},
+        reason: 'the second content request never inherits the first token',
       );
     },
   );
