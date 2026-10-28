@@ -5927,4 +5927,107 @@ void main() {
       }
     }
   });
+
+  // Reuse hands the content stage the chapter's complete native request input:
+  // the retained page's next address resolves against the finished native text,
+  // while the published address and the stable identity keep their own facts.
+  group('chapterRetainedNativeInput', () {
+    const origin = 'http://source.test';
+
+    for (final mode in ['same', 'fresh-book', 'fresh-carrier']) {
+      final fresh = mode != 'same';
+      for (final deep in [false, true]) {
+        test('mode=$mode deep=$deep', () async {
+          final header = deep ? 'a/../../b' : 'ab';
+          final tail =
+              ',${jsonEncode({
+                'headers': {'X-Text': header},
+              })}';
+          final publication = '$origin/catalog/book/book/1$tail';
+          final comparison = deep ? '$origin/catalog/book/b"}}' : publication;
+          final first = jsonEncode({
+            ...jsonDecode(_repair06Page(true, chapter: ''))
+                as Map<String, dynamic>,
+            'text': 'First',
+            'next': '#next',
+          });
+          final pages = _RetainedSequencePages([
+            first,
+            jsonEncode({'text': 'Second', 'next': ''}),
+          ]);
+          final source = _jsonSource(origin)
+            ..['bookSourceUrl'] = '$origin/catalog/search'
+            ..['searchUrl'] = 'book/1$tail'
+            ..['bookUrlPattern'] = '.*'
+            ..['ruleContent'] = {
+              'content': r'$.text',
+              'nextContentUrl': r'$.next',
+            };
+          final state = SourceHostState();
+          final producer = _openContinuation(true, source, pages, state: state);
+          BookSourcePipeline? receiver;
+          try {
+            final hit = (await producer.search('1')).single;
+            expect(hit.title, 'Book');
+            expect(hit.infoHtml, isNotEmpty);
+            expect(
+              hit.addressContext?.comparisonAddress,
+              comparison,
+              reason: 'premise: genuine native logical text',
+            );
+            expect(
+              hit.addressContext?.publicationAddress,
+              publication,
+              reason: 'premise: publication remains independent',
+            );
+            expect(pages.requests.single.url.path, '/catalog/book/1');
+            final info = await producer.bookInfo(hit);
+            expect(info.tocHtml, isNotEmpty);
+            expect(info.tocAddress, '');
+            expect(info.tocUrl, publication);
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(pages.requests.length, 1);
+            expect(chapters.single.address, publication);
+            final reader = fresh
+                ? (receiver = _openContinuation(
+                    true,
+                    source,
+                    pages,
+                    state: state,
+                  ))
+                : producer;
+            final body = await reader.chapter(
+              chapters.single,
+              book: mode == 'fresh-carrier' ? null : book,
+            );
+            expect(body.text, 'First\nSecond');
+            expect(
+              pages.requests.length,
+              2,
+              reason: 'premise: reuse then one actual content-next request',
+            );
+            expect(
+              pages.requests.last.url.path,
+              deep ? '/catalog/book/b%22%7D%7D' : '/catalog/book/book/1',
+              reason:
+                  'target: fragment next uses native logical text, not publication',
+            );
+            expect(chapters.single.storeKey, '$origin/catalog/book/book/1');
+            expect(
+              chapters.single.persistedAddress,
+              comparison,
+              reason: 'target: the saved input is the complete native text',
+            );
+            final copy = chapters.single.withVariable('{"kept":"yes"}');
+            expect(copy.storeKey, chapters.single.storeKey);
+            expect(copy.persistedAddress, comparison);
+            expect(book.identityAddress, publication);
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+  });
 }
