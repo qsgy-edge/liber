@@ -29,6 +29,37 @@ String _sourceUrlStringBase(String text) {
   return comma < 0 ? text : text.substring(0, comma);
 }
 
+/// The two halves of one address text at the frozen option boundary
+/// (`AnalyzeUrl.paramPattern`), read as text: everything before it, and the tail
+/// verbatim, comma included.
+///
+/// A carrier keeps the tail exactly as the rule wrote it, because building a
+/// chapter reads no option object. Only a request that actually consumes the
+/// tail validates a family, so an unsupported one stays that request's named
+/// refusal ([splitSourceUrlOptions]) instead of failing the table of contents.
+({String before, String tail}) _sourceAddressParts(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return boundary == null
+      ? (before: address, tail: '')
+      : (
+          before: address.substring(0, boundary),
+          tail: address.substring(boundary),
+        );
+}
+
+/// One chapter's complete native `BookChapter.getAbsoluteURL()` text
+/// (`BookChapter.kt:143-155`): [address] before its own frozen option boundary,
+/// resolved against [base], then that same tail verbatim behind it.
+///
+/// The frozen content branch hands this whole text to its analysis as both of its
+/// URLs (`WebBook.kt:311-329`), so the tail is part of the page base a later
+/// page resolves against and its `..` segments take part in that resolution.
+/// Deriving it here reads no option object and runs no script.
+String _sourceAbsoluteText(String address, Uri base) {
+  final parts = _sourceAddressParts(address);
+  return '${sourceUrlTextResolved(base, parts.before)}${parts.tail}';
+}
+
 /// The request target an ordinary empty chapter keeps when the TOC page's own
 /// address stands in for a rule that answered nothing.
 ///
@@ -1433,6 +1464,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
               retainedPageUrl
         : null;
+    // The complete `BookChapter.getAbsoluteURL()` text an ordinary empty chapter
+    // of a retained page hands its content analysis (`BookChapter.kt:143-155`):
+    // the book's own native text before its frozen option boundary, resolved
+    // against this TOC analysis's own base, then that tail verbatim. A later page
+    // therefore resolves against the whole native text, never against a bare
+    // target and never against this page's response URL.
+    final retainedEmptyFallbackText = retainedFirstPage
+        ? _sourceAbsoluteText(
+            retainedLogicalText,
+            retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
+          )
+        : null;
     if (!retainedFirstPage && !_headersInitialized) {
       _activeHeaders = await _ensureHeaders();
       _headersInitialized = true;
@@ -1499,17 +1542,26 @@ class JsonSourcePipeline implements BookSourcePipeline {
     /// [chapterText] is.
     ///
     /// The condition is two finished native texts and one actual response: the
-    /// chapter's own text, the book's own text, and the body this analysis
-    /// really retained. A chapter text that merely *resolves* to the book's
-    /// address is a different text and is fetched — nothing here parses the
-    /// address to compare it. The carrier's base is the chapter's own bare
-    /// target, which is the `BookChapter.getAbsoluteURL()` boundary the frozen
-    /// branch hands its content analysis (`WebBook.kt:317-320`): neither this
-    /// page's response URL nor the chapter's option tail becomes that base.
-    SourceStageResponse? retainedChapterPage(String chapterText, Uri target) {
+    /// chapter's own native text, the book's own native text, and the body this
+    /// analysis really retained. A chapter text that merely *resolves* to the
+    /// book's address is a different text and is fetched — nothing here parses
+    /// the address to compare it, and this adapter's expanded publication never
+    /// decides reuse. [absoluteText] is that chapter's complete
+    /// `BookChapter.getAbsoluteURL()` text (`WebBook.kt:311-329`): it becomes the
+    /// retained page's base exactly as the frozen branch hands it to its
+    /// analysis, so a tail's own `..` segments take part in a later page's
+    /// resolution.
+    SourceStageResponse? retainedChapterPage(
+      String chapterText,
+      String absoluteText,
+      Uri target,
+    ) {
       final body = retainedBody;
       if (body == null || chapterText != retainedLogicalText) return null;
-      return SourceStageResponse(body: body, url: target);
+      return SourceStageResponse(
+        body: body,
+        url: Uri.tryParse(absoluteText) ?? target,
+      );
     }
 
     await walkSourcePages(
@@ -1679,13 +1731,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
                           completedRequest: bookUrl,
                         )
                       : tocPage.url;
-                  // The fallback text is this chapter's own finished native
-                  // text, so the frozen reuse condition reads it exactly as it
-                  // reads a rule's finished text (`WebBook.kt:311-329`).
-                  final retainedPage = retainedChapterPage(
-                    ordinaryFallbackAddress,
-                    target,
-                  );
+                  // The frozen empty-URL fallback writes the TOC page's own
+                  // finished address into the chapter (`BookChapterList.kt:229-243`),
+                  // and this analysis retained that page only because the book's
+                  // own native text is the same text (`BookInfo.kt:150-153`).
+                  // Reuse reads that native text, never this adapter's expanded
+                  // publication, which still decides the published target.
+                  final fallbackText = retainedEmptyFallbackText;
+                  final retainedPage = fallbackText == null
+                      ? null
+                      : retainedChapterPage(
+                          retainedLogicalText,
+                          fallbackText,
+                          target,
+                        );
                   chapter = SourceChapter(
                     name,
                     target,
@@ -1695,12 +1754,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     isPay: isPay,
                     // A reused page fetches nothing: the target and the exact
                     // option tail this chapter already saved stay its identity,
-                    // key and saved text.
+                    // key and saved text. The tail is kept as the rule wrote it:
+                    // building a carrier reads no option object, so a family this
+                    // analysis cannot consume stays the request's own refusal.
                     fetchContext: retainedPage == null
                         ? null
                         : (
                             requestAddress:
-                                '$target${sourceUrlOptionTailOf(ordinaryFallbackAddress)}',
+                                '$target${_sourceAddressParts(ordinaryFallbackAddress).tail}',
                             retainedPage: retainedPage,
                           ),
                   );
@@ -1727,12 +1788,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isPay: isPay,
                   fetchContext: (
                     requestAddress: pending.text,
-                    // Only an equal finished text reuses this analysis's
+                    // Only an equal finished native text reuses this analysis's
                     // retained page; a relative text that merely resolves to
                     // the book's address carries its own request instead
-                    // (`WebBook.kt:311-329`).
+                    // (`WebBook.kt:311-329`). The chapter's complete native
+                    // absolute text is its own pending request text.
                     retainedPage: retainedChapterPage(
                       chapterUrl,
+                      pending.text,
                       pending.target,
                     ),
                   ),
@@ -2110,18 +2173,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final chapterContext = chapter.fetchContext;
     final retainedPage = chapterContext?.retainedPage;
     final chapterBase = chapter.addressBase ?? chapter.url;
+    if (retainedPage == null) {
+      // The frozen reads the source header once per analysis, before the first
+      // request it applies to, so a request's own address options run after that
+      // header is known. The reuse branch reuses the response the TOC stage
+      // already read, so a receiver that has not read the header yet still has
+      // not.
+      _activeHeaders = await _ensureHeaders();
+      _headersInitialized = true;
+    }
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
         : chapterContext == null
         ? (chapter.url, chapter.options)
         : await _request(chapterBase, chapterContext.requestAddress, _keyword);
-    if (retainedPage == null) {
-      // Read once per analysis and before the first request it applies to. The
-      // reuse branch reuses the response the TOC stage already read, so a
-      // receiver that has not read the header yet still has not.
-      _activeHeaders = await _ensureHeaders();
-      _headersInitialized = true;
-    }
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
@@ -2137,6 +2202,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
           ? null
           : SourceHttpUri.parse(nextChapterUrl),
       resolve: (address, pageUrl) async {
+        // A real next page is a request of its own: the source header is read
+        // before that page's address options run, once per analysis.
+        if (!_headersInitialized) {
+          _activeHeaders = await _ensureHeaders();
+          _headersInitialized = true;
+          _cancellation.throwIfCancelled();
+        }
         final (url, options) = await _request(pageUrl, address, _keyword);
         return (url: url, options: options);
       },
