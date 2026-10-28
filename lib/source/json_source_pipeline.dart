@@ -1763,16 +1763,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     tag: tag,
                     isVip: isVip,
                     isPay: isPay,
-                    // A reused page fetches nothing: the target and the exact
-                    // option tail this chapter already saved stay its identity,
-                    // key and saved text. The tail is kept as the rule wrote it:
-                    // building a carrier reads no option object, so a family this
-                    // analysis cannot consume stays the request's own refusal.
-                    fetchContext: retainedPage == null
+                    // A reused page fetches nothing, and what it would have
+                    // fetched is this fallback text: the approved payload keeps
+                    // the request input and the published identity apart, so
+                    // `requestAddress` — and with it `persistedAddress` — is that
+                    // complete native text, while the target, key and progress
+                    // identity stay the published ones. The text is kept as the
+                    // rule wrote it: building a carrier reads no option object, so
+                    // a family this analysis cannot consume stays the request's
+                    // own refusal.
+                    fetchContext: fallbackText == null || retainedPage == null
                         ? null
                         : (
-                            requestAddress:
-                                '$target${_sourceAddressParts(ordinaryFallbackAddress).tail}',
+                            requestAddress: fallbackText,
                             retainedPage: retainedPage,
                           ),
                   );
