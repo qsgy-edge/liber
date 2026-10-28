@@ -12,6 +12,8 @@ import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_url_rules.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/workspace.dart';
 
 import 'native_library.dart';
 
@@ -6037,6 +6039,153 @@ void main() {
           }
         });
       }
+    }
+  });
+
+  // A chapter this shelf saved and a fresh analysis rebuilt from the stored row
+  // carries no in-memory request context: its real content request analyses the
+  // complete saved text, so the request's own option script runs once at that
+  // request while the stored key and saved text keep what was written.
+  group('chapterStoredRequest', () {
+    for (final scripted in [false, true]) {
+      test('new record reopen scripted=$scripted', () async {
+        const origin = 'http://source.test';
+        const original = '$origin/catalog/content?q=ascii';
+        const selected = '$origin/catalog/content-selected?q=ascii';
+        final script =
+            "source.put('storedRuns',String(Number(source.get('storedRuns')||'0')+1)); '$selected'";
+        final tail =
+            ',${jsonEncode({
+              'headers': {'X-Chapter': 'stored'},
+              if (scripted) 'js': script,
+            })}';
+        final source = _jsonSource(
+          origin,
+          searchUrl: '/catalog/search',
+          bookUrlPattern: r'$^',
+        )..['bookSourceName'] = 'Stored request test';
+        final pages = _ContinuationPages(
+          jsonEncode({
+            ...jsonDecode(
+                  _repair06Page(
+                    true,
+                    book: '/catalog/book/1',
+                    toc: '/catalog/book/1',
+                    chapter: '../content?q=ascii$tail',
+                  ),
+                )
+                as Map<String, dynamic>,
+            'text': 'Body',
+          }),
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+            '/catalog/content-selected',
+          ],
+        );
+        final root = await Directory.systemTemp.createTemp(
+          'liber-chapter-stored-13-',
+        );
+        var workspace = await Workspace.open(root: root);
+        var shelf = ShelfService(await workspace.openSpace());
+        var pipeline = _openContinuation(
+          true,
+          source,
+          pages,
+          state: shelf.hostState,
+        );
+        try {
+          final hit = (await pipeline.search('Book')).single;
+          final info = await pipeline.bookInfo(hit);
+          expect(info.book.title, 'Book');
+          final (_, chapters) = await pipeline.tableOfContents(info);
+          final chapter = chapters.single;
+          expect(chapter.storeKey, original);
+          expect(chapter.persistedAddress, '$original$tail');
+          expect(pages.requests.map((request) => request.url.path), [
+            '/catalog/search',
+            '/catalog/book/1',
+          ]);
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedRuns'),
+            ),
+            isNull,
+            reason: 'premise: no request-option effect before storage',
+          );
+          await shelf.add(source, info.book, chapters);
+          final bookIdentity = info.book.identityAddress;
+          final saved = (await shelf.find(origin, bookIdentity))!;
+          expect(saved.chapters.single.chapterKey, original);
+          expect(saved.chapters.single.url, '$original$tail');
+          pipeline.cancel();
+          await workspace.close();
+
+          workspace = await Workspace.open(root: root);
+          shelf = ShelfService(await workspace.openSpace());
+          final reopened = (await shelf.find(origin, bookIdentity))!;
+          expect(reopened.shelved, isTrue);
+          expect(reopened.chapters.single.chapterKey, original);
+          expect(reopened.chapters.single.url, '$original$tail');
+          final row = reopened.chapters.single;
+          final restored = SourceChapter.fromAddress(
+            row.name,
+            row.url!,
+            bookUrl: reopened.htmlBook.url,
+            chapterKey: row.chapterKey,
+            tag: row.tag,
+            isVolume: row.isVolume,
+            isVip: row.isVip,
+            isPay: row.isPay,
+            variable: row.variable,
+          );
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedRuns'),
+            ),
+            isNull,
+            reason: 'premise: rebuilding stored text runs no request program',
+          );
+          pipeline = _openContinuation(
+            true,
+            reopened.sourceJson,
+            pages,
+            state: shelf.hostState,
+          );
+          final body = await pipeline.chapter(
+            restored,
+            book: reopened.htmlBook,
+          );
+          expect(body.text, 'Body');
+          expect(pages.requests.length, 3);
+          expect(
+            pages.requests.last.url.toString(),
+            scripted ? selected : original,
+            reason: 'target: the reopened record analyzes its own request',
+          );
+          expect(pages.requests.last.headers['X-Chapter'], 'stored');
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedRuns'),
+            ),
+            scripted ? '1' : null,
+            reason: 'target: one option effect for the real request',
+          );
+          expect(restored.progressKey, original);
+          expect(restored.persistedAddress, '$original$tail');
+          final after = (await shelf.find(origin, bookIdentity))!;
+          expect(after.chapters.single.chapterKey, original);
+          expect(after.chapters.single.url, '$original$tail');
+        } finally {
+          pipeline.cancel();
+          await workspace.close();
+          await root.delete(recursive: true);
+        }
+      });
     }
   });
 }
