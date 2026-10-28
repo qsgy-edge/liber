@@ -2173,15 +2173,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
     //
-    // A newly generated chapter carries [SourceChapter.fetchContext]. Its
-    // `requestAddress` is the complete request text this chapter's own content
-    // request analyses: the supported template, option script, method and
-    // charset run here, once, for the actual content request, which is why the
-    // whole text and its base stay this request's own facts for the login check
-    // and for `java.initUrl`. The target that analysis selects is this request's
-    // alone: the chapter's stable URL, key and saved text keep the pending
-    // facts. A chapter without that context (stored, imported or an
-    // empty-target fallback) already carries the target it is fetched with.
+    // A newly generated chapter carries [SourceChapter.fetchContext]; a stored,
+    // imported or empty-target chapter carries none. Either way this real content
+    // request analyses its own complete address text — the pending request text
+    // when this analysis made the chapter, otherwise the text the chapter itself
+    // carries — so the supported template, option script, method and charset run
+    // here, once, for the actual content request, which is why the whole text and
+    // its base stay this request's own facts for the login check and for
+    // `java.initUrl`. The target that analysis selects is this request's alone:
+    // the chapter's stable URL, key and saved text keep the stored facts.
     //
     // A context that also carries a retained page is the frozen content-reuse
     // branch (`WebBook.kt:311-329`): the response the TOC stage already read is
@@ -2202,9 +2202,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
-        : chapterContext == null
-        ? (chapter.url, chapter.options)
-        : await _request(chapterBase, chapterContext.requestAddress, _keyword);
+        : await _request(
+            chapterBase,
+            chapterContext?.requestAddress ?? chapter.address,
+            _keyword,
+          );
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
