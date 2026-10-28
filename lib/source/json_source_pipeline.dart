@@ -61,10 +61,15 @@ String _sourceAbsoluteText(String address, Uri base) {
 }
 
 /// Whether an address text is pending analysis rather than a URI: a `{{…}}`
-/// template, or one of the request-program spellings the frozen grammar
-/// recognises — `@js:` or a closed `<js>…</js>` block, in either case, anywhere
-/// in the text (`AppPattern.JS_PATTERN`, the same block recognition
-/// [expandSourceUrl] runs).
+/// template in its address part, or one of the request-program spellings the
+/// frozen grammar recognises — `@js:` or a closed `<js>…</js>` block, in either
+/// case, anywhere in the text (`AppPattern.JS_PATTERN`, the same block
+/// recognition [expandSourceUrl] runs).
+///
+/// A closed block can itself hold the `,{` characters the lexical option
+/// boundary would cut at, so the block is matched on the whole text and only its
+/// start decides whether it belongs to the address or to an ordinary option
+/// tail: a program written inside option data is not this chapter's input.
 ///
 /// Such text is carried, saved and rebuilt verbatim. It is never read as a URI —
 /// a program's `@js:` is not a scheme, and a template's braces are not escapes —
@@ -74,10 +79,11 @@ bool _isPendingAddressText(String address) {
   final path = (boundary == null ? address : address.substring(0, boundary))
       .trim();
   if (path.contains('{{')) return true;
-  return RegExp(
+  final block = RegExp(
     r'<js>([\s\S]*?)</js>|@js:([\s\S]*)',
     caseSensitive: false,
-  ).hasMatch(path);
+  ).firstMatch(address);
+  return block != null && block.start < (boundary ?? address.length);
 }
 
 /// The request target an ordinary empty chapter keeps when the TOC page's own
