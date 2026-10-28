@@ -6188,4 +6188,178 @@ void main() {
       });
     }
   });
+
+  // A saved address form — plain, template or a whole request program — is the
+  // chapter's pending input: rebuilding it from the stored row keeps that text
+  // exactly and runs nothing, while the one real content request afterwards
+  // analyses it and leaves the stable key and progress identity alone.
+  group('chapterStoredProgram', () {
+    for (final mode in ['plain', 'template', 'program']) {
+      test('new record reopen mode=$mode', () async {
+        const origin = 'http://source.test';
+        const original = '$origin/catalog/content?q=ascii';
+        const selected = '$origin/catalog/content-selected?q=ascii';
+        const effect =
+            "source.put('storedAddressRuns',String(Number(source.get('storedAddressRuns')||'0')+1));";
+        const template = "{{$effect'ascii'}}";
+        const program = "@js:$effect'$selected'";
+        final query = mode == 'template' ? template : 'ascii';
+        final address = mode == 'program' ? program : '../content?q=$query';
+        final tail =
+            ',${jsonEncode({
+              'headers': {'X-Chapter': 'stored'},
+            })}';
+        final savedInput = mode == 'program'
+            ? '$program$tail'
+            : '$origin/catalog/content?q=$query$tail';
+        final source = _jsonSource(
+          origin,
+          searchUrl: '/catalog/search',
+          bookUrlPattern: r'$^',
+        )..['bookSourceName'] = 'Stored address program test';
+        final pages = _ContinuationPages(
+          jsonEncode({
+            ...jsonDecode(
+                  _repair06Page(
+                    true,
+                    book: '/catalog/book/1',
+                    toc: '/catalog/book/1',
+                    chapter: '$address$tail',
+                  ),
+                )
+                as Map<String, dynamic>,
+            'text': 'Body',
+          }),
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+            '/catalog/content-selected',
+          ],
+        );
+        final root = await Directory.systemTemp.createTemp(
+          'liber-stored-program-14-',
+        );
+        var workspace = await Workspace.open(root: root);
+        var shelf = ShelfService(await workspace.openSpace());
+        var pipeline = _openContinuation(
+          true,
+          source,
+          pages,
+          state: shelf.hostState,
+        );
+        try {
+          final hit = (await pipeline.search('Book')).single;
+          final info = await pipeline.bookInfo(hit);
+          final (_, chapters) = await pipeline.tableOfContents(info);
+          final chapter = chapters.single;
+          final stableKey = chapter.storeKey;
+          expect(info.book.title, 'Book');
+          expect(chapter.url.isAbsolute, isTrue);
+          expect(stableKey, isNot(selected));
+          expect(chapter.persistedAddress, savedInput);
+          expect(pages.requests.map((request) => request.url.path), [
+            '/catalog/search',
+            '/catalog/book/1',
+          ]);
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedAddressRuns'),
+            ),
+            isNull,
+            reason: 'premise: TOC leaves the address program unexecuted',
+          );
+          await shelf.add(source, info.book, chapters);
+          final bookIdentity = info.book.identityAddress;
+          final saved = (await shelf.find(origin, bookIdentity))!;
+          expect(saved.chapters.single.chapterKey, stableKey);
+          expect(saved.chapters.single.url, savedInput);
+          pipeline.cancel();
+          await workspace.close();
+
+          workspace = await Workspace.open(root: root);
+          shelf = ShelfService(await workspace.openSpace());
+          final reopened = (await shelf.find(origin, bookIdentity))!;
+          final row = reopened.chapters.single;
+          expect(reopened.shelved, isTrue);
+          expect(row.chapterKey, stableKey);
+          expect(row.url, savedInput);
+          late SourceChapter restored;
+          try {
+            restored = SourceChapter.fromAddress(
+              row.name,
+              row.url!,
+              bookUrl: reopened.htmlBook.url,
+              chapterKey: row.chapterKey,
+              tag: row.tag,
+              isVolume: row.isVolume,
+              isVip: row.isVip,
+              isPay: row.isPay,
+              variable: row.variable,
+            );
+          } on FormatException catch (error, stack) {
+            if (mode == 'program' &&
+                error.message.contains(
+                  'Scheme not starting with alphabetic character',
+                )) {
+              fail(
+                'target: saved request programs rebuild as pending text, not URI schemes: $error',
+              );
+            }
+            Error.throwWithStackTrace(error, stack);
+          }
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedAddressRuns'),
+            ),
+            isNull,
+            reason: 'premise: rebuilding does not execute the address',
+          );
+          pipeline = _openContinuation(
+            true,
+            reopened.sourceJson,
+            pages,
+            state: shelf.hostState,
+          );
+          final body = await pipeline.chapter(
+            restored,
+            book: reopened.htmlBook,
+          );
+          expect(body.text, 'Body');
+          expect(pages.requests.length, 3);
+          expect(
+            pages.requests.last.url.toString(),
+            mode == 'program' ? selected : original,
+          );
+          expect(pages.requests.last.headers['X-Chapter'], 'stored');
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedAddressRuns'),
+            ),
+            mode == 'plain' ? null : '1',
+            reason: 'target: one address effect for the actual request',
+          );
+          expect(restored.progressKey, stableKey);
+          expect(
+            restored.persistedAddress,
+            savedInput,
+            reason: 'target: rebuilding preserves the complete pending input',
+          );
+          final copy = restored.withVariable('{"kept":"yes"}');
+          expect(copy.progressKey, stableKey);
+          expect(copy.persistedAddress, savedInput);
+          final after = (await shelf.find(origin, bookIdentity))!;
+          expect(after.chapters.single.chapterKey, stableKey);
+          expect(after.chapters.single.url, savedInput);
+        } finally {
+          pipeline.cancel();
+          await workspace.close();
+          await root.delete(recursive: true);
+        }
+      });
+    }
+  });
 }
