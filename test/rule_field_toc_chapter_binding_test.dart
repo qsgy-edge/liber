@@ -158,21 +158,15 @@ void main() {
           throwsUnsupportedError,
         );
       });
-      test(
-        'incomplete get and plain malformed rules remain refused',
-        () {
-          for (final rule in ['/@get:', '/', 'a b', 'a.b', '1name']) {
-            expect(
-              () => JsonSourceRules.validate(rule),
-              throwsUnsupportedError,
-            );
-          }
-          // A simple bare property name is json-path's canonical `$.name`
-          // (`PathCompiler.compile` prefixes `$.`), so it validates and reads
-          // that property; the shapes above are still refused by name.
-          expect(() => JsonSourceRules.validate('name'), returnsNormally);
-        },
-      );
+      test('incomplete get and plain malformed rules remain refused', () {
+        for (final rule in ['/@get:', '/', 'a b', 'a.b', '1name']) {
+          expect(() => JsonSourceRules.validate(rule), throwsUnsupportedError);
+        }
+        // A simple bare property name is json-path's canonical `$.name`
+        // (`PathCompiler.compile` prefixes `$.`), so it validates and reads
+        // that property; the shapes above are still refused by name.
+        expect(() => JsonSourceRules.validate('name'), returnsNormally);
+      });
       test('a getter inside put is not a top-level literal getter', () {
         expect(
           () => JsonSourceRules.validate('@put:{"v":"@get:title"}/'),
@@ -367,14 +361,16 @@ void main() {
           } catch (error) {
             failure = error;
           }
-          // The header keeps the existing normalized-empty snapshot. The real
-          // transport receives GET with an empty URI and this fixture refuses it.
+          // The header retains the explicitly supplied empty identity snapshot;
+          // the JSON request analyses the raw address independently.
           expect(
             failure,
             isA<StateError>().having(
               (e) => e.message,
               'fixture refusal',
-              'Unexpected full request GET ',
+              json
+                  ? 'Unexpected full request GET $_origin/provided'
+                  : 'Unexpected full request GET ',
             ),
           );
           expect(
@@ -382,7 +378,7 @@ void main() {
             '["","provided-empty","provided-empty"]',
           );
           expect(pages.requests.map((r) => [r.method, '${r.url}']).toList(), [
-            ['GET', ''],
+            ['GET', json ? '$_origin/provided' : ''],
           ]);
           pipeline.cancel();
         },

@@ -2173,15 +2173,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
     //
-    // A newly generated chapter carries [SourceChapter.fetchContext]; a stored,
-    // imported or empty-target chapter carries none. Either way this real content
-    // request analyses its own complete address text — the pending request text
-    // when this analysis made the chapter, otherwise the text the chapter itself
-    // carries — so the supported template, option script, method and charset run
-    // here, once, for the actual content request, which is why the whole text and
-    // its base stay this request's own facts for the login check and for
-    // `java.initUrl`. The target that analysis selects is this request's alone:
-    // the chapter's stable URL, key and saved text keep the stored facts.
+    // A real first content request analyses its complete input: a generated
+    // chapter's pending text or the address a stored/imported chapter carries.
+    // Templates and request options run for this request, keeping the chapter's
+    // identity and saved input independent of the selected network target.
     //
     // A context that also carries a retained page is the frozen content-reuse
     // branch (`WebBook.kt:311-329`): the response the TOC stage already read is
@@ -2616,15 +2611,13 @@ class SourceChapter {
   /// `chapter.url`, never this field directly.
   final String? variable;
 
-  /// The request a newly generated chapter's own content stage runs: the
-  /// complete request text before request-option execution and, only where the
-  /// frozen content-reuse condition holds, an existing response.
+  /// Input for a generated chapter's content request and, when eligible, its
+  /// retained first response.
   ///
-  /// [requestAddress] is the address's bare target resolved with the exact
-  /// option tail kept verbatim, so this chapter's identity and saved text never
-  /// depend on the target those options produce. The record is memory-only — no
-  /// JSON, database or source-script shape carries it — and a chapter rebuilt
-  /// from a stored address, an import or an empty-target fallback has none.
+  /// The complete request text stays independent of [url] and the target
+  /// selected by request options. [persistedAddress] saves that text, including
+  /// its original query and exact option tail. The record and retained response
+  /// stay in memory; a chapter rebuilt from stored text or an import has none.
   final ({String requestAddress, SourceStageResponse? retainedPage})?
   fetchContext;
 
