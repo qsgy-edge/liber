@@ -5323,4 +5323,182 @@ void main() {
       }
     }
   });
+
+  // The approved chapter lifecycle reuses the TOC page's retained body for a
+  // chapter whose finished raw text is the book's own finished text
+  // (`WebBook.kt:311-329`): that branch runs no request processing, so it reads
+  // neither the source header nor the login check. A chapter whose *resolved*
+  // address merely equals the book's — a different raw text over the same base —
+  // is ordinary content work, so URI equality alone cannot admit the reuse.
+  group('chapterRetainedBody', () {
+    const origin = 'http://source.test';
+    const bookAddress = 'http://source.test/catalog/book/1';
+    const headerRule =
+        '@js:source.put("headerRuns",String(Number(source.get("headerRuns")||"0")+1));JSON.stringify({"X-Source":"keep"})';
+    const loginRule =
+        "source.put('loginRuns',String(Number(source.get('loginRuns')||'0')+1)); result";
+
+    for (final fresh in [false, true]) {
+      for (final reuse in [false, true]) {
+        test('retained page fresh=$fresh reuse=$reuse', () async {
+          final page = _repair06Page(
+            true,
+            book: '/catalog/book/1',
+            toc: '/catalog/book/1',
+            chapter: reuse ? '' : '../book/1',
+          );
+          final document = jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Retained body',
+          });
+          final pages = _ContinuationPages(
+            document,
+            // Both book candidates are answerable, so a wrong chapter target
+            // fails its own assertion instead of the fixture's path refusal.
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/book/1',
+            ],
+          );
+          final state = SourceHostState();
+          final source = _jsonSource(origin)
+            ..['searchUrl'] = '/catalog/search?q=ascii'
+            ..['bookUrlPattern'] = r'$^'
+            ..['header'] = headerRule
+            ..['loginCheckJs'] = loginRule;
+          final headerKey = sourceRuleVariableKey(origin, 'headerRuns');
+          final loginKey = sourceRuleVariableKey(origin, 'loginRuns');
+          final producer = _openContinuation(true, source, pages, state: state);
+          BookSourcePipeline? receiver;
+          try {
+            final hit = (await producer.search('ascii')).single;
+            expect(hit.title, 'Book', reason: 'premise: a valid search result');
+            final info = await producer.bookInfo(hit);
+            expect(
+              info.book.title,
+              'Book',
+              reason: 'premise: a valid information page',
+            );
+            expect(
+              info.tocUrl,
+              bookAddress,
+              reason: 'premise: the TOC is the information page',
+            );
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(
+              pages.requests.map((request) => request.url.path),
+              ['/catalog/search', '/catalog/book/1'],
+              reason:
+                  'premise: only the search and information requests are real',
+            );
+            final chapter = chapters.single;
+            expect(
+              chapter.name,
+              'Chapter',
+              reason: 'premise: the chapter list',
+            );
+            if (reuse) {
+              expect(
+                chapter.address,
+                bookAddress,
+                reason:
+                    'premise: the ordinary empty fallback keeps the retained page own finished text',
+              );
+              expect(
+                book.identityAddress,
+                chapter.address,
+                reason: 'premise: that finished text is the book own text',
+              );
+            } else {
+              expect(
+                chapter.address,
+                '../book/1',
+                reason: 'premise: the chapter raw text is not the book text',
+              );
+            }
+            expect(
+              '${chapter.url}',
+              bookAddress,
+              reason: 'premise: both rows name the same resolved target',
+            );
+            expect(
+              await state.entry(origin, headerKey),
+              '1',
+              reason: 'premise: one header read for the analysis',
+            );
+            expect(
+              await state.entry(origin, loginKey),
+              '2',
+              reason: 'premise: one login check per fetched stage',
+            );
+            final key = chapter.storeKey;
+            final saved = chapter.persistedAddress;
+            final reader = fresh
+                ? (receiver = _openContinuation(
+                    true,
+                    source,
+                    pages,
+                    state: state,
+                  ))
+                : producer;
+            final body = await reader.chapter(chapter, book: book);
+            expect(
+              body.text,
+              'Retained body',
+              reason: 'target: the content rule reads the retained body',
+            );
+            expect(
+              pages.requests.length,
+              reuse ? 2 : 3,
+              reason: reuse
+                  ? 'target: retained content makes no new request'
+                  : 'target: a different raw text fetches its own content request',
+            );
+            if (!reuse) {
+              expect(
+                '${pages.requests.last.url}',
+                bookAddress,
+                reason: 'target: the actual content request target',
+              );
+            }
+            expect(
+              await state.entry(origin, headerKey),
+              fresh && !reuse ? '2' : '1',
+              reason: reuse
+                  ? 'target: reuse runs no header processing'
+                  : fresh
+                  ? 'target: the new receiver reads the header once'
+                  : 'target: the same analysis reuses its one header read',
+            );
+            expect(
+              await state.entry(origin, loginKey),
+              reuse ? '2' : '3',
+              reason: reuse
+                  ? 'target: reuse runs no login check'
+                  : 'target: the content response runs one login check',
+            );
+            expect(
+              chapter.storeKey,
+              key,
+              reason: 'target: the fetch leaves the key',
+            );
+            expect(
+              chapter.persistedAddress,
+              saved,
+              reason: 'target: the fetch leaves the saved text',
+            );
+            expect(
+              book.identityAddress,
+              bookAddress,
+              reason: 'target: the fetch leaves the book identity',
+            );
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+  });
 }
