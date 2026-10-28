@@ -4712,4 +4712,199 @@ void main() {
       }
     }
   });
+
+  // The approved chapter lifecycle separates a new chapter's identity and saved
+  // request text from the target its own request options produce: the TOC keeps
+  // the rule's finished text, the key and the saved address are the resolved
+  // pre-option target plus that exact tail once, and the option script runs for
+  // the actual content request alone.
+  group('chapterLifecycle', () {
+    const origin = 'http://source.test';
+    const bookAddress = 'http://source.test/catalog/book/1';
+    const preOptionTarget = 'http://source.test/catalog/content?q=ascii';
+    const selectedTarget =
+        'http://source.test/catalog/content-selected?q=ascii';
+    const counterScript =
+        "source.put('chapterRuns',String(Number(source.get('chapterRuns')||'0')+1));result";
+    const selectedScript =
+        "source.put('chapterRuns',String(Number(source.get('chapterRuns')||'0')+1));'$selectedTarget'";
+
+    final cases = <({String name, bool json, String? script, String target})>[
+      (
+        name: 'JSON independent chapter, option script returns its input',
+        json: true,
+        script: counterScript,
+        target: preOptionTarget,
+      ),
+      (
+        name:
+            'JSON independent chapter, option script chooses a different explicit absolute target',
+        json: true,
+        script: selectedScript,
+        target: selectedTarget,
+      ),
+      (
+        name:
+            'JSON independent chapter without request-option script (control)',
+        json: true,
+        script: null,
+        target: preOptionTarget,
+      ),
+      (
+        name:
+            'HTML independent chapter without request-option script (control)',
+        json: false,
+        script: null,
+        target: preOptionTarget,
+      ),
+    ];
+
+    for (final testCase in cases) {
+      test(testCase.name, () async {
+        final script = testCase.script;
+        final tail =
+            ',${jsonEncode({
+              'headers': {'X-Chapter': 'once'},
+              'js': ?script,
+            })}';
+        final raw = '$preOptionTarget$tail';
+        final page = _repair06Page(
+          testCase.json,
+          book: '/catalog/book/1',
+          toc: '/catalog/book/1',
+          chapter: raw,
+        );
+        final document = testCase.json
+            ? jsonEncode({
+                ...jsonDecode(page) as Map<String, dynamic>,
+                'text': 'Body',
+              })
+            : '$page<div id="content">Body</div>';
+        final pages = _ContinuationPages(
+          document,
+          // Both content candidates are answerable, so a wrong target fails its
+          // own assertion instead of the fixture's path refusal.
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+            '/catalog/content-selected',
+          ],
+        );
+        final state = SourceHostState();
+        final source =
+            (testCase.json ? _jsonSource(origin) : _htmlSource(origin))
+              ..['searchUrl'] = '/catalog/search?q=ascii'
+              ..['bookUrlPattern'] = r'$^';
+        final pipeline = _openContinuation(
+          testCase.json,
+          source,
+          pages,
+          state: state,
+        );
+        final runsKey = sourceRuleVariableKey(origin, 'chapterRuns');
+        try {
+          final hit = (await pipeline.search('ascii')).single;
+          expect(hit.title, 'Book', reason: 'premise: a valid search result');
+          final info = await pipeline.bookInfo(hit);
+          expect(
+            info.book.title,
+            'Book',
+            reason: 'premise: a valid information page',
+          );
+          expect(
+            info.tocUrl,
+            bookAddress,
+            reason: 'premise: the TOC is the information page',
+          );
+          final (book, chapters) = await pipeline.tableOfContents(info);
+          expect(
+            pages.requests.map((request) => request.url.path),
+            ['/catalog/search', '/catalog/book/1'],
+            reason:
+                'premise: only the search and information requests are real',
+          );
+          final chapter = chapters.single;
+          expect(chapter.name, 'Chapter', reason: 'premise: the chapter list');
+          expect(
+            chapter.address,
+            raw,
+            reason:
+                'premise: the address is the rule finished text and its tail',
+          );
+          expect(
+            chapter.options.headers['X-Chapter'],
+            'once',
+            reason: 'premise: the tail is this chapter request own options',
+          );
+          expect(
+            await state.entry(origin, runsKey),
+            isNull,
+            reason: 'target: no request-option effect at TOC',
+          );
+          expect(
+            '${chapter.url}',
+            preOptionTarget,
+            reason: 'target: the chapter URL is the pre-option target',
+          );
+          expect(
+            chapter.storeKey,
+            preOptionTarget,
+            reason: 'target: the new chapter keys by its pre-option target',
+          );
+          expect(
+            chapter.persistedAddress,
+            '$preOptionTarget$tail',
+            reason:
+                'target: the saved text keeps that target and the exact tail once',
+          );
+          final body = await pipeline.chapter(chapter, book: info.book);
+          expect(
+            body.text,
+            'Body',
+            reason: 'target: the content rule reads the answered page',
+          );
+          expect(
+            pages.requests.length,
+            3,
+            reason: 'target: exactly one content request',
+          );
+          expect(
+            '${pages.requests.last.url}',
+            testCase.target,
+            reason: 'target: the actual content request target',
+          );
+          expect(
+            pages.requests.last.headers['X-Chapter'],
+            'once',
+            reason: 'target: the option header on the actual request',
+          );
+          final Object? expectedRuns = script == null ? isNull : '1';
+          expect(
+            await state.entry(origin, runsKey),
+            expectedRuns,
+            reason:
+                'target: the option script runs once for the content request only',
+          );
+          expect(
+            chapter.storeKey,
+            preOptionTarget,
+            reason: 'target: the fetch leaves the key',
+          );
+          expect(
+            chapter.persistedAddress,
+            '$preOptionTarget$tail',
+            reason: 'target: the fetch leaves the saved text',
+          );
+          expect(
+            book.identityAddress,
+            bookAddress,
+            reason: 'target: the fetch leaves the book identity',
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  });
 }
