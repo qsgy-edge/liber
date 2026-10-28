@@ -6202,7 +6202,8 @@ void main() {
         const effect =
             "source.put('storedAddressRuns',String(Number(source.get('storedAddressRuns')||'0')+1));";
         const template = "{{$effect'ascii'}}";
-        const program = "@js:$effect'$selected'";
+        const program =
+            "@js:$effect'$selected'+','+JSON.stringify({headers:{'X-Chapter':'stored'}})";
         final query = mode == 'template' ? template : 'ascii';
         final address = mode == 'program' ? program : '../content?q=$query';
         final tail =
@@ -6210,7 +6211,7 @@ void main() {
               'headers': {'X-Chapter': 'stored'},
             })}';
         final savedInput = mode == 'program'
-            ? '$program$tail'
+            ? program
             : '$origin/catalog/content?q=$query$tail';
         final source = _jsonSource(
           origin,
@@ -6224,7 +6225,7 @@ void main() {
                     true,
                     book: '/catalog/book/1',
                     toc: '/catalog/book/1',
-                    chapter: '$address$tail',
+                    chapter: mode == 'program' ? address : '$address$tail',
                   ),
                 )
                 as Map<String, dynamic>,
