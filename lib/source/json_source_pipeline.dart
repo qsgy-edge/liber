@@ -1043,25 +1043,32 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// that request will analyse, and the key this chapter names right now.
   ///
   /// A TOC chapter address is a completed rule value, not the request itself, so
-  /// a `{{…}}` template or a leading `@js:` program it still carries belongs to
-  /// the request that fetches the chapter: this keeps that exact text for the
-  /// request and parses it as the chapter's own address instead of executing it
-  /// to obtain a key. [_url] keeps refusing such a text wherever a request
-  /// actually resolves its target.
+  /// a `{{…}}` template or `@js:` program it still carries belongs to the
+  /// request that fetches the chapter. The address is resolved passively against
+  /// the TOC base this chapter was read from — a relative pending address keeps
+  /// that directory, and a program is resolved as text instead of being parsed
+  /// as a URI scheme — and that resolved representation names the chapter and is
+  /// what the saved request text keeps. A whole program stays the rule's own
+  /// text for the one request that runs it. [_url] keeps refusing a pending text
+  /// wherever a request actually resolves its target.
   static ({String text, Uri target}) _pendingChapterAddress(
     Uri base,
     String address,
   ) {
     final parts = splitSourceUrlOptions(address);
-    if (parts.path.contains('{{') || parts.path.startsWith('@js:')) {
-      return (text: address, target: SourceHttpUri.parse(parts.path));
-    }
-    final text = resolveSourceTocUrl(
+    final resolved = resolveSourceTocUrl(
       address: address,
       base: base,
       fallbackAddress: address,
     );
-    return (text: text, target: _url(base, splitSourceUrlOptions(text).path));
+    final bare = splitSourceUrlOptions(resolved).path;
+    if (!parts.path.contains('{{') && !parts.path.startsWith('@js:')) {
+      return (text: resolved, target: _url(base, bare));
+    }
+    return (
+      text: parts.path.startsWith('@js:') ? address : resolved,
+      target: SourceHttpUri.parse(bare),
+    );
   }
 
   /// `ruleSearch`: the books a keyword search returns.
@@ -1657,8 +1664,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 // The chapter keeps its rule's finished text, and the request it
                 // will make is that same text: a `{{…}}` template or an `@js:`
                 // program it carries belongs to that request, so building this
-                // chapter runs neither. The key is the pending address parsed as
-                // its own text, and the option tail stays verbatim behind it.
+                // chapter runs neither. The key names the pending address
+                // resolved against this TOC page's own base, and the option tail
+                // stays verbatim behind it.
                 final chapterBase = cachedFirstPage
                     ? (retainedChapterBase ?? tocPage.url)
                     : tocPage.url;
