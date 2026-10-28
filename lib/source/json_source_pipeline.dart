@@ -1408,6 +1408,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final bookAddressText = info.bookAddress;
     final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
     final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    // The non-empty body this analysis actually retained — the information
+    // response the TOC stage reads instead of fetching a page. The frozen
+    // content stage reuses exactly this body for a chapter whose own finished
+    // text is the book's (`WebBook.kt:311-329`), so the fact is kept as the
+    // response it is, never as a name or a marker.
+    final retainedBody = retainedFirstPage ? info.tocHtml : null;
     // A retained page is read at the book's own finished native text
     // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
     // next-page addresses resolve there rather than at the response URL a
@@ -1486,6 +1492,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
         return request.address;
       }
       return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
+    }
+
+    /// This analysis's retained page as one chapter's first content response, or
+    /// null when the frozen reuse condition does not hold for the chapter that
+    /// [chapterText] is.
+    ///
+    /// The condition is two finished native texts and one actual response: the
+    /// chapter's own text, the book's own text, and the body this analysis
+    /// really retained. A chapter text that merely *resolves* to the book's
+    /// address is a different text and is fetched — nothing here parses the
+    /// address to compare it. The carrier's base is the chapter's own bare
+    /// target, which is the `BookChapter.getAbsoluteURL()` boundary the frozen
+    /// branch hands its content analysis (`WebBook.kt:317-320`): neither this
+    /// page's response URL nor the chapter's option tail becomes that base.
+    SourceStageResponse? retainedChapterPage(String chapterText, Uri target) {
+      final body = retainedBody;
+      if (body == null || chapterText != retainedLogicalText) return null;
+      return SourceStageResponse(body: body, url: target);
     }
 
     await walkSourcePages(
@@ -1633,33 +1657,54 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 // volume takes the identity text `title + index`, every other chapter
                 // takes the TOC page's own address, which resolves to the page it was
                 // read from.
-                chapter = isVolume
-                    ? SourceChapter.volume(
-                        name,
-                        index,
-                        tocUrl: tocPage.url,
-                        tag: tag,
-                        isVip: isVip,
-                        isPay: isPay,
-                      )
-                    : SourceChapter(
-                        name,
-                        // Only a retained page's own address stands in for the
-                        // chapter text; a fetched TOC page keeps its actual
-                        // response target.
-                        cachedFirstPage
-                            ? await _ordinaryChapterTarget(
-                                ordinaryFallbackAddress,
-                                tocPage.url,
-                                informationAddress: info.tocAddress.isEmpty,
-                                completedRequest: bookUrl,
-                              )
-                            : tocPage.url,
-                        rawAddress: ordinaryFallbackAddress,
-                        tag: tag,
-                        isVip: isVip,
-                        isPay: isPay,
-                      );
+                if (isVolume) {
+                  chapter = SourceChapter.volume(
+                    name,
+                    index,
+                    tocUrl: tocPage.url,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  );
+                } else {
+                  final target =
+                      // Only a retained page's own address stands in for the
+                      // chapter text; a fetched TOC page keeps its actual
+                      // response target.
+                      cachedFirstPage
+                      ? await _ordinaryChapterTarget(
+                          ordinaryFallbackAddress,
+                          tocPage.url,
+                          informationAddress: info.tocAddress.isEmpty,
+                          completedRequest: bookUrl,
+                        )
+                      : tocPage.url;
+                  // The fallback text is this chapter's own finished native
+                  // text, so the frozen reuse condition reads it exactly as it
+                  // reads a rule's finished text (`WebBook.kt:311-329`).
+                  final retainedPage = retainedChapterPage(
+                    ordinaryFallbackAddress,
+                    target,
+                  );
+                  chapter = SourceChapter(
+                    name,
+                    target,
+                    rawAddress: ordinaryFallbackAddress,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                    // A reused page fetches nothing: the target and the exact
+                    // option tail this chapter already saved stay its identity,
+                    // key and saved text.
+                    fetchContext: retainedPage == null
+                        ? null
+                        : (
+                            requestAddress:
+                                '$target${sourceUrlOptionTailOf(ordinaryFallbackAddress)}',
+                            retainedPage: retainedPage,
+                          ),
+                  );
+                }
               } else {
                 // The chapter keeps its rule's finished text, and the request it
                 // will make is that same text: a `{{…}}` template or an `@js:`
@@ -1682,7 +1727,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   isPay: isPay,
                   fetchContext: (
                     requestAddress: pending.text,
-                    retainedPage: null,
+                    // Only an equal finished text reuses this analysis's
+                    // retained page; a relative text that merely resolves to
+                    // the book's address carries its own request instead
+                    // (`WebBook.kt:311-329`).
+                    retainedPage: retainedChapterPage(
+                      chapterUrl,
+                      pending.target,
+                    ),
                   ),
                 );
               }
@@ -2034,28 +2086,42 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ),
       );
     }
-    _activeHeaders = await _ensureHeaders();
-    _headersInitialized = true;
     final parts = <String>[];
     String? contentTitle;
     var firstPage = true;
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
     //
-    // A newly generated chapter carries [SourceChapter.fetchContext], whose
-    // complete request text is what its own request analyses: the supported
-    // template, option script, method and charset run here, once, for the actual
-    // content request, which is why the whole text and its base stay this
-    // request's own facts for the login check and for `java.initUrl`. The target
-    // that analysis selects is this request's alone — the chapter's stable URL,
-    // key and saved text keep the pending facts. A chapter without that context
-    // (stored, imported or an empty-target fallback) already carries the target
-    // and options it is fetched with.
+    // A newly generated chapter carries [SourceChapter.fetchContext]. Its
+    // `requestAddress` is the complete request text this chapter's own content
+    // request analyses: the supported template, option script, method and
+    // charset run here, once, for the actual content request, which is why the
+    // whole text and its base stay this request's own facts for the login check
+    // and for `java.initUrl`. The target that analysis selects is this request's
+    // alone: the chapter's stable URL, key and saved text keep the pending
+    // facts. A chapter without that context (stored, imported or an
+    // empty-target fallback) already carries the target it is fetched with.
+    //
+    // A context that also carries a retained page is the frozen content-reuse
+    // branch (`WebBook.kt:311-329`): the response the TOC stage already read is
+    // this chapter's first content page, so it runs no request analysis, reads
+    // no source header, sends nothing and runs no login check. The pages that
+    // first one declares are real requests again.
     final chapterContext = chapter.fetchContext;
+    final retainedPage = chapterContext?.retainedPage;
     final chapterBase = chapter.addressBase ?? chapter.url;
-    final (firstUrl, firstOptions) = chapterContext == null
+    final (firstUrl, firstOptions) = retainedPage != null
+        ? (chapter.url, const SourceUrlOptions())
+        : chapterContext == null
         ? (chapter.url, chapter.options)
         : await _request(chapterBase, chapterContext.requestAddress, _keyword);
+    if (retainedPage == null) {
+      // Read once per analysis and before the first request it applies to. The
+      // reuse branch reuses the response the TOC stage already read, so a
+      // receiver that has not read the header yet still has not.
+      _activeHeaders = await _ensureHeaders();
+      _headersInitialized = true;
+    }
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
@@ -2075,17 +2141,23 @@ class JsonSourcePipeline implements BookSourcePipeline {
         return (url: url, options: options);
       },
       visit: (request, {required readNext}) async {
-        var contentPage = await _fetch(
-          BookSourceStage.content,
-          request.url,
-          options: request.options,
-          address: request.address,
-          base: request.base,
-        );
+        final retainedFirst = firstPage ? retainedPage : null;
+        var contentPage =
+            retainedFirst ??
+            await _fetch(
+              BookSourceStage.content,
+              request.url,
+              options: request.options,
+              address: request.address,
+              base: request.base,
+            );
         // The frozen content stage checks login once, on its first response
-        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
+        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A retained
+        // first page made no request of this stage for a check to read.
         if (firstPage) {
-          contentPage = await _loginCheck(contentPage);
+          if (retainedFirst == null) {
+            contentPage = await _loginCheck(contentPage);
+          }
           firstPage = false;
         }
         final document = _document(BookSourceStage.content, contentPage);
