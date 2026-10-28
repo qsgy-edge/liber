@@ -6369,7 +6369,14 @@ void main() {
   // one's own produced text — the lower-case whole program, or the native prefix
   // the other spellings resolve to — instead of re-encoding it.
   group('chapterStoredGrammar', () {
-    for (final mode in ['at-lower', 'at-upper', 'tag-lower', 'tag-upper']) {
+    for (final mode in [
+      'at-lower',
+      'at-upper',
+      'tag-lower',
+      'tag-upper',
+      'tag-literal-lower',
+      'tag-literal-upper',
+    ]) {
       test('new record reopen mode=$mode', () async {
         const origin = 'http://source.test';
         const selected = '$origin/catalog/content-selected?q=ascii';
@@ -6381,8 +6388,15 @@ void main() {
             ? (upper ? '<JS>' : '<js>')
             : (upper ? '@JS:' : '@js:');
         final close = tagged ? (upper ? '</JS>' : '</js>') : '';
-        final program =
-            "$open$effect'$selected'+','+JSON.stringify({headers:{'X-Chapter':'stored'}})$close";
+        // The literal spellings return the complete request text as one string,
+        // so the option delimiter sits inside the program's own JS string; the
+        // other spellings build it by concatenation as they always have.
+        final options = jsonEncode({
+          'headers': {'X-Chapter': 'stored'},
+        });
+        final program = mode.contains('-literal-')
+            ? "$open$effect'$selected,$options'$close"
+            : "$open$effect'$selected'+','+JSON.stringify({headers:{'X-Chapter':'stored'}})$close";
         final address = program;
         final savedInput = mode == 'at-lower'
             ? program
