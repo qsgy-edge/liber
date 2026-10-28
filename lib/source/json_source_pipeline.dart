@@ -769,9 +769,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String template,
     String keyword, {
     void Function(Uri preOptionUrl, String expandedAddress)? captureIdentity,
+    String? rawBase,
   }) async {
     final expandedAddress = await _expand(template, keyword);
-    final split = splitSourceUrlOptions(expandedAddress);
+    // A retained first page hands a later-page rule the complete native text as
+    // its base (`WebBook.kt:311-329`): the declared address resolves against
+    // that whole raw text first, so its option boundary is still text when the
+    // address is read, and only this request splits it afterwards.
+    var address = expandedAddress;
+    final raw = rawBase;
+    if (raw != null) {
+      final parts = _sourceAddressParts(expandedAddress);
+      address =
+          '${sourceUrlTextResolved(base, parts.before, rawBase: raw)}${parts.tail}';
+    }
+    final split = splitSourceUrlOptions(address);
     Uri? capturedPreOption;
     if (captureIdentity != null) {
       capturedPreOption = _url(base, split.path);
@@ -1547,20 +1559,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
     /// book's address is a different text and is fetched — nothing here parses
     /// the address to compare it, and this adapter's expanded publication never
     /// decides reuse. [absoluteText] is that chapter's complete
-    /// `BookChapter.getAbsoluteURL()` text (`WebBook.kt:311-329`): it becomes the
-    /// retained page's base exactly as the frozen branch hands it to its
-    /// analysis, so a tail's own `..` segments take part in a later page's
-    /// resolution.
+    /// `BookChapter.getAbsoluteURL()` text (`WebBook.kt:311-329`), the chapter
+    /// text itself by default: it becomes the retained page's base exactly as the
+    /// frozen branch hands it to its analysis, so a tail's own `..` segments take
+    /// part in a later page's resolution.
     SourceStageResponse? retainedChapterPage(
       String chapterText,
-      String absoluteText,
-      Uri target,
-    ) {
+      Uri target, {
+      String? absoluteText,
+    }) {
       final body = retainedBody;
       if (body == null || chapterText != retainedLogicalText) return null;
       return SourceStageResponse(
         body: body,
-        url: Uri.tryParse(absoluteText) ?? target,
+        url: Uri.tryParse(absoluteText ?? chapterText) ?? target,
       );
     }
 
@@ -1731,20 +1743,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
                           completedRequest: bookUrl,
                         )
                       : tocPage.url;
-                  // The frozen empty-URL fallback writes the TOC page's own
-                  // finished address into the chapter (`BookChapterList.kt:229-243`),
-                  // and this analysis retained that page only because the book's
-                  // own native text is the same text (`BookInfo.kt:150-153`).
-                  // Reuse reads that native text, never this adapter's expanded
-                  // publication, which still decides the published target.
-                  final fallbackText = retainedEmptyFallbackText;
+                  // The frozen empty-URL fallback writes this TOC page's own
+                  // finished address into the chapter (`BookChapterList.kt:229-243`).
+                  // On a retained page that text is the book's own native text
+                  // (`BookInfo.kt:150-153`), never this adapter's expanded
+                  // publication; a later fetched page keeps its own completed
+                  // address, so its ordinary empty chapter never reuses the first
+                  // page's retained body.
+                  final fallbackText = cachedFirstPage
+                      ? retainedEmptyFallbackText
+                      : ordinaryFallbackAddress;
                   final retainedPage = fallbackText == null
                       ? null
-                      : retainedChapterPage(
-                          retainedLogicalText,
-                          fallbackText,
-                          target,
-                        );
+                      : retainedChapterPage(fallbackText, target);
                   chapter = SourceChapter(
                     name,
                     target,
@@ -1795,8 +1806,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     // absolute text is its own pending request text.
                     retainedPage: retainedChapterPage(
                       chapterUrl,
-                      pending.text,
                       pending.target,
+                      absoluteText: pending.text,
                     ),
                   ),
                 );
@@ -2152,6 +2163,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final parts = <String>[];
     String? contentTitle;
     var firstPage = true;
+    // The complete native raw base of a retained first page, while that page's
+    // own declared addresses are resolved. Its later page's own response base
+    // takes over as soon as a real page is fetched.
+    String? contentRawBase;
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
     //
@@ -2209,11 +2224,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
           _headersInitialized = true;
           _cancellation.throwIfCancelled();
         }
-        final (url, options) = await _request(pageUrl, address, _keyword);
+        final (url, options) = await _request(
+          pageUrl,
+          address,
+          _keyword,
+          rawBase: contentRawBase,
+        );
         return (url: url, options: options);
       },
       visit: (request, {required readNext}) async {
         final retainedFirst = firstPage ? retainedPage : null;
+        contentRawBase = retainedFirst == null
+            ? null
+            : chapterContext?.requestAddress;
         var contentPage =
             retainedFirst ??
             await _fetch(
