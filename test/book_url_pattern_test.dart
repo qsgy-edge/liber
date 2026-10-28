@@ -236,6 +236,35 @@ BookSourcePipeline _openContinuation(
     ? JsonSourcePipeline(data, transport, hostState: state)
     : HtmlSourcePipeline(data, transport, hostState: state);
 
+/// One retained first page and the page it declares answer different bodies, so
+/// a page walk is observable by the chapter text it joins: the information
+/// request's own document carries the retained first page, and every other
+/// allowed target answers the declared next page. Both possible next targets a
+/// complete native base can produce are answerable, so a wrong target fails its
+/// own assertion instead of the fixture's path refusal.
+class _RetainedPagingPages extends _ContinuationPages {
+  _RetainedPagingPages(super.document)
+    : super(
+        allowedPaths: const [
+          '/catalog/book/1',
+          '/catalog/book/leaf',
+          '/catalog/leaf',
+        ],
+      );
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    final response = await super.send(request);
+    if (request.url.path == '/catalog/book/1') return response;
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: jsonEncode({'text': 'Second', 'next': ''}),
+      url: request.url,
+    );
+  }
+}
+
 Future<Object?> _errorOrNull(Future<dynamic> future) async {
   try {
     await future;
@@ -3432,9 +3461,10 @@ void main() {
             );
             expect(chapter.storeKey, '$origin/book/1');
             expect(chapter.persistedAddress, '$origin/book/1');
-            await pipeline.chapter(chapter, book: info.book);
+            final body = await pipeline.chapter(chapter, book: info.book);
+            expect(body.text, 'Body');
             expect(pages.requests.last.url.toString(), '$origin/book/1');
-            expect(pages.requests.length, 3);
+            expect(pages.requests.length, json ? 2 : 3);
           } finally {
             pipeline.cancel();
           }
@@ -3521,8 +3551,9 @@ void main() {
             );
             expect(chapter.storeKey, wire);
             expect(chapter.persistedAddress, '$wire$tail');
-            await pipeline.chapter(chapter, book: info.book);
-            expect(pages.requests.length, 2);
+            final body = await pipeline.chapter(chapter, book: info.book);
+            expect(body.text, 'Body');
+            expect(pages.requests.length, json ? 1 : 2);
             expect(
               pages.requests.last.url.toString(),
               wire,
@@ -3987,7 +4018,7 @@ void main() {
     // usually lacks here: a special pattern hit, an empty-list fallback and a
     // fresh pipeline handoff keep no entry, so the carrying request's evaluated
     // options never arrive and the fallback text's own `gbk` still decides its
-    // target, store key, persisted tail and first content request.
+    // target, store key and persisted tail.
     for (final json in [false, true]) {
       for (final flow in ['pattern', 'fallback', 'fresh-pattern']) {
         for (final valueCase in ['unicode', 'preencoded', 'ascii']) {
@@ -4077,10 +4108,11 @@ void main() {
                 );
                 expect(chapter.storeKey, wire);
                 expect(chapter.persistedAddress, '$wire$tail');
-                await pipeline.chapter(chapter, book: info.book);
+                final body = await pipeline.chapter(chapter, book: info.book);
+                expect(body.text, 'Body');
                 expect(
                   pages.requests.map((request) => '${request.url}').toList(),
-                  [wire, wire],
+                  json ? [wire] : [wire, wire],
                 );
               } finally {
                 pipeline.cancel();
@@ -4182,8 +4214,16 @@ void main() {
               );
               expect(chapter.storeKey, wire);
               expect(chapter.persistedAddress, '$wire,{"charset":"gbk"}');
-              await pipeline.chapter(chapter, book: info.book);
-              expect('${pages.requests.last.url}', wire);
+              final body = await pipeline.chapter(chapter, book: info.book);
+              expect(body.text, 'Body');
+              expect(
+                pages.requests.map((request) => '${request.url}').toList(),
+                [
+                  '$origin/catalog/search',
+                  '$origin/catalog/book/1',
+                  if (!json) wire,
+                ],
+              );
             } finally {
               pipeline.cancel();
             }
@@ -4375,11 +4415,12 @@ void main() {
             expect(chapter.address, raw);
             expect(chapter.storeKey, wire);
             expect(chapter.persistedAddress, '$wire$tail');
-            await pipeline.chapter(chapter, book: info.book);
+            final body = await pipeline.chapter(chapter, book: info.book);
+            expect(body.text, 'Body');
             expect('${pages.requests.last.url}', wire);
             expect(pages.requests.last.method, 'POST');
             expect(pages.requests.last.body, '{"x":1}');
-            expect(pages.requests.length, 2);
+            expect(pages.requests.length, json ? 1 : 2);
           } finally {
             pipeline.cancel();
           }
@@ -5499,6 +5540,231 @@ void main() {
           }
         });
       }
+    }
+  });
+
+  // The retained page and the requests around it keep their own
+  // responsibilities: the reused first page reads no source header, sends
+  // nothing and runs no address option, while a real request — the chapter's
+  // first page or a page that first one declares — reads the source header
+  // before it executes those options, and a later page resolves against the
+  // complete native `BookChapter.getAbsoluteURL()` text the retained page
+  // carries.
+  group('chapterRetainedConsumers', () {
+    const origin = 'http://source.test';
+    const bookAddress = '$origin/catalog/book/1';
+
+    for (final fresh in [false, true]) {
+      test('header-order fresh=$fresh', () async {
+        final tail =
+            ',${jsonEncode({'js': "source.put('order',source.get('order')+'J');result"})}';
+        final page = _repair06Page(
+          true,
+          book: '/catalog/book/1',
+          toc: '/catalog/book/1',
+          chapter: '$origin/catalog/content$tail',
+        );
+        final pages = _ContinuationPages(
+          jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'Body',
+          }),
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+          ],
+        );
+        final state = SourceHostState();
+        final source = _jsonSource(origin)
+          ..['searchUrl'] = '/catalog/search'
+          ..['bookUrlPattern'] = r'$^'
+          ..['header'] =
+              '@js:source.put("order",(source.get("order")||"")+"H");JSON.stringify({"X-Source":"keep"})';
+        final producer = _openContinuation(true, source, pages, state: state);
+        BookSourcePipeline? receiver;
+        try {
+          final info = await producer.bookInfo(
+            (await producer.search('ascii')).single,
+          );
+          final (book, chapters) = await producer.tableOfContents(info);
+          final key = sourceRuleVariableKey(origin, 'order');
+          expect(
+            pages.requests.length,
+            2,
+            reason: 'premise: search and info only',
+          );
+          expect(
+            await state.entry(origin, key),
+            'H',
+            reason: 'premise: producer header read',
+          );
+          final reader = fresh
+              ? (receiver = _openContinuation(
+                  true,
+                  source,
+                  pages,
+                  state: state,
+                ))
+              : producer;
+          final body = await reader.chapter(chapters.single, book: book);
+          expect(body.text, 'Body');
+          expect(pages.requests.length, 3);
+          expect(pages.requests.last.url.path, '/catalog/content');
+          expect(
+            await state.entry(origin, key),
+            fresh ? 'HHJ' : 'HJ',
+            reason:
+                'target: actual request reads source header before option script',
+          );
+        } finally {
+          producer.cancel();
+          receiver?.cancel();
+        }
+      });
+    }
+
+    for (final fresh in [false, true]) {
+      for (final tail in [false, true]) {
+        test('next-page fresh=$fresh tail=$tail', () async {
+          final suffix = tail
+              ? ',${jsonEncode({
+                  'headers': {'X-Route': 'part/../../end'},
+                })}'
+              : '';
+          final raw = '$bookAddress$suffix';
+          final page = _repair06Page(true, chapter: '');
+          final pages = _RetainedPagingPages(
+            jsonEncode({
+              ...jsonDecode(page) as Map<String, dynamic>,
+              'text': 'First',
+              'next': 'leaf',
+            }),
+          );
+          final state = SourceHostState();
+          final source = _jsonSource(origin)
+            ..['header'] = '{"X-Source":"keep"}'
+            ..['ruleContent'] = {
+              'content': r'$.text',
+              'nextContentUrl': r'$.next',
+            };
+          final producer = _openContinuation(true, source, pages, state: state);
+          BookSourcePipeline? receiver;
+          try {
+            final info = await producer.bookInfo(
+              HtmlBook(
+                url: Uri.parse(bookAddress),
+                rawAddress: raw,
+                title: 'Book',
+              ),
+            );
+            expect(info.tocHtml, isNotEmpty);
+            expect(info.tocUrl, raw);
+            expect(
+              info.book.addressContext?.comparisonAddress ??
+                  info.book.identityAddress,
+              raw,
+            );
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(pages.requests.length, 1, reason: 'premise: retained TOC');
+            expect(chapters.single.address, raw);
+            final reader = fresh
+                ? (receiver = _openContinuation(
+                    true,
+                    source,
+                    pages,
+                    state: state,
+                  ))
+                : producer;
+            final body = await reader.chapter(chapters.single, book: book);
+            expect(body.text, 'First\nSecond');
+            expect(
+              pages.requests.length,
+              2,
+              reason:
+                  'target: retained first page then exactly one real next request',
+            );
+            expect(
+              pages.requests.last.headers.entries.any(
+                (entry) =>
+                    entry.key.toLowerCase() == 'x-source' &&
+                    entry.value == 'keep',
+              ),
+              isTrue,
+              reason: 'control: next request retains source header',
+            );
+            expect(
+              pages.requests.last.url.path,
+              tail ? '/catalog/leaf' : '/catalog/book/leaf',
+              reason:
+                  'target: next page uses native complete getAbsoluteURL base',
+            );
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+
+    for (final fresh in [false, true]) {
+      test('next-header-order fresh=$fresh', () async {
+        final tail =
+            ',${jsonEncode({'js': "source.put('order',source.get('order')+'J');result"})}';
+        final page = _repair06Page(true, chapter: '');
+        final pages = _RetainedPagingPages(
+          jsonEncode({
+            ...jsonDecode(page) as Map<String, dynamic>,
+            'text': 'First',
+            'next': 'leaf$tail',
+          }),
+        );
+        final state = SourceHostState();
+        final source = _jsonSource(origin)
+          ..['header'] =
+              '@js:source.put("order",(source.get("order")||"")+"H");JSON.stringify({"X-Source":"keep"})'
+          ..['ruleContent'] = {
+            'content': r'$.text',
+            'nextContentUrl': r'$.next',
+          };
+        final producer = _openContinuation(true, source, pages, state: state);
+        BookSourcePipeline? receiver;
+        try {
+          final info = await producer.bookInfo(
+            HtmlBook(
+              url: Uri.parse(bookAddress),
+              rawAddress: bookAddress,
+              title: 'Book',
+            ),
+          );
+          expect(info.tocHtml, isNotEmpty);
+          final (book, chapters) = await producer.tableOfContents(info);
+          final key = sourceRuleVariableKey(origin, 'order');
+          expect(pages.requests.length, 1);
+          expect(await state.entry(origin, key), 'H');
+          final reader = fresh
+              ? (receiver = _openContinuation(
+                  true,
+                  source,
+                  pages,
+                  state: state,
+                ))
+              : producer;
+          final body = await reader.chapter(chapters.single, book: book);
+          expect(body.text, 'First\nSecond');
+          expect(pages.requests.length, 2);
+          expect(pages.requests.last.url.path, '/catalog/book/leaf');
+          expect(
+            await state.entry(origin, key),
+            fresh ? 'HHJ' : 'HJ',
+            reason:
+                'target: real next-page request reads header before option script',
+          );
+        } finally {
+          producer.cancel();
+          receiver?.cancel();
+        }
+      });
     }
   });
 }
