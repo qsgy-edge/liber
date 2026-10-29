@@ -6547,4 +6547,309 @@ void main() {
       });
     }
   });
+
+  // The HTML adapter's content stage: a chapter whose completed native text is
+  // the book's own reuses the retained body without a request, header read or
+  // login check, while a text that merely resolves to the same address is a real
+  // request of its own.
+  group('chapterHtmlRetainedBody', () {
+    const origin = 'http://source.test';
+    const bookAddress = '$origin/catalog/book/1';
+    for (final fresh in [false, true]) {
+      for (final kind in ['empty', 'exact', 'relative']) {
+        test('fresh=$fresh kind=$kind', () async {
+          final address = switch (kind) {
+            'empty' => '',
+            'exact' => bookAddress,
+            _ => '../book/1',
+          };
+          final page =
+              '${_repair06Page(false, book: '/catalog/book/1', chapter: address)}'
+              '<div id="content">Body</div>';
+          final pages = _ContinuationPages(
+            page,
+            allowedPaths: const ['/catalog/search', '/catalog/book/1'],
+          );
+          final source = _htmlSource(
+            origin,
+            searchUrl: '/catalog/search',
+            bookUrlPattern: r'$^',
+          );
+          source['header'] =
+              "@js:java.put('htmlHeaders', "
+              "String(Number(java.get('htmlHeaders') || '0') + 1)); "
+              "JSON.stringify({'X-Source':'html'})";
+          source['loginCheckJs'] =
+              "java.put('htmlLogins', "
+              "String(Number(java.get('htmlLogins') || '0') + 1)); result";
+          final state = SourceHostState();
+          final pipeline = _openContinuation(
+            false,
+            source,
+            pages,
+            state: state,
+          );
+          final hits = await pipeline.search('book');
+          final (book, chapters) = await pipeline.details(hits.single);
+          expect(chapters, hasLength(1));
+          expect(book.identityAddress, bookAddress);
+          expect(chapters.single.storeKey, bookAddress);
+          expect(
+            chapters.single.address,
+            kind == 'empty' ? bookAddress : address,
+          );
+          expect(pages.requests.map((r) => r.url.path), [
+            '/catalog/search',
+            '/catalog/book/1',
+          ]);
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlHeaders'),
+            ),
+            '2',
+          );
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlLogins'),
+            ),
+            '2',
+          );
+          final receiver = fresh
+              ? _openContinuation(false, source, pages, state: state)
+              : pipeline;
+          final body = await receiver.chapter(chapters.single, book: book);
+          expect(body.text, 'Body');
+          final reuse = kind != 'relative';
+          expect(
+            pages.requests,
+            hasLength(reuse ? 2 : 3),
+            reason:
+                'target: native-equal completed chapter text reuses the retained body',
+          );
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlHeaders'),
+            ),
+            reuse ? '2' : '3',
+            reason: 'target: reuse does not initialize or reevaluate headers',
+          );
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlLogins'),
+            ),
+            reuse ? '2' : '3',
+            reason: 'target: reuse never repeats login checking',
+          );
+          if (!reuse) {
+            expect(pages.requests.last.url.toString(), bookAddress);
+            expect(pages.requests.last.headers['X-Source'], 'html');
+          }
+          expect(chapters.single.storeKey, bookAddress);
+          expect(chapters.single.progressKey, bookAddress);
+          expect(book.identityAddress, bookAddress);
+        });
+      }
+    }
+  });
+
+  // The HTML chapter identity is fixed before any request charset processing:
+  // the declared raw text names the row while the actual request applies the
+  // charset its own tail declares.
+  group('chapterHtmlRequestCharset', () {
+    const origin = 'http://source.test';
+    const rawTarget = '$origin/catalog/content?q=中';
+    const stableKey = '$origin/catalog/content?q=%E4%B8%AD';
+    for (final charset in ['UTF-8', 'GBK']) {
+      test('charset=$charset', () async {
+        final address =
+            '$rawTarget,${jsonEncode({
+              'charset': charset,
+              'headers': {'X-Chapter': 'keep'},
+            })}';
+        final page =
+            '${_repair06Page(false, book: '/catalog/book/1', chapter: address)}'
+            '<div id="content">Body</div>';
+        final pages = _ContinuationPages(
+          page,
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+          ],
+        );
+        final source = _htmlSource(
+          origin,
+          searchUrl: '/catalog/search',
+          bookUrlPattern: r'$^',
+        );
+        final pipeline = _openContinuation(false, source, pages);
+        final hits = await pipeline.search('book');
+        final (book, chapters) = await pipeline.details(hits.single);
+        expect(chapters, hasLength(1));
+        expect(chapters.single.address, address);
+        expect(pages.requests.map((r) => r.url.path), [
+          '/catalog/search',
+          '/catalog/book/1',
+        ]);
+        expect(
+          chapters.single.storeKey,
+          stableKey,
+          reason: 'target: identity precedes request charset processing',
+        );
+        final body = await _openContinuation(
+          false,
+          source,
+          pages,
+        ).chapter(chapters.single, book: book);
+        expect(body.text, 'Body');
+        expect(pages.requests, hasLength(3));
+        expect(
+          pages.requests.last.url.toString(),
+          charset == 'GBK' ? '$origin/catalog/content?q=%D6%D0' : stableKey,
+          reason: 'target: this content request applies its own charset',
+        );
+        expect(pages.requests.last.headers['X-Chapter'], 'keep');
+        expect(chapters.single.storeKey, stableKey);
+        expect(chapters.single.progressKey, stableKey);
+      });
+    }
+  });
+
+  // An HTML chapter address that carries a request template expands it for the
+  // real content request alone, once.
+  group('chapterHtmlRequestTemplate', () {
+    const origin = 'http://source.test';
+    const target = '$origin/catalog/content?q=ascii';
+    const template =
+        "$origin/catalog/content?q={{java.put('htmlTemplateRuns', "
+        "String(Number(java.get('htmlTemplateRuns') || '0') + 1)); 'ascii'}}";
+    for (final scripted in [false, true]) {
+      test('scripted=$scripted', () async {
+        final address = scripted ? template : target;
+        final page =
+            '${_repair06Page(false, book: '/catalog/book/1', chapter: address)}'
+            '<div id="content">Body</div>';
+        final pages = _ContinuationPages(
+          page,
+          allowedPaths: const [
+            '/catalog/search',
+            '/catalog/book/1',
+            '/catalog/content',
+          ],
+        );
+        final source = _htmlSource(
+          origin,
+          searchUrl: '/catalog/search',
+          bookUrlPattern: r'$^',
+        );
+        final state = SourceHostState();
+        final pipeline = _openContinuation(false, source, pages, state: state);
+        final hits = await pipeline.search('book');
+        final (book, chapters) = await pipeline.details(hits.single);
+        expect(chapters, hasLength(1));
+        expect(chapters.single.address, address);
+        expect(pages.requests.map((r) => r.url.path), [
+          '/catalog/search',
+          '/catalog/book/1',
+        ]);
+        expect(
+          await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'htmlTemplateRuns'),
+          ),
+          isNull,
+          reason: 'premise: a TOC never executes the request template',
+        );
+        final stableKey = chapters.single.storeKey;
+        final body = await _openContinuation(
+          false,
+          source,
+          pages,
+          state: state,
+        ).chapter(chapters.single, book: book);
+        expect(body.text, 'Body');
+        expect(pages.requests, hasLength(3));
+        expect(
+          pages.requests.last.url.toString(),
+          target,
+          reason:
+              'target: the actual request expands its own original template',
+        );
+        expect(
+          await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'htmlTemplateRuns'),
+          ),
+          scripted ? '1' : isNull,
+          reason: 'target: the template runs only once, for that request',
+        );
+        expect(chapters.single.storeKey, stableKey);
+        expect(chapters.single.progressKey, stableKey);
+      });
+    }
+  });
+
+  // The HTML content request evaluates its source header before its own template.
+  group('chapterHtmlHeaderOrder', () {
+    const origin = 'http://source.test';
+    const target = '$origin/catalog/content?q=ascii';
+    const template =
+        "$origin/catalog/content?q={{java.put('htmlObservedHeader', "
+        "java.get('htmlRealHeaders') || 'missing'); 'ascii'}}";
+    for (final scripted in [false, true]) {
+      test('scripted=$scripted', () async {
+        final source = _htmlSource(origin);
+        source['header'] =
+            "@js:var n=String(Number(java.get('htmlRealHeaders') || '0') + 1); "
+            "java.put('htmlRealHeaders', n); JSON.stringify({'X-Sequence':n})";
+        final pages = _ContinuationPages(
+          '<div id="content">Body</div>',
+          allowedPaths: const ['/catalog/content'],
+        );
+        final state = SourceHostState();
+        final book = HtmlBook(
+          url: Uri.parse('$origin/catalog/book/1'),
+          title: 'Book',
+        );
+        final chapter = SourceChapter(
+          'Chapter',
+          Uri.parse(target),
+          rawAddress: scripted ? template : target,
+          addressBase: book.url,
+        );
+        final body = await _openContinuation(
+          false,
+          source,
+          pages,
+          state: state,
+        ).chapter(chapter, book: book);
+        expect(body.text, 'Body');
+        expect(pages.requests, hasLength(1));
+        expect(pages.requests.single.url.toString(), target);
+        expect(pages.requests.single.headers['X-Sequence'], '1');
+        expect(
+          await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'htmlRealHeaders'),
+          ),
+          '1',
+        );
+        expect(
+          await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'htmlObservedHeader'),
+          ),
+          scripted ? '1' : isNull,
+          reason:
+              'target: a real HTML request reads headers before its template',
+        );
+        expect(chapter.storeKey, target);
+        expect(chapter.progressKey, target);
+      });
+    }
+  });
 }
