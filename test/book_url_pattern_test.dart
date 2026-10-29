@@ -290,11 +290,12 @@ class _RetainedSequencePages extends _ContinuationPages {
   }
 }
 
-/// The frozen O-shaped site: one list page whose selected hit carries a
-/// `bookUrl` URL-option script, and the two detail pages that script selects.
-/// A target the frozen never requests has no page, so it answers the runner's
-/// own refusal (an unmatched request and no book markup) rather than a page
-/// that could hide the divergence behind a plausible body.
+/// The frozen O/P-shaped site: a list page whose selected hit carries a
+/// `bookUrl` URL-option script, or a TOC page whose continuation addresses carry
+/// their own, plus the pages those scripts select. A target the frozen never
+/// requests has no page, so it answers the runner's own refusal (an unmatched
+/// request and no book markup) rather than a page that could hide the divergence
+/// behind a plausible body.
 class _RequestOptionPages implements BookSourceTransport, SourceHttpTransport {
   _RequestOptionPages(this.pages);
 
@@ -7525,5 +7526,84 @@ void main() {
         }
       },
     );
+
+    test('html TOC continuation pages run their own option scripts', () async {
+      const origin = 'http://source.test';
+      // The frozen P source: one search hit, a declared TOC address, and two
+      // continuation addresses whose own `js` option scripts select the page.
+      final source = <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/p/search?keyword={{key}}&page={{page}}',
+        'ruleSearch': {
+          'bookList': '.result li',
+          'name': 'a.0@text',
+          'author': 'span.author@text',
+          'bookUrl': 'a.0@href',
+        },
+        'ruleBookInfo': {
+          'name': 'h1@text',
+          'author': '.info span.author@text',
+          'intro': '.intro@text',
+          'tocUrl': '.toc a@href',
+        },
+        'ruleToc': {
+          'chapterList': '.chapters li a',
+          'chapterName': 'text',
+          'chapterUrl': 'href',
+          'nextTocUrl': '.next a@href',
+        },
+        'ruleContent': {'content': '.c@text'},
+      };
+      final pages = _RequestOptionPages({
+        '/p/search':
+            '<ul class="result"><li><a href="$origin/p/book/1">P1</a>'
+            '<span class="author">PA</span></li></ul>',
+        '/p/book/1':
+            '<h1>P1</h1><div class="info"><span class="author">PA</span></div>'
+            '<div class="intro">PI</div>'
+            '<div class="toc"><a href="$origin/p/book/1/toc">toc</a></div>',
+        '/p/book/1/toc':
+            '<ul class="chapters"><li><a href="$origin/p/c1">c1</a></li></ul>'
+            '<div class="next">'
+            "<a href='$origin/p/toc2,{\"js\":\"result + &#39;/2&#39;\"}'>2</a>"
+            "<a href='$origin/p/toc3,{\"js\":\"result + &#39;/3&#39;\"}'>3</a>"
+            '</div>',
+        '/p/toc2/2':
+            '<ul class="chapters"><li><a href="$origin/p/c2">c2</a></li></ul>',
+        '/p/toc3/3':
+            '<ul class="chapters"><li><a href="$origin/p/c3">c3</a></li></ul>',
+      });
+      final pipeline = HtmlSourcePipeline(source, pages);
+      try {
+        final hit = (await pipeline.search('p')).single;
+        final info = await pipeline.bookInfo(hit);
+        final toc = await _errorOrNull(pipeline.tableOfContents(info));
+        expect(
+          toc,
+          isA<(HtmlBook, List<SourceChapter>)>(),
+          reason:
+              'target: each declared continuation page runs its own URL option script and its chapters join the TOC, but the stage answered: $toc',
+        );
+        final (_, chapters) = toc as (HtmlBook, List<SourceChapter>);
+        expect(
+          chapters.map((chapter) => chapter.name),
+          ['c1', 'c2', 'c3'],
+          reason: 'target: one chapter per page, in the declared page order',
+        );
+        expect(
+          chapters.map((chapter) => chapter.url.path),
+          ['/p/c1', '/p/c2', '/p/c3'],
+          reason: 'target: the chapter addresses the pages themselves declare',
+        );
+        expect(
+          pages.targets,
+          ['/p/search', '/p/book/1', '/p/book/1/toc', '/p/toc2/2', '/p/toc3/3'],
+          reason:
+              'target: the first page and each declared continuation page are requested once, at the address its own script selects',
+        );
+      } finally {
+        pipeline.cancel();
+      }
+    });
   });
 }
