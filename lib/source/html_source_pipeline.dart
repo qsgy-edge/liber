@@ -684,9 +684,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       stage.base,
       stage.address,
       _keyword,
-      // The content stage keeps a fragment its own address declares; every other
-      // stage's request drops it.
-      keepFragment: stage.stage == BookSourceStage.content,
+      // The content stage carries a declared fragment past its own GET query
+      // re-encoding; a POST request keeps it on the wire either way.
+      keepGetFragment: stage.stage == BookSourceStage.content,
     );
     _stageRequest = (
       url: url,
@@ -1399,10 +1399,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// resolving a relative address — and only this request splits the options of
   /// the address it was given.
   ///
-  /// [keepFragment] is the content stage's own logical page distinction: a
-  /// fragment a declared address names stays part of that request's URL. The
-  /// default drops it, which is what the search, information and TOC requests
-  /// always did.
+  /// [keepGetFragment] is the content stage's own logical page distinction, and
+  /// it acts on one step only: the GET query re-encoding. Every other step keeps
+  /// a fragment the address declares — the option script's input, the initial
+  /// resolution, a POST request's URL and the stable identity — so the
+  /// re-encoded GET query is the one place a declared fragment would be folded
+  /// into the query text or dropped.
   Future<(Uri, SourceUrlOptions)> _request(
     Uri base,
     String template,
@@ -1410,7 +1412,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
     String? rawBase,
-    bool keepFragment = false,
+    bool keepGetFragment = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     return _analyzeRequest(
@@ -1419,7 +1421,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       keyword,
       captureIdentity: captureIdentity,
       rawBase: rawBase,
-      keepFragment: keepFragment,
+      keepGetFragment: keepGetFragment,
     );
   }
 
@@ -1429,7 +1431,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   ///
   /// This is [_request]'s second half, so a page that expanded its own text (the
   /// content stage's next pages) analyses it without expanding it a second time.
-  /// [captureIdentity], [rawBase] and [keepFragment] are [_request]'s.
+  /// [captureIdentity], [rawBase] and [keepGetFragment] are [_request]'s.
   Future<(Uri, SourceUrlOptions)> _analyzeRequest(
     Uri base,
     String expandedAddress,
@@ -1437,7 +1439,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
     String? rawBase,
-    bool keepFragment = false,
+    bool keepGetFragment = false,
   }) async {
     var address = expandedAddress;
     final raw = rawBase;
@@ -1455,12 +1457,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    final rawTarget = _resolve(base, split.path, keepFragment: keepFragment);
+    final rawTarget = _resolve(base, split.path, keepFragment: true);
     final text = script == null
         ? split.path
         : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
               split.path;
-    var url = _resolve(base, text, keepFragment: keepFragment);
+    var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
       final encoded = _resolve(
         base,
@@ -1469,11 +1471,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           charset: split.options.charset,
         ),
       );
-      // This step re-encodes the query alone; a fragment the address declares
-      // stays part of this request's own URL (`NetworkUtils.getAbsoluteURL`
+      // This step re-encodes the query alone, so it is the one step that does
+      // not keep the declared fragment: with a query the fragment becomes part
+      // of the query text, and without one the resolution above drops it. Only
+      // the content stage carries it through (`NetworkUtils.getAbsoluteURL`
       // builds one URL with it), so a distinct `#next` is not folded back into
       // the page it was read from.
-      url = url.hasFragment && !encoded.hasFragment
+      url = keepGetFragment && url.hasFragment && !encoded.hasFragment
           ? encoded.replace(fragment: url.fragment)
           : encoded;
     }
@@ -1483,7 +1487,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final identityTarget = _resolve(
       identityBase,
       split.path,
-      keepFragment: keepFragment,
+      keepFragment: true,
     );
     // The frozen `BookList.getInfoItem` identity is one native resolution of
     // the rule's own text against the URL the search request actually reached
@@ -1502,12 +1506,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// Resolves an already-extracted rule value that may carry URL options.
   ///
-  /// The search book address and the TOC's later pages are the callers, so the
-  /// default resolution applies: only the content stage keeps a fragment an
-  /// address declares.
+  /// The initial resolution keeps a fragment the value declares, as the request
+  /// path's own first resolutions do; a GET request's re-encoded query is where
+  /// that fragment is folded into the query text or dropped. The callers are the
+  /// search book address and the TOC's later pages, neither of which carries the
+  /// content stage's logical page distinction.
   Future<(Uri, SourceUrlOptions)> _extracted(Uri base, String value) async {
     final split = splitSourceUrlOptions(value);
-    var url = _resolve(base, split.path);
+    var url = _resolve(base, split.path, keepFragment: true);
     if (!split.options.isPost) {
       url = _resolve(
         base,
@@ -2939,7 +2945,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // and any template or program it carries belong to this fetch, while the
     // chapter's stable identity and saved input keep their own facts. The whole
     // rule is expanded before its options are split, as `AnalyzeUrl` does, and
-    // this content consumer keeps a fragment the text declares.
+    // this content consumer carries a declared fragment past its own GET query
+    // re-encoding.
     final requestText = chapterContext?.requestAddress ?? chapter.address;
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
@@ -2947,7 +2954,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             chapterBase,
             requestText,
             _keyword,
-            keepFragment: true,
+            keepGetFragment: true,
           );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as
@@ -3032,7 +3039,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             expandedAddress,
             _keyword,
             rawBase: pageRawBase,
-            keepFragment: true,
+            keepGetFragment: true,
           );
           target = url;
           targetOptions = options;
