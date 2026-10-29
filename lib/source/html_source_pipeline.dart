@@ -2036,6 +2036,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // A retained information body is the frozen same-page reuse
     // (`BookList.kt:88-99`): it answers the response the search already read, so
     // this stage builds no request, reads no header and runs no option script.
+    //
+    // A real details request reads the source header map before it analyzes the
+    // address it carries (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`), so
+    // the option script starts from the state that read left, and the send
+    // carries that same map.
+    final sourceHeaders = cached ? null : await _headers();
     final (bookUrl, bookOptions) = cached
         ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
         : await _request(bookRequest?.base ?? _sourceBase, bookAddressText, '');
@@ -2048,6 +2054,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               options: bookOptions,
               address: bookAddressText,
               base: bookRequest?.base ?? _sourceBase,
+              sourceHeaders: sourceHeaders,
             ),
           );
     final html = bookInfo.body;
@@ -2153,6 +2160,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
               retainedPageUrl
         : null;
+    // A real TOC request evaluates the source header map once, before it analyzes
+    // its own address text, and the send carries that same map
+    // (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`); a retained same-page
+    // body makes no request and reads no header.
+    final tocRequestHeaders = retainedFirstPage ? null : await _headers();
     final (tocTarget, tocOptions) = retainedFirstPage
         ? (bookUrl, const SourceUrlOptions())
         : info.tocAddress.isEmpty
@@ -2270,23 +2282,49 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       visit: (request, {required readNext}) async {
         clearTocChapter();
         try {
+          final isFirstPage = firstPage;
           final cachedFirstPage =
-              firstPage &&
+              isFirstPage &&
               info.tocHtml != null &&
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
-          var fetched = cachedFirstPage
-              ? SourceStageResponse(
-                  body: info.tocHtml!,
-                  url: retainedPageUrl ?? info.tocBase,
-                )
-              : await _fetch(
-                  request.url,
-                  BookSourceStage.tableOfContents,
-                  options: request.options,
-                  address: request.address,
-                  base: request.base,
-                );
+          SourceStageResponse fetched;
+          if (cachedFirstPage) {
+            fetched = SourceStageResponse(
+              body: info.tocHtml!,
+              url: retainedPageUrl ?? info.tocBase,
+            );
+          } else {
+            // This page's own source header map is read before its address is
+            // analyzed, as the frozen constructor does (`AnalyzeUrl.kt:125-145`).
+            final sourceHeaders = isFirstPage
+                ? tocRequestHeaders
+                : await _headers();
+            // The first page's address was analyzed above (its own `_request`),
+            // so it sends that analysis unchanged. A page this walk reaches later
+            // analyzes its own address text only here, at the request the walk
+            // really makes, so its `js` option runs exactly once.
+            final Uri target;
+            final SourceUrlOptions targetOptions;
+            if (isFirstPage) {
+              target = request.url;
+              targetOptions = request.options;
+            } else {
+              (target, targetOptions) = await _analyzeRequest(
+                request.base,
+                request.address,
+                _keyword,
+              );
+            }
+            fetched = await _fetch(
+              target,
+              BookSourceStage.tableOfContents,
+              options: targetOptions,
+              address: request.address,
+              base: request.base,
+              sourceHeaders: sourceHeaders,
+            );
+          }
           // The frozen TOC stage checks login once, on its first response
           // (`WebBook.kt:253`); the `nextTocUrl` pages `BookChapterList` fetches
           // afterwards never run the check. A retained same-page body has no
