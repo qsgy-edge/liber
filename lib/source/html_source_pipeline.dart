@@ -2003,10 +2003,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
     // request targets the text before its option tail and carries the options
     // it found, so a stored address's `,{…}` tail never reaches the site as
-    // percent-encoded query text (#97). A search hit already resolved its
-    // address against the search response, so it keeps the request it made; a
-    // book rebuilt from the store or from a pasted address has only the text,
-    // which resolves against the source's own URL as it does there. The frozen
+    // percent-encoded query text (#97). The frozen runs that analysis for every
+    // details request, its option script included (`AnalyzeUrl.kt:214-242`), so
+    // a search hit's recorded request is not reused: the hit's own text is
+    // analyzed again against the base that recorded it — the search response
+    // URL it resolved against — and a carrier with no recorded request resolves
+    // against the source's own URL, as a rebuilt book does there. The frozen
     // stage binds no key and no page, so a stored address's `{{key}}`/`{{page}}`
     // bind nothing here either.
     //
@@ -2031,11 +2033,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
     final retained = hit.infoHtml;
     final cached = retained != null && retained.isNotEmpty;
+    // A retained information body is the frozen same-page reuse
+    // (`BookList.kt:88-99`): it answers the response the search already read, so
+    // this stage builds no request, reads no header and runs no option script.
     final (bookUrl, bookOptions) = cached
         ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
-        : bookRequest == null
-        ? await _request(_sourceBase, bookAddressText, '')
-        : (hit.url, bookRequest.options);
+        : await _request(bookRequest?.base ?? _sourceBase, bookAddressText, '');
     final bookInfo = retained != null && retained.isNotEmpty
         ? SourceStageResponse(body: retained, url: hit.url)
         : await _loginCheck(
