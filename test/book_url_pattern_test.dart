@@ -7040,4 +7040,301 @@ void main() {
       });
     }
   });
+
+  group('chapterHtmlDefaultFragment', () {
+    const origin = 'http://source.test';
+    for (final stage in ['search', 'information', 'toc']) {
+      for (final fragment in [false, true]) {
+        test('stage=$stage fragment=$fragment', () async {
+          final target =
+              '$origin/catalog/${stage == 'search'
+                  ? 'search'
+                  : stage == 'information'
+                  ? 'book/1'
+                  : 'toc'}';
+          final address = '$target${fragment ? '#declared' : ''}';
+          final page = _repair06Page(false, toc: stage == 'toc' ? address : '');
+          final pages = _ContinuationPages(
+            page,
+            allowedPaths: const [
+              '/catalog/search',
+              '/catalog/book/1',
+              '/catalog/toc',
+            ],
+          );
+          final source = _htmlSource(origin)..['bookUrlPattern'] = r'$^';
+          if (stage == 'search') source['searchUrl'] = address;
+          final pipeline = _openContinuation(false, source, pages);
+          try {
+            if (stage == 'search') {
+              expect((await pipeline.search('1')).single.title, 'Book');
+            } else {
+              final bookAddress = stage == 'information'
+                  ? address
+                  : '$origin/catalog/book/1';
+              final info = await pipeline.bookInfo(
+                HtmlBook(
+                  url: Uri.parse(bookAddress),
+                  rawAddress: bookAddress,
+                  title: 'Book',
+                ),
+              );
+              expect(info.book.title, 'Book');
+              if (stage == 'toc') {
+                expect(
+                  info.tocAddress,
+                  address,
+                  reason: 'premise: declared TOC text retains its own fragment',
+                );
+                final (_, chapters) = await pipeline.tableOfContents(info);
+                expect(chapters, isNotEmpty);
+              }
+            }
+            expect(
+              pages.requests.last.url.toString(),
+              target,
+              reason:
+                  'target: the granted content repair leaves default non-content request semantics unchanged',
+            );
+          } finally {
+            pipeline.cancel();
+          }
+        });
+      }
+    }
+  });
+
+  group('chapterHtmlFullRawBase', () {
+    const origin = 'http://source.test';
+    const bookAddress = '$origin/catalog/book/1';
+    for (final fresh in [false, true]) {
+      for (final tail in [false, true]) {
+        test('relative next fresh=$fresh tail=$tail', () async {
+          final suffix = tail
+              ? ',${jsonEncode({
+                  'headers': {'X-Route': 'part/../../end'},
+                })}'
+              : '';
+          final raw = '$bookAddress$suffix';
+          final first =
+              '${_repair06Page(false, chapter: '')}'
+              '<div id="content">First</div><a class="next-content" href="next-part">next</a>';
+          const second =
+              '<div id="content">Second</div><a class="next-content" href="">end</a>';
+          final pages = _RetainedSequencePages([first, second]);
+          final source = _htmlSource(origin);
+          source['ruleContent'] = {
+            'content': '#content@text',
+            'nextContentUrl': 'a.next-content@href',
+          };
+          final producer = _openContinuation(false, source, pages);
+          BookSourcePipeline? receiver;
+          try {
+            final info = await producer.bookInfo(
+              HtmlBook(
+                url: Uri.parse(bookAddress),
+                rawAddress: raw,
+                title: 'Book',
+              ),
+            );
+            expect(info.tocHtml, isNotEmpty);
+            expect(info.tocUrl, raw);
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(pages.requests, hasLength(1));
+            final reader = fresh
+                ? (receiver = _openContinuation(false, source, pages))
+                : producer;
+            final body = await reader.chapter(chapters.single, book: book);
+            expect(body.text, 'First\nSecond');
+            expect(pages.requests, hasLength(2));
+            expect(
+              pages.requests.last.url.path,
+              tail ? '/catalog/next-part' : '/catalog/book/next-part',
+              reason:
+                  'target: retained relative next uses the full native URL-object base, not its first-comma prefix',
+            );
+            expect(chapters.single.storeKey, bookAddress);
+            expect(chapters.single.persistedAddress, raw);
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+  });
+
+  group('chapterHtmlNextProgramData', () {
+    const origin = 'http://source.test';
+    const firstTarget = '$origin/catalog/content/1';
+    const selected = '$origin/catalog/page-two';
+    for (final inertOptions in [false, true]) {
+      test('inert options text=$inertOptions', () async {
+        final inert = inertOptions
+            ? 'var inert=\',{"headers":{"X-Inert":"unused"}}\'; '
+            : '';
+        final nextText =
+            '@js:${inert}java.put("htmlProgramRuns",String(Number(java.get("htmlProgramRuns")||"0")+1)); "$selected"';
+        final first =
+            '<div id="content">First</div><a class="next-content" href="${HtmlEscape().convert(nextText)}">next</a>';
+        const second =
+            '<div id="content">Second</div><a class="next-content" href="">end</a>';
+        final pages = _RetainedSequencePages([first, second]);
+        final source = _htmlSource(origin);
+        source['ruleContent'] = {
+          'content': '#content@text',
+          'nextContentUrl': 'a.next-content@href',
+        };
+        final state = SourceHostState();
+        final pipeline = _openContinuation(false, source, pages, state: state);
+        final chapter = SourceChapter(
+          'Chapter',
+          Uri.parse(firstTarget),
+          rawAddress: firstTarget,
+        );
+        final book = HtmlBook(
+          url: Uri.parse('$origin/catalog/book/1'),
+          title: 'Book',
+        );
+        try {
+          final HtmlChapterBody body;
+          try {
+            body = await pipeline.chapter(chapter, book: book);
+          } on UnsupportedError catch (error) {
+            if (error.message != '暂不支持正文分页地址的 URL 选项') rethrow;
+            fail(
+              'target: inactive option-shaped program text is not a request option before expansion',
+            );
+          }
+          expect(body.text, 'First\nSecond');
+          expect(pages.requests, hasLength(2));
+          expect(pages.requests.last.url.toString(), selected);
+          expect(pages.requests.last.headers.containsKey('X-Inert'), isFalse);
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlProgramRuns'),
+            ),
+            '1',
+          );
+          expect(chapter.storeKey, firstTarget);
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  });
+
+  group('chapterHtmlFirstProgramData', () {
+    const origin = 'http://source.test';
+    const original = '$origin/catalog/content/1';
+    const selected = '$origin/catalog/content-selected';
+    for (final inertOptions in [false, true]) {
+      test('inert options text=$inertOptions', () async {
+        final inert = inertOptions
+            ? 'var inert=\',{"headers":{"X-Inert":"unused"}}\'; '
+            : '';
+        final address =
+            '@js:${inert}java.put("htmlFirstProgramRuns",String(Number(java.get("htmlFirstProgramRuns")||"0")+1)); "$selected"';
+        final pages = _ContinuationPages(
+          '<div id="content">Body</div>',
+          allowedPaths: const [
+            '/catalog/content/1',
+            '/catalog/content-selected',
+          ],
+        );
+        final source = _htmlSource(origin);
+        source['ruleContent'] = {'content': '#content@text'};
+        final state = SourceHostState();
+        final pipeline = _openContinuation(false, source, pages, state: state);
+        final chapter = SourceChapter(
+          'Chapter',
+          Uri.parse(original),
+          rawAddress: address,
+        );
+        try {
+          final HtmlChapterBody body;
+          try {
+            body = await pipeline.chapter(chapter);
+          } on UnsupportedError catch (error) {
+            if (error.message != '暂不支持章节地址的 URL 选项') rethrow;
+            fail(
+              'target: the first real request also expands before interpreting inactive option-shaped data',
+            );
+          }
+          expect(body.text, 'Body');
+          expect(pages.requests, hasLength(1));
+          expect(pages.requests.single.url.toString(), selected);
+          expect(pages.requests.single.headers.containsKey('X-Inert'), isFalse);
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlFirstProgramRuns'),
+            ),
+            '1',
+          );
+          expect(chapter.storeKey, original);
+          expect(chapter.persistedAddress, address);
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  });
+
+  group('chapterHtmlAliasedNext', () {
+    const origin = 'http://source.test';
+    const firstTarget = '$origin/catalog/content/1';
+    const selected = '$origin/catalog/page-two';
+    for (final aliased in [false, true]) {
+      test('alias duplicate=$aliased', () async {
+        final first =
+            '<div id="content">First</div>'
+            '<a class="next-content" href="$selected">next</a>'
+            '${aliased ? '<a class="next-content" href="/catalog/page-two">alias</a>' : ''}';
+        const second =
+            '<div id="content">Second</div><a class="next-content" href="">end</a>';
+        final pages = _RetainedSequencePages([first, second]);
+        final source = _htmlSource(origin);
+        source['header'] =
+            '@js:var n=String(Number(java.get("htmlAliasHeaders")||"0")+1); java.put("htmlAliasHeaders",n); JSON.stringify({"X-Sequence":n})';
+        source['ruleContent'] = {
+          'content': '#content@text',
+          'nextContentUrl': 'a.next-content@href',
+        };
+        final state = SourceHostState();
+        final pipeline = _openContinuation(false, source, pages, state: state);
+        final chapter = SourceChapter(
+          'Chapter',
+          Uri.parse(firstTarget),
+          rawAddress: firstTarget,
+        );
+        try {
+          final body = await pipeline.chapter(chapter);
+          expect(body.text, 'First\nSecond');
+          expect(pages.requests, hasLength(2));
+          expect(pages.requests.map((r) => r.url.toString()), [
+            firstTarget,
+            selected,
+          ]);
+          expect(
+            pages.requests.map((r) => r.headers['X-Sequence']),
+            ['1', '2'],
+            reason:
+                'target: native URL deduplication precedes per-real-request header evaluation',
+          );
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlAliasHeaders'),
+            ),
+            '2',
+          );
+          expect(chapter.storeKey, firstTarget);
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  });
 }
