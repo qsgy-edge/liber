@@ -5489,8 +5489,8 @@ void main() {
             );
             expect(
               await state.entry(origin, headerKey),
-              '1',
-              reason: 'premise: one header read for the analysis',
+              '2',
+              reason: 'premise: search and information each read a header',
             );
             expect(
               await state.entry(origin, loginKey),
@@ -5529,12 +5529,10 @@ void main() {
             }
             expect(
               await state.entry(origin, headerKey),
-              fresh && !reuse ? '2' : '1',
+              reuse ? '2' : '3',
               reason: reuse
                   ? 'target: reuse runs no header processing'
-                  : fresh
-                  ? 'target: the new receiver reads the header once'
-                  : 'target: the same analysis reuses its one header read',
+                  : 'target: a real content request reads its own header',
             );
             expect(
               await state.entry(origin, loginKey),
