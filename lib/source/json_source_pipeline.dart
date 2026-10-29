@@ -47,6 +47,30 @@ String _sourceUrlStringBase(String text) {
         );
 }
 
+/// One declared page address's own identity for a page walk's duplicate check:
+/// its text before the frozen option boundary, resolved against the page it was
+/// read from — or against [rawBase], the complete native text a retained page
+/// hands a later page. Nothing the text declares runs here: the frozen
+/// `NetworkUtils.getAbsoluteURL` builds no `AnalyzeUrl`, so no source header is
+/// read, no template expands and no option is interpreted for an address the
+/// walk may still discard. The page the walk really visits analyses its whole
+/// text in its own visit.
+Uri _declaredPageUrl(Uri base, String address, {String? rawBase}) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final native = sourceUrlTextResolved(
+    base,
+    boundary == null ? address : address.substring(0, boundary),
+    rawBase: rawBase,
+  );
+  final uri = base.resolve(native);
+  if (!['http', 'https'].contains(uri.scheme) ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    throw const FormatException('Invalid source URL');
+  }
+  return uri;
+}
+
 /// One chapter's complete native `BookChapter.getAbsoluteURL()` text
 /// (`BookChapter.kt:143-155`): [address] before its own frozen option boundary,
 /// resolved against [base], then that same tail verbatim behind it.
@@ -308,12 +332,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     ruleEvaluator: _readScriptRule,
   );
 
-  /// The headers every request and `java.ajax` carries: the source's own
-  /// `header` rule, then the caller's. Read once per analysis and before the
-  /// first request, because a `<js>` header rule can itself reach the network.
+  /// The headers the request being analysed carries: the source's own `header`
+  /// rule, then the caller's. The frozen `AnalyzeUrl` constructor evaluates them
+  /// for each new request — before that request's own address is expanded and
+  /// its own options run, because a `<js>` header rule can itself reach the
+  /// network (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`) — and the
+  /// request that read them sends that same map.
   Map<String, String> _activeHeaders = const {};
-  bool _headersInitialized = false;
-  Future<Map<String, String>>? _resolvedHeaders;
 
   @override
   void cancel() => _cancellation.cancel();
@@ -326,9 +351,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       throw const FormatException('书源 header 必须是 JSON 字符串或 JS 规则');
     }
   }
-
-  Future<Map<String, String>> _ensureHeaders() =>
-      _resolvedHeaders ??= _readHeaders();
 
   /// The source fields a script can read, as the frozen `source` object exposes
   /// them.
@@ -849,6 +871,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return (url, split.options);
   }
 
+  /// One declared page's own request, in the frozen order: the source header it
+  /// reads once (`AnalyzeUrl.kt:125-145`), then the whole address text expanded,
+  /// its options split and its `js` run (`initUrl`, `:139-147`). [request] is a
+  /// page the walk really reached, so an alias it discards never runs this.
+  Future<(Uri, SourceUrlOptions)> _analyzeDeclaredPage(
+    SourcePageRequest request, {
+    String? rawBase,
+  }) async {
+    _activeHeaders = await _readHeaders();
+    _cancellation.throwIfCancelled();
+    return _request(request.base, request.address, _keyword, rawBase: rawBase);
+  }
+
   /// Sends one stage request and answers the stage response as the JSON rules
   /// and the stage's `loginCheckJs` read it: the raw body, not the decoded
   /// document, because the frozen rules parse the `StrResponse` body and a
@@ -874,11 +909,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       base: base ?? url,
     );
     _cancellation.throwIfCancelled();
-    if (!_headersInitialized) {
-      _activeHeaders = await _ensureHeaders();
-      _headersInitialized = true;
-      _cancellation.throwIfCancelled();
-    }
+    // This request's own map: its stage read the source header before it
+    // analysed the address, and a `java.initUrl` reanalysis or a repeated send
+    // of that same request keeps it.
     final merged = {..._activeHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
         await sourceRequestShape(options, merged);
@@ -1150,8 +1183,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _keyword = keyword;
     _page = page;
     final search = _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
-    _activeHeaders = await _ensureHeaders();
-    _headersInitialized = true;
+    // This request's own source header, read before its address options run.
+    _activeHeaders = await _readHeaders();
     late String searchIdentityAddress;
     final (url, options) = await _request(
       _base,
@@ -1342,8 +1375,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _validate();
     _page = null;
     if (evaluateHeaders) {
-      _activeHeaders = await _ensureHeaders();
-      _headersInitialized = true;
+      // This request's own source header, read before its address expands.
+      _activeHeaders = await _readHeaders();
     }
     return _rules('ruleBookInfo', const []);
   }
@@ -1514,9 +1547,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
             retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
           )
         : null;
-    if (!retainedFirstPage && !_headersInitialized) {
-      _activeHeaders = await _ensureHeaders();
-      _headersInitialized = true;
+    if (!retainedFirstPage) {
+      // This stage's first page is a request of its own: its source header is
+      // read before that request's address options run.
+      _activeHeaders = await _readHeaders();
       _cancellation.throwIfCancelled();
     }
     final (tocUrl, tocOptions) = retainedFirstPage
@@ -1614,23 +1648,30 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // The frozen drops an item equal to the page it was read from
       // (`BookChapterList.kt:96-100`).
       dropSelf: true,
-      resolve: (address, pageUrl) async {
-        if (!_headersInitialized) {
-          _activeHeaders = await _ensureHeaders();
-          _headersInitialized = true;
-          _cancellation.throwIfCancelled();
-        }
-        final (url, options) = await _request(pageUrl, address, _keyword);
-        return (url: url, options: options);
-      },
+      // A declared next-page address costs nothing here but the identity the
+      // walk's own duplicate check needs: the frozen `NetworkUtils.getAbsoluteURL`
+      // builds no `AnalyzeUrl`, so no source header is read and nothing the text
+      // declares runs for an address the walk discards. The page itself is
+      // analysed in its own visit.
+      resolve: (address, pageUrl) async => (
+        url: _declaredPageUrl(pageUrl, address),
+        options: const SourceUrlOptions(),
+      ),
       visit: (request, {required readNext}) async {
         clearTocChapter();
         try {
+          final isFirstPage = firstPage;
           final cachedFirstPage =
-              firstPage &&
+              isFirstPage &&
               info.tocHtml != null &&
               info.tocHtml!.isNotEmpty &&
               request.url == info.bookUrl;
+          // The stage's first page was analysed before the walk and sends that
+          // analysis; a declared page the walk really reaches is a request of
+          // its own, analysed here on the header it reads first.
+          final (pageUrl, pageOptions) = isFirstPage
+              ? (request.url, request.options)
+              : await _analyzeDeclaredPage(request);
           var tocPage = cachedFirstPage
               ? SourceStageResponse(
                   body: info.tocHtml!,
@@ -1638,15 +1679,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 )
               : await _fetch(
                   BookSourceStage.tableOfContents,
-                  request.url,
-                  options: request.options,
+                  pageUrl,
+                  options: pageOptions,
                   address: request.address,
                   base: request.base,
                 );
           // The frozen TOC stage checks login once, on its first response
           // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check. A
           // retained same-page body has no request/check/header work to repeat.
-          if (firstPage) {
+          if (isFirstPage) {
             if (!cachedFirstPage) tocPage = await _loginCheck(tocPage);
             firstPage = false;
           }
@@ -2213,13 +2254,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final retainedPage = chapterContext?.retainedPage;
     final chapterBase = chapter.addressBase ?? chapter.url;
     if (retainedPage == null) {
-      // The frozen reads the source header once per analysis, before the first
-      // request it applies to, so a request's own address options run after that
-      // header is known. The reuse branch reuses the response the TOC stage
-      // already read, so a receiver that has not read the header yet still has
-      // not.
-      _activeHeaders = await _ensureHeaders();
-      _headersInitialized = true;
+      // This request's own source header, read before its own address options
+      // run. The reuse branch reuses the response the TOC stage already read, so
+      // it reads none and sends nothing.
+      _activeHeaders = await _readHeaders();
     }
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
@@ -2242,40 +2280,46 @@ class JsonSourcePipeline implements BookSourcePipeline {
       nextChapterUrl: nextChapterUrl == null || nextChapterUrl.isEmpty
           ? null
           : SourceHttpUri.parse(nextChapterUrl),
-      resolve: (address, pageUrl) async {
-        // A real next page is a request of its own: the source header is read
-        // before that page's address options run, once per analysis.
-        if (!_headersInitialized) {
-          _activeHeaders = await _ensureHeaders();
-          _headersInitialized = true;
-          _cancellation.throwIfCancelled();
-        }
-        final (url, options) = await _request(
-          pageUrl,
-          address,
-          _keyword,
-          rawBase: contentRawBase,
-        );
-        return (url: url, options: options);
-      },
+      // A declared next-page address costs nothing here but the identity the
+      // walk's own duplicate check needs: the frozen `NetworkUtils.getAbsoluteURL`
+      // builds no `AnalyzeUrl`, so no source header is read and nothing the text
+      // declares runs for an alias the walk discards. The page itself is
+      // analysed in its own visit, against the complete native base the page
+      // that declared it carried.
+      resolve: (address, pageUrl) async => (
+        url: _declaredPageUrl(pageUrl, address, rawBase: contentRawBase),
+        options: const SourceUrlOptions(),
+      ),
       visit: (request, {required readNext}) async {
-        final retainedFirst = firstPage ? retainedPage : null;
+        final isFirstPage = firstPage;
+        final retainedFirst = isFirstPage ? retainedPage : null;
+        // The complete native base this page's own text resolves against, read
+        // before this visit names what its declared addresses get.
+        final pageRawBase = contentRawBase;
         contentRawBase = retainedFirst == null
             ? null
             : chapterContext?.requestAddress;
+        // The first real page was analysed above and keeps that analysis; a
+        // real next page is a request of its own, analysed here on the source
+        // header it reads first.
+        final (pageUrl, pageOptions) = retainedFirst != null
+            ? (request.url, const SourceUrlOptions())
+            : isFirstPage
+            ? (request.url, request.options)
+            : await _analyzeDeclaredPage(request, rawBase: pageRawBase);
         var contentPage =
             retainedFirst ??
             await _fetch(
               BookSourceStage.content,
-              request.url,
-              options: request.options,
+              pageUrl,
+              options: pageOptions,
               address: request.address,
               base: request.base,
             );
         // The frozen content stage checks login once, on its first response
         // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A retained
         // first page made no request of this stage for a check to read.
-        if (firstPage) {
+        if (isFirstPage) {
           if (retainedFirst == null) {
             contentPage = await _loginCheck(contentPage);
           }
@@ -2376,7 +2420,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final response = await host
         .forExecution(_cancellation)
-        .get('$target', headers: await _ensureHeaders(), readBytes: true);
+        .get('$target', headers: await _readHeaders(), readBytes: true);
     _cancellation.throwIfCancelled();
     final bytes = response.bodyBytes;
     if (bytes == null) throw StateError('图片响应没有字节：$target');
