@@ -295,6 +295,10 @@ class _ListStep {
 /// overload builds its URL object from: everything before the first comma
 /// (`NetworkUtils.kt:160-169`), so a `,{…}` option tail inside a base text never
 /// becomes part of a resolved directory.
+///
+/// The consumers are the String-base ones — a chapter's own identity in the TOC
+/// and the retained cover. A content request's base is the opposite fact: its
+/// `AnalyzeUrl` resolves against the complete native text, tail and all.
 String _sourceUrlStringBase(String text) {
   final comma = text.indexOf(',');
   return comma < 0 ? text : text.substring(0, comma);
@@ -676,7 +680,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(stage.base, stage.address, _keyword);
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      _keyword,
+      // The content stage keeps a fragment its own address declares; every other
+      // stage's request drops it.
+      keepFragment: stage.stage == BookSourceStage.content,
+    );
     _stageRequest = (
       url: url,
       stage: stage.stage,
@@ -1383,9 +1394,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   ///
   /// [rawBase] is the complete native text a retained first page hands its
   /// later-page rule (`WebBook.kt:311-329`, `BookContent.kt`). The declared
-  /// address resolves against that raw text first — the URL constructor sees the
-  /// base before its own `,{…}` boundary (`NetworkUtils.kt:160-169`) — so only
-  /// this request splits the options of the address it was given.
+  /// address resolves against that whole text — the native URL object keeps the
+  /// `,{…}` tail in its own path, so the tail's own slashes take part in
+  /// resolving a relative address — and only this request splits the options of
+  /// the address it was given.
+  ///
+  /// [keepFragment] is the content stage's own logical page distinction: a
+  /// fragment a declared address names stays part of that request's URL. The
+  /// default drops it, which is what the search, information and TOC requests
+  /// always did.
   Future<(Uri, SourceUrlOptions)> _request(
     Uri base,
     String template,
@@ -1393,8 +1410,35 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
     String? rawBase,
+    bool keepFragment = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
+    return _analyzeRequest(
+      base,
+      expandedAddress,
+      keyword,
+      captureIdentity: captureIdentity,
+      rawBase: rawBase,
+      keepFragment: keepFragment,
+    );
+  }
+
+  /// Analyses one request text a rule has already expanded: the retained raw
+  /// base it resolves against, the options its own text carries, the `js`
+  /// option's script, and the query that request's charset encodes.
+  ///
+  /// This is [_request]'s second half, so a page that expanded its own text (the
+  /// content stage's next pages) analyses it without expanding it a second time.
+  /// [captureIdentity], [rawBase] and [keepFragment] are [_request]'s.
+  Future<(Uri, SourceUrlOptions)> _analyzeRequest(
+    Uri base,
+    String expandedAddress,
+    String keyword, {
+    void Function(Uri target, String address, String expandedAddress)?
+    captureIdentity,
+    String? rawBase,
+    bool keepFragment = false,
+  }) async {
     var address = expandedAddress;
     final raw = rawBase;
     if (raw != null) {
@@ -1403,8 +1447,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           ? expandedAddress
           : expandedAddress.substring(0, boundary);
       final tail = boundary == null ? '' : expandedAddress.substring(boundary);
-      address =
-          '${sourceUrlTextResolved(base, before, rawBase: _sourceUrlStringBase(raw))}$tail';
+      address = '${sourceUrlTextResolved(base, before, rawBase: raw)}$tail';
     }
     final split = splitSourceUrlOptions(address);
     final script = split.options.js;
@@ -1412,12 +1455,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    final rawTarget = _resolve(base, split.path, keepFragment: true);
+    final rawTarget = _resolve(base, split.path, keepFragment: keepFragment);
     final text = script == null
         ? split.path
         : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
               split.path;
-    var url = _resolve(base, text, keepFragment: true);
+    var url = _resolve(base, text, keepFragment: keepFragment);
     if (!split.options.isPost) {
       final encoded = _resolve(
         base,
@@ -1440,7 +1483,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final identityTarget = _resolve(
       identityBase,
       split.path,
-      keepFragment: true,
+      keepFragment: keepFragment,
     );
     // The frozen `BookList.getInfoItem` identity is one native resolution of
     // the rule's own text against the URL the search request actually reached
@@ -1458,9 +1501,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }
 
   /// Resolves an already-extracted rule value that may carry URL options.
+  ///
+  /// The search book address and the TOC's later pages are the callers, so the
+  /// default resolution applies: only the content stage keeps a fragment an
+  /// address declares.
   Future<(Uri, SourceUrlOptions)> _extracted(Uri base, String value) async {
     final split = splitSourceUrlOptions(value);
-    var url = _resolve(base, split.path, keepFragment: true);
+    var url = _resolve(base, split.path);
     if (!split.options.isPost) {
       url = _resolve(
         base,
@@ -2891,17 +2938,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // The chapter's own complete text is what this request analyses: its options
     // and any template or program it carries belong to this fetch, while the
     // chapter's stable identity and saved input keep their own facts. The whole
-    // rule is expanded before its options are split, as `AnalyzeUrl` does.
+    // rule is expanded before its options are split, as `AnalyzeUrl` does, and
+    // this content consumer keeps a fragment the text declares.
     final requestText = chapterContext?.requestAddress ?? chapter.address;
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
-        : await _request(chapterBase, requestText, _keyword);
+        : await _request(
+            chapterBase,
+            requestText,
+            _keyword,
+            keepFragment: true,
+          );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as
-    // soon as a real page is read. Each real next page's source header is read
-    // once, before its own analysis, and handed to its send.
+    // soon as a real page is read. Each real page's own header is read once, in
+    // that page's visit, before it expands its own text.
     String? nextRawBase;
-    final nextRequestHeaders = <String, Map<String, String>>{};
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
@@ -2917,45 +2969,83 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           ? null
           : SourceHttpUri.parse(nextChapterUrl),
       resolve: (address, pageUrl) async {
-        // The page's own text is analysed here, so an unsupported family is
-        // refused before anything it carries runs or is sent.
-        final parts = splitSourceUrlOptions(address);
-        if (parts.options.isPost ||
-            parts.options.body != null ||
-            parts.options.headers.isNotEmpty ||
-            parts.options.js != null) {
-          throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
-        }
-        // A real next page reads the source header once, before it analyses its
-        // own text (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`), and that
-        // map is what its send carries.
-        final headers = await _headers();
-        final (url, options) = await _request(
+        // The declared native URL of a later content page: the page's own text
+        // resolved against the base it was read for, with no option interpreted,
+        // no script run and no source header read. The walk deduplicates a
+        // declared alias here, so an alias that only names a page already
+        // declared costs nothing, and each page the walk really visits expands
+        // its own text once, in its own visit.
+        final boundary = sourceUrlOptionBoundaryOf(address);
+        final native = sourceUrlTextResolved(
           pageUrl,
-          address,
-          _keyword,
+          boundary == null ? address : address.substring(0, boundary),
           rawBase: nextRawBase,
         );
-        nextRequestHeaders['$url'] = headers;
-        return (url: url, options: options);
+        return (
+          // The content stage keeps a declared fragment: a distinct `#next` is
+          // its own logical page, not a repeat of the page it was read from.
+          url: _resolve(pageUrl, native, keepFragment: true),
+          options: const SourceUrlOptions(),
+        );
       },
       visit: (request, {required readNext}) async {
         final isFirstPage = firstPage;
         final retainedFirst = isFirstPage ? retainedPage : null;
+        // The base this page's own text resolves against, read before this visit
+        // names what its declared addresses get.
+        final pageRawBase = nextRawBase;
         nextRawBase = retainedFirst == null
             ? null
             : chapterContext?.requestAddress;
+        final Uri target;
+        final SourceUrlOptions targetOptions;
+        final Map<String, String>? sourceHeaders;
+        if (retainedFirst != null) {
+          target = request.url;
+          targetOptions = const SourceUrlOptions();
+          sourceHeaders = null;
+        } else if (isFirstPage) {
+          // The first real page was analysed above, on the header map read with
+          // it, so this visit sends that analysis and that map unchanged.
+          target = firstUrl;
+          targetOptions = firstOptions;
+          sourceHeaders = requestHeaders;
+        } else {
+          // A real next page reads the source header once, before it expands its
+          // own text (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`), and its
+          // send carries that same map.
+          sourceHeaders = await _headers();
+          // The whole text is expanded before any of its options is interpreted:
+          // option-shaped program data is not an option, and an actual
+          // unsupported family is refused before its option script effects or
+          // its transport.
+          final expandedAddress = await _expand(request.address, _keyword);
+          final nextParts = splitSourceUrlOptions(expandedAddress);
+          if (nextParts.options.isPost ||
+              nextParts.options.body != null ||
+              nextParts.options.headers.isNotEmpty ||
+              nextParts.options.js != null) {
+            throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
+          }
+          final (url, options) = await _analyzeRequest(
+            request.base,
+            expandedAddress,
+            _keyword,
+            rawBase: pageRawBase,
+            keepFragment: true,
+          );
+          target = url;
+          targetOptions = options;
+        }
         var fetched =
             retainedFirst ??
             await _fetch(
-              request.url,
+              target,
               BookSourceStage.content,
-              options: request.options,
+              options: targetOptions,
               address: request.address,
               base: request.base,
-              sourceHeaders: isFirstPage
-                  ? requestHeaders
-                  : nextRequestHeaders.remove('${request.url}'),
+              sourceHeaders: sourceHeaders,
             );
         // The frozen content stage checks login once, on its first response
         // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A
