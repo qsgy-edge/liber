@@ -290,6 +290,41 @@ class _RetainedSequencePages extends _ContinuationPages {
   }
 }
 
+/// The frozen O-shaped site: one list page whose selected hit carries a
+/// `bookUrl` URL-option script, and the two detail pages that script selects.
+/// A target the frozen never requests has no page, so it answers the runner's
+/// own refusal (an unmatched request and no book markup) rather than a page
+/// that could hide the divergence behind a plausible body.
+class _RequestOptionPages implements BookSourceTransport, SourceHttpTransport {
+  _RequestOptionPages(this.pages);
+
+  final Map<String, String> pages;
+  final List<SourceHttpRequest> requests = [];
+
+  /// The path each request reached, in send order.
+  List<String> get targets => [
+    for (final request in requests) request.url.path,
+  ];
+
+  @override
+  Future<String> request({
+    required BookSourceStage stage,
+    required String path,
+  }) => throw StateError('Real send required');
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    requests.add(request);
+    final page = pages[request.url.path];
+    return SourceHttpResponse(
+      statusCode: page == null ? 404 : 200,
+      headers: const {},
+      body: page ?? 'undeclared replay request',
+      url: request.url,
+    );
+  }
+}
+
 Future<Object?> _errorOrNull(Future<dynamic> future) async {
   try {
     await future;
@@ -7388,5 +7423,107 @@ void main() {
         '2',
       );
     });
+  });
+
+  // The frozen analyzes a book's address text for every details request
+  // (`AnalyzeUrl.kt:214-242` over `WebBook.kt:163-169`), so the option script a
+  // selected search hit carries runs once per details analysis: the
+  // source-visible counter reads 1 and then 2, and the two requests reach the
+  // two detail pages the script selects. Reusing the hit's recorded pre-option
+  // request instead of analyzing its address skips that script and sends the
+  // frozen never-sent target (HTTP-BOUNDARY-01 source O, #138).
+  group('requestOptionScripts', () {
+    const origin = 'http://source.test';
+    const listPage =
+        '<div class="item"><h3><a href="/o/book">O1</a></h3></div>';
+    const detailPage = '<h1>O1</h1><div class="intro">OI</div>';
+    const runScript =
+        r"(function(){var n=(Number(String(source.get('optionRuns')))||0)+1;"
+        r"source.put('optionRuns',String(n));return result+'/'+n;})()";
+    // The frozen keeps the rule's result, option tail included, as the book's
+    // identity (`BookList.kt:159-163`); only the request parses that tail.
+    final addressTail = ',${jsonEncode({'js': runScript})}';
+    final bookUrlRule =
+        "h3 a@href@js:'$origin' + result + ',' + "
+        'JSON.stringify({js:"$runScript"})';
+
+    test(
+      'html same and fresh details run the selected hit option once each',
+      () async {
+        final searchPages = _RequestOptionPages({
+          '/search': listPage,
+          '/o/book/1': detailPage,
+          '/o/book/2': detailPage,
+        });
+        final freshPages = _RequestOptionPages({
+          '/o/book/1': detailPage,
+          '/o/book/2': detailPage,
+        });
+        final source = _htmlSource(origin, bookUrlRule: bookUrlRule);
+        final state = SourceHostState();
+        final search = HtmlSourcePipeline(
+          source,
+          searchPages,
+          hostState: state,
+        );
+        final fresh = HtmlSourcePipeline(source, freshPages, hostState: state);
+        try {
+          final hit = (await search.search('o')).single;
+          expect(
+            hit.url.toString(),
+            '$origin/o/book',
+            reason:
+                'premise: the search keeps the option-free target as identity',
+          );
+          expect(
+            hit.identityAddress,
+            '$origin/o/book$addressTail',
+            reason:
+                'premise: the hit keeps the rule text, option tail included',
+          );
+          expect(
+            hit.addressContext,
+            isNotNull,
+            reason:
+                'premise: the search captured the comparison and publication addresses',
+          );
+          final same = await search.bookInfo(hit);
+          final afterSame = await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'optionRuns'),
+          );
+          final other = await fresh.bookInfo(hit);
+          final afterFresh = await state.entry(
+            origin,
+            sourceRuleVariableKey(origin, 'optionRuns'),
+          );
+          expect(
+            [...searchPages.targets, ...freshPages.targets],
+            ['/search', '/o/book/1', '/o/book/2'],
+            reason:
+                'target: each details analysis analyzes the hit address, and its option script selects that page',
+          );
+          expect(
+            [afterSame, afterFresh],
+            ['1', '2'],
+            reason: 'target: one option script run per details analysis',
+          );
+          expect(
+            [same.book.intro, other.book.intro],
+            ['OI', 'OI'],
+            reason: 'the two pages the script selected are the ones read',
+          );
+          expect(
+            [same.book.identityAddress, other.book.identityAddress],
+            [hit.identityAddress, hit.identityAddress],
+            reason:
+                'identity: a details analysis moves the request, not the #99 book identity',
+          );
+        } finally {
+          fresh.cancel();
+          search.cancel();
+        }
+      },
+    );
   });
 }
