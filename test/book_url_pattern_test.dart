@@ -3492,7 +3492,7 @@ void main() {
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
             expect(pages.requests.last.url.toString(), '$origin/book/1');
-            expect(pages.requests.length, json ? 2 : 3);
+            expect(pages.requests.length, 2);
           } finally {
             pipeline.cancel();
           }
@@ -3578,10 +3578,10 @@ void main() {
               reason: 'target: named charset target',
             );
             expect(chapter.storeKey, wire);
-            expect(chapter.persistedAddress, json ? raw : '$wire$tail');
+            expect(chapter.persistedAddress, raw);
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
-            expect(pages.requests.length, json ? 1 : 2);
+            expect(pages.requests.length, 1);
             expect(
               pages.requests.last.url.toString(),
               wire,
@@ -4135,12 +4135,12 @@ void main() {
                       'target: the empty target uses the charset its own fallback text declares',
                 );
                 expect(chapter.storeKey, wire);
-                expect(chapter.persistedAddress, json ? raw : '$wire$tail');
+                expect(chapter.persistedAddress, raw);
                 final body = await pipeline.chapter(chapter, book: info.book);
                 expect(body.text, 'Body');
                 expect(
                   pages.requests.map((request) => '${request.url}').toList(),
-                  json ? [wire] : [wire, wire],
+                  [wire],
                 );
               } finally {
                 pipeline.cancel();
@@ -4241,19 +4241,12 @@ void main() {
                     'target: the empty target consumes its own fallback charset',
               );
               expect(chapter.storeKey, wire);
-              expect(
-                chapter.persistedAddress,
-                json ? rawToc : '$wire,{"charset":"gbk"}',
-              );
+              expect(chapter.persistedAddress, rawToc);
               final body = await pipeline.chapter(chapter, book: info.book);
               expect(body.text, 'Body');
               expect(
                 pages.requests.map((request) => '${request.url}').toList(),
-                [
-                  '$origin/catalog/search',
-                  '$origin/catalog/book/1',
-                  if (!json) wire,
-                ],
+                ['$origin/catalog/search', '$origin/catalog/book/1'],
               );
             } finally {
               pipeline.cancel();
@@ -4346,10 +4339,7 @@ void main() {
                     'control: the declared TOC query does not depend on the information request',
               );
               expect(chapter.storeKey, expected);
-              expect(
-                chapter.persistedAddress,
-                json ? rawToc : '$expected$tail',
-              );
+              expect(chapter.persistedAddress, rawToc);
               expect(
                 pages.requests.length,
                 2,
@@ -4448,13 +4438,13 @@ void main() {
             );
             expect(chapter.address, raw);
             expect(chapter.storeKey, wire);
-            expect(chapter.persistedAddress, json ? raw : '$wire$tail');
+            expect(chapter.persistedAddress, raw);
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
             expect('${pages.requests.last.url}', wire);
             expect(pages.requests.last.method, 'POST');
             expect(pages.requests.last.body, '{"x":1}');
-            expect(pages.requests.length, json ? 1 : 2);
+            expect(pages.requests.length, 1);
           } finally {
             pipeline.cancel();
           }
@@ -4773,7 +4763,7 @@ void main() {
                   'target: the conversion keeps whether the request consumed its query',
             );
             expect(chapter.storeKey, expected);
-            expect(chapter.persistedAddress, json ? raw : '$expected$tail');
+            expect(chapter.persistedAddress, raw);
             expect(pages.requests.length, 1);
             expect(
               await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
@@ -6849,6 +6839,204 @@ void main() {
         );
         expect(chapter.storeKey, target);
         expect(chapter.progressKey, target);
+      });
+    }
+  });
+
+  // A retained first page belongs to the TOC page it was read from, and the
+  // pages it declares resolve against that page's complete native raw text: a
+  // later fetched TOC page keeps its own body, and a fragment next address is a
+  // different logical page rather than a repeat of the first one.
+  group('chapterHtmlRetainedPaging', () {
+    const origin = 'http://source.test';
+    const bookAddress = '$origin/catalog/book/1';
+    for (final fresh in [false, true]) {
+      for (final empty in [false, true]) {
+        test('later TOC fresh=$fresh empty=$empty', () async {
+          final first =
+              '${_repair06Page(false, chapter: '/catalog/first')}'
+              '<div id="content">First</div><a class="next-toc" href="/catalog/dir/toc2">next</a>';
+          final second =
+              '${_repair06Page(false, chapter: empty ? '' : '/catalog/nextcontent')}'
+              '<div id="content">Second</div><a class="next-toc" href="">end</a>';
+          final pages = _RetainedSequencePages([first, second, second]);
+          final source = _htmlSource(origin);
+          (source['ruleToc'] as Map<String, dynamic>)['nextTocUrl'] =
+              'a.next-toc@href';
+          final producer = _openContinuation(false, source, pages);
+          BookSourcePipeline? receiver;
+          try {
+            final info = await producer.bookInfo(
+              HtmlBook(
+                url: Uri.parse(bookAddress),
+                rawAddress: bookAddress,
+                title: 'Book',
+              ),
+            );
+            expect(info.tocHtml, isNotEmpty);
+            final (book, chapters) = await producer.tableOfContents(info);
+            expect(chapters, hasLength(2));
+            expect(pages.requests.map((r) => r.url.path), [
+              '/catalog/book/1',
+              '/catalog/dir/toc2',
+            ]);
+            final selected = chapters.last;
+            expect(
+              selected.address,
+              empty ? '$origin/catalog/dir/toc2' : '/catalog/nextcontent',
+            );
+            final reader = fresh
+                ? (receiver = _openContinuation(false, source, pages))
+                : producer;
+            final body = await reader.chapter(selected, book: book);
+            expect(
+              body.text,
+              'Second',
+              reason:
+                  'target: fetched TOC page does not reuse the initial book body',
+            );
+            expect(pages.requests, hasLength(3));
+            expect(
+              pages.requests.last.url.path,
+              empty ? '/catalog/dir/toc2' : '/catalog/nextcontent',
+            );
+          } finally {
+            producer.cancel();
+            receiver?.cancel();
+          }
+        });
+      }
+    }
+    for (final fresh in [false, true]) {
+      for (final tail in [false, true]) {
+        for (final fragment in [false, true]) {
+          test('fragment next fresh=$fresh tail=$tail fragment=$fragment', () async {
+            final suffix = tail
+                ? ',${jsonEncode({
+                    'headers': {'X-Route': 'part/../../end'},
+                  })}'
+                : '';
+            final raw = '$bookAddress$suffix';
+            final first =
+                '${_repair06Page(false, chapter: '')}'
+                '<div id="content">First</div><a class="next-content" href="${fragment ? '#next' : '$origin/catalog/next-content'}">next</a>';
+            const second =
+                '<div id="content">Second</div><a class="next-content" href="">end</a>';
+            final pages = _RetainedSequencePages([first, second]);
+            final source = _htmlSource(origin);
+            source['ruleContent'] = {
+              'content': '#content@text',
+              'nextContentUrl': 'a.next-content@href',
+            };
+            final producer = _openContinuation(false, source, pages);
+            BookSourcePipeline? receiver;
+            try {
+              final info = await producer.bookInfo(
+                HtmlBook(
+                  url: Uri.parse(bookAddress),
+                  rawAddress: raw,
+                  title: 'Book',
+                ),
+              );
+              expect(info.tocHtml, isNotEmpty);
+              expect(info.tocUrl, raw);
+              final (book, chapters) = await producer.tableOfContents(info);
+              expect(pages.requests, hasLength(1));
+              final reader = fresh
+                  ? (receiver = _openContinuation(false, source, pages))
+                  : producer;
+              final HtmlChapterBody body;
+              try {
+                body = await reader.chapter(chapters.single, book: book);
+              } on StateError catch (error) {
+                if (error.message != '正文分页循环或超出 20 页') rethrow;
+                fail(
+                  'target: native-valid retained pagination must not be refused as a cycle',
+                );
+              }
+              expect(body.text, 'First\nSecond');
+              expect(pages.requests, hasLength(2));
+              expect(
+                pages.requests.last.url.path,
+                fragment ? '/catalog/book/1' : '/catalog/next-content',
+                reason:
+                    'target: HTML fragment next keeps full native raw base before option splitting',
+              );
+            } finally {
+              producer.cancel();
+              receiver?.cancel();
+            }
+          });
+        }
+      }
+    }
+  });
+
+  // A real HTML next-page request is its own analysis: it reads the source
+  // header first, then expands its own pending text.
+  group('chapterHtmlNextRequest', () {
+    const origin = 'http://source.test';
+    const firstTarget = '$origin/catalog/content/1';
+    const nextTarget = '$origin/catalog/page-two?q=ascii';
+    const template =
+        "$origin/catalog/page-two?q={{java.put('htmlNextObserved', "
+        "java.get('htmlNextHeaders') || 'missing'); 'ascii'}}";
+    for (final scripted in [false, true]) {
+      test('header then template scripted=$scripted', () async {
+        final nextText = scripted ? template : nextTarget;
+        final first =
+            '<div id="content">First</div><a class="next-content" href="${HtmlEscape().convert(nextText)}">next</a>';
+        const second =
+            '<div id="content">Second</div><a class="next-content" href="">end</a>';
+        final pages = _RetainedSequencePages([first, second]);
+        final source = _htmlSource(origin);
+        source['header'] =
+            "@js:var n=String(Number(java.get('htmlNextHeaders') || '0')+1); "
+            "java.put('htmlNextHeaders',n); JSON.stringify({'X-Sequence':n})";
+        source['ruleContent'] = {
+          'content': '#content@text',
+          'nextContentUrl': 'a.next-content@href',
+        };
+        final state = SourceHostState();
+        final receiver = _openContinuation(false, source, pages, state: state);
+        final chapter = SourceChapter(
+          'Chapter',
+          Uri.parse(firstTarget),
+          rawAddress: firstTarget,
+        );
+        final book = HtmlBook(
+          url: Uri.parse('$origin/catalog/book/1'),
+          title: 'Book',
+        );
+        try {
+          final body = await receiver.chapter(chapter, book: book);
+          expect(body.text, 'First\nSecond');
+          expect(pages.requests, hasLength(2));
+          expect(pages.requests.first.url.toString(), firstTarget);
+          expect(pages.requests.map((r) => r.headers['X-Sequence']), [
+            '1',
+            '2',
+          ]);
+          expect(
+            pages.requests.last.url.toString(),
+            nextTarget,
+            reason:
+                'target: each real HTML next request expands its own pending text',
+          );
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'htmlNextObserved'),
+            ),
+            scripted ? '2' : isNull,
+            reason:
+                'target: next request reads its own header before request template',
+          );
+          expect(chapter.storeKey, firstTarget);
+          expect(chapter.progressKey, firstTarget);
+        } finally {
+          receiver.cancel();
+        }
       });
     }
   });

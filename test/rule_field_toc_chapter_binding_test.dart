@@ -362,15 +362,13 @@ void main() {
             failure = error;
           }
           // The header retains the explicitly supplied empty identity snapshot;
-          // the JSON request analyses the raw address independently.
+          // the content request analyses the raw address independently.
           expect(
             failure,
             isA<StateError>().having(
               (e) => e.message,
               'fixture refusal',
-              json
-                  ? 'Unexpected full request GET $_origin/provided'
-                  : 'Unexpected full request GET ',
+              'Unexpected full request GET $_origin/provided',
             ),
           );
           expect(
@@ -378,7 +376,7 @@ void main() {
             '["","provided-empty","provided-empty"]',
           );
           expect(pages.requests.map((r) => [r.method, '${r.url}']).toList(), [
-            ['GET', json ? '$_origin/provided' : ''],
+            ['GET', '$_origin/provided'],
           ]);
           pipeline.cancel();
         },
