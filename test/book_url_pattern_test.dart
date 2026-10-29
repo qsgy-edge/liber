@@ -7447,85 +7447,96 @@ void main() {
     final bookUrlRule =
         "h3 a@href@js:'$origin' + result + ',' + "
         'JSON.stringify({js:"$runScript"})';
+    // The frozen `AnalyzeUrl` constructor reads the source header map before the
+    // address it carries is analyzed (`AnalyzeUrl.kt:125-145`), so this header
+    // only observes the counter each request started with.
+    final counterHeader =
+        "@js:JSON.stringify({'X-Option-Runs':"
+        "String(Number(String(source.get('optionRuns')))||0)})";
 
-    test(
-      'html same and fresh details run the selected hit option once each',
-      () async {
-        final searchPages = _RequestOptionPages({
-          '/search': listPage,
-          '/o/book/1': detailPage,
-          '/o/book/2': detailPage,
-        });
-        final freshPages = _RequestOptionPages({
-          '/o/book/1': detailPage,
-          '/o/book/2': detailPage,
-        });
-        final source = _htmlSource(origin, bookUrlRule: bookUrlRule);
-        final state = SourceHostState();
-        final search = HtmlSourcePipeline(
-          source,
-          searchPages,
-          hostState: state,
+    test('html same and fresh details run the selected hit option once each', () async {
+      final searchPages = _RequestOptionPages({
+        '/search': listPage,
+        '/o/book/1': detailPage,
+        '/o/book/2': detailPage,
+      });
+      final freshPages = _RequestOptionPages({
+        '/o/book/1': detailPage,
+        '/o/book/2': detailPage,
+      });
+      final source = _htmlSource(origin, bookUrlRule: bookUrlRule)
+        ..['header'] = counterHeader;
+      final state = SourceHostState();
+      final search = HtmlSourcePipeline(source, searchPages, hostState: state);
+      final fresh = HtmlSourcePipeline(source, freshPages, hostState: state);
+      try {
+        final hit = (await search.search('o')).single;
+        expect(
+          hit.url.toString(),
+          '$origin/o/book',
+          reason:
+              'premise: the search keeps the option-free target as identity',
         );
-        final fresh = HtmlSourcePipeline(source, freshPages, hostState: state);
-        try {
-          final hit = (await search.search('o')).single;
-          expect(
-            hit.url.toString(),
-            '$origin/o/book',
-            reason:
-                'premise: the search keeps the option-free target as identity',
-          );
-          expect(
-            hit.identityAddress,
-            '$origin/o/book$addressTail',
-            reason:
-                'premise: the hit keeps the rule text, option tail included',
-          );
-          expect(
-            hit.addressContext,
-            isNotNull,
-            reason:
-                'premise: the search captured the comparison and publication addresses',
-          );
-          final same = await search.bookInfo(hit);
-          final afterSame = await state.entry(
-            origin,
-            sourceRuleVariableKey(origin, 'optionRuns'),
-          );
-          final other = await fresh.bookInfo(hit);
-          final afterFresh = await state.entry(
-            origin,
-            sourceRuleVariableKey(origin, 'optionRuns'),
-          );
-          expect(
-            [...searchPages.targets, ...freshPages.targets],
-            ['/search', '/o/book/1', '/o/book/2'],
-            reason:
-                'target: each details analysis analyzes the hit address, and its option script selects that page',
-          );
-          expect(
-            [afterSame, afterFresh],
-            ['1', '2'],
-            reason: 'target: one option script run per details analysis',
-          );
-          expect(
-            [same.book.intro, other.book.intro],
-            ['OI', 'OI'],
-            reason: 'the two pages the script selected are the ones read',
-          );
-          expect(
-            [same.book.identityAddress, other.book.identityAddress],
-            [hit.identityAddress, hit.identityAddress],
-            reason:
-                'identity: a details analysis moves the request, not the #99 book identity',
-          );
-        } finally {
-          fresh.cancel();
-          search.cancel();
-        }
-      },
-    );
+        expect(
+          hit.identityAddress,
+          '$origin/o/book$addressTail',
+          reason: 'premise: the hit keeps the rule text, option tail included',
+        );
+        expect(
+          hit.addressContext,
+          isNotNull,
+          reason:
+              'premise: the search captured the comparison and publication addresses',
+        );
+        final same = await search.bookInfo(hit);
+        final afterSame = await state.entry(
+          origin,
+          sourceRuleVariableKey(origin, 'optionRuns'),
+        );
+        final other = await fresh.bookInfo(hit);
+        final afterFresh = await state.entry(
+          origin,
+          sourceRuleVariableKey(origin, 'optionRuns'),
+        );
+        expect(
+          [...searchPages.targets, ...freshPages.targets],
+          ['/search', '/o/book/1', '/o/book/2'],
+          reason:
+              'target: each details analysis analyzes the hit address, and its option script selects that page',
+        );
+        expect(
+          [afterSame, afterFresh],
+          ['1', '2'],
+          reason: 'target: one option script run per details analysis',
+        );
+        expect(
+          [same.book.intro, other.book.intro],
+          ['OI', 'OI'],
+          reason: 'the two pages the script selected are the ones read',
+        );
+        expect(
+          [same.book.identityAddress, other.book.identityAddress],
+          [hit.identityAddress, hit.identityAddress],
+          reason:
+              'identity: a details analysis moves the request, not the #99 book identity',
+        );
+        expect(
+          [
+            for (final request in [
+              ...searchPages.requests,
+              ...freshPages.requests,
+            ])
+              request.headers['X-Option-Runs'],
+          ],
+          ['0', '0', '1'],
+          reason:
+              'target: the source headers are read before the address options run, so each request carries the count its own analysis started with',
+        );
+      } finally {
+        fresh.cancel();
+        search.cancel();
+      }
+    });
 
     test('html TOC continuation pages run their own option scripts', () async {
       const origin = 'http://source.test';
@@ -7533,6 +7544,11 @@ void main() {
       // continuation addresses whose own `js` option scripts select the page.
       final source = <String, dynamic>{
         'bookSourceUrl': origin,
+        // The same constructor order as the O test: the source header map is
+        // read before either continuation address runs its option script.
+        'header':
+            "@js:JSON.stringify({'X-Toc-Option':"
+            "String(Number(String(source.get('tocOptionPage')))||0)})",
         'searchUrl': '/p/search?keyword={{key}}&page={{page}}',
         'ruleSearch': {
           'bookList': '.result li',
@@ -7565,8 +7581,8 @@ void main() {
         '/p/book/1/toc':
             '<ul class="chapters"><li><a href="$origin/p/c1">c1</a></li></ul>'
             '<div class="next">'
-            "<a href='$origin/p/toc2,{\"js\":\"result + &#39;/2&#39;\"}'>2</a>"
-            "<a href='$origin/p/toc3,{\"js\":\"result + &#39;/3&#39;\"}'>3</a>"
+            "<a href='$origin/p/toc2,{\"js\":\"source.put(&#39;tocOptionPage&#39;,&#39;2&#39;);result + &#39;/2&#39;\"}'>2</a>"
+            "<a href='$origin/p/toc3,{\"js\":\"source.put(&#39;tocOptionPage&#39;,&#39;3&#39;);result + &#39;/3&#39;\"}'>3</a>"
             '</div>',
         '/p/toc2/2':
             '<ul class="chapters"><li><a href="$origin/p/c2">c2</a></li></ul>',
@@ -7605,6 +7621,15 @@ void main() {
           ['/p/search', '/p/book/1', '/p/book/1/toc', '/p/toc2/2', '/p/toc3/3'],
           reason:
               'target: the first page and each declared continuation page are requested once, at the address its own script selects',
+        );
+        expect(
+          [
+            for (final request in pages.requests)
+              request.headers['X-Toc-Option'],
+          ],
+          ['0', '0', '0', '0', '2'],
+          reason:
+              'target: each page reads its own source headers before its continuation script runs',
         );
       } finally {
         pipeline.cancel();
