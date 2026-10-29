@@ -5620,8 +5620,8 @@ void main() {
           );
           expect(
             await state.entry(origin, key),
-            'H',
-            reason: 'premise: producer header read',
+            'HH',
+            reason: 'premise: search and info each read the header',
           );
           final reader = fresh
               ? (receiver = _openContinuation(
@@ -5637,7 +5637,7 @@ void main() {
           expect(pages.requests.last.url.path, '/catalog/content');
           expect(
             await state.entry(origin, key),
-            fresh ? 'HHJ' : 'HJ',
+            'HHHJ',
             reason:
                 'target: actual request reads source header before option script',
           );
@@ -5780,7 +5780,7 @@ void main() {
           expect(pages.requests.last.url.path, '/catalog/book/leaf');
           expect(
             await state.entry(origin, key),
-            fresh ? 'HHJ' : 'HJ',
+            'HHJ',
             reason:
                 'target: real next-page request reads header before option script',
           );
@@ -7336,5 +7336,59 @@ void main() {
         }
       });
     }
+  });
+
+  // A genuinely new ordinary request reads its own source header once, before
+  // its own request program, and sends that same resulting map: the JSON search
+  // request and the detail request that follows it therefore transmit different
+  // maps and the owning source's counter records both reads.
+  group('sourceHeaderPerRequest', () {
+    const origin = 'http://source.test';
+    test('json search/details', () async {
+      final source = _jsonSource(
+        origin,
+        searchUrl: '/catalog/search',
+        bookUrlPattern: r'$^',
+      );
+      source['header'] =
+          "@js:var n=String(Number(java.get('sourceHeaderRuns') || '0') + 1); "
+          "java.put('sourceHeaderRuns',n); JSON.stringify({'X-Sequence':n})";
+      final pages = _ContinuationPages(
+        _repair06Page(
+          true,
+          book: '/catalog/book/1',
+          chapter: '/catalog/content',
+        ),
+        allowedPaths: const ['/catalog/search', '/catalog/book/1'],
+      );
+      final state = SourceHostState();
+      final pipeline = _openContinuation(true, source, pages, state: state);
+      final hits = await pipeline.search('book');
+      final (book, chapters) = await pipeline.details(hits.single);
+      expect(chapters, hasLength(1));
+      expect(book.identityAddress, '$origin/catalog/book/1');
+      expect(
+        pages.requests,
+        hasLength(2),
+        reason: 'premise: search and details only',
+      );
+      expect(pages.requests.map((r) => r.url.path), [
+        '/catalog/search',
+        '/catalog/book/1',
+      ]);
+      expect(
+        pages.requests.map((r) => r.headers['X-Sequence']),
+        ['1', '2'],
+        reason:
+            'target: each native AnalyzeUrl evaluates source headers for its own request',
+      );
+      expect(
+        await state.entry(
+          origin,
+          sourceRuleVariableKey(origin, 'sourceHeaderRuns'),
+        ),
+        '2',
+      );
+    });
   });
 }
