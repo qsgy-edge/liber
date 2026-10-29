@@ -7577,14 +7577,19 @@ void main() {
       try {
         final hit = (await pipeline.search('p')).single;
         final info = await pipeline.bookInfo(hit);
-        final toc = await _errorOrNull(pipeline.tableOfContents(info));
-        expect(
-          toc,
-          isA<(HtmlBook, List<SourceChapter>)>(),
-          reason:
-              'target: each declared continuation page runs its own URL option script and its chapters join the TOC, but the stage answered: $toc',
+        late (HtmlBook, List<SourceChapter>) toc;
+        final error = await _errorOrNull(
+          pipeline.tableOfContents(info).then((value) {
+            toc = value;
+          }),
         );
-        final (_, chapters) = toc as (HtmlBook, List<SourceChapter>);
+        expect(
+          error,
+          isNull,
+          reason:
+              'target: each declared continuation page runs its own URL option script and its chapters join the TOC, but the stage answered: $error',
+        );
+        final (_, chapters) = toc;
         expect(
           chapters.map((chapter) => chapter.name),
           ['c1', 'c2', 'c3'],
