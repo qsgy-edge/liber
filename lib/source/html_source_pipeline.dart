@@ -1380,15 +1380,33 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   }
 
   /// Expands one rule, splits its URL options, and applies the `js` option.
+  ///
+  /// [rawBase] is the complete native text a retained first page hands its
+  /// later-page rule (`WebBook.kt:311-329`, `BookContent.kt`). The declared
+  /// address resolves against that raw text first — the URL constructor sees the
+  /// base before its own `,{…}` boundary (`NetworkUtils.kt:160-169`) — so only
+  /// this request splits the options of the address it was given.
   Future<(Uri, SourceUrlOptions)> _request(
     Uri base,
     String template,
     String keyword, {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
+    String? rawBase,
   }) async {
     final expandedAddress = await _expand(template, keyword);
-    final split = splitSourceUrlOptions(expandedAddress);
+    var address = expandedAddress;
+    final raw = rawBase;
+    if (raw != null) {
+      final boundary = sourceUrlOptionBoundaryOf(expandedAddress);
+      final before = boundary == null
+          ? expandedAddress
+          : expandedAddress.substring(0, boundary);
+      final tail = boundary == null ? '' : expandedAddress.substring(boundary);
+      address =
+          '${sourceUrlTextResolved(base, before, rawBase: _sourceUrlStringBase(raw))}$tail';
+    }
+    final split = splitSourceUrlOptions(address);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
@@ -1401,13 +1419,20 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
-      url = _resolve(
+      final encoded = _resolve(
         base,
         await encodeSourceQuery(
           sourceUrlTextWithRawQuery(url, text),
           charset: split.options.charset,
         ),
       );
+      // This step re-encodes the query alone; a fragment the address declares
+      // stays part of this request's own URL (`NetworkUtils.getAbsoluteURL`
+      // builds one URL with it), so a distinct `#next` is not folded back into
+      // the page it was read from.
+      url = url.hasFragment && !encoded.hasFragment
+          ? encoded.replace(fragment: url.fragment)
+          : encoded;
     }
     final identityBase = Uri.tryParse(split.path)?.hasScheme == true
         ? base
@@ -2474,14 +2499,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                   throw UnsupportedError('暂不支持章节地址的 URL 选项');
                 }
                 // The stable identity is this chapter's own text resolved before
-                // any request processing of its own: a request's charset, method,
-                // template or option script act on that request, never on the key
+                // any request processing of its own — the same default resolution
+                // every other chapter identity uses, so a fragment the address
+                // declares stays that request's own fact, not the row's
                 // (`BookChapterList.kt:219-222`, `BookChapter.kt:143-155`).
-                final chapterUrl = _resolve(
-                  base,
-                  parts.path,
-                  keepFragment: true,
-                );
+                final chapterUrl = _resolve(base, parts.path);
                 final requestText = pendingRequestText(rawAddress, base);
                 final retained = retainedChapterPage(
                   rawAddress,
@@ -2874,6 +2896,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
         : await _request(chapterBase, requestText, _keyword);
+    // The retained first page's complete native text is the base its declared
+    // addresses resolve against; a fetched page's own response base takes over as
+    // soon as a real page is read. Each real next page's source header is read
+    // once, before its own analysis, and handed to its send.
+    String? nextRawBase;
+    final nextRequestHeaders = <String, Map<String, String>>{};
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
@@ -2889,20 +2917,34 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           ? null
           : SourceHttpUri.parse(nextChapterUrl),
       resolve: (address, pageUrl) async {
-        // The next page's own address text carries its options, as it does for
-        // every other page of a content request.
-        final (url, options) = await _extracted(pageUrl, address);
-        if (options.isPost ||
-            options.body != null ||
-            options.headers.isNotEmpty ||
-            options.js != null) {
+        // The page's own text is analysed here, so an unsupported family is
+        // refused before anything it carries runs or is sent.
+        final parts = splitSourceUrlOptions(address);
+        if (parts.options.isPost ||
+            parts.options.body != null ||
+            parts.options.headers.isNotEmpty ||
+            parts.options.js != null) {
           throw UnsupportedError('暂不支持正文分页地址的 URL 选项');
         }
+        // A real next page reads the source header once, before it analyses its
+        // own text (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`), and that
+        // map is what its send carries.
+        final headers = await _headers();
+        final (url, options) = await _request(
+          pageUrl,
+          address,
+          _keyword,
+          rawBase: nextRawBase,
+        );
+        nextRequestHeaders['$url'] = headers;
         return (url: url, options: options);
       },
       visit: (request, {required readNext}) async {
         final isFirstPage = firstPage;
         final retainedFirst = isFirstPage ? retainedPage : null;
+        nextRawBase = retainedFirst == null
+            ? null
+            : chapterContext?.requestAddress;
         var fetched =
             retainedFirst ??
             await _fetch(
@@ -2911,7 +2953,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               options: request.options,
               address: request.address,
               base: request.base,
-              sourceHeaders: isFirstPage ? requestHeaders : null,
+              sourceHeaders: isFirstPage
+                  ? requestHeaders
+                  : nextRequestHeaders.remove('${request.url}'),
             );
         // The frozen content stage checks login once, on its first response
         // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A
