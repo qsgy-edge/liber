@@ -91,9 +91,10 @@ bool _declaresNothing(String address) {
 /// [nextChapterUrl] is the content stage's guard (`BookContent.kt:85-88`),
 /// null in the TOC stage; the frozen reads it only in the sequential walk.
 ///
-/// [maxPages] bounds the sequential walk alone; a repeated URL or a walk past
-/// the bound fails with [cycleError]. The declared walk fetches each URL it was
-/// given once, so it neither repeats nor recurses.
+/// [maxPages] optionally bounds the sequential walk alone; `null` leaves it
+/// unbounded, so a repeated URL is the only end there. A repeated URL, or a walk
+/// past a declared bound, fails with [cycleError]. The declared walk fetches
+/// each URL it was given once, so it neither repeats nor recurses.
 Future<int> walkSourcePages({
   required SourcePageRequest first,
   required Future<({Uri url, SourceUrlOptions options})> Function(
@@ -106,7 +107,7 @@ Future<int> walkSourcePages({
     required bool readNext,
   })
   visit,
-  required int maxPages,
+  required int? maxPages,
   required String cycleError,
   bool dropSelf = false,
   Uri? nextChapterUrl,
@@ -176,7 +177,8 @@ Future<int> walkSourcePages({
   final visited = <Uri>{firstPage.pageUrl};
   var page = firstDeclared.pages.first;
   while (true) {
-    if (!visited.add(page.url) || visited.length > maxPages) {
+    if (!visited.add(page.url) ||
+        (maxPages != null && visited.length > maxPages)) {
       throw StateError(cycleError);
     }
     final result = await visit(page, readNext: true);

@@ -1646,7 +1646,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
         address: info.tocAddress,
         base: info.tocBase,
       ),
-      maxPages: 30,
+      // The frozen TOC walk has no page-count bound (`BookChapterList.kt:48-86`):
+      // only the repeated-URL refusal below ends it.
+      maxPages: null,
       cycleError: 'TOC page cycle',
       // The frozen drops an item equal to the page it was read from
       // (`BookChapterList.kt:96-100`).
