@@ -137,7 +137,7 @@ void main() {
           expect(books, hasLength(items.length));
           for (var i = 0; i < items.length; i++) {
             final read = (items[i]['reads'] as List).single as Map;
-            expect((list ? books[i].kind : books[i].author).codeUnits, _expected(read).codeUnits, reason: '$name item=$i');
+            expect((list ? books[i].kind : books[i].author)?.codeUnits, _expected(read).codeUnits, reason: '$name item=$i');
           }
         } else if (row['unescape'] == false) {
           source['ruleContent'] = {'content': rule};
