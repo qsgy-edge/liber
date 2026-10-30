@@ -1404,10 +1404,12 @@ void main() {
 
   test('the captured HG0 returned-map pair stays strict and is named', () {
     // `helper.script-probe-hg0`'s captured pair, with the values the native
-    // capture and the product record measured: Rhino hands the source's header
-    // map back as an object whose strict literal equality fails, the product
-    // hands the same text back as a string. Only these two leaves differ; the
-    // text, the loose equality and every other leaf already agree. The strict
+    // capture and the product record measured: Rhino returns the header map's
+    // `X-Declared` value as a Java String object, so its typeof is `object` and
+    // its strict literal equality fails; the product returns a primitive JS
+    // string, so its typeof is `string` and the strict comparison is true. Only
+    // these two leaves differ; the loose equality and every other leaf already
+    // agree and come from this file's synthetic probe projection. The strict
     // mismatch must stay in the difference list, and the comparer must name it
     // `java-return-string-identity` instead of leaving it unattributed. A
     // named difference is not equality, so the comparison still does not pass.
@@ -1442,11 +1444,18 @@ void main() {
 
     final corpus = _corpus();
     corpus['corpusVersion'] = 3;
+    // The probe row belongs to the committed corpus' own HG0 source, so the
+    // step's declaration and its source definition are not invented here.
+    final hg0 =
+        ((loadHttpBoundaryCorpus()['sources'] as List).cast<Map>().firstWhere(
+          (source) => source['id'] == 'HG0',
+        )).cast<String, Object?>();
+    (corpus['sources'] as List).add(hg0);
     (corpus['steps'] as List).add({
       'id': 'helper.script-probe-hg0',
       'kind': 'helper',
       'family': 'helper',
-      'source': 'H1',
+      'source': 'HG0',
       'action': 'scriptProbe',
       'requests': {'ordered': <Object?>[]},
       'expectedOutcome': 'ok',
