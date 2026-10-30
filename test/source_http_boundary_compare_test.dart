@@ -1450,7 +1450,9 @@ void main() {
         ((loadHttpBoundaryCorpus()['sources'] as List).cast<Map>().firstWhere(
           (source) => source['id'] == 'HG0',
         )).cast<String, Object?>();
-    (corpus['sources'] as List).add(hg0);
+    // The scaffolding's own source list is reified with narrower element types,
+    // so the HG0 entry rides in a fresh list beside the original entries.
+    corpus['sources'] = <Object?>[...(corpus['sources'] as List), hg0];
     (corpus['steps'] as List).add({
       'id': 'helper.script-probe-hg0',
       'kind': 'helper',
