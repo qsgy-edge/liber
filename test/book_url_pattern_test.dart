@@ -7717,7 +7717,7 @@ void main() {
     // merges the category before it reads that field, and the field reaches the
     // carrier without a value formatter between the script and the assertion.
     const snapshotScript =
-        '@js:JSON.stringify({kind: book.kind == null ? null : String(book.kind)})';
+        '@js:JSON.stringify({kind: book.kind === null ? null : String(book.kind)})';
 
     test('the HTML pipeline keeps the category its search rule produced', () async {
       const origin = 'http://kind.test';
