@@ -1923,6 +1923,29 @@ void main() {
       isNull,
       reason: 'another helper action',
     );
+    // The row must keep its helper observation kind as well as its family.
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg0', 'kind', 'stage'),
+        'helper.script-probe-hg0',
+        'value.result.lookup.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'HG0 declared with another execution kind',
+    );
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg1', 'kind', 'stage'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'HG1 declared with another execution kind',
+    );
     // The measured direction is object -> string, never the reverse.
     expect(
       named(
@@ -2142,8 +2165,11 @@ void main() {
         reason: 'a corpus that is not version 3',
       );
       // The content text envelope follows the same rules.
-      String? contentNamed(Map<String, Object?> product) => named(
-        _v3CorpusWithRow('v1.content'),
+      String? contentNamed(
+        Map<String, Object?> product, {
+        Map<String, Object?>? corpus,
+      }) => named(
+        corpus ?? _v3CorpusWithRow('v1.content'),
         'v1.content',
         'value.text',
         jsonEncode(_contentTextNative),
@@ -2170,6 +2196,42 @@ void main() {
         isNull,
         reason: 'a malformed content envelope',
       );
+      // The measured frame must stay on a stage row of its own family and kind.
+      Map<String, Object?> withStepValue(
+        Map<String, Object?> corpus,
+        String key,
+        Object? value,
+      ) {
+        ((corpus['steps'] as List).last as Map)[key] = value;
+        return corpus;
+      }
+
+      for (final tag in const [('family', 'helper'), ('kind', 'helper')]) {
+        expect(
+          latestNamed(
+            latest,
+            corpus: withStepValue(
+              _v3CorpusWithRow('v1.details'),
+              tag.$1,
+              tag.$2,
+            ),
+          ),
+          isNull,
+          reason: 'the details frame declared with another ${tag.$1}',
+        );
+        expect(
+          contentNamed(
+            content,
+            corpus: withStepValue(
+              _v3CorpusWithRow('v1.content'),
+              tag.$1,
+              tag.$2,
+            ),
+          ),
+          isNull,
+          reason: 'the content frame declared with another ${tag.$1}',
+        );
+      }
     },
   );
 
