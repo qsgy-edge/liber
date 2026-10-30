@@ -29,7 +29,7 @@ class HtmlBook {
     this.author = '',
     this.intro = '',
     this.cover = '',
-    this.kind = '',
+    this.kind,
     this.lastChapter = '',
     this.wordCount = '',
     this.variable,
@@ -83,7 +83,14 @@ class HtmlBook {
         : '$resolved${raw.substring(boundary)}';
   }
 
-  final String title, author, intro, cover, kind, lastChapter, wordCount;
+  final String title, author, intro, cover, lastChapter, wordCount;
+
+  /// The source's category text, or null when its kind rule resolved no value.
+  ///
+  /// The frozen `Book.kind` distinguishes a rule that never resolved from one
+  /// that resolved to empty text, so empty text is its own value and only an
+  /// absent category is null (#138).
+  final String? kind;
 
   /// The actual nonempty search response retained for this exact book handoff.
   ///
@@ -130,7 +137,7 @@ class HtmlBook {
     'author': author,
     'intro': intro,
     'cover': cover,
-    if (kind.isNotEmpty) 'kind': kind,
+    if (kind != null) 'kind': kind,
     if (lastChapter.isNotEmpty) 'lastChapter': lastChapter,
     if (wordCount.isNotEmpty) 'wordCount': wordCount,
     if (variable != null) 'variable': variable,
@@ -142,7 +149,7 @@ class HtmlBook {
     author: value['author'] as String? ?? '',
     intro: value['intro'] as String? ?? '',
     cover: value['cover'] as String? ?? '',
-    kind: value['kind'] as String? ?? '',
+    kind: value['kind'] as String?,
     lastChapter: value['lastChapter'] as String? ?? '',
     wordCount: value['wordCount'] as String? ?? '',
     variable: value['variable'] as String?,
