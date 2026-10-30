@@ -7636,4 +7636,73 @@ void main() {
       }
     });
   });
+
+  // #138: the frozen `Book.kind` has no value when the source leaves the
+  // category unset, holds empty text when an explicitly declared kind rule
+  // resolves to nothing, and keeps nonempty category text verbatim. The
+  // carrier's public serialization and metadata copy must carry that three-way
+  // distinction, so the absent state is neither written nor read back as the
+  // empty one.
+  group('kindNullability', () {
+    test('an absent, empty and nonempty category serialize and copy apart', () {
+      final url = Uri.parse('http://kind.test/book');
+      final absent = HtmlBook(url: url, title: 'Book', author: '作者甲');
+      final empty = HtmlBook(url: url, title: 'Book', author: '作者甲', kind: '');
+      final nonempty = HtmlBook(
+        url: url,
+        title: 'Book',
+        author: '作者甲',
+        kind: '玄幻',
+      );
+      final cases = [
+        (state: 'absent', book: absent, kind: null, serializedKind: null),
+        (state: 'empty', book: empty, kind: '', serializedKind: ''),
+        (state: 'nonempty', book: nonempty, kind: '玄幻', serializedKind: '玄幻'),
+      ];
+      for (final row in cases) {
+        expect(
+          row.book.kind,
+          row.kind,
+          reason: '${row.state}: the carrier holds the source category',
+        );
+        final json = row.book.toJson();
+        expect(
+          json['kind'],
+          row.serializedKind,
+          reason: '${row.state}: the serialized book carries the category',
+        );
+        expect(
+          json.containsKey('kind'),
+          row.serializedKind != null,
+          reason:
+              '${row.state}: an absent category is omitted, an empty one is written',
+        );
+        final roundTrip = HtmlBook.fromJson(json);
+        expect(
+          roundTrip.kind,
+          row.kind,
+          reason: '${row.state}: the stored row restores the same category',
+        );
+        expect(roundTrip.title, 'Book');
+        expect(roundTrip.author, '作者甲');
+        final copy = row.book.withVariable('probe');
+        expect(
+          copy.kind,
+          row.kind,
+          reason: '${row.state}: a metadata copy keeps the category',
+        );
+        expect(copy.variable, 'probe');
+        expect(copy.title, 'Book');
+        expect(copy.author, '作者甲');
+        expect('${copy.url}', 'http://kind.test/book');
+      }
+      // A stored row whose category key is present but null is the absent
+      // state, not the empty one.
+      expect(
+        HtmlBook.fromJson({...absent.toJson(), 'kind': null}).kind,
+        isNull,
+        reason: 'a null category in the row restores as absent',
+      );
+    });
+  });
 }
