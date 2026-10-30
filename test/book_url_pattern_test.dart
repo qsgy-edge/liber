@@ -7704,5 +7704,271 @@ void main() {
         reason: 'a null category in the row restores as absent',
       );
     });
+
+    // The same contract through the public search → `bookInfo` seam. The
+    // category a search rule produced — no rule or an exactly empty rule, a
+    // declared rule that matches nothing, or real category text — survives the
+    // details stage while its own kind rule matches nothing, and an ordinary
+    // info-field script sees the same value inside the `book` snapshot. A
+    // details value with text still replaces the incoming category.
+    //
+    // The script publishes the nullness of `book.kind` rather than its text
+    // alone, and it is read on `ruleBookInfo.lastChapter`: the details stage
+    // merges the category before it reads that field, and the field reaches the
+    // carrier without a value formatter between the script and the assertion.
+    const snapshotScript =
+        '@js:JSON.stringify({kind: book.kind == null ? null : String(book.kind)})';
+
+    test('the HTML pipeline keeps the category its search rule produced', () async {
+      const origin = 'http://kind.test';
+      const listPage =
+          '<div class="item"><h3><a href="/book/1">列表标题</a></h3>'
+          '<span class="kind">玄幻</span></div>';
+      const detailPage = '<h1>真实标题</h1><span class="kind">仙侠</span>';
+      Future<({String? searched, String? informed, String? snapshot})> run(
+        String? searchRule,
+        String detailKind,
+      ) async {
+        final source = _htmlSource(origin);
+        if (searchRule != null) {
+          (source['ruleSearch'] as Map)['kind'] = searchRule;
+        }
+        final detailsRules = source['ruleBookInfo'] as Map;
+        detailsRules['kind'] = detailKind;
+        detailsRules['lastChapter'] = snapshotScript;
+        final pipeline = HtmlSourcePipeline(
+          source,
+          _Pages({'/search': listPage, '/book/1': detailPage}),
+        );
+        try {
+          final hit = (await pipeline.search('书')).single;
+          final info = await pipeline.bookInfo(hit);
+          return (
+            searched: hit.kind,
+            informed: info.book.kind,
+            snapshot: info.book.lastChapter,
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      }
+
+      final absent = await run(null, 'span.missing@text');
+      expect(
+        absent.searched,
+        isNull,
+        reason: 'an absent search kind rule resolves no category',
+      );
+      expect(
+        absent.informed,
+        isNull,
+        reason:
+            'a declared details kind rule that matches nothing retains the absent category',
+      );
+      expect(
+        absent.snapshot,
+        '{"kind":null}',
+        reason: 'the info-field script sees no category',
+      );
+
+      final empty = await run('', 'span.missing@text');
+      expect(
+        empty.searched,
+        isNull,
+        reason: 'an exactly empty search kind rule resolves no category',
+      );
+      expect(
+        empty.informed,
+        isNull,
+        reason:
+            'a declared details kind rule that matches nothing retains the absent category',
+      );
+      expect(
+        empty.snapshot,
+        '{"kind":null}',
+        reason: 'the info-field script sees no category',
+      );
+
+      final noMatch = await run('span.missing@text', 'span.missing@text');
+      expect(
+        noMatch.searched,
+        '',
+        reason:
+            'a declared search kind rule that matches nothing is empty text',
+      );
+      expect(
+        noMatch.informed,
+        '',
+        reason:
+            'a declared details kind rule that matches nothing retains the empty category',
+      );
+      expect(
+        noMatch.snapshot,
+        '{"kind":""}',
+        reason: 'the info-field script sees empty category text',
+      );
+
+      final category = await run('span.kind@text', 'span.missing@text');
+      expect(
+        category.searched,
+        '玄幻',
+        reason: 'a declared search kind rule keeps its category text',
+      );
+      expect(
+        category.informed,
+        '玄幻',
+        reason:
+            'a declared details kind rule that matches nothing retains the searched category',
+      );
+      expect(
+        category.snapshot,
+        '{"kind":"玄幻"}',
+        reason: 'the info-field script sees the searched category',
+      );
+
+      final replaced = await run(null, 'span.kind@text');
+      expect(
+        replaced.searched,
+        isNull,
+        reason: 'premise: the absent search rule supplies no category',
+      );
+      expect(
+        replaced.informed,
+        '仙侠',
+        reason: 'a details kind rule with text replaces the incoming category',
+      );
+      expect(
+        replaced.snapshot,
+        '{"kind":"仙侠"}',
+        reason: 'the info-field script sees the replacing category',
+      );
+    });
+
+    test('the JSON pipeline keeps the category its search rule produced', () async {
+      const origin = 'http://kind.test';
+      final listDocument = jsonEncode({
+        'listing': [
+          {'name': '列表标题', 'url': '/book/1', 'kind': '玄幻'},
+        ],
+      });
+      final detailDocument = jsonEncode({'title': '真实标题', 'kind': '仙侠'});
+      Future<({String? searched, String? informed, String? snapshot})> run(
+        String? searchRule,
+        String detailKind,
+      ) async {
+        final source = _jsonSource(origin);
+        if (searchRule != null) {
+          (source['ruleSearch'] as Map)['kind'] = searchRule;
+        }
+        final detailsRules = source['ruleBookInfo'] as Map;
+        detailsRules['kind'] = detailKind;
+        detailsRules['lastChapter'] = snapshotScript;
+        final pipeline = JsonSourcePipeline(
+          source,
+          _Pages({'/search': listDocument, '/book/1': detailDocument}),
+        );
+        try {
+          final hit = (await pipeline.search('书')).single;
+          final info = await pipeline.bookInfo(hit);
+          return (
+            searched: hit.kind,
+            informed: info.book.kind,
+            snapshot: info.book.lastChapter,
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      }
+
+      final absent = await run(null, r'$.missing');
+      expect(
+        absent.searched,
+        isNull,
+        reason: 'an absent search kind rule resolves no category',
+      );
+      expect(
+        absent.informed,
+        isNull,
+        reason:
+            'a declared details kind rule that matches nothing retains the absent category',
+      );
+      expect(
+        absent.snapshot,
+        '{"kind":null}',
+        reason: 'the info-field script sees no category',
+      );
+
+      final empty = await run('', r'$.missing');
+      expect(
+        empty.searched,
+        isNull,
+        reason: 'an exactly empty search kind rule resolves no category',
+      );
+      expect(
+        empty.informed,
+        isNull,
+        reason:
+            'a declared details kind rule that matches nothing retains the absent category',
+      );
+      expect(
+        empty.snapshot,
+        '{"kind":null}',
+        reason: 'the info-field script sees no category',
+      );
+
+      final noMatch = await run(r'$.missing', r'$.missing');
+      expect(
+        noMatch.searched,
+        '',
+        reason:
+            'a declared search kind rule that matches nothing is empty text',
+      );
+      expect(
+        noMatch.informed,
+        '',
+        reason:
+            'a declared details kind rule that matches nothing retains the empty category',
+      );
+      expect(
+        noMatch.snapshot,
+        '{"kind":""}',
+        reason: 'the info-field script sees empty category text',
+      );
+
+      final category = await run(r'$.kind', r'$.missing');
+      expect(
+        category.searched,
+        '玄幻',
+        reason: 'a declared search kind rule keeps its category text',
+      );
+      expect(
+        category.informed,
+        '玄幻',
+        reason:
+            'a declared details kind rule that matches nothing retains the searched category',
+      );
+      expect(
+        category.snapshot,
+        '{"kind":"玄幻"}',
+        reason: 'the info-field script sees the searched category',
+      );
+
+      final replaced = await run(null, r'$.kind');
+      expect(
+        replaced.searched,
+        isNull,
+        reason: 'premise: the absent search rule supplies no category',
+      );
+      expect(
+        replaced.informed,
+        '仙侠',
+        reason: 'a details kind rule with text replaces the incoming category',
+      );
+      expect(
+        replaced.snapshot,
+        '{"kind":"仙侠"}',
+        reason: 'the info-field script sees the replacing category',
+      );
+    });
   });
 }

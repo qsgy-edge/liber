@@ -343,7 +343,7 @@ void main() {
         );
         await request.response.close();
       });
-      Future<String> kindOf(Object? kind) async {
+      Future<String?> kindOf(Object? kind) async {
         final source = <String, dynamic>{
           'bookSourceUrl': 'http://127.0.0.1:${server.port}',
           'searchUrl': '/search?key={{key}}',

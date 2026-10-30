@@ -72,7 +72,7 @@ String _expected(Map read) {
   return String.fromCharCodes((units as List).cast<int>());
 }
 
-String _bookValue(HtmlBook book, String field) => switch (field) {
+String? _bookValue(HtmlBook book, String field) => switch (field) {
   'name' => book.title,
   'author' => book.author,
   'kind' => book.kind,
@@ -360,7 +360,7 @@ void main() {
           for (var i = 0; i < items.length; i++) {
             for (final read in (items[i]['reads'] as List).cast<Map>()) {
               expect(
-                _bookValue(books[i], read['field'] as String).codeUnits,
+                _bookValue(books[i], read['field'] as String)?.codeUnits,
                 _expected(read).codeUnits,
                 reason: '$name item=$i field=${read['field']}',
               );
@@ -369,7 +369,7 @@ void main() {
         } else {
           final rule = row['rule'] as String;
           final list = row['form'] == 'list';
-          final String actual;
+          final String? actual;
           if (row['type'] == 'node') {
             (source['ruleSearch'] as Map)[row['url'] == true
                     ? 'bookUrl'
@@ -424,7 +424,7 @@ void main() {
           final expected = row['unescape'] == false
               ? formatContentPage(_expected(read))
               : _expected(read);
-          expect(actual.codeUnits, expected.codeUnits, reason: name);
+          expect(actual?.codeUnits, expected.codeUnits, reason: name);
         }
         for (final entry in (observed['variables'] as Map).entries) {
           expect(

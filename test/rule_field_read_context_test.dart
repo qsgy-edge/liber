@@ -43,7 +43,7 @@ Map<String, dynamic> _source(bool json) => {
 String _expected(Map read) => String.fromCharCodes(
   ((read['joinedUnits'] ?? (read['values'] as List).single) as List).cast<int>(),
 );
-String _bookValue(HtmlBook book, String field) => switch (field) {
+String? _bookValue(HtmlBook book, String field) => switch (field) {
   'name' => book.title, 'author' => book.author, 'kind' => book.kind,
   'wordCount' => book.wordCount, 'lastChapter' => book.lastChapter,
   'intro' => book.intro, 'coverUrl' => book.cover.isEmpty ? '' : Uri.parse(book.cover).path,
@@ -106,7 +106,7 @@ void main() {
           final (book, _) = await pipeline.details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old'));
           for (final read in (items.single['reads'] as List).cast<Map>()) {
             final value = read['field'] == 'tocUrl' ? pages.requests.last : _bookValue(book, read['field'] as String);
-            expect(value.codeUnits, _expected(read).codeUnits, reason: '$name ${read['field']}');
+            expect(value?.codeUnits, _expected(read).codeUnits, reason: '$name ${read['field']}');
           }
         } else if (row['stage'] == 'toc') {
           final toc = source['ruleToc'] as Map;
