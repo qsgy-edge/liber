@@ -1,15 +1,25 @@
-# Book Source Capability Matrix (Frozen Baseline vs Current Implementation)
+# Book Source Capability Matrix
 
-Frozen baseline: `14dd24945b2914ce2708b8abaa4ee67ceef892af` (local `gedoor/legado` snapshot)
-Frozen WebView/HTTP contract: [book-source-differential-contract.md](book-source-differential-contract.md)
+Selected compatibility reference: `a7d37f1707a70a459ad708f4fe79341d1e42d716` (`LegadoTeam/legado`, formal release `3.26101819`)
+Survey reference: `14dd24945b2914ce2708b8abaa4ee67ceef892af` (local `gedoor/legado` snapshot)
+Differential contract: [book-source-differential-contract.md](book-source-differential-contract.md)
 Product revision at survey: `ee8f235` (`master`)
 Survey date: 2026-09-15 UTC
+
+The inventory, source coordinates and recorded runtime results below retain their
+survey/capture reference. Implementation marks are not selected-reference
+compatibility passes. The [baseline contract](legado-compatibility-baseline.md)
+and Spec A #133/#146/#137/#138 require fresh bound reference observations and
+affected destination comparisons. Inputs and existing tools are reused; old
+goldens and platform reports are not relabelled. The selected reference does not
+add new mainJs, subsidiary/batch-content, event, dynamic-login-UI, concurrency
+helper or browser families to v1. Approved product policies remain unchanged.
 
 ## Verdict
 
 - **CONFIRMED** — The frozen Book Source execution surface has six axes: source fields, rule grammar, JavaScript host surface, request/URL semantics, pipeline features, and product-side reading features. This document inventories the first five; the sixth is listed only as declared non-goals.
 - **CONFIRMED** — The current product implements a bounded slice of all five axes: the Rust HTML rule adapter (jsoup selectors, the Legado rule layer, and the extraction operations), a `$.`/`$..`-style JSON adapter, the `java.*` request methods plus the rule-state, cookie, cache, logging and encoding members, the frozen request defaults and redirect rules, and four pipeline stages with page-chaining.
-- **CONFIRMED** — Several current behaviors are *divergent* rather than absent: the query characters Dart's client escapes that the frozen one sends raw, cache entries that a per-source cap evicts by write order where the frozen `CacheManager` keeps one global access-ordered 600-row LRU (#37), a declared `Cookie` that is not forwarded across origins, a source debug console that records `log`/`logType` instead of showing them (`toast`/`longToast` are shown rate-limited since #31). `t2s`/`s2t` are implemented (issue #19) and *divergent*: ADR 0010 measures the difference from the frozen reader at 0.055 %–0.210 % of code units on the corpora it was decided with. The JSON adapter's silent ` @js:` truncation is gone: a rule field that carries a script now runs it or refuses it by name (#11).
+- **CONFIRMED** — Several current behaviors are *divergent* rather than absent: the query characters Dart's client escapes that the frozen one sends raw, cache entries that a per-source cap evicts by write order where the frozen `CacheManager` keeps one global access-ordered 50 MiB memory LRU with an unbounded persistent table (#37), a declared `Cookie` that is not forwarded across origins, a source debug console that records `log`/`logType` instead of showing them (`toast`/`longToast` are shown rate-limited since #31). `t2s`/`s2t` are implemented (issue #19) and *divergent*: ADR 0010 measures the difference from the frozen reader at 0.055 %–0.210 % of code units on the corpora it was decided with. The JSON adapter's silent ` @js:` truncation is gone: a rule field that carries a script now runs it or refuses it by name (#11).
 - **UNVERIFIED** — Except for the device-confirmed rows named in [Rule grammar and selectors](#b-rule-grammar-and-selectors), every status below is a source-level comparison against the frozen commit above. Only the five-source live triage in [Sample weighting](#sample-weighting) and the executed `tool/html_oracle` golden are runtime evidence; the triage is an observation, not a golden. The extraction and selector rows added by #12 are source-derived values checked by `tool/html_adapter_gate.dart` in CI and now also compared against the frozen-device golden (`tool/html_oracle/evidence/android-17-os4.0.0.31/golden.json`, all 39 cases: the 35 #12 added plus the four `path: rule` rows #11 added): every row matches the adapter, so the capability rows those cases cover are device-confirmed, including `Replacement fourth field (replaceFirst)`. Every other per-capability frozen-device row still has no executed golden.
 - **UNVERIFIED** — The sample sources hit 18 of the sampled capability tokens and hit none of `@CSS:`-style rules, `@XPath:`, `@Json:` element rules, `&&`/`%%` merges, `@get:`, cache bindings, or the login fields. Priority in [Proposed slice order](#proposed-slice-order) is ordered by blocking impact, then by sample frequency; it is not a compatibility claim.
 
