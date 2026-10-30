@@ -4174,13 +4174,14 @@ final _javaReturnEnvelopeCases =
   );
 }
 
-/// One of the twelve measured scalar identities: a helper/scriptProbe step on
-/// its own source with the exact field and value pair.
+/// One of the twelve measured scalar identities: a helper observation of a
+/// scriptProbe step on its own source with the exact field and value pair.
 bool _javaReturnScalarLeaf(
   Map<String, dynamic> step,
   HttpBoundaryMismatch mismatch,
 ) {
-  if ('${step['family']}' != 'helper' ||
+  if ('${step['kind']}' != 'helper' ||
+      '${step['family']}' != 'helper' ||
       '${step['action']}' != 'scriptProbe' ||
       mismatch.kind != 'type-or-value') {
     return false;
@@ -4198,9 +4199,9 @@ bool _javaReturnScalarLeaf(
   return false;
 }
 
-/// One of the two V envelope rows: the row's own details/content step and the
-/// exact flat envelope keys, where only the enumerated type/strict leaves may
-/// differ and every other key stays equal.
+/// One of the two V envelope rows: the row's own stage details/content step and
+/// the exact flat envelope keys, where only the enumerated type/strict leaves
+/// may differ and every other key stays equal.
 bool _javaReturnEnvelopeLeaf(
   Map<String, dynamic> step,
   HttpBoundaryMismatch mismatch,
@@ -4209,6 +4210,8 @@ bool _javaReturnEnvelopeLeaf(
   for (final envelope in _javaReturnEnvelopeCases) {
     if (mismatch.row != envelope.row ||
         mismatch.field != envelope.field ||
+        '${step['kind']}' != 'stage' ||
+        '${step['family']}' != 'stage' ||
         '${step['stage'] ?? ''}' != envelope.stage ||
         '${step['source']}' != 'V') {
       continue;
