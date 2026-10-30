@@ -1402,6 +1402,108 @@ void main() {
     );
   });
 
+  test('the captured HG0 returned-map pair stays strict and is named', () {
+    // `helper.script-probe-hg0`'s captured pair, with the values the native
+    // capture and the product record measured: Rhino hands the source's header
+    // map back as an object whose strict literal equality fails, the product
+    // hands the same text back as a string. Only these two leaves differ; the
+    // text, the loose equality and every other leaf already agree. The strict
+    // mismatch must stay in the difference list, and the comparer must name it
+    // `java-return-string-identity` instead of leaving it unattributed. A
+    // named difference is not equality, so the comparison still does not pass.
+    Map<String, Object?> projection({
+      required String lookupType,
+      required bool strictLiteral,
+    }) {
+      final result = _validProbeProjection();
+      (result['lookup'] as Map)
+        ..['type'] = lookupType
+        ..['strictLiteral'] = strictLiteral;
+      return result;
+    }
+
+    Map<String, Object?> probeObservation({
+      required String lookupType,
+      required bool strictLiteral,
+    }) => {
+      'id': 'helper.script-probe-hg0',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'helper',
+        'action': 'scriptProbe',
+        'source': 'HG0',
+        'result': projection(
+          lookupType: lookupType,
+          strictLiteral: strictLiteral,
+        ),
+      },
+    };
+
+    final corpus = _corpus();
+    corpus['corpusVersion'] = 3;
+    (corpus['steps'] as List).add({
+      'id': 'helper.script-probe-hg0',
+      'kind': 'helper',
+      'family': 'helper',
+      'source': 'H1',
+      'action': 'scriptProbe',
+      'requests': {'ordered': <Object?>[]},
+      'expectedOutcome': 'ok',
+    });
+    final golden = _report()..['corpusVersion'] = 3;
+    (golden['observations'] as List).add(
+      probeObservation(lookupType: 'object', strictLiteral: false),
+    );
+    final product = _product()..['corpusVersion'] = 3;
+    (product['observations'] as List).add(
+      probeObservation(lookupType: 'string', strictLiteral: true),
+    );
+    final comparison = compareHttpBoundaryRecords(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: corpus.cast<String, dynamic>(),
+      goldenId: 'synthetic',
+    );
+
+    // The raw difference survives: two leaves, both values as measured.
+    expect(comparison.mismatches, hasLength(2));
+    HttpBoundaryMismatch measured(String field) =>
+        comparison.mismatches.firstWhere(
+          (mismatch) =>
+              mismatch.row == 'helper.script-probe-hg0' &&
+              mismatch.field == field,
+          orElse: () => throw StateError('no HG0 mismatch at $field'),
+        );
+    final lookupType = measured('value.result.lookup.type');
+    expect(lookupType.surface, 'observation');
+    expect(lookupType.kind, 'type-or-value');
+    expect(lookupType.expected, 'object');
+    expect(lookupType.observed, 'string');
+    final strictLiteral = measured('value.result.lookup.strictLiteral');
+    expect(strictLiteral.surface, 'observation');
+    expect(strictLiteral.kind, 'type-or-value');
+    expect(strictLiteral.expected, false);
+    expect(strictLiteral.observed, true);
+    expect(comparison.passed, isFalse);
+
+    // Both are named as the approved Java-return string identity, and each
+    // named entry is the same measured mismatch rather than a second pass.
+    expect(
+      {for (final entry in comparison.notCompared) entry.approved},
+      {'java-return-string-identity'},
+    );
+    expect(
+      {for (final entry in comparison.notCompared) entry.mismatch.key},
+      {lookupType.key, strictLiteral.key},
+    );
+    final output = comparison.toJson();
+    expect(output['mismatchCount'], 2);
+    expect(output['notComparedCount'], 2);
+    expect(output['unattributedCount'], 0);
+    expect(output['passed'], isFalse);
+  });
+
   test(
     'the frozen book carrier is projected from the actual source context',
     () {
