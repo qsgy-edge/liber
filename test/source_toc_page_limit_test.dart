@@ -1,10 +1,9 @@
 // The sequential page walk's counts, as the two rule adapters apply them
 // (`walkSourcePages`, the frozen `BookChapterList.kt:48-121` and
 // `BookContent.kt:54-135`). The frozen walk has no page-count bound in either
-// stage; this product keeps one only for chapter content. These rows pin the
-// TOC walk collecting more pages than any former cutoff, the repeated-URL
-// refusal that guards it instead, cancellation past that count, and the
-// content walk's 20-page refusal before its 21st sequential send.
+// stage; this product keeps one only for chapter content. These rows cover
+// 32-page TOC order, repeated-URL refusal, cancellation with page 31 in flight,
+// and the content walk's 20-page refusal before its 21st sequential send.
 import 'dart:async';
 import 'dart:convert';
 

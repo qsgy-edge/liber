@@ -2358,8 +2358,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         address: info.tocAddress,
         base: info.tocBase,
       ),
-      // The frozen TOC walk has no page-count bound (`BookChapterList.kt:48-86`):
-      // only the repeated-URL refusal below ends it.
+      // The TOC follows next-page declarations without a count bound
+      // (`BookChapterList.kt:48-86`); repeated URLs still fail by name.
       maxPages: null,
       cycleError: '目录分页循环',
       // The frozen drops an item equal to the page it was read from

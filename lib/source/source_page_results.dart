@@ -87,14 +87,15 @@ bool _declaresNothing(String address) {
 ///
 /// [dropSelf] is the TOC stage's own filter (`BookChapterList.kt:96-100`),
 /// which removes an item equal to the page it was read from; the content stage
-/// keeps such an item and stops on it through [maxPages]' cycle refusal.
+/// keeps such an item and refuses it through the visited-URL cycle check.
 /// [nextChapterUrl] is the content stage's guard (`BookContent.kt:85-88`),
 /// null in the TOC stage; the frozen reads it only in the sequential walk.
 ///
-/// [maxPages] optionally bounds the sequential walk alone; `null` leaves it
-/// unbounded, so a repeated URL is the only end there. A repeated URL, or a walk
-/// past a declared bound, fails with [cycleError]. The declared walk fetches
-/// each URL it was given once, so it neither repeats nor recurses.
+/// [maxPages] optionally bounds the sequential walk; `null` leaves its count
+/// unbounded. Empty next-page declarations still end the walk, and repeated
+/// URLs still fail with [cycleError]. Passing a non-null bound also fails if
+/// a sequential walk exceeds it. The declared walk fetches each URL it was
+/// given once, so it neither repeats nor recurses.
 Future<int> walkSourcePages({
   required SourcePageRequest first,
   required Future<({Uri url, SourceUrlOptions options})> Function(
