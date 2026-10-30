@@ -5292,7 +5292,7 @@ Future<void> main(List<String> args) async {
       throw HttpBoundaryRefusal('the handoff is not a captured session');
     }
     if (handoff['integrationHead'] !=
-        'fbf556130176841fea14196bf94555823be589c7') {
+        '276a625e4aef0104240beac1908e597c6023ef93') {
       throw HttpBoundaryRefusal(
         'the handoff names another integration head: '
         '${handoff['integrationHead']}',
