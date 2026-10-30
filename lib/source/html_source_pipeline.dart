@@ -3117,8 +3117,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         address: requestText,
         base: chapterBase,
       ),
-      maxPages: 20,
-      cycleError: '正文分页循环或超出 20 页',
+      // The frozen content walk has no page-count bound either
+      // (`BookContent.kt:54-135`): an empty declaration or the next chapter's own
+      // address ends it, and a repeated URL still fails by name.
+      maxPages: null,
+      cycleError: '正文分页循环',
       // The frozen stops the one-URL walk before fetching the next chapter's
       // own URL (`BookContent.kt:85-88`); the declared-list walk has no guard.
       nextChapterUrl: nextChapterUrl == null || nextChapterUrl.isEmpty

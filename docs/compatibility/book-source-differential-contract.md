@@ -111,11 +111,12 @@ is at most four network fetches with ordered collection when those measurements
 justify it; a chain that discovers its next URL one page at a time stays serial,
 and #26's serialized JavaScript analyses and prefetch decision remain in force.
 
-Sequential TOC traversal in both rule adapters has no fixed page-count limit.
-It remains serial and retains repeated-URL refusal, cancellation, per-request
-timeouts and the per-source rate limiter. The sequential content walk retains
-its 20-page bound; declared-list branch semantics and output order are
-unchanged.
+Sequential TOC and chapter-content traversal in both rule adapters have no
+fixed page-count limit. Empty next-page declarations end the walk; sequential
+content traversal also stops before the next chapter's address. Both remain
+serial and retain repeated-URL refusal, cancellation, per-request timeouts and
+the per-source rate limiter. Declared-list branch semantics and output order
+are unchanged.
 
 Timeout and cancellation fixtures compare:
 

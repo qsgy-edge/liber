@@ -2278,7 +2278,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
         address: chapterContext?.requestAddress ?? chapter.address,
         base: chapterBase,
       ),
-      maxPages: 20,
+      // The frozen content walk has no page-count bound either
+      // (`BookContent.kt:54-135`): an empty declaration or the next chapter's own
+      // address ends it, and a repeated URL still fails by name.
+      maxPages: null,
       cycleError: 'Content page cycle',
       // The frozen stops the one-URL walk before fetching the next chapter's
       // own URL (`BookContent.kt:85-88`); the declared-list walk has no guard.

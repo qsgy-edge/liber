@@ -1,9 +1,11 @@
-// The sequential page walk's counts, as the two rule adapters apply them
-// (`walkSourcePages`, the frozen `BookChapterList.kt:48-121` and
-// `BookContent.kt:54-135`). The frozen walk has no page-count bound in either
-// stage; this product keeps one only for chapter content. These rows cover
-// 32-page TOC order, repeated-URL refusal, cancellation with page 31 in flight,
-// and the content walk's 20-page refusal before its 21st sequential send.
+// The sequential page walk, as the two rule adapters apply it (`walkSourcePages`,
+// the frozen `BookChapterList.kt:48-121` and `BookContent.kt:54-135`). Neither
+// stage has a page-count bound: an empty next-page declaration ends the walk,
+// and the content stage also stops before the next chapter's own address. These
+// rows cover 32-page TOC order, repeated-URL refusal, cancellation with page 31
+// in flight, and the content walk collecting 25 ordered pages before its own
+// empty declaration, next-chapter stop, repeated-URL refusal and cancellation
+// past page 20.
 import 'dart:async';
 import 'dart:convert';
 
@@ -96,16 +98,36 @@ Map<String, String> _tocBodies(bool json, int count, {int? repeatAt}) => {
                   : ''}',
 };
 
-Map<String, String> _contentBodies(bool json) => {
-  for (var page = 1; page <= _contentPages; page++)
+/// [count] sequential content pages. [stopAt] makes that page declare no next
+/// page instead of chaining on, and [repeatAt] makes it declare page 5 again,
+/// which is a repeated address rather than a new page. Both adapters serve every
+/// generated body, so a test can also prove which one was never requested.
+Map<String, String> _contentBodies(
+  bool json, {
+  int count = _contentPages,
+  int? stopAt,
+  int? repeatAt,
+}) => {
+  for (var page = 1; page <= count; page++)
     '/chapter/$page': json
         ? jsonEncode({
             'body': '第$page页',
-            if (page < _contentPages) 'next': '/chapter/${page + 1}',
+            if (page == repeatAt)
+              'next': '/chapter/5'
+            else if (page < count && page != stopAt)
+              'next': '/chapter/${page + 1}',
           })
         : '<div class="con"><p>第$page页</p></div>'
-              '${page < _contentPages ? '<div class="prenext"><a href="/chapter/${page + 1}">下一页</a></div>' : ''}',
+              '${page == repeatAt
+                  ? '<div class="prenext"><a href="/chapter/5">5</a></div>'
+                  : page < count && page != stopAt
+                  ? '<div class="prenext"><a href="/chapter/${page + 1}">下一页</a></div>'
+                  : ''}',
 };
+
+List<String> _contentTexts(int from, int to) => [
+  for (var page = from; page <= to; page++) '第$page页',
+];
 
 BookSourcePipeline _pipeline(
   bool json,
@@ -215,22 +237,116 @@ void main() {
       expect(recovered.requests, hasLength(_tocPages + 1));
     });
 
-    test('$adapter content walk still refuses before its 21st page', () async {
+    test('$adapter content collects $_contentPages pages in order', () async {
       final pages = _PageServer(_contentBodies(json));
       final pipeline = _pipeline(json, _source(json), pages);
-      await expectLater(
-        pipeline.chapter(SourceChapter('第一章', Uri.parse('$_origin/chapter/1'))),
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.message,
-            'message',
-            json ? 'Content page cycle' : '正文分页循环或超出 20 页',
-          ),
-        ),
+      final body = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse('$_origin/chapter/1')),
       );
+      expect(body.pages, _contentPages);
+      // Every page's own text, in declared order to the last one.
+      expect(body.text, _contentTexts(1, _contentPages).join('\n'));
+      // Each declared page was sent once, and the last page declares nothing.
       expect(pages.requests, [
-        for (var page = 1; page <= 20; page++) '/chapter/$page',
+        for (var page = 1; page <= _contentPages; page++) '/chapter/$page',
       ]);
     });
+
+    test('$adapter content ends at a page that declares nothing', () async {
+      final pages = _PageServer(_contentBodies(json, stopAt: 21));
+      final pipeline = _pipeline(json, _source(json), pages);
+      final body = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse('$_origin/chapter/1')),
+      );
+      expect(body.pages, 21);
+      expect(body.text, _contentTexts(1, 21).join('\n'));
+      // Page 22 exists but was never declared, so the walk ended on page 21.
+      expect(pages.requests, [
+        for (var page = 1; page <= 21; page++) '/chapter/$page',
+      ]);
+    });
+
+    test(
+      '$adapter content stops before the next chapter after page 20',
+      () async {
+        final pages = _PageServer(_contentBodies(json));
+        final pipeline = _pipeline(json, _source(json), pages);
+        final body = await pipeline.chapter(
+          SourceChapter('第一章', Uri.parse('$_origin/chapter/1')),
+          nextChapterUrl: '$_origin/chapter/21',
+        );
+        expect(body.pages, 20);
+        expect(body.text, _contentTexts(1, 20).join('\n'));
+        // Page 20 declares the next chapter's own address: the walk stops before
+        // sending it, so its remaining generated pages are never requested.
+        expect(pages.requests, [
+          for (var page = 1; page <= 20; page++) '/chapter/$page',
+        ]);
+      },
+    );
+
+    test(
+      '$adapter content refuses a repeated page past the old cutoff',
+      () async {
+        final pages = _PageServer(_contentBodies(json, repeatAt: 23));
+        final pipeline = _pipeline(json, _source(json), pages);
+        await expectLater(
+          pipeline.chapter(
+            SourceChapter('第一章', Uri.parse('$_origin/chapter/1')),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              json ? 'Content page cycle' : '正文分页循环',
+            ),
+          ),
+        );
+        // Page 23 declared page 5 again: the refusal came before that page was
+        // sent a second time.
+        expect(pages.requests, [
+          for (var page = 1; page <= 23; page++) '/chapter/$page',
+        ]);
+      },
+    );
+
+    test(
+      '$adapter content cancellation past page 20 stops and recovers',
+      () async {
+        final gate = Completer<void>();
+        final pages = _PageServer(
+          _contentBodies(json),
+          holdPath: '/chapter/21',
+          gate: gate,
+        );
+        final pipeline = _pipeline(json, _source(json), pages);
+        final pending = expectLater(
+          pipeline.chapter(
+            SourceChapter('第一章', Uri.parse('$_origin/chapter/1')),
+          ),
+          throwsA(isA<SourceRequestCancelled>()),
+        );
+        await pumpEventQueue();
+        // Twenty pages answered and page 21 is the one in flight.
+        expect(pages.requests, [
+          for (var page = 1; page <= 21; page++) '/chapter/$page',
+        ]);
+        pipeline.cancel();
+        gate.complete();
+        await pending;
+        // The following page is never requested after the cancellation.
+        expect(pages.requests, isNot(contains('/chapter/22')));
+
+        // A fresh follow-up on the same generated pages completes the walk.
+        final recovered = _PageServer(_contentBodies(json));
+        final body = await _pipeline(
+          json,
+          _source(json),
+          recovered,
+        ).chapter(SourceChapter('第一章', Uri.parse('$_origin/chapter/1')));
+        expect(body.pages, _contentPages);
+        expect(recovered.requests, hasLength(_contentPages));
+      },
+    );
   }
 }
