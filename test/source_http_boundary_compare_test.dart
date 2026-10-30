@@ -1336,11 +1336,14 @@ HttpBoundaryComparison _v3EnvelopeComparison({
   required String nativeText,
   required String productText,
 }) {
+  // The measured field is the public observation path `value.<leaf>`; inside
+  // the row's value map the difference is that leaf itself.
+  final leaf = field.substring('value.'.length);
   Map<String, Object?> envelopeRow(String text) => {
     'id': rowId,
     'outcome': 'ok',
     'category': null,
-    'value': {'kind': 'stage', 'stage': stage, 'source': 'V', field: text},
+    'value': {'kind': 'stage', 'stage': stage, 'source': 'V', leaf: text},
   };
   final golden = _report()..['corpusVersion'] = 3;
   (golden['observations'] as List).add(envelopeRow(nativeText));
