@@ -3938,6 +3938,43 @@ const httpBoundaryCancellationOwnerReason =
     'state/database preservation, owned cleanup and the fresh follow-up remain '
     'strictly compared.';
 
+const httpBoundaryJavaReturnStringReason =
+    'Approved named difference: the native capture records the returned header '
+    'map value as a Java String object, so its typeof is object and its strict '
+    'literal equality fails, while the product returns the primitive JS string '
+    'with the same text. The strict mismatch and its measured values stay '
+    'visible; text, coercion and loose equality are already strictly compared '
+    'and agree.';
+
+/// Binds the two captured Java-return string leaves of the committed v3 HG0
+/// probe: the row, its declared helper/scriptProbe step on source HG0 and both
+/// measured values are required. Another row, leaf, kind or value pair stays an
+/// unattributed strict failure; this is not an object/string equivalence.
+({String group, String reason})? _javaReturnStringDisposition(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+  HttpBoundaryMismatch mismatch,
+) {
+  if (corpus['corpusVersion'] != 3) return null;
+  if ('${step['id']}' != 'helper.script-probe-hg0' ||
+      '${step['family']}' != 'helper' ||
+      '${step['action']}' != 'scriptProbe' ||
+      '${step['source']}' != 'HG0') {
+    return null;
+  }
+  const measured = <String, (Object, Object)>{
+    'value.result.lookup.type': ('object', 'string'),
+    'value.result.lookup.strictLiteral': (false, true),
+  };
+  final pair = measured[mismatch.field];
+  if (pair == null || mismatch.kind != 'type-or-value') return null;
+  if (mismatch.expected != pair.$1 || mismatch.observed != pair.$2) return null;
+  return (
+    group: 'java-return-string-identity',
+    reason: httpBoundaryJavaReturnStringReason,
+  );
+}
+
 /// Binds one strict mismatch to one of the amended differential contract's
 /// approved named differences, or returns null so the mismatch stays an
 /// unattributed failure. Every branch reads the corpus' own declared rows and
@@ -4039,6 +4076,8 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
         final zero = _zeroArityDisposition(product, mismatch);
         if (zero != null) return zero;
       }
+      final javaString = _javaReturnStringDisposition(corpus, step, mismatch);
+      if (javaString != null) return javaString;
     }
     // The two cancellation-owner labels, bound to the corpus' own steps.
     final cancellation = corpus['cancellation'];
