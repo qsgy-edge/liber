@@ -85,11 +85,10 @@ class HtmlBook {
 
   final String title, author, intro, cover, lastChapter, wordCount;
 
-  /// The source's category text, or null when its kind rule resolved no value.
+  /// The source's category text, or null when the source left it unset.
   ///
-  /// The frozen `Book.kind` distinguishes a rule that never resolved from one
-  /// that resolved to empty text, so empty text is its own value and only an
-  /// absent category is null (#138).
+  /// The frozen `Book.kind` carries both states: the empty string is a value a
+  /// declared rule can produce, so only an unset category is null (#138).
   final String? kind;
 
   /// The actual nonempty search response retained for this exact book handoff.
@@ -1865,9 +1864,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       bool url = false,
       void Function(String raw)? onRaw,
     }) async {
-      if (key == 'kind' && _rule('ruleSearch', key, optional: true).isEmpty) {
-        return '';
-      }
       final field = searchFields[key];
       if (key == 'kind' && kindJobs.isNotEmpty) {
         return _kindTexts(
@@ -1913,7 +1909,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // pure extraction fields were already obtained by the single batch.
       final title = await fieldValue('name', index);
       final authorValue = await fieldValue('author', index);
-      final kindValue = await fieldValue('kind', index);
+      // The frozen category carrier is nullable: no kind rule, or an exactly
+      // empty one, leaves it unset, while a declared rule that matches nothing
+      // answers empty text from the read below.
+      final kindValue = _rule('ruleSearch', 'kind', optional: true).isEmpty
+          ? null
+          : await fieldValue('kind', index);
       final wordCountValue = await fieldValue('wordCount', index);
       final lastChapterValue = await fieldValue('lastChapter', index);
       final introValue = await fieldValue('intro', index);

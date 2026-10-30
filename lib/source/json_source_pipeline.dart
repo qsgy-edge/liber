@@ -594,8 +594,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return !raw && unescape ? unescapeHtml4('${result ?? ''}') : result;
   }
 
-  Future<String> _kind(Object? value, String rule, {String label = ''}) async {
-    if (rule.isEmpty) return '';
+  /// The frozen category carrier is nullable: no kind rule, or an exactly empty
+  /// one, leaves it unset. A declared rule that matches nothing still answers
+  /// empty text.
+  Future<String?> _kind(Object? value, String rule, {String label = ''}) async {
+    if (rule.isEmpty) return null;
     final content = _analysisContent(value);
     final field = await RuleField.resolve(
       rule,
