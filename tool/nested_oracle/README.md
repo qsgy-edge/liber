@@ -250,15 +250,19 @@ removed or rewritten.
 The selected run uses the dedicated `SelectedJsLibOracle` instrumentation entry
 and `-e corpus jslib-selected`. Do not use the historical `NestedOracle` entry:
 Android creates the application before delivering instrumentation extras, so only
-the dedicated entry fixes storage-only mode before startup. It differs from the historical one in
-four ways, all of them required by the selected reference:
+the dedicated entry fixes storage-only mode before startup. Selected startup blocks
+shortcut-service acquisition and handles only the context-issued exception from the
+known ReaderProvider publication path; a measured interception and handling are
+required before scratch binding. Other providers remain enabled. It differs from
+the historical run as follows:
 
 - **storage-only.** `newApplication` returns a plain `android.app.Application`
   over `StateSessionOracle.ScratchContext` under
   `<target cacheDir>/liber-jslib-oracle` with the preference prefix
-  `liber_jslib_oracle_`. The installed `io.legado.app.App` is never
-  instantiated, so its `onCreate`, `attachBaseContext`, default-data seeding,
-  logging, cronet pre-download, monitors and schedulers never run, and the
+  `liber_jslib_oracle_`. The process Application is the plain stub; the real
+  `io.legado.app.App` lifecycle is never started, so its `onCreate`,
+  `attachBaseContext`, default-data seeding, logging, cronet pre-download,
+  monitors and schedulers never run, and the
   installation's own database and preferences stay out of reach. After the
   binding, the run checks `splitties.init.AppCtxKt.getAppCtx()` files and
   database paths against the scratch context and proves the preference routing
@@ -277,9 +281,9 @@ four ways, all of them required by the selected reference:
   extra parameters with `null`, and records the arity and parameter types in
   `bindings`; it refuses rather than instantiating an unrelated overload.
 - **delivery.** No report file is written. The report leaves as
-  `JSLIB_ORACLE_BASE64=<base64 JSON>` on the instrumentation stream before the
-  cleanup removes the owned preference files and the scratch root, so a
-  successful cleanup cannot delete the evidence. An unbound or pre-existing root
+  `JSLIB_ORACLE_BASE64=<base64 JSON>` on the instrumentation stream after the
+  cleanup removes the owned preference files and the scratch root. The report is
+  retained in memory through cleanup, so the removal cannot delete it. An unbound or pre-existing root
   is preserved, not deleted. A 240 s watchdog reports the
   stage it stalled in on the same channel.
 
@@ -305,5 +309,4 @@ corpus that declares host initialization unless the capture records
 `hostInitialization.verified: true` for the declared method, measured on an
 unattached instance. Without `--corpus=` / `-e corpus …` the historical corpus
 and its golden are unchanged, and that path keeps the target's external files
-directory delivery. No selected-reference capture has been produced yet: the
-corpus is prepared, not executed.
+directory delivery. A prepared corpus and harness are not a native capture.

@@ -240,7 +240,9 @@ assumed by the harness:
   After the phase binds the root and the routing check passes, the harness
   creates an unattached `io.legado.app.App`, invokes that exact private method,
   re-reads the wrapper registry and refuses unless it is exactly the declared
-  set, compared by factory identity. `App.onCreate`, `attachBaseContext`,
+  set, compared by factory identity. The process Application is the plain
+  storage-only stub; this initializer is an unattached real App instance.
+  `App.onCreate`, `attachBaseContext`,
   default-data seeding, logging, cronet pre-download, monitors and schedulers
   never run. The receipt is the report's `hostInitialization` block, and both
   comparators refuse a capture of this corpus that lacks a verified one.
@@ -248,6 +250,11 @@ assumed by the harness:
   harness resolves the suspend declaration by name prefix and accepted arity,
   passes `false` — the historical value — and records what it resolved in
   `entryPoints`.
+
+Selected startup blocks shortcut-service acquisition and handles only the
+context-issued exception from the known ReaderProvider publication path; each
+phase requires the measured interception and handling before scratch binding.
+Other providers remain enabled.
 
 Run either phase against the selected reference with the dedicated
 `SelectedStateSessionOracle` entry (which fixes the selected corpus and target);
@@ -274,5 +281,4 @@ dart run tool/state_session/compare.dart --corpus=tool/state_session/fixtures-se
 ```
 
 Without `--corpus=` the product commands read `fixtures.json` exactly as before. A
-prepared corpus is not runtime evidence: the selected-reference phase pair has
-not been executed, and no version-3 golden exists.
+prepared corpus is not runtime evidence.

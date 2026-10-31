@@ -76,6 +76,150 @@ void main() {
     expect(corpusSha256, matches(RegExp(r'^[0-9a-f]{64}$')));
   });
 
+  test('selected JSLIB refuses escaped routing and incomplete cleanup', () {
+    corpus = loadJsLibCorpus(jsLibSelectedCorpusPath);
+    target = (corpus['target'] as Map).cast<String, dynamic>();
+    corpusSha256 = jsLibCorpusSha256(File(jsLibSelectedCorpusPath));
+    observations = [
+      for (final row in corpus['steps'] as List)
+        {'id': (row as Map)['id'], 'value': 'synthetic'},
+    ];
+    requests = ['GET /synthetic'];
+    final init = corpus['hostInitialization'] as Map;
+    final wrappers = <String, Object?>{
+      for (final row in init['registrations'] as List)
+        '${(row as Map)['type']}': row['factory'],
+    };
+    golden = {
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'corpusSha256': corpusSha256,
+      'provenance': {
+        'kind': 'frozen-device-capture',
+        'deviceFingerprint': 'synthetic',
+        'capturedAt': '2026-10-30T00:00:00Z',
+        'entryPoint': corpus['entryPoint'],
+        'baselineCommit': corpus['baselineCommit'],
+        'targetPackage': target['package'],
+        'targetApkPath': '/data/app/base.apk',
+        'targetApkSha256': target['apkSha256'],
+      },
+      'identity': {
+        'fixtureId': corpus['fixtureId'],
+        'corpusVersion': corpus['corpusVersion'],
+        'corpusSha256Lf': corpusSha256,
+        'targetPackage': target['package'],
+        'targetApkSha256': target['apkSha256'],
+        'targetBaselineCommit': corpus['baselineCommit'],
+        'targetPinManifest': target['manifest'],
+        'harnessPackage': 'io.liber.oracle.nested',
+        'harnessApkSha256': '1' * 64,
+        'harnessApkPath': '/data/app/harness.apk',
+      },
+      'hostInitialization': {
+        'verified': true,
+        'method': init['method'],
+        'invokedOn': 'unattached-instance',
+        'applicationAttached': false,
+        'registeredWrappers': wrappers,
+      },
+      'startupContainment': {
+        'service': 'shortcut',
+        'provider': 'io.legado.app.api.ReaderProvider',
+        'intercepted': 1,
+        'handled': 1,
+        'beforeBinding': true,
+      },
+      'isolation': {
+        'application': 'android.app.Application',
+        'dataDirectory': '/data/user/0/com.legado.app.debug',
+        'scratchRoot':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle',
+        'files':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle/files',
+        'database':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle/databases/legado.db',
+        'preferencesPrefix': 'liber_jslib_oracle_',
+        'scratchRootExistedAtStart': false,
+        'preferenceProbe': {
+          'name': 'liber_jslib_oracle_liber_jslib_probe',
+          'registered': true,
+          'committed': true,
+          'scopedFile': true,
+          'installationFile': false,
+        },
+      },
+      'cleanup': {
+        'ownership': 'created-fresh-root',
+        'scratchRemoved': true,
+        'scratchRoot':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle',
+        'preferencesRemoved': [
+          {'name': 'liber_jslib_oracle_liber_jslib_probe', 'ok': true},
+        ],
+      },
+      'bindings': {'analyzeUrlConstructorParameters': 16},
+      'replayServerClosed': true,
+      'analysisFailure': null,
+      'observations': observations,
+      'requests': requests,
+    };
+    expect(compare()['status'], 'pass');
+    final alt = golden['isolation'] as Map;
+    alt['dataDirectory'] = '/data/data/com.legado.app.debug';
+    alt['scratchRoot'] = '${alt['dataDirectory']}/cache/liber-jslib-oracle';
+    alt['files'] = '${alt['scratchRoot']}/files';
+    alt['database'] = '${alt['scratchRoot']}/databases/legado.db';
+    (golden['cleanup'] as Map)['scratchRoot'] = alt['scratchRoot'];
+    expect(compare()['status'], 'pass');
+    final initial = jsonDecode(jsonEncode(golden)) as Map<String, dynamic>;
+    final scenarios = <void Function()>[
+      () => golden.remove('startupContainment'),
+      () => (golden['startupContainment'] as Map)['handled'] = 0,
+      () => (golden['startupContainment'] as Map)['beforeBinding'] = false,
+      () {
+        golden['isolation'] = {
+          'scratchRootExistedAtStart': false,
+          'preferenceProbe': {'installationFile': true},
+        };
+        (golden['cleanup'] as Map)['preferencesRemoved'] = [];
+      },
+      () => (golden['isolation'] as Map)['application'] = 'io.legado.app.App',
+      () => (golden['isolation'] as Map)['files'] =
+          '/data/user/0/com.legado.app.debug/files',
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['committed'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['registered'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['scopedFile'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['installationFile'] =
+              true,
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [],
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [
+        {'name': 'unrelated', 'ok': true},
+      ],
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [
+        {'name': 'liber_jslib_oracle_other', 'ok': true},
+      ],
+    ];
+    for (final mutate in scenarios) {
+      golden = jsonDecode(jsonEncode(initial)) as Map<String, dynamic>;
+      mutate();
+      expect(compare, throwsFormatException);
+    }
+  });
+
   test('the corpus never writes a sealed top-level binding', () {
     // The frozen shared scope is sealed; a library function that assigns a
     // top-level jsLib name would throw `msg.modify.sealed`. Shared mutation must

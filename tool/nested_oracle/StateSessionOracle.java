@@ -126,12 +126,17 @@ public class StateSessionOracle extends Instrumentation {
     @Override
     public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
-        scratch = new ScratchContext(context);
+        scratch = new ScratchContext(context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX,
+            selectedCorpus());
         return super.newApplication(cl, Application.class.getName(), scratch);
     }
 
     // The instrumentation entry fixes both target and corpus; extras cannot retarget it.
     boolean selectedCorpus() { return false; }
+
+    final boolean handleShortcutException(Object object, Throwable error) {
+        return scratch != null && scratch.handleShortcutException(object, error);
+    }
 
     @Override
     public void onCreate(Bundle args) {
@@ -209,6 +214,8 @@ public class StateSessionOracle extends Instrumentation {
                 .put("pid", android.os.Process.myPid())
                 .put("identity", identity);
 
+            // Selected startup must have contained the provider before binding or source work.
+            if (selectedCorpus()) report.put("startupContainment", scratch.shortcutReceipt());
             // Storage: a fresh owned root for the seed, the validated owned root for the
             // restart. Both are settled before the room database is opened.
             scratch.bind(phase, identity);
@@ -1593,6 +1600,7 @@ public class StateSessionOracle extends Instrumentation {
 
         public final File root;
         private final String preferencesPrefix;
+        private final ShortcutStartupGuard shortcutGuard;
         private final boolean rootExistedAtStart;
         private final Object stateLock = new Object();
         private final java.util.concurrent.CountDownLatch boundSignal =
@@ -1609,10 +1617,37 @@ public class StateSessionOracle extends Instrumentation {
         }
 
         public ScratchContext(Context base, String rootName, String preferencesPrefix) {
+            this(base, rootName, preferencesPrefix, false);
+        }
+
+        ScratchContext(Context base, String rootName, String preferencesPrefix,
+                boolean containShortcuts) {
             super(base);
             this.preferencesPrefix = preferencesPrefix;
+            shortcutGuard = containShortcuts ? new ShortcutStartupGuard() : null;
             root = new File(base.getCacheDir(), rootName);
             rootExistedAtStart = root.exists();
+        }
+
+        @Override
+        public Object getSystemService(String name) {
+            if (shortcutGuard != null) shortcutGuard.intercept(name, isBound());
+            return super.getSystemService(name);
+        }
+
+        boolean handleShortcutException(Object object, Throwable error) {
+            return shortcutGuard != null && shortcutGuard.handle(object, error);
+        }
+
+        JSONObject shortcutReceipt() throws JSONException {
+            if (shortcutGuard == null || !shortcutGuard.verified()) {
+                throw new IllegalStateException("selected startup shortcut containment was not observed");
+            }
+            return new JSONObject().put("service", ShortcutStartupGuard.SERVICE)
+                .put("provider", ShortcutStartupGuard.PROVIDER)
+                .put("intercepted", shortcutGuard.intercepted())
+                .put("handled", shortcutGuard.handled())
+                .put("beforeBinding", shortcutGuard.beforeBinding());
         }
 
         /**

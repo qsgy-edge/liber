@@ -60,12 +60,15 @@ public class NestedOracle extends Instrumentation {
     public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         if (!storageOnly()) return super.newApplication(cl, name, context);
-        // The selected reference is measured storage-only: the installed
-        // io.legado.app.App is never instantiated, so its onCreate, attachBaseContext,
-        // default-data seeding, cronet pre-download, monitors and jobs never run.
+        // The process Application is the storage-only stub; the real App lifecycle
+        // never runs. HostRuntimeInit later creates one unattached initializer instance.
         scratch = new StateSessionOracle.ScratchContext(context, SCRATCH_ROOT_NAME,
-            PREFERENCE_PREFIX);
+            PREFERENCE_PREFIX, true);
         return super.newApplication(cl, Application.class.getName(), scratch);
+    }
+
+    final boolean handleShortcutException(Object object, Throwable error) {
+        return scratch != null && scratch.handleShortcutException(object, error);
     }
 
     @Override
@@ -221,6 +224,7 @@ public class NestedOracle extends Instrumentation {
                     throw new IllegalStateException("no storage-only application was installed"
                         + " for this run; refusing selected-reference capture");
                 }
+                report.put("startupContainment", scratch.shortcutReceipt());
                 stage = "binding";
                 scratch.bindRun(identity);
                 loader = getTargetContext().getClassLoader();
@@ -306,7 +310,7 @@ public class NestedOracle extends Instrumentation {
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
         JSONObject probe = scratch.seedProbePreferences(app, dataDir, PROBE_PREFERENCE);
         if (probe.getBoolean("installationFile") || !probe.getBoolean("registered")
-                || !probe.getBoolean("scopedFile")) {
+                || !probe.getBoolean("committed") || !probe.getBoolean("scopedFile")) {
             throw new IllegalStateException("appCtx preference storage is not scratch-scoped: "
                 + probe);
         }
@@ -315,6 +319,7 @@ public class NestedOracle extends Instrumentation {
             .put("files", app.getFilesDir().toString())
             .put("database", app.getDatabasePath("legado.db").toString())
             .put("preferencesPrefix", PREFERENCE_PREFIX)
+            .put("dataDirectory", getTargetContext().getApplicationInfo().dataDir)
             .put("preferenceProbe", probe)
             .put("scratchRoot", scratch.root.getAbsolutePath())
             .put("scratchRootExistedAtStart", scratch.rootExistedAtStart())

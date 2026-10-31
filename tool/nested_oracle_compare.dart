@@ -553,6 +553,17 @@ void checkJsLibGolden({
     final registered = <String, Object?>{
       for (final row in declared.cast<Map>()) '${row['type']}': row['factory'],
     };
+    final containment = golden['startupContainment'];
+    if (containment is! Map ||
+        containment['service'] != 'shortcut' ||
+        containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+        containment['intercepted'] != 1 ||
+        containment['handled'] != 1 ||
+        containment['beforeBinding'] != true) {
+      throw const FormatException(
+        'the selected capture has no startup containment receipt',
+      );
+    }
     final cleanup = golden['cleanup'];
     final isolation = golden['isolation'];
     final bindings = golden['bindings'];
@@ -572,6 +583,48 @@ void checkJsLibGolden({
         bindings['analyzeUrlConstructorParameters'] != 16) {
       throw const FormatException(
         'the selected capture has incomplete execution or cleanup receipts',
+      );
+    }
+    final root = isolation['scratchRoot'];
+    final data = isolation['dataDirectory'];
+    final probe = isolation['preferenceProbe'];
+    final removed = cleanup['preferencesRemoved'] as List;
+    const prefix = 'liber_jslib_oracle_';
+    const probeName = '${prefix}liber_jslib_probe';
+    final names = <String>{};
+    if (data is! String ||
+        !data.startsWith('/') ||
+        data.contains('..') ||
+        !data.endsWith('/${target['package']}') ||
+        root != '$data/cache/liber-jslib-oracle' ||
+        isolation['application'] != 'android.app.Application' ||
+        isolation['files'] != '$root/files' ||
+        isolation['database'] != '$root/databases/legado.db' ||
+        isolation['preferencesPrefix'] != prefix ||
+        cleanup['scratchRoot'] != root ||
+        probe is! Map ||
+        probe['name'] != probeName ||
+        probe['registered'] != true ||
+        probe['committed'] != true ||
+        probe['scopedFile'] != true ||
+        probe['installationFile'] != false ||
+        removed.isEmpty ||
+        removed.any((item) {
+          if (item is! Map || item['name'] is! String || item['ok'] != true) {
+            return true;
+          }
+          final name = item['name'] as String;
+          return !name.startsWith(prefix) ||
+              name.length == prefix.length ||
+              name.contains('..') ||
+              name.contains('/') ||
+              name.contains('\\') ||
+              name.contains('\u0000') ||
+              !names.add(name);
+        }) ||
+        !names.contains(probeName)) {
+      throw const FormatException(
+        'the selected capture has invalid isolation or preference cleanup',
       );
     }
   }

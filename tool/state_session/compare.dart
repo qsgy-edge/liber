@@ -229,6 +229,27 @@ void checkStateSessionGolden({
         '$goldenPath records no verified host initialization',
       );
     }
+    final registrations = hostInitialization['registrations'] as List;
+    final declared = <String, Object?>{
+      for (final row in registrations.cast<Map>())
+        '${row['type']}': row['factory'],
+    };
+    if (!_deepEquals(measured['registeredWrappers'], declared)) {
+      throw FormatException(
+        '$goldenPath records an incorrect host initialization registry',
+      );
+    }
+    final containment = golden['startupContainment'];
+    if (containment is! Map ||
+        containment['service'] != 'shortcut' ||
+        containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+        containment['intercepted'] != 1 ||
+        containment['handled'] != 1 ||
+        containment['beforeBinding'] != true) {
+      throw FormatException(
+        '$goldenPath records no startup containment receipt',
+      );
+    }
   }
   if (_integer(golden['pid'], '$goldenPath pid') <= 0) {
     throw FormatException('$goldenPath names no process');

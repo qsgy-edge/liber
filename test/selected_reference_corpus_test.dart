@@ -333,12 +333,18 @@ void main() {
         'verified': false,
       };
     expect(selectedRefusal(unverified), contains('host initialization'));
+    final registrations =
+        (selected['hostInitialization'] as Map)['registrations'] as List;
     final verified = goldenFor(selected, target, selectedHash)
       ..['hostInitialization'] = {
         'method': 'io.legado.app.App#initRhino()',
         'invokedOn': 'unattached-instance',
         'applicationAttached': false,
         'verified': true,
+        'registeredWrappers': {
+          for (final raw in registrations)
+            '${(raw as Map)['type']}': raw['factory'],
+        },
       };
     expect(selectedRefusal(verified), isNot(contains('host initialization')));
     expect(
