@@ -219,3 +219,60 @@ originals after the run. Evidence lives in
 `<evidence>/comparison.json`, `<evidence>/negative-controls.json` and the two phase
 reports beside them. The corpus' `policyRows` and `coverageGaps` stay listed as
 `notCompared`; nothing here closes a row, a ticket or a platform claim.
+
+## Selected reference (corpus version 3, #146)
+
+`fixtures-selected.json` is the same case graph bound to the selected
+compatibility reference `a7d37f1707a70a459ad708f4fe79341d1e42d716`
+(`LegadoTeam/legado` release `3.26101819`) and the same-source instrumentable
+build `com.legado.app.debug` whose APK SHA-256 is
+`593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5`. Every
+source, response, book, step, declared request, policy row and coverage gap is
+the version-2 one; only the identity fields and the two blocks below differ.
+Version 2 and its goldens keep their `14dd2494`/`cc99040c` identity and are
+neither relabelled nor overwritten.
+
+Two things the selected reference needs are declared by the corpus rather than
+assumed by the harness:
+
+- `hostInitialization` — the corpus names `io.legado.app.App#initRhino()`, the
+  nine host wrapper factories it registers and the scratch-only storage rule.
+  After the phase binds the root and the routing check passes, the harness
+  creates an unattached `io.legado.app.App`, invokes that exact private method,
+  re-reads the wrapper registry and refuses unless it is exactly the declared
+  set, compared by factory identity. `App.onCreate`, `attachBaseContext`,
+  default-data seeding, logging, cronet pre-download, monitors and schedulers
+  never run. The receipt is the report's `hostInitialization` block, and both
+  comparators refuse a capture of this corpus that lacks a verified one.
+- `getChapterListAwait` gained `isFromBookInfo` (`WebBook.kt:297-302`). The
+  harness resolves the suspend declaration by name prefix and accepted arity,
+  passes `false` — the historical value — and records what it resolved in
+  `entryPoints`.
+
+Run either phase against the selected reference with the dedicated
+`SelectedStateSessionOracle` entry (which fixes the selected corpus and target);
+the historical entry remains bound to the historical target and corpus. The
+rest of the sequence, the forced stop between the two lifetimes and the
+`STATE_SESSION_ORACLE_BASE64` report channel are unchanged:
+
+```bash
+adb -s <serial> shell am instrument -w -r -e phase seed -e corpus selected \
+  io.liber.oracle.nested/io.liber.oracle.nested.SelectedStateSessionOracle
+adb -s <serial> shell am force-stop com.legado.app.debug
+adb -s <serial> shell am instrument -w -r -e phase restart -e corpus selected \
+  io.liber.oracle.nested/io.liber.oracle.nested.SelectedStateSessionOracle
+adb -s <serial> shell am force-stop com.legado.app.debug
+```
+
+The product side selects the same corpus with `--corpus=`, which is passed on to
+the phase runner and to the negative controls:
+
+```bash
+dart run tool/state_session/compare.dart --corpus=tool/state_session/fixtures-selected.json \
+  --capture=<controller/selected-capture> --evidence=<state-product> \
+  --library=<this worktree's cargo-built fjs.dll>
+```
+
+Without `--corpus=` the product commands read `fixtures.json` exactly as before. A
+prepared corpus is not runtime evidence: the selected-reference phase pair has
+not been executed, and no version-3 golden exists.

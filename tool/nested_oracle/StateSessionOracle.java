@@ -41,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -87,9 +88,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code BookInfoViewModel.kt:238,245-246} over {@code BookChapterDao.kt:35,41};
  * variable access at {@code BaseSource.kt:202-230} and {@code AnalyzeRule.kt:718-771}.
  */
-public final class StateSessionOracle extends Instrumentation {
+public class StateSessionOracle extends Instrumentation {
 
+    /** The historical `14dd2494` corpus; its goldens keep that identity. */
     private static final String ASSET = "state-session-fixtures.json";
+    /** The selected-reference corpus: bound to `a7d37f1` and its instrumentable build. */
+    private static final String ASSET_SELECTED = "state-session-fixtures-selected.json";
     private static final String STREAM_KEY = "STATE_SESSION_ORACLE_BASE64";
     private static final String PREFERENCE_PREFIX = "liber_state_session_01_";
     private static final String SCRATCH_ROOT_NAME = "liber-state-session-01";
@@ -101,10 +105,12 @@ public final class StateSessionOracle extends Instrumentation {
     private final JSONArray stageTrace = new JSONArray();
     private final JSONArray observations = new JSONArray();
     private final JSONObject inventory = new JSONObject();
+    private final JSONObject entryPoints = new JSONObject();
     private final AtomicReference<String> stage = new AtomicReference<>("setup");
     private final AtomicBoolean finished = new AtomicBoolean();
 
     private ScratchContext scratch;
+    private String asset = ASSET;
     private String phase;
     private String runId;
     private JSONObject corpus;
@@ -124,13 +130,22 @@ public final class StateSessionOracle extends Instrumentation {
         return super.newApplication(cl, Application.class.getName(), scratch);
     }
 
+    // The instrumentation entry fixes both target and corpus; extras cannot retarget it.
+    boolean selectedCorpus() { return false; }
+
     @Override
     public void onCreate(Bundle args) {
         super.onCreate(args);
-        // The phase arrives as `am instrument -e phase <seed|restart>`. It is read here
-        // because nothing may reach storage until the phase is known.
         if (args != null) phase = args.getString("phase");
-        log("onCreate phase=" + phase);
+        String requested = args == null ? null : args.getString("corpus");
+        if (requested != null && (!selectedCorpus() || !"selected".equals(requested))) {
+            Bundle status = new Bundle();
+            status.putString("stream", "Wrong instrumentation entry or corpus; refusing.\n");
+            finish(1, status);
+            return;
+        }
+        asset = selectedCorpus() ? ASSET_SELECTED : ASSET;
+        log("onCreate phase=" + phase + " corpus=" + asset);
         new Handler(Looper.getMainLooper()).post(() -> {
             log("main looper reached; starting the worker thread");
             new Thread(this::run, "state-session-oracle").start();
@@ -171,7 +186,7 @@ public final class StateSessionOracle extends Instrumentation {
         JSONObject cleanup = new JSONObject();
         try {
             runId = UUID.randomUUID().toString();
-            corpus = new JSONObject(new String(readAsset(ASSET), StandardCharsets.UTF_8));
+            corpus = new JSONObject(new String(readAsset(asset), StandardCharsets.UTF_8));
             if (!"seed".equals(phase) && !"restart".equals(phase)) {
                 throw new IllegalStateException("phase must be seed or restart, got " + phase);
             }
@@ -199,6 +214,14 @@ public final class StateSessionOracle extends Instrumentation {
             scratch.bind(phase, identity);
             report.put("isolation", checkIsolation());
             log("isolation ok");
+            // The selected reference needs the host wrapper registry its own App
+            // installs at startup. The historical corpus declares none, so its
+            // recorded process behavior is unchanged.
+            if (corpus.has("hostInitialization")) {
+                report.put("hostInitialization", HostRuntimeInit.initialize(loader,
+                    corpus.getJSONObject("hostInitialization")));
+                log("host initialization verified");
+            }
             database = loader.loadClass("io.legado.app.data.AppDatabaseKt")
                 .getMethod("getAppDb").invoke(null);
             bookChapterDao = call(database, "getBookChapterDao");
@@ -236,6 +259,7 @@ public final class StateSessionOracle extends Instrumentation {
             }
             try {
                 report.put("stageTrace", stageTrace)
+                    .put("entryPoints", entryPoints)
                     .put("requests", requests)
                     .put("unmatchedRequests", unmatched)
                     .put("serverErrors", serverErrors)
@@ -287,7 +311,7 @@ public final class StateSessionOracle extends Instrumentation {
         String harnessPackage = getContext().getPackageName();
         String harnessPath = getContext().getPackageManager()
             .getApplicationInfo(harnessPackage, 0).sourceDir;
-        byte[] asset = readAsset(ASSET);
+        byte[] corpusBytes = readAsset(asset);
         return new JSONObject()
             .put("fixtureId", corpus.getString("fixtureId"))
             .put("corpusVersion", corpus.getInt("corpusVersion"))
@@ -299,9 +323,9 @@ public final class StateSessionOracle extends Instrumentation {
             .put("harnessPackage", harnessPackage)
             .put("harnessApkPath", harnessPath)
             .put("harnessApkSha256", sha256(new File(harnessPath)))
-            .put("corpusAsset", ASSET)
-            .put("corpusAssetSha256", sha256(asset))
-            .put("corpusSha256Lf", sha256(lf(asset)));
+            .put("corpusAsset", asset)
+            .put("corpusAssetSha256", sha256(corpusBytes))
+            .put("corpusSha256Lf", sha256(lf(corpusBytes)));
     }
 
     /**
@@ -507,9 +531,16 @@ public final class StateSessionOracle extends Instrumentation {
         Object source = require(sources, declared.getString("source"), "source");
         Object book = require(books, bookId, "book");
         String bookUrl = declared.getString("bookUrl");
-        Object result = runSuspend(loader, continuation -> call(webBookClass, webBook,
-            "getChapterListAwait", 4,
-            new Object[]{source, book, Boolean.FALSE}, continuation));
+        // The selected reference adds `isFromBookInfo` to this declaration; the
+        // historical reference has three parameters. FALSE is the historical value, so
+        // both references run the same scenario, and the resolved arity is recorded.
+        Method entry = resolveSuspend(webBookClass, "getChapterListAwait", 4, 5);
+        boolean withFromBookInfo = entry.getParameterCount() == 5;
+        Object result = runSuspend(loader, continuation -> invokeSuspend(entry, webBook,
+            withFromBookInfo
+                ? new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}
+                : new Object[]{source, book, Boolean.FALSE},
+            continuation));
         List<?> list = unwrapResult(result);
         if (list.isEmpty()) {
             throw new IllegalStateException("table of contents for " + bookId + " is empty");
@@ -1030,28 +1061,64 @@ public final class StateSessionOracle extends Instrumentation {
     }
 
     /** One suspend method on the frozen singleton, with the continuation last. */
-    private static Object call(Class<?> owner, Object instance, String name, int parameterCount,
+    private Object call(Class<?> owner, Object instance, String name, int parameterCount,
             Object[] arguments, Object continuation) throws Throwable {
+        return invokeSuspend(resolveSuspend(owner, name, parameterCount), instance, arguments,
+            continuation);
+    }
+
+    /**
+     * The reference's declaration of one suspend entry point, resolved by declared
+     * types and recorded in the capture.
+     *
+     * <p>A suspend function whose return type is an inline value class is name mangled
+     * with a hash suffix (kotlin.Result -> getChapterListAwait-BWLJW6A), so the base name
+     * is matched as a prefix. A reference that adds a defaulted parameter widens the
+     * declaration instead of adding an overload, so every accepted arity is declared by
+     * the caller and the widest one present is used.
+     */
+    private Method resolveSuspend(Class<?> owner, String name, int... parameterCounts)
+            throws Exception {
         Method target = null;
         for (Method candidate : owner.getMethods()) {
-            // A suspend function whose return type is an inline value class is name
-            // mangled with a hash suffix (kotlin.Result -> getChapterListAwait-BWLJW6A),
-            // so the base name is matched as a prefix.
             if (!candidate.getName().equals(name)
                     && !candidate.getName().startsWith(name + "-")) {
                 continue;
             }
-            if (candidate.getParameterCount() != parameterCount) continue;
-            if (!candidate.getParameterTypes()[parameterCount - 1].getName()
+            if (!candidate.getParameterTypes()[candidate.getParameterCount() - 1].getName()
                     .equals("kotlin.coroutines.Continuation")) {
                 continue;
             }
-            target = candidate;
+            boolean accepted = false;
+            for (int count : parameterCounts) accepted |= candidate.getParameterCount() == count;
+            if (!accepted) continue;
+            if (target == null || candidate.getParameterCount() > target.getParameterCount()) {
+                target = candidate;
+            }
         }
-        if (target == null) throw new IllegalStateException("frozen suspend entry absent: " + name);
-        Object[] full = new Object[parameterCount];
+        if (target == null) {
+            throw new IllegalStateException("frozen suspend entry absent: " + name
+                + Arrays.toString(parameterCounts));
+        }
+        entryPoints.put(name, signatureOf(target));
+        return target;
+    }
+
+    private static String signatureOf(Method method) {
+        StringBuilder text = new StringBuilder(method.getName()).append('(');
+        Class<?>[] types = method.getParameterTypes();
+        for (int index = 0; index < types.length; index++) {
+            if (index > 0) text.append(',');
+            text.append(types[index].getSimpleName());
+        }
+        return text.append(')').toString();
+    }
+
+    private static Object invokeSuspend(Method target, Object instance, Object[] arguments,
+            Object continuation) throws Throwable {
+        Object[] full = new Object[target.getParameterCount()];
         System.arraycopy(arguments, 0, full, 0, arguments.length);
-        full[parameterCount - 1] = continuation;
+        full[target.getParameterCount() - 1] = continuation;
         try {
             return target.invoke(instance, full);
         } catch (InvocationTargetException error) {
@@ -1504,9 +1571,10 @@ public final class StateSessionOracle extends Instrumentation {
      *
      * <p>The phase is bound on the harness worker thread after the target, the corpus and
      * the harness have been measured, because the phase decides whether this invocation
-     * may create the root (seed) or has to validate the manifest the seed left behind
-     * (restart). A restart may only reuse the preference namespaces the seed recorded;
-     * the seed requires each namespace it meets to be empty.
+     * may create the root (seed or a single JSLIB run) or has to validate the manifest
+     * the seed left behind (restart). A restart may only reuse the preference namespaces
+     * the seed recorded; a seed or a single run requires each namespace it meets to be
+     * empty.
      *
      * <p>One measured exception to "no storage before the binding": the frozen
      * application's own start-up providers reach preferences from a background executor
@@ -1563,6 +1631,15 @@ public final class StateSessionOracle extends Instrumentation {
             }
         }
 
+        /**
+         * A single instrumentation lifetime over one fresh owned root: the JSLIB
+         * collector runs once and removes what it created. It is the seed's fresh-root
+         * rule without the retained-restart half, and it never reuses an existing root.
+         */
+        public void bindRun(JSONObject identity) throws Exception {
+            bind("run", identity);
+        }
+
         /** Releases every waiter with a refusal; used for bind and pre-bind failures. */
         public void refuseWaiters(String reason) {
             synchronized (stateLock) {
@@ -1573,9 +1650,9 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         private void bindInternal(String requestedPhase, JSONObject identity) throws Exception {
-            if ("seed".equals(requestedPhase)) {
-                // A seed needs a fresh root. Anything that is already there is left alone
-                // for inspection, never deleted and never reused.
+            if ("seed".equals(requestedPhase) || "run".equals(requestedPhase)) {
+                // A seed or a single run needs a fresh root. Anything that is already
+                // there is left alone for inspection, never deleted and never reused.
                 if (rootExistedAtStart || root.exists()) {
                     throw new IllegalStateException("scratch root already exists; a seed needs a"
                         + " fresh one and a restart needs its owner manifest, inspect first: "
@@ -1595,7 +1672,7 @@ public final class StateSessionOracle extends Instrumentation {
                         .put("harnessApkSha256", identity.getString("harnessApkSha256"))
                         .put("preferences", new JSONArray())
                         .put("createdAt", System.currentTimeMillis());
-                    phase = "seed";
+                    phase = requestedPhase;
                 }
                 // Publish the manifest before the root counts as bound: a waiter must never
                 // see a bound root whose owner file is not on disk yet.
@@ -1607,7 +1684,7 @@ public final class StateSessionOracle extends Instrumentation {
                 return;
             }
             if (!"restart".equals(requestedPhase)) {
-                throw new IllegalStateException("phase must be seed or restart, got "
+                throw new IllegalStateException("phase must be seed, run or restart, got "
                     + requestedPhase);
             }
             File ownerFile = new File(root, OWNER_FILE);
@@ -1681,8 +1758,8 @@ public final class StateSessionOracle extends Instrumentation {
         }
 
         private void writeOwner() throws Exception {
-            // Only the seed owns the manifest. A restart validates and reuses it, and
-            // never rewrites it.
+            // Only the phase that created the root owns the manifest. A restart
+            // validates and reuses it, and never rewrites it.
             //
             // The snapshot, the temporary file and the rename all happen under the state
             // lock. A background callback can register a preference namespace at the same
@@ -1690,7 +1767,7 @@ public final class StateSessionOracle extends Instrumentation {
             // snapshot could publish the older manifest last, silently dropping a name the
             // restart then refuses.
             synchronized (stateLock) {
-                if (owner == null || !"seed".equals(phase)) return;
+                if (owner == null || "restart".equals(phase)) return;
                 byte[] bytes = owner.toString(2).getBytes(StandardCharsets.UTF_8);
                 File target = new File(root, OWNER_FILE);
                 File temporary = new File(root, OWNER_FILE + ".tmp");
@@ -1867,11 +1944,17 @@ public final class StateSessionOracle extends Instrumentation {
                 if ("restart".equals(phase)) {
                     requireOwnedLocked(scoped);
                 } else {
-                    if (!preferences.contains(scoped)
-                            && !getBaseContext().getSharedPreferences(scoped, mode)
-                                .getAll().isEmpty()) {
-                        throw new IllegalStateException(
-                            "seed preference namespace is not fresh: " + scoped);
+                    if (!preferences.contains(scoped)) {
+                        File prefsDir = new File(getBaseContext().getApplicationInfo().dataDir,
+                            "shared_prefs");
+                        File preferenceFile = new File(prefsDir, scoped + ".xml");
+                        File preferenceBackup = new File(prefsDir, scoped + ".xml.bak");
+                        if (preferenceFile.exists() || preferenceBackup.exists()
+                                || !getBaseContext().getSharedPreferences(scoped, mode)
+                                    .getAll().isEmpty()) {
+                            throw new IllegalStateException(
+                                "seed preference namespace is not fresh: " + scoped);
+                        }
                     }
                     if (preferences.add(scoped)) {
                         try {

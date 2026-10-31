@@ -26,6 +26,10 @@ Copy-Item "$PSScriptRoot/fixtures.json" "$OutputDirectory/assets/fixtures.json"
 # way: `am instrument -e corpus jslib` makes NestedOracle read it instead of the
 # default fixtures.json, and its golden records this file's hash.
 Copy-Item "$PSScriptRoot/jslib-fixtures.json" "$OutputDirectory/assets/jslib-fixtures.json"
+# The selected-reference JSLIB-01 corpus travels the same way:
+# `am instrument -e corpus jslib-selected` makes SelectedJsLibOracle read it instead of the
+# historical corpus, and its capture pins this file's hash and target pin.
+Copy-Item "$PSScriptRoot/jslib-fixtures-selected.json" "$OutputDirectory/assets/jslib-fixtures-selected.json"
 Copy-Item "$PSScriptRoot/state-fixtures.json" "$OutputDirectory/assets/state-fixtures.json"
 # The request-semantics corpus travels the same way: the RequestOracle drives the
 # frozen AnalyzeUrl against it, and the golden records this file's hash.
@@ -46,13 +50,16 @@ Copy-Item "$PSScriptRoot/limit-fixtures.json" "$OutputDirectory/assets/limit-fix
 # The #136 STATE-SESSION-01 corpus travels the same way: StateSessionOracle serves
 # it from the device process, and its report pins this file's LF-normalised hash.
 Copy-Item "$PSScriptRoot/../state_session/fixtures.json" "$OutputDirectory/assets/state-session-fixtures.json"
+# The selected-reference STATE-SESSION-01 corpus travels beside it: the fixed
+# SelectedStateSessionOracle entry serves it, pinning its hash and selected target.
+Copy-Item "$PSScriptRoot/../state_session/fixtures-selected.json" "$OutputDirectory/assets/state-session-fixtures-selected.json"
 # The #137 AUTH-SESSION-01 corpus is served by AuthSessionOracle from the target
 # process; the report pins both the raw asset hash and the LF-normalised hash.
 Copy-Item "$PSScriptRoot/../auth_session/fixtures.json" "$OutputDirectory/assets/auth-session-fixtures.json"
 # The #137 HTTP-BOUNDARY-01 corpus is served by HttpBoundaryOracle from the target
 # process; its report pins both the raw asset hash and the LF-normalised hash.
 Copy-Item "$PSScriptRoot/../http_boundary/fixtures.json" "$OutputDirectory/assets/http-boundary-fixtures.json"
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java","$PSScriptRoot/AuthSessionOracle.java","$PSScriptRoot/HttpBoundaryOracle.java")
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/HostRuntimeInit.java","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/SelectedJsLibOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java","$PSScriptRoot/SelectedStateSessionOracle.java","$PSScriptRoot/AuthSessionOracle.java","$PSScriptRoot/HttpBoundaryOracle.java")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
 Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")

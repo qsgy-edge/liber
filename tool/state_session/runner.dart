@@ -33,6 +33,12 @@ import '../first_slice/runner.dart' show SliceReplayServer;
 /// first-slice lane already runs, filtered to the phase's active responses.
 const stateSessionCorpusPath = 'tool/state_session/fixtures.json';
 
+/// The selected-reference `STATE-SESSION-01` v3 corpus. `--corpus=<path>` selects
+/// it; every identity the comparison uses lives inside the file, so the path is
+/// only a tool-side selector and the historical corpus stays the default.
+const stateSessionSelectedCorpusPath =
+    'tool/state_session/fixtures-selected.json';
+
 const stateSessionJavaPolicyKeys = <String>['policyJava.A', 'policyJava.B'];
 
 /// A corpus, library or ownership problem: nothing was run, so the target
@@ -47,6 +53,7 @@ class StateSessionRefusal implements Exception {
 
 class _Options {
   String? expectedCorpusSha256;
+  String corpusPath = stateSessionCorpusPath;
 }
 
 String sha256Bytes(List<int> bytes) => SHA256Digest()
@@ -116,6 +123,25 @@ void validateStateSessionCorpus(Map<String, dynamic> corpus) {
     throw const FormatException('state-session origin is not an http origin');
   }
   stateSessionTargetOf(corpus);
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization != null) {
+    final init = _object(hostInitialization, 'hostInitialization');
+    _text(init['method'], 'hostInitialization.method');
+    final registrations = _array(
+      init['registrations'],
+      'hostInitialization.registrations',
+    );
+    if (registrations.isEmpty) {
+      throw const FormatException(
+        'hostInitialization declares no registration',
+      );
+    }
+    for (final raw in registrations) {
+      final row = _object(raw, 'hostInitialization registration');
+      _text(row['type'], 'hostInitialization registration type');
+      _text(row['factory'], 'hostInitialization registration factory');
+    }
+  }
 
   final sources = _array(corpus['sources'], 'sources').cast<Map>();
   if (sources.isEmpty) throw const FormatException('corpus has no sources');
@@ -389,7 +415,7 @@ Future<void> main(List<String> args) async {
     stderr.writeln(
       'Usage: dart run tool/state_session/runner.dart '
       '<seed|restart> <fjs.dll> <root> <report.json> '
-      '[--expected-corpus-sha256=<sha256>]',
+      '[--expected-corpus-sha256=<sha256>] [--corpus=<path>]',
     );
     exitCode = 64;
     return;
@@ -439,8 +465,8 @@ Future<void> main(List<String> args) async {
   };
   var result = 0;
   try {
-    final corpusFile = File(stateSessionCorpusPath);
-    final corpus = loadStateSessionCorpus(stateSessionCorpusPath);
+    final corpusFile = File(options.corpusPath);
+    final corpus = loadStateSessionCorpus(options.corpusPath);
     final corpusLf = stateSessionCorpusSha256Lf(corpusFile);
     if (options.expectedCorpusSha256 != null &&
         options.expectedCorpusSha256 != corpusLf) {
@@ -464,7 +490,7 @@ Future<void> main(List<String> args) async {
         'corpusVersion': corpus['corpusVersion'],
         'baselineCommit': corpus['baselineCommit'],
         'entryPoint': corpus['entryPoint'],
-        'corpusPath': stateSessionCorpusPath,
+        'corpusPath': options.corpusPath,
         'corpusRawSha256': sha256File(corpusFile),
         'corpusSha256Lf': corpusLf,
         'target': {
@@ -508,6 +534,7 @@ Future<void> main(List<String> args) async {
     });
     await _runPhase(
       corpus: corpus,
+      corpusPath: options.corpusPath,
       corpusLf: corpusLf,
       phase: phase,
       root: root,
@@ -538,6 +565,15 @@ Future<void> main(List<String> args) async {
 _Options _parseOptions(List<String> args) {
   final options = _Options();
   for (final arg in args) {
+    const corpusPrefix = '--corpus=';
+    if (arg.startsWith(corpusPrefix)) {
+      final value = arg.substring(corpusPrefix.length).trim();
+      if (value.isEmpty) {
+        throw const StateSessionRefusal('--corpus names no corpus');
+      }
+      options.corpusPath = value;
+      continue;
+    }
     const prefix = '--expected-corpus-sha256=';
     if (arg.startsWith(prefix)) {
       final value = arg.substring(prefix.length);
@@ -609,6 +645,7 @@ class _DetailsResult {
 
 Future<void> _runPhase({
   required Map<String, dynamic> corpus,
+  required String corpusPath,
   required String corpusLf,
   required String phase,
   required Directory root,
@@ -764,6 +801,7 @@ Future<void> _runPhase({
     try {
       owner = _ownerManifest(
         corpus: corpus,
+        corpusPath: corpusPath,
         corpusLf: corpusLf,
         librarySha256: librarySha256,
         root: root,
@@ -936,6 +974,7 @@ Future<void> _verifyRestoredRoot({
 
 Map<String, Object?> _ownerManifest({
   required Map<String, dynamic> corpus,
+  required String corpusPath,
   required String corpusLf,
   required String librarySha256,
   required Directory root,
@@ -947,9 +986,9 @@ Map<String, Object?> _ownerManifest({
     'fixtureId': corpus['fixtureId'],
     'corpusVersion': corpus['corpusVersion'],
     'baselineCommit': corpus['baselineCommit'],
-    'corpusPath': stateSessionCorpusPath,
+    'corpusPath': corpusPath,
     'corpusSha256Lf': corpusLf,
-    'corpusRawSha256': sha256File(File(stateSessionCorpusPath)),
+    'corpusRawSha256': sha256File(File(corpusPath)),
     'target': {
       'package': target['package'],
       'apkSha256': target['apkSha256'],
