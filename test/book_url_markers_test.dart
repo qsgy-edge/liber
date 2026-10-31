@@ -201,6 +201,64 @@ void main() {
     expect(report['notCompared'], isEmpty);
   });
 
+  test(
+    'FIELDS-02 compares complete seven-source provenance with the manifest',
+    () {
+      final corpus = _syntheticCorpus();
+      final provenance = _syntheticProvenance();
+      (provenance['sources'] as Map<String, String>).addAll(<String, String>{
+        'HostRuntimeInit.java': 'd' * 64,
+        'ShortcutStartupGuard.java': 'e' * 64,
+      });
+      final manifest = _syntheticManifest(corpus);
+      (manifest['artifact'] as Map)['provenance'] = _clone(provenance);
+      manifest['harnessSources'] = _clone(
+        provenance['sources'] as Map<String, dynamic>,
+      );
+      expect(
+        _compare(
+          _syntheticEnvelope(corpus),
+          _syntheticProduct(corpus),
+          corpus,
+          externalManifest: manifest,
+          expectedProvenance: provenance,
+        )['status'],
+        'pass',
+      );
+      for (final name in [
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+      ]) {
+        final changed = _clone(manifest);
+        (changed['harnessSources'] as Map)[name] = 'f' * 64;
+        expect(
+          () => _compare(
+            _syntheticEnvelope(corpus),
+            _syntheticProduct(corpus),
+            corpus,
+            externalManifest: changed,
+            expectedProvenance: provenance,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        final changedArtifact = _clone(manifest);
+        (((changedArtifact['artifact'] as Map)['provenance'] as Map)['sources']
+                as Map)[name] =
+            'f' * 64;
+        expect(
+          () => _compare(
+            _syntheticEnvelope(corpus),
+            _syntheticProduct(corpus),
+            corpus,
+            externalManifest: changedArtifact,
+            expectedProvenance: provenance,
+          ),
+          throwsA(isA<StateError>()),
+        );
+      }
+    },
+  );
+
   test('actual Android preference punctuation is admitted coherently', () {
     const names = [
       'liber_fields_02_FirebasePerfSharedPrefs',
@@ -367,6 +425,7 @@ Map<String, dynamic> _compare(
   Map<String, dynamic> product,
   Map<String, dynamic> corpus, {
   Map<String, dynamic>? externalManifest,
+  Map<String, dynamic>? expectedProvenance,
 }) => compareBookUrlMarkers(
   golden: golden,
   liber: product,
@@ -379,7 +438,7 @@ Map<String, dynamic> _compare(
   expectedHarnessApkSha256: 'harness',
   expectedHarnessAssetSha256: 'a' * 64,
   expectedProvenanceSha256: 'b' * 64,
-  expectedProvenance: _syntheticProvenance(),
+  expectedProvenance: expectedProvenance ?? _syntheticProvenance(),
   expectedLibrarySha256: 'library',
   externalManifest: externalManifest ?? _syntheticManifest(corpus),
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},

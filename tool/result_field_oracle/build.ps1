@@ -41,6 +41,8 @@ $isFields02 = $selectedFixture.fixtureId -eq 'FIELDS-02'
 $sourceInputs = [ordered]@{
   'FieldOracle.java' = "$PSScriptRoot/FieldOracle.java"
   'StateSessionOracle.java' = "$PSScriptRoot/../nested_oracle/StateSessionOracle.java"
+  'HostRuntimeInit.java' = "$PSScriptRoot/../nested_oracle/HostRuntimeInit.java"
+  'ShortcutStartupGuard.java' = "$PSScriptRoot/../nested_oracle/ShortcutStartupGuard.java"
   'AndroidManifest.xml' = "$PSScriptRoot/AndroidManifest.xml"
   'build.ps1' = "$PSScriptRoot/build.ps1"
   'capture.py' = "$PSScriptRoot/capture.py"
@@ -74,7 +76,7 @@ if ($isFields02) {
 # FIELDS-02's storage-only Application reuses the existing STATE scratch helper;
 # compiling its source here keeps the two harnesses on the same visibility-only
 # helper bytes. The original nested build and assets are unchanged.
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/../nested_oracle/StateSessionOracle.java","$PSScriptRoot/FieldOracle.java")
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/../nested_oracle/StateSessionOracle.java","$PSScriptRoot/../nested_oracle/HostRuntimeInit.java","$PSScriptRoot/../nested_oracle/ShortcutStartupGuard.java","$PSScriptRoot/FieldOracle.java")
 $sourceHashesAfter = Get-ProvenanceSourceHashes
 if (($sourceHashesBefore | ConvertTo-Json -Compress) -ne ($sourceHashesAfter | ConvertTo-Json -Compress)) {
   throw 'FIELDS build source inputs changed during compilation'

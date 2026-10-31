@@ -859,22 +859,6 @@ Map<String, dynamic> _inspectHarnessApk(String path) {
       corpus['sha256Lf'] != _sha256(_lf(assetBytes))) {
     throw StateError('embedded provenance does not bind embedded corpus bytes');
   }
-  final sources = _stringMap(provenance['sources'], 'provenance.sources');
-  if (sources.length != 5 ||
-      !sources.keys.toSet().containsAll(const [
-        'FieldOracle.java',
-        'StateSessionOracle.java',
-        'AndroidManifest.xml',
-        'build.ps1',
-        'capture.py',
-      ])) {
-    throw StateError('embedded provenance source key set differs');
-  }
-  for (final entry in sources.entries) {
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(entry.value)) {
-      throw StateError('embedded provenance source hash is malformed');
-    }
-  }
   return {
     'apkSha256': _sha256(bytes),
     'assetBytes': assetBytes,
@@ -912,14 +896,21 @@ void _admitProvenanceObject(Map<String, dynamic> provenance, String label) {
     }
   }
   final sources = _stringMap(provenance['sources'], '$label.sources');
-  if (sources.length != 5 ||
-      !sources.keys.toSet().containsAll(const [
-        'FieldOracle.java',
-        'StateSessionOracle.java',
-        'AndroidManifest.xml',
-        'build.ps1',
-        'capture.py',
-      ])) {
+  const historical = {
+    'FieldOracle.java',
+    'StateSessionOracle.java',
+    'AndroidManifest.xml',
+    'build.ps1',
+    'capture.py',
+  };
+  const current = {
+    ...historical,
+    'HostRuntimeInit.java',
+    'ShortcutStartupGuard.java',
+  };
+  final names = sources.keys.toSet();
+  if (!((names.length == historical.length && names.containsAll(historical)) ||
+      (names.length == current.length && names.containsAll(current)))) {
     throw StateError('$label source key set differs');
   }
   for (final digest in sources.values) {
@@ -1015,9 +1006,6 @@ void _admitExternalArtifact(
     );
   }
   final sources = _stringMap(provenance['sources'], 'provenance.sources');
-  if (sources.length != 5) {
-    throw StateError('embedded provenance source map is incomplete');
-  }
   final manifestSources = _stringMap(
     manifest['harnessSources'],
     'manifest.harnessSources',
