@@ -1947,4 +1947,39 @@ void main() {
       }
     });
   });
+
+  test(
+    'the selected-reference AUTH corpus names the selected target and corpus',
+    () {
+      final selected = loadAuthSessionCorpus(
+        'tool/auth_session/fixtures-selected.json',
+      );
+      expect(selected['corpusVersion'], 2);
+      final target = selected['target'] as Map;
+      expect(target['package'], 'com.legado.app.debug');
+      expect(
+        target['apkSha256'],
+        '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+      );
+      expect(
+        target['baselineCommit'],
+        'a7d37f1707a70a459ad708f4fe79341d1e42d716',
+      );
+      expect(selected['hostInitialization'], isA<Map>());
+      expect(
+        (selected['hostInitialization'] as Map)['method'],
+        'io.legado.app.App#initRhino()',
+      );
+      // The form graph, sources and request declarations are the historical ones.
+      final historical = loadAuthSessionCorpus();
+      expect(
+        ((selected['phases'] as Map)['seed'] as Map)['expectedRequests'],
+        ((historical['phases'] as Map)['seed'] as Map)['expectedRequests'],
+      );
+      expect(
+        ((selected['phases'] as Map)['restart'] as Map)['steps'],
+        ((historical['phases'] as Map)['restart'] as Map)['steps'],
+      );
+    },
+  );
 }

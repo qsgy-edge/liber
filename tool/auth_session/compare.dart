@@ -2040,6 +2040,13 @@ String _pathSegment(String path) => path.split('/').last;
 // CLI: run both phases, then compare and run the controls
 // --------------------------------------------------------------------------
 
+/// The corpus `--corpus=<path>` names, or the historical corpus. The path is a
+/// tool-side selector only; every identity the comparison uses is inside the file.
+String _selectedCorpusPath(Map<String, String> options) {
+  final path = options['corpus']?.trim();
+  return path == null || path.isEmpty ? authSessionCorpusPath : path;
+}
+
 Map<String, String> _namedOptions(List<String> args) {
   final options = <String, String>{};
   for (final arg in args) {
@@ -2068,8 +2075,9 @@ Future<int> _runAndCompare(List<String> args) async {
   final evidence = Directory(_required(options, 'evidence'));
   final libraryPath = _required(options, 'library');
   final handoffPath = options['handoff'];
-  final corpusFile = File(authSessionCorpusPath);
-  final corpus = loadAuthSessionCorpus(authSessionCorpusPath);
+  final corpusPath = _selectedCorpusPath(options);
+  final corpusFile = File(corpusPath);
+  final corpus = loadAuthSessionCorpus(corpusPath);
   final corpusLf = authSessionCorpusSha256Lf(corpusFile);
   final librarySha = sha256File(File(libraryPath));
   final seedGoldenPath =
@@ -2112,6 +2120,7 @@ Future<int> _runAndCompare(List<String> args) async {
     root,
     seedReport,
     '--expected-corpus-sha256=$corpusLf',
+    '--corpus=$corpusPath',
   ], logPath: '${evidence.path}${Platform.pathSeparator}seed-runner.log');
   final restartRun = await _runProcess([
     'run',
@@ -2121,6 +2130,7 @@ Future<int> _runAndCompare(List<String> args) async {
     root,
     restartReport,
     '--expected-corpus-sha256=$corpusLf',
+    '--corpus=$corpusPath',
   ], logPath: '${evidence.path}${Platform.pathSeparator}restart-runner.log');
   final seedProduct = _readJsonOrNull(seedReport);
   final restartProduct = _readJsonOrNull(restartReport);
@@ -2661,8 +2671,9 @@ Future<int> _controlsOnly(List<String> args) async {
   final seedProductPath = _required(options, 'seed-product');
   final restartProductPath = _required(options, 'restart-product');
   final libraryPath = options['library'];
-  final corpus = loadAuthSessionCorpus(authSessionCorpusPath);
-  final corpusLf = authSessionCorpusSha256Lf(File(authSessionCorpusPath));
+  final corpusPath = _selectedCorpusPath(options);
+  final corpus = loadAuthSessionCorpus(corpusPath);
+  final corpusLf = authSessionCorpusSha256Lf(File(corpusPath));
   final seedGoldenPath =
       '${capture.path}${Platform.pathSeparator}seed-report.json';
   final restartGoldenPath =
@@ -2748,8 +2759,9 @@ Future<int> _compareOnly(List<String> args) async {
         '--golden-restart=<restart-report.json>',
       );
     }
-    final corpus = loadAuthSessionCorpus(authSessionCorpusPath);
-    final corpusLf = authSessionCorpusSha256Lf(File(authSessionCorpusPath));
+    final corpusPath = _selectedCorpusPath(options);
+    final corpus = loadAuthSessionCorpus(corpusPath);
+    final corpusLf = authSessionCorpusSha256Lf(File(corpusPath));
     final seedGoldenPath = _required(options, 'golden-seed');
     final restartGoldenPath = _required(options, 'golden-restart');
     final seedGoldenSha = sha256File(File(seedGoldenPath));

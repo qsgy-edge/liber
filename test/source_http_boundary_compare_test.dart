@@ -4504,4 +4504,34 @@ void main() {
     }
     expect(refusal(unknownCarrier), isNotNull);
   });
+
+  test('the selected-reference corpus gate accepts only its declared shape', () {
+    final selected = loadHttpBoundaryCorpus(
+      'tool/http_boundary/fixtures-selected.json',
+    );
+    // The selected identity is inside the file, not in the selector.
+    expect(selected['corpusVersion'], 4);
+    expect((selected['target'] as Map)['package'], 'com.legado.app.debug');
+    expect(
+      (selected['target'] as Map)['apkSha256'],
+      '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+    );
+    // The reference carries no isConcurrent, so the corpus declares only the
+    // fields it really has and its own window schedule.
+    final rate = selected['rate'] as Map;
+    expect(rate['recordFields'], ['time', 'frequency']);
+    final schedule = (rate['schedule'] as List).cast<Map>();
+    expect(
+      [for (final row in schedule) row['window']],
+      ['opens', 'rolls', 'rolls'],
+    );
+    // The selected default is a declaration; the capture records the actual read.
+    expect((selected['runtime'] as Map)['threadCountDefault'], 32);
+    expect(selected['hostInitialization'], isA<Map>());
+    // The historical corpus keeps its own version, fields and schedule meaning.
+    final historical = loadHttpBoundaryCorpus();
+    expect(historical['corpusVersion'], 3);
+    expect((historical['rate'] as Map)['recordFields'], isNull);
+    expect((historical['rate'] as Map)['schedule'], isNull);
+  });
 }

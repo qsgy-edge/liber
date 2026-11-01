@@ -47,6 +47,7 @@ class AuthSessionRefusal implements Exception {
 
 class _Options {
   String? expectedCorpusSha256;
+  String corpusPath = authSessionCorpusPath;
 }
 
 String sha256Bytes(List<int> bytes) => SHA256Digest()
@@ -538,8 +539,8 @@ Future<void> main(List<String> args) async {
   };
   var result = 0;
   try {
-    final corpusFile = File(authSessionCorpusPath);
-    final corpus = loadAuthSessionCorpus(authSessionCorpusPath);
+    final corpusFile = File(options.corpusPath);
+    final corpus = loadAuthSessionCorpus(options.corpusPath);
     final corpusLf = authSessionCorpusSha256Lf(corpusFile);
     if (options.expectedCorpusSha256 != null &&
         options.expectedCorpusSha256 != corpusLf) {
@@ -563,7 +564,7 @@ Future<void> main(List<String> args) async {
         'corpusVersion': corpus['corpusVersion'],
         'baselineCommit': corpus['baselineCommit'],
         'entryPoint': corpus['entryPoint'],
-        'corpusPath': authSessionCorpusPath,
+        'corpusPath': options.corpusPath,
         'corpusRawSha256': sha256File(corpusFile),
         'corpusSha256Lf': corpusLf,
         'target': {
@@ -614,6 +615,7 @@ Future<void> main(List<String> args) async {
     });
     await _runPhase(
       corpus: corpus,
+      corpusPath: options.corpusPath,
       corpusLf: corpusLf,
       phase: phase,
       root: root,
@@ -645,6 +647,7 @@ _Options _parseOptions(List<String> args) {
   final options = _Options();
   for (final arg in args) {
     const prefix = '--expected-corpus-sha256=';
+    const corpusPrefix = '--corpus=';
     if (arg.startsWith(prefix)) {
       final value = arg.substring(prefix.length);
       if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(value)) {
@@ -653,6 +656,14 @@ _Options _parseOptions(List<String> args) {
         );
       }
       options.expectedCorpusSha256 = value;
+      continue;
+    }
+    if (arg.startsWith(corpusPrefix)) {
+      final value = arg.substring(corpusPrefix.length).trim();
+      if (value.isEmpty) {
+        throw const AuthSessionRefusal('--corpus is empty');
+      }
+      options.corpusPath = value;
       continue;
     }
     throw AuthSessionRefusal('unknown runner argument: $arg');
@@ -712,6 +723,7 @@ class _PhaseEvidence {
 
 Future<void> _runPhase({
   required Map<String, dynamic> corpus,
+  required String corpusPath,
   required String corpusLf,
   required String phase,
   required Directory root,
@@ -885,6 +897,7 @@ Future<void> _runPhase({
         root: root,
         seedRunId: '${report['runId']}',
         seedPid: pid,
+        corpusPath: corpusPath,
       );
       _writeOwner(ownerFile, owner);
       ownerSha = sha256File(ownerFile);
@@ -1662,15 +1675,16 @@ Map<String, Object?> _ownerManifest({
   required Directory root,
   required String seedRunId,
   required int seedPid,
+  required String corpusPath,
 }) {
   final target = authSessionTargetOf(corpus);
   return {
     'fixtureId': corpus['fixtureId'],
     'corpusVersion': corpus['corpusVersion'],
     'baselineCommit': corpus['baselineCommit'],
-    'corpusPath': authSessionCorpusPath,
+    'corpusPath': corpusPath,
     'corpusSha256Lf': corpusLf,
-    'corpusRawSha256': sha256File(File(authSessionCorpusPath)),
+    'corpusRawSha256': sha256File(File(corpusPath)),
     'target': {
       'package': target['package'],
       'apkSha256': target['apkSha256'],

@@ -86,9 +86,12 @@ import java.util.regex.Pattern;
  * containment and ships {@code tool/http_boundary/fixtures.json} as its asset.
  * No Legado class is rebuilt and no compared value is written by hand.
  */
-public final class HttpBoundaryOracle extends Instrumentation {
+public class HttpBoundaryOracle extends Instrumentation {
 
+    /** The historical `14dd2494` corpus; its goldens keep that identity. */
     private static final String ASSET = "http-boundary-fixtures.json";
+    /** The selected-reference corpus: bound to `a7d37f1` and its instrumentable build. */
+    private static final String ASSET_SELECTED = "http-boundary-fixtures-selected.json";
     private static final String STREAM_KEY = "HTTP_BOUNDARY_ORACLE_BASE64";
     private static final String SCRATCH_ROOT_NAME = "liber-http-boundary-01";
     private static final String PREFERENCE_PREFIX = "liber_http_boundary_01_";
@@ -103,8 +106,17 @@ public final class HttpBoundaryOracle extends Instrumentation {
     private final JSONArray stageTrace = new JSONArray();
     private final JSONArray observations = new JSONArray();
     private final JSONObject inventory = new JSONObject();
+    private final JSONObject entryPoints = new JSONObject();
     private final AtomicReference<String> stage = new AtomicReference<>("setup");
     private final AtomicBoolean finished = new AtomicBoolean();
+    private String asset = ASSET;
+
+    // The instrumentation entry fixes both target and corpus; extras cannot retarget it.
+    boolean selectedCorpus() { return false; }
+
+    final boolean handleShortcutException(Object object, Throwable error) {
+        return scratch != null && scratch.handleShortcutException(object, error);
+    }
 
     private StateSessionOracle.ScratchContext scratch;
     private Context application;
@@ -168,7 +180,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
     public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         scratch = new StateSessionOracle.ScratchContext(context, SCRATCH_ROOT_NAME,
-            PREFERENCE_PREFIX);
+            PREFERENCE_PREFIX, selectedCorpus());
         // A storage-only Application over the bound scratch context: frozen App.onCreate
         // (crash handler, file logging, Cronet, DefaultData, freeze monitor, LiveEventBus,
         // URL factory) never runs. No WebView API and no data-directory suffix is touched
@@ -180,7 +192,15 @@ public final class HttpBoundaryOracle extends Instrumentation {
     public void onCreate(Bundle args) {
         super.onCreate(args);
         if (args != null) negativeArg = args.getString("negative");
-        log("onCreate negative=" + negativeArg);
+        String requested = args == null ? null : args.getString("corpus");
+        if (requested != null && (!selectedCorpus() || !"selected".equals(requested))) {
+            Bundle status = new Bundle();
+            status.putString("stream", "Wrong instrumentation entry or corpus; refusing.\n");
+            finish(1, status);
+            return;
+        }
+        asset = selectedCorpus() ? ASSET_SELECTED : ASSET;
+        log("onCreate negative=" + negativeArg + " corpus=" + asset);
         new Handler(Looper.getMainLooper()).post(() -> {
             log("main looper reached; starting the worker thread");
             new Thread(this::run, "http-boundary-oracle").start();
@@ -223,15 +243,26 @@ public final class HttpBoundaryOracle extends Instrumentation {
         JSONObject cleanup = new JSONObject();
         try {
             runId = UUID.randomUUID().toString();
-            byte[] asset = readAsset(ASSET);
-            corpus = new JSONObject(new String(asset, StandardCharsets.UTF_8));
+            byte[] corpusBytes = readAsset(asset);
+            corpus = new JSONObject(new String(corpusBytes, StandardCharsets.UTF_8));
             validateCorpus();
             indexCorpus();
             corpusIndexed = true;
             parseNegative();
-            identity = measureIdentity(asset);
+            identity = measureIdentity(corpusBytes);
             scratch.bind("seed", identity);
             isolation = checkIsolation();
+            // Selected startup must have contained the provider before binding or source work.
+            if (selectedCorpus()) {
+                identity.put("startupContainment", scratch.shortcutReceipt());
+            }
+            // The selected reference needs the host wrapper registry its own App installs
+            // at startup; the historical corpus declares none.
+            if (corpus.has("hostInitialization")) {
+                identity.put("hostInitialization", HostRuntimeInit.initialize(loader,
+                    corpus.getJSONObject("hostInitialization")));
+                log("host initialization verified");
+            }
             database = loader.loadClass("io.legado.app.data.AppDatabaseKt")
                 .getMethod("getAppDb").invoke(null);
             inventory.put("databaseOpened", true)
@@ -354,6 +385,7 @@ public final class HttpBoundaryOracle extends Instrumentation {
                     .put("observations", snapshot(observations))
                     .put("observationCheck", reportCheck("observation"))
                     .put("inventory", inventory)
+                    .put("entryPoints", entryPoints)
                     .put("cleanup", cleanup)
                     .put("sourceDerivedNotes", corpus == null
                         ? JSONObject.NULL : corpus.optJSONObject("sourceDerivedNotes"))
@@ -589,18 +621,94 @@ public final class HttpBoundaryOracle extends Instrumentation {
                 + ", the corpus pins " + expectedClass);
         }
         JSONObject out = new JSONObject();
-        Object concurrent = memberValue(type, record,
-            new String[]{"isConcurrent", "getIsConcurrent"});
-        Object time = memberValue(type, record, new String[]{"getTime", "time"});
-        Object frequency = memberValue(type, record, new String[]{"getFrequency", "frequency"});
-        if (!(concurrent instanceof Boolean) || !(time instanceof Number)
-                || !(frequency instanceof Number)) {
-            throw new IllegalStateException("the frozen ConcurrentRecord fields are"
-                + " unresolved: " + out);
+        for (String field : rateRecordFields()) {
+            Object value;
+            if ("isConcurrent".equals(field)) {
+                value = memberValue(type, record, new String[]{"isConcurrent", "getIsConcurrent"});
+                if (!(value instanceof Boolean)) {
+                    throw new IllegalStateException("the frozen ConcurrentRecord isConcurrent"
+                        + " field is not a boolean: " + value);
+                }
+                out.put(field, ((Boolean) value).booleanValue());
+            } else if ("time".equals(field)) {
+                value = memberValue(type, record, new String[]{"getTime", "time"});
+                if (!(value instanceof Number)) {
+                    throw new IllegalStateException("the frozen ConcurrentRecord time field"
+                        + " is not a number: " + value);
+                }
+                out.put(field, ((Number) value).longValue());
+            } else if ("frequency".equals(field)) {
+                value = memberValue(type, record, new String[]{"getFrequency", "frequency"});
+                if (!(value instanceof Number)) {
+                    throw new IllegalStateException("the frozen ConcurrentRecord frequency"
+                        + " field is not a number: " + value);
+                }
+                out.put(field, ((Number) value).intValue());
+            } else {
+                throw new IllegalStateException("the corpus declares an unknown rate record"
+                    + " field " + field);
+            }
         }
-        return out.put("isConcurrent", ((Boolean) concurrent).booleanValue())
-            .put("time", ((Number) time).longValue())
-            .put("frequency", ((Number) frequency).intValue());
+        return out;
+    }
+
+    /**
+     * The record fields this corpus compares. The historical corpus declares none, so its
+     * three original fields keep their meaning; the selected reference carries no
+     * `isConcurrent` at all, so the selected corpus declares only what it really has and
+     * the rest stays in the record's provenance.
+     */
+    private String[] rateRecordFields() throws JSONException {
+        JSONArray declared = corpus.getJSONObject("rate").optJSONArray("recordFields");
+        if (declared == null) return new String[]{"isConcurrent", "time", "frequency"};
+        String[] fields = new String[declared.length()];
+        for (int index = 0; index < declared.length(); index++) {
+            fields[index] = declared.getString(index);
+        }
+        if (fields.length == 0) {
+            throw new IllegalStateException("the corpus declares no rate record field");
+        }
+        return fields;
+    }
+
+    /**
+     * The window relation this rate row declares. The historical corpus declares no
+     * schedule, so its three original row meanings are preserved; the selected corpus
+     * declares each row's relation because the selected reference rolls the window on
+     * every start instead of admitting an extra same-window start.
+     */
+    private String rateWindowRelation(int index) throws JSONException {
+        JSONObject declared = declaredRateSchedule(index);
+        if (declared != null) return declared.getString("window");
+        return index == 1 ? "opens" : index == 2 ? "same" : "rolls";
+    }
+
+    private int rateExpectedFrequency(int index, String windowRelation) throws JSONException {
+        JSONObject declared = declaredRateSchedule(index);
+        if (declared != null) return declared.getInt("frequency");
+        return "same".equals(windowRelation) ? 2 : 1;
+    }
+
+    private JSONObject declaredRateSchedule(int index) throws JSONException {
+        JSONArray schedule = corpus.getJSONObject("rate").optJSONArray("schedule");
+        if (schedule == null) return null;
+        for (int position = 0; position < schedule.length(); position++) {
+            JSONObject row = schedule.getJSONObject(position);
+            if (row.getInt("index") != index) continue;
+            String relation = row.optString("window", "");
+            if (!"opens".equals(relation) && !"same".equals(relation)
+                    && !"rolls".equals(relation)) {
+                throw new IllegalStateException("rate.schedule[" + position + "] declares the"
+                    + " unknown window relation " + relation);
+            }
+            return row;
+        }
+        throw new IllegalStateException("rate.schedule declares no row for index " + index);
+    }
+
+    /** The compared window count, or 0 when this corpus does not compare it. */
+    private static int rateFrequency(JSONObject record) throws JSONException {
+        return record.has("frequency") ? record.getInt("frequency") : 0;
     }
 
     /** The frozen Java class name is intrahost provenance, never a compared value. */
@@ -724,14 +832,18 @@ public final class HttpBoundaryOracle extends Instrumentation {
     // -------------------------------------------------------- corpus structure
 
     private void validateCorpus() throws Exception {
+        int expectedVersion = selectedCorpus() ? 4 : 3;
         if (!"HTTP-BOUNDARY-01".equals(corpus.getString("fixtureId"))
                 || corpus.getInt("schemaVersion") != 1
-                || corpus.getInt("corpusVersion") != 3) {
-            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema 1/version 3");
+                || corpus.getInt("corpusVersion") != expectedVersion) {
+            throw new IllegalStateException("corpus is not HTTP-BOUNDARY-01 schema 1/version "
+                + expectedVersion);
         }
         JSONObject target = corpus.getJSONObject("target");
-        if (!"io.legado.app.debug".equals(target.getString("package"))) {
-            throw new IllegalStateException("corpus targets another package");
+        // The entry fixes the target package; the corpus must name the same installed one.
+        if (!target.getString("package").equals(getTargetContext().getPackageName())) {
+            throw new IllegalStateException("corpus targets " + target.getString("package")
+                + ", this entry is bound to " + getTargetContext().getPackageName());
         }
         if (!corpus.getString("baselineCommit").equals(target.getString("baselineCommit"))) {
             throw new IllegalStateException("corpus and target disagree on the baseline commit");
@@ -1763,22 +1875,52 @@ public final class HttpBoundaryOracle extends Instrumentation {
             + " unresolved; the script arities remain the measured surface");
     }
 
+    /**
+     * The reference's AnalyzeUrl constructor, resolved by declared parameter types. The
+     * selected entry appends `infoMap` and `extraParams`, so both the historical
+     * fourteen-parameter and the selected sixteen-parameter declaration are accepted and
+     * the resolved signature is recorded; the shared positional prefix carries the same
+     * meaning in both, and every appended parameter is left at its declared default.
+     */
     private Object newAnalyzeUrl(Object source) throws Exception {
         Class<?> urlClass = loader.loadClass("io.legado.app.model.analyzeRule.AnalyzeUrl");
         Constructor<?> constructor = null;
         for (Constructor<?> candidate : urlClass.getConstructors()) {
-            if (candidate.getParameterCount() != 14) continue;
+            int count = candidate.getParameterCount();
+            if (count != 14 && count != 16) continue;
             Class<?>[] types = candidate.getParameterTypes();
-            if (types[0] == String.class && types[13] == Boolean.TYPE) constructor = candidate;
+            if (types[0] != String.class || types[13] != Boolean.TYPE) continue;
+            if (count == 16 && (types[14] != java.util.Map.class
+                    || types[15] != java.util.Map.class)) {
+                continue;
+            }
+            if (constructor == null || count > constructor.getParameterCount()) {
+                constructor = candidate;
+            }
         }
         if (constructor == null) {
             throw new IllegalStateException("frozen AnalyzeUrl constructor absent");
         }
+        entryPoints.put("AnalyzeUrl", signatureOf(constructor));
         Object context = loader.loadClass("kotlin.coroutines.EmptyCoroutineContext")
             .getField("INSTANCE").get(null);
         String key = str(source.getClass(), source, "getKey");
-        return constructor.newInstance(key, null, null, null, null, key, source, null, null,
-            null, null, context, null, Boolean.TRUE);
+        Object[] arguments = new Object[constructor.getParameterCount()];
+        Object[] shared = new Object[]{key, null, null, null, null, key, source, null, null,
+            null, null, context, null, Boolean.TRUE};
+        System.arraycopy(shared, 0, arguments, 0, shared.length);
+        return constructor.newInstance(arguments);
+    }
+
+    private static String signatureOf(java.lang.reflect.Executable member) {
+        StringBuilder text = new StringBuilder(member instanceof Method
+            ? member.getName() : "AnalyzeUrl").append('(');
+        Class<?>[] types = member.getParameterTypes();
+        for (int index = 0; index < types.length; index++) {
+            if (index > 0) text.append(',');
+            text.append(types[index].getSimpleName());
+        }
+        return text.append(')').toString();
     }
 
     private Object evalJS(Object host, String script) throws Exception {
@@ -1833,60 +1975,58 @@ public final class HttpBoundaryOracle extends Instrumentation {
             throw new IncompleteStep("no rate record after rate.record." + index);
         }
         long window = corpus.getJSONObject("rate").getLong("windowMillis");
+        String windowRelation = rateWindowRelation(index);
+        int expectedFrequency = rateExpectedFrequency(index, windowRelation);
         Boolean sameWindow = null;
         boolean complete = true;
         StringBuilder reason = new StringBuilder();
-        if (index == 1) {
+        if ("opens".equals(windowRelation)) {
             if (before != null) {
                 complete = false;
                 reason.append("the map was not empty before the first admission; ");
             }
-            if (after.getInt("frequency") != 1) {
+            if (rateFrequency(after) != expectedFrequency) {
                 complete = false;
-                reason.append("the first record is not frequency 1; ");
+                reason.append("the first record is not frequency ")
+                    .append(expectedFrequency).append("; ");
             }
             if (startMillis >= after.getLong("time") + window) {
                 complete = false;
                 reason.append("the first call started after its own window; ");
             }
-        } else if (index == 2) {
-            if (before == null) {
+        } else if (before == null) {
+            complete = false;
+            reason.append("this admission has no previous record; ");
+        } else if ("same".equals(windowRelation)) {
+            sameWindow = Boolean.valueOf(after.getLong("time") == before.getLong("time"));
+            if (!sameWindow.booleanValue()) {
                 complete = false;
-                reason.append("the second admission has no first record; ");
-            } else {
-                sameWindow = Boolean.valueOf(after.getLong("time") == before.getLong("time"));
-                if (!sameWindow.booleanValue()) {
-                    complete = false;
-                    reason.append("the second admission started a new window; ");
-                }
-                if (after.getInt("frequency") != 2) {
-                    complete = false;
-                    reason.append("the second record is not frequency 2; ");
-                }
-                if (startMillis >= before.getLong("time") + window) {
-                    complete = false;
-                    reason.append("the second call was outside the first window; ");
-                }
+                reason.append("this admission started a new window; ");
+            }
+            if (rateFrequency(after) != expectedFrequency) {
+                complete = false;
+                reason.append("this record is not frequency ")
+                    .append(expectedFrequency).append("; ");
+            }
+            if (startMillis >= before.getLong("time") + window) {
+                complete = false;
+                reason.append("this call was outside the open window; ");
             }
         } else {
-            if (before == null) {
+            sameWindow = Boolean.valueOf(after.getLong("time") == before.getLong("time"));
+            long advance = after.getLong("time") - before.getLong("time");
+            evidence.put("windowAdvanceMillis", advance);
+            if (advance < window) {
                 complete = false;
-                reason.append("the third admission has no second record; ");
-            } else {
-                sameWindow = Boolean.valueOf(after.getLong("time") == before.getLong("time"));
-                long advance = after.getLong("time") - before.getLong("time");
-                evidence.put("windowAdvanceMillis", advance);
-                if (advance < window) {
-                    complete = false;
-                    reason.append("the third admission did not respect the window; ");
-                }
-                if (after.getInt("frequency") != 1) {
-                    complete = false;
-                    reason.append("the third record did not reset to frequency 1; ");
-                }
+                reason.append("this admission did not respect the window; ");
+            }
+            if (rateFrequency(after) != expectedFrequency) {
+                complete = false;
+                reason.append("this record did not reset to frequency ")
+                    .append(expectedFrequency).append("; ");
             }
         }
-        if (!after.getBoolean("isConcurrent")) {
+        if (after.has("isConcurrent") && !after.getBoolean("isConcurrent")) {
             complete = false;
             reason.append("the record is not a concurrent record; ");
         }
@@ -2163,9 +2303,16 @@ public final class HttpBoundaryOracle extends Instrumentation {
         Class<?> chapterClass = loader.loadClass("io.legado.app.data.entities.BookChapter");
         String bookId = step.getString("book");
         Object book = require(books, bookId, "book");
-        Object result = runSuspend(loader, continuation -> callSuspend(webBookClass, webBook,
-            "getChapterListAwait", 4,
-            new Object[]{source, book, Boolean.FALSE}, continuation));
+        // The selected entry adds `isFromBookInfo` to this declaration; the historical
+        // reference has three parameters. FALSE is the historical value, so both run the
+        // same scenario, and the resolved arity is recorded.
+        Method tocEntry = resolveSuspend(webBookClass, "getChapterListAwait", 4, 5);
+        boolean withFromBookInfo = tocEntry.getParameterCount() == 5;
+        Object result = runSuspend(loader, continuation -> invokeSuspend(tocEntry, webBook,
+            withFromBookInfo
+                ? new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}
+                : new Object[]{source, book, Boolean.FALSE},
+            continuation));
         List<?> list = unwrapResult(result);
         if (list.isEmpty()) throw new IllegalStateException("table of contents is empty");
         JSONArray observed = new JSONArray();
@@ -4027,6 +4174,51 @@ public final class HttpBoundaryOracle extends Instrumentation {
         Object context = loader.loadClass("kotlin.coroutines.EmptyCoroutineContext")
             .getField("INSTANCE").get(null);
         return runBlockingWithContext(context, call);
+    }
+
+    /**
+     * The reference's declaration of one suspend entry point, resolved by declared type and
+     * recorded in the capture. A name-mangled inline return keeps its base name; a reference
+     * that widens the declaration with a defaulted parameter is accepted by declaring every
+     * arity and using the widest one present.
+     */
+    private Method resolveSuspend(Class<?> owner, String name, int... parameterCounts)
+            throws Exception {
+        Method target = null;
+        for (Method candidate : owner.getMethods()) {
+            if (!candidate.getName().equals(name)
+                    && !candidate.getName().startsWith(name + "-")) {
+                continue;
+            }
+            if (!candidate.getParameterTypes()[candidate.getParameterCount() - 1].getName()
+                    .equals("kotlin.coroutines.Continuation")) {
+                continue;
+            }
+            boolean accepted = false;
+            for (int count : parameterCounts) accepted |= candidate.getParameterCount() == count;
+            if (!accepted) continue;
+            if (target == null || candidate.getParameterCount() > target.getParameterCount()) {
+                target = candidate;
+            }
+        }
+        if (target == null) {
+            throw new IllegalStateException("frozen suspend entry absent: " + name
+                + Arrays.toString(parameterCounts));
+        }
+        entryPoints.put(name, signatureOf(target));
+        return target;
+    }
+
+    private static Object invokeSuspend(Method target, Object instance, Object[] arguments,
+            Object continuation) throws Throwable {
+        Object[] full = new Object[target.getParameterCount()];
+        System.arraycopy(arguments, 0, full, 0, arguments.length);
+        full[target.getParameterCount() - 1] = continuation;
+        try {
+            return target.invoke(instance, full);
+        } catch (InvocationTargetException error) {
+            throw error.getCause();
+        }
     }
 
     private static Object callSuspend(Class<?> owner, Object instance, String name,

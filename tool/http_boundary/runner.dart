@@ -35,8 +35,11 @@ import 'package:pointycastle/digests/sha256.dart';
 /// every byte it creates; the report keeps the ownership manifest and the
 /// cleanup receipts, and the root is removed again when the run is clean.
 const httpBoundaryCorpusPath = 'tool/http_boundary/fixtures.json';
+
+/// The corpus versions this consumer accepts: the historical `14dd2494` v3 and the
+/// selected-reference v4. The identity a comparison uses lives inside the file.
+const httpBoundaryCorpusVersions = {3, 4};
 const httpBoundaryFixtureId = 'HTTP-BOUNDARY-01';
-const httpBoundaryCorpusVersion = 3;
 
 /// The user agent every corpus source declares (`fixtures.json` `sources`).
 /// The corpus tests header arity and replacement with it, so a source without
@@ -572,9 +575,9 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       'the corpus fixtureId is not $httpBoundaryFixtureId',
     );
   }
-  if (corpus['corpusVersion'] != httpBoundaryCorpusVersion) {
-    throw const FormatException(
-      'the corpus corpusVersion is not $httpBoundaryCorpusVersion',
+  if (!httpBoundaryCorpusVersions.contains(corpus['corpusVersion'])) {
+    throw FormatException(
+      'the corpus corpusVersion is not one of $httpBoundaryCorpusVersions',
     );
   }
   _text(corpus['baselineCommit'], 'baselineCommit');
@@ -891,7 +894,7 @@ Future<void> main(List<String> args) async {
   if (args.length < 3) {
     stderr.writeln(
       'Usage: dart run tool/http_boundary/runner.dart <fjs.dll> <root> '
-      '<report.json> [--expected-corpus-sha256=<sha256>]',
+      '<report.json> [--expected-corpus-sha256=<sha256>] [--corpus=<path>]',
     );
     exitCode = 64;
     return;
@@ -900,8 +903,10 @@ Future<void> main(List<String> args) async {
   final root = Directory(args[1]);
   final reportPath = args[2];
   String? expectedCorpusSha256;
+  var corpusPath = httpBoundaryCorpusPath;
   for (final arg in args.sublist(3)) {
     const prefix = '--expected-corpus-sha256=';
+    const corpusPrefix = '--corpus=';
     if (arg.startsWith(prefix)) {
       final value = arg.substring(prefix.length);
       if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(value)) {
@@ -910,6 +915,16 @@ Future<void> main(List<String> args) async {
         return;
       }
       expectedCorpusSha256 = value;
+      continue;
+    }
+    if (arg.startsWith(corpusPrefix)) {
+      final value = arg.substring(corpusPrefix.length).trim();
+      if (value.isEmpty) {
+        stderr.writeln('--corpus is empty');
+        exitCode = 64;
+        return;
+      }
+      corpusPath = value;
       continue;
     }
     stderr.writeln('unknown runner argument: $arg');
@@ -940,8 +955,8 @@ Future<void> main(List<String> args) async {
   };
   var result = 1;
   try {
-    final corpusFile = File(httpBoundaryCorpusPath);
-    final corpus = loadHttpBoundaryCorpus(httpBoundaryCorpusPath);
+    final corpusFile = File(corpusPath);
+    final corpus = loadHttpBoundaryCorpus(corpusPath);
     final corpusLf = httpBoundaryCorpusSha256Lf(corpusFile);
     if (expectedCorpusSha256 != null && expectedCorpusSha256 != corpusLf) {
       throw const HttpBoundaryRefusal(
@@ -968,7 +983,7 @@ Future<void> main(List<String> args) async {
         'corpusVersion': corpus['corpusVersion'],
         'baselineCommit': corpus['baselineCommit'],
         'entryPoint': corpus['entryPoint'],
-        'corpusPath': httpBoundaryCorpusPath,
+        'corpusPath': corpusPath,
         'corpusRawSha256': sha256File(corpusFile),
         'corpusSha256Lf': corpusLf,
         'corpusRawLineEndings': corpusFile.readAsStringSync().contains('\r\n')
@@ -1239,8 +1254,7 @@ class _HttpBoundaryRun {
             'the corpus initial snapshot can be empty',
         'concurrentRate': _object(corpus['rate'], 'rate')['concurrentRate'],
         'windowMillis': _object(corpus['rate'], 'rate')['windowMillis'],
-        'initialSnapshot':
-            _rateRecord(rateLimiter.recordOf(sourceUrl('R'))) == null
+        'initialSnapshot': rateLimiter.recordOf(sourceUrl('R')) == null
             ? 'empty'
             : 'not-empty',
       };
@@ -1717,17 +1731,96 @@ class _HttpBoundaryRun {
 
   /// One source-keyed real record before and after a call, with the corpus' own
   /// window relations rather than a cross-host epoch comparison.
+  /// The rate record fields this corpus compares. The historical corpus declares
+  /// none, so its three original fields keep their meaning; the selected
+  /// reference carries no `isConcurrent` at all, so the selected corpus declares
+  /// only what it really has and the product's internal mode stays provenance.
+  List<String> _rateRecordFields(Map<String, dynamic> rate) {
+    final declared = rate['recordFields'];
+    if (declared == null) {
+      return const ['isConcurrent', 'time', 'frequency'];
+    }
+    final fields = [
+      for (final raw in _array(declared, 'rate.recordFields')) '$raw',
+    ];
+    if (fields.isEmpty) {
+      throw const FormatException('rate.recordFields declares no field');
+    }
+    const known = {'isConcurrent', 'time', 'frequency'};
+    for (final field in fields) {
+      if (!known.contains(field)) {
+        throw FormatException(
+          'rate.recordFields declares the unknown field $field',
+        );
+      }
+    }
+    return fields;
+  }
+
+  Map<String, Object?>? _rateRecord(
+    SourceRateRecord? record,
+    List<String> fields,
+  ) => record == null
+      ? null
+      : {
+          for (final field in fields)
+            field: switch (field) {
+              'isConcurrent' => record.isConcurrent,
+              'time' => record.time,
+              'frequency' => record.frequency,
+              _ => throw FormatException('unknown rate record field $field'),
+            },
+        };
+
+  /// The window relation a rate row declares. The historical corpus declares no
+  /// schedule, so its three original row meanings are preserved; the selected
+  /// corpus declares each row because the selected reference rolls the window on
+  /// every start instead of admitting an extra same-window start.
+  ({String window, int frequency}) _rateScheduleRow(
+    Map<String, dynamic> rate,
+    int index,
+  ) {
+    final declared = rate['schedule'];
+    if (declared == null) {
+      return switch (index) {
+        1 => (window: 'opens', frequency: 1),
+        2 => (window: 'same', frequency: 2),
+        3 => (window: 'rolls', frequency: 1),
+        _ => throw const HttpBoundaryIncomplete(
+          'the corpus declares three rate rows',
+        ),
+      };
+    }
+    for (final raw in _array(declared, 'rate.schedule')) {
+      final row = _object(raw, 'rate.schedule row');
+      if (_integer(row['index'], 'rate.schedule index') != index) continue;
+      final window = '${row['window']}';
+      if (window != 'opens' && window != 'same' && window != 'rolls') {
+        throw FormatException(
+          'rate.schedule declares the unknown window $window',
+        );
+      }
+      return (
+        window: window,
+        frequency: _integer(row['frequency'], 'frequency'),
+      );
+    }
+    throw FormatException('rate.schedule declares no row for index $index');
+  }
+
   Future<void> _runRate(
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
     final rate = _object(corpus['rate'], 'rate');
+    final fields = _rateRecordFields(rate);
     final sourceId = '${step['source']}';
     final sourceKey = sourceUrl(sourceId);
     final window = _integer(rate['windowMillis'], 'rate.windowMillis');
     final index = _integer(step['index'], 'rate index');
-    final before = _rateRecord(rateLimiter.recordOf(sourceKey));
-    if (index == 1 && before != null) {
+    final schedule = _rateScheduleRow(rate, index);
+    final before = _rateRecord(rateLimiter.recordOf(sourceKey), fields);
+    if (schedule.window == 'opens' && before != null) {
       throw const HttpBoundaryIncomplete(
         'the rate record existed before the first rate row',
       );
@@ -1737,7 +1830,7 @@ class _HttpBoundaryRun {
     final result = await _evaluate(sourceId, '${step['script']}');
     watch.stop();
     final callFinish = _nowMillis();
-    final after = _rateRecord(rateLimiter.recordOf(sourceKey));
+    final after = _rateRecord(rateLimiter.recordOf(sourceKey), fields);
     final afterTime = after?['time'] as int?;
     final value = <String, Object?>{
       'kind': 'rate',
@@ -1756,39 +1849,50 @@ class _HttpBoundaryRun {
       'sourceKey': sourceKey,
       'windowMillis': window,
       'recordAfterIsProvenance': true,
+      // The product's own reading of the declared form stays provenance.
+      'productMode': rateLimiter.recordOf(sourceKey)?.isConcurrent,
     };
-    switch (index) {
-      case 1:
+    switch (schedule.window) {
+      case 'opens':
         _rateWindowStart = afterTime;
         evidence['windowStartMillis'] = _rateWindowStart;
-      case 2:
+        value['scheduleComplete'] = after?['frequency'] == schedule.frequency;
+        value['scheduleReason'] = value['scheduleComplete'] == true
+            ? null
+            : 'incomplete-schedule';
+      case 'same':
         final start = _rateWindowStart;
         final sameWindow = start != null && afterTime == start;
         value['sameWindowAsPrevious'] = sameWindow;
-        final complete = sameWindow && callFinish - start < window;
+        final complete =
+            sameWindow &&
+            callFinish - start < window &&
+            after?['frequency'] == schedule.frequency;
         value['scheduleComplete'] = complete;
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowStartMillis'] = start;
-      case 3:
+      case 'rolls':
         final start = _rateWindowStart;
         final advanced = start == null || afterTime == null
             ? null
             : afterTime - start;
         value['sameWindowAsPrevious'] = advanced == 0;
-        final complete = advanced != null && advanced >= window;
+        final complete =
+            advanced != null &&
+            advanced >= window &&
+            after?['frequency'] == schedule.frequency;
         value['scheduleComplete'] = complete;
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowAdvanceMillis'] = advanced;
       default:
-        throw const HttpBoundaryIncomplete(
-          'the corpus declares three rate rows',
-        );
+        throw FormatException('unknown rate window ${schedule.window}');
     }
     observation['value'] = value;
     observation['evidence'] = evidence;
     // Every record this call creates or resets belongs to its own operation
     // interval; a same-window admission keeps the shared window start.
-    final createdHere = index == 1 || value['sameWindowAsPrevious'] == false;
+    final createdHere =
+        schedule.window == 'opens' || value['sameWindowAsPrevious'] == false;
     final recordTime = after?['time'];
     if (createdHere &&
         recordTime is int &&
@@ -1808,14 +1912,6 @@ class _HttpBoundaryRun {
     observation['outcome'] = 'ok';
     observation['category'] = null;
   }
-
-  Map<String, Object?>? _rateRecord(SourceRateRecord? record) => record == null
-      ? null
-      : {
-          'isConcurrent': record.isConcurrent,
-          'time': record.time,
-          'frequency': record.frequency,
-        };
 
   // --- stage rows ------------------------------------------------------------
 

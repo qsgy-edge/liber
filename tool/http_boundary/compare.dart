@@ -7,6 +7,7 @@ import 'runner.dart'
         httpBoundaryBatchWidth,
         httpBoundaryCorpusPath,
         httpBoundaryCorpusSha256Lf,
+        httpBoundaryCorpusVersions,
         httpBoundaryDeclaredRequests,
         httpBoundaryObservationIds,
         httpBoundaryResponseOwners,
@@ -1852,10 +1853,75 @@ void validateProductReport(
 
   // 9. The rate rows' own typed records and within-run interval/window
   //    relations. Every comparison below is a difference, so one coherent
-  //    cross-host epoch translation stays valid.
+  //    cross-host epoch translation stays valid. The corpus declares which
+  //    record fields it really carries and which window relation each row means:
+  //    the historical corpus keeps its three original row meanings, the selected
+  //    one declares its own because the selected reference rolls the window on
+  //    every start instead of admitting an extra same-window start.
+  /// The rate record fields this corpus compares, with the historical three as
+  /// the default. A corpus may only declare a field the record really carries.
+  List<String> rateRecordFields(Map<String, dynamic> rate) {
+    final declared = rate['recordFields'];
+    if (declared == null) {
+      return const ['isConcurrent', 'time', 'frequency'];
+    }
+    final fields = [
+      for (final raw in _array(declared, 'rate.recordFields')) '$raw',
+    ];
+    if (fields.isEmpty) {
+      throw const FormatException('rate.recordFields declares no field');
+    }
+    const known = {'isConcurrent', 'time', 'frequency'};
+    for (final field in fields) {
+      if (!known.contains(field)) {
+        throw FormatException(
+          'rate.recordFields declares the unknown field $field',
+        );
+      }
+    }
+    return fields;
+  }
+
+  /// The window relation and window count a rate row declares, with the
+  /// historical three row meanings as the default.
+  ({String window, int frequency}) rateScheduleRow(
+    Map<String, dynamic> corpus,
+    Map<String, dynamic> step,
+    int index,
+  ) {
+    final declared = _object(corpus['rate'], 'rate')['schedule'];
+    if (declared == null) {
+      return switch (index) {
+        0 => (window: 'opens', frequency: 1),
+        1 => (window: 'same', frequency: 2),
+        _ => (window: 'rolls', frequency: 1),
+      };
+    }
+    final rowIndex = step['index'];
+    for (final raw in _array(declared, 'rate.schedule')) {
+      final row = _object(raw, 'rate.schedule row');
+      if (row['index'] != rowIndex) continue;
+      final window = '${row['window']}';
+      if (window != 'opens' && window != 'same' && window != 'rolls') {
+        throw FormatException(
+          'rate.schedule declares the unknown window $window',
+        );
+      }
+      final frequency = row['frequency'];
+      if (frequency is! int) {
+        throw const FormatException(
+          'rate.schedule frequency is not an integer',
+        );
+      }
+      return (window: window, frequency: frequency);
+    }
+    throw FormatException('rate.schedule declares no row for index $rowIndex');
+  }
+
   final rateSteps = [
     for (final raw in _array(rate['steps'], 'rate.steps')) '$raw',
   ];
+  final rateFields = rateRecordFields(rate);
   final records = <String, Map<String, Object?>>{};
   for (var index = 0; index < rateSteps.length; index++) {
     final id = rateSteps[index];
@@ -1874,14 +1940,20 @@ void validateProductReport(
     Map<String, Object?>? record(Object? raw, String path) {
       if (raw == null) return null;
       final map = gate.object(raw, path);
-      gate.field(map, 'isConcurrent', path, _Field.boolean);
-      gate.field(map, 'time', path, _Field.integer);
-      gate.field(map, 'frequency', path, _Field.integer);
+      for (final field in rateFields) {
+        gate.field(
+          map,
+          field,
+          path,
+          field == 'isConcurrent' ? _Field.boolean : _Field.integer,
+        );
+      }
       return map;
     }
 
     final before = record(value['recordBefore'], '$where.recordBefore');
     final after = record(value['recordAfter'], '$where.recordAfter');
+    final schedule = rateScheduleRow(corpus, stepById[id]!, index);
     final evidence = gate.object(row['evidence'], 'observations.$id.evidence');
     for (final key in const [
       'callStartMillis',
@@ -1921,7 +1993,8 @@ void validateProductReport(
     );
     // A record this operation created or reset carries that operation's own
     // admission instant; a same-window record carries the shared window start.
-    final createdHere = index == 0 || value['sameWindowAsPrevious'] == false;
+    final createdHere =
+        schedule.window == 'opens' || value['sameWindowAsPrevious'] == false;
     if (createdHere && callStart is int && callFinish is int && after != null) {
       final recordTime = after['time'];
       if (recordTime is int &&
@@ -1932,18 +2005,24 @@ void validateProductReport(
         );
       }
     }
-    if (index == 0) {
+    if (schedule.window == 'opens') {
       if (before != null) gate.fail('$where.recordBefore is not null');
       if (after == null) {
         gate.fail('$where.recordAfter is absent');
         continue;
       }
+      if (rateFields.contains('isConcurrent')) {
+        gate.equal(
+          after['isConcurrent'],
+          true,
+          '$where.recordAfter.isConcurrent',
+        );
+      }
       gate.equal(
-        after['isConcurrent'],
-        true,
-        '$where.recordAfter.isConcurrent',
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
       );
-      gate.equal(after['frequency'], 1, '$where.recordAfter.frequency');
       gate.field(
         evidence,
         'windowStartMillis',
@@ -1977,7 +2056,13 @@ void validateProductReport(
       gate.fail('$where.recordAfter is absent');
       continue;
     }
-    gate.equal(after['isConcurrent'], true, '$where.recordAfter.isConcurrent');
+    if (rateFields.contains('isConcurrent')) {
+      gate.equal(
+        after['isConcurrent'],
+        true,
+        '$where.recordAfter.isConcurrent',
+      );
+    }
     final beforeTime = before['time'] as int? ?? 0;
     final afterTime = after['time'] as int? ?? 0;
     final sameWindow = value['sameWindowAsPrevious'] == true;
@@ -1986,7 +2071,8 @@ void validateProductReport(
       beforeTime == afterTime,
       '$where.sameWindowAsPrevious',
     );
-    if (sameWindow) {
+    if (schedule.window == 'same') {
+      if (!sameWindow) gate.fail('$where did not stay in its window');
       gate.field(
         evidence,
         'windowStartMillis',
@@ -1998,11 +2084,13 @@ void validateProductReport(
         afterTime,
         'observations.$id.evidence.windowStartMillis',
       );
-      if (index == 1) {
-        gate.equal(after['frequency'], 2, '$where.recordAfter.frequency');
-        if (callStart - afterTime >= rateWindow || callStart - afterTime < 0) {
-          gate.fail('$where was admitted outside its declared window');
-        }
+      gate.equal(
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
+      );
+      if (callStart - afterTime >= rateWindow || callStart - afterTime < 0) {
+        gate.fail('$where was admitted outside its declared window');
       }
     } else {
       final advance = afterTime - beforeTime;
@@ -2017,7 +2105,11 @@ void validateProductReport(
         advance,
         'observations.$id.evidence.windowAdvanceMillis',
       );
-      gate.equal(after['frequency'], 1, '$where.recordAfter.frequency');
+      gate.equal(
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
+      );
       final complete = advance >= rateWindow;
       gate.equal(
         value['scheduleComplete'],
@@ -4163,7 +4255,9 @@ final _javaReturnEnvelopeCases =
   Map<String, dynamic> step,
   HttpBoundaryMismatch mismatch,
 ) {
-  if (corpus['corpusVersion'] != 3) return null;
+  if (!httpBoundaryCorpusVersions.contains(corpus['corpusVersion'])) {
+    return null;
+  }
   if (!_javaReturnScalarLeaf(step, mismatch) &&
       !_javaReturnEnvelopeLeaf(step, mismatch)) {
     return null;
@@ -5248,6 +5342,7 @@ Future<void> main(List<String> args) async {
   String? handoffPath;
   String? productPath;
   String? evidencePath;
+  var corpusPath = httpBoundaryCorpusPath;
   for (final arg in args) {
     if (arg.startsWith('--handoff=')) {
       handoffPath = arg.substring('--handoff='.length);
@@ -5255,6 +5350,14 @@ Future<void> main(List<String> args) async {
       productPath = arg.substring('--product='.length);
     } else if (arg.startsWith('--evidence=')) {
       evidencePath = arg.substring('--evidence='.length);
+    } else if (arg.startsWith('--corpus=')) {
+      final value = arg.substring('--corpus='.length).trim();
+      if (value.isEmpty) {
+        stderr.writeln('--corpus is empty');
+        exitCode = 64;
+        return;
+      }
+      corpusPath = value;
     } else {
       stderr.writeln('unknown comparer argument: $arg');
       exitCode = 64;
@@ -5264,7 +5367,7 @@ Future<void> main(List<String> args) async {
   if (handoffPath == null || productPath == null || evidencePath == null) {
     stderr.writeln(
       'Usage: dart run tool/http_boundary/compare.dart --handoff=<json> '
-      '--product=<report.json> --evidence=<dir>',
+      '--product=<report.json> --evidence=<dir> [--corpus=<path>]',
     );
     exitCode = 64;
     return;
@@ -5282,8 +5385,8 @@ Future<void> main(List<String> args) async {
   };
   var exit = 1;
   try {
-    final corpusFile = File(httpBoundaryCorpusPath);
-    final corpus = loadHttpBoundaryCorpus(httpBoundaryCorpusPath);
+    final corpusFile = File(corpusPath);
+    final corpus = loadHttpBoundaryCorpus(corpusPath);
     final corpusLf = httpBoundaryCorpusSha256Lf(corpusFile);
     final rawSha = sha256File(corpusFile);
     corpus['_rawSha256'] = rawSha;

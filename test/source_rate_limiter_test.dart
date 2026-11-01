@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
@@ -35,6 +37,53 @@ class ImmediateTransport implements SourceHttpTransport {
   }
 }
 
+/// A transport whose first request stays in flight until the test releases it,
+/// so a source can be measured while one of its own requests is still open.
+class GatedTransport implements SourceHttpTransport {
+  final started = <String>[];
+  final _firstStarted = Completer<void>();
+  final _release = Completer<void>();
+
+  Future<void> get firstStarted => _firstStarted.future;
+
+  void releaseAll() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    started.add(request.url.path);
+    if (started.length == 1) {
+      _firstStarted.complete();
+      await _release.future;
+    }
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: request.url.path,
+      url: request.url,
+    );
+  }
+}
+
+/// A wait that ends the probe instead of looping: under the completion-dependent
+/// branch the limiter keeps asking for a fresh interval, which would spin on the
+/// injected wait forever. Any wait at or past [elapsedAt] is exactly that defect,
+/// so the probe fails immediately rather than starving its own deadlines.
+Future<void> Function(Duration) failFastWaitAfter(
+  FakeClock clock,
+  int elapsedAt,
+) => (duration) async {
+  if (clock.now >= elapsedAt) {
+    fail(
+      'the limiter asked to wait ${duration.inMilliseconds} ms when the '
+      '$elapsedAt ms mark had already been passed',
+    );
+  }
+  clock.waits.add(duration.inMilliseconds);
+  clock.now += duration.inMilliseconds;
+};
+
 void main() {
   late FakeClock clock;
   late SourceRateLimiter limiter;
@@ -57,23 +106,24 @@ void main() {
     expect(clock.waits, isEmpty);
   });
 
-  test('a plain-millisecond rate admits one request at a time', () async {
+  test('a plain-millisecond rate admits one start per interval', () async {
     final first = await limiter.acquire('a', '1000');
     expect(first, isNotNull);
     expect(first!.isConcurrent, isFalse);
     expect(first.frequency, 1);
 
-    // A second request while the first is still in flight waits the gap, and
-    // is admitted only after the first is released.
-    final waiting = limiter.acquire('a', '1000');
+    // The selected reference has no fetchEnd, so completing a request neither
+    // replenishes an admission nor blocks a later start.
     limiter.release(first);
-    expect(first.frequency, 0);
-    final second = await waiting;
+    expect(first.frequency, 1);
+
+    // The next start waits only for the interval to elapse.
+    final second = await limiter.acquire('a', '1000');
     expect(clock.waits, [1000]);
     expect(second!.time, 1000);
     limiter.release(second);
 
-    // A request that finds the gap already passed starts immediately.
+    // A start that finds the interval already passed starts immediately.
     clock.now += 1000;
     final third = await limiter.acquire('a', '1000');
     expect(clock.waits, [1000]);
@@ -81,31 +131,79 @@ void main() {
     limiter.release(third);
   });
 
-  test('a count/millisecond rate admits its window and then waits it out',
-      () async {
-    final counts = <int>[];
-    final records = <SourceRateRecord?>[];
-    for (var attempt = 0; attempt < 3; attempt++) {
-      final record = await limiter.acquire('a', '2/1000');
-      records.add(record);
-      counts.add(record!.frequency);
-    }
-    // The frozen record starts at 1, so the `count` comparison admits one more
-    // start than the count sounds like: 1 is created, then 1 > 2 and 2 > 2 are
-    // both false.
+  test('N/T admits N starts, not N+1', () async {
+    final first = await limiter.acquire('a', '1/2000');
+    expect(first!.frequency, 1);
     expect(clock.waits, isEmpty);
-    expect(counts, [1, 2, 3]);
-    for (final record in records) {
-      limiter.release(record);
-    }
-    // A concurrent record counts starts, so release changes nothing.
-    expect(limiter.recordOf('a')!.frequency, 3);
 
-    // The fourth start waits for the window to pass, which resets the count.
-    final fourth = await limiter.acquire('a', '2/1000');
+    // The second start must wait out the window: the admitted start consumed
+    // its own admission instead of leaving an extra slot.
+    final second = await limiter.acquire('a', '1/2000');
+    expect(clock.waits, [2000]);
+    expect(second!.time, 2000);
+    expect(second.frequency, 1);
+  });
+
+  test(
+    'a count/millisecond rate admits its window and then waits it out',
+    () async {
+      final counts = <int>[];
+      final records = <SourceRateRecord?>[];
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final record = await limiter.acquire('a', '2/1000');
+        records.add(record);
+        counts.add(record!.frequency);
+      }
+      // Exactly the declared two starts are admitted inside the first window.
+      expect(clock.waits, isEmpty);
+      expect(counts, [1, 2]);
+
+      // The third start waits for the window to pass, which resets the count.
+      final third = await limiter.acquire('a', '2/1000');
+      expect(clock.waits, [1000]);
+      expect(third!.time, 1000);
+      expect(third.frequency, 1);
+
+      // A completion never replenishes an admission in the window it belonged to.
+      for (final record in records) {
+        limiter.release(record);
+      }
+      expect(limiter.recordOf('a')!.frequency, 1);
+      final fourth = await limiter.acquire('a', '2/1000');
+      expect(clock.waits, [1000]);
+      expect(fourth!.frequency, 2);
+    },
+  );
+
+  test('a late completion does not corrupt a later window', () async {
+    final first = await limiter.acquire('a', '1/1000');
+    expect(first!.frequency, 1);
+    clock.now = 1000;
+    final second = await limiter.acquire('a', '1/1000');
+    expect(second!.time, 1000);
+    expect(second.frequency, 1);
+    // The first request finishing now belongs to the window it was admitted in.
+    limiter.release(first);
+    expect(limiter.recordOf('a')!.frequency, 1);
+    expect(limiter.recordOf('a')!.time, 1000);
+    final third = await limiter.acquire('a', '1/1000');
     expect(clock.waits, [1000]);
-    expect(fourth!.time, 1000);
-    expect(fourth.frequency, 1);
+    expect(third!.time, 2000);
+  });
+
+  test('a plain interval admits the next start after it even while a request '
+      'is unfinished', () async {
+    final probe = SourceRateLimiter(
+      clock: clock.read,
+      wait: failFastWaitAfter(clock, 2500),
+    );
+    // The first request is never released: it is still open when the interval ends.
+    await probe.acquire('a', '2000');
+    clock.now = 2500;
+    final second = await probe.acquire('a', '2000');
+    expect(clock.waits, isEmpty);
+    expect(second!.time, 2500);
+    expect(second.frequency, 1);
   });
 
   test('an empty, zero or source-less rate does not limit', () async {
@@ -125,19 +223,19 @@ void main() {
     expect(clock.waits, isEmpty);
   });
 
-  test('a concurrent batch keeps input order and reports the source rate state',
-      () async {
-    final transport = ImmediateTransport();
-    final dispatcher = SourceHostDispatcher(
-      transport: transport,
-      sourceRef: 'https://a.test/book',
-      // The window admits every start of the batch, so nothing is parked while
-      // the batch runs and only the batch's own ordering is under test.
-      concurrentRate: '3/1000',
-      rateLimiter: limiter,
-    );
-    final responses = await dispatcher.ajaxAll(
-      [
+  test(
+    'a concurrent batch keeps input order and reports the source rate state',
+    () async {
+      final transport = ImmediateTransport();
+      final dispatcher = SourceHostDispatcher(
+        transport: transport,
+        sourceRef: 'https://a.test/book',
+        // The window admits every start of the batch, so nothing is parked while
+        // the batch runs and only the batch's own ordering is under test.
+        concurrentRate: '3/1000',
+        rateLimiter: limiter,
+      );
+      final responses = await dispatcher.ajaxAll([
         for (final path in ['1', '2', '3'])
           (
             method: 'GET',
@@ -146,16 +244,42 @@ void main() {
             body: null,
             retry: 0,
           ),
-      ],
-      concurrency: 2,
+      ], concurrency: 2);
+      // The declared batch preserves input order regardless of which worker
+      // finishes first...
+      expect(responses.map((response) => response.body), ['/1', '/2', '/3']);
+      expect(transport.started, ['/1', '/2', '/3']);
+      // ...and the source-keyed record counts this window's three starts.
+      expect(clock.waits, isEmpty);
+      expect(limiter.recordOf('https://a.test/book')!.frequency, 3);
+    },
+  );
+
+  test('the dispatcher admits a second plain start while the first request is '
+      'still in flight', () async {
+    final transport = GatedTransport();
+    final dispatcher = SourceHostDispatcher(
+      transport: transport,
+      sourceRef: 'https://a.test/book',
+      concurrentRate: '2000',
+      // A start that arrives after the interval must not wait at all, so any
+      // wait request here is the completion-dependent branch under test.
+      rateLimiter: SourceRateLimiter(
+        clock: clock.read,
+        wait: failFastWaitAfter(clock, 0),
+      ),
     );
-    // The declared batch preserves input order regardless of which worker
-    // finishes first...
-    expect(responses.map((response) => response.body), ['/1', '/2', '/3']);
-    expect(transport.started, ['/1', '/2', '/3']);
-    // ...and the source-keyed record counts this window's three starts.
+    final first = dispatcher.get('http://a.test/1');
+    await transport.firstStarted;
+    // The interval elapses while request 1 is still waiting for its response.
+    clock.now = 2500;
+    final second = await dispatcher.get('http://a.test/2');
     expect(clock.waits, isEmpty);
-    expect(limiter.recordOf('https://a.test/book')!.frequency, 3);
+    expect(transport.started, ['/1', '/2']);
+    // Releasing the first request adds no admission to the window it began in.
+    transport.releaseAll();
+    final firstResponse = await first;
+    expect([firstResponse.body, second.body], ['/1', '/2']);
   });
 
   test('two sources of one process are limited independently', () async {

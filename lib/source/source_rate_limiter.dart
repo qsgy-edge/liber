@@ -1,6 +1,8 @@
 import '../domain/contracts.dart';
 
-/// One source's frozen rate-limiter record (`AnalyzeUrl.ConcurrentRecord`).
+/// One source's selected-reference rate-limiter record
+/// (`AnalyzeUrl.ConcurrentRecord` at `a7d37f1`, which carries `time`,
+/// `accessLimit`, `interval` and `frequency`).
 class SourceRateRecord {
   SourceRateRecord({
     required this.isConcurrent,
@@ -8,34 +10,41 @@ class SourceRateRecord {
     required this.frequency,
   });
 
-  /// Whether the source's rate is the `count/milliseconds` form.
+  /// Whether the source's rate is the `count/milliseconds` form. This is the
+  /// product's own reading of the declared rate string; the selected reference
+  /// stores the parsed `accessLimit`/`interval` instead and keeps both as
+  /// provenance, never as a compared value.
   final bool isConcurrent;
 
   /// The window start, in milliseconds, the clock this limiter was built with
-  /// answers. A plain-millisecond rate resets it to the instant a request was
-  /// admitted; a `count/ms` rate to the start of the window it counts.
+  /// answers: the instant the admitted start that opened the current window
+  /// began.
   int time;
 
-  /// Requests admitted since [time]. A plain-millisecond rate keeps it at 1
-  /// while a request is in flight; a `count/ms` rate counts the window's starts.
+  /// Starts admitted since [time]. A `count/ms` rate counts the window's starts
+  /// and resets to 1 when the window rolls over; a plain-millisecond rate keeps
+  /// it at 1, because the selected reference has no per-request count-down.
   int frequency;
 }
 
-/// Frozen `ConcurrentRateLimiter` (`help/ConcurrentRateLimiter.kt`): one record
-/// per source key, and a wait-until-admitted loop around every source request.
+/// The selected reference's `ConcurrentRateLimiter` (`a7d37f1`,
+/// `help/ConcurrentRateLimiter.kt`): one record per source key, and a
+/// wait-until-admitted loop around every source request.
 ///
-/// The frozen limiter's records live in a companion object, so they are process
+/// The reference's records live in a companion object, so they are process
 /// state keyed by `source.getKey()` and shared by every analysis of one source.
 /// [shared] is that object. The clock and the wait are constructor arguments so
 /// a test can make the wait deterministic instead of sleeping for real
 /// milliseconds; nothing in the product passes them.
 ///
-/// Two forms, as the frozen `fetchStart` reads them (`:34-79`): a plain number
-/// is a gap in milliseconds between the starts of two requests of one source,
-/// with one request in flight at a time, and `count/milliseconds` counts starts
-/// inside a window, resetting it when the window has passed. A rate that is
-/// empty or `0` means no limiting at all, and a malformed one never waits — the
-/// frozen `catch (_: Exception) { 0 }`.
+/// Two supported forms, as the reference's `fetchStart` reads them: a plain
+/// number is the interval between two starts of one source, and
+/// `count/milliseconds` admits at most `count` starts inside a window, resetting
+/// the window when it has passed. Admission is pure start spacing: the reference
+/// removed `fetchEnd`, so a request finishing never returns an admission, adds
+/// one, or moves the window. A rate that is empty or `0` means no limiting at
+/// all; an unsupported (unparseable) rate admits without waiting, which is this
+/// product's documented behaviour for input outside the supported grammar.
 class SourceRateLimiter {
   SourceRateLimiter({
     int Function()? clock,
@@ -87,15 +96,18 @@ class SourceRateLimiter {
     }
   }
 
-  /// Frozen `fetchEnd`: a plain-millisecond record counts down the request it
-  /// admitted; a `count/ms` record counts starts and does not.
-  void release(SourceRateRecord? record) {
-    if (record != null && !record.isConcurrent) record.frequency -= 1;
-  }
+  /// The selected reference has no `fetchEnd`: its window count is never
+  /// decremented when a request finishes, so completing a request neither
+  /// replenishes an admission nor disturbs a later window. The parameter stays
+  /// because every caller acquires and releases symmetrically.
+  void release(SourceRateRecord? record) {}
 
-  /// Frozen `fetchStart`: the record when the caller may proceed, or the
+  /// The reference's `fetchStart`: the record when the caller may proceed, or the
   /// milliseconds it must wait first.
-  ({SourceRateRecord? record, int wait}) _fetchStart(String sourceRef, String rate) {
+  ({SourceRateRecord? record, int wait}) _fetchStart(
+    String sourceRef,
+    String rate,
+  ) {
     final rateIndex = rate.indexOf('/');
     var record = _records[sourceRef];
     if (record == null) {
@@ -111,39 +123,38 @@ class SourceRateLimiter {
     return (record: wait > 0 ? null : record, wait: wait);
   }
 
-  /// The frozen `synchronized(fetchRecord)` block (`ConcurrentRateLimiter.kt:39-78`).
+  /// The reference's `synchronized(fetchRecord)` admission block: the record
+  /// when the caller may proceed, or the milliseconds it must wait first.
   int _waitTime(SourceRateRecord record, String rate, int rateIndex) {
     try {
-      if (!record.isConcurrent) {
-        // One request at a time; the next may start `rate` milliseconds after
-        // the admitted one started.
-        if (record.frequency > 0) return int.parse(rate);
-        final next = record.time + int.parse(rate);
-        if (_clock() >= next) {
-          record.time = _clock();
-          record.frequency = 1;
-          return 0;
-        }
-        return next - _clock();
-      }
-      final window = int.parse(rate.substring(rateIndex + 1));
-      final next = record.time + window;
+      final interval = rateIndex > 0
+          ? int.parse(rate.substring(rateIndex + 1))
+          : int.parse(rate);
+      final next = record.time + interval;
       if (_clock() >= next) {
+        // The window has passed: this start opens the next one.
         record.time = _clock();
         record.frequency = 1;
         return 0;
       }
-      final count = int.parse(rate.substring(0, rateIndex));
-      if (record.frequency > count) return next - _clock();
-      record.frequency += 1;
-      return 0;
+      if (record.isConcurrent) {
+        final count = int.parse(rate.substring(0, rateIndex));
+        if (record.frequency >= count) return next - _clock();
+        record.frequency += 1;
+        return 0;
+      }
+      // A plain interval is spacing only: an unfinished earlier request does not
+      // add a wait once the interval has elapsed.
+      return next - _clock();
     } catch (_) {
-      // The frozen block catches every exception and admits the request.
+      // Unsupported input outside the supported grammar admits the request rather
+      // than inventing a wait the reference never asks for.
       return 0;
     }
   }
 
   static int _systemMillis() => DateTime.now().millisecondsSinceEpoch;
 
-  static Future<void> _delay(Duration duration) => Future<void>.delayed(duration);
+  static Future<void> _delay(Duration duration) =>
+      Future<void>.delayed(duration);
 }

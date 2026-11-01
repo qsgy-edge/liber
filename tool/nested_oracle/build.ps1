@@ -56,10 +56,16 @@ Copy-Item "$PSScriptRoot/../state_session/fixtures-selected.json" "$OutputDirect
 # The #137 AUTH-SESSION-01 corpus is served by AuthSessionOracle from the target
 # process; the report pins both the raw asset hash and the LF-normalised hash.
 Copy-Item "$PSScriptRoot/../auth_session/fixtures.json" "$OutputDirectory/assets/auth-session-fixtures.json"
+# The selected-reference AUTH-SESSION-01 corpus travels beside it: the fixed
+# SelectedAuthSessionOracle entry serves it, pinning its hash and selected target.
+Copy-Item "$PSScriptRoot/../auth_session/fixtures-selected.json" "$OutputDirectory/assets/auth-session-fixtures-selected.json"
 # The #137 HTTP-BOUNDARY-01 corpus is served by HttpBoundaryOracle from the target
 # process; its report pins both the raw asset hash and the LF-normalised hash.
 Copy-Item "$PSScriptRoot/../http_boundary/fixtures.json" "$OutputDirectory/assets/http-boundary-fixtures.json"
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/HostRuntimeInit.java","$PSScriptRoot/ShortcutStartupGuard.java","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/SelectedJsLibOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java","$PSScriptRoot/SelectedStateSessionOracle.java","$PSScriptRoot/AuthSessionOracle.java","$PSScriptRoot/HttpBoundaryOracle.java")
+# The selected-reference HTTP-BOUNDARY-01 corpus travels beside it: the fixed
+# SelectedHttpBoundaryOracle entry serves it, pinning its hash and selected target.
+Copy-Item "$PSScriptRoot/../http_boundary/fixtures-selected.json" "$OutputDirectory/assets/http-boundary-fixtures-selected.json"
+Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/HostRuntimeInit.java","$PSScriptRoot/ShortcutStartupGuard.java","$PSScriptRoot/NestedOracle.java","$PSScriptRoot/SelectedJsLibOracle.java","$PSScriptRoot/StateOracle.java","$PSScriptRoot/SliceOracle.java","$PSScriptRoot/HtmlOracle.java","$PSScriptRoot/RequestOracle.java","$PSScriptRoot/LimitOracle.java","$PSScriptRoot/StateSessionOracle.java","$PSScriptRoot/SelectedStateSessionOracle.java","$PSScriptRoot/AuthSessionOracle.java","$PSScriptRoot/SelectedAuthSessionOracle.java","$PSScriptRoot/HttpBoundaryOracle.java","$PSScriptRoot/SelectedHttpBoundaryOracle.java")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
 Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")
