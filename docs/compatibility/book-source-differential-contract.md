@@ -269,6 +269,50 @@ Liber MUST preserve behavior that a source can observe through requests, state, 
 
 A behavior prohibited by an approved security or data-integrity policy is not silently normalized into a pass. Its fixture receives `policy-rejected`, and every source that requires it remains incompatible.
 
+### TOC chapter-variable restoration
+
+For the selected reference, `BookChapterList.upChapterInfo` restores stored chapter
+fields after the complete TOC has been ordered, indexed and title-formatted. The
+chapter-variable boundary in Spec A / #146 is:
+
+- Resolve stored chapters within the current space by the existing
+  `(sourceRef, bookUrl)` book key. Match the final generated list index and title
+  against stored index/title, not the chapter URL. Source switching must not copy
+  variables from the source being replaced into a different source.
+- With the reference default-enabled `tocCountWords` path, a matching old
+  non-null variable replaces the new variable text wholesale. Preserve the exact
+  old text, including empty or invalid JSON; do not merge maps. A null or absent
+  old value leaves the fresh value unchanged. A title/index mismatch is not a
+  match even when its URL is unchanged.
+- Use a narrow read-only projection through the existing
+  `SourceHostStatePersistence` / `SourceHostState` boundary, with rows equivalent
+  to `({int index, String title, String? variable})`.
+  `SpaceHostStatePersistence` projects existing `bookByNaturalKey` / `chaptersOf`
+  rows in their stored order. In-memory unwritten URL-key entries are not stored
+  restoration rows. No persistence/book means an empty stored projection.
+- Both HTML and JSON TOC completion paths, ordinary and deferred, read the
+  stored projection after successful complete rule analysis and restore before
+  returning the carriers. TOC chapter-item writes stay local during rebuilding
+  rather than overwriting the old stored rows or leaking into shared unwritten
+  state on failure/cancellation. Preserve successful ordinary off-shelf in-memory
+  handoff and deferred candidate isolation; existing authorized callers publish
+  the final carriers through the existing shelf/association operations.
+- Keep independent book/source/cookie/cache effects unchanged. Preserve chapter
+  identity, saved request text, `fetchContext`, progress and publication liveness
+  checks. A late read and later publication are not a new atomic transaction;
+  this boundary adds no general concurrency or rollback mechanism.
+- This covers the reference default-enabled restoration path. The reference
+  disabled-mode branch remains a separate configuration coverage limit; no
+  product setting, word-count/image feature, schema/column, `SourceChapter` field
+  or public pipeline parameter is introduced.
+
+Acceptance observes returned carriers before publication as well as the later
+stored rows, and protects HTML/JSON ordinary/deferred paths, raw null/empty
+semantics, source/book isolation, successful off-shelf handoff and failure/cancel
+preservation. Immutable executed selected-reference captures remain the oracle;
+fresh product captures and existing negative controls establish the repaired
+comparison. Existing historical goldens retain their original identities.
+
 ## Corpus Construction
 
 ### Authority
