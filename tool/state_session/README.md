@@ -99,18 +99,15 @@ context, keeps it in the owned set and never deletes it there; the restart only
 reads the namespace the seed recorded. A pre-existing probe is refused rather than
 overwritten or removed.
 
-One start-up path reaches storage before the binding, and only on a background
-thread: the frozen application's own providers ask for preferences before
-`Instrumentation.onCreate`, and Firebase performance's `DeviceCacheManager` makes
-that call from its thread pool. Such a callback waits, bounded, for the binding and
-then uses the same scoped store; it is never handed an unverified handle and it is
-never silently allowed. A callback on the main thread refuses immediately instead of
-waiting, because the binder itself starts from a main-looper post and waiting there
-would deadlock start-up. A binding failure releases every waiter with that failure,
-and a timeout refuses with a visible message; nothing is retried. Every other storage
-callback that would write — a database create or delete — is refused before the phase
-binds the root. The owned-name manifest is published atomically under the same lock,
-so two registrations that arrive at once cannot drop each other's name.
+Start-up providers can reach storage before the binding. Their preference callbacks
+wait, bounded, for the binding; selected-reference contexts also wait before handing
+out any scratch directory path. A callback on the main thread refuses immediately
+instead of waiting, because the binder itself starts from a main-looper post and
+waiting there would deadlock start-up. A binding failure releases waiters with that
+failure, and a timeout refuses visibly; nothing is retried. Database create and delete
+are refused before the phase binds the root. The owned-name manifest is published
+atomically under the same lock, so two registrations that arrive at once cannot drop
+each other's name.
 
 The phase's own cleanup receipt is not a claim about the process's exit. The frozen
 provider can still write into the retained root after the restart's removal and

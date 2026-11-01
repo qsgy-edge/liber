@@ -1583,17 +1583,12 @@ public class StateSessionOracle extends Instrumentation {
      * the seed recorded; a seed or a single run requires each namespace it meets to be
      * empty.
      *
-     * <p>One measured exception to "no storage before the binding": the frozen
-     * application's own start-up providers reach preferences from a background executor
-     * before {@code Instrumentation.onCreate} runs. Firebase performance's
-     * {@code DeviceCacheManager.setContext} posts exactly that call
-     * ({@code com.google.firebase.perf.config.DeviceCacheManager.lambda$setContext$0}) to
-     * its thread pool. Such a callback waits, bounded, for the binding and then uses the
-     * same scoped store; it is never handed an unverified handle and it is never silently
-     * allowed. A callback on the main thread cannot wait without deadlocking start-up -
-     * the binder is started from a main-looper post - so it is refused immediately. A
-     * binding failure releases every waiter with that failure, and a timeout refuses with
-     * a visible message; nothing is retried.
+     * <p>Start-up providers can reach storage before {@code Instrumentation.onCreate}.
+     * Preference callbacks wait, bounded, for binding; selected-reference contexts also
+     * wait before handing out directory paths. A callback on the main thread cannot wait
+     * without deadlocking start-up because the binder starts from a main-looper post, so
+     * it is refused immediately. A binding failure releases waiters with that failure,
+     * and a timeout refuses visibly; nothing is retried.
      */
     public static final class ScratchContext extends ContextWrapper {
         private static final long BINDING_WAIT_SECONDS = 30;
@@ -1843,13 +1838,9 @@ public class StateSessionOracle extends Instrumentation {
             return names;
         }
 
-        /**
-         * A directory under the owned root. Before the phase is bound only the path is
-         * handed out: the frozen application's start-up providers may ask for one, and
-         * creating it then would touch a root this invocation has not established
-         * ownership of yet.
-         */
+        /** A selected run must establish ownership before handing out a usable path. */
         private File directory(String name) {
+            if (shortcutGuard != null) awaitBinding("directory(" + name + ")");
             File file = new File(root, name);
             if (isBound() && !file.isDirectory() && !file.mkdirs()) {
                 throw new IllegalStateException("cannot create scratch directory " + file);
@@ -1865,9 +1856,9 @@ public class StateSessionOracle extends Instrumentation {
         }
 
         /**
-         * Waits, bounded, for the phase binding. Used only by the preference callback the
-         * frozen start-up providers make on a background executor; a main-thread caller
-         * refuses instead of waiting, because the binder runs from a main-looper post.
+         * Waits, bounded, for the phase binding. Preference callbacks and selected
+         * directory handoffs use it; a main-thread caller refuses instead of waiting,
+         * because the binder runs from a main-looper post.
          */
         private void awaitBinding(String what) {
             if (isBound()) return;
@@ -1966,10 +1957,9 @@ public class StateSessionOracle extends Instrumentation {
         }
 
         /**
-         * The one effectful callback a start-up provider is measured to make before the
-         * binding: it waits for it and then uses the same scoped store. Registration,
-         * the freshness/ownership check and the manifest update all happen under the state
-         * lock, because this can now arrive on a background thread.
+         * A start-up preference callback waits for binding and then uses the scoped store.
+         * Registration, the freshness/ownership check and the manifest update all happen
+         * under the state lock because this can arrive on a background thread.
          */
         @Override
         public SharedPreferences getSharedPreferences(String name, int mode) {
