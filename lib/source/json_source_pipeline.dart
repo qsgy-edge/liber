@@ -1495,6 +1495,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     SourceBookInfo info,
   ) async {
     _cancellation.throwIfCancelled();
+    _entityVariables.beginToc();
     // The information stage's book is the one this stage's rules and scripts
     // read (`book.*`), so a TOC run that follows another analysis still names
     // the book its own information result carries.
@@ -1900,6 +1901,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               // row twice, which is a store-level limit (D4), not a rule decision taken
               // at this point.
               chapters.add(chapter.withVariable(chapterVariable));
+              _entityVariables.recordTocChapter();
             } finally {
               _entityVariables.endChapter();
               clearTocChapter();
@@ -1919,12 +1921,28 @@ class JsonSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (
-      book.withVariable(
-        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
-      ),
-      chapters,
+    final rows = await _hostSurface.chapterRestorationRows(
+      _sourceRef,
+      book.identityAddress,
     );
+    final old = {for (final row in rows) (row.index, row.title): row.variable};
+    final restored = [
+      for (var i = 0; i < chapters.length; i++)
+        if (old[(i, chapters[i].name)] case final String variable)
+          chapters[i].withVariable(variable)
+        else
+          chapters[i],
+    ];
+    final bookVariable = await _entityVariables.bookVariable(
+      _sourceRef,
+      book.identityAddress,
+    );
+    final handoff = await _entityVariables.prepareTocHandoff([
+      for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
+    ]);
+    _cancellation.throwIfCancelled();
+    _entityVariables.publishTocHandoff(handoff);
+    return (book.withVariable(bookVariable), restored);
   }
 
   /// The composed entry validates the TOC group before its first request, as it

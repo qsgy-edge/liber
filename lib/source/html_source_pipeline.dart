@@ -2204,6 +2204,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     SourceBookInfo info,
   ) async {
     _cancellation.throwIfCancelled();
+    _entityVariables.beginToc();
     // The information stage's book is the one this stage's rules and scripts
     // read (`book.*`), so a TOC run that follows another analysis still names
     // the book its own information result carries.
@@ -2717,6 +2718,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 throw StateError('目录含重复章节：${chapter.storeKey}');
               }
               chapters.add(chapter);
+              _entityVariables.recordTocChapter();
             } finally {
               _entityVariables.endChapter();
               clearTocChapter();
@@ -2736,12 +2738,28 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (
-      book.withVariable(
-        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
-      ),
-      chapters,
+    final rows = await _hostSurface.chapterRestorationRows(
+      _sourceRef,
+      book.identityAddress,
     );
+    final old = {for (final row in rows) (row.index, row.title): row.variable};
+    final restored = [
+      for (var i = 0; i < chapters.length; i++)
+        if (old[(i, chapters[i].name)] case final String variable)
+          chapters[i].withVariable(variable)
+        else
+          chapters[i],
+    ];
+    final bookVariable = await _entityVariables.bookVariable(
+      _sourceRef,
+      book.identityAddress,
+    );
+    final handoff = await _entityVariables.prepareTocHandoff([
+      for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
+    ]);
+    _cancellation.throwIfCancelled();
+    _entityVariables.publishTocHandoff(handoff);
+    return (book.withVariable(bookVariable), restored);
   }
 
   @override
