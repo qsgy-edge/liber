@@ -161,6 +161,11 @@ void checkAuthSessionGolden({
   if (identity['targetPinManifest'] != target['manifest']) {
     throw FormatException('$goldenPath names another target pin manifest');
   }
+  _checkSelectedRuntimeReceipts(
+    corpus: corpus,
+    golden: golden,
+    goldenPath: goldenPath,
+  );
   if (_integer(golden['pid'], '$goldenPath pid') <= 0) {
     throw FormatException('$goldenPath names no process');
   }
@@ -655,6 +660,84 @@ String mismatchKey(Map<dynamic, dynamic> mismatch) {
 
 /// Semantic JSON equality: object member order is ignored, array order and every
 /// primitive are exact, and a missing key is not an empty value.
+/// A corpus that declares the selected-reference host initialization is only
+/// compared with a capture whose own receipts prove it: an unattached App instance
+/// invoked the declared method, the measured wrapper registry is exactly the
+/// declared one, startup containment happened before the scratch binding, and every
+/// selected login recorded the dialog's binding inputs without running UI
+/// callbacks. A hash-consistent report missing or altering any of these is refused
+/// rather than compared. (The A1 STATE comparator is the reference implementation.)
+void _checkSelectedRuntimeReceipts({
+  required Map<String, dynamic> corpus,
+  required Map<String, dynamic> golden,
+  required String goldenPath,
+}) {
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization is! Map) return;
+  final measured = golden['hostInitialization'];
+  if (measured is! Map ||
+      measured['verified'] != true ||
+      measured['method'] != hostInitialization['method'] ||
+      measured['invokedOn'] != 'unattached-instance' ||
+      measured['applicationAttached'] != false) {
+    throw FormatException(
+      '$goldenPath records no verified host initialization',
+    );
+  }
+  final declared = <String, Object?>{
+    for (final row in (hostInitialization['registrations'] as List).cast<Map>())
+      '${row['type']}': row['factory'],
+  };
+  if (!_deepEquals(measured['registeredWrappers'], declared)) {
+    throw FormatException(
+      '$goldenPath records an incorrect host initialization registry',
+    );
+  }
+  final containment = golden['startupContainment'];
+  if (containment is! Map ||
+      containment['service'] != 'shortcut' ||
+      containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+      containment['intercepted'] != 1 ||
+      containment['handled'] != 1 ||
+      containment['beforeBinding'] != true) {
+    throw FormatException('$goldenPath records no startup containment receipt');
+  }
+  final bindings = golden['loginBindings'];
+  final loginSteps = [
+    for (final step in (corpus['phases'] as Map).values)
+      for (final raw in ((step as Map)['steps'] as List).cast<Map>())
+        if ('${raw['kind']}' == 'login') '${raw['id']}',
+  ];
+  if (loginSteps.isEmpty) return;
+  if (bindings is! Map || bindings.isEmpty) {
+    throw FormatException('$goldenPath records no login binding receipt');
+  }
+  for (final id in loginSteps) {
+    final receipt = bindings[id];
+    if (receipt is! Map ||
+        receipt['java'] != 'io.legado.app.ui.login.SourceLoginJsExtensions' ||
+        receipt['extensionConstructor'] !=
+            'SourceLoginJsExtensions(null, source, 0, null)' ||
+        receipt['uiCallbacksExecuted'] != false) {
+      throw FormatException(
+        '$goldenPath login $id records no static SourceLoginDialog bindings',
+      );
+    }
+    final inputs = (receipt['bindings'] as List?)?.cast<String>() ?? const [];
+    if (!const [
+      'java',
+      'result',
+      'book',
+      'chapter',
+      'isLongClick',
+    ].every(inputs.contains)) {
+      throw FormatException(
+        '$goldenPath login $id records other script bindings',
+      );
+    }
+  }
+}
+
 bool _deepEquals(Object? left, Object? right) {
   if (identical(left, right)) return true;
   if (left is Map && right is Map) {

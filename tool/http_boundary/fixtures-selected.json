@@ -366,6 +366,19 @@
           "tocUrl": "$.toc"
         }
       }
+    },
+    {
+      "id": "PL",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 PL",
+        "bookSourceUrl": "http://127.0.0.1:18771/pl",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source PL: a plain 2000 ms interval, used only by the two-member helper cohort that proves an unfinished first request does not add a wait. Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "concurrentRate": "2000",
+        "header": "{\"X-Declared\": \"pl\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
     }
   ],
   "books": [
@@ -828,6 +841,24 @@
       "rawQuery": "",
       "status": 200,
       "body": "{\"title\":\"J1\",\"author\":\"JA\",\"intro\":\"JI\",\"toc\":\"http://127.0.0.1:18771/j/toc\"}"
+    },
+    {
+      "id": "pl-1",
+      "method": "GET",
+      "path": "/pl/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "PL1",
+      "cohort": "rate.plain-hold"
+    },
+    {
+      "id": "pl-2",
+      "method": "GET",
+      "path": "/pl/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "PL2",
+      "cohort": "rate.plain-hold"
     }
   ],
   "cohorts": [
@@ -853,6 +884,11 @@
     },
     {
       "id": "stage.toc-option-tail",
+      "size": 2,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "rate.plain-hold",
       "size": 2,
       "timeoutMs": 5000
     }
@@ -895,7 +931,22 @@
         "window": "rolls",
         "frequency": 1
       }
-    ]
+    ],
+    "plain": {
+      "source": "PL",
+      "concurrentRate": "2000",
+      "windowMillis": 2000,
+      "holdStep": "helper.plain-hold",
+      "cohort": "rate.plain-hold",
+      "members": [
+        "pl-1",
+        "pl-2"
+      ],
+      "minSpreadFactor": 1,
+      "maxSpreadFactor": 2,
+      "requirement": "The two members of the declared helper batch run concurrently under a plain T interval. The first member's response is held by the cohort until the second arrives, so the second effective start can only happen after one interval and before two: T <= second.receivedAt - first.receivedAt < 2T, and the cohort releases by completing, never by its own window. The historical completion-dependent branch needs a second interval, so the cohort would time out instead.",
+      "selectionNote": "The declared helper batch is the existing cohort gate; no second hold, timer substitute or response-delay feature is introduced. A stage page walk cannot carry this relation because the product's declared-page walk is serial by design."
+    }
   },
   "failureEndpoint": {
     "host": "127.0.0.1",
@@ -1040,6 +1091,28 @@
       "requiredHeaders": {
         "user-agent": "HTTP-BOUNDARY-01/1.0",
         "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.plain-hold",
+      "kind": "helper",
+      "family": "helper",
+      "source": "PL",
+      "action": "ajaxAll",
+      "script": "(function(){var r=java.ajaxAll(['http://127.0.0.1:18771/pl/1','http://127.0.0.1:18771/pl/2']);var o=[];for(var i=0;i<r.length;i++){o.push(String(r[i].body()));}return o.join('|');})()",
+      "requests": {
+        "batch": {
+          "cohort": "rate.plain-hold",
+          "members": [
+            "pl-1",
+            "pl-2"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "pl"
       },
       "expectedOutcome": "ok"
     },
@@ -1794,21 +1867,22 @@
     }
   ],
   "structural": {
-    "observations": 44,
-    "requests": 51,
-    "responses": 49,
-    "helperSelectors": 12,
+    "observations": 45,
+    "requests": 53,
+    "responses": 51,
+    "helperSelectors": 14,
     "helperSingletonSelectors": 4,
-    "helperBatchSelectors": 8,
+    "helperBatchSelectors": 10,
     "helperBatchSizes": [
       3,
-      5
+      5,
+      2
     ],
     "rateSelectors": 3,
     "stageSelectors": 34,
     "stageRequests": 36,
     "familyObservations": {
-      "helper": 12,
+      "helper": 13,
       "rate": 3,
       "stage": 29
     },

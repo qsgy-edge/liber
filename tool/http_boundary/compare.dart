@@ -177,6 +177,294 @@ Map<String, dynamic> loadHttpBoundaryReport(String path) {
   return decoded.cast<String, dynamic>();
 }
 
+/// The selected plain-interval form is proven by the existing two-member cohort:
+/// the first member's response is withheld until the second arrives, and the second
+/// can only start after one interval. Within one report this is a portable relation
+/// (no cross-host epoch comparison): the second member's arrival is at least one
+/// interval and less than two after the first's, and the cohort released by
+/// completing rather than by timing out. The historical completion-dependent branch
+/// needs a second interval and times the cohort out, so this relation separates the
+/// two behaviours. The same check runs on the frozen capture and on the product
+/// report.
+void _checkPlainHoldRelation(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> report,
+  String label,
+) {
+  final rate = corpus['rate'];
+  if (rate is! Map) return;
+  final plain = rate['plain'];
+  if (plain is! Map) return;
+  final window = plain['windowMillis'];
+  final cohortId = '${plain['cohort']}';
+  final stepId = '${plain['holdStep']}';
+  final members = (plain['members'] as List).map((raw) => '$raw').toList();
+  if (window is! int || members.length != 2) {
+    throw HttpBoundaryRefusal('$label: the plain rate block is malformed');
+  }
+  // The step must be declared; its members are what the cohort holds.
+  httpBoundarySteps(corpus).firstWhere(
+    (candidate) => '${candidate['id']}' == stepId,
+    orElse: () => throw HttpBoundaryRefusal(
+      '$label: the plain rate step $stepId is not declared',
+    ),
+  );
+  final selectors = {
+    for (final member in members)
+      member: httpBoundarySelectorOf(
+        httpBoundaryResponses(corpus).firstWhere(
+          (response) => '${response['id']}' == member,
+          orElse: () => throw HttpBoundaryRefusal(
+            '$label: the plain rate member $member is not declared',
+          ),
+        ),
+      ),
+  };
+  final arrivals = <String, int>{};
+  for (final raw in ((report['requests'] as List?) ?? const [])) {
+    final request = (raw as Map).cast<String, dynamic>();
+    final selector = '${request['selector']}';
+    for (final entry in selectors.entries) {
+      if (entry.value != selector) continue;
+      final received = request['receivedAtNanos'];
+      if (received is! int) {
+        throw HttpBoundaryRefusal(
+          '$label: member ${entry.key} has no measured arrival',
+        );
+      }
+      arrivals[entry.key] = received;
+    }
+  }
+  for (final member in members) {
+    if (!arrivals.containsKey(member)) {
+      throw HttpBoundaryRefusal('$label: member $member never arrived');
+    }
+  }
+  final ordered = arrivals.entries.toList()
+    ..sort((left, right) => left.value.compareTo(right.value));
+  final spread = ordered[1].value - ordered[0].value;
+  final minNanos = window * 1000 * 1000;
+  if (spread < minNanos || spread >= minNanos * 2) {
+    throw HttpBoundaryRefusal(
+      '$label: the plain cohort members arrived ${spread ~/ 1000000} ms apart, '
+      'not one interval (${window}ms)',
+    );
+  }
+  for (final raw in ((report['observations'] as List?) ?? const [])) {
+    final row = (raw as Map).cast<String, dynamic>();
+    if ('${row['id']}' != stepId) continue;
+    final value = row['value'];
+    final batch = value is Map ? value['batch'] : null;
+    if (batch is! Map) {
+      throw HttpBoundaryRefusal('$label: $stepId records no cohort facts');
+    }
+    if ('${batch['cohort']}' != cohortId) {
+      throw HttpBoundaryRefusal('$label: $stepId records another cohort');
+    }
+    if (batch['cohortComplete'] != true) {
+      throw HttpBoundaryRefusal('$label: $stepId did not complete its cohort');
+    }
+    if ('${batch['releaseReason']}' != 'complete') {
+      throw HttpBoundaryRefusal(
+        '$label: $stepId released its cohort by ${batch['releaseReason']}',
+      );
+    }
+    return;
+  }
+  throw HttpBoundaryRefusal('$label: no observation for the plain rate step');
+}
+
+/// The frozen capture's own rate-window relations, re-derived from its recorded
+/// rows instead of trusted from its summary flags. Cross-host epochs are never
+/// compared; only within-run relations are: which row opened the window, whether a
+/// row stayed in it or rolled it, the frequency each row recorded, and the measured
+/// advance against the declared interval. A mutated timestamp, frequency or window
+/// therefore breaks the report even when every summary boolean still says `ok`.
+void _checkFrozenRateRelations(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> golden,
+  String goldenId,
+) {
+  final rate = corpus['rate'];
+  if (rate is! Map) return;
+  final byId = <String, Map<String, dynamic>>{};
+  for (final raw
+      in ((golden['observations'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>()) {
+    byId['${raw['id']}'] = raw;
+  }
+  final window = rate['windowMillis'];
+  if (window is! int) {
+    throw HttpBoundaryRefusal('the corpus declares no rate window');
+  }
+  final steps = ((rate['steps'] as List?) ?? const []).cast<Object?>();
+  for (var index = 0; index < steps.length; index++) {
+    final id = '${steps[index]}';
+    final row = byId[id];
+    if (row == null) {
+      throw HttpBoundaryRefusal('the capture $goldenId omits rate row $id');
+    }
+    final value = row['value'];
+    if (value is! Map) {
+      throw HttpBoundaryRefusal('the capture $goldenId has no value for $id');
+    }
+    final declared = _declaredRateSchedule(rate, index, value['index']);
+    final before = value['recordBefore'];
+    final after = value['recordAfter'];
+    if (after is! Map) {
+      throw HttpBoundaryRefusal('the capture $goldenId records no $id record');
+    }
+    final afterTime = after['time'];
+    if (afterTime is! int) {
+      throw HttpBoundaryRefusal('the capture $goldenId has no $id record time');
+    }
+    final frequency = _declaredRateField(rate, 'frequency')
+        ? after['frequency']
+        : null;
+    if (declared.window == 'opens') {
+      if (before != null) {
+        throw HttpBoundaryRefusal('the capture $goldenId opened $id twice');
+      }
+      if (frequency != null && frequency != declared.frequency) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId records the wrong $id frequency',
+        );
+      }
+      final evidence = row['evidence'];
+      final started = evidence is Map ? evidence['callStartMillis'] : null;
+      if (started is int &&
+          (afterTime < started || afterTime >= started + window)) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId records $id outside its own window',
+        );
+      }
+    } else {
+      if (before is! Map || before['time'] is! int) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId loses $id predecessor',
+        );
+      }
+      final beforeTime = before['time'] as int;
+      final sameWindow = value['sameWindowAsPrevious'];
+      if (sameWindow != (beforeTime == afterTime)) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId disagrees on $id window identity',
+        );
+      }
+      if (frequency != null && frequency != declared.frequency) {
+        throw HttpBoundaryRefusal(
+          'the capture $goldenId records the wrong $id frequency',
+        );
+      }
+      if (declared.window == 'same') {
+        if (beforeTime != afterTime) {
+          throw HttpBoundaryRefusal(
+            'the capture $goldenId moved $id out of its window',
+          );
+        }
+      } else {
+        final evidence = row['evidence'];
+        final advance = evidence is Map
+            ? evidence['windowAdvanceMillis']
+            : null;
+        if (advance != afterTime - beforeTime) {
+          throw HttpBoundaryRefusal(
+            'the capture $goldenId records a wrong $id window advance',
+          );
+        }
+        if (afterTime - beforeTime < window) {
+          throw HttpBoundaryRefusal(
+            'the capture $goldenId did not roll the $id window',
+          );
+        }
+      }
+    }
+    if (value['scheduleComplete'] != true) {
+      throw HttpBoundaryRefusal(
+        'the capture $goldenId marks $id as an incomplete schedule',
+      );
+    }
+  }
+}
+
+bool _declaredRateField(Map<dynamic, dynamic> rate, String field) {
+  final declared = rate['recordFields'];
+  if (declared == null) return true;
+  return (declared as List).map((raw) => '$raw').contains(field);
+}
+
+({String window, int frequency}) _declaredRateSchedule(
+  Map<dynamic, dynamic> rate,
+  int position,
+  Object? index,
+) {
+  final schedule = rate['schedule'];
+  if (schedule == null) {
+    return switch (position) {
+      0 => (window: 'opens', frequency: 1),
+      1 => (window: 'same', frequency: 2),
+      _ => (window: 'rolls', frequency: 1),
+    };
+  }
+  for (final raw in (schedule as List).cast<Map>()) {
+    if (raw['index'] != index) continue;
+    return (window: '${raw['window']}', frequency: raw['frequency'] as int);
+  }
+  throw HttpBoundaryRefusal('rate.schedule declares no row $index');
+}
+
+/// A corpus that declares the selected-reference host initialization is only
+/// accepted with a capture whose own receipts prove it: an unattached App instance
+/// invoked the declared method, the measured wrapper registry is exactly the
+/// declared one, and startup containment happened before the scratch binding. The
+/// receipts live under the capture's `identity`, which is where this producer
+/// writes them; a hash-consistent report missing or altering any of them is
+/// refused, never compared. (The A1 STATE comparator is the reference
+/// implementation.)
+void _checkSelectedRuntimeReceipts(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> identity,
+  String goldenId,
+) {
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization is! Map) return;
+  final measured = identity['hostInitialization'];
+  if (measured is! Map ||
+      measured['verified'] != true ||
+      measured['method'] != hostInitialization['method'] ||
+      measured['invokedOn'] != 'unattached-instance' ||
+      measured['applicationAttached'] != false) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records no verified host initialization',
+    );
+  }
+  final declared = <String, Object?>{
+    for (final row in (hostInitialization['registrations'] as List).cast<Map>())
+      '${row['type']}': row['factory'],
+  };
+  final registered = measured['registeredWrappers'];
+  if (registered is! Map ||
+      registered.length != declared.length ||
+      !declared.entries.every(
+        (entry) => registered[entry.key] == entry.value,
+      )) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records an incorrect host initialization registry',
+    );
+  }
+  final containment = identity['startupContainment'];
+  if (containment is! Map ||
+      containment['service'] != 'shortcut' ||
+      containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+      containment['intercepted'] != 1 ||
+      containment['handled'] != 1 ||
+      containment['beforeBinding'] != true) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records no startup containment receipt',
+    );
+  }
+}
+
 Map<String, dynamic> _object(Object? value, String what) {
   if (value is Map) return value.cast<String, dynamic>();
   throw HttpBoundaryRefusal('$what is not a JSON object');
@@ -241,6 +529,9 @@ void validateFrozenCapture(
       'the capture $goldenId ran another frozen target',
     );
   }
+  _checkSelectedRuntimeReceipts(corpus, identity, goldenId);
+  _checkFrozenRateRelations(corpus, golden, goldenId);
+  _checkPlainHoldRelation(corpus, golden, 'the capture $goldenId');
   // The capture's bundled asset is checked against the asset its own capture
   // manifest pinned, never against whatever line endings this checkout happens
   // to have. The canonical LF hash above is the semantic corpus identity, so an
@@ -3997,24 +4288,41 @@ HttpBoundaryComparison compareHttpBoundaryRecords({
 
 /// The configured `ajaxAll` width and the declared page-list scheduling are
 /// approved architecture facts: the strict mismatch stays visible, and this
-/// disposition records why it is not a frozen parity claim.
-const httpBoundaryConfiguredWidthReason =
-    'Approved experience-first default: SourceHostDispatcher.ajaxAll batches '
-    'four requests, while the frozen capture records AppConfig.threadCount 16. '
-    'Returned order, request values, the per-source rate limiter and '
-    'cancellation remain strictly compared.';
+/// disposition records why it is not a frozen parity claim. The frozen width is
+/// named from the corpus' own declaration and the capture's own recorded runtime
+/// value, never from a historical constant, so a selected capture explains itself.
+String httpBoundaryConfiguredWidthReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return 'Approved experience-first default: SourceHostDispatcher.ajaxAll '
+      'batches four requests, while the frozen capture records the actual '
+      'AppConfig.threadCount read ($width for this corpus) and the capture '
+      'reports the value it measured. Returned order, request values, the '
+      'per-source rate limiter and cancellation remain strictly compared.';
+}
 
-const httpBoundaryWidthCohortReason =
-    '$httpBoundaryConfiguredWidthReason The declared 5-member cohort '
-    'consequently records the measured peak 4 and a cohort-window release; '
-    'those are the measured consequences of that configured width.';
+String httpBoundaryWidthCohortReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return '${httpBoundaryConfiguredWidthReason(corpus)} The declared 5-member '
+      'cohort consequently records the measured peak 4 and a cohort-window '
+      'release; those are the measured consequences of that configured width '
+      '($width).';
+}
 
-const httpBoundaryPageListSchedulingReason =
-    'Approved current behavior: a declared TOC/content page list is fetched '
-    'serially at width 1, while the frozen baseline batches it at '
-    'AppConfig.threadCount 16. Declared output order and the per-source rate '
-    'limiter are preserved; the measured cohort and request facts are the '
-    'consequence of that scheduling.';
+String httpBoundaryPageListSchedulingReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return 'Approved current behavior: a declared TOC/content page list is '
+      'fetched serially at width 1, while the frozen baseline batches it at '
+      'AppConfig.threadCount ($width for this corpus, as read at capture time). '
+      'Declared output order and the per-source rate limiter are preserved; the '
+      'measured cohort and request facts are the consequence of that scheduling.';
+}
+
+/// The frozen batch width this corpus declares, or `unknown` when it declares none.
+String _frozenThreadCount(Map<String, dynamic> corpus) {
+  final runtime = corpus['runtime'];
+  final declared = runtime is Map ? runtime['threadCountDefault'] : null;
+  return declared is int ? '$declared' : 'unknown';
+}
 
 const httpBoundaryZeroArityReason =
     'Approved supported product extension: the frozen Rhino binding refuses '
@@ -4386,7 +4694,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
       mismatch.observed == httpBoundaryBatchWidth) {
     return (
       group: 'ajaxall-configured-width',
-      reason: httpBoundaryConfiguredWidthReason,
+      reason: httpBoundaryConfiguredWidthReason(corpus),
     );
   }
 
@@ -4408,14 +4716,14 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
         if (isHelperBatch && mismatch.observed == httpBoundaryBatchWidth) {
           return (
             group: 'ajaxall-configured-width',
-            reason: httpBoundaryConfiguredWidthReason,
+            reason: httpBoundaryConfiguredWidthReason(corpus),
           );
         }
         if (isPageListBatch &&
             mismatch.observed == httpBoundarySerialWalkWidth) {
           return (
             group: 'page-list-scheduling',
-            reason: httpBoundaryPageListSchedulingReason,
+            reason: httpBoundaryPageListSchedulingReason(corpus),
           );
         }
       }
@@ -4427,7 +4735,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
           _isCohortConsequence(mismatch, cohortSize!, httpBoundaryBatchWidth)) {
         return (
           group: 'ajaxall-configured-width',
-          reason: httpBoundaryWidthCohortReason,
+          reason: httpBoundaryWidthCohortReason(corpus),
         );
       }
       if (isPageListBatch &&
@@ -4439,7 +4747,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
           )) {
         return (
           group: 'page-list-scheduling',
-          reason: httpBoundaryPageListSchedulingReason,
+          reason: httpBoundaryPageListSchedulingReason(corpus),
         );
       }
       if ('${step['action']}' == 'headerMap') {
@@ -4509,13 +4817,13 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
     if (isHelperBatch && cohortSize == 5) {
       return (
         group: 'ajaxall-configured-width',
-        reason: httpBoundaryWidthCohortReason,
+        reason: httpBoundaryWidthCohortReason(corpus),
       );
     }
     if (isPageListBatch) {
       return (
         group: 'page-list-scheduling',
-        reason: httpBoundaryPageListSchedulingReason,
+        reason: httpBoundaryPageListSchedulingReason(corpus),
       );
     }
     return null;

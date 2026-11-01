@@ -596,8 +596,12 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
     );
   }
   final sources = _array(corpus['sources'], 'sources');
-  if (sources.length != 16) {
-    throw const FormatException('the corpus declares sixteen sources');
+  // The historical corpus declares sixteen; the selected one adds the plain-rate
+  // source its two-member cohort needs. Every original id is still required below.
+  if (sources.length < 16) {
+    throw const FormatException(
+      'the corpus declares fewer than sixteen sources',
+    );
   }
   final sourceIds = <String>{};
   for (final raw in sources) {
@@ -758,6 +762,59 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
   }
   if (rate['initialSnapshotRequirement'] != 'empty') {
     throw const FormatException('rate.initialSnapshotRequirement is not empty');
+  }
+  // The plain-interval form is exercised by the existing two-member cohort: one
+  // member's response is held until the other arrives, which can only happen after
+  // the interval. The declaration must name a real plain-rate source, its interval,
+  // and the step/cohort/members that carry the relation.
+  final plain = rate['plain'];
+  if (plain != null) {
+    final declaredPlain = _object(plain, 'rate.plain');
+    final plainSource = '${declaredPlain['source']}';
+    final plainRate = _text(declaredPlain['concurrentRate'], 'rate.plain rate');
+    if (plainRate.contains('/')) {
+      throw const FormatException('rate.plain declares the count form');
+    }
+    final sourceValue =
+        '${httpBoundarySourceOf(corpus, plainSource)['concurrentRate'] ?? ''}';
+    if (sourceValue != plainRate) {
+      throw FormatException(
+        'source $plainSource declares concurrentRate $sourceValue, rate.plain '
+        'declares $plainRate',
+      );
+    }
+    if (int.tryParse(plainRate) !=
+        _integer(declaredPlain['windowMillis'], 'rate.plain windowMillis')) {
+      throw const FormatException(
+        'rate.plain windowMillis is not its interval',
+      );
+    }
+    final holdStepId = '${declaredPlain['holdStep']}';
+    final holdStep = steps.firstWhere(
+      (candidate) => '${candidate['id']}' == holdStepId,
+      orElse: () => throw FormatException(
+        'rate.plain names no declared step $holdStepId',
+      ),
+    );
+    final batch = _object(
+      _object(holdStep['requests'], 'rate.plain step requests')['batch'],
+      'rate.plain step batch',
+    );
+    if ('${batch['cohort']}' != '${declaredPlain['cohort']}') {
+      throw const FormatException('rate.plain names another cohort');
+    }
+    final members = _array(batch['members'], 'rate.plain members');
+    if (members.length != 2) {
+      throw const FormatException('rate.plain needs the two-member cohort');
+    }
+    final cohort = _array(corpus['cohorts'], 'cohorts').cast<Map>().firstWhere(
+      (candidate) => '${candidate['id']}' == '${declaredPlain['cohort']}',
+      orElse: () =>
+          throw const FormatException('rate.plain names no declared cohort'),
+    );
+    if (_integer(cohort['size'], 'rate.plain cohort size') != 2) {
+      throw const FormatException('rate.plain cohort is not two members');
+    }
   }
   // The task-owned failure endpoint.
   final failure = _object(corpus['failureEndpoint'], 'failureEndpoint');
@@ -1872,7 +1929,9 @@ class _HttpBoundaryRun {
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowStartMillis'] = start;
       case 'rolls':
-        final start = _rateWindowStart;
+        // A rollover is measured against the record this row actually saw, so
+        // successive rollovers each report their own advance.
+        final start = before?['time'] as int? ?? _rateWindowStart;
         final advanced = start == null || afterTime == null
             ? null
             : afterTime - start;
@@ -1884,6 +1943,7 @@ class _HttpBoundaryRun {
         value['scheduleComplete'] = complete;
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowAdvanceMillis'] = advanced;
+        _rateWindowStart = afterTime;
       default:
         throw FormatException('unknown rate window ${schedule.window}');
     }

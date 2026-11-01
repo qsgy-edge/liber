@@ -79,6 +79,10 @@ public class AuthSessionOracle extends Instrumentation {
     /** The selected-reference corpus: bound to `a7d37f1` and its instrumentable build. */
     private static final String ASSET_SELECTED = "auth-session-fixtures-selected.json";
     private static final String STREAM_KEY = "AUTH_SESSION_ORACLE_BASE64";
+    /** SourceLoginDialog's own invocation tail, reproduced verbatim. */
+    private static final String LOGIN_INVOCATION =
+        "if (typeof login=='function'){ login.apply(this); } else {"
+            + " throw('Function login not implements!!!') }";
     private static final String SCRATCH_ROOT_NAME = "liber-auth-session-01";
     private static final String PREFERENCE_PREFIX = "liber_auth_session_01_";
     private static final String WEBVIEW_SUFFIX = "liber-auth-session-01";
@@ -91,6 +95,8 @@ public class AuthSessionOracle extends Instrumentation {
     private final JSONArray observations = new JSONArray();
     private final JSONObject inventory = new JSONObject();
     private final JSONObject entryPoints = new JSONObject();
+    /** Per-source login binding receipt: instrumentation provenance, not compared. */
+    private final JSONObject loginBindings = new JSONObject();
     private final AtomicReference<String> stage = new AtomicReference<>("setup");
     private final AtomicBoolean finished = new AtomicBoolean();
 
@@ -282,6 +288,7 @@ public class AuthSessionOracle extends Instrumentation {
                         ? observationCheckValue : observationCheck())
                     .put("inventory", inventory)
                     .put("entryPoints", entryPoints)
+                    .put("loginBindings", synchronizedSnapshot(loginBindings))
                     .put("webView", webViewReport())
                     .put("cleanup", cleanup)
                     .put("analysisFailure", failure == null ? JSONObject.NULL : failure);
@@ -484,7 +491,7 @@ public class AuthSessionOracle extends Instrumentation {
         Object source = require(sources, step.getString("source"), "source");
         String infoJson = step.getString("loginInfo");
         JSONObject value = selectedCorpus()
-            ? selectedLogin(source, infoJson)
+            ? selectedLogin(source, infoJson, step.getString("id"))
             : historicalLogin(source, infoJson);
         value.put("kind", "login")
             .put("source", step.getString("source"));
@@ -516,7 +523,8 @@ public class AuthSessionOracle extends Instrumentation {
      * result/book/chapter/isLongClick bindings (SourceLoginDialog.kt:801-807,845-852).
      * No login-UI view callback runs and no dynamic login UI is claimed.
      */
-    private JSONObject selectedLogin(Object source, String infoJson) throws Exception {
+    private JSONObject selectedLogin(Object source, String infoJson, String step_source)
+            throws Exception {
         JSONArray ui = loginUiRows(source);
         Map<String, String> loginData = dialogLoginData(source, ui, infoJson);
         String loginJson = selectedGson().getClass()
@@ -527,18 +535,23 @@ public class AuthSessionOracle extends Instrumentation {
         String loginScript = loginScript(source);
         Object extension = loginJsExtensions(source);
         runLoginScript(source, loginScript, extension, loginData);
+        // The binding receipt is instrumentation provenance, never part of the
+        // compared product value (the product has no such field).
+        synchronized (loginBindings) {
+            loginBindings.put(step_source, new JSONObject()
+                .put("java", "io.legado.app.ui.login.SourceLoginJsExtensions")
+                .put("extensionConstructor", "SourceLoginJsExtensions(null, source, 0, null)")
+                .put("bindings", new JSONArray()
+                    .put("java").put("result").put("book").put("chapter")
+                    .put("isLongClick"))
+                .put("result", "loginData")
+                .put("invocationTail", LOGIN_INVOCATION)
+                .put("uiCallbacksExecuted", false));
+        }
         return new JSONObject()
             .put("loginUi", ui)
             .put("putLoginInfo", put == null ? JSONObject.NULL : put)
-            .put("loginInfo", jsonMap((Map<?, ?>) info))
-            .put("loginBindings", new JSONObject()
-                .put("java", "io.legado.app.ui.login.SourceLoginJsExtensions")
-                .put("extensionConstructor", "SourceLoginJsExtensions(null, source, 0, null)")
-                .put("result", "loginData")
-                .put("book", JSONObject.NULL)
-                .put("chapter", JSONObject.NULL)
-                .put("isLongClick", false)
-                .put("uiCallbacksExecuted", false));
+            .put("loginInfo", jsonMap((Map<?, ?>) info));
     }
 
     /** The rows the selected dialog parses out of the raw loginUi text. */
@@ -609,13 +622,18 @@ public class AuthSessionOracle extends Instrumentation {
         return loginData;
     }
 
-    /** The source's own login script text (BaseSource.getLoginJs()). */
+    /**
+     * The login script the selected dialog actually evaluates: the source's own
+     * `getLoginJs()` text plus the dialog's guarded invocation tail
+     * (`SourceLoginDialog.kt:844-846`). `getLoginJs()` only extracts script text, so
+     * without the tail a fixture that declares `function login(){...}` never runs it.
+     */
     private String loginScript(Object source) throws Exception {
         Object script = call(source, "getLoginJs");
         if (script == null || script.toString().isEmpty()) {
             throw new IllegalStateException("the source declares no login script");
         }
-        return script.toString();
+        return script.toString() + "\n" + LOGIN_INVOCATION;
     }
 
     /** SourceLoginJsExtensions(null, source, 0, null): no activity, no callback. */
@@ -1979,6 +1997,13 @@ public class AuthSessionOracle extends Instrumentation {
             }
         }
         return report.toString();
+    }
+
+    /** A copy of a shared provenance object, so the report cannot race later writes. */
+    private static JSONObject synchronizedSnapshot(JSONObject source) throws JSONException {
+        synchronized (source) {
+            return new JSONObject(source.toString());
+        }
     }
 
     private static JSONArray snapshot(JSONArray source) {

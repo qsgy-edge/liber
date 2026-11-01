@@ -716,7 +716,25 @@ public class HttpBoundaryOracle extends Instrumentation {
         JSONObject provenance = new JSONObject().put("present", record != null)
             .put("javaClassIsProvenance", true);
         if (record != null) {
-            provenance.put("class", record.getClass().getName());
+            Class<?> type = record.getClass();
+            provenance.put("class", type.getName());
+            // The selected record carries the parsed accessLimit/interval. They are
+            // implementation provenance, so they are measured and recorded here and
+            // never compared as portable values.
+            try {
+                Object accessLimit = memberValue(type, record,
+                    new String[]{"getAccessLimit", "accessLimit"});
+                Object interval = memberValue(type, record,
+                    new String[]{"getInterval", "interval"});
+                if (accessLimit instanceof Number) {
+                    provenance.put("accessLimit", ((Number) accessLimit).intValue());
+                }
+                if (interval instanceof Number) {
+                    provenance.put("interval", ((Number) interval).intValue());
+                }
+            } catch (Exception ignored) {
+                // A reference without those fields simply records none.
+            }
         }
         return provenance;
     }
@@ -862,7 +880,11 @@ public class HttpBoundaryOracle extends Instrumentation {
                 + " host:port: " + origin);
         }
         JSONArray sources = corpus.getJSONArray("sources");
-        if (sources.length() != 16) throw new IllegalStateException("corpus needs sixteen sources");
+        // The historical corpus declares sixteen; the selected one adds the plain-rate
+        // source its two-member cohort needs. Every original id is still required.
+        if (sources.length() < 16) {
+            throw new IllegalStateException("corpus needs at least sixteen sources");
+        }
         Set<String> sourceIds = new LinkedHashSet<>();
         for (int index = 0; index < sources.length(); index++) {
             String sourceId = sources.getJSONObject(index).getString("id");
@@ -876,6 +898,7 @@ public class HttpBoundaryOracle extends Instrumentation {
             }
         }
         Set<String> sourceKeys = new LinkedHashSet<>();
+        Set<String> declaredRateForms = new LinkedHashSet<>();
         String concurrentRate = null;
         for (int index = 0; index < sources.length(); index++) {
             JSONObject entry = sources.getJSONObject(index);
@@ -905,10 +928,19 @@ public class HttpBoundaryOracle extends Instrumentation {
             }
             String rate = bookSource.optString("concurrentRate", "");
             if (!rate.isEmpty()) {
-                if (concurrentRate != null) {
-                    throw new IllegalStateException("two sources declare a concurrentRate");
+                // The selected corpus declares one source per supported form: the
+                // count/window source the rate rows drive and a plain-interval source
+                // whose existing two-member cohort holds a first request across its
+                // interval. Any other duplicate is still refused.
+                String form = rate.contains("/") ? "count" : "plain";
+                if (declaredRateForms.contains(form)) {
+                    throw new IllegalStateException("two sources declare the " + form
+                        + " rate form");
                 }
-                concurrentRate = rate;
+                declaredRateForms.add(form);
+                if ("count".equals(form)) {
+                    concurrentRate = rate;
+                }
             }
         }
         if (!"1/2000".equals(concurrentRate)) {

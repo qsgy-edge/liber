@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../domain/contracts.dart';
 
 /// One source's selected-reference rate-limiter record
@@ -86,14 +88,41 @@ class SourceRateLimiter {
   }) async {
     if (!applies(sourceRef, rate)) return null;
     while (true) {
+      // Checked before the record is read *and* before it is mutated: a
+      // cancelled waiter must not create, roll a window or count an admission,
+      // so a later operation starts from the record as it really is.
+      cancellation?.throwIfCancelled();
       final (record: record, wait: milliseconds) = _fetchStart(sourceRef, rate);
       if (milliseconds > 0) {
-        cancellation?.throwIfCancelled();
-        await _wait(Duration(milliseconds: milliseconds));
+        await _awaitWait(milliseconds, cancellation);
         continue;
       }
       return record;
     }
+  }
+
+  /// Waits [milliseconds] of injected time, or settles as soon as
+  /// [cancellation] fires — a caller's deadline must not be delayed by the rest
+  /// of a rate interval. The injected [SourceRateLimiter.wait] signature is
+  /// preserved; only the caller's token joins the wait.
+  Future<void> _awaitWait(
+    int milliseconds,
+    SourceCancellation? cancellation,
+  ) async {
+    final pending = _wait(Duration(milliseconds: milliseconds));
+    if (cancellation == null) return pending;
+    final cancelled = Completer<void>();
+    final detach = cancellation.listen(() {
+      if (!cancelled.isCompleted) cancelled.complete();
+    });
+    try {
+      await Future.any([pending, cancelled.future]);
+    } finally {
+      detach();
+    }
+    // Neither the normal end nor the cancellation may continue an operation the
+    // caller has already given up on.
+    cancellation.throwIfCancelled();
   }
 
   /// The selected reference has no `fetchEnd`: its window count is never
