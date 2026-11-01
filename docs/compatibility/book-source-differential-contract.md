@@ -146,6 +146,32 @@ Cleanup has two distinct assertions:
 
 A non-observable baseline resource leak is therefore not part of the golden equality check. Fixing it remains a pass. If the source-observable baseline effect cannot be reproduced without violating an approved security or data-integrity prohibition, the fixture is `policy-rejected`.
 
+### Source-declared rate admission (#137)
+
+Supported rate forms follow the selected reference's source-keyed admission
+semantics (`a7d37f1`, `ConcurrentRateLimiter.kt`):
+
+- `N/T` admits at most `N` request starts in a `T`-millisecond window. The first
+  start consumes one admission; there is no extra `N + 1` start.
+- A plain `T` admits one request start per `T` milliseconds. Once the interval
+  has elapsed, an unfinished earlier request does not impose another wait.
+- Completing a request does not replenish its window's admission count. Records
+  remain process-local and shared by analyses of the same source; other sources
+  have independent records.
+
+The selected corpus strictly compares both rate forms, including a request that
+outlives its interval, window rollover, effective request starts and cancellation
+while waiting. It must not replace the count form with a plain interval or name
+these admission differences as an accepted divergence. Internal record layouts
+remain provenance; compared timing uses declared within-run window relations,
+not equality of clocks on different hosts. Historical captures retain their own
+baseline and declared schedules.
+
+The product's default four-request `ajaxAll` batches, serial ordered page walks,
+request deadlines and cancellation/cleanup boundaries remain unchanged. No
+runtime rate-update or bypass API, new rate grammar, timeout option, setting or
+persistent state is introduced.
+
 ### Known divergences
 
 A divergence is recorded here only when an approved architecture or product
