@@ -11,6 +11,19 @@ everything else here is producer evidence.
 frozen API or from the requests the frozen HTTP stack actually sent: no expected
 value is echoed as an observation.
 
+## Selected-reference entry
+
+The sections below describe the historical v1 corpus and its original target;
+those captures retain their original identity. The selected A2 corpus is
+`tool/auth_session/fixtures-selected.json` (v2), with fixed baseline
+`a7d37f1707a70a459ad708f4fe79341d1e42d716` and target
+`com.legado.app.debug` APK SHA-256
+`593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5`.
+Its instrumentation entry is `io.liber.oracle.nested.SelectedAuthSessionOracle`.
+The controller owns native capture and provider revalidation; this declaration
+is not an executed selected capture. See `consumer.md` for the selected product
+and comparison commands.
+
 ## Corpus shape
 
 | Item | Value |

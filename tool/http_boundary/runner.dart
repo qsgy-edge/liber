@@ -9,7 +9,7 @@ import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/html_source_pipeline.dart' as html_boundary;
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart'
-    show InProcessSourceScriptRuntime, SourceScriptError;
+    show InProcessSourceScriptRuntime, SourceScriptError, sourceRuleVariableKey;
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
@@ -680,12 +680,28 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       'stage',
       'failure',
       'cancel',
+      'rateWaitCancel',
     }.contains(kind)) {
       throw FormatException('step $id has unknown kind $kind');
     }
     httpBoundarySourceOf(corpus, _text(step['source'], 'step $id source'));
     if (kind == 'helper') {
       _validateHelperAction(step, id);
+    }
+    if (kind == 'rateWaitCancel') {
+      final marker = _text(step['marker'], 'rate-wait marker');
+      final window = _integer(step['windowMillis'], 'rate-wait window');
+      final source = httpBoundarySourceOf(corpus, '${step['source']}');
+      final declared = httpBoundaryDeclaredRequests(step);
+      if (corpus['corpusVersion'] != 4 ||
+          step['family'] != 'stage' ||
+          marker != 'rateWaitMarker' ||
+          window <= 0 ||
+          source['concurrentRate'] != '1/$window' ||
+          declared.ordered.length != 2 ||
+          declared.members.isNotEmpty) {
+        throw FormatException('step $id has an invalid rate-wait declaration');
+      }
     }
     final carrier = step['carrier'];
     if (carrier != null) {
@@ -1269,6 +1285,7 @@ class _HttpBoundaryRun {
         cohortTimeouts: cohortTimeouts,
         cohortThreadCounts: cohortThreadCounts,
         cohortThreadSources: cohortThreadSources,
+        selectedTiming: corpus['corpusVersion'] == 4,
         onServerError: (error) => serverErrors.add({'replay': '$error'}),
       );
       await NativeLibrary.initialize(libraryPath: libraryPath);
@@ -1558,6 +1575,8 @@ class _HttpBoundaryRun {
             await _runFailure(step, observation);
           case 'cancel':
             await _runCancel(step, observation);
+          case 'rateWaitCancel':
+            await _runRateWaitCancel(step, observation);
           default:
             throw HttpBoundaryIncomplete('unknown step kind ${step['kind']}');
         }
@@ -1650,7 +1669,74 @@ class _HttpBoundaryRun {
       case 'ajaxAll':
       case 'connectHeader':
       case 'connectSource':
-        final result = await _evaluate(sourceId, '${step['script']}');
+        final plain = (_object(corpus['rate'], 'rate')['plain'] as Map?);
+        final measurePlain = plain != null && plain['holdStep'] == id;
+        final sourceKey = sourceUrl(sourceId);
+        final before = measurePlain
+            ? _rateRecord(rateLimiter.recordOf(sourceKey), [
+                'time',
+                'frequency',
+              ])
+            : null;
+        if (measurePlain && before != null) {
+          throw const HttpBoundaryIncomplete(
+            'plain rate source was not initially empty',
+          );
+        }
+        Map<String, Object?>? firstSample;
+        int? firstSampleMillis;
+        Timer? sampler;
+        if (measurePlain) {
+          sampler = Timer.periodic(const Duration(milliseconds: 5), (_) {
+            final record = rateLimiter.recordOf(sourceKey);
+            if (record != null && firstSample == null) {
+              firstSample = {
+                'time': record.time,
+                'frequency': record.frequency,
+              };
+              firstSampleMillis = _nowMillis();
+            }
+          });
+        }
+        final started = _nowMillis();
+        final startNanos = _nowNanos();
+        Object? result;
+        int finished;
+        int finishNanos;
+        try {
+          result = await _evaluate(sourceId, '${step['script']}');
+        } finally {
+          finished = _nowMillis();
+          finishNanos = _nowNanos();
+          sampler?.cancel();
+        }
+        if (measurePlain) {
+          (observation['evidence'] as Map)['plainRate'] = {
+            'sourceKey': sourceKey,
+            'callStartMillis': started,
+            'callFinishMillis': finished,
+            'callStartNanos': startNanos,
+            'callFinishNanos': finishNanos,
+            'recordBefore': before,
+            'firstRecord': firstSample,
+            'firstSampleMillis': firstSampleMillis,
+            'finalRecord': _rateRecord(rateLimiter.recordOf(sourceKey), [
+              'time',
+              'frequency',
+            ]),
+            'observerIntervalMillis': 5,
+            'observerSettled': !sampler!.isActive,
+          };
+          final finalRecord = rateLimiter.recordOf(sourceKey);
+          if (firstSample == null ||
+              finalRecord == null ||
+              finalRecord.time - (firstSample!['time'] as int) <
+                  (plain['windowMillis'] as int)) {
+            throw const HttpBoundaryIncomplete(
+              'plain rate observer missed the first window',
+            );
+          }
+        }
         value['result'] = result is String ? result : '$result';
         final declared = httpBoundaryDeclaredRequests(step);
         if (declared.cohort != null) {
@@ -1883,9 +1969,11 @@ class _HttpBoundaryRun {
       );
     }
     final callStart = _nowMillis();
+    final startNanos = _nowNanos();
     final watch = Stopwatch()..start();
     final result = await _evaluate(sourceId, '${step['script']}');
     watch.stop();
+    final finishNanos = _nowNanos();
     final callFinish = _nowMillis();
     final after = _rateRecord(rateLimiter.recordOf(sourceKey), fields);
     final afterTime = after?['time'] as int?;
@@ -1902,7 +1990,11 @@ class _HttpBoundaryRun {
     final evidence = <String, Object?>{
       'callStartMillis': callStart,
       'callFinishMillis': callFinish,
-      'durationNanos': watch.elapsedMicroseconds * 1000,
+      if (corpus['corpusVersion'] == 4) 'callStartNanos': startNanos,
+      if (corpus['corpusVersion'] == 4) 'callFinishNanos': finishNanos,
+      'durationNanos': corpus['corpusVersion'] == 4
+          ? finishNanos - startNanos
+          : watch.elapsedMicroseconds * 1000,
       'sourceKey': sourceKey,
       'windowMillis': window,
       'recordAfterIsProvenance': true,
@@ -2358,6 +2450,203 @@ class _HttpBoundaryRun {
     observation['evidence'] = {'rawError': '$caught'};
     observation['outcome'] = 'failure';
     observation['category'] = 'network-failure';
+  }
+
+  /// Runs the selected rate-wait scenario through real search pipelines. The
+  /// source's address script marks request analysis before rate acquisition.
+  Future<void> _runRateWaitCancel(
+    Map<String, dynamic> step,
+    Map<String, Object?> observation,
+  ) async {
+    final sourceId = _text(step['source'], 'rate-wait source');
+    final source = sourceObject(sourceId);
+    final sourceKey = sourceUrl(sourceId);
+    final marker = sourceRuleVariableKey(
+      sourceKey,
+      _text(step['marker'], 'rate-wait marker'),
+    );
+    final window = _integer(step['windowMillis'], 'rate-wait window');
+    final state = hostState;
+    if (state == null) {
+      throw const HttpBoundaryIncomplete('host state is absent');
+    }
+    html_boundary.HtmlSourcePipeline pipeline() =>
+        html_boundary.HtmlSourcePipeline(
+          source,
+          HttpSourceTransport(),
+          hostState: hostState,
+          androidId: androidId,
+        );
+    final prime = pipeline();
+    if (SourceRateLimiter.shared.recordOf(sourceKey) != null) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait source was not initially empty',
+      );
+    }
+    final primeResults = await prime.search('prime');
+    final record = SourceRateLimiter.shared.recordOf(sourceKey);
+    if (record == null || record.frequency != 1 || primeResults.isEmpty) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait prime did not saturate its source',
+      );
+    }
+    final recordTime = record.time;
+    final recordFrequency = record.frequency;
+    final waiting = pipeline();
+    Object? workerError;
+    var workerSettled = false;
+    final waitTimer = Completer<int>();
+    final search = runZoned(
+      () => waiting.search('wait'),
+      zoneSpecification: ZoneSpecification(
+        createTimer: (self, parent, zone, duration, callback) {
+          if (!waitTimer.isCompleted &&
+              duration.inMilliseconds > 1000 &&
+              duration.inMilliseconds <= window &&
+              state.entryIfLoaded(sourceKey, marker) == 'entered') {
+            waitTimer.complete(duration.inMilliseconds);
+          }
+          return parent.createTimer(zone, duration, callback);
+        },
+      ),
+    );
+    final worker = search.then<void>(
+      (_) => workerSettled = true,
+      onError: (Object error) {
+        workerError = error;
+        workerSettled = true;
+      },
+    );
+    _ownedCancelWorker = worker;
+    _cancelledPipeline = waiting;
+    final deadline = recordTime + window;
+    var markerValue = await state.entry(sourceKey, marker);
+    while (markerValue != 'entered' &&
+        !workerSettled &&
+        _nowMillis() < deadline) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      markerValue = await state.entry(sourceKey, marker);
+    }
+    if (markerValue != 'entered' || workerSettled || _nowMillis() >= deadline) {
+      waiting.cancel();
+      await worker;
+      throw HttpBoundaryIncomplete(
+        'rate-wait marker was not observed during the saturated window: '
+        'marker=$markerValue settled=$workerSettled error=$workerError '
+        'now=${_nowMillis()} deadline=$deadline',
+      );
+    }
+    // The owned limiter's default wait schedules a timer after the marker and
+    // before the request can be sent. Observe that scheduling in this execution's
+    // zone rather than treating a sleeping worker as proof of rate admission wait.
+    final timerMillis = await waitTimer.future.timeout(
+      Duration(milliseconds: (deadline - _nowMillis()).clamp(1, window)),
+      onTimeout: () => 0,
+    );
+    final beforeCancelRequests = replay!.requests.length;
+    final recordAtMarker = SourceRateLimiter.shared.recordOf(sourceKey);
+    final saturatedAtMarker =
+        recordAtMarker?.time == recordTime &&
+        recordAtMarker?.frequency == recordFrequency &&
+        !workerSettled &&
+        timerMillis > 0 &&
+        _nowMillis() < deadline &&
+        beforeCancelRequests == 1;
+    final markerMillis = _nowMillis();
+    final atMarkerSnapshot = recordAtMarker == null
+        ? null
+        : {'time': recordAtMarker.time, 'frequency': recordAtMarker.frequency};
+    final cancelMillis = _nowMillis();
+    waiting.cancel();
+    await worker.timeout(const Duration(seconds: 3));
+    final settledMillis = _nowMillis();
+    final after = SourceRateLimiter.shared.recordOf(sourceKey);
+    final unchanged =
+        after?.time == recordTime && after?.frequency == recordFrequency;
+    final afterSnapshot = after == null
+        ? null
+        : {'time': after.time, 'frequency': after.frequency};
+    final remaining = deadline + 100 - _nowMillis();
+    if (remaining > 0) {
+      await Future<void>.delayed(Duration(milliseconds: remaining));
+    }
+    final quietMillis = _nowMillis();
+    final afterQuietRequests = replay!.requests.length;
+    final noLateRequest = afterQuietRequests == beforeCancelRequests;
+    final quietRecord = SourceRateLimiter.shared.recordOf(sourceKey);
+    final quietSnapshot = quietRecord == null
+        ? null
+        : {'time': quietRecord.time, 'frequency': quietRecord.frequency};
+    final unchangedAfterQuiet =
+        quietRecord?.time == recordTime &&
+        quietRecord?.frequency == recordFrequency;
+    final markerAfter = await state.entry(sourceKey, marker);
+    final lateEffect = await state.entry(
+      sourceKey,
+      sourceRuleVariableKey(sourceKey, 'rateWaitLate'),
+    );
+    final follow = pipeline();
+    final followResults = await follow.search('follow');
+    final ok =
+        saturatedAtMarker &&
+        unchanged &&
+        unchangedAfterQuiet &&
+        noLateRequest &&
+        markerAfter == 'entered' &&
+        lateEffect == null &&
+        workerSettled &&
+        workerError is SourceRequestCancelled &&
+        followResults.isNotEmpty &&
+        replay!.requests.length == beforeCancelRequests + 1;
+    observation['value'] = {
+      'kind': 'rateWaitCancel',
+      'source': sourceId,
+      'markerObserved': markerValue == 'entered',
+      'saturatedAtMarker': saturatedAtMarker,
+      'workerCancelled': workerError is SourceRequestCancelled,
+      'workerTerminated': workerSettled,
+      'recordUnchanged': unchanged && unchangedAfterQuiet,
+      'noLateRequest': noLateRequest,
+      'markerUnchanged': markerAfter == 'entered',
+      'noLateEffect': lateEffect == null,
+      'freshFollowUp':
+          !identical(waiting, follow) &&
+          identical(waiting.source, follow.source) &&
+          followResults.isNotEmpty,
+    };
+    observation['evidence'] = {
+      'sourceKey': sourceKey,
+      'recordBefore': {'time': recordTime, 'frequency': recordFrequency},
+      'recordAfter': afterSnapshot,
+      'recordAfterQuiet': quietSnapshot,
+      'deadlineMillis': deadline,
+      'markerMillis': markerMillis,
+      'cancelMillis': cancelMillis,
+      'settledMillis': settledMillis,
+      'quietMillis': quietMillis,
+      'waitTimerMillis': timerMillis,
+      'markerValue': markerValue,
+      'markerValueAfterQuiet': markerAfter,
+      'lateEffectAfterQuiet': lateEffect ?? '',
+      'recordAtMarker': atMarkerSnapshot,
+      'requestsBeforeCancel': beforeCancelRequests,
+      'requestsAfterQuiet': afterQuietRequests,
+      'requestsAfterFollowUp': replay!.requests.length,
+      'workerFailureCategory': workerError is SourceRequestCancelled
+          ? 'cancelled'
+          : 'other',
+      'workerIdentity': identityHashCode(waiting),
+      'followUpIdentity': identityHashCode(follow),
+      'sourceObjectIdentity': identityHashCode(waiting.source),
+      'followUpSourceObjectIdentity': identityHashCode(follow.source),
+      'workerError': '$workerError',
+    };
+    if (!ok) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait cancellation facts were not established',
+      );
+    }
+    observation['outcome'] = 'ok';
   }
 
   // --- cancellation and its bound follow-up ----------------------------------
@@ -3133,6 +3422,7 @@ class _ReplayServer {
     this._cohortTimeouts,
     this._cohortThreadCounts,
     this._cohortThreadSources,
+    this._selectedTiming,
     this._onServerError,
   );
 
@@ -3144,6 +3434,7 @@ class _ReplayServer {
     required Map<String, int> cohortTimeouts,
     Map<String, int> cohortThreadCounts = const {},
     Map<String, String> cohortThreadSources = const {},
+    bool selectedTiming = false,
     required void Function(Object error) onServerError,
   }) async {
     final ServerSocket server;
@@ -3165,6 +3456,7 @@ class _ReplayServer {
       cohortTimeouts,
       cohortThreadCounts,
       cohortThreadSources,
+      selectedTiming,
       onServerError,
     );
     instance._accept();
@@ -3179,6 +3471,7 @@ class _ReplayServer {
   final Map<String, int> _cohortTimeouts;
   final Map<String, int> _cohortThreadCounts;
   final Map<String, String> _cohortThreadSources;
+  final bool _selectedTiming;
   final void Function(Object error) _onServerError;
 
   final requests = <Map<String, Object?>>[];
@@ -3280,6 +3573,9 @@ class _ReplayServer {
       'bodyLength': bodyBytes.length,
       'bodySha256': sha256Bytes(bodyBytes),
       'receivedAtNanos': receivedAt,
+      if (_selectedTiming &&
+          (owner?.family == 'rate' || owner?.step == 'helper.plain-hold'))
+        'receivedAtMillis': _nowMillis(),
       // Unsent facts: nothing has been written yet, so a peer abort before the
       // first response byte can never report a send or a completion.
       'respondedAtNanos': 0,

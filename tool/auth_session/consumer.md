@@ -12,6 +12,29 @@ bounded rows under [the Cookie result](#the-cookie-result-and-what-the-existing-
 are carried as `notCompared`. Integration, the Windows driven run and full
 ticket acceptance are still pending, so nothing here is a compatibility claim.
 
+## Selected-reference commands
+
+The measurements described below are historical v1 evidence, not selected A2
+results. Select the separate v2 corpus explicitly for the selected-reference
+runs and their recursive controls:
+
+```bash
+dart run tool/auth_session/compare.dart \
+  --corpus=tool/auth_session/fixtures-selected.json \
+  --capture=<selected-capture-dir> --evidence=<fresh-evidence-dir> \
+  --library=<fjs.dll> [--handoff=<selected-handoff.json>]
+
+dart run tool/auth_session/compare.dart --controls-only \
+  --corpus=tool/auth_session/fixtures-selected.json \
+  --capture=<selected-capture-dir> --seed-product=<seed.json> \
+  --restart-product=<restart.json> --evidence=<fresh-evidence-dir> \
+  [--library=<fjs.dll>] [--handoff=<selected-handoff.json>]
+```
+
+The selected native entry is
+`io.liber.oracle.nested.SelectedAuthSessionOracle`; the controller owns its
+capture. A selector does not turn historical reports into selected evidence.
+
 ## What runs
 
 ```bash

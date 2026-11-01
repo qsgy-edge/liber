@@ -513,6 +513,9 @@ Map<String, dynamic> _validProduct({
   final cancelBy = <String, Map<String, Object?>>{};
   for (final step in steps) {
     final id = '${step['id']}';
+    // The synthetic v3 schedule rolls on row 3, two seconds after the request
+    // that opened its window. Earlier tiny timestamps only encoded ordering.
+    if (id == 'rate.record.3') clock += 2000000000;
     final declared = httpBoundaryDeclaredRequests(step);
     final rows = <Map<String, Object?>>[];
     for (final responseId in [...declared.ordered, ...declared.members]) {
@@ -2966,6 +2969,28 @@ void main() {
       expect(() => gate(fresh()), returnsNormally);
     });
 
+    test(
+      'rate admission does not require a full window between replay receipts',
+      () {
+        // Synthetic admission fixture: transport latency after the first admitted
+        // request can be longer than after the rollover request.
+        final record = fresh();
+        final requests = (record['requests'] as List).cast<Map>();
+        final first = requests.firstWhere(
+          (row) => row['owner'] == 'rate.record.1',
+        );
+        final third = requests.firstWhere(
+          (row) => row['owner'] == 'rate.record.3',
+        );
+        final delayed = (first['receivedAtNanos'] as int) + 1900000000;
+        third['receivedAtNanos'] = delayed;
+        final rowRequests =
+            observation(record, 'rate.record.3')['requests'] as List;
+        (rowRequests.single as Map)['receivedAtNanos'] = delayed;
+        expect(() => gate(record), returnsNormally);
+      },
+    );
+
     test('missing or malformed v3 probe facts are refused', () {
       for (final mutate in <void Function(Map<String, dynamic>)>[
         (record) {
@@ -4504,6 +4529,37 @@ void main() {
     }
     expect(refusal(unknownCarrier), isNotNull);
   });
+
+  test(
+    'selected rate-wait cancellation binds a saturated source and two requests',
+    () {
+      Map<String, dynamic> selected() =>
+          jsonDecode(
+                File(
+                  'tool/http_boundary/fixtures-selected.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      expect(() => validateHttpBoundaryCorpus(selected()), returnsNormally);
+      for (final mutate in <void Function(Map<String, dynamic>)>[
+        (corpus) =>
+            ((corpus['steps'] as List).first as Map)['marker'] = 'other',
+        (corpus) =>
+            ((corpus['steps'] as List).first as Map)['windowMillis'] = 0,
+        (corpus) => ((corpus['steps'] as List).first as Map)['source'] = 'S',
+        (corpus) =>
+            (((corpus['steps'] as List).first as Map)['requests']
+                as Map)['ordered'] = [
+              'rw-prime',
+            ],
+        (corpus) => corpus['corpusVersion'] = 3,
+      ]) {
+        final corpus = selected();
+        mutate(corpus);
+        expect(() => validateHttpBoundaryCorpus(corpus), throwsFormatException);
+      }
+    },
+  );
 
   test('the selected-reference corpus gate accepts only its declared shape', () {
     final selected = loadHttpBoundaryCorpus(

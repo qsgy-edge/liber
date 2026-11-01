@@ -154,6 +154,7 @@ public class HttpBoundaryOracle extends Instrumentation {
     private Method runBlockingMethod;
     private CancelMembers cancelMembers;
     private Thread activeCancelWorker;
+    private Thread activePlainObserver;
     private boolean admissionStoppedReceipt;
     private boolean cancellationSignalledReceipt;
     private boolean gatesReleasedReceipt;
@@ -928,6 +929,9 @@ public class HttpBoundaryOracle extends Instrumentation {
             }
             String rate = bookSource.optString("concurrentRate", "");
             if (!rate.isEmpty()) {
+                // RW is the selected cancellation source, isolated from the R
+                // window schedule; its own rate is validated with its step below.
+                if (selectedCorpus() && "RW".equals(entry.getString("id"))) continue;
                 // The selected corpus declares one source per supported form: the
                 // count/window source the rate rows drive and a plain-interval source
                 // whose existing two-member cohort holds a first request across its
@@ -1011,7 +1015,7 @@ public class HttpBoundaryOracle extends Instrumentation {
             if (!stepIds.add(id)) throw new IllegalStateException("duplicate step " + id);
             String kind = step.getString("kind");
             if (!new LinkedHashSet<>(Arrays.asList("helper", "rate", "stage", "failure",
-                    "cancel")).contains(kind)) {
+                    "cancel", "rateWaitCancel")).contains(kind)) {
                 throw new IllegalStateException("unknown step kind " + kind);
             }
             if ("helper".equals(kind)) {
@@ -1034,6 +1038,26 @@ public class HttpBoundaryOracle extends Instrumentation {
                         throw new IllegalStateException("script probe " + id
                             + " declares requests");
                     }
+                }
+            }
+            if ("rateWaitCancel".equals(kind)) {
+                if (!selectedCorpus() || !"stage".equals(step.optString("family"))
+                        || !"RW".equals(step.optString("source"))
+                        || !"rateWaitMarker".equals(step.optString("marker"))
+                        || step.optLong("windowMillis", 0) <= 0
+                        || step.getJSONObject("requests").getJSONArray("ordered").length() != 2) {
+                    throw new IllegalStateException("invalid rate-wait declaration " + id);
+                }
+                JSONObject rateWaitSource = null;
+                for (int slot = 0; slot < sources.length(); slot++) {
+                    JSONObject entry = sources.getJSONObject(slot);
+                    if ("RW".equals(entry.optString("id"))) {
+                        rateWaitSource = entry.getJSONObject("bookSource");
+                    }
+                }
+                if (rateWaitSource == null || !("1/" + step.getLong("windowMillis"))
+                        .equals(rateWaitSource.optString("concurrentRate"))) {
+                    throw new IllegalStateException("rate-wait source has another rate");
                 }
             }
             if (step.has("carrier")) {
@@ -1450,6 +1474,9 @@ public class HttpBoundaryOracle extends Instrumentation {
                     case "cancel":
                         stepCancel(step, value, evidence);
                         break;
+                    case "rateWaitCancel":
+                        stepRateWaitCancel(step, value, evidence);
+                        break;
                     default:
                         throw new IllegalStateException("unknown step kind " + kind);
                 }
@@ -1842,6 +1869,49 @@ public class HttpBoundaryOracle extends Instrumentation {
         }
         Object host;
         Object result;
+        JSONObject plain = corpus.getJSONObject("rate").optJSONObject("plain");
+        boolean measurePlain = selectedCorpus() && plain != null
+            && step.getString("id").equals(plain.optString("holdStep"));
+        JSONObject plainBefore = measurePlain ? readRateRecord(rawRecordForSource(source)) : null;
+        if (measurePlain && plainBefore != null) {
+            throw new IncompleteStep("plain rate source was not initially empty");
+        }
+        final AtomicReference<JSONObject> firstRecord = new AtomicReference<>();
+        final AtomicReference<Long> firstSampleMillis = new AtomicReference<>();
+        final AtomicReference<Throwable> sampleError = new AtomicReference<>();
+        CountDownLatch observerStarted = new CountDownLatch(1);
+        Thread observer = null;
+        if (measurePlain) {
+            observer = new Thread(() -> {
+                observerStarted.countDown();
+                try {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        Object record = rawRecordForSource(source);
+                        if (record != null) {
+                            synchronized (record) {
+                                firstRecord.set(readRateRecord(record));
+                                firstSampleMillis.set(System.currentTimeMillis());
+                            }
+                            return;
+                        }
+                        Thread.sleep(5);
+                    }
+                } catch (InterruptedException expected) {
+                    Thread.currentThread().interrupt();
+                } catch (Throwable error) {
+                    sampleError.set(error);
+                }
+            }, "http-boundary-plain-observer");
+            activePlainObserver = observer;
+            observer.start();
+            if (!observerStarted.await(3, TimeUnit.SECONDS)) {
+                throw new IncompleteStep("plain rate observer did not start");
+            }
+        }
+        long operationStartMillis = System.currentTimeMillis();
+        long operationStartNanos = System.nanoTime();
+        long operationFinishMillis;
+        long operationFinishNanos;
         try {
             host = newAnalyzeUrl(source);
             result = evalJS(host, step.getString("script"));
@@ -1853,6 +1923,42 @@ public class HttpBoundaryOracle extends Instrumentation {
                     + describe(error));
             }
             throw error;
+        } finally {
+            operationFinishNanos = System.nanoTime();
+            operationFinishMillis = System.currentTimeMillis();
+            if (observer != null) {
+                observer.interrupt();
+                observer.join(3000);
+                if (!observer.isAlive()) activePlainObserver = null;
+            }
+        }
+        if (measurePlain) {
+            Object rawFinal = rawRecordForSource(source);
+            JSONObject finalRecord;
+            if (rawFinal == null) {
+                finalRecord = null;
+            } else {
+                synchronized (rawFinal) { finalRecord = readRateRecord(rawFinal); }
+            }
+            evidence.put("plainRate", new JSONObject()
+                .put("sourceKey", str(source.getClass(), source, "getKey"))
+                .put("callStartMillis", operationStartMillis)
+                .put("callFinishMillis", operationFinishMillis)
+                .put("callStartNanos", operationStartNanos)
+                .put("callFinishNanos", operationFinishNanos)
+                .put("recordBefore", JSONObject.NULL)
+                .put("firstRecord", firstRecord.get() == null ? JSONObject.NULL : firstRecord.get())
+                .put("firstSampleMillis", firstSampleMillis.get() == null ? JSONObject.NULL : firstSampleMillis.get())
+                .put("finalRecord", finalRecord == null ? JSONObject.NULL : finalRecord)
+                .put("observerIntervalMillis", 5)
+                .put("observerSettled", observer != null && !observer.isAlive())
+                .put("observerError", sampleError.get() == null ? JSONObject.NULL : describe(sampleError.get())));
+            if (observer == null || observer.isAlive() || sampleError.get() != null
+                    || firstRecord.get() == null || finalRecord == null
+                    || finalRecord.getLong("time") - firstRecord.get().getLong("time")
+                        < plain.getLong("windowMillis")) {
+                throw new IncompleteStep("plain rate observer missed the first window or did not settle");
+            }
         }
         String resultText = result == null ? "null" : String.valueOf(result);
         if ("scriptProbe".equals(action)) {
@@ -2077,6 +2183,10 @@ public class HttpBoundaryOracle extends Instrumentation {
             .put("rate", new JSONObject()
                 .put("recordClassBefore", readRateRecordProvenance(beforeRaw))
                 .put("recordClassAfter", readRateRecordProvenance(afterRaw)));
+        if (selectedCorpus()) {
+            evidence.put("callStartNanos", startNanos).put("callFinishNanos", finishNanos)
+                .put("windowMillis", window);
+        }
         if (!complete) {
             throw new IncompleteStep("incomplete-schedule: rate.record." + index + ": "
                 + reason.toString().trim());
@@ -2410,6 +2520,142 @@ public class HttpBoundaryOracle extends Instrumentation {
     }
 
     // ---------------------------------------------------------- cancellation
+
+    private void stepRateWaitCancel(JSONObject step, JSONObject value, JSONObject evidence)
+            throws Throwable {
+        Object source = require(sourcesById, step.getString("source"), "source");
+        String sourceKey = str(source.getClass(), source, "getKey");
+        String marker = step.getString("marker");
+        long window = step.getLong("windowMillis");
+        if (rawRecordForSource(source) != null) {
+            throw new IncompleteStep("rate-wait source was not initially empty");
+        }
+        Object prime = search(source, "prime");
+        JSONObject before = readRateRecord(rawRecordForSource(source));
+        if (!(prime instanceof java.util.List) || ((java.util.List<?>) prime).isEmpty()
+                || before == null || before.getInt("frequency") != 1) {
+            throw new IncompleteStep("rate-wait prime did not saturate its source");
+        }
+        long deadline = before.getLong("time") + window;
+        CancelMembers members = resolveCancelMembers();
+        cancelMembers = members;
+        Object job = members.newJob.invoke(null, new Object[]{null});
+        Object context = members.plus.invoke(members.emptyContext, job);
+        activeCancelJob = job;
+        AtomicReference<Throwable> workerError = new AtomicReference<>();
+        Thread worker = new Thread(() -> {
+            try {
+                searchUnderContext(context, source, "wait");
+            } catch (Throwable error) {
+                workerError.set(error);
+            }
+        }, "http-boundary-rate-wait");
+        activeCancelWorker = worker;
+        worker.start();
+        Object markerValue = call(source, "get", marker);
+        while (!"entered".equals(String.valueOf(markerValue)) && worker.isAlive()
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+            markerValue = call(source, "get", marker);
+        }
+        if (!"entered".equals(String.valueOf(markerValue)) || !worker.isAlive()
+                || System.currentTimeMillis() >= deadline) {
+            requestCancel(members, job);
+            worker.join(3000);
+            throw new IncompleteStep("rate-wait marker was not observed during saturation");
+        }
+        Thread.sleep(100);
+        JSONObject atMarker = readRateRecord(rawRecordForSource(source));
+        int beforeCount;
+        synchronized (requests) { beforeCount = requests.length(); }
+        long markerMillis = System.currentTimeMillis();
+        Thread.State workerState = worker.getState();
+        boolean blockingCoroutine = false;
+        for (StackTraceElement frame : worker.getStackTrace()) {
+            if (frame.getClassName().contains("BlockingCoroutine")
+                    && "joinBlocking".equals(frame.getMethodName())) blockingCoroutine = true;
+        }
+        boolean parkedInRunBlocking = blockingCoroutine
+            && (workerState == Thread.State.WAITING || workerState == Thread.State.TIMED_WAITING);
+        boolean saturatedAtMarker = worker.isAlive() && markerMillis < deadline
+            && parkedInRunBlocking && deepEqual(before, atMarker) && beforeCount == 1;
+        long cancelMillis = System.currentTimeMillis();
+        requestCancel(members, job);
+        worker.join(3000);
+        long settledMillis = System.currentTimeMillis();
+        boolean terminated = !worker.isAlive();
+        boolean jobDone = isJobComplete(members, job);
+        JSONObject after = readRateRecord(rawRecordForSource(source));
+        boolean unchanged = deepEqual(before, after);
+        if (terminated && jobDone) {
+            activeCancelJob = null;
+            activeCancelWorker = null;
+        } else {
+            throw new IncompleteStep("rate-wait worker or parent job did not settle");
+        }
+        long remaining = deadline + 100 - System.currentTimeMillis();
+        if (remaining > 0) Thread.sleep(remaining);
+        long quietMillis = System.currentTimeMillis();
+        int afterCount;
+        synchronized (requests) { afterCount = requests.length(); }
+        boolean noLateRequest = afterCount == beforeCount;
+        JSONObject afterQuiet = readRateRecord(rawRecordForSource(source));
+        boolean unchangedAfterQuiet = deepEqual(before, afterQuiet);
+        String markerAfter = String.valueOf(call(source, "get", marker));
+        String lateEffect = String.valueOf(call(source, "get", "rateWaitLate"));
+        boolean markerUnchanged = "entered".equals(markerAfter);
+        boolean noLateEffect = "".equals(lateEffect);
+        Object freshJob = members.newJob.invoke(null, new Object[]{null});
+        Object freshContext = members.plus.invoke(members.emptyContext, freshJob);
+        followUpJob = freshJob;
+        Object follow;
+        boolean freshClosed;
+        try {
+            follow = searchUnderContext(freshContext, source, "follow");
+        } finally {
+            requestCancel(members, freshJob);
+            freshClosed = isJobComplete(members, freshJob);
+            if (freshClosed) followUpJob = null;
+        }
+        int finalCount;
+        synchronized (requests) { finalCount = requests.length(); }
+        boolean freshFollowUp = freshJob != job && freshContext != context && freshClosed
+            && sourceKey.equals(str(source.getClass(), source, "getKey"))
+            && follow instanceof java.util.List && !((java.util.List<?>) follow).isEmpty()
+            && finalCount == beforeCount + 1;
+        boolean workerCancelled = workerError.get() != null && isCancellation(workerError.get());
+        value.put("kind", "rateWaitCancel").put("source", step.getString("source"))
+            .put("markerObserved", true).put("saturatedAtMarker", saturatedAtMarker)
+            .put("workerCancelled", workerCancelled).put("workerTerminated", terminated && jobDone)
+            .put("recordUnchanged", unchanged && unchangedAfterQuiet).put("noLateRequest", noLateRequest)
+            .put("markerUnchanged", markerUnchanged).put("noLateEffect", noLateEffect)
+            .put("freshFollowUp", freshFollowUp);
+        evidence.put("sourceKey", sourceKey).put("recordBefore", before)
+            .put("recordAfter", after).put("recordAfterQuiet", afterQuiet).put("recordAtMarker", atMarker)
+            .put("deadlineMillis", deadline).put("markerMillis", markerMillis)
+            .put("cancelMillis", cancelMillis).put("settledMillis", settledMillis)
+            .put("quietMillis", quietMillis)
+            .put("workerThreadState", workerState.toString())
+            .put("parkedInRunBlocking", parkedInRunBlocking)
+            .put("markerValue", String.valueOf(markerValue))
+            .put("markerValueAfterQuiet", markerAfter).put("lateEffectAfterQuiet", lateEffect)
+            .put("requestsBeforeCancel", beforeCount).put("requestsAfterQuiet", afterCount)
+            .put("requestsAfterFollowUp", finalCount)
+            .put("workerFailureCategory", workerCancelled ? "cancelled" : "other")
+            .put("workerIdentity", System.identityHashCode(job))
+            .put("followUpIdentity", System.identityHashCode(freshJob))
+            .put("sourceObjectIdentity", System.identityHashCode(source))
+            .put("followUpSourceObjectIdentity", System.identityHashCode(source))
+            .put("jobIdentity", System.identityHashCode(job))
+            .put("followUpJobIdentity", System.identityHashCode(freshJob))
+            .put("contextIdentity", System.identityHashCode(context))
+            .put("followUpContextIdentity", System.identityHashCode(freshContext))
+            .put("workerError", workerError.get() == null ? JSONObject.NULL : describe(workerError.get()));
+        if (!(saturatedAtMarker && workerCancelled && terminated && jobDone && unchanged
+                && unchangedAfterQuiet && noLateRequest && markerUnchanged && noLateEffect && freshFollowUp)) {
+            throw new IncompleteStep("rate-wait cancellation facts were not established");
+        }
+    }
 
     private void stepCancel(JSONObject step, JSONObject value, JSONObject evidence)
             throws Throwable {
@@ -2751,6 +2997,13 @@ public class HttpBoundaryOracle extends Instrumentation {
      */
     private boolean awaitOwnedJobs() {
         boolean ok = true;
+        if (activePlainObserver != null) {
+            activePlainObserver.interrupt();
+            try { activePlainObserver.join(3000); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            if (activePlainObserver.isAlive()) ok = false;
+            else activePlainObserver = null;
+        }
         if (activeCancelWorker != null) {
             try {
                 activeCancelWorker.join(5000);
@@ -4683,6 +4936,7 @@ public class HttpBoundaryOracle extends Instrumentation {
         private final AtomicBoolean stopping = new AtomicBoolean();
         private final JSONArray listenerCloseErrors = new JSONArray();
         private final int threadCount;
+        private final boolean selectedTiming;
         private final HoldState holdState = new HoldState();
         private volatile boolean listenersClosed;
         private volatile boolean workersStopped;
@@ -4701,6 +4955,7 @@ public class HttpBoundaryOracle extends Instrumentation {
             this.stageTrace = stageTrace;
             this.stage = stage;
             this.threadCount = threadCount;
+            this.selectedTiming = corpus.optInt("corpusVersion") == 4;
             URI uri = URI.create(origin);
             if (uri.getHost() == null || uri.getPort() < 1) {
                 throw new IllegalStateException("the replay origin is not host:port");
@@ -5107,6 +5362,10 @@ public class HttpBoundaryOracle extends Instrumentation {
                         ? JSONObject.NULL : declared.optString("id"))
                     .put("outcome", "received")
                     .put("stage", stage.get());
+                if (selectedTiming && owner != null && ("rate".equals(owner.family)
+                        || "helper.plain-hold".equals(owner.step))) {
+                    observed.put("receivedAtMillis", System.currentTimeMillis());
+                }
                 synchronized (requests) {
                     observed.put("index", requests.length() + 1);
                     requests.put(observed);

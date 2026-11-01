@@ -697,20 +697,44 @@ void _checkSelectedRuntimeReceipts({
   if (containment is! Map ||
       containment['service'] != 'shortcut' ||
       containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+      containment['intercepted'] is! int ||
       containment['intercepted'] != 1 ||
+      containment['handled'] is! int ||
       containment['handled'] != 1 ||
       containment['beforeBinding'] != true) {
     throw FormatException('$goldenPath records no startup containment receipt');
   }
-  final bindings = golden['loginBindings'];
+  // Each instrumentation run is one phase and publishes only what that phase
+  // performed: a fresh restart legitimately emits no login receipt, because it
+  // declares no login step. The receipts are therefore validated for this
+  // capture's own phase, while initialization and containment are required of
+  // every selected phase above.
+  final phase = '${golden['phase']}';
+  final phases = corpus['phases'];
+  if (phases is! Map || !phases.containsKey(phase)) {
+    throw FormatException('$goldenPath names the unknown phase "$phase"');
+  }
   final loginSteps = [
-    for (final step in (corpus['phases'] as Map).values)
-      for (final raw in ((step as Map)['steps'] as List).cast<Map>())
-        if ('${raw['kind']}' == 'login') '${raw['id']}',
+    for (final raw in ((phases[phase] as Map)['steps'] as List).cast<Map>())
+      if ('${raw['kind']}' == 'login') '${raw['id']}',
   ];
-  if (loginSteps.isEmpty) return;
-  if (bindings is! Map || bindings.isEmpty) {
+  final bindings = golden['loginBindings'];
+  if (loginSteps.isEmpty) {
+    if (bindings is! Map || bindings.isNotEmpty) {
+      throw FormatException(
+        '$goldenPath records login bindings for a phase with no login step',
+      );
+    }
+    return;
+  }
+  if (bindings is! Map) {
     throw FormatException('$goldenPath records no login binding receipt');
+  }
+  if (bindings.length != loginSteps.length ||
+      !loginSteps.every(bindings.containsKey)) {
+    throw FormatException(
+      "$goldenPath login bindings are not exactly this phase's login steps",
+    );
   }
   for (final id in loginSteps) {
     final receipt = bindings[id];
@@ -718,19 +742,32 @@ void _checkSelectedRuntimeReceipts({
         receipt['java'] != 'io.legado.app.ui.login.SourceLoginJsExtensions' ||
         receipt['extensionConstructor'] !=
             'SourceLoginJsExtensions(null, source, 0, null)' ||
-        receipt['uiCallbacksExecuted'] != false) {
+        receipt['uiCallbacksExecuted'] != false ||
+        receipt['result'] != 'loginData') {
       throw FormatException(
         '$goldenPath login $id records no static SourceLoginDialog bindings',
       );
     }
-    final inputs = (receipt['bindings'] as List?)?.cast<String>() ?? const [];
-    if (!const [
+    const loginInvocation =
+        "if (typeof login=='function'){ login.apply(this); } else {"
+        " throw('Function login not implements!!!') }";
+    if (receipt['invocationTail'] != loginInvocation) {
+      throw FormatException(
+        '$goldenPath login $id records no guarded login invocation',
+      );
+    }
+    final inputs = receipt['bindings'];
+    final declaredInputs = const [
       'java',
       'result',
       'book',
       'chapter',
       'isLongClick',
-    ].every(inputs.contains)) {
+    ];
+    if (inputs is! List ||
+        inputs.length != declaredInputs.length ||
+        inputs.any((input) => input is! String) ||
+        !declaredInputs.every(inputs.contains)) {
       throw FormatException(
         '$goldenPath login $id records other script bindings',
       );
@@ -2265,6 +2302,7 @@ Future<int> _runAndCompare(List<String> args) async {
 
   final controls = await _runNegativeControls(
     evidence: evidence,
+    corpusPath: corpusPath,
     libraryPath: libraryPath,
     seedGoldenPath: seedGoldenPath,
     restartGoldenPath: restartGoldenPath,
@@ -2298,6 +2336,7 @@ Future<int> _runAndCompare(List<String> args) async {
 /// written and are hashed again after the run.
 Future<Map<String, Object?>> _runNegativeControls({
   required Directory evidence,
+  required String corpusPath,
   required String? libraryPath,
   required String seedGoldenPath,
   required String restartGoldenPath,
@@ -2474,6 +2513,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     required String productRestart,
     required String mutation,
     String? requiredDelta,
+    String? requiredRefusal,
   }) async {
     final out = '${directory.path}${Platform.pathSeparator}$name-report.json';
     final log = '${directory.path}${Platform.pathSeparator}$name.log';
@@ -2485,6 +2525,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       productRestart,
       '--golden-seed=$goldenSeed',
       '--golden-restart=$goldenRestart',
+      '--corpus=$corpusPath',
       if (libraryPath != null) '--library=$libraryPath',
       '--out=$out',
     ];
@@ -2498,15 +2539,19 @@ Future<Map<String, Object?>> _runNegativeControls({
         if (!baselineKeys.contains(key)) key,
     ]..sort();
     final deltaHit = requiredDelta == null || delta.contains(requiredDelta);
+    final refusalHit =
+        requiredRefusal == null ||
+        run.stdout.contains('refused:') && run.stdout.contains(requiredRefusal);
     controls.add({
       'name': name,
       'mutation': mutation,
       'expectedExit': expectedExit,
       'actualExit': run.exitCode,
       'requiredDelta': requiredDelta,
+      'requiredRefusal': requiredRefusal,
       'baselineKeysConsidered': baselineKeys.length,
       'newMismatchKeys': delta,
-      'passed': run.exitCode == expectedExit && deltaHit,
+      'passed': run.exitCode == expectedExit && deltaHit && refusalHit,
       'report': out,
       'log': log,
       'stdout': run.stdout.trim(),
@@ -2532,6 +2577,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture swapped two request rows',
+    requiredRefusal: 'request 1 is not the corpus declaration',
   );
   await control(
     'golden-observation-order',
@@ -2541,6 +2587,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture swapped two observation ids',
+    requiredRefusal: 'observation 0 is not seed.login.A',
   );
   await control(
     'golden-identity-mutation',
@@ -2550,6 +2597,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture named another target APK',
+    requiredRefusal: 'captured another frozen target',
   );
   await control(
     'golden-receipt-mutation',
@@ -2559,6 +2607,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture claimed its replay listeners were open',
+    requiredRefusal: 'did not close both replay listeners',
   );
   await control(
     'product-value-mutation',
@@ -2806,6 +2855,7 @@ Future<int> _controlsOnly(List<String> args) async {
   );
   final controls = await _runNegativeControls(
     evidence: evidence,
+    corpusPath: corpusPath,
     libraryPath: libraryPath,
     seedGoldenPath: seedGoldenPath,
     restartGoldenPath: restartGoldenPath,

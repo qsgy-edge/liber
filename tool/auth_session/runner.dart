@@ -288,17 +288,13 @@ void authSessionStepValidation(
       sourcesOf(step);
       final stage = _text(step['stage'], 'step $id stage');
       _text(step['checkKey'], 'step $id checkKey');
-      if (!const {
-        'search',
-        'details',
-        'toc',
-        'content',
-      }.contains(stage)) {
+      if (!const {'search', 'details', 'toc', 'content'}.contains(stage)) {
         throw FormatException('step $id has an unknown stage: $stage');
       }
       if (stage == 'search') {
         final declared = _array(step['books'], 'step $id books');
-        if (declared.isEmpty || declared.any((book) => !bookIds.contains(book))) {
+        if (declared.isEmpty ||
+            declared.any((book) => !bookIds.contains(book))) {
           throw FormatException('step $id names an unknown book');
         }
       } else if (!bookIds.contains('${step['book']}')) {
@@ -339,7 +335,9 @@ List<String> authSessionRequestStages(
   List<dynamic> requests,
   String path,
 ) {
-  final steps = [for (final step in authSessionSteps(corpus, phase)) '${step['id']}'];
+  final steps = [
+    for (final step in authSessionSteps(corpus, phase)) '${step['id']}',
+  ];
   final stages = <String>[];
   var index = 0;
   for (final raw in requests) {
@@ -384,10 +382,7 @@ Map<String, dynamic> authSessionPhaseSection(
   if (phase != 'seed' && phase != 'restart') {
     throw FormatException('unknown phase $phase');
   }
-  return _object(
-    _object(corpus['phases'], 'phases')[phase],
-    'phases.$phase',
-  );
+  return _object(_object(corpus['phases'], 'phases')[phase], 'phases.$phase');
 }
 
 List<Map<String, dynamic>> authSessionSteps(
@@ -454,10 +449,7 @@ Map<String, dynamic> authSessionSourceOf(
   throw StateError('the corpus has no source $id');
 }
 
-Map<String, dynamic> authSessionBookOf(
-  Map<String, dynamic> corpus,
-  String id,
-) {
+Map<String, dynamic> authSessionBookOf(Map<String, dynamic> corpus, String id) {
   for (final raw in _array(corpus['books'], 'books')) {
     if ((raw as Map)['id'] == id) return raw.cast<String, dynamic>();
   }
@@ -579,9 +571,7 @@ Future<void> main(List<String> args) async {
           'sha256': sha256File(File('tool/auth_session/runner.dart')),
         },
       },
-      'steps': [
-        for (final step in authSessionSteps(corpus, phase)) step['id'],
-      ],
+      'steps': [for (final step in authSessionSteps(corpus, phase)) step['id']],
       'measurement': {
         'application': 'SourceHostState over a Workspace space store',
         'login':
@@ -791,9 +781,7 @@ Future<void> _runPhase({
       throw const AuthSessionRefusal('restart root has no workspace manifest');
     }
     store = await workspace.openSpace();
-    hostState = SourceHostState(
-      persistence: SpaceHostStatePersistence(store),
-    );
+    hostState = SourceHostState(persistence: SpaceHostStatePersistence(store));
     final androidId = await workspace.androidId();
     if (seed) {
       final sources = await store.allSources();
@@ -982,10 +970,7 @@ class _PhaseContext {
   /// The corpus step whose requests and observations are being recorded.
   String currentStage = '';
 
-  Future<void> runStep(
-    Map<String, dynamic> step, {
-    required bool seed,
-  }) async {
+  Future<void> runStep(Map<String, dynamic> step, {required bool seed}) async {
     final id = '${step['id']}';
     currentStage = id;
     for (final server in servers) {
@@ -1016,8 +1001,7 @@ class _PhaseContext {
     }
   }
 
-  Map<String, dynamic> _sourceOf(String id) =>
-      authSessionSourceOf(corpus, id);
+  Map<String, dynamic> _sourceOf(String id) => authSessionSourceOf(corpus, id);
 
   String _sourceUrlOf(String id) => authSessionSourceUrl(_sourceOf(id));
 
@@ -1156,7 +1140,10 @@ class _PhaseContext {
     });
   }
 
-  Future<void> _runStage(Map<String, dynamic> step, {required bool seed}) async {
+  Future<void> _runStage(
+    Map<String, dynamic> step, {
+    required bool seed,
+  }) async {
     final id = '${step['id']}';
     final sourceId = '${step['source']}';
     final sourceRef = _sourceUrlOf(sourceId);
@@ -1232,11 +1219,7 @@ class _PhaseContext {
         value['book'] = bookId;
         value['chapters'] = [
           for (final chapter in chapters)
-            {
-              'url': chapter.address,
-              'title': chapter.name,
-              'tag': chapter.tag,
-            },
+            {'url': chapter.address, 'title': chapter.name, 'tag': chapter.tag},
         ];
       case 'content':
         final bookId = '${step['book']}';
@@ -1247,9 +1230,8 @@ class _PhaseContext {
         final chapterAddress = '${step['chapter']}';
         final chapter = pending.$2.firstWhere(
           (candidate) => candidate.address == chapterAddress,
-          orElse: () => throw StateError(
-            'content $id found no chapter $chapterAddress',
-          ),
+          orElse: () =>
+              throw StateError('content $id found no chapter $chapterAddress'),
         );
         final body = await pipeline.chapter(chapter, book: pending.$1);
         value['book'] = bookId;
@@ -1512,7 +1494,9 @@ class _AuthReplayServer {
       final name = entry.key.toLowerCase();
       if (name == 'content-length' || name == 'transfer-encoding') continue;
       if (name == 'content-type') {
-        request.response.headers.contentType = ContentType.parse('${entry.value}');
+        request.response.headers.contentType = ContentType.parse(
+          '${entry.value}',
+        );
       } else {
         request.response.headers.set(entry.key, '${entry.value}');
       }
@@ -1604,7 +1588,9 @@ Map<String, dynamic> _validateOwner(
   final expectedSources = {
     for (final raw in _array(corpus['sources'], 'sources'))
       '${raw['id']}': sha256Text(
-        jsonEncode(authSessionSourceObject((raw as Map).cast<String, dynamic>())),
+        jsonEncode(
+          authSessionSourceObject((raw as Map).cast<String, dynamic>()),
+        ),
       ),
   };
   if (_canonicalJson(declaredSources) != _canonicalJson(expectedSources)) {
@@ -1699,9 +1685,7 @@ Map<String, Object?> _ownerManifest({
       for (final raw in corpus['sources'] as List)
         {
           'id': raw['id'],
-          'bookSourceUrl': authSessionSourceUrl(
-            raw.cast<String, dynamic>(),
-          ),
+          'bookSourceUrl': authSessionSourceUrl(raw.cast<String, dynamic>()),
           'sha256': sha256Text(
             jsonEncode(authSessionSourceObject(raw.cast<String, dynamic>())),
           ),

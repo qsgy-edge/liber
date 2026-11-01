@@ -379,6 +379,25 @@
         "concurrentRate": "2000",
         "header": "{\"X-Declared\": \"pl\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
       }
+    },
+    {
+      "id": "RW",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 RW",
+        "bookSourceUrl": "http://127.0.0.1:18771/rw",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "Controlled rate-wait cancellation source; no live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "concurrentRate": "1/10000",
+        "header": "{\"X-Declared\": \"rw\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "<js>(function(){if(key=='wait'){source.put('rateWaitMarker','entered');}return 'http://127.0.0.1:18771/rw/'+key;})()</js>",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a@text@js:(function(){if(source.get('rateWaitMarker')=='entered')source.put('rateWaitLate','late');return result;})()",
+          "bookUrl": "a@href"
+        }
+      }
     }
   ],
   "books": [
@@ -434,6 +453,22 @@
     }
   ],
   "responses": [
+    {
+      "id": "rw-prime",
+      "method": "GET",
+      "path": "/rw/prime",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<div class=\"result\"><ul><li><a href=\"/rw/book\">Prime</a></li></ul></div>"
+    },
+    {
+      "id": "rw-follow",
+      "method": "GET",
+      "path": "/rw/follow",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<div class=\"result\"><ul><li><a href=\"/rw/book\">Follow</a></li></ul></div>"
+    },
     {
       "id": "h1-single",
       "method": "GET",
@@ -942,9 +977,7 @@
         "pl-1",
         "pl-2"
       ],
-      "minSpreadFactor": 1,
-      "maxSpreadFactor": 2,
-      "requirement": "The two members of the declared helper batch run concurrently under a plain T interval. The first member's response is held by the cohort until the second arrives, so the second effective start can only happen after one interval and before two: T <= second.receivedAt - first.receivedAt < 2T, and the cohort releases by completing, never by its own window. The historical completion-dependent branch needs a second interval, so the cohort would time out instead.",
+      "requirement": "The declared helper batch runs on a plain T interval. A bounded observer samples the source's first actual record and the final record proves an advance of at least T; operation and replay receipt times are producer-local causal evidence, not exact admission timestamps. The first response remains unsent when the second request arrives, and the existing cohort releases by completing, never by its own window. No minimum replay arrival gap or admission-to-receipt latency bound is assumed.",
       "selectionNote": "The declared helper batch is the existing cohort gate; no second hold, timer substitute or response-delay feature is introduced. A stage page walk cannot carry this relation because the product's declared-page walk is serial by design."
     }
   },
@@ -1010,6 +1043,17 @@
     ]
   },
   "steps": [
+    {
+      "id": "rate-wait.cancel",
+      "kind": "rateWaitCancel",
+      "family": "stage",
+      "source": "RW",
+      "marker": "rateWaitMarker",
+      "windowMillis": 10000,
+      "requests": {"ordered": ["rw-prime", "rw-follow"]},
+      "requiredHeaders": {"user-agent": "HTTP-BOUNDARY-01/1.0", "x-declared": "rw"},
+      "expectedOutcome": "ok"
+    },
     {
       "id": "helper.ajax",
       "kind": "helper",
@@ -1867,9 +1911,9 @@
     }
   ],
   "structural": {
-    "observations": 45,
-    "requests": 53,
-    "responses": 51,
+    "observations": 46,
+    "requests": 55,
+    "responses": 53,
     "helperSelectors": 14,
     "helperSingletonSelectors": 4,
     "helperBatchSelectors": 10,
@@ -1879,12 +1923,12 @@
       2
     ],
     "rateSelectors": 3,
-    "stageSelectors": 34,
-    "stageRequests": 36,
+    "stageSelectors": 36,
+    "stageRequests": 38,
     "familyObservations": {
       "helper": 13,
       "rate": 3,
-      "stage": 29
+      "stage": 30
     },
     "requestsExceedingSelectors": 2,
     "requestsExceedingSelectorsReason": "s2.retry-non2xx repeats one declared selector three times (retry=2)"

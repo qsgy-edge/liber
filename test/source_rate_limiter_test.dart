@@ -19,6 +19,20 @@ class FakeClock {
   }
 }
 
+class TrackedCancellation extends SourceCancellation {
+  int subscriptions = 0;
+
+  @override
+  void Function() listen(void Function() callback) {
+    subscriptions++;
+    final detach = super.listen(callback);
+    return () {
+      subscriptions--;
+      detach();
+    };
+  }
+}
+
 /// A transport that answers without a controlled completion, so a declared batch
 /// can be observed without parking requests by hand.
 class ImmediateTransport implements SourceHttpTransport {
@@ -313,6 +327,82 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(transport.started, ['/1']);
   });
+
+  test('a cancellation that wins during the acquire-to-dispatch handoff stops '
+      'the operation', () async {
+    // The rate admits this request immediately, so the limiter's own checks have
+    // already passed when the caller's continuation is queued. Cancelling here
+    // wins the handoff: neither the wrapper nor the transport may start.
+    var wrapperRuns = 0;
+    final transport = ImmediateTransport();
+    final cancellation = SourceCancellation();
+    final limiter = SourceRateLimiter(clock: clock.read);
+    final dispatcher = SourceHostDispatcher(
+      transport: transport,
+      sourceRef: 'https://a.test/book',
+      concurrentRate: '1/200000',
+      cancellation: cancellation,
+      rateLimiter: limiter,
+    );
+    final wrapper = dispatcher.withSourceRateLimit(() async {
+      wrapperRuns++;
+      return 1;
+    });
+    cancellation.cancel();
+    await expectLater(wrapper, throwsA(isA<SourceRequestCancelled>()));
+    expect(wrapperRuns, 0);
+
+    final transportCancellation = SourceCancellation();
+    final transportDispatcher = SourceHostDispatcher(
+      transport: transport,
+      sourceRef: 'https://b.test/book',
+      concurrentRate: '1/200000',
+      cancellation: transportCancellation,
+      rateLimiter: SourceRateLimiter(
+        clock: () {
+          scheduleMicrotask(transportCancellation.cancel);
+          return 0;
+        },
+      ),
+    );
+    final request = transportDispatcher.get('http://a.test/1');
+    await expectLater(request, throwsA(isA<SourceRequestCancelled>()));
+    expect(transport.started, isEmpty);
+  });
+
+  test(
+    'the owned default wait leaves no armed timer after cancellation',
+    () async {
+      // The limiter schedules its own timer when no wait is injected; cancelling
+      // must drop it so nothing resumes the operation later.
+      final owned = SourceRateLimiter();
+      await owned.acquire('a', '1/200');
+      final cancellation = TrackedCancellation();
+      final timers = <Timer>[];
+      final waiting = runZoned(
+        () => owned.acquire('a', '1/200', cancellation: cancellation),
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, duration, callback) {
+            final timer = parent.createTimer(zone, duration, callback);
+            timers.add(timer);
+            return timer;
+          },
+        ),
+      );
+      expect(timers, hasLength(1));
+      expect(timers.single.isActive, isTrue);
+      expect(cancellation.subscriptions, 1);
+      cancellation.cancel();
+      await expectLater(waiting, throwsA(isA<SourceRequestCancelled>()));
+      expect(timers.single.isActive, isFalse);
+      expect(cancellation.subscriptions, 0);
+      expect(owned.recordOf('a')!.frequency, 1);
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      final follow = await owned.acquire('a', '1/200');
+      expect(follow!.frequency, 1);
+      expect(follow.time, greaterThan(0));
+    },
+  );
 
   test('two sources of one process are limited independently', () async {
     final first = SourceHostDispatcher(

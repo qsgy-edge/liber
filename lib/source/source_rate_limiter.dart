@@ -52,13 +52,18 @@ class SourceRateLimiter {
     int Function()? clock,
     Future<void> Function(Duration)? wait,
   }) : _clock = clock ?? _systemMillis,
-       _wait = wait ?? _delay;
+       _wait = wait ?? _delay,
+       _ownsWait = wait == null;
 
   /// The limiter every dispatcher shares unless a test injects its own.
   static final SourceRateLimiter shared = SourceRateLimiter();
 
   final int Function() _clock;
   final Future<void> Function(Duration) _wait;
+
+  /// Whether [wait] is this limiter's own timer: those are cancelled on
+  /// cancellation, an injected wait keeps its own lifecycle.
+  final bool _ownsWait;
 
   /// The process-global records, one per source key.
   final Map<String, SourceRateRecord> _records = {};
@@ -109,15 +114,31 @@ class SourceRateLimiter {
     int milliseconds,
     SourceCancellation? cancellation,
   ) async {
-    final pending = _wait(Duration(milliseconds: milliseconds));
-    if (cancellation == null) return pending;
+    if (cancellation == null) {
+      return _wait(Duration(milliseconds: milliseconds));
+    }
     final cancelled = Completer<void>();
     final detach = cancellation.listen(() {
       if (!cancelled.isCompleted) cancelled.complete();
     });
+    // A wait this limiter scheduled itself is owned: cancellation drops its timer
+    // instead of leaving it armed for the rest of the interval. An injected wait
+    // keeps its own lifecycle and is only raced.
+    Timer? ownedTimer;
+    final Future<void> pending;
+    if (_ownsWait) {
+      final done = Completer<void>();
+      ownedTimer = Timer(Duration(milliseconds: milliseconds), () {
+        if (!done.isCompleted) done.complete();
+      });
+      pending = done.future;
+    } else {
+      pending = _wait(Duration(milliseconds: milliseconds));
+    }
     try {
       await Future.any([pending, cancelled.future]);
     } finally {
+      ownedTimer?.cancel();
       detach();
     }
     // Neither the normal end nor the cancellation may continue an operation the

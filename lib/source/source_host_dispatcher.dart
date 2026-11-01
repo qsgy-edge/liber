@@ -144,6 +144,9 @@ class SourceHostDispatcher {
           )
         : null;
     try {
+      // Admission is not permission to start: a cancellation that won while the
+      // acquire future was completing must stop the operation here.
+      cancellation?.throwIfCancelled();
       return await run();
     } finally {
       _rateLimiter.release(rate);
@@ -280,6 +283,9 @@ class SourceHostDispatcher {
         : null;
     final SourceHttpResponse response;
     try {
+      // The same handoff rule as the rendered-document path: a request is only
+      // sent if the caller's token was still live when admission returned.
+      cancellation?.throwIfCancelled();
       response = await transport.send(
         SourceHttpRequest(
           method: method,
