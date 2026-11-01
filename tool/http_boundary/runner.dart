@@ -1176,6 +1176,29 @@ class _HttpBoundaryRun {
   /// kept so the teardown can join it before the database and the native runtime
   /// are touched; a merely local future was the review finding.
   Future<void>? _ownedCancelWorker;
+  bool _ownedCancelWorkerSettled = true;
+
+  void _trackOwnedCancelWorker(Future<void> worker) {
+    if (_ownedCancelWorker != null && !_ownedCancelWorkerSettled) {
+      throw const HttpBoundaryIncomplete(
+        'an owned cancellation worker is still unresolved',
+      );
+    }
+    _ownedCancelWorker = worker;
+    _ownedCancelWorkerSettled = false;
+    worker.then<void>(
+      (_) {
+        if (identical(_ownedCancelWorker, worker)) {
+          _ownedCancelWorkerSettled = true;
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        if (identical(_ownedCancelWorker, worker)) {
+          _ownedCancelWorkerSettled = true;
+        }
+      },
+    );
+  }
 
   final _outcomes = <String, ({String outcome, String? category})>{};
   final _hits = <String, HtmlBook>{};
@@ -1542,13 +1565,12 @@ class _HttpBoundaryRun {
     }
   }
 
-  /// Runs every declared step in corpus order. A step that cannot be finished
-  /// keeps its row as `incomplete` and the run continues, so one unresolved row
-  /// never hides the rest of the trace.
+  /// An unresolved owned worker fences all later steps; an ordinary incomplete
+  /// row with no outstanding worker does not stop the remaining observations.
   Future<void> _measure() async {
+    var fenced = false;
     for (final step in httpBoundarySteps(corpus)) {
       final id = '${step['id']}';
-      replay?.stage = id;
       final observation = <String, Object?>{
         'id': id,
         'outcome': 'incomplete',
@@ -1558,6 +1580,15 @@ class _HttpBoundaryRun {
         'requests': <Map<String, Object?>>[],
       };
       observations.add(observation);
+      fenced =
+          fenced || (_ownedCancelWorker != null && !_ownedCancelWorkerSettled);
+      if (fenced) {
+        observation['outcome'] = 'not-run';
+        (observation['evidence'] as Map)['blockedByOwnedWorker'] = true;
+        _outcomes[id] = (outcome: 'not-run', category: null);
+        continue;
+      }
+      replay?.stage = id;
       try {
         switch ('${step['kind']}') {
           case 'helper':
@@ -2521,7 +2552,7 @@ class _HttpBoundaryRun {
         workerSettled = true;
       },
     );
-    _ownedCancelWorker = worker;
+    _trackOwnedCancelWorker(worker);
     _cancelledPipeline = waiting;
     final deadline = recordTime + window;
     var markerValue = await state.entry(sourceKey, marker);
@@ -2711,7 +2742,7 @@ class _HttpBoundaryRun {
     );
     // The owned worker is tracked beyond this row: a timeout here must not let
     // the teardown close the database or dispose the runtime under it.
-    _ownedCancelWorker = settled;
+    _trackOwnedCancelWorker(settled);
     final holdWindow = _integer(cancellation['holdTimeoutMs'], 'holdTimeoutMs');
     final entered = await hold.entered.timeout(
       Duration(milliseconds: holdWindow),
@@ -4503,6 +4534,59 @@ Future<Map<String, Object?>> probeHeaderMapEvaluationError({
     'thrownType': thrown == null ? null : '${thrown.runtimeType}',
     'observation': observation,
   };
+}
+
+/// Controlled retained-R3-state probe of the actual driver and owned teardown.
+/// It does not execute an R3 search or a native capture.
+Future<Map<String, Object?>> probeRetainedCancellationDriver({
+  required Map<String, dynamic> corpus,
+  required Directory root,
+  required bool settleBeforeDrive,
+}) async {
+  final cancel = httpBoundarySteps(
+    corpus,
+  ).firstWhere((step) => step['kind'] == 'cancel');
+  final probeCorpus = Map<String, dynamic>.from(corpus)..['steps'] = [cancel];
+  final run = _HttpBoundaryRun(
+    corpus: probeCorpus,
+    corpusLf: '',
+    root: root,
+    libraryPath: '',
+    librarySha256: '',
+    report: <String, Object?>{},
+  );
+  final original = Completer<void>();
+  run._trackOwnedCancelWorker(original.future);
+  run._runtimes['${cancel['source']}'] = _ProbeFailingRuntime(
+    StateError('ordinary cancellation handler entered'),
+  );
+  if (settleBeforeDrive) {
+    original.complete();
+    await original.future;
+    await Future<void>.delayed(Duration.zero);
+  }
+  final touched = <String>[];
+  try {
+    await run._measure();
+    final retained = identical(run._ownedCancelWorker, original.future);
+    final teardown = await settleOwnedTeardown(
+      workers: [if (run._ownedCancelWorker != null) run._ownedCancelWorker!],
+      deadline: const Duration(milliseconds: 30),
+      snapshotDatabase: () async => touched.add('snapshot'),
+      closeDatabase: () async => touched.add('close'),
+      disposeNative: () async => touched.add('dispose'),
+    );
+    if (!teardown.residueRetained) touched.add('deleteRoot');
+    return {
+      'ownerRetained': retained,
+      'observation': run.observations.single,
+      'teardown': teardown.toJson(),
+      'touched': touched,
+    };
+  } finally {
+    if (!original.isCompleted) original.complete();
+    await original.future;
+  }
 }
 
 /// The order every owned resource follows after admission stops: owned workers

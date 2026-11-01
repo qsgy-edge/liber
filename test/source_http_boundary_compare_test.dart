@@ -20,6 +20,7 @@ import '../tool/http_boundary/runner.dart'
         settleOwnedTeardown,
         HttpBoundaryTeardownReceipt,
         probeHeaderMapEvaluationError,
+        probeRetainedCancellationDriver,
         sha256Text,
         httpBoundaryBookCarrierOf,
         httpBoundaryBookTypeOf,
@@ -2964,6 +2965,48 @@ void main() {
     Map firstResult(Map<String, dynamic> record, String id) =>
         ((observation(record, id)['value'] as Map)['results'] as List).first
             as Map;
+
+    test(
+      'driver fences queued cancellation while an R3 owner is unresolved',
+      () async {
+        final root = Directory('${work.path}/controlled-retained-r3');
+        final blocked = await probeRetainedCancellationDriver(
+          corpus: corpus,
+          root: root,
+          settleBeforeDrive: false,
+        );
+        expect(blocked['ownerRetained'], isTrue);
+        final blockedRow = blocked['observation'] as Map;
+        // The red receipt shows whether the real handler reached its controlled
+        // sentinel rather than failing at an unrelated setup boundary.
+        // ignore: avoid_print
+        print('controlled driver observation: $blockedRow');
+        expect(blockedRow['outcome'], 'not-run');
+        expect((blockedRow['evidence'] as Map)['blockedByOwnedWorker'], isTrue);
+        expect((blocked['teardown'] as Map)['residueRetained'], isTrue);
+        expect(blocked['touched'], isEmpty);
+
+        final settled = await probeRetainedCancellationDriver(
+          corpus: corpus,
+          root: root,
+          settleBeforeDrive: true,
+        );
+        expect(settled['ownerRetained'], isTrue);
+        final admitted = settled['observation'] as Map;
+        expect(admitted['outcome'], 'incomplete');
+        expect(
+          '${(admitted['evidence'] as Map)['error']}',
+          contains('ordinary cancellation handler entered'),
+        );
+        expect((settled['teardown'] as Map)['workerSettled'], isTrue);
+        expect(settled['touched'], [
+          'snapshot',
+          'close',
+          'dispose',
+          'deleteRoot',
+        ]);
+      },
+    );
 
     test('a legitimate record passes the exported gate', () {
       expect(() => gate(fresh()), returnsNormally);

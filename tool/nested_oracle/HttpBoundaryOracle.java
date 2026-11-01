@@ -1440,17 +1440,34 @@ public class HttpBoundaryOracle extends Instrumentation {
 
     // ------------------------------------------------------------- drive
 
+    private boolean hasUnresolvedOwnedWork() {
+        return (activePlainObserver != null && activePlainObserver.isAlive())
+            || (activeCancelWorker != null && activeCancelWorker.isAlive())
+            || (activeCancelJob != null && !isJobComplete(cancelMembers, activeCancelJob))
+            || (followUpJob != null && !isJobComplete(cancelMembers, followUpJob));
+    }
+
     private void drive() throws Throwable {
         JSONArray steps = corpus.getJSONArray("steps");
+        boolean fenced = false;
         for (int index = 0; index < steps.length(); index++) {
             JSONObject step = steps.getJSONObject(index);
             String id = step.getString("id");
             String kind = step.getString("kind");
-            stage.set(id);
-            log("step " + id + " (" + kind + ")");
             JSONObject row = new JSONObject().put("id", id);
             JSONObject value = new JSONObject();
             JSONObject evidence = new JSONObject();
+            fenced = fenced || hasUnresolvedOwnedWork();
+            if (fenced) {
+                row.put("outcome", "not-run").put("category", JSONObject.NULL)
+                    .put("value", value)
+                    .put("evidence", evidence.put("blockedByOwnedWork", true))
+                    .put("requests", sliceByOwner(id));
+                synchronized (observations) { observations.put(row); }
+                continue;
+            }
+            stage.set(id);
+            log("step " + id + " (" + kind + ")");
             String outcome = "ok";
             String category = null;
             try {
@@ -2350,7 +2367,9 @@ public class HttpBoundaryOracle extends Instrumentation {
             throw new IncompleteStep("the follow-up execution entry is unresolved: "
                 + describe(error));
         }
+        cancelMembers = members;
         Object job = members.newJob.invoke(null, new Object[]{null});
+        followUpJob = job;
         Object context = members.plus.invoke(members.emptyContext, job);
         String sourceKeyBefore = str(source.getClass(), source, "getKey");
         String token = UUID.randomUUID().toString();
@@ -2362,7 +2381,6 @@ public class HttpBoundaryOracle extends Instrumentation {
             .put("sourceKey", sourceKeyBefore)
             .put("jobLevel", "created-parent")
             .put("boundBeforeInvocation", true);
-        followUpJob = job;
         JSONObject freshness = deriveFollowUpFreshness(cancelExecutionJob, job,
             cancelExecutionContext, context, cancelExecutionSource, source,
             cancelExecutionSourceKey, sourceKeyBefore);
@@ -2544,8 +2562,8 @@ public class HttpBoundaryOracle extends Instrumentation {
         CancelMembers members = resolveCancelMembers();
         cancelMembers = members;
         Object job = members.newJob.invoke(null, new Object[]{null});
-        Object context = members.plus.invoke(members.emptyContext, job);
         activeCancelJob = job;
+        Object context = members.plus.invoke(members.emptyContext, job);
         AtomicReference<Throwable> workerError = new AtomicReference<>();
         Thread worker = new Thread(() -> {
             try {
@@ -2610,8 +2628,8 @@ public class HttpBoundaryOracle extends Instrumentation {
         boolean markerUnchanged = "entered".equals(markerAfter);
         boolean noLateEffect = "".equals(lateEffect);
         Object freshJob = members.newJob.invoke(null, new Object[]{null});
-        Object freshContext = members.plus.invoke(members.emptyContext, freshJob);
         followUpJob = freshJob;
+        Object freshContext = members.plus.invoke(members.emptyContext, freshJob);
         Object follow;
         boolean freshClosed;
         long followStartMillis = System.currentTimeMillis();
@@ -2695,6 +2713,7 @@ public class HttpBoundaryOracle extends Instrumentation {
         cancelMembers = members;
         evidence.put("entry", members.report);
         Object job = members.newJob.invoke(null, new Object[]{null});
+        activeCancelJob = job;
         Object context = members.plus.invoke(members.emptyContext, job);
         String sourceKey = str(source.getClass(), source, "getKey");
         cancelExecution = new JSONObject()
@@ -2711,7 +2730,6 @@ public class HttpBoundaryOracle extends Instrumentation {
         cancelExecutionSource = source;
         cancelExecutionSourceKey = sourceKey;
         evidence.put("execution", cancelExecution);
-        activeCancelJob = job;
         final AtomicReference<Throwable> workerError = new AtomicReference<>();
         Class<?> webBookClass = loader.loadClass("io.legado.app.model.webBook.WebBook");
         Object webBook = webBookClass.getField("INSTANCE").get(null);
@@ -4138,10 +4156,10 @@ public class HttpBoundaryOracle extends Instrumentation {
         } catch (Throwable error) {
             cleanup.put("ownedJobAwaitError", describe(error));
         }
-        if (!ownedJobsTerminatedReceipt) {
+        if (!cancellationSignalledReceipt || !ownedJobsTerminatedReceipt) {
             cleanup.put("admissionStopped", admissionStoppedReceipt)
                 .put("ownedJobsSignalled", cancellationSignalledReceipt)
-                .put("ownedJobsTerminated", false)
+                .put("ownedJobsTerminated", ownedJobsTerminatedReceipt)
                 .put("gatesReleased", gatesReleasedReceipt)
                 .put("replayStarted", replay != null)
                 .put("replayOk", replayOkReceipt)
@@ -4178,7 +4196,7 @@ public class HttpBoundaryOracle extends Instrumentation {
                     .put("scratchRemoved", false);
             }
             finalTerminalSnapshot(cleanup);
-            cleanup.put("cleanupFailure", "an owned worker/job did not prove completion;"
+            cleanup.put("cleanupFailure", "owned cancellation or worker/job completion was not proved;"
                     + " the database, limiter records, owned preferences and root were"
                     + " left untouched for controller force-stop cleanup")
                 .put("ownedHandlesRetained", new JSONObject()
