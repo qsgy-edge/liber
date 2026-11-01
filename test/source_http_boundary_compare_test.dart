@@ -3127,6 +3127,84 @@ void main() {
       );
     });
 
+    test(
+      'historical frozen same-window operation starts inside its opening window',
+      () {
+        void validate(Map<String, dynamic> record) {
+          final file = File('${work.path}/historical-window.json')
+            ..writeAsStringSync(jsonEncode(record));
+          validateFrozenCapture(
+            record,
+            corpus: corpus,
+            corpusLf: corpusLf,
+            goldenId: 'synthetic-historical',
+            expectedReportSha256: sha256File(file),
+            reportPath: file.path,
+          );
+        }
+
+        expect(() => validate(goldenRecord()), returnsNormally);
+        final record = goldenRecord();
+        final evidence =
+            observation(record, 'rate.record.2')['evidence'] as Map;
+        final before =
+            (observation(record, 'rate.record.2')['value']
+                    as Map)['recordBefore']
+                as Map;
+        final opening = before['time'] as int;
+        evidence['callStartMillis'] = opening + 2000;
+        evidence['callFinishMillis'] = opening + 2010;
+        expect(() => validate(record), throwsA(isA<HttpBoundaryRefusal>()));
+        final completionAfterWindow = goldenRecord();
+        final lateEvidence =
+            observation(completionAfterWindow, 'rate.record.2')['evidence']
+                as Map;
+        lateEvidence['callFinishMillis'] = opening + 2100;
+        expect(() => validate(completionAfterWindow), returnsNormally);
+        for (final mutation in <void Function(Map)>[
+          (row) => row.remove('callStartMillis'),
+          (row) => row.remove('callFinishMillis'),
+          (row) => row['callStartMillis'] = (opening + 5).toDouble(),
+          (row) => row['callFinishMillis'] = opening,
+        ]) {
+          final mutant = goldenRecord();
+          mutation(observation(mutant, 'rate.record.2')['evidence'] as Map);
+          expect(() => validate(mutant), throwsA(isA<HttpBoundaryRefusal>()));
+        }
+      },
+    );
+
+    test('rate record predecessors preserve integer types at both gates', () {
+      void frozenGate(Map<String, dynamic> record) {
+        final file = File('${work.path}/historical-rate-type.json')
+          ..writeAsStringSync(jsonEncode(record));
+        validateFrozenCapture(
+          record,
+          corpus: corpus,
+          corpusLf: corpusLf,
+          goldenId: 'synthetic-historical-rate-type',
+          expectedReportSha256: sha256File(file),
+          reportPath: file.path,
+        );
+      }
+
+      for (final frozen in [false, true]) {
+        for (final field in ['frequency', 'time']) {
+          final record = frozen ? goldenRecord() : fresh();
+          final before =
+              (observation(record, 'rate.record.2')['value']
+                      as Map)['recordBefore']
+                  as Map;
+          before[field] = (before[field] as int).toDouble();
+          expect(
+            () => frozen ? frozenGate(record) : gate(record),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: '${frozen ? 'frozen' : 'product'} accepted double $field',
+          );
+        }
+      }
+    });
+
     test('frozen hit identity must be a present integer per row', () {
       for (final variant in const ['missing', 'null', 'string', 'double']) {
         Map<String, dynamic> mutant() {

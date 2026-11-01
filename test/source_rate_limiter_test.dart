@@ -404,6 +404,33 @@ void main() {
     },
   );
 
+  test(
+    'synchronously throwing injected wait detaches cancellation listener',
+    () async {
+      var now = 0;
+      final token = TrackedCancellation();
+      final limiter = SourceRateLimiter(
+        clock: () => now,
+        wait: (_) => throw StateError('controlled synchronous wait callback'),
+      );
+      await limiter.acquire('source', '1/2000');
+      await expectLater(
+        limiter.acquire('source', '1/2000', cancellation: token),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'controlled synchronous wait callback',
+          ),
+        ),
+      );
+      expect(token.subscriptions, 0);
+      now = 2000;
+      final follow = await limiter.acquire('source', '1/2000');
+      expect(follow!.time, 2000);
+    },
+  );
+
   test('two sources of one process are limited independently', () async {
     final first = SourceHostDispatcher(
       transport: ImmediateTransport(),

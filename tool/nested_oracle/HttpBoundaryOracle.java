@@ -2530,7 +2530,11 @@ public class HttpBoundaryOracle extends Instrumentation {
         if (rawRecordForSource(source) != null) {
             throw new IncompleteStep("rate-wait source was not initially empty");
         }
+        long primeStartMillis = System.currentTimeMillis();
+        long primeStartNanos = System.nanoTime();
         Object prime = search(source, "prime");
+        long primeFinishNanos = System.nanoTime();
+        long primeFinishMillis = System.currentTimeMillis();
         JSONObject before = readRateRecord(rawRecordForSource(source));
         if (!(prime instanceof java.util.List) || ((java.util.List<?>) prime).isEmpty()
                 || before == null || before.getInt("frequency") != 1) {
@@ -2610,9 +2614,15 @@ public class HttpBoundaryOracle extends Instrumentation {
         followUpJob = freshJob;
         Object follow;
         boolean freshClosed;
+        long followStartMillis = System.currentTimeMillis();
+        long followStartNanos = System.nanoTime();
+        long followFinishNanos;
+        long followFinishMillis;
         try {
             follow = searchUnderContext(freshContext, source, "follow");
         } finally {
+            followFinishNanos = System.nanoTime();
+            followFinishMillis = System.currentTimeMillis();
             requestCancel(members, freshJob);
             freshClosed = isJobComplete(members, freshJob);
             if (freshClosed) followUpJob = null;
@@ -2630,7 +2640,12 @@ public class HttpBoundaryOracle extends Instrumentation {
             .put("recordUnchanged", unchanged && unchangedAfterQuiet).put("noLateRequest", noLateRequest)
             .put("markerUnchanged", markerUnchanged).put("noLateEffect", noLateEffect)
             .put("freshFollowUp", freshFollowUp);
-        evidence.put("sourceKey", sourceKey).put("recordBefore", before)
+        evidence.put("sourceKey", sourceKey)
+            .put("primeStartMillis", primeStartMillis).put("primeFinishMillis", primeFinishMillis)
+            .put("primeStartNanos", primeStartNanos).put("primeFinishNanos", primeFinishNanos)
+            .put("followStartMillis", followStartMillis).put("followFinishMillis", followFinishMillis)
+            .put("followStartNanos", followStartNanos).put("followFinishNanos", followFinishNanos)
+            .put("recordBefore", before)
             .put("recordAfter", after).put("recordAfterQuiet", afterQuiet).put("recordAtMarker", atMarker)
             .put("deadlineMillis", deadline).put("markerMillis", markerMillis)
             .put("cancelMillis", cancelMillis).put("settledMillis", settledMillis)
@@ -5363,7 +5378,8 @@ public class HttpBoundaryOracle extends Instrumentation {
                     .put("outcome", "received")
                     .put("stage", stage.get());
                 if (selectedTiming && owner != null && ("rate".equals(owner.family)
-                        || "helper.plain-hold".equals(owner.step))) {
+                        || "helper.plain-hold".equals(owner.step)
+                        || "rate-wait.cancel".equals(owner.step))) {
                     observed.put("receivedAtMillis", System.currentTimeMillis());
                 }
                 synchronized (requests) {

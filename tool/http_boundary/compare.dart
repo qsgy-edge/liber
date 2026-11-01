@@ -310,10 +310,13 @@ void _checkPlainHoldRelation(
         sample is! int ||
         firstTime is! int ||
         finalTime is! int ||
+        firstRecord['frequency'] is! int ||
         firstRecord['frequency'] != 1 ||
+        finalRecord['frequency'] is! int ||
         finalRecord['frequency'] != 1 ||
         measured['sourceKey'] !=
             corpusSourceUrl(corpus, '${plain['source']}') ||
+        measured['observerIntervalMillis'] is! int ||
         measured['observerIntervalMillis'] != 5 ||
         measured['observerSettled'] != true ||
         start > firstTime ||
@@ -340,6 +343,7 @@ void _checkPlainHoldRelation(
       if (receipt is! int ||
           receiptNanos is! int ||
           receipt < start ||
+          receipt < firstTime ||
           receipt > finish ||
           receiptNanos < startNanos ||
           receiptNanos > finishNanos) {
@@ -367,10 +371,16 @@ void _checkPlainHoldRelation(
     final cohort = ((corpus['cohorts'] as List).cast<Map>()).singleWhere(
       (candidate) => candidate['id'] == cohortId,
     );
-    if (batch['cohortSize'] != 2 ||
+    if (batch['cohortSize'] is! int ||
+        batch['cohortSize'] != 2 ||
+        batch['cohortTimeoutMs'] is! int ||
+        cohort['timeoutMs'] is! int ||
         batch['cohortTimeoutMs'] != cohort['timeoutMs'] ||
         batch['entered'] != true ||
+        batch['inFlightPeak'] is! int ||
         batch['inFlightPeak'] != 2 ||
+        batch['threadCount'] is! int ||
+        (batch['threadCount'] as int) <= 0 ||
         batch['membership'] is! List ||
         (batch['membership'] as List).length != 2 ||
         !(batch['membership'] as List).toSet().containsAll(selectors.values)) {
@@ -450,8 +460,11 @@ void _checkRateRelations(
     if (afterTime is! int) {
       throw HttpBoundaryRefusal('$label has no $id record time');
     }
-    // A declared field is mandatory: a missing frequency is a contradiction, not
-    // a reason to skip the check.
+    // Declared record fields must retain their JSON types on both layouts.
+    if (_declaredRateField(rate, 'isConcurrent') &&
+        after['isConcurrent'] is! bool) {
+      throw HttpBoundaryRefusal('$label records an untyped $id mode');
+    }
     if (_declaredRateField(rate, 'frequency')) {
       final frequency = after['frequency'];
       if (frequency is! int || frequency != declared.frequency) {
@@ -478,6 +491,7 @@ void _checkRateRelations(
             evidence is! Map ||
             evidence['durationNanos'] is! int ||
             evidence['durationNanos'] != finishNanos - startNanos ||
+            evidence['windowMillis'] is! int ||
             evidence['windowMillis'] != window ||
             evidence['sourceKey'] !=
                 corpusSourceUrl(corpus, '${step['source']}'))) {
@@ -531,7 +545,12 @@ void _checkRateRelations(
         throw HttpBoundaryRefusal('$label records $id outside its own window');
       }
     } else {
-      if (before is! Map || before['time'] is! int) {
+      if (before is! Map ||
+          before['time'] is! int ||
+          (_declaredRateField(rate, 'frequency') &&
+              before['frequency'] is! int) ||
+          (_declaredRateField(rate, 'isConcurrent') &&
+              before['isConcurrent'] is! bool)) {
         throw HttpBoundaryRefusal('$label loses $id predecessor');
       }
       if (previousRecord == null || !_deepEqualsRate(before, previousRecord)) {
@@ -545,6 +564,15 @@ void _checkRateRelations(
         throw HttpBoundaryRefusal('$label disagrees on $id window identity');
       }
       if (declared.window == 'same') {
+        if (started is! int ||
+            finished is! int ||
+            started > finished ||
+            started < beforeTime ||
+            started >= beforeTime + window) {
+          throw HttpBoundaryRefusal(
+            '$label records $id outside its opening window',
+          );
+        }
         if (beforeTime != afterTime) {
           throw HttpBoundaryRefusal('$label moved $id out of its window');
         }
@@ -552,7 +580,7 @@ void _checkRateRelations(
         final advance = evidence is Map
             ? evidence['windowAdvanceMillis']
             : null;
-        if (advance != afterTime - beforeTime) {
+        if (advance is! int || advance != afterTime - beforeTime) {
           throw HttpBoundaryRefusal(
             '$label records a wrong $id window advance',
           );
@@ -587,7 +615,11 @@ String _selectorOfResponse(Map<String, dynamic> corpus, String id) {
 bool _deepEqualsRate(Map<dynamic, dynamic> left, Map<dynamic, dynamic> right) {
   if (left.length != right.length) return false;
   for (final key in left.keys) {
-    if (!right.containsKey(key) || right[key] != left[key]) return false;
+    if (!right.containsKey(key) ||
+        right[key].runtimeType != left[key].runtimeType ||
+        right[key] != left[key]) {
+      return false;
+    }
   }
   return true;
 }
@@ -661,7 +693,9 @@ void _checkSelectedRuntimeReceipts(
   if (containment is! Map ||
       containment['service'] != 'shortcut' ||
       containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+      containment['intercepted'] is! int ||
       containment['intercepted'] != 1 ||
+      containment['handled'] is! int ||
       containment['handled'] != 1 ||
       containment['beforeBinding'] != true) {
     throw HttpBoundaryRefusal(
@@ -739,13 +773,39 @@ void _checkRateWaitCancellation(
     final cancelTime = evidence['cancelMillis'];
     final settledTime = evidence['settledMillis'];
     final quietTime = evidence['quietMillis'];
+    final primeStart = evidence['primeStartMillis'];
+    final primeFinish = evidence['primeFinishMillis'];
+    final primeStartNanos = evidence['primeStartNanos'];
+    final primeFinishNanos = evidence['primeFinishNanos'];
+    final followStart = evidence['followStartMillis'];
+    final followFinish = evidence['followFinishMillis'];
+    final followStartNanos = evidence['followStartNanos'];
+    final followFinishNanos = evidence['followFinishNanos'];
     if (time is! int ||
+        frequency is! int ||
         frequency != 1 ||
         deadline is! int ||
         markerTime is! int ||
         cancelTime is! int ||
         settledTime is! int ||
         quietTime is! int ||
+        primeStart is! int ||
+        primeFinish is! int ||
+        primeStartNanos is! int ||
+        primeFinishNanos is! int ||
+        followStart is! int ||
+        followFinish is! int ||
+        followStartNanos is! int ||
+        followFinishNanos is! int ||
+        primeStart > time ||
+        time > primeFinish ||
+        primeFinish > markerTime ||
+        primeStartNanos > primeFinishNanos ||
+        followStart < quietTime ||
+        followStart > followFinish ||
+        followStartNanos < primeFinishNanos ||
+        followStartNanos > followFinishNanos ||
+        step['windowMillis'] is! int ||
         deadline != time + (step['windowMillis'] as int) ||
         markerTime < time ||
         markerTime > cancelTime ||
@@ -753,6 +813,7 @@ void _checkRateWaitCancellation(
         settledTime < cancelTime ||
         settledTime - cancelTime > 3000 ||
         quietTime < deadline ||
+        quietTime < settledTime ||
         !_deepEqualsRate(before, atMarker) ||
         !_deepEqualsRate(before, after) ||
         !_deepEqualsRate(before, afterQuiet) ||
@@ -760,6 +821,7 @@ void _checkRateWaitCancellation(
         evidence['followUpIdentity'] is! int ||
         evidence['workerIdentity'] == evidence['followUpIdentity'] ||
         evidence['sourceObjectIdentity'] is! int ||
+        evidence['followUpSourceObjectIdentity'] is! int ||
         evidence['sourceObjectIdentity'] !=
             evidence['followUpSourceObjectIdentity'] ||
         evidence['sourceKey'] != corpusSourceUrl(corpus, '${step['source']}') ||
@@ -767,8 +829,11 @@ void _checkRateWaitCancellation(
         evidence['markerValue'] != 'entered' ||
         evidence['markerValueAfterQuiet'] != 'entered' ||
         evidence['lateEffectAfterQuiet'] != '' ||
+        evidence['requestsBeforeCancel'] is! int ||
         evidence['requestsBeforeCancel'] != 1 ||
+        evidence['requestsAfterQuiet'] is! int ||
         evidence['requestsAfterQuiet'] != 1 ||
+        evidence['requestsAfterFollowUp'] is! int ||
         evidence['requestsAfterFollowUp'] != 2) {
       throw HttpBoundaryRefusal(
         '$label $id has contradictory rate-wait evidence',
@@ -795,13 +860,54 @@ void _checkRateWaitCancellation(
       report['requests'],
       '$label requests',
     ).cast<Map>().where((request) => request['owner'] == id).toList();
-    if (declared.length != 2 || owned.length != 2) {
+    if (declared.length != 2 ||
+        owned.length != 2 ||
+        !_semanticEquals(row['requests'], owned)) {
       throw HttpBoundaryRefusal('$label $id has wrong request membership');
     }
     for (var index = 0; index < 2; index++) {
-      if (owned[index]['selector'] !=
-          _selectorOfResponse(corpus, declared[index])) {
-        throw HttpBoundaryRefusal('$label $id has wrong request order');
+      final request = owned[index];
+      final response = httpBoundaryResponses(
+        corpus,
+      ).singleWhere((candidate) => candidate['id'] == declared[index]);
+      final selector = _selectorOfResponse(corpus, declared[index]);
+      final matching = _array(report['requests'], '$label requests')
+          .cast<Map>()
+          .where((candidate) => candidate['selector'] == selector)
+          .toList();
+      final received = request['receivedAtMillis'];
+      final receivedNanos = request['receivedAtNanos'];
+      final sent = request['sentAtNanos'];
+      final responded = request['respondedAtNanos'];
+      final start = index == 0 ? primeStart : followStart;
+      final finish = index == 0 ? primeFinish : followFinish;
+      final startNanos = index == 0 ? primeStartNanos : followStartNanos;
+      final finishNanos = index == 0 ? primeFinishNanos : followFinishNanos;
+      if (matching.length != 1 ||
+          request['selector'] != selector ||
+          request['declaredResponse'] != declared[index] ||
+          request['cohort'] != null ||
+          request['terminal'] != 'responded' ||
+          request['outcome'] != 'responded' ||
+          request['status'] is! int ||
+          request['status'] != response['status'] ||
+          request['attempt'] is! int ||
+          request['attempt'] != 1 ||
+          received is! int ||
+          receivedNanos is! int ||
+          sent is! int ||
+          responded is! int ||
+          received < start ||
+          received > finish ||
+          receivedNanos < startNanos ||
+          receivedNanos > sent ||
+          sent > responded ||
+          receivedNanos > finishNanos ||
+          (index == 0 && received < time) ||
+          (index == 1 && received < quietTime)) {
+        throw HttpBoundaryRefusal(
+          '$label $id has contradictory request ${declared[index]}',
+        );
       }
     }
   }

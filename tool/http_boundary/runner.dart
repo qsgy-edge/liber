@@ -2483,7 +2483,11 @@ class _HttpBoundaryRun {
         'rate-wait source was not initially empty',
       );
     }
+    final primeStartMillis = _nowMillis();
+    final primeStartNanos = _nowNanos();
     final primeResults = await prime.search('prime');
+    final primeFinishNanos = _nowNanos();
+    final primeFinishMillis = _nowMillis();
     final record = SourceRateLimiter.shared.recordOf(sourceKey);
     if (record == null || record.frequency != 1 || primeResults.isEmpty) {
       throw const HttpBoundaryIncomplete(
@@ -2586,7 +2590,11 @@ class _HttpBoundaryRun {
       sourceRuleVariableKey(sourceKey, 'rateWaitLate'),
     );
     final follow = pipeline();
+    final followStartMillis = _nowMillis();
+    final followStartNanos = _nowNanos();
     final followResults = await follow.search('follow');
+    final followFinishNanos = _nowNanos();
+    final followFinishMillis = _nowMillis();
     final ok =
         saturatedAtMarker &&
         unchanged &&
@@ -2616,6 +2624,14 @@ class _HttpBoundaryRun {
     };
     observation['evidence'] = {
       'sourceKey': sourceKey,
+      'primeStartMillis': primeStartMillis,
+      'primeFinishMillis': primeFinishMillis,
+      'primeStartNanos': primeStartNanos,
+      'primeFinishNanos': primeFinishNanos,
+      'followStartMillis': followStartMillis,
+      'followFinishMillis': followFinishMillis,
+      'followStartNanos': followStartNanos,
+      'followFinishNanos': followFinishNanos,
       'recordBefore': {'time': recordTime, 'frequency': recordFrequency},
       'recordAfter': afterSnapshot,
       'recordAfterQuiet': quietSnapshot,
@@ -3574,7 +3590,9 @@ class _ReplayServer {
       'bodySha256': sha256Bytes(bodyBytes),
       'receivedAtNanos': receivedAt,
       if (_selectedTiming &&
-          (owner?.family == 'rate' || owner?.step == 'helper.plain-hold'))
+          (owner?.family == 'rate' ||
+              owner?.step == 'helper.plain-hold' ||
+              owner?.step == 'rate-wait.cancel'))
         'receivedAtMillis': _nowMillis(),
       // Unsent facts: nothing has been written yet, so a peer abort before the
       // first response byte can never report a send or a completion.

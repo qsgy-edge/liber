@@ -125,17 +125,17 @@ class SourceRateLimiter {
     // instead of leaving it armed for the rest of the interval. An injected wait
     // keeps its own lifecycle and is only raced.
     Timer? ownedTimer;
-    final Future<void> pending;
-    if (_ownsWait) {
-      final done = Completer<void>();
-      ownedTimer = Timer(Duration(milliseconds: milliseconds), () {
-        if (!done.isCompleted) done.complete();
-      });
-      pending = done.future;
-    } else {
-      pending = _wait(Duration(milliseconds: milliseconds));
-    }
     try {
+      final Future<void> pending;
+      if (_ownsWait) {
+        final done = Completer<void>();
+        ownedTimer = Timer(Duration(milliseconds: milliseconds), () {
+          if (!done.isCompleted) done.complete();
+        });
+        pending = done.future;
+      } else {
+        pending = _wait(Duration(milliseconds: milliseconds));
+      }
       await Future.any([pending, cancelled.future]);
     } finally {
       ownedTimer?.cancel();
