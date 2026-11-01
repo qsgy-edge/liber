@@ -232,7 +232,7 @@ void main() {
                     (row['form'] == 'list'
                             ? book!.kind
                             : chapters!.single.tag ?? '')
-                        .codeUnits,
+                        ?.codeUnits,
                 'variables': variables,
               },
               {

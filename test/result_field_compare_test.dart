@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/export.dart';
 
@@ -52,6 +53,76 @@ void main() {
     corpus: corpus,
     corpusSha256: shaOverride ?? corpusSha256,
     manifestCorpusSha256: manifestShaOverride ?? manifestCorpusSha256,
+  );
+
+  test(
+    'selected APK accepts exactly historical five or current seven sources',
+    () {
+      final asset = File(
+        'tool/result_field_oracle/book-url-markers-fixtures.json',
+      ).readAsBytesSync();
+      final historical = <String, String>{
+        for (final name in [
+          'FieldOracle.java',
+          'StateSessionOracle.java',
+          'AndroidManifest.xml',
+          'build.ps1',
+          'capture.py',
+        ])
+          name: 'a' * 64,
+      };
+      final current = {
+        ...historical,
+        'HostRuntimeInit.java': 'b' * 64,
+        'ShortcutStartupGuard.java': 'c' * 64,
+      };
+      final directory = Directory.systemTemp.createTempSync(
+        'fields-provenance-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      Map<String, dynamic> inspect(Map<String, String> sources) {
+        final provenance = {
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': asset.length,
+            'sha256': _sha256(asset),
+            'sha256Lf': _sha256(
+              utf8.encode(utf8.decode(asset).replaceAll('\r\n', '\n')),
+            ),
+          },
+          'sources': sources,
+        };
+        final encoded = utf8.encode(jsonEncode(provenance));
+        final archive = Archive()
+          ..addFile(
+            ArchiveFile('assets/field-fixtures.json', asset.length, asset),
+          )
+          ..addFile(
+            ArchiveFile(
+              'assets/field-provenance.json',
+              encoded.length,
+              encoded,
+            ),
+          );
+        final apk = File('${directory.path}/fields.apk')
+          ..writeAsBytesSync(ZipEncoder().encode(archive));
+        return inspectSelectedHarnessApk(apk.path);
+      }
+
+      expect((inspect(historical)['provenance'] as Map)['sources'], historical);
+      expect((inspect(current)['provenance'] as Map)['sources'], current);
+      for (final bad in [
+        {...current}..remove('HostRuntimeInit.java'),
+        {...current, 'ShortcutStartupGuard.java': 'bad'},
+        {...current, 'unrelated.java': 'd' * 64},
+      ]) {
+        expect(() => inspect(bad), throwsA(isA<StateError>()));
+      }
+    },
   );
 
   test('the corpus row and six of the seven field rows pass', () {

@@ -39,6 +39,48 @@ void main() {
   tearDownAll(NativeLibrary.dispose);
   for (final json in [false, true]) {
     test(
+      'empty declared TOC reuses the resolved book identity json=$json',
+      () async {
+        const origin = 'https://fallback-get.test';
+        final body = json
+            ? jsonEncode({
+                'list': [
+                  {'name': 'chapter'},
+                ],
+              })
+            : '<h2>book</h2><ul id="list"><li><a href="">chapter</a></li></ul>';
+        final pages = _Pages(body);
+        final source = <String, dynamic>{
+          'bookSourceUrl': origin,
+          'ruleBookInfo': {'name': json ? r'$.title' : 'h2@text', 'tocUrl': ''},
+          'ruleToc': {
+            'chapterList': json ? r'$.list' : 'li',
+            'chapterName': json ? r'$.name' : 'a@text',
+            'chapterUrl': "{{''}}",
+          },
+        };
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        final (_, chapters) = await pipeline.details(
+          HtmlBook(
+            url: Uri.parse('$origin/exact/book/1'),
+            preOptionUrl: Uri.parse('$origin/exact/book/1'),
+            rawAddress: 'book/1',
+            title: 'book',
+          ),
+        );
+        expect(chapters.single.name, 'chapter');
+        expect(chapters.single.address, '$origin/exact/book/1');
+        expect(pages.requests, hasLength(1));
+        expect(pages.requests.single.url.path, '/exact/book/1');
+        pipeline.cancel();
+      },
+    );
+  }
+
+  for (final json in [false, true]) {
+    test(
       'H1 first empty toc uses original Book address source control json=$json',
       () async {
         const rawBook =
@@ -91,7 +133,6 @@ void main() {
               .map((r) => [r.method, '${r.url}', r.headers['X-Book']])
               .toList(),
           [
-            ['GET', '$_origin/book?keep=1', 'fallback'],
             ['GET', '$_origin/book?keep=1', 'fallback'],
           ],
         );

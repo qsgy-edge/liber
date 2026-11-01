@@ -99,18 +99,15 @@ context, keeps it in the owned set and never deletes it there; the restart only
 reads the namespace the seed recorded. A pre-existing probe is refused rather than
 overwritten or removed.
 
-One start-up path reaches storage before the binding, and only on a background
-thread: the frozen application's own providers ask for preferences before
-`Instrumentation.onCreate`, and Firebase performance's `DeviceCacheManager` makes
-that call from its thread pool. Such a callback waits, bounded, for the binding and
-then uses the same scoped store; it is never handed an unverified handle and it is
-never silently allowed. A callback on the main thread refuses immediately instead of
-waiting, because the binder itself starts from a main-looper post and waiting there
-would deadlock start-up. A binding failure releases every waiter with that failure,
-and a timeout refuses with a visible message; nothing is retried. Every other storage
-callback that would write — a database create or delete — is refused before the phase
-binds the root. The owned-name manifest is published atomically under the same lock,
-so two registrations that arrive at once cannot drop each other's name.
+Start-up providers can reach storage before the binding. Their preference callbacks
+wait, bounded, for the binding; selected-reference contexts also wait before handing
+out any scratch directory path. A callback on the main thread refuses immediately
+instead of waiting, because the binder itself starts from a main-looper post and
+waiting there would deadlock start-up. A binding failure releases waiters with that
+failure, and a timeout refuses visibly; nothing is retried. Database create and delete
+are refused before the phase binds the root. The owned-name manifest is published
+atomically under the same lock, so two registrations that arrive at once cannot drop
+each other's name.
 
 The phase's own cleanup receipt is not a claim about the process's exit. The frozen
 provider can still write into the retained root after the restart's removal and
@@ -219,3 +216,66 @@ originals after the run. Evidence lives in
 `<evidence>/comparison.json`, `<evidence>/negative-controls.json` and the two phase
 reports beside them. The corpus' `policyRows` and `coverageGaps` stay listed as
 `notCompared`; nothing here closes a row, a ticket or a platform claim.
+
+## Selected reference (corpus version 3, #146)
+
+`fixtures-selected.json` is the same case graph bound to the selected
+compatibility reference `a7d37f1707a70a459ad708f4fe79341d1e42d716`
+(`LegadoTeam/legado` release `3.26101819`) and the same-source instrumentable
+build `com.legado.app.debug` whose APK SHA-256 is
+`593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5`. Every
+source, response, book, step, declared request, policy row and coverage gap is
+the version-2 one; only the identity fields and the two blocks below differ.
+Version 2 and its goldens keep their `14dd2494`/`cc99040c` identity and are
+neither relabelled nor overwritten.
+
+Two things the selected reference needs are declared by the corpus rather than
+assumed by the harness:
+
+- `hostInitialization` — the corpus names `io.legado.app.App#initRhino()`, the
+  nine host wrapper factories it registers and the scratch-only storage rule.
+  After the phase binds the root and the routing check passes, the harness
+  creates an unattached `io.legado.app.App`, invokes that exact private method,
+  re-reads the wrapper registry and refuses unless it is exactly the declared
+  set, compared by factory identity. The process Application is the plain
+  storage-only stub; this initializer is an unattached real App instance.
+  `App.onCreate`, `attachBaseContext`,
+  default-data seeding, logging, cronet pre-download, monitors and schedulers
+  never run. The receipt is the report's `hostInitialization` block, and both
+  comparators refuse a capture of this corpus that lacks a verified one.
+- `getChapterListAwait` gained `isFromBookInfo` (`WebBook.kt:297-302`). The
+  harness resolves the suspend declaration by name prefix and accepted arity,
+  passes `false` — the historical value — and records what it resolved in
+  `entryPoints`.
+
+Selected startup blocks shortcut-service acquisition and handles only the
+context-issued exception from the known ReaderProvider publication path; each
+phase requires the measured interception and handling before scratch binding.
+Other providers remain enabled.
+
+Run either phase against the selected reference with the dedicated
+`SelectedStateSessionOracle` entry (which fixes the selected corpus and target);
+the historical entry remains bound to the historical target and corpus. The
+rest of the sequence, the forced stop between the two lifetimes and the
+`STATE_SESSION_ORACLE_BASE64` report channel are unchanged:
+
+```bash
+adb -s <serial> shell am instrument -w -r -e phase seed -e corpus selected \
+  io.liber.oracle.nested/io.liber.oracle.nested.SelectedStateSessionOracle
+adb -s <serial> shell am force-stop com.legado.app.debug
+adb -s <serial> shell am instrument -w -r -e phase restart -e corpus selected \
+  io.liber.oracle.nested/io.liber.oracle.nested.SelectedStateSessionOracle
+adb -s <serial> shell am force-stop com.legado.app.debug
+```
+
+The product side selects the same corpus with `--corpus=`, which is passed on to
+the phase runner and to the negative controls:
+
+```bash
+dart run tool/state_session/compare.dart --corpus=tool/state_session/fixtures-selected.json \
+  --capture=<controller/selected-capture> --evidence=<state-product> \
+  --library=<this worktree's cargo-built fjs.dll>
+```
+
+Without `--corpus=` the product commands read `fixtures.json` exactly as before. A
+prepared corpus is not runtime evidence.

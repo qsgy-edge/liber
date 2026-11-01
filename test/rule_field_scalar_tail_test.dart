@@ -107,7 +107,7 @@ void main() {
         final rule = row['rule'] as String;
         final content = row['content'] as String? ?? '<p>body</p>';
         final list = row['form'] == 'list';
-        final String actual;
+        final String? actual;
         if (row['type'] == 'node') {
           (source['ruleSearch'] as Map)[list ? 'kind' : 'author'] = rule;
           final book = (await HtmlSourcePipeline(
@@ -145,7 +145,7 @@ void main() {
             ? formatContentPage(_expected(row))
             : _expected(row);
         expect(
-          actual.codeUnits,
+          actual?.codeUnits,
           expected.codeUnits,
           reason: '${row['name']}',
         );

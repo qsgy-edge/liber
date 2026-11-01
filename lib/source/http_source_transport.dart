@@ -298,6 +298,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     var target = uri.hasFragment ? uri.removeFragment() : uri;
     var body = sourceRequest.body;
     var hop = 0;
+    var wasRedirected = false;
     // The send failed while this hop's asynchronous setup was still in flight:
     // the request must not reach the peer. The abort marks it before a header
     // or body byte is written and destroys the connection that setup
@@ -359,6 +360,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
             target,
             sourceRequest.maxResponseBytes,
             readBytes: sourceRequest.readBytes,
+            wasRedirected: wasRedirected,
           );
         } finally {
           closeClient(client);
@@ -372,6 +374,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       if (++hop > _maxSourceFollowUps) {
         throw SourceRedirectLimitExceeded(hop, target);
       }
+      wasRedirected = true;
       final next = target.resolve(location);
       if (next.scheme != target.scheme ||
           next.host != target.host ||
@@ -420,6 +423,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
     Uri url,
     int maxResponseBytes, {
     bool readBytes = false,
+    bool? wasRedirected,
   }) async {
     final bytes = <int>[];
     await for (final chunk in response) {
@@ -442,6 +446,7 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
       // Only a caller that asked for bytes keeps them: the decoded body above
       // cannot carry binary data back (the verification-code image).
       bodyBytes: readBytes ? raw : null,
+      wasRedirected: wasRedirected,
     );
   }
 

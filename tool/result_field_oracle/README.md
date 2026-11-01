@@ -74,14 +74,18 @@ product's legacy `infoHtml` claim is not compared.
 
 Selected builds embed `assets/field-provenance.json` alongside the fixed
 `field-fixtures.json`: actual corpus raw/LF/byte measurements and hashes of the
-five same-build inputs (`FieldOracle.java`, `StateSessionOracle.java`,
-`AndroidManifest.xml`, `build.ps1`, `capture.py`). `capture.py` inspects the
+seven same-build inputs (`FieldOracle.java`, `StateSessionOracle.java`,
+`HostRuntimeInit.java`, `ShortcutStartupGuard.java`, `AndroidManifest.xml`,
+`build.ps1`, `capture.py`). New captures require all seven measured hashes.
+`capture.py` inspects the
 actual `--apk` zip before installation and binds the embedded fixture/provenance
 to the selected fixture and measured source bytes; a matching loose `--asset` is
 not enough. The Dart comparator inspects the same APK with `archive`, and joins
 the embedded provenance to the capture manifest. Re-finalization requires the original selected APK (`--apk`), independently
-inspects its unique embedded assets, and joins the complete historical source
-map; it never substitutes today's source hashes. The build source-consistency
+inspects its unique embedded assets, and joins the source map recorded with that
+APK. Historical five-input artifacts remain admissible only with their original
+APK and recorded map; partial inventories and unrelated names are rejected.
+Finalization never substitutes today's source hashes. The build source-consistency
 check runs again after packaging/signing and verifies the embedded corpus and
 provenance bytes. The Dart comparator also counts raw ZIP central-directory
 entries before using the archive decoder.

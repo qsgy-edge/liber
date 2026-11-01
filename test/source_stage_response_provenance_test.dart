@@ -12,7 +12,7 @@ import 'native_library.dart';
 // Protocol controls are separate from the controller's frozen 74 pipeline rows.
 // These typed responses test provenance, not transport byte measurement (which
 // the loopback/BOM rows in source_stage_response_diagnostic_test.dart cover).
-SourceStageResponse _initial({int status = 403}) {
+SourceStageResponse _initial({int status = 403, bool? wasRedirected}) {
   final url = Uri.parse('https://fixture.test/initial');
   return SourceStageResponse(
     body: 'initial',
@@ -22,6 +22,7 @@ SourceStageResponse _initial({int status = 403}) {
       'x-values': ['one', 'two'],
     },
     httpResponse: (statusCode: status, bodyByteLength: 7, url: url),
+    wasRedirected: wasRedirected,
   );
 }
 
@@ -36,8 +37,9 @@ SourceStageResponse _replacement() {
 }
 
 class _HostResponses implements SourceHttpTransport {
-  _HostResponses({this.includeLength = true});
+  _HostResponses({this.includeLength = true, this.redirectFact});
   final bool includeLength;
+  final bool? redirectFact;
   final requests = <SourceHttpRequest>[];
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
@@ -51,6 +53,7 @@ class _HostResponses implements SourceHttpTransport {
       body: body,
       bodyByteLength: includeLength ? body.length : null,
       url: request.url,
+      wasRedirected: redirectFact,
     );
   }
 }
@@ -83,6 +86,21 @@ Future<Object?> _eval(InProcessSourceScriptRuntime runtime, String script) =>
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  test(
+    'trusted redirect provenance survives the check response handoff',
+    () async {
+      final runtime = InProcessSourceScriptRuntime();
+      final response = await _check(
+        runtime,
+        'result',
+        initial: _initial(wasRedirected: true),
+      );
+      expect(response.wasRedirected, isTrue);
+      final legacy = SourceStageResponse.fromJson(_initial().toJson());
+      expect(legacy.wasRedirected, isNull);
+    },
+  );
 
   test('initial wrapper keeps facts and only the four source fields', () async {
     final runtime = InProcessSourceScriptRuntime();
@@ -150,6 +168,71 @@ result;
       },
     );
   }
+
+  for (final fact in [false, true]) {
+    test('host connect converts the selected redirect fact $fact', () async {
+      final transport = _HostResponses(redirectFact: fact);
+      final runtime = InProcessSourceScriptRuntime(
+        dispatcher: SourceHostDispatcher(transport: transport),
+      );
+      final response = await _check(
+        runtime,
+        'java.connect("https://fixture.test/second");',
+        initial: _initial(wasRedirected: !fact),
+      );
+      expect(transport.requests.single.url.path, '/second');
+      expect(transport.requests.single.method, 'GET');
+      expect(response.statusCode, 502);
+      expect(response.body, isEmpty);
+      expect(response.url.path, '/second');
+      expect(response.httpResponse?.statusCode, 502);
+      expect(response.httpResponse?.bodyByteLength, 0);
+      expect(response.httpResponse?.url.path, '/second');
+      expect(
+        response.toJson().keys,
+        unorderedEquals(['body', 'url', 'statusCode', 'headers']),
+      );
+      expect(
+        response.wasRedirected,
+        fact,
+        reason:
+            'The selected host response owns the fact, not the initial envelope',
+      );
+    });
+  }
+
+  test('host ajaxAll selection converts the selected redirect fact', () async {
+    final transport = _HostResponses(redirectFact: true);
+    final runtime = InProcessSourceScriptRuntime(
+      dispatcher: SourceHostDispatcher(transport: transport),
+    );
+    final response = await _check(
+      runtime,
+      'java.ajaxAll(["https://fixture.test/first","https://fixture.test/second"])[1];',
+      initial: _initial(wasRedirected: false),
+    );
+    expect(transport.requests.map((request) => request.url.path), [
+      '/first',
+      '/second',
+    ]);
+    expect(
+      transport.requests.map((request) => request.method),
+      everyElement('GET'),
+    );
+    expect(response.statusCode, 502);
+    expect(response.body, isEmpty);
+    expect(response.url.path, '/second');
+    expect(response.httpResponse?.url.path, '/second');
+    expect(
+      response.toJson().keys,
+      unorderedEquals(['body', 'url', 'statusCode', 'headers']),
+    );
+    expect(
+      response.wasRedirected,
+      isTrue,
+      reason: 'Array selection must retain its selected response fact',
+    );
+  });
 
   test(
     'older HTTP transport retains known status without inventing byte length',

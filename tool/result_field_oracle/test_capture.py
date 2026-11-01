@@ -164,6 +164,42 @@ class ProbeCallerConsistencyTest(unittest.TestCase):
 
 
 class ProvenanceAssetTest(unittest.TestCase):
+    def test_five_and_seven_input_apk_provenance(self):
+        fixture_path = Path(__file__).resolve().with_name('book-url-markers-fixtures.json')
+        fixture_bytes = fixture_path.read_bytes()
+        fixture = json.loads(fixture_bytes)
+        helpers = ('HostRuntimeInit.java', 'ShortcutStartupGuard.java')
+        legacy = {k: v for k, v in capture.harness_source_hashes().items() if k not in helpers}
+        current = dict(legacy)
+        for name in helpers:
+            current[name] = capture.sha256(fixture_path.parent.parent / 'nested_oracle' / name)
+        provenance = {'schemaVersion': 1, 'fixtureId': 'FIELDS-02', 'corpus': {
+            'asset': 'field-fixtures.json', 'bytes': len(fixture_bytes),
+            'sha256': capture.sha256_bytes(fixture_bytes),
+            'sha256Lf': capture.sha256_bytes(capture.lf_bytes(fixture_bytes)),
+            'fixtureId': 'FIELDS-02', 'corpusVersion': 1}}
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / 'selected.apk'
+            def inspect(sources, expected):
+                with zipfile.ZipFile(apk, 'w') as archive:
+                    archive.writestr('assets/field-fixtures.json', fixture_bytes)
+                    archive.writestr('assets/field-provenance.json',
+                                     json.dumps({**provenance, 'sources': sources}))
+                return capture.inspect_selected_apk(apk, fixture_path, fixture, expected)
+            self.assertEqual(inspect(current, current)['provenance']['sources'], current)
+            self.assertEqual(inspect(legacy, None)['provenance']['sources'], legacy)
+            with self.assertRaises(ValueError):
+                inspect(legacy, current)  # new capture must not accept old inventory
+            for bad in [
+                {k: v for k, v in current.items() if k != 'HostRuntimeInit.java'},
+                {**current, 'HostRuntimeInit.java': '0' * 64},
+                {**current, 'ShortcutStartupGuard.java': '0' * 64},
+                {**current, 'ShortcutStartupGuard.java': 'bad'},
+                {**current, 'unrelated.java': '0' * 64},
+            ]:
+                with self.assertRaises(ValueError):
+                    inspect(bad, current)
+
     def test_embedded_asset_and_complete_provenance_are_measured(self):
         fixture_path = Path(__file__).resolve().with_name('book-url-markers-fixtures.json')
         fixture_bytes = fixture_path.read_bytes()
@@ -1330,6 +1366,38 @@ class FinalizeContractTest(unittest.TestCase):
         }
         before = _snapshot_bytes(capture.FROZEN_APP_STORE, ['.', 'cache', 'databases', 'shared_prefs', 'files'])
         return fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before
+
+    def test_historical_five_source_finalize_joins_original_apk(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
+        sources = {name: digest for name, digest in manifest['harnessSources'].items()
+                   if name not in ('HostRuntimeInit.java', 'ShortcutStartupGuard.java')}
+        manifest['harnessSources'] = sources
+        manifest['artifact']['provenance']['sources'] = sources
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            apk = output / 'historical.apk'
+            with zipfile.ZipFile(apk, 'w') as archive:
+                archive.writestr('assets/field-fixtures.json', fixture_bytes)
+                archive.writestr('assets/field-provenance.json',
+                                 json.dumps(manifest['artifact']['provenance']))
+            artifact = capture.inspect_selected_apk(apk, fixture_path, fixture, None)
+            manifest['artifact'] = artifact
+            manifest['harnessApkSha256'] = artifact['apkSha256']
+            manifest['scratchOwner']['harnessApkSha256'] = artifact['apkSha256']
+            report['isolation']['harnessApkSha256'] = artifact['apkSha256']
+            payload = json.dumps(report).encode()
+            (output / 'field-oracle.json').write_bytes(payload)
+            altered = json.loads(json.dumps(manifest))
+            altered['harnessSources']['FieldOracle.java'] = '0' * 64
+            with self.assertRaises(ValueError):
+                capture.finalize(output, fixture, altered, report, before, before,
+                                 asset=fixture_path, scratch_cleanup=cleanup,
+                                 fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
+            capture.finalize(output, fixture, manifest, report, before, before,
+                             asset=fixture_path, scratch_cleanup=cleanup,
+                             fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertEqual((output / 'golden.json').read_bytes(), payload)
 
     def test_offline_finalize_requires_external_inventory(self):
         fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()

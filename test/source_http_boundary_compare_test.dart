@@ -1103,6 +1103,260 @@ Map<String, dynamic> _validProductCopy({
             as Map)
         .cast<String, dynamic>();
 
+// --- the approved Java-return string contract --------------------------------
+//
+// The captured identities come from the independent difference audit: twelve
+// scalar helper leaves whose typeof is object and whose strict literal equality
+// fails in the native capture while the product returns the primitive string,
+// plus the two V rows whose measured field is a whole JSON probe envelope
+// string. Each envelope differs only on the leaves listed below; every other
+// key, value and shape agrees, and the encoded native envelope is the captured
+// expected string itself.
+
+const _capturedScalarLeaves =
+    <({String row, String field, Object? expected, Object? observed})>[
+      (
+        row: 'helper.script-probe-hg0',
+        field: 'value.result.lookup.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg0',
+        field: 'value.result.lookup.strictLiteral',
+        expected: false,
+        observed: true,
+      ),
+      (
+        row: 'helper.script-probe-hg1',
+        field: 'value.result.getDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg1',
+        field: 'value.result.getBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        field: 'value.result.keySetDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        field: 'value.result.keySetBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        field: 'value.result.lookup.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        field: 'value.result.lookup.strictLiteral',
+        expected: false,
+        observed: true,
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        field: 'value.result.getDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        field: 'value.result.getBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        field: 'value.result.keySetDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        field: 'value.result.keySetBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+    ];
+
+const _latestChapterTitleNative = <String, Object?>{
+  'directType': 'string',
+  'directStrict': true,
+  'directText': 'direct',
+  'chainedType': 'object',
+  'chainedStrict': false,
+  'chainedLoose': true,
+  'chainedText': 'direct',
+  'bookBeforeType': 'object',
+  'bookBeforeStrict': false,
+  'bookBeforeText': '',
+  'bookPutType': 'boolean',
+  'bookPutStrict': true,
+  'bookAfterType': 'object',
+  'bookAfterStrict': false,
+  'bookAfterLoose': true,
+  'bookAfterText': 'bv',
+  'sourceBeforeType': 'object',
+  'sourceBeforeStrict': false,
+  'sourceBeforeText': '',
+  'sourceAfterType': 'object',
+  'sourceAfterStrict': false,
+  'sourceAfterLoose': true,
+  'sourceAfterText': 'sv',
+};
+
+const _latestChapterTitleProductOverrides = <String, Object?>{
+  'chainedType': 'string',
+  'chainedStrict': true,
+  'bookBeforeType': 'string',
+  'bookBeforeStrict': true,
+  'bookAfterType': 'string',
+  'bookAfterStrict': true,
+  'sourceBeforeType': 'string',
+  'sourceBeforeStrict': true,
+  'sourceAfterType': 'string',
+  'sourceAfterStrict': true,
+};
+
+const _contentTextNative = <String, Object?>{
+  'directType': 'string',
+  'directStrict': true,
+  'directText': 'P1',
+  'chapterBeforeType': 'object',
+  'chapterBeforeStrict': false,
+  'chapterBeforeText': '',
+  'chapterPutType': 'boolean',
+  'chapterPutStrict': true,
+  'chapterAfterType': 'object',
+  'chapterAfterStrict': false,
+  'chapterAfterLoose': true,
+  'chapterAfterText': 'cv',
+  'bookPersistType': 'object',
+  'bookPersistStrict': false,
+  'bookPersistLoose': true,
+  'bookPersistText': 'bv',
+  'sourcePersistType': 'object',
+  'sourcePersistStrict': false,
+  'sourcePersistLoose': true,
+  'sourcePersistText': 'sv',
+};
+
+const _contentTextProductOverrides = <String, Object?>{
+  'chapterBeforeType': 'string',
+  'chapterBeforeStrict': true,
+  'chapterAfterType': 'string',
+  'chapterAfterStrict': true,
+  'bookPersistType': 'string',
+  'bookPersistStrict': true,
+  'sourcePersistType': 'string',
+  'sourcePersistStrict': true,
+};
+
+/// The two V rows whose measured field is one whole JSON envelope string.
+final _capturedEnvelopes =
+    <
+      ({
+        String row,
+        String stage,
+        String field,
+        Map<String, Object?> native,
+        Map<String, Object?> product,
+      })
+    >[
+      (
+        row: 'v1.details',
+        stage: 'details',
+        field: 'value.latestChapterTitle',
+        native: _latestChapterTitleNative,
+        product: {
+          ..._latestChapterTitleNative,
+          ..._latestChapterTitleProductOverrides,
+        },
+      ),
+      (
+        row: 'v1.content',
+        stage: 'content',
+        field: 'value.text',
+        native: _contentTextNative,
+        product: {..._contentTextNative, ..._contentTextProductOverrides},
+      ),
+    ];
+
+/// The committed v3 corpus' own step and source declarations, so a row is bound
+/// to its real corpus identity instead of an invented one.
+Map<String, Object?> _committedStep(String id) =>
+    ((loadHttpBoundaryCorpus()['steps'] as List).cast<Map>().firstWhere(
+      (step) => step['id'] == id,
+    )).cast<String, Object?>();
+
+Map<String, Object?> _committedSource(String id) =>
+    ((loadHttpBoundaryCorpus()['sources'] as List).cast<Map>().firstWhere(
+      (source) => source['id'] == id,
+    )).cast<String, Object?>();
+
+/// A synthetic v3 corpus that carries one committed row: its own step
+/// declaration and source. The declared request prefix is emptied because these
+/// records carry no request trace, while every identity the classifier reads
+/// (id, family, action, stage, source) stays the committed one.
+Map<String, Object?> _v3CorpusWithRow(String stepId) {
+  final corpus = _corpus();
+  corpus['corpusVersion'] = 3;
+  final step = _committedStep(stepId);
+  corpus['sources'] = <Object?>[
+    ...(corpus['sources'] as List),
+    _committedSource('${step['source']}'),
+  ];
+  corpus['steps'] = <Object?>[
+    ...(corpus['steps'] as List),
+    <String, Object?>{
+      ...step,
+      'requests': {'ordered': <Object?>[]},
+    },
+  ];
+  return corpus;
+}
+
+/// One synthetic v3 record pair whose only difference is one whole envelope
+/// string on the row's own field, so the difference the comparer reports is the
+/// measured field itself and not a parsed sub-result.
+HttpBoundaryComparison _v3EnvelopeComparison({
+  required String rowId,
+  required String stage,
+  required String field,
+  required String nativeText,
+  required String productText,
+}) {
+  // The measured field is the public observation path `value.<leaf>`; inside
+  // the row's value map the difference is that leaf itself.
+  final leaf = field.substring('value.'.length);
+  Map<String, Object?> envelopeRow(String text) => {
+    'id': rowId,
+    'outcome': 'ok',
+    'category': null,
+    'value': {'kind': 'stage', 'stage': stage, 'source': 'V', leaf: text},
+  };
+  final golden = _report()..['corpusVersion'] = 3;
+  (golden['observations'] as List).add(envelopeRow(nativeText));
+  final product = _product()..['corpusVersion'] = 3;
+  (product['observations'] as List).add(envelopeRow(productText));
+  return compareHttpBoundaryRecords(
+    golden: golden.cast<String, dynamic>(),
+    product: product.cast<String, dynamic>(),
+    corpus: _v3CorpusWithRow(rowId).cast<String, dynamic>(),
+    goldenId: 'synthetic',
+  );
+}
+
 void main() {
   test('identical records have no difference', () {
     final golden = _report();
@@ -1401,6 +1655,585 @@ void main() {
       isNull,
     );
   });
+
+  test('the captured HG0 returned-map pair stays strict and is named', () {
+    // `helper.script-probe-hg0`'s captured pair, with the values the native
+    // capture and the product record measured: Rhino returns the header map's
+    // `X-Declared` value as a Java String object, so its typeof is `object` and
+    // its strict literal equality fails; the product returns a primitive JS
+    // string, so its typeof is `string` and the strict comparison is true. Only
+    // these two leaves differ; the loose equality and every other leaf already
+    // agree and come from this file's synthetic probe projection. The strict
+    // mismatch must stay in the difference list, and the comparer must name it
+    // `java-return-string-identity` instead of leaving it unattributed. A
+    // named difference is not equality, so the comparison still does not pass.
+    Map<String, Object?> projection({
+      required String lookupType,
+      required bool strictLiteral,
+    }) {
+      final result = _validProbeProjection();
+      (result['lookup'] as Map)
+        ..['type'] = lookupType
+        ..['strictLiteral'] = strictLiteral;
+      return result;
+    }
+
+    Map<String, Object?> probeObservation({
+      required String lookupType,
+      required bool strictLiteral,
+    }) => {
+      'id': 'helper.script-probe-hg0',
+      'outcome': 'ok',
+      'category': null,
+      'value': {
+        'kind': 'helper',
+        'action': 'scriptProbe',
+        'source': 'HG0',
+        'result': projection(
+          lookupType: lookupType,
+          strictLiteral: strictLiteral,
+        ),
+      },
+    };
+
+    final corpus = _corpus();
+    corpus['corpusVersion'] = 3;
+    // The probe row belongs to the committed corpus' own HG0 source, so the
+    // step's declaration and its source definition are not invented here.
+    final hg0 =
+        ((loadHttpBoundaryCorpus()['sources'] as List).cast<Map>().firstWhere(
+          (source) => source['id'] == 'HG0',
+        )).cast<String, Object?>();
+    // The scaffolding's own source list is reified with narrower element types,
+    // so the HG0 entry rides in a fresh list beside the original entries.
+    corpus['sources'] = <Object?>[...(corpus['sources'] as List), hg0];
+    (corpus['steps'] as List).add({
+      'id': 'helper.script-probe-hg0',
+      'kind': 'helper',
+      'family': 'helper',
+      'source': 'HG0',
+      'action': 'scriptProbe',
+      'requests': {'ordered': <Object?>[]},
+      'expectedOutcome': 'ok',
+    });
+    final golden = _report()..['corpusVersion'] = 3;
+    (golden['observations'] as List).add(
+      probeObservation(lookupType: 'object', strictLiteral: false),
+    );
+    final product = _product()..['corpusVersion'] = 3;
+    (product['observations'] as List).add(
+      probeObservation(lookupType: 'string', strictLiteral: true),
+    );
+    final comparison = compareHttpBoundaryRecords(
+      golden: golden.cast<String, dynamic>(),
+      product: product.cast<String, dynamic>(),
+      corpus: corpus.cast<String, dynamic>(),
+      goldenId: 'synthetic',
+    );
+
+    // The raw difference survives: two leaves, both values as measured.
+    expect(comparison.mismatches, hasLength(2));
+    HttpBoundaryMismatch measured(String field) =>
+        comparison.mismatches.firstWhere(
+          (mismatch) =>
+              mismatch.row == 'helper.script-probe-hg0' &&
+              mismatch.field == field,
+          orElse: () => throw StateError('no HG0 mismatch at $field'),
+        );
+    final lookupType = measured('value.result.lookup.type');
+    expect(lookupType.surface, 'observation');
+    expect(lookupType.kind, 'type-or-value');
+    expect(lookupType.expected, 'object');
+    expect(lookupType.observed, 'string');
+    final strictLiteral = measured('value.result.lookup.strictLiteral');
+    expect(strictLiteral.surface, 'observation');
+    expect(strictLiteral.kind, 'type-or-value');
+    expect(strictLiteral.expected, false);
+    expect(strictLiteral.observed, true);
+    expect(comparison.passed, isFalse);
+
+    // Both are named as the approved Java-return string identity, and each
+    // named entry is the same measured mismatch rather than a second pass.
+    expect(
+      {for (final entry in comparison.notCompared) entry.approved},
+      {'java-return-string-identity'},
+    );
+    expect(
+      {for (final entry in comparison.notCompared) entry.mismatch.key},
+      {lookupType.key, strictLiteral.key},
+    );
+    final output = comparison.toJson();
+    expect(output['mismatchCount'], 2);
+    expect(output['notComparedCount'], 2);
+    expect(output['unattributedCount'], 0);
+    expect(output['passed'], isFalse);
+  });
+
+  // One case per independently captured field identity: the strict mismatch
+  // keeps its own values and the classifier names that same mismatch.
+  for (final leaf in _capturedScalarLeaves) {
+    test(
+      'the captured ${leaf.row} ${leaf.field} pair is a named Java-return string',
+      () {
+        final mismatch = HttpBoundaryMismatch(
+          surface: 'observation',
+          row: leaf.row,
+          field: leaf.field,
+          expected: leaf.expected,
+          observed: leaf.observed,
+          kind: 'type-or-value',
+        );
+        final named = attributeHttpBoundaryMismatch(
+          corpus: _v3CorpusWithRow(leaf.row).cast<String, dynamic>(),
+          product: const {},
+          mismatch: mismatch,
+        );
+        expect(named?.approved, 'java-return-string-identity');
+        expect(named!.mismatch, same(mismatch));
+        expect(named.mismatch.expected, leaf.expected);
+        expect(named.mismatch.observed, leaf.observed);
+        expect(named.reason, isNotEmpty);
+      },
+    );
+  }
+
+  for (final envelope in _capturedEnvelopes) {
+    test(
+      'the captured ${envelope.row} ${envelope.field} envelope is one named Java-return string',
+      () {
+        final nativeText = jsonEncode(envelope.native);
+        final productText = jsonEncode(envelope.product);
+        final comparison = _v3EnvelopeComparison(
+          rowId: envelope.row,
+          stage: envelope.stage,
+          field: envelope.field,
+          nativeText: nativeText,
+          productText: productText,
+        );
+        // The measured difference is one whole-field string pair, not a
+        // rewritten parsed result, and it survives as a strict mismatch.
+        expect(comparison.mismatches, hasLength(1));
+        final mismatch = comparison.mismatches.single;
+        expect(mismatch.surface, 'observation');
+        expect(mismatch.row, envelope.row);
+        expect(mismatch.field, envelope.field);
+        expect(mismatch.kind, 'type-or-value');
+        expect(mismatch.expected, nativeText);
+        expect(mismatch.observed, productText);
+        expect(comparison.passed, isFalse);
+        expect(
+          [for (final entry in comparison.notCompared) entry.approved],
+          ['java-return-string-identity'],
+        );
+        expect(comparison.notCompared.single.mismatch, same(mismatch));
+        expect(comparison.toJson()['unattributedCount'], 0);
+      },
+    );
+  }
+
+  test('a scalar Java-return mismatch outside the measured identities is '
+      'unattributed', () {
+    String? named(
+      Map<String, Object?> corpus,
+      String row,
+      String field,
+      Object? expected,
+      Object? observed, {
+      String kind = 'type-or-value',
+      String surface = 'observation',
+    }) => attributeHttpBoundaryMismatch(
+      corpus: corpus.cast<String, dynamic>(),
+      product: const {},
+      mismatch: HttpBoundaryMismatch(
+        surface: surface,
+        row: row,
+        field: field,
+        expected: expected,
+        observed: observed,
+        kind: kind,
+      ),
+    )?.approved;
+    Map<String, Object?> withStepValue(
+      String stepId,
+      String key,
+      Object? value,
+    ) {
+      final corpus = _v3CorpusWithRow(stepId);
+      ((corpus['steps'] as List).last as Map)[key] = value;
+      return corpus;
+    }
+
+    // The disposition is a corpus-v3 boundary.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1')..['corpusVersion'] = 2,
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'a corpus that is not version 3',
+    );
+    // A row the corpus does not declare.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg0'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'an undeclared row',
+    );
+    // A field measured on another row.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg0'),
+        'helper.script-probe-hg0',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'another row\'s measured field',
+    );
+    // The row bound to a source other than its own.
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg1', 'source', 'HG2'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'a foreign source binding',
+    );
+    // A declared step that is no longer the measured action.
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg1', 'action', 'headerMap'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'another helper action',
+    );
+    // The row must keep its helper observation kind as well as its family.
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg0', 'kind', 'stage'),
+        'helper.script-probe-hg0',
+        'value.result.lookup.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'HG0 declared with another execution kind',
+    );
+    expect(
+      named(
+        withStepValue('helper.script-probe-hg1', 'kind', 'stage'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+      ),
+      isNull,
+      reason: 'HG1 declared with another execution kind',
+    );
+    // The measured direction is object -> string, never the reverse.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'string',
+        'object',
+      ),
+      isNull,
+      reason: 'the reverse direction',
+    );
+    // Another value pair on the same row and field.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'number',
+        'string',
+      ),
+      isNull,
+      reason: 'an unrelated value pair',
+    );
+    // Another mismatch kind on a measured pair.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+        kind: 'value',
+      ),
+      isNull,
+      reason: 'an unrelated mismatch kind',
+    );
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg0'),
+        'helper.script-probe-hg0',
+        'value.result.lookup.strictLiteral',
+        false,
+        true,
+        kind: 'value',
+      ),
+      isNull,
+      reason: 'a measured boolean pair under another kind',
+    );
+    // The surrounding leaves of the same projection stay strict.
+    for (final leaf in const [
+      ('value.result.lookup.text', 'hg0', 'other'),
+      ('value.result.lookup.looseLiteral', true, false),
+      ('value.result.lookup.returned', true, false),
+    ]) {
+      expect(
+        named(
+          _v3CorpusWithRow('helper.script-probe-hg0'),
+          'helper.script-probe-hg0',
+          leaf.$1,
+          leaf.$2,
+          leaf.$3,
+        ),
+        isNull,
+        reason: 'the ${leaf.$1} leaf',
+      );
+    }
+    // An injected strict-equality axis where only the type was measured.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.strictLiteral',
+        false,
+        true,
+      ),
+      isNull,
+      reason: 'an injected axis',
+    );
+    // The disposition is an observation-row difference.
+    expect(
+      named(
+        _v3CorpusWithRow('helper.script-probe-hg1'),
+        'helper.script-probe-hg1',
+        'value.result.getDot.type',
+        'object',
+        'string',
+        surface: 'request',
+      ),
+      isNull,
+      reason: 'another comparison surface',
+    );
+  });
+
+  test(
+    'a V probe envelope outside the measured leaf difference is unattributed',
+    () {
+      String? named(
+        Map<String, Object?> corpus,
+        String row,
+        String field,
+        Object? expected,
+        Object? observed,
+      ) => attributeHttpBoundaryMismatch(
+        corpus: corpus.cast<String, dynamic>(),
+        product: const {},
+        mismatch: HttpBoundaryMismatch(
+          surface: 'observation',
+          row: row,
+          field: field,
+          expected: expected,
+          observed: observed,
+          kind: 'type-or-value',
+        ),
+      )?.approved;
+      final latest = <String, Object?>{
+        ..._latestChapterTitleNative,
+        ..._latestChapterTitleProductOverrides,
+      };
+      final content = <String, Object?>{
+        ..._contentTextNative,
+        ..._contentTextProductOverrides,
+      };
+      String? latestNamed(
+        Map<String, Object?> product, {
+        Map<String, Object?>? corpus,
+        String row = 'v1.details',
+        String field = 'value.latestChapterTitle',
+      }) => named(
+        corpus ?? _v3CorpusWithRow('v1.details'),
+        row,
+        field,
+        jsonEncode(_latestChapterTitleNative),
+        jsonEncode(product),
+      );
+
+      // The measured envelopes themselves are the two positive controls in the
+      // suite; this test only fixes the boundaries around them.
+      // A changed text leaf, a missing key and a new key are other facts.
+      expect(
+        latestNamed({...latest, 'directText': 'other'}),
+        isNull,
+        reason: 'a changed direct text',
+      );
+      expect(
+        latestNamed({...latest}..remove('bookAfterText')),
+        isNull,
+        reason: 'a missing envelope key',
+      );
+      expect(
+        latestNamed({...latest, 'injected': 'x'}),
+        isNull,
+        reason: 'a new envelope key',
+      );
+      // A measured axis with another value or type stays strict.
+      expect(
+        latestNamed({...latest, 'chainedType': 'number'}),
+        isNull,
+        reason: 'another value on a measured axis',
+      );
+      expect(
+        latestNamed({...latest, 'chainedStrict': 'yes'}),
+        isNull,
+        reason: 'another type on a measured axis',
+      );
+      // An unmeasured boolean leaf keeps its strict comparison.
+      expect(
+        latestNamed({...latest, 'directStrict': false}),
+        isNull,
+        reason: 'an unmeasured boolean leaf',
+      );
+      // A frame that is not a readable envelope at all.
+      expect(
+        named(
+          _v3CorpusWithRow('v1.details'),
+          'v1.details',
+          'value.latestChapterTitle',
+          jsonEncode(_latestChapterTitleNative),
+          '{"directType":',
+        ),
+        isNull,
+        reason: 'a truncated envelope',
+      );
+      expect(
+        named(
+          _v3CorpusWithRow('v1.details'),
+          'v1.details',
+          'value.latestChapterTitle',
+          jsonEncode(_latestChapterTitleNative),
+          'plain text',
+        ),
+        isNull,
+        reason: 'a non-JSON field value',
+      );
+      // The row and the field of the measured envelope are one identity.
+      expect(
+        latestNamed(
+          latest,
+          corpus: _v3CorpusWithRow('v1.content'),
+          row: 'v1.content',
+        ),
+        isNull,
+        reason: 'the field on another row',
+      );
+      expect(
+        latestNamed(latest, field: 'value.text'),
+        isNull,
+        reason: 'another field of the same row',
+      );
+      // A corpus that is not version 3 does not define this boundary.
+      expect(
+        latestNamed(
+          latest,
+          corpus: _v3CorpusWithRow('v1.details')..['corpusVersion'] = 2,
+        ),
+        isNull,
+        reason: 'a corpus that is not version 3',
+      );
+      // The content text envelope follows the same rules.
+      String? contentNamed(
+        Map<String, Object?> product, {
+        Map<String, Object?>? corpus,
+      }) => named(
+        corpus ?? _v3CorpusWithRow('v1.content'),
+        'v1.content',
+        'value.text',
+        jsonEncode(_contentTextNative),
+        jsonEncode(product),
+      );
+      expect(
+        contentNamed({...content, 'directText': 'P2'}),
+        isNull,
+        reason: 'a changed content text',
+      );
+      expect(
+        contentNamed({...content}..remove('sourcePersistStrict')),
+        isNull,
+        reason: 'a missing content key',
+      );
+      expect(
+        named(
+          _v3CorpusWithRow('v1.content'),
+          'v1.content',
+          'value.text',
+          jsonEncode(_contentTextNative),
+          '{',
+        ),
+        isNull,
+        reason: 'a malformed content envelope',
+      );
+      // The measured frame must stay on a stage row of its own family and kind.
+      Map<String, Object?> withStepValue(
+        Map<String, Object?> corpus,
+        String key,
+        Object? value,
+      ) {
+        ((corpus['steps'] as List).last as Map)[key] = value;
+        return corpus;
+      }
+
+      for (final tag in const [('family', 'helper'), ('kind', 'helper')]) {
+        expect(
+          latestNamed(
+            latest,
+            corpus: withStepValue(
+              _v3CorpusWithRow('v1.details'),
+              tag.$1,
+              tag.$2,
+            ),
+          ),
+          isNull,
+          reason: 'the details frame declared with another ${tag.$1}',
+        );
+        expect(
+          contentNamed(
+            content,
+            corpus: withStepValue(
+              _v3CorpusWithRow('v1.content'),
+              tag.$1,
+              tag.$2,
+            ),
+          ),
+          isNull,
+          reason: 'the content frame declared with another ${tag.$1}',
+        );
+      }
+    },
+  );
 
   test(
     'the frozen book carrier is projected from the actual source context',

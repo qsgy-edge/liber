@@ -142,6 +142,64 @@ void main() {
     },
   );
 
+  test(
+    'selected state rejects missing changed or extra wrapper registrations',
+    () {
+      final selected = loadStateSessionCorpus(stateSessionSelectedCorpusPath);
+      final hash = stateSessionCorpusSha256Lf(
+        File(stateSessionSelectedCorpusPath),
+      );
+      final init = selected['hostInitialization'] as Map;
+      final wrappers = <String, Object?>{
+        for (final row in init['registrations'] as List)
+          '${(row as Map)['type']}': row['factory'],
+      };
+      for (final phase in ['seed', 'restart']) {
+        final report = _golden(selected, phase, pid: 101, runId: 'synthetic');
+        (report['identity'] as Map)['corpusAssetSha256'] = hash;
+        (report['identity'] as Map)['corpusSha256Lf'] = hash;
+        report['startupContainment'] = {
+          'service': 'shortcut',
+          'provider': 'io.legado.app.api.ReaderProvider',
+          'intercepted': 1,
+          'handled': 1,
+          'beforeBinding': true,
+        };
+        final measured = <String, dynamic>{
+          'verified': true,
+          'method': init['method'],
+          'invokedOn': 'unattached-instance',
+          'applicationAttached': false,
+          'registeredWrappers': wrappers,
+        };
+        report['hostInitialization'] = measured;
+        void check() => checkStateSessionGolden(
+          corpus: selected,
+          corpusSha256Lf: hash,
+          golden: report,
+          phase: phase,
+        );
+        check();
+        final containment = report.remove('startupContainment');
+        expect(
+          check,
+          throwsFormatException,
+          reason: '$phase missing containment',
+        );
+        report['startupContainment'] = containment;
+        for (final broken in [
+          null,
+          {...wrappers}..remove(wrappers.keys.first),
+          {...wrappers, wrappers.keys.first: 'wrong'},
+          {...wrappers, 'extra.Type': 'wrong'},
+        ]) {
+          measured['registeredWrappers'] = broken;
+          expect(check, throwsFormatException, reason: '$phase $broken');
+        }
+      }
+    },
+  );
+
   test('a genuine matching pair passes', () {
     final report = compare();
     expect(report['status'], 'pass');

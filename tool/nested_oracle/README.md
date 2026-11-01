@@ -234,3 +234,79 @@ manifest. The `fjs.dll` path is whichever native library that run built: the
 executed comparison loaded the lane's `cargo build --locked` debug artifact and
 records that exact path and SHA-256 in
 `evidence/android-17-os4.0.4.0/jslib-manifest.json`.
+
+## Selected reference (JSLIB-01 corpus version 3, #146)
+
+`jslib-fixtures.json` keeps its `14dd2494` identity, its target pin
+(`io.legado.app.debug`, APK SHA-256 `cc99040c…`) and its executed golden.
+`jslib-fixtures-selected.json` is the same corpus bound to the selected
+compatibility reference `a7d37f1707a70a459ad708f4fe79341d1e42d716`
+(`LegadoTeam/legado` release `3.26101819`) and the same-source instrumentable
+build `com.legado.app.debug`, APK SHA-256
+`593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5`. The
+`jsLib` text and every step are the version-2 ones; no case row was added,
+removed or rewritten.
+
+The selected run uses the dedicated `SelectedJsLibOracle` instrumentation entry
+and `-e corpus jslib-selected`. Do not use the historical `NestedOracle` entry:
+Android creates the application before delivering instrumentation extras, so only
+the dedicated entry fixes storage-only mode before startup. Selected startup blocks
+shortcut-service acquisition and handles only the context-issued exception from the
+known ReaderProvider publication path; a measured interception and handling are
+required before scratch binding. Other providers remain enabled. It differs from
+the historical run as follows:
+
+- **storage-only.** `newApplication` returns a plain `android.app.Application`
+  over `StateSessionOracle.ScratchContext` under
+  `<target cacheDir>/liber-jslib-oracle` with the preference prefix
+  `liber_jslib_oracle_`. The process Application is the plain stub; the real
+  `io.legado.app.App` lifecycle is never started, so its `onCreate`,
+  `attachBaseContext`, default-data seeding, logging, cronet pre-download,
+  monitors and schedulers never run, and the
+  installation's own database and preferences stay out of reach. After the
+  binding, the run checks `splitties.init.AppCtxKt.getAppCtx()` files and
+  database paths against the scratch context and proves the preference routing
+  with the same one-write probe the state oracle uses (`liber_jslib_probe`).
+  A run that did not get the storage-only application refuses instead of
+  recording a lifetime that reached installation storage.
+- **host initialization.** The corpus declares `io.legado.app.App#initRhino()`
+  and its nine host wrapper factories. After the routing check the harness
+  creates an unattached `io.legado.app.App`, invokes that exact private method,
+  re-reads `com.script.rhino.RhinoWrapFactory`'s registry and refuses unless it
+  is exactly the declared set. `RhinoScriptEngine.initialize()` is a no-op in
+  the selected source; the registry is what the rule scripts actually see.
+- **entry point.** The selected `AnalyzeUrl` declares sixteen constructor
+  parameters (the historical fourteen plus nullable `infoMap` and
+  `extraParams`). The harness resolves the declaration by type, fills the two
+  extra parameters with `null`, and records the arity and parameter types in
+  `bindings`; it refuses rather than instantiating an unrelated overload.
+- **delivery.** No report file is written. The report leaves as
+  `JSLIB_ORACLE_BASE64=<base64 JSON>` on the instrumentation stream after the
+  cleanup removes the owned preference files and the scratch root. The report is
+  retained in memory through cleanup, so the removal cannot delete it. An unbound or pre-existing root
+  is preserved, not deleted. A 240 s watchdog reports the
+  stage it stalled in on the same channel.
+
+```bash
+adb -s <serial> install -r -t <fresh-dir>/nested-oracle.apk
+adb -s <serial> shell am instrument -w -r -e corpus jslib-selected \
+  io.liber.oracle.nested/io.liber.oracle.nested.SelectedJsLibOracle
+adb -s <serial> shell am force-stop com.legado.app.debug
+```
+
+The stream also prints one human line after the BASE64 payload. Decode it into
+the golden file and compare on the host, selecting the same corpus:
+
+```bash
+dart run tool/nested_oracle_compare.dart --jslib \
+  --corpus=tool/nested_oracle/jslib-fixtures-selected.json \
+  build/windows/x64/runner/Debug/fjs.dll <golden.json> <report.json>
+```
+
+`--corpus=` selects only the file; the corpus hash, target pin and provenance
+the comparison admits are inside it. Both comparators refuse a capture of a
+corpus that declares host initialization unless the capture records
+`hostInitialization.verified: true` for the declared method, measured on an
+unattached instance. Without `--corpus=` / `-e corpus …` the historical corpus
+and its golden are unchanged, and that path keeps the target's external files
+directory delivery. A prepared corpus and harness are not a native capture.

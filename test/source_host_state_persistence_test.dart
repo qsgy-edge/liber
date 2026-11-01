@@ -40,6 +40,78 @@ void main() {
 
   tearDown(() => deleteTempDirectory(root));
 
+  test(
+    'chapter restoration projection is ordered and scoped to source and book',
+    () async {
+      final workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      for (final item in [
+        (id: 'a', source: 'source-a', book: 'book'),
+        (id: 'b', source: 'source-b', book: 'book'),
+        (id: 'c', source: 'source-a', book: 'other'),
+      ]) {
+        await store.putBook(
+          BooksCompanion.insert(
+            id: item.id,
+            title: item.id,
+            kind: const Value('network'),
+            sourceRef: Value(item.source),
+            sourceBookUrl: Value(item.book),
+          ),
+        );
+        await store.putChapters(item.id, [
+          BookChapter(
+            bookId: item.id,
+            chapterKey: '2',
+            name: 'second',
+            url: '2',
+            chapterIndex: 1,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: '',
+          ),
+          BookChapter(
+            bookId: item.id,
+            chapterKey: '1',
+            name: 'first',
+            url: '1',
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: item.id == 'a' ? null : item.id,
+          ),
+        ]);
+      }
+      expect(await state.chapterRestorationRows('source-a', 'book'), [
+        (index: 0, title: 'first', variable: null),
+        (index: 1, title: 'second', variable: ''),
+      ]);
+      expect(
+        (await state.chapterRestorationRows('source-b', 'book')).first.variable,
+        'b',
+      );
+      expect(
+        (await state.chapterRestorationRows(
+          'source-a',
+          'other',
+        )).first.variable,
+        'c',
+      );
+      await state.putChapterVariable('missing', 'book', 'chapter', 'unwritten');
+      expect(await state.chapterRestorationRows('missing', 'book'), isEmpty);
+      expect(
+        await SourceHostState().chapterRestorationRows('source-a', 'book'),
+        isEmpty,
+      );
+      await workspace.close();
+    },
+  );
+
   test('cookies, cache entries and rule state survive a restart', () async {
     const sourceRef = 'https://www.example.com/book';
     final workspace = await Workspace.open(root: root);

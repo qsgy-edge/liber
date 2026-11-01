@@ -116,6 +116,10 @@ abstract interface class SourceHostStatePersistence {
     String? variable,
   );
 
+  /// Stored TOC chapters for index-and-title restoration.
+  Future<List<({int index, String title, String? variable})>>
+  loadChapterRestorationRows(String sourceRef, String bookUrl);
+
   /// Removes every host-surface row one source owns (#36): its `source_entries`
   /// rows, the `source_cookies` rows it wrote, and the `source_tls_exceptions`
   /// rows the user confirmed for it (#53). A pair another source of the same
@@ -253,9 +257,8 @@ class SourceEntityVariableDraft implements SourceEntityVariableStore {
 /// [base] is the candidate's private [SourceEntityVariableDraft] when the
 /// analysis defers entity variables and the space's rows otherwise, so the book
 /// half and the chapter half outside a rebuild keep their existing path.
-/// [through] is the row store an ordinary TOC item's chapter write also reaches;
-/// a deferred analysis leaves it null, so a rebuilt candidate chapter never
-/// touches a row.
+/// Ordinary TOC item writes are staged until the complete list succeeds; a
+/// deferred analysis never publishes them to the shared host state.
 ///
 /// One TOC item is one [beginChapter] scope: its chapter variables start empty —
 /// a read answers only what this item's own rules wrote, never the row a
@@ -268,7 +271,32 @@ class SourceEntityVariableScope implements SourceEntityVariableStore {
   final SourceEntityVariableStore base;
 
   /// The row store an ordinary TOC item's chapter write also reaches.
-  final SourceEntityVariableStore? through;
+  final SourceHostState? through;
+  final List<Map<(String, String, String), String?>> _tocItems = [];
+  Map<(String, String, String), String?> _itemWrites = {};
+
+  /// Discards uncommitted item writes from any previous analysis.
+  void beginToc() => _tocItems.clear();
+
+  /// Keeps writes only for an item that made it into the generated list.
+  void recordTocChapter() => _tocItems.add(_itemWrites);
+
+  Future<Map<(String, String, String), String?>> prepareTocHandoff(
+    List<String?> restoredVariables,
+  ) async {
+    final writes = <(String, String, String), String?>{};
+    for (var i = 0; i < _tocItems.length; i++) {
+      for (final entry in _tocItems[i].entries) {
+        writes[entry.key] = restoredVariables[i] ?? entry.value;
+      }
+    }
+    return await through?.prepareTocHandoff(writes) ?? {};
+  }
+
+  void publishTocHandoff(Map<(String, String, String), String?> writes) {
+    through?.publishTocHandoff(writes);
+    _tocItems.clear();
+  }
 
   Map<String, String?>? _item;
   String? _itemText;
@@ -277,6 +305,7 @@ class SourceEntityVariableScope implements SourceEntityVariableStore {
   /// item's own writes.
   void beginChapter() {
     _item = {};
+    _itemWrites = {};
     _itemText = null;
   }
 
@@ -323,9 +352,8 @@ class SourceEntityVariableScope implements SourceEntityVariableStore {
     }
     item[chapterKey] = variable;
     _itemText = variable;
-    final row = through;
-    if (row != null) {
-      await row.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+    if (through != null) {
+      _itemWrites[(sourceRef, bookUrl, chapterKey)] = variable;
     }
   }
 }
@@ -388,6 +416,31 @@ class SourceHostState implements SourceEntityVariableStore {
   /// this map is the whole store.
   final Map<(String, String), String?> _unwrittenBookVariables = {};
   final Map<(String, String, String), String?> _unwrittenChapterVariables = {};
+
+  /// Reads stored chapters only, never the unwritten chapter cache.
+  Future<List<({int index, String title, String? variable})>>
+  chapterRestorationRows(String sourceRef, String bookUrl) async =>
+      await _persistence?.loadChapterRestorationRows(sourceRef, bookUrl) ?? [];
+
+  /// Finds staged item writes without a stored row, without changing the cache.
+  Future<Map<(String, String, String), String?>> prepareTocHandoff(
+    Map<(String, String, String), String?> writes,
+  ) async {
+    final result = <(String, String, String), String?>{};
+    for (final entry in writes.entries) {
+      final key = entry.key;
+      if (await _persistence?.loadChapterVariable(key.$1, key.$2, key.$3) ==
+          null) {
+        result[key] = entry.value;
+      }
+    }
+    return result;
+  }
+
+  /// Publishes the successful analysis's no-row handoff synchronously.
+  void publishTocHandoff(Map<(String, String, String), String?> writes) {
+    _unwrittenChapterVariables.addAll(writes);
+  }
 
   /// Accepted TLS exceptions, as `(sourceRef, host)` pairs (ADR 0011 §5).
   final Set<(String, String)> _tlsExceptions = {};

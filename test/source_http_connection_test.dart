@@ -459,6 +459,57 @@ void main() {
     },
   );
 
+  test('actual return-to-initial redirect reports its trusted fact', () async {
+    var seen = 0;
+    final server = _ConnectionServer((request) {
+      seen++;
+      if (seen == 1) return _redirect('/handoff');
+      if (seen == 2) return _redirect('/book');
+      return _ok();
+    });
+    await server.start();
+    addTearDown(server.stop);
+    final transport = HttpSourceTransport(
+      clientFactory: ({bool useSystemProxy = false}) =>
+          server.client(useSystemProxy: useSystemProxy),
+    );
+    final response = await transport
+        .send(_get('http://fixture.test/book'))
+        .timeout(const Duration(seconds: 10));
+    expect(response.statusCode, 200);
+    expect(response.body, 'ok');
+    expect(response.wasRedirected, isTrue);
+    expect(server.requests.map((r) => r.line), [
+      'GET /book HTTP/1.1',
+      'GET /handoff HTTP/1.1',
+      'GET /book HTTP/1.1',
+    ]);
+  });
+
+  test(
+    'actual unredirected response reports false and legacy unknown stays null',
+    () async {
+      final server = _ConnectionServer((request) => _ok());
+      await server.start();
+      addTearDown(server.stop);
+      final transport = HttpSourceTransport(
+        clientFactory: ({bool useSystemProxy = false}) =>
+            server.client(useSystemProxy: useSystemProxy),
+      );
+      final response = await transport
+          .send(_get('http://fixture.test/book'))
+          .timeout(const Duration(seconds: 10));
+      expect(response.wasRedirected, isFalse);
+      final legacy = SourceHttpResponse(
+        statusCode: 200,
+        headers: {},
+        body: 'ok',
+        url: Uri.parse('http://fixture.test/book'),
+      );
+      expect(legacy.wasRedirected, isNull);
+    },
+  );
+
   test(
     'a connection that resolves after cancellation never sends the request',
     () async {

@@ -146,6 +146,7 @@ class SourceHttpResponse {
     required this.url,
     this.bodyBytes,
     this.bodyByteLength,
+    this.wasRedirected,
   });
   final int statusCode;
   final Map<String, List<String>> headers;
@@ -159,6 +160,10 @@ class SourceHttpResponse {
   /// knows them. A legacy response leaves this unknown rather than zero.
   final int? bodyByteLength;
   final Uri url;
+
+  /// Actual successful-attempt redirect provenance. Null is unknown for a
+  /// legacy provider; a real transport reports true or false.
+  final bool? wasRedirected;
 }
 
 abstract interface class SourceHttpTransport {

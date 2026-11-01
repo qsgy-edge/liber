@@ -209,7 +209,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
               {
                 'name': hit.title,
                 'author': hit.author,
-                'bookUrl': '${hit.url}',
+                'bookUrl': hit.identityAddress,
                 'identityAddress': hit.identityAddress,
                 'rawAddress': hit.rawAddress,
               },
@@ -237,10 +237,10 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         record['bookInfo'] = {
           'name': info.book.title,
           'author': info.book.author,
-          'bookUrl': '${info.book.url}',
+          'bookUrl': info.book.identityAddress,
           'identityAddress': info.book.identityAddress,
           'rawAddress': info.book.rawAddress,
-          'tocUrl': info.tocAddress,
+          'tocUrl': info.tocUrl,
         };
         final tocRequestStart = server.requests.length;
         final tocTraceStart = pipeline.trace.length;
@@ -251,7 +251,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           () => pipeline.tableOfContents(info),
         );
         record['tableOfContents'] = {
-          'tocUrl': info.tocAddress,
+          'tocUrl': info.tocUrl,
           'chapters': [
             for (final chapter in chapters)
               {

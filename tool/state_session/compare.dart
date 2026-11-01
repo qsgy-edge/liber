@@ -16,7 +16,13 @@ import 'runner.dart';
 ///   `dart run tool/state_session/compare.dart --compare-only <seed.json>`
 ///   `<restart.json> --golden-seed=<seed-report.json>`
 ///   `--golden-restart=<restart-report.json> [--library=<fjs.dll>]`
-///   `[--out=<report.json>]`
+///   `[--out=<report.json>] [--corpus=<fixtures.json>]`
+///
+/// `--corpus=<path>` selects the corpus both forms use; without it the
+/// historical `STATE-SESSION-01` v2 corpus and its goldens are unchanged, and
+/// `tool/state_session/fixtures-selected.json` is the selected-reference v3
+/// corpus. The path is only a tool-side selector: every identity the comparison
+/// uses lives inside the file, so no old capture can be relabelled by it.
 ///
 /// The first form builds and runs the two product phases as two terminated Dart
 /// processes, compares them, then runs the negative controls on copies of the
@@ -207,6 +213,43 @@ void checkStateSessionGolden({
   _text(identity['harnessPackage'], '$goldenPath harnessPackage');
   if (identity['targetPinManifest'] != target['manifest']) {
     throw FormatException('$goldenPath names another target pin manifest');
+  }
+  // A corpus that declares host initialization is only compared with a capture
+  // that records it as performed on an unattached App instance and verified, so a
+  // capture of another runtime configuration is refused rather than compared.
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization is Map) {
+    final measured = golden['hostInitialization'];
+    if (measured is! Map ||
+        measured['verified'] != true ||
+        measured['method'] != hostInitialization['method'] ||
+        measured['invokedOn'] != 'unattached-instance' ||
+        measured['applicationAttached'] != false) {
+      throw FormatException(
+        '$goldenPath records no verified host initialization',
+      );
+    }
+    final registrations = hostInitialization['registrations'] as List;
+    final declared = <String, Object?>{
+      for (final row in registrations.cast<Map>())
+        '${row['type']}': row['factory'],
+    };
+    if (!_deepEquals(measured['registeredWrappers'], declared)) {
+      throw FormatException(
+        '$goldenPath records an incorrect host initialization registry',
+      );
+    }
+    final containment = golden['startupContainment'];
+    if (containment is! Map ||
+        containment['service'] != 'shortcut' ||
+        containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+        containment['intercepted'] != 1 ||
+        containment['handled'] != 1 ||
+        containment['beforeBinding'] != true) {
+      throw FormatException(
+        '$goldenPath records no startup containment receipt',
+      );
+    }
   }
   if (_integer(golden['pid'], '$goldenPath pid') <= 0) {
     throw FormatException('$goldenPath names no process');
@@ -1274,6 +1317,13 @@ Map<String, String> _namedOptions(List<String> args) {
   return options;
 }
 
+/// The corpus `--corpus=<path>` names, or the historical corpus. The path is a
+/// tool-side selector only; every identity the comparison uses is inside the file.
+String _selectedCorpusPath(Map<String, String> options) {
+  final path = options['corpus']?.trim();
+  return path == null || path.isEmpty ? stateSessionCorpusPath : path;
+}
+
 String _required(Map<String, String> options, String name) {
   final value = options[name];
   if (value == null || value.trim().isEmpty) {
@@ -1288,8 +1338,9 @@ Future<int> _runAndCompare(List<String> args) async {
   final evidence = Directory(_required(options, 'evidence'));
   final libraryPath = _required(options, 'library');
   final handoffPath = options['handoff'];
-  final corpusFile = File(stateSessionCorpusPath);
-  final corpus = loadStateSessionCorpus(stateSessionCorpusPath);
+  final corpusPath = _selectedCorpusPath(options);
+  final corpusFile = File(corpusPath);
+  final corpus = loadStateSessionCorpus(corpusPath);
   final corpusLf = stateSessionCorpusSha256Lf(corpusFile);
   final librarySha = sha256File(File(libraryPath));
   final seedGoldenPath =
@@ -1332,6 +1383,7 @@ Future<int> _runAndCompare(List<String> args) async {
     root,
     seedReport,
     '--expected-corpus-sha256=$corpusLf',
+    '--corpus=$corpusPath',
   ], logPath: '${evidence.path}${Platform.pathSeparator}seed-runner.log');
   final restartRun = await _runProcess([
     'run',
@@ -1341,6 +1393,7 @@ Future<int> _runAndCompare(List<String> args) async {
     root,
     restartReport,
     '--expected-corpus-sha256=$corpusLf',
+    '--corpus=$corpusPath',
   ], logPath: '${evidence.path}${Platform.pathSeparator}restart-runner.log');
   final seedProduct = _readJsonOrNull(seedReport);
   final restartProduct = _readJsonOrNull(restartReport);
@@ -1392,6 +1445,7 @@ Future<int> _runAndCompare(List<String> args) async {
 
   final controls = await _runNegativeControls(
     evidence: evidence,
+    corpusPath: corpusPath,
     libraryPath: libraryPath,
     seedGoldenPath: seedGoldenPath,
     restartGoldenPath: restartGoldenPath,
@@ -1424,6 +1478,7 @@ Future<int> _runAndCompare(List<String> args) async {
 /// after the run.
 Future<Map<String, Object?>> _runNegativeControls({
   required Directory evidence,
+  required String corpusPath,
   required String libraryPath,
   required String seedGoldenPath,
   required String restartGoldenPath,
@@ -1520,6 +1575,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       '--compare-only',
       productSeed,
       productRestart,
+      '--corpus=$corpusPath',
       '--golden-seed=$goldenSeed',
       '--golden-restart=$goldenRestart',
       '--library=$libraryPath',
@@ -1688,8 +1744,9 @@ Future<int> _compareOnly(List<String> args) async {
         '--golden-restart=<restart-report.json>',
       );
     }
-    final corpus = loadStateSessionCorpus(stateSessionCorpusPath);
-    final corpusLf = stateSessionCorpusSha256Lf(File(stateSessionCorpusPath));
+    final corpusPath = _selectedCorpusPath(options);
+    final corpus = loadStateSessionCorpus(corpusPath);
+    final corpusLf = stateSessionCorpusSha256Lf(File(corpusPath));
     final seedGoldenPath = _required(options, 'golden-seed');
     final restartGoldenPath = _required(options, 'golden-restart');
     final seedGoldenSha = sha256File(File(seedGoldenPath));

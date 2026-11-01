@@ -224,7 +224,7 @@ void main() {
             ? book.kind
             : book.author;
         expect(
-          actual.codeUnits,
+          actual?.codeUnits,
           (observed['getterUnits'] as List).cast<int>(),
           reason: '${row['name']} getter',
         );

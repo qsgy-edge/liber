@@ -8,43 +8,17 @@ with both frozen captures of the controller's hash-bound handoff, and report wha
 still differs. Nothing here is a compatibility claim, and nothing here can turn a
 difference into a pass.
 
-Status: **measured, not accepted.** At candidate `b7fc3cf`, the product run reached
-all 22 v2 observations and all 31 v2 ordinary requests with no unmatched request,
-and both v2 captures compared identically with 56 strict differences. That retained
-pre-repair measurement keeps its original identity; new runtime or observer bytes
-require a new execution and comparison.
+The active corpus is **version 3**: 16 sources, 44 observations, 51 ordinary
+requests and five declared cohorts. It covers native-return string probes, Java-Map
+member collisions and URL-option execution through the actual four-stage product
+path. The same/fresh details pair consumes the identical retained hit and publishes
+its retained identity; request-option scripts run at each actual request.
 
-The active corpus is now **version 3**: 16 sources, 44 observations, 51 ordinary
-requests and a fifth declared cohort. The v2 rows and captures keep their original
-identities and are not relabelled as v3. The v3 product run records 44 observations
-and 50 actual requests: 47 match declared selectors and three are unmatched, against
-51 expected requests.
-`t1.toc`, `p1.toc` and `n1.toc` are the incomplete rows: the first two request the
-pre-option TOC addresses, and the null-return counter read leaves the TOC chapter title
-empty. The O pair consumes the identical retained hit; both details publish the
-retained `identityAddress` (the analyzed targets stay in the request trace). The
-product's cached first call skips the source-authored option `js`, so the fresh call's
-counter is 1 and it sends `/o/book/1` (not the declared `/o/book/2`). The paired
-fixture declares counters 1 and 2; confirming the frozen execution still requires the
-v3 phone capture. That `/1` request lands on the same row's declared selector, so
-the actual ownership/count mismatch is retained rather than repaired
-(`o1.details-fresh` owns no request and `/o/book/2` is missing; `GET /o/book` is
-unmatched). That report is retained as the actual current-product measurement: it is
-not a pass, and the comparator refuses an incomplete product record by design. The v3
-installed-app capture and comparison remain with the controller and are **not-run**
-here. The CLI still pins the historical v2 handoff head
-`fbf556130176841fea14196bf94555823be589c7`; a v3 comparison needs the controller's
-actual v3 capture/handoff and a reviewed pin for that capture before execution.
-
-At the historical v2 observer candidate, built on integration/133 `a175a67`, the Map
-repair and the source-context carrier projection were in place. That product session
-reached 22 observations and 31 requests, every cleanup receipt was true, and both v2
-captures compared with **38 strict differences each**. All 38 are named in
-`notCompared` under the four approved dispositions below and **0 are unattributed**;
-the strict verdict remains a difference (exit 3), never a pass. Nineteen own-baseline
-controls per v2 capture applied and passed, and every control's own new mismatch stayed
-unattributed; the twelve v3 row controls are not-applicable on a v2 record. Integration,
-review, the Windows driven run and #137/#133 acceptance stay with the controller.
+The CLI accepts the controller's hash-bound v3 handoff at reviewed native-source
+anchor `276a625e4aef0104240beac1908e597c6023ef93`. That handoff keeps the actual
+producer/build commit, corpus asset, signed harness and original positive/negative
+run identities. The destination checkout, runner and native library have their own
+execution binding. Earlier v2 captures retain their v2 identity.
 
 ## What runs
 
@@ -161,16 +135,14 @@ shipped class; no rate policy is changed.
   names are each runtime's own schema) and the failure endpoint's measured
   `acceptedConnections` / `transportReconnects`.
 - The approved named differences: a strict mismatch stays in `mismatches`, and the
-  amended differential contract's four approved cases also appear once each in
+  differential contract's five approved groups also appear once each in
   `notCompared` with their exact `surface`/`row`/`field`, `expected`, `observed`
-  and reason. They are the configured `ajaxAll` width and its measured 5-member
-  cohort consequences, the declared TOC/content page-list scheduling and its
-  measured cohort/request consequences, the zero-argument `getHeaderMap` extension
-  (only while its value equals the product's explicit `getHeaderMap(false)` form),
-  and the two cancellation-owner labels. `unattributedCount` is
-  `mismatchCount - notComparedCount`; an unknown width, peak, result or label, a
-  corrupt zero-argument map or any other changed behavioural fact remains an
-  unattributed failure. Approval never turns a difference into a pass.
+  and reason. They cover configured `ajaxAll` width and measured cohort facts,
+  declared TOC/content page-list scheduling, zero-argument `getHeaderMap` while its
+  value equals the product's explicit false/default form, the two cancellation-owner
+  labels, and the 14 measured Java-return-string type/strict-equality fields.
+  `unattributedCount` is `mismatchCount - notComparedCount`; an unknown width, peak,
+  result, label, text or other changed behavioral fact remains unattributed.
 
 ### Documented exclusions
 
@@ -261,80 +233,24 @@ effects, terminal state, state preservation, resource release and the fresh
 follow-up operation. The label difference is recorded explicitly; it does not
 remove the cancellation row or any behavioral assertion.
 
-The comparer retains its strict difference list and exit semantics and reports the
-four approved named differences in `notCompared`; a scheduling or zero-argument
-divergence is not a frozen compatibility pass. The 56 historical differences below
-remain the pre-repair result bound to `b7fc3cf`; the historical v2 candidate's measured
-38 are listed next. No v3 capture exists on this branch, so this document makes no v3
-difference list and no v3 claim; the new rows' actual frozen/product differences must
-come from the controller's executed v3 comparison.
+## Named differences
 
-## The historical v2 named differences
+The strict difference list and exit semantics retain every measured value. The
+existing classifier names only these contract-approved boundaries:
 
-The historical v2 observer candidate records 38 strict differences per capture, each
-one named by the classifier above and none left unattributed:
+| Group | Exact scope |
+|---|---|
+| `ajaxall-configured-width` | The configured helper width and the declared five-member cohort's measured release/peak/request consequences |
+| `page-list-scheduling` | The declared TOC/content page-list widths and their measured cohort/request consequences; collected values and order remain strict |
+| `header-map-zero-arity` | The frozen zero-argument refusal versus the supported product result, only while that result equals its explicit false/default form |
+| `cancellation-owner-provenance` | `created-parent` versus `pipeline-cancellation`; all behavioral cancellation and fresh-follow-up receipts remain strict |
+| `java-return-string-identity` | Twelve enumerated helper leaves on `helper.script-probe-hg0`–`hg3` plus `v1.details.value.latestChapterTitle` and `v1.content.value.text`; exact type/strict value directions, own source/step tags and complete envelope shapes are required |
 
-1. **Configured `ajaxAll` width — 16 entries.** `runtimeConfiguration.threadCount`
-   16 → 4, each helper batch row's `value.batch.threadCount` 16 → 4, and the declared
-   5-member cohort's measured consequences: `cohortComplete` true → false,
-   `releaseReason` "complete" → "cohort-window", `inFlightPeak` 5 → 4, and the same
-   two cohort facts on each of its five declared request rows.
-2. **Declared page-list scheduling — 16 entries.** `s1.toc` and `s1.content` record
-   `threadCount` 16 → 1, their tails' `cohortComplete` true → false,
-   `releaseReason` "complete" → "cohort-window", `inFlightPeak` 2 → 1, and the same
-   two cohort facts on their four declared tail request rows.
-3. **Zero-argument `getHeaderMap` — 4 entries.** The two header-map rows record the
-   product's zero-argument result where the frozen binding refused: `returned`
-   false → true and the observed value list, which equals that row's explicit
-   `getHeaderMap(false)` result.
-4. **Cancellation-owner provenance — 2 entries.** `s5.search-cancelled`
-   `execution.jobLevel` and `s6.search-after-cancel` `followUp.jobLevel` read
-   `created-parent` → `pipeline-cancellation`; every behavioural cancellation
-   receipt and the fresh follow-up remain strictly compared.
-
-The former book-carrier and explicit false/true header-map differences are gone:
-those fields now match the frozen values. The 56 differences retained below are the
-pre-repair measurement at `b7fc3cf` and are not this candidate's result.
-
-## The retained pre-repair differences (all strict failures at `b7fc3cf`)
-
-Both captures produce the same 56 differences, grouped by cause:
-
-1. **Configured batch width** — `runtimeConfiguration.threadCount` 16 vs 4, and every
-   batch row's `value.batch.threadCount`. The frozen reads `AppConfig.threadCount`
-   (default 16). The product's configuration is recorded per family from the code that
-   actually runs the batch: the helper `ajaxAll` batches use
-   `SourceHostDispatcher.ajaxAll`'s default 4, while the TOC and content pagination
-   tails run `walkSourcePages`, which fetches the declared next pages one at a time
-   (`lib/source/source_page_results.dart`), so their rows record 1 against the frozen
-   16. Each cohort's `evidence.batch` names which configuration it measured; a measured
-   peak is never reported as a configured width.
-2. **Declared 5-member batch** — the width cohort records
-   `inFlightPeak` 4, `cohortComplete: false` and `releaseReason: "cohort-window"`,
-   and the same two facts on each of its five request rows. This is the recorded
-   5-vs-4 difference; the product's own peak is what the replay listener measured,
-   not a lower bound.
-3. **TOC and content tails** — the frozen batches the declared next pages
-   (`BookChapterList.kt:89-113`, `BookContent.kt:110-135`); the product's
-   `walkSourcePages` walks them sequentially, so each tail cohort records peak 1,
-   `cohortComplete: false` and `releaseReason: "cohort-window"` with the same facts on
-   its request rows.
-4. **`source.getHeaderMap` arities** — the corpus' scripts iterate the returned map
-   with `keySet()`/`iterator()`, which the product's map binding does not answer, so
-   the `falseArity` and `trueArity` rows record `returned: false` where the frozen
-   records the two pairs. The zero-argument row is `returned: false` on both sides.
-5. **Book carrier fields** — the frozen `SearchBook`/`Book` rows carry `origin`,
-   `originName` and `type` (and the details row its `origin`), which the product's
-   `HtmlBook` carrier does not; those fields are absent, and absence is a failure.
-6. **Cancellation bookkeeping wording** — the product has no Kotlin `Job`, so its
-   `execution.jobLevel` and `followUp.jobLevel` read `pipeline-cancellation` where the
-   frozen records `created-parent`. Every measured cancellation receipt itself
-   (`holdEntered`, `clientAborted`, `workerTerminated`, `jobDone`, `lateRequests`,
-   unchanged state probes and database, fresh follow-up execution) passes.
-
-These are the original measured facts. The approved dispositions above governed the
-repair and this candidate's measurement; this historical result is not relabelled as
-pass.
+The Java-return disposition retains primitive JS strings. Text, coercions, loose
+equality, booleans, injected bindings and all unenumerated fields keep their strict
+comparison. The two stringified probe envelopes require their complete 23/20-key
+shape and the measured 10/8-axis changes, with every other key/value equal. A full
+cross-segment Java-object carrier remains a separate #128 decision.
 
 ## Limits
 

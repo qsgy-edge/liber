@@ -108,6 +108,24 @@ void main() {
     );
   });
 
+  test(
+    'repair05 inherited empty path and query presence follow native URL text',
+    () {
+      for (final (base, expected) in [
+        ('http://a/book?', 'http://a/book?#next'),
+        ('http://a', 'http://a#next'),
+        ('http://a?keep=1', 'http://a?keep=1#next'),
+        ('http://a/book?keep=1', 'http://a/book?keep=1#next'),
+      ]) {
+        expect(
+          sourceUrlTextResolved(Uri.parse(base), '#next'),
+          expected,
+          reason: base,
+        );
+      }
+    },
+  );
+
   test('query skip rule accepts a trailing escape but not a broken one', () {
     expect(sourceQueryLooksEncoded(r'a=%2B'), isTrue);
     expect(sourceQueryLooksEncoded(r'a=%2'), isFalse);
@@ -115,4 +133,85 @@ void main() {
     expect(sourceQueryLooksEncoded('a=~b!c'), isTrue);
     expect(sourceQueryLooksEncoded('a=书'), isFalse);
   });
+
+  test('repair06 fragment question mark is not query presence', () {
+    // The frozen `URL(base, "#next")` keeps the base's own query and never
+    // invents an empty one from a `?` the fragment happens to hold.
+    final fragmentOnly = Uri.parse('http://source.test/book#old?marker');
+    expect(fragmentOnly.hasQuery, isFalse);
+    expect(
+      sourceUrlTextResolved(fragmentOnly, '#next'),
+      'http://source.test/book#next',
+    );
+    // An explicit empty query stays one, as the retained positive case says.
+    final explicitEmpty = Uri.parse('http://source.test/book?#old?marker');
+    expect(explicitEmpty.hasQuery, isTrue);
+    expect(
+      sourceUrlTextResolved(explicitEmpty, '#next'),
+      'http://source.test/book?#next',
+    );
+  });
+
+  test('repair06 raw base inherits the native protocol', () {
+    for (final (base, expected) in [
+      ('HTTP://UPPER.test/catalog/book', 'http://UPPER.test/catalog/toc'),
+      ('http://UPPER.test/catalog/book', 'http://UPPER.test/catalog/toc'),
+    ]) {
+      expect(
+        sourceUrlTextResolved(Uri.parse(base), 'toc', rawBase: base),
+        expected,
+        reason: base,
+      );
+    }
+    // An already absolute field stays verbatim, whatever its own scheme case.
+    expect(
+      sourceUrlTextResolved(
+        Uri.parse('HTTP://UPPER.test/catalog/book'),
+        'HTTP://UPPER.test/catalog/toc',
+        rawBase: 'HTTP://UPPER.test/catalog/book',
+      ),
+      'HTTP://UPPER.test/catalog/toc',
+    );
+  });
+
+  // The pinned `NetworkUtils.kt:173-191` URL overload trims with Kotlin only for
+  // its null-base fallback and its absolute/data/javascript admission; the
+  // relative branch hands the original text to `URL(base, relativePath)`, whose
+  // own edge trim stops at U+0020. A Unicode space is therefore URL text, while a
+  // C0 control is not.
+  for (final (label, raw, expected) in [
+    ('suffix', 'child\u2000', 'http://source.test/book/child\u2000'),
+    ('prefix', '\u2000child', 'http://source.test/book/\u2000child'),
+    ('ascii-control', '\u001cchild\u001c', 'http://source.test/book/child'),
+    (
+      'absolute-control',
+      'http://UPPER.test/toc\u2000',
+      'http://UPPER.test/toc',
+    ),
+  ]) {
+    test('repair06whitespace URL text $label', () {
+      final base = Uri.parse('http://source.test/book/1?keep=x');
+      expect(
+        sourceUrlTextResolved(base, raw),
+        expected,
+        reason: 'the URL constructor receives the original relative text',
+      );
+      expect(
+        sourceUrlNativeText(raw, base),
+        expected,
+        reason: 'the frozen scalar helper follows the same exact operation',
+      );
+    });
+  }
+
+  for (final suffix in [false, true]) {
+    test('repair06whitespace raw base suffix=$suffix', () {
+      final rawBase = 'http://UPPER.test/book/1${suffix ? '\u2000' : ''}';
+      expect(
+        sourceUrlTextResolved(Uri.parse(rawBase), '#next', rawBase: rawBase),
+        '$rawBase#next',
+        reason: 'the base constructor keeps a Unicode path character',
+      );
+    });
+  }
 }

@@ -165,7 +165,7 @@ void main() {
           expect(await _runs(state, server.origin), 'i');
           expect(info.book.title, '书');
           expect(info.tocAddress, '/book/1/toc');
-          expect(info.tocUrl, '/book/1/toc');
+          expect(info.tocUrl, '${server.origin}/book/1/toc');
         },
       );
 

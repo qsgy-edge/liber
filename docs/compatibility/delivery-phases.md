@@ -16,6 +16,20 @@ Inputs: [first-slice.md](first-slice.md) (#6),
 `tool/ci_runtime.py` (the runnable gate rows), `README.md` → Status,
 Verification and evidence.
 
+## Compatibility reference
+
+Claims use the immutable reference in
+[ADR 0001](../adr/0001-pin-compatibility-to-a-frozen-baseline.md):
+`LegadoTeam/legado` formal release `3.26101819`, source
+`a7d37f1707a70a459ad708f4fe79341d1e42d716`, with its bound instrumentable
+build and runtime configuration/initialization. Historical receipts for
+`14dd24945b2914ce2708b8abaa4ee67ceef892af` retain that identity; existing
+implementation/build rows do not promote a selected-reference comparison.
+Spec A #133/#146/#137/#138 owns ordinary renewal. Spec B retains browser/host
+prerequisites. A shared adapter change reruns its affected platform rows, and
+existing v1 scope, product policies and data-import/local-library contracts
+retain their boundaries.
+
 ## Verdict
 
 1. **Six phases, Windows-first.** The proven vertical slice, the local library

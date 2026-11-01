@@ -30,12 +30,15 @@ REPORT_REMOTE = '/sdcard/Android/data/io.legado.app.debug/files/field-oracle.jso
 FIELDS_01 = 'FIELDS-01'
 FIELDS_02 = 'FIELDS-02'
 OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
-HARNESS_SOURCE_KEYS = (
+HISTORICAL_SOURCE_KEYS = (
     'FieldOracle.java',
     'StateSessionOracle.java',
     'AndroidManifest.xml',
     'build.ps1',
     'capture.py',
+)
+HARNESS_SOURCE_KEYS = HISTORICAL_SOURCE_KEYS + (
+    'HostRuntimeInit.java', 'ShortcutStartupGuard.java',
 )
 # The frozen application's own persisted data. Starting its process writes
 # third-party state (Play Services measurement, Firebase, WebView Chromium
@@ -75,13 +78,25 @@ def _require_int(value, label):
 
 def _source_path(name):
     here = Path(__file__).resolve().parent
-    if name == 'StateSessionOracle.java':
+    if name in ('StateSessionOracle.java', 'HostRuntimeInit.java', 'ShortcutStartupGuard.java'):
         return here.parent / 'nested_oracle' / name
     return here / name
 
 
 def harness_source_hashes():
     return {name: sha256(_source_path(name)) for name in HARNESS_SOURCE_KEYS}
+
+
+def _admit_source_hashes(sources, label, current_only=False):
+    if not isinstance(sources, dict):
+        raise ValueError(label + ' source map must be an object')
+    keys = set(sources)
+    if keys != set(HARNESS_SOURCE_KEYS) and (
+            current_only or keys != set(HISTORICAL_SOURCE_KEYS)):
+        raise ValueError(label + ' source key set differs')
+    for name, value in sources.items():
+        if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
+            raise ValueError(label + ' source hash is malformed: ' + name)
 
 
 def _admit_selected_shape(fixture, label):
@@ -159,11 +174,7 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     if corpus.get('sha256') != fixture_sha or corpus.get('sha256Lf') != fixture_sha_lf:
         raise ValueError('embedded provenance corpus digests differ')
     sources = _required_map(provenance, 'sources', 'provenance')
-    if set(sources) != set(HARNESS_SOURCE_KEYS):
-        raise ValueError('embedded provenance source key set differs')
-    for name, value in sources.items():
-        if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
-            raise ValueError('embedded provenance source hash is malformed: ' + name)
+    _admit_source_hashes(sources, 'embedded provenance')
     if expected_sources is not None:
         if set(expected_sources) != set(sources):
             raise ValueError('embedded provenance source key set differs')
@@ -398,13 +409,7 @@ def finalize(output, fixture, manifest, report, before, after, asset=None,
     # The harness sources are re-pinned to the committed files so a reviewer can
     # verify what produced this evidence; the note names the one file that
     # changed after the device step.
-    manifest['harnessSources'] = {
-        p.name: sha256(p) for p in [
-            Path(__file__), Path(__file__).with_name('FieldOracle.java'),
-            Path(__file__).with_name('AndroidManifest.xml'),
-            Path(__file__).with_name('build.ps1'),
-            Path(__file__).with_name('..') / 'nested_oracle' / 'StateSessionOracle.java']
-    }
+    manifest['harnessSources'] = harness_source_hashes()
     manifest['harnessSourcesNote'] = (
         'hashes of the committed harness sources at finalize time; the device-run '
         'APK is identified by harnessApkSha256, and later harness-source changes do '
@@ -598,12 +603,7 @@ def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
     if corpus.get('sha256') != raw_sha or corpus.get('sha256Lf') != lf_sha:
         raise ValueError('artifact provenance corpus digest differs')
     sources = _required_map(provenance, 'sources', 'artifact.provenance')
-    if set(sources) != set(HARNESS_SOURCE_KEYS):
-        raise ValueError('artifact provenance source key set differs')
-    for name in HARNESS_SOURCE_KEYS:
-        value = sources.get(name)
-        if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
-            raise ValueError('artifact provenance source hash is malformed: ' + name)
+    _admit_source_hashes(sources, 'artifact provenance')
     manifest_sources = _required_map(manifest, 'harnessSources', 'manifest')
     if manifest_sources != sources:
         raise ValueError('artifact provenance sources differ from the manifest sources')
@@ -1144,13 +1144,7 @@ def main():
         'harnessApkSha256': sha256(args.apk),
         'serial': args.serial,
         'commands': [],
-        'harnessSources': {
-            p.name: sha256(p) for p in [
-                Path(__file__), Path(__file__).with_name('FieldOracle.java'),
-                Path(__file__).with_name('AndroidManifest.xml'),
-                Path(__file__).with_name('build.ps1'),
-                Path(__file__).with_name('..') / 'nested_oracle' / 'StateSessionOracle.java']
-        },
+        'harnessSources': harness_source_hashes(),
     }
     if fields_02:
         manifest['corpus'].update({
@@ -1315,12 +1309,8 @@ def main():
             raise ValueError('artifact provenance schema differs before cleanup')
         if provenance.get('fixtureId') != FIELDS_02:
             raise ValueError('artifact provenance family differs before cleanup')
-        if not isinstance(provenance.get('sources'), dict) or set(provenance.get('sources', {})) != set(HARNESS_SOURCE_KEYS):
-            raise ValueError('artifact source inventory is incomplete before cleanup')
-        for name in HARNESS_SOURCE_KEYS:
-            value = provenance.get('sources', {}).get(name)
-            if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
-                raise ValueError('artifact source hash is malformed before cleanup: ' + name)
+        _admit_source_hashes(provenance.get('sources'),
+                             'artifact before cleanup', current_only=True)
         pcorpus = _required_map(provenance, 'corpus', 'artifact.provenance')
         manifest_corpus = manifest.get('corpus') or {}
         if pcorpus.get('asset') != 'field-fixtures.json' or pcorpus.get('fixtureId') != FIELDS_02:

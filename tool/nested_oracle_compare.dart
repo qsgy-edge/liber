@@ -22,6 +22,12 @@ import 'package:pointycastle/digests/sha256.dart';
 ///   explicitly `not-run`): `--jslib-record <fjs.dll> <new-capture.json>`
 /// - the local jsLib shared-scope comparison against a frozen device golden:
 ///   `--jslib <fjs.dll> <golden.json> <new-report.json>`
+///
+/// Both jsLib modes accept `--corpus=<path>`. Without it they read the
+/// historical `JSLIB-01` v2 corpus, so an existing invocation is unchanged;
+/// `tool/nested_oracle/jslib-fixtures-selected.json` is the selected-reference
+/// v3 corpus. The path is a tool-only selector: every identity the comparison
+/// uses is inside the file, so no capture can be relabelled by choosing it.
 Future<void> main(List<String> args) async {
   if (args.isNotEmpty && args.first == '--requests-compare') {
     await _runRequestCompareOnly(args.sublist(1));
@@ -176,6 +182,11 @@ _observeSteps(String dll, Map<String, dynamic> corpus) async {
 /// selected explicitly by `--jslib-record`/`--jslib`; the default JS oracle
 /// keeps reading `tool/nested_oracle/fixtures.json`.
 const jsLibCorpusPath = 'tool/nested_oracle/jslib-fixtures.json';
+
+/// The selected-reference `JSLIB-01` v3 corpus, selected with
+/// `--corpus=<path>` so the historical corpus above keeps its goldens.
+const jsLibSelectedCorpusPath =
+    'tool/nested_oracle/jslib-fixtures-selected.json';
 
 String _sha256Bytes(Uint8List bytes) => SHA256Digest()
     .process(bytes)
@@ -384,10 +395,10 @@ Map<String, dynamic> jsLibTargetOf(Map<String, dynamic> corpus) {
 
 /// Decodes and validates the dedicated jsLib corpus, failing closed on a
 /// missing, malformed or empty corpus before anything runs.
-Map<String, dynamic> loadJsLibCorpus() {
-  final file = File(jsLibCorpusPath);
+Map<String, dynamic> loadJsLibCorpus([String path = jsLibCorpusPath]) {
+  final file = File(path);
   if (!file.existsSync()) {
-    throw StateError('jsLib corpus missing: $jsLibCorpusPath');
+    throw StateError('jsLib corpus missing: $path');
   }
   final corpus = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
   if (corpus['schemaVersion'] != 1) {
@@ -409,6 +420,34 @@ Map<String, dynamic> loadJsLibCorpus() {
     throw const FormatException('jsLib corpus has no jsLib');
   }
   jsLibTargetOf(corpus);
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization != null) {
+    if (hostInitialization is! Map) {
+      throw const FormatException(
+        'jsLib corpus hostInitialization is not an object',
+      );
+    }
+    if ('${hostInitialization['method'] ?? ''}'.trim().isEmpty) {
+      throw const FormatException(
+        'jsLib corpus hostInitialization names no method',
+      );
+    }
+    final registrations = hostInitialization['registrations'];
+    if (registrations is! List || registrations.isEmpty) {
+      throw const FormatException(
+        'jsLib corpus hostInitialization declares no registration',
+      );
+    }
+    for (final raw in registrations) {
+      if (raw is! Map ||
+          '${raw['type'] ?? ''}'.trim().isEmpty ||
+          '${raw['factory'] ?? ''}'.trim().isEmpty) {
+        throw const FormatException(
+          'jsLib corpus hostInitialization registration is incomplete',
+        );
+      }
+    }
+  }
   final steps = corpus['steps'];
   if (steps is! List || steps.isEmpty) {
     throw const FormatException('jsLib corpus has no rows');
@@ -475,6 +514,117 @@ void checkJsLibGolden({
     if (provenance[entry.key] != entry.value) {
       throw FormatException(
         'the golden provenance does not match the corpus (${entry.key})',
+      );
+    }
+  }
+  // A corpus that declares host initialization is only compared with a capture
+  // that records it as performed on an unattached App instance and verified.
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization is Map) {
+    final measured = golden['hostInitialization'];
+    if (measured is! Map ||
+        measured['verified'] != true ||
+        measured['method'] != hostInitialization['method'] ||
+        measured['invokedOn'] != 'unattached-instance' ||
+        measured['applicationAttached'] != false) {
+      throw const FormatException(
+        'the golden records no verified host initialization',
+      );
+    }
+    final identity = golden['identity'];
+    if (identity is! Map ||
+        identity['fixtureId'] != corpus['fixtureId'] ||
+        identity['corpusVersion'] != corpus['corpusVersion'] ||
+        identity['corpusSha256Lf'] != corpusSha256 ||
+        identity['targetPackage'] != target['package'] ||
+        identity['targetApkSha256'] != target['apkSha256'] ||
+        identity['targetBaselineCommit'] != corpus['baselineCommit'] ||
+        identity['targetPinManifest'] != target['manifest'] ||
+        identity['harnessPackage'] != 'io.liber.oracle.nested' ||
+        !RegExp(
+          r'^[0-9a-f]{64}$',
+        ).hasMatch('${identity['harnessApkSha256']}') ||
+        '${identity['harnessApkPath'] ?? ''}'.isEmpty) {
+      throw const FormatException(
+        'the selected capture identity is incomplete',
+      );
+    }
+    final declared = hostInitialization['registrations'] as List;
+    final registered = <String, Object?>{
+      for (final row in declared.cast<Map>()) '${row['type']}': row['factory'],
+    };
+    final containment = golden['startupContainment'];
+    if (containment is! Map ||
+        containment['service'] != 'shortcut' ||
+        containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+        containment['intercepted'] != 1 ||
+        containment['handled'] != 1 ||
+        containment['beforeBinding'] != true) {
+      throw const FormatException(
+        'the selected capture has no startup containment receipt',
+      );
+    }
+    final cleanup = golden['cleanup'];
+    final isolation = golden['isolation'];
+    final bindings = golden['bindings'];
+    if (!jsonSemanticEquals(measured['registeredWrappers'], registered) ||
+        golden['analysisFailure'] != null ||
+        golden['replayServerClosed'] != true ||
+        isolation is! Map ||
+        isolation['scratchRootExistedAtStart'] != false ||
+        cleanup is! Map ||
+        cleanup['ownership'] != 'created-fresh-root' ||
+        cleanup['scratchRemoved'] != true ||
+        cleanup['preferencesRemoved'] is! List ||
+        (cleanup['preferencesRemoved'] as List).any(
+          (item) => item is! Map || item['ok'] != true,
+        ) ||
+        bindings is! Map ||
+        bindings['analyzeUrlConstructorParameters'] != 16) {
+      throw const FormatException(
+        'the selected capture has incomplete execution or cleanup receipts',
+      );
+    }
+    final root = isolation['scratchRoot'];
+    final data = isolation['dataDirectory'];
+    final probe = isolation['preferenceProbe'];
+    final removed = cleanup['preferencesRemoved'] as List;
+    const prefix = 'liber_jslib_oracle_';
+    const probeName = '${prefix}liber_jslib_probe';
+    final names = <String>{};
+    if (data is! String ||
+        !data.startsWith('/') ||
+        data.contains('..') ||
+        !data.endsWith('/${target['package']}') ||
+        root != '$data/cache/liber-jslib-oracle' ||
+        isolation['application'] != 'android.app.Application' ||
+        isolation['files'] != '$root/files' ||
+        isolation['database'] != '$root/databases/legado.db' ||
+        isolation['preferencesPrefix'] != prefix ||
+        cleanup['scratchRoot'] != root ||
+        probe is! Map ||
+        probe['name'] != probeName ||
+        probe['registered'] != true ||
+        probe['committed'] != true ||
+        probe['scopedFile'] != true ||
+        probe['installationFile'] != false ||
+        removed.isEmpty ||
+        removed.any((item) {
+          if (item is! Map || item['name'] is! String || item['ok'] != true) {
+            return true;
+          }
+          final name = item['name'] as String;
+          return !name.startsWith(prefix) ||
+              name.length == prefix.length ||
+              name.contains('..') ||
+              name.contains('/') ||
+              name.contains('\\') ||
+              name.contains('\u0000') ||
+              !names.add(name);
+        }) ||
+        !names.contains(probeName)) {
+      throw const FormatException(
+        'the selected capture has invalid isolation or preference cleanup',
       );
     }
   }
@@ -560,19 +710,44 @@ Map<String, Object?> compareJsLib({
   };
 }
 
+/// The corpus selection both jsLib modes accept: `--corpus=<path>` or the
+/// historical corpus. Only the file is selected; its own identity decides
+/// everything the comparison admits.
+({String corpusPath, List<String> positional}) _jsLibSelection(
+  List<String> args,
+) {
+  var corpusPath = jsLibCorpusPath;
+  final positional = <String>[];
+  for (final arg in args) {
+    if (arg.startsWith('--corpus=')) {
+      corpusPath = arg.substring('--corpus='.length).trim();
+    } else {
+      positional.add(arg);
+    }
+  }
+  if (corpusPath.isEmpty) {
+    throw const FormatException('--corpus names no corpus');
+  }
+  return (corpusPath: corpusPath, positional: positional);
+}
+
 /// Prepares the product-only capture the later device comparison will need. It
 /// runs the same corpus the frozen harness will serve and labels the result
 /// `comparison: not-run`: no golden exists on this machine, so none is claimed.
 Future<void> _runJsLibRecord(List<String> args) async {
-  if (args.length != 2) {
-    throw ArgumentError('Usage: --jslib-record <fjs.dll> <new-capture.json>');
+  final selection = _jsLibSelection(args);
+  final positional = selection.positional;
+  if (positional.length != 2) {
+    throw ArgumentError(
+      'Usage: --jslib-record [--corpus=<path>] <fjs.dll> <new-capture.json>',
+    );
   }
-  final output = File(args[1]);
+  final output = File(positional[1]);
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
-  final corpus = loadJsLibCorpus();
-  final corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+  final corpus = loadJsLibCorpus(selection.corpusPath);
+  final corpusSha256 = jsLibCorpusSha256(File(selection.corpusPath));
   final target = jsLibTargetOf(corpus);
-  final observed = await _observeSteps(args[0], corpus);
+  final observed = await _observeSteps(positional[0], corpus);
   final report = <String, Object?>{
     'mode': 'jslib-record',
     'comparison': 'not-run',
@@ -580,7 +755,7 @@ Future<void> _runJsLibRecord(List<String> args) async {
     'corpusVersion': corpus['corpusVersion'],
     'baselineCommit': corpus['baselineCommit'],
     'entryPoint': corpus['entryPoint'],
-    'corpusPath': jsLibCorpusPath,
+    'corpusPath': selection.corpusPath,
     'corpusSha256': corpusSha256,
     'expectedTarget': {
       'package': target['package'],
@@ -588,7 +763,7 @@ Future<void> _runJsLibRecord(List<String> args) async {
       'baselineCommit': target['baselineCommit'],
       'manifest': target['manifest'],
     },
-    'library': args[0],
+    'library': positional[0],
     'platform': Platform.operatingSystem,
     'observations': observed.observations,
     'requests': observed.requests,
@@ -608,29 +783,32 @@ Future<void> _runJsLibRecord(List<String> args) async {
 /// Runs the product against the dedicated corpus and compares it with a frozen
 /// device golden, refusing to run the comparison at all without a genuine one.
 Future<void> _runJsLib(List<String> args) async {
-  if (args.length != 3) {
+  final selection = _jsLibSelection(args);
+  final positional = selection.positional;
+  if (positional.length != 3) {
     throw ArgumentError(
-      'Usage: --jslib <fjs.dll> <golden.json> <new-report.json>',
+      'Usage: --jslib [--corpus=<path>] <fjs.dll> <golden.json> <new-report.json>',
     );
   }
-  final output = File(args[2]);
+  final output = File(positional[2]);
   if (output.existsSync()) throw StateError('Refusing to overwrite evidence');
-  final corpus = loadJsLibCorpus();
-  final corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+  final corpus = loadJsLibCorpus(selection.corpusPath);
+  final corpusSha256 = jsLibCorpusSha256(File(selection.corpusPath));
   final golden =
-      jsonDecode(File(args[1]).readAsStringSync()) as Map<String, dynamic>;
+      jsonDecode(File(positional[1]).readAsStringSync())
+          as Map<String, dynamic>;
   // Refuse a bad golden before running anything, so a stale or forged input
   // cannot leave a half-written report behind.
   checkJsLibGolden(corpus: corpus, corpusSha256: corpusSha256, golden: golden);
-  final observed = await _observeSteps(args[0], corpus);
+  final observed = await _observeSteps(positional[0], corpus);
   final report = compareJsLib(
     corpus: corpus,
     corpusSha256: corpusSha256,
     golden: golden,
     observations: observed.observations,
     requests: observed.requests,
-    goldenPath: args[1],
-    library: args[0],
+    goldenPath: positional[1],
+    library: positional[0],
   );
   output.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(report)}\n',

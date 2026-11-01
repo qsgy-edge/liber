@@ -18,7 +18,7 @@ void main() {
   tearDownAll(NativeLibrary.dispose);
 
   test(
-    'FIELDS-02 records the actual product and its declared-request failure',
+    'FIELDS-02 records the actual product and completes declared requests',
     () async {
       final result = await runBookUrlMarkersCorpus(fixture: _fixture());
 
@@ -31,13 +31,16 @@ void main() {
         'json-no-pattern-empty-fallback',
         'json-pattern-empty-terminal',
       ]);
-      expect(result.requests, hasLength(14));
-      expect(result.scenarioPassed, isFalse);
+      expect(result.requests, hasLength(12));
+      expect(result.scenarioPassed, isTrue);
       final requestInvariant = result.invariants.singleWhere(
         (invariant) => invariant.id == 'declared-request-sequence',
       );
-      expect(requestInvariant.ok, isFalse);
-      expect(requestInvariant.detail, contains('declared 12, observed 14'));
+      expect(requestInvariant.ok, isTrue);
+      expect(
+        requestInvariant.detail,
+        contains('12 declared requests observed in order'),
+      );
 
       final a = result.caseRecords[0];
       final aSearch = (a['search'] as Map)['results'] as List;
@@ -55,12 +58,12 @@ void main() {
       expect((aChapters[1] as Map)['address'], '第一卷1');
       expect((aChapters[1] as Map)['url'], '$_origin/a/toc/1');
       expect((aChapters[1] as Map)['isVolume'], isTrue);
-      expect((aChapters[2] as Map)['address'], '/a/toc/1');
+      expect((aChapters[2] as Map)['address'], '$_origin/a/toc/1');
       expect((aChapters[2] as Map)['url'], '$_origin/a/toc/1');
       expect((aChapters[2] as Map)['isVip'], isTrue);
       expect((aChapters[2] as Map)['isPay'], isTrue);
       expect(a['sourceProbes'], {'vipProbe': null, 'payProbe': null});
-      expect(a['requests'], hasLength(5));
+      expect(a['requests'], hasLength(4));
 
       final b = result.caseRecords[1];
       expect(
@@ -75,18 +78,18 @@ void main() {
       final c = result.caseRecords[2];
       expect(
         ((c['search'] as Map)['results'] as List).single['bookUrl'],
-        '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
+        '$_origin/c/search?keyword=回放&page=1',
       );
       expect(
         (c['bookInfo'] as Map)['bookUrl'],
-        '$_origin/c/search?keyword=%E5%9B%9E%E6%94%BE&page=1',
+        '$_origin/c/search?keyword=回放&page=1',
       );
       expect((c['tableOfContents'] as Map)['chapters'], hasLength(1));
       expect(
         ((c['tableOfContents'] as Map)['chapters'] as List).single['tag'],
-        isNull,
+        '',
       );
-      expect(c['requests'], hasLength(4));
+      expect(c['requests'], hasLength(3));
       expect(c['sourceProbes'], {'vipProbe': null, 'payProbe': null});
 
       final d = result.caseRecords[3];
@@ -197,6 +200,64 @@ void main() {
     expect(report['status'], 'pass');
     expect(report['notCompared'], isEmpty);
   });
+
+  test(
+    'FIELDS-02 compares complete seven-source provenance with the manifest',
+    () {
+      final corpus = _syntheticCorpus();
+      final provenance = _syntheticProvenance();
+      (provenance['sources'] as Map<String, String>).addAll(<String, String>{
+        'HostRuntimeInit.java': 'd' * 64,
+        'ShortcutStartupGuard.java': 'e' * 64,
+      });
+      final manifest = _syntheticManifest(corpus);
+      (manifest['artifact'] as Map)['provenance'] = _clone(provenance);
+      manifest['harnessSources'] = _clone(
+        provenance['sources'] as Map<String, dynamic>,
+      );
+      expect(
+        _compare(
+          _syntheticEnvelope(corpus),
+          _syntheticProduct(corpus),
+          corpus,
+          externalManifest: manifest,
+          expectedProvenance: provenance,
+        )['status'],
+        'pass',
+      );
+      for (final name in [
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+      ]) {
+        final changed = _clone(manifest);
+        (changed['harnessSources'] as Map)[name] = 'f' * 64;
+        expect(
+          () => _compare(
+            _syntheticEnvelope(corpus),
+            _syntheticProduct(corpus),
+            corpus,
+            externalManifest: changed,
+            expectedProvenance: provenance,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        final changedArtifact = _clone(manifest);
+        (((changedArtifact['artifact'] as Map)['provenance'] as Map)['sources']
+                as Map)[name] =
+            'f' * 64;
+        expect(
+          () => _compare(
+            _syntheticEnvelope(corpus),
+            _syntheticProduct(corpus),
+            corpus,
+            externalManifest: changedArtifact,
+            expectedProvenance: provenance,
+          ),
+          throwsA(isA<StateError>()),
+        );
+      }
+    },
+  );
 
   test('actual Android preference punctuation is admitted coherently', () {
     const names = [
@@ -364,6 +425,7 @@ Map<String, dynamic> _compare(
   Map<String, dynamic> product,
   Map<String, dynamic> corpus, {
   Map<String, dynamic>? externalManifest,
+  Map<String, dynamic>? expectedProvenance,
 }) => compareBookUrlMarkers(
   golden: golden,
   liber: product,
@@ -376,7 +438,7 @@ Map<String, dynamic> _compare(
   expectedHarnessApkSha256: 'harness',
   expectedHarnessAssetSha256: 'a' * 64,
   expectedProvenanceSha256: 'b' * 64,
-  expectedProvenance: _syntheticProvenance(),
+  expectedProvenance: expectedProvenance ?? _syntheticProvenance(),
   expectedLibrarySha256: 'library',
   externalManifest: externalManifest ?? _syntheticManifest(corpus),
   expectedProductSources: const {'lib/source/test.dart': 'source-hash'},

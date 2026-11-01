@@ -3938,6 +3938,319 @@ const httpBoundaryCancellationOwnerReason =
     'state/database preservation, owned cleanup and the fresh follow-up remain '
     'strictly compared.';
 
+const httpBoundaryJavaReturnStringReason =
+    'Approved named difference: a Java method or map return reaches the source '
+    'script as a Java String object, so its typeof is object and its strict '
+    'literal equality with the same text fails, while the product returns the '
+    'primitive JS string. Only the enumerated type and strict-equality leaves '
+    'of this v3 group differ and stay in the mismatch list with their measured '
+    'values; text, coercion, loose equality, boolean returns, every other leaf '
+    'and every other row stay strictly compared, and the comparison does not '
+    'pass. Primitive JS string returns are retained; a complete cross-segment '
+    'Java-object carrier needs a separately approved reopening of the closed '
+    'container determination (#128).';
+
+/// The twelve measured scalar Java-return leaves: the declared row, its own
+/// source and the exact object->string or false->true pair the two captures
+/// recorded.
+const _javaReturnScalarLeaves =
+    <
+      ({
+        String row,
+        String source,
+        String field,
+        Object expected,
+        Object observed,
+      })
+    >[
+      (
+        row: 'helper.script-probe-hg0',
+        source: 'HG0',
+        field: 'value.result.lookup.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg0',
+        source: 'HG0',
+        field: 'value.result.lookup.strictLiteral',
+        expected: false,
+        observed: true,
+      ),
+      (
+        row: 'helper.script-probe-hg1',
+        source: 'HG1',
+        field: 'value.result.getDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg1',
+        source: 'HG1',
+        field: 'value.result.getBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        source: 'HG2',
+        field: 'value.result.keySetDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        source: 'HG2',
+        field: 'value.result.keySetBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        source: 'HG2',
+        field: 'value.result.lookup.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg2',
+        source: 'HG2',
+        field: 'value.result.lookup.strictLiteral',
+        expected: false,
+        observed: true,
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        source: 'HG3',
+        field: 'value.result.getDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        source: 'HG3',
+        field: 'value.result.getBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        source: 'HG3',
+        field: 'value.result.keySetDot.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+      (
+        row: 'helper.script-probe-hg3',
+        source: 'HG3',
+        field: 'value.result.keySetBracket.type',
+        expected: 'object',
+        observed: 'string',
+      ),
+    ];
+
+/// The flat `v1.details` probe envelope's exact keys and the ten measured
+/// type/strict leaves the two captures report on it.
+const _javaReturnDetailsEnvelopeKeys = <String>[
+  'directType',
+  'directStrict',
+  'directText',
+  'chainedType',
+  'chainedStrict',
+  'chainedLoose',
+  'chainedText',
+  'bookBeforeType',
+  'bookBeforeStrict',
+  'bookBeforeText',
+  'bookPutType',
+  'bookPutStrict',
+  'bookAfterType',
+  'bookAfterStrict',
+  'bookAfterLoose',
+  'bookAfterText',
+  'sourceBeforeType',
+  'sourceBeforeStrict',
+  'sourceBeforeText',
+  'sourceAfterType',
+  'sourceAfterStrict',
+  'sourceAfterLoose',
+  'sourceAfterText',
+];
+
+const _javaReturnDetailsEnvelopeAxes = <String, (Object, Object)>{
+  'chainedType': ('object', 'string'),
+  'chainedStrict': (false, true),
+  'bookBeforeType': ('object', 'string'),
+  'bookBeforeStrict': (false, true),
+  'bookAfterType': ('object', 'string'),
+  'bookAfterStrict': (false, true),
+  'sourceBeforeType': ('object', 'string'),
+  'sourceBeforeStrict': (false, true),
+  'sourceAfterType': ('object', 'string'),
+  'sourceAfterStrict': (false, true),
+};
+
+/// The flat `v1.content` probe envelope's exact keys and the eight measured
+/// type/strict leaves the two captures report on it.
+const _javaReturnContentEnvelopeKeys = <String>[
+  'directType',
+  'directStrict',
+  'directText',
+  'chapterBeforeType',
+  'chapterBeforeStrict',
+  'chapterBeforeText',
+  'chapterPutType',
+  'chapterPutStrict',
+  'chapterAfterType',
+  'chapterAfterStrict',
+  'chapterAfterLoose',
+  'chapterAfterText',
+  'bookPersistType',
+  'bookPersistStrict',
+  'bookPersistLoose',
+  'bookPersistText',
+  'sourcePersistType',
+  'sourcePersistStrict',
+  'sourcePersistLoose',
+  'sourcePersistText',
+];
+
+const _javaReturnContentEnvelopeAxes = <String, (Object, Object)>{
+  'chapterBeforeType': ('object', 'string'),
+  'chapterBeforeStrict': (false, true),
+  'chapterAfterType': ('object', 'string'),
+  'chapterAfterStrict': (false, true),
+  'bookPersistType': ('object', 'string'),
+  'bookPersistStrict': (false, true),
+  'sourcePersistType': ('object', 'string'),
+  'sourcePersistStrict': (false, true),
+};
+
+/// The two V rows whose whole measured field is one JSON probe envelope string.
+final _javaReturnEnvelopeCases =
+    <
+      ({
+        String row,
+        String stage,
+        String field,
+        List<String> keys,
+        Map<String, (Object, Object)> axes,
+      })
+    >[
+      (
+        row: 'v1.details',
+        stage: 'details',
+        field: 'value.latestChapterTitle',
+        keys: _javaReturnDetailsEnvelopeKeys,
+        axes: _javaReturnDetailsEnvelopeAxes,
+      ),
+      (
+        row: 'v1.content',
+        stage: 'content',
+        field: 'value.text',
+        keys: _javaReturnContentEnvelopeKeys,
+        axes: _javaReturnContentEnvelopeAxes,
+      ),
+    ];
+
+/// Binds one strict mismatch to the measured Java-return string identity: the
+/// twelve scalar helper leaves of the committed v3 probes and the two V
+/// whole-field probe envelopes. The row, its declared step, its source, the
+/// field and the measured value pair are all required, and a named difference
+/// is never equality: the strict mismatch and its values stay in the list.
+({String group, String reason})? _javaReturnStringDisposition(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> step,
+  HttpBoundaryMismatch mismatch,
+) {
+  if (corpus['corpusVersion'] != 3) return null;
+  if (!_javaReturnScalarLeaf(step, mismatch) &&
+      !_javaReturnEnvelopeLeaf(step, mismatch)) {
+    return null;
+  }
+  return (
+    group: 'java-return-string-identity',
+    reason: httpBoundaryJavaReturnStringReason,
+  );
+}
+
+/// One of the twelve measured scalar identities: a helper observation of a
+/// scriptProbe step on its own source with the exact field and value pair.
+bool _javaReturnScalarLeaf(
+  Map<String, dynamic> step,
+  HttpBoundaryMismatch mismatch,
+) {
+  if ('${step['kind']}' != 'helper' ||
+      '${step['family']}' != 'helper' ||
+      '${step['action']}' != 'scriptProbe' ||
+      mismatch.kind != 'type-or-value') {
+    return false;
+  }
+  for (final leaf in _javaReturnScalarLeaves) {
+    if (mismatch.row != leaf.row ||
+        '${step['id']}' != leaf.row ||
+        '${step['source']}' != leaf.source ||
+        mismatch.field != leaf.field) {
+      continue;
+    }
+    return mismatch.expected == leaf.expected &&
+        mismatch.observed == leaf.observed;
+  }
+  return false;
+}
+
+/// One of the two V envelope rows: the row's own stage details/content step and
+/// the exact flat envelope keys, where only the enumerated type/strict leaves
+/// may differ and every other key stays equal.
+bool _javaReturnEnvelopeLeaf(
+  Map<String, dynamic> step,
+  HttpBoundaryMismatch mismatch,
+) {
+  if (mismatch.kind != 'type-or-value') return false;
+  for (final envelope in _javaReturnEnvelopeCases) {
+    if (mismatch.row != envelope.row ||
+        mismatch.field != envelope.field ||
+        '${step['kind']}' != 'stage' ||
+        '${step['family']}' != 'stage' ||
+        '${step['stage'] ?? ''}' != envelope.stage ||
+        '${step['source']}' != 'V') {
+      continue;
+    }
+    final expected = _javaReturnEnvelope(mismatch.expected);
+    final observed = _javaReturnEnvelope(mismatch.observed);
+    if (expected == null || observed == null) return false;
+    if (expected.length != envelope.keys.length ||
+        observed.length != envelope.keys.length) {
+      return false;
+    }
+    for (final key in envelope.keys) {
+      if (!expected.containsKey(key) || !observed.containsKey(key)) {
+        return false;
+      }
+      final axis = envelope.axes[key];
+      if (axis == null) {
+        if (expected[key] != observed[key]) return false;
+        continue;
+      }
+      if (expected[key] != axis.$1 || observed[key] != axis.$2) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/// The flat probe envelope a V row's measured field carries, or null when the
+/// field is not exactly one readable JSON object.
+Map<String, Object?>? _javaReturnEnvelope(Object? raw) {
+  if (raw is! String) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    return decoded is Map ? decoded.cast<String, Object?>() : null;
+  } on FormatException {
+    return null;
+  }
+}
+
 /// Binds one strict mismatch to one of the amended differential contract's
 /// approved named differences, or returns null so the mismatch stays an
 /// unattributed failure. Every branch reads the corpus' own declared rows and
@@ -4039,6 +4352,8 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
         final zero = _zeroArityDisposition(product, mismatch);
         if (zero != null) return zero;
       }
+      final javaString = _javaReturnStringDisposition(corpus, step, mismatch);
+      if (javaString != null) return javaString;
     }
     // The two cancellation-owner labels, bound to the corpus' own steps.
     final cancellation = corpus['cancellation'];
@@ -4977,7 +5292,7 @@ Future<void> main(List<String> args) async {
       throw HttpBoundaryRefusal('the handoff is not a captured session');
     }
     if (handoff['integrationHead'] !=
-        'fbf556130176841fea14196bf94555823be589c7') {
+        '276a625e4aef0104240beac1908e597c6023ef93') {
       throw HttpBoundaryRefusal(
         'the handoff names another integration head: '
         '${handoff['integrationHead']}',
