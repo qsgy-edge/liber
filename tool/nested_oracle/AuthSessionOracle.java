@@ -1498,7 +1498,19 @@ public class AuthSessionOracle extends Instrumentation {
         boolean seed = "seed".equals(phase);
         cleanup.put("ownership", seed ? "created-fresh-root" : "validated-seed-owner")
             .put("scratchRoot", scratch.root.getAbsolutePath());
-        if (seed && succeeded) {
+        if (!succeeded || !databaseClosed || !replayOk || !terminalOk) {
+            cleanup.put("preferencesFenced", new JSONArray())
+                .put("preferencesRemoved", new JSONArray())
+                .put("scratchRetained", scratch.root.exists())
+                .put("scratchRemoved", false)
+                .put("ownerFile", new File(scratch.root, OWNER_FILE).getAbsolutePath())
+                .put("preservedForController", true)
+                .put("cleanupFailure", "the phase or its resource checks did not succeed;"
+                    + " startup completion is unproved, so owned residue is retained"
+                    + " for controller force-stop and recovery");
+            return cleanup;
+        }
+        if (seed) {
             JSONArray fenced = new JSONArray();
             boolean allFenced = true;
             for (String name : scratch.ownedPreferences()) {
